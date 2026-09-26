@@ -8,36 +8,45 @@ import {
 } from '../metrics.js';
 
 describe('tenant execution-context telemetry contract', () => {
-  test('uses only the closed, content-free propagation vocabulary', () => {
-    expect(TENANT_EXECUTION_CONTEXT_OPERATION).toEqual([
-      'bind',
-      'dispatch',
-      'start',
-      'continue',
-      'relay',
-      'station_control',
-      'background',
-    ]);
-    expect(TENANT_EXECUTION_CONTEXT_SOURCE).toEqual([
-      'none',
-      'request',
-      'session',
-      'operator',
-      'aggregate',
-    ]);
-    expect(TENANT_EXECUTION_CONTEXT_OUTCOME).toEqual([
-      'accepted',
-      'rejected',
-      'skipped',
-    ]);
-    expect(TENANT_EXECUTION_CONTEXT_REASON).toEqual([
-      'none',
-      'missing',
-      'unknown',
-      'mismatch',
-      'aggregate_safe',
-      'personal_mode',
-    ]);
+  test('records a value outside the closed vocabulary as the fixed sentinel, never as content', () => {
+    const attributes = tenantExecutionContextAttributes({
+      operation: 'tenant-alpha',
+      source: 'alpha.example.test',
+      outcome: { tenant: 'alpha' },
+      reason: 'user-1 sent a prompt',
+    } as any);
+
+    expect(attributes).toEqual({
+      operation: 'invalid',
+      source: 'invalid',
+      outcome: 'invalid',
+      reason: 'invalid',
+    });
+  });
+
+  test('passes every vocabulary value through unchanged', () => {
+    // A literal alongside the constant-derived rows: shrinking the vocabulary
+    // cannot make this vacuous.
+    expect(TENANT_EXECUTION_CONTEXT_OPERATION).toContain('station_control');
+    const dimensions = [
+      ['operation', TENANT_EXECUTION_CONTEXT_OPERATION],
+      ['source', TENANT_EXECUTION_CONTEXT_SOURCE],
+      ['outcome', TENANT_EXECUTION_CONTEXT_OUTCOME],
+      ['reason', TENANT_EXECUTION_CONTEXT_REASON],
+    ] as const;
+    const base = {
+      operation: 'bind',
+      source: 'none',
+      outcome: 'accepted',
+      reason: 'none',
+    } as const;
+    for (const [dimension, vocabulary] of dimensions) {
+      for (const value of vocabulary) {
+        expect(
+          tenantExecutionContextAttributes({ ...base, [dimension]: value }),
+        ).toEqual({ ...base, [dimension]: value });
+      }
+    }
   });
 
   test('projects untrusted wider values to four bounded attributes', () => {
