@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
@@ -25,17 +26,38 @@ export function fallowBaselineInvocations(
 }
 
 /**
- * Runs every baseline command and returns the process exit code. A command
- * that does not exit 0 fails the whole run and names itself: a baseline that
- * was not written must not report success.
+ * fallow exits 1 when it finds issues and still writes the baseline, and
+ * saving a baseline over a tree with known findings is this script's normal
+ * use. So exit 0 or 1 counts as success only when the baseline file was
+ * written by this run; any other exit, a signal, or a spawn error fails.
+ */
+const FINDINGS_EXIT = 1;
+
+function baselineWrittenSince(path, startedAtMs) {
+  try {
+    // Coarse filesystem timestamps can trail the clock by up to 2s.
+    return statSync(path).mtimeMs >= startedAtMs - 2000;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Runs every baseline command and returns the process exit code. The first
+ * command that fails stops the run and names itself: a baseline that was not
+ * written must not report success.
  */
 export function runFallowBaselines({
   invocations = fallowBaselineInvocations(),
   spawn = spawnSync,
+  written = baselineWrittenSince,
+  now = Date.now,
   report = (message) => console.error(message),
 } = {}) {
   for (const { command, args } of invocations) {
     const label = `fallow ${args.slice(1).join(' ')}`;
+    const baseline = args[args.indexOf('--save-baseline') + 1];
+    const startedAt = now();
     const result = spawn(command, args, {
       stdio: 'inherit',
       windowsHide: true,
@@ -48,8 +70,12 @@ export function runFallowBaselines({
       report(`${label}: terminated by ${result.signal}`);
       return 1;
     }
-    if (result.status !== 0) {
+    if (result.status !== 0 && result.status !== FINDINGS_EXIT) {
       report(`${label}: exited ${result.status}`);
+      return 1;
+    }
+    if (!written(baseline, startedAt)) {
+      report(`${label}: exited ${result.status} without writing ${baseline}`);
       return 1;
     }
   }

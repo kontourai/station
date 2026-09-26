@@ -57,18 +57,37 @@ describe('fallow baseline invocations', () => {
 describe('runFallowBaselines', () => {
   const invocations = fallowBaselineInvocations('/fallow');
 
-  test('exits 0 only when every subcommand exits 0', () => {
+  test.each([
+    ['every subcommand exits 0', 0],
+    // fallow exits 1 when it finds issues and still saves the baseline.
+    ['a subcommand reports findings (exit 1)', 1],
+  ])('succeeds when %s and writes its baseline', (_label, status) => {
     const spawned: string[] = [];
     const code = runFallowBaselines({
       invocations,
       spawn: ((_command: string, args: string[]) => {
         spawned.push(args[1] ?? '');
-        return { status: 0, signal: null };
+        return { status: args[1] === 'health' ? status : 0, signal: null };
       }) as never,
+      written: () => true,
       report: () => {},
     });
     expect(code).toBe(0);
     expect(spawned).toEqual(['dead-code', 'health', 'dupes']);
+  });
+
+  test('fails when a subcommand exits 0 or 1 without writing its baseline', () => {
+    const reports: string[] = [];
+    const code = runFallowBaselines({
+      invocations,
+      spawn: (() => ({ status: 1, signal: null })) as never,
+      written: (path: string) => path !== 'fallow-baselines/health.json',
+      report: (message: string) => reports.push(message),
+    });
+    expect(code).toBe(1);
+    expect(reports).toEqual([
+      'fallow health --save-baseline fallow-baselines/health.json: exited 1 without writing fallow-baselines/health.json',
+    ]);
   });
 
   test.each([
@@ -88,6 +107,7 @@ describe('runFallowBaselines', () => {
         spawned.push(args[1] ?? '');
         return args[1] === 'health' ? failure : { status: 0, signal: null };
       }) as never,
+      written: () => true,
       report: (message: string) => reports.push(message),
     });
     expect(code).toBe(1);

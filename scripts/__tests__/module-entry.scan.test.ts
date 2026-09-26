@@ -229,7 +229,7 @@ describe('entry-point guards use invokedDirectly (#2682)', () => {
     });
     expect(
       offenders,
-      'use `invokedDirectly(import.meta.url)` from scripts/lib/module-entry.mjs',
+      "use `invokedDirectly(import.meta.url)` from scripts/lib/module-entry.mjs; for a script in LONE_FILE_SCRIPTS (which cannot import it), update that entry's pinned `guard` text in this file instead",
     ).toEqual([]);
   });
 
@@ -242,7 +242,10 @@ describe('entry-point guards use invokedDirectly (#2682)', () => {
       expect(source).not.toMatch(/from\s+['"][^'"]*module-entry\.mjs['"]/);
       if (importFree) expect(RELATIVE_IMPORT.test(source)).toBe(false);
       // The pinned guard, exactly once; the scan above covers the rest.
-      expect(source.split(guard).length - 1, 'pinned guard').toBe(1);
+      expect(
+        source.split(guard).length - 1,
+        `${path}'s entry guard no longer matches LONE_FILE_SCRIPTS['${path}'].guard in module-entry.scan.test.ts; if the change is intended, update the pinned text (it must still realpath both sides)`,
+      ).toBe(1);
       expect(guard).toMatch(/realpathSync\(/);
     },
   );
