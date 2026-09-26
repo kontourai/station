@@ -121,8 +121,12 @@ describe('mobile release hardening contract', () => {
       'Publish release and compensate to draft until feed verifies',
     );
     expect(publish).toContain('NATIVE_APP_UPDATE_PUBLISH_TOKEN');
-    expect(mobileFeedTransaction).toContain('native-update-feed.mjs deploy');
-    expect(publish).toContain('scripts/publish-mobile-feed-transaction.sh');
+    expect(mobileFeedTransaction).toContain(
+      'node "$script_dir/native-update-feed.mjs" deploy',
+    );
+    expect(publish).toContain(
+      'release-policy/scripts/publish-mobile-feed-transaction.sh',
+    );
     const publishStep = namedStep(
       workflowJob(publish, 'publish'),
       'Publish release and compensate to draft until feed verifies',
@@ -740,6 +744,73 @@ describe('native release workflow topology', () => {
       'Promote only the recorded immutable GHCR digest',
       'Publish release and compensate to draft until feed verifies',
     ]);
+  });
+
+  it('executes every publish-time policy script from the default-branch checkout (#2676)', () => {
+    // A tag's scripts are frozen forever, so the tag supplies release CONTENT
+    // (release-assets/, manifests, git history) and every executed policy
+    // script comes from release-policy/. This reads the PARSED run bodies, so
+    // a folded scalar or a variable holding the path is still seen.
+    const expectedPolicyScripts: Record<string, string[]> = {
+      resolve: ['scripts/lib/native-release-config.mjs'],
+      publish: [
+        'scripts/lib/deploy-ledger-commit.mjs',
+        'scripts/lib/tauri-updater-manifest.mjs',
+        'scripts/deploy-ledger.mjs',
+        'scripts/publish-mobile-feed-transaction.sh',
+        'scripts/release-artifacts.mjs',
+        'scripts/release-sbom-predicates.mjs',
+        'scripts/verify-release-checksums.sh',
+      ],
+      'release-availability': ['scripts/release-availability-driver.mjs'],
+    };
+    // The only run steps that execute tag code: installing the tag's own
+    // locked dependency tree, which the policy scripts import from.
+    const tagExecutedRuns = ['npm run dependencies:ci'];
+    const scriptPath =
+      /(\S*?)\b((?:scripts|ops|tools)\/[\w./-]+\.(?:mjs|cjs|js|ts|sh|py))\b/g;
+    const jobs = workflow(publish).jobs ?? {};
+    expect(Object.keys(jobs).sort()).toEqual(
+      Object.keys(expectedPolicyScripts).sort(),
+    );
+    for (const [jobName, job] of Object.entries(jobs)) {
+      const invoked = new Set<string>();
+      for (const step of job.steps ?? []) {
+        expect(step['working-directory'], jobName).toBeUndefined();
+        if (typeof step.run !== 'string') continue;
+        if (tagExecutedRuns.includes(step.run)) continue;
+        expect(step.run, `${jobName}: ${step.name}`).not.toMatch(
+          /\b(?:npm|pnpm|npx|yarn)\b/,
+        );
+        for (const [, prefix, path] of step.run.matchAll(scriptPath)) {
+          expect(prefix, `${jobName}: ${step.name}: ${path}`).toMatch(
+            /(?:^|["'=/$])release-policy\/$/,
+          );
+          invoked.add(path);
+        }
+      }
+      expect([...invoked].sort(), jobName).toEqual(
+        [...expectedPolicyScripts[jobName]].sort(),
+      );
+      const checkout = namedStep(
+        job,
+        'Check out default-branch release policy',
+      );
+      expect(checkout.uses).toMatch(/^actions\/checkout@[0-9a-f]{40}$/);
+      expect(checkout.with).toMatchObject({
+        ref: githubExpression('github.event.repository.default_branch'),
+        path: 'release-policy',
+      });
+    }
+    // The ledger commit-back runs in the policy checkout: its ancestry guard
+    // and changelog slice need main's full history, and its push authenticates
+    // with the app token only.
+    expect(
+      namedStep(
+        workflowJob(publish, 'publish'),
+        'Check out default-branch release policy',
+      ).with,
+    ).toMatchObject({ 'fetch-depth': 0, 'persist-credentials': false });
   });
 
   it('does not expose write or provider credentials to setup and install steps', () => {

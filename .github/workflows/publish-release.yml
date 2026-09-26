@@ -143,11 +143,17 @@ jobs:
         with:
           ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 0
+      # Tags supply release CONTENT only. Every policy script this job runs
+      # comes from this default-branch checkout, so a tooling fix on main
+      # reaches old tags. Full history and no persisted credential match the
+      # nightly ledger commit-back, which runs in this checkout.
       - name: Check out default-branch release policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
           path: release-policy
+          fetch-depth: 0
+          persist-credentials: false
       - name: Setup pinned pnpm
         uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
@@ -162,11 +168,11 @@ jobs:
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           mkdir release-assets
           gh release download "$RELEASE_TAG" --dir release-assets --pattern '*'
-          node scripts/release-artifacts.mjs validate --assets-dir release-assets --inventory release-assets/station-release-inventory.json --container-descriptor release-assets/station-container-release.json --updater-public-key release-assets/station-updater-public-key.txt
-          node scripts/release-sbom-predicates.mjs --assets-dir release-assets
+          node release-policy/scripts/release-artifacts.mjs validate --assets-dir release-assets --inventory release-assets/station-release-inventory.json --container-descriptor release-assets/station-container-release.json --updater-public-key release-assets/station-updater-public-key.txt
+          node release-policy/scripts/release-sbom-predicates.mjs --assets-dir release-assets
           test "$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync("release-assets/station-release-inventory.json")).sourceSha)' )" = "$RELEASE_SHA"
           test "$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync("release-assets/station-container-release.json")).createdAt)' )" = "$RELEASE_CREATED_AT"
-          scripts/verify-release-checksums.sh release-assets
+          release-policy/scripts/verify-release-checksums.sh release-assets
       - name: Derive the common frozen desktop provenance only after all package gates
         run: |
           set -euo pipefail
@@ -299,7 +305,7 @@ jobs:
           if [ -n "$VITE_NATIVE_APP_UPDATE_FEED_URL" ]; then
             feed_args+=("release-assets/station-mobile-${VITE_NATIVE_APP_UPDATE_CHANNEL}.json")
           fi
-          scripts/publish-mobile-feed-transaction.sh "${feed_args[@]}"
+          release-policy/scripts/publish-mobile-feed-transaction.sh "${feed_args[@]}"
 
       # The tag-bound release is public before this pointer advances. Updater
       # archives are uploaded first and latest.json is a separate invocation,
@@ -406,7 +412,10 @@ jobs:
           set -euo pipefail
           [ -n "$GITHUB_TOKEN" ] || { echo "::error::ledger token mint failed; the record cannot push"; exit 1; }
           version="${RELEASE_TAG#v}"
-          record=(node scripts/deploy-ledger.mjs
+          # The ledger lives on main, so the record and commit-back run in the
+          # default-branch checkout. The helper spawns the record with that
+          # checkout as its cwd, hence the absolute path.
+          record=(node "$PWD/release-policy/scripts/deploy-ledger.mjs"
             --channel stable-desktop
             --version "$version"
             --sha "$RELEASE_SHA"
@@ -425,7 +434,8 @@ jobs:
           for asset in "${assets[@]}"; do
             record+=(--artifact "release-asset:$(basename "$asset")")
           done
-          node scripts/lib/deploy-ledger-commit.mjs \
+          node release-policy/scripts/lib/deploy-ledger-commit.mjs \
+            --repo-root release-policy \
             --commit-subject "docs(ledger): record stable-desktop $version from run $GITHUB_RUN_ID" \
             --summary-line "- recorded: \`stable-desktop $version\` at \`$RELEASE_SHA\`" \
             --require-ancestor "$RELEASE_SHA" \
@@ -442,8 +452,8 @@ jobs:
         with:
           name: deploy-ledger-stable-${{ github.run_id }}
           path: |
-            docs/reference/deploy-ledger.json
-            docs/reference/deploy-ledger.md
+            release-policy/docs/reference/deploy-ledger.json
+            release-policy/docs/reference/deploy-ledger.md
           if-no-files-found: error
           retention-days: 14
 
@@ -474,6 +484,12 @@ jobs:
           ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 257
           persist-credentials: false
+      - name: Check out default-branch release policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: release-policy
+          persist-credentials: false
       - name: Setup pinned pnpm
         uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
@@ -486,8 +502,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          node scripts/release-availability-driver.mjs
+          node release-policy/scripts/release-availability-driver.mjs
       - name: Project verified release availability
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/release-availability-driver.mjs --project
+        run: node release-policy/scripts/release-availability-driver.mjs --project
