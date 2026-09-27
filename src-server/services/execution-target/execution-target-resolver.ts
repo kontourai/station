@@ -290,7 +290,7 @@ export function matchVerifiedRemoteProjectPath(
  * Project that points at another Project's folder cannot name that folder
  * as this Project's.
  */
-export class ExecutionWorkspaceOutsideProjectError extends Error {
+class ExecutionWorkspaceOutsideProjectError extends Error {
   readonly code = 'execution_workspace_outside_project' as const;
   constructor(projectSlug: string) {
     super(

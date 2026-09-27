@@ -153,6 +153,7 @@ import {
 import {
   foregroundDispatchTarget,
   namesAnotherStation,
+  newSessionFacts,
   refuseOutOfScopeDispatch,
   refuseRemoteForStationControlCaller,
   scopeDispatch,
@@ -1732,26 +1733,13 @@ export function createOrchestrationRoutes(
         (ownerId) =>
           foregroundDispatchTarget(deps.stationControlDispatchScope, {
             ownerId,
-            ...(projectSlug !== undefined ? { projectSlug } : {}),
-            ...(body.target.workspace?.kind === 'directory' ||
-            (body.target.workspace?.kind === 'project' &&
-              body.target.workspace.cwd !== undefined)
-              ? { directory: body.target.workspace.cwd }
-              : {}),
+            ...newSessionFacts(body.target, deps.projectDefaultEnvironment),
             ...(body.conversationId
               ? { conversationId: body.conversationId }
               : {}),
             ...(body.expectedInputRequest
               ? { inputReplyThreadId: body.expectedInputRequest.threadId }
               : {}),
-            remote:
-              namesAnotherStation(body.target.environment) ||
-              body.target.workspace?.kind === 'project-portable' ||
-              (!body.target.environment &&
-                projectSlug !== undefined &&
-                namesAnotherStation(
-                  deps.projectDefaultEnvironment?.(projectSlug),
-                )),
           }),
       );
       if ('refused' in scoped) return scoped.refused;
@@ -2295,37 +2283,13 @@ export function createOrchestrationRoutes(
       ]);
       if (fullAccessRefused) return fullAccessRefused;
       // #2377 slice C2a: a new task starts in the Project the body names.
-      const delegationTarget = (
-        body as {
-          target?: {
-            environment?: { kind: string };
-            workspace?: { kind: string; projectSlug?: string; cwd?: string };
-          };
-        }
-      ).target;
       const scoped = scopeDispatch(
         c,
         deps.stationControlDispatchScope,
-        (ownerId) => {
-          const workspace = delegationTarget?.workspace;
-          const projectSlug =
-            workspace?.kind === 'project' ? workspace.projectSlug : undefined;
-          return ownerId
-            ? {
-                kind: 'new',
-                ownerId,
-                ...(projectSlug !== undefined ? { projectSlug } : {}),
-                ...((workspace?.kind === 'directory' ||
-                  workspace?.kind === 'project') &&
-                typeof workspace.cwd === 'string'
-                  ? { directory: workspace.cwd }
-                  : {}),
-                remote:
-                  namesAnotherStation(delegationTarget?.environment) ||
-                  workspace?.kind === 'project-portable',
-              }
-            : undefined;
-        },
+        (ownerId) =>
+          ownerId
+            ? { kind: 'new', ownerId, ...newSessionFacts(body.target) }
+            : undefined,
       );
       if ('refused' in scoped) return scoped.refused;
       const { principal, userId, ownerAttribution, fullAccessGrant } =

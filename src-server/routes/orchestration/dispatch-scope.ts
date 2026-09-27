@@ -163,3 +163,44 @@ export function foregroundDispatchTarget(
     remote,
   };
 }
+
+/**
+ * What a dispatch body says about the session it would start: the Project
+ * it names, the folder it names (a plain folder's, or a Project
+ * workspace's `cwd`), and whether it lands on another Station (a saved
+ * Environment, a portable Project, or the named Project's default
+ * Environment).
+ */
+export function newSessionFacts(
+  target: {
+    readonly environment?: { readonly kind: string };
+    readonly workspace?: {
+      readonly kind: string;
+      readonly projectSlug?: string;
+      readonly cwd?: string;
+    };
+  },
+  projectDefaultEnvironment?: (
+    projectSlug: string,
+  ) => { readonly kind: string } | undefined,
+): { projectSlug?: string; directory?: string; remote: boolean } {
+  const workspace = target.workspace;
+  const projectSlug =
+    workspace?.kind === 'project' ? workspace.projectSlug : undefined;
+  const directory =
+    workspace?.kind === 'directory' || workspace?.kind === 'project'
+      ? workspace.cwd
+      : undefined;
+  const defaultEnvironment =
+    !target.environment && projectSlug !== undefined
+      ? projectDefaultEnvironment?.(projectSlug)
+      : undefined;
+  return {
+    ...(projectSlug !== undefined ? { projectSlug } : {}),
+    ...(directory !== undefined ? { directory } : {}),
+    remote:
+      namesAnotherStation(target.environment) ||
+      namesAnotherStation(defaultEnvironment) ||
+      workspace?.kind === 'project-portable',
+  };
+}
