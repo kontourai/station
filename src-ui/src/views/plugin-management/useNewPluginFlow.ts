@@ -21,6 +21,14 @@ import {
 export const WORKTREE_OVERRIDE_REFUSED =
   "This Station runs chats in separate worktrees, and a plugin Project has to work in its folder directly. This device can't change that setting for a Project. Ask the operator to create it, or to set the Station's workspace isolation to Shared.";
 
+/**
+ * The runtime's own scope refusal (`{"error":{"code":"insufficient_scope"}}`,
+ * 403). Since #2708 its `code` reaches the error, and the raw token is not a
+ * sentence anyone should read.
+ */
+export const INSUFFICIENT_SCOPE_REFUSED =
+  "This device isn't allowed to create Projects on this Station. Ask the operator to create it, or to allow this device to make changes.";
+
 export function defaultPluginTitle(name: string): string {
   return name
     .split(/[-.]/)
@@ -110,12 +118,16 @@ export function useNewPluginFlow(onDone: () => void) {
           });
         } catch (createError) {
           // #2412: a 403 that names its own code is a different refusal (the
-          // Project's folder), and says so itself.
-          if (
-            needsSharedOverride &&
-            (createError as { status?: unknown }).status === 403 &&
-            (createError as { code?: unknown }).code === undefined
-          ) {
+          // Project's folder), and says so itself. The runtime's scope
+          // refusal names `insufficient_scope` since #2708 (it used to arrive
+          // with no code at all): that means this device may not create
+          // Projects at all, override or not, so it gets its own sentence.
+          const status = (createError as { status?: unknown }).status;
+          const code = (createError as { code?: unknown }).code;
+          if (status === 403 && code === 'insufficient_scope') {
+            throw new Error(INSUFFICIENT_SCOPE_REFUSED);
+          }
+          if (needsSharedOverride && status === 403 && code === undefined) {
             throw new Error(WORKTREE_OVERRIDE_REFUSED);
           }
           throw createError;

@@ -161,12 +161,15 @@ export function describeObservationError(error: unknown): string {
   if (error instanceof StationRequestTimeoutError) {
     return `status read timed out after ${error.timeoutMs}ms`;
   }
-  if (error instanceof StationHttpError) {
-    return `status read failed with HTTP ${error.status}`;
-  }
+  // A delegation refusal is checked BEFORE the generic HTTP failure: #2708
+  // moves the SDK's error subclasses onto StationHttpError, and a refusal
+  // must keep reading as a refusal rather than as a bare status line.
   if (error instanceof DelegationApiError) {
     // The SDK carries response.code without validating its vocabulary.
     return 'status read refused by the Station';
+  }
+  if (error instanceof StationHttpError) {
+    return `status read failed with HTTP ${error.status}`;
   }
   if (error instanceof Error && error.name === 'AbortError') {
     return 'status read aborted';

@@ -144,8 +144,7 @@ The [composer](../../src-server/services/notifications/push-payload-composer.ts)
 can rank several candidates by outcome and recency, but the live channel passes
 only the notification that just triggered delivery. It does not replace that
 fresh event with an older, higher-ranked unresolved notification. Multi-item
-ranking is tested helper behavior, not a deployed digest surface. The separate
-`outcomeFirstAllQuietHeadline` helper likewise has no current summary/badge caller.
+ranking is tested helper behavior, not a deployed digest surface.
 
 | Outcome | Push-service retention TTL |
 | --- | --- |

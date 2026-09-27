@@ -10,7 +10,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let queryResult: {
   data?: any;
@@ -84,8 +84,15 @@ const taskWorkspaceAuthorityScope = vi.hoisted(() => ({
 const pluginsResult: {
   data: Array<{ enabled?: boolean; manifest?: { capabilities?: string[] } }>;
 } = { data: [] };
+const bindStarterWork = vi.hoisted(() => vi.fn());
+const starterQueryClient = vi.hoisted(() => ({
+  setQueryData: vi.fn(),
+  invalidateQueries: vi.fn(async () => {}),
+}));
 vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: vi.fn() },
+  bindStarterWork: (...args: unknown[]) => bindStarterWork(...args),
+  useQueryClient: () => starterQueryClient,
   useTaskGraphQuery: () => queryResult,
   useTaskTurnReferencesQuery: () => turnReferencesResult,
   useAnswerSupportBundlesQuery: () => answerSupportBundlesResult,
@@ -173,6 +180,7 @@ vi.mock('../workspace-panes/BasisWorkspacePane', () => ({
   ),
 }));
 
+import { NavigationProvider } from '../contexts/NavigationContext';
 import {
   relativeWorkspacePath,
   TaskWorkspaceView,
@@ -1267,6 +1275,97 @@ describe('TaskWorkspaceView', () => {
       expect(screen.queryByTestId('file-content')).toBeNull(),
     );
     expect(screen.getByText('Select a reference to inspect')).toBeTruthy();
+  });
+
+  describe('starter-link recovery (archive#3965)', () => {
+    const STARTER_URL =
+      '/projects/project-alpha/tasks/task-alpha?starter=start-task&starterLink=not-verified';
+    const exactBinding = {
+      starterId: 'start-task',
+      operationId: 'task-create:task-alpha',
+      targetRef: { kind: 'task', id: 'task-alpha', projectId: 'project-alpha' },
+    };
+
+    function renderWithNavigation() {
+      return render(
+        <NavigationProvider>
+          <TaskWorkspaceView taskId="task-alpha" />
+        </NavigationProvider>,
+      );
+    }
+
+    afterEach(() => {
+      window.history.pushState({}, '', '/');
+    });
+
+    beforeEach(() => {
+      window.history.pushState({}, '', STARTER_URL);
+      bindStarterWork.mockReset();
+      starterQueryClient.setQueryData.mockClear();
+      starterQueryClient.invalidateQueries.mockClear();
+    });
+
+    test('is offered only for an unverified start-task link', () => {
+      window.history.pushState(
+        {},
+        '',
+        '/projects/project-alpha/tasks/task-alpha?starter=start-task',
+      );
+      renderWithNavigation();
+      expect(screen.queryByRole('button', { name: 'Link it now' })).toBeNull();
+    });
+
+    test('binds the exact Task, records it, and clears the starter params', async () => {
+      bindStarterWork.mockResolvedValue({
+        outcome: 'bound',
+        binding: exactBinding,
+      });
+      renderWithNavigation();
+
+      const link = screen.getByRole('button', { name: 'Link it now' });
+      // The canonical Button primitive, not a bespoke editor button.
+      expect(link.classList.contains('button')).toBe(true);
+      fireEvent.click(link);
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('status', { name: 'Starter work link' }),
+        ).toBeNull(),
+      );
+      expect(bindStarterWork).toHaveBeenCalledWith(exactBinding);
+      expect(starterQueryClient.setQueryData).toHaveBeenCalledWith(
+        ['starter-work', 'start-task'],
+        { state: 'bound', binding: exactBinding },
+      );
+      const params = new URLSearchParams(window.location.search);
+      expect(params.get('starter')).toBeNull();
+      expect(params.get('starterLink')).toBeNull();
+    });
+
+    test('a binding to another Task is a failure, and the params stay', async () => {
+      bindStarterWork.mockResolvedValue({
+        outcome: 'bound',
+        binding: {
+          ...exactBinding,
+          targetRef: { ...exactBinding.targetRef, id: 'task-other' },
+        },
+      });
+      renderWithNavigation();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Link it now' }));
+
+      expect(
+        await screen.findByText(/Still couldn’t link it. Your task is safe/),
+      ).toBeTruthy();
+      expect(starterQueryClient.setQueryData).not.toHaveBeenCalled();
+      expect(
+        screen
+          .getByRole('button', { name: 'Link it now' })
+          .hasAttribute('disabled'),
+      ).toBe(false);
+      const params = new URLSearchParams(window.location.search);
+      expect(params.get('starterLink')).toBe('not-verified');
+    });
   });
 
   test('renders loading, error, and Task 404 states', () => {

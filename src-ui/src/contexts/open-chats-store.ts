@@ -171,12 +171,6 @@ export function openChatIdentitiesSnapshot(): readonly OpenChatIdentity[] {
   return identitiesCache;
 }
 
-/** Test seam: the projection cache is module state. */
-export function resetOpenChatIdentitiesCacheForTests() {
-  identitiesSignature = null;
-  identitiesCache = EMPTY_IDENTITIES;
-}
-
 export function countOpenChatAttention(
   chats: ReadonlyArray<{ hasUnread?: boolean }>,
 ): number {

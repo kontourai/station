@@ -97,14 +97,6 @@ export function isMcpUiRenderRevoked(
   );
 }
 
-/** Convenience inverse of {@link isMcpUiRenderRevoked} for read surfaces. */
-export function isMcpUiRenderAllowed(
-  projectHomeDir: string,
-  serverId: string,
-): boolean {
-  return !isMcpUiRenderRevoked(projectHomeDir, serverId);
-}
-
 /**
  * Record the explicit per-server render decision. `allowed: false` revokes
  * rendering; `allowed: true` clears a prior revoke back to the open default.
@@ -119,18 +111,4 @@ export async function setMcpUiRenderAllowed(
     grants[serverId] = { renderAllowed: allowed };
     return grants;
   });
-}
-
-export async function revokeMcpUiRender(
-  projectHomeDir: string,
-  serverId: string,
-): Promise<void> {
-  await setMcpUiRenderAllowed(projectHomeDir, serverId, false);
-}
-
-export async function allowMcpUiRender(
-  projectHomeDir: string,
-  serverId: string,
-): Promise<void> {
-  await setMcpUiRenderAllowed(projectHomeDir, serverId, true);
 }

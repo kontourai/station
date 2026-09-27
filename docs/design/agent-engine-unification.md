@@ -413,7 +413,7 @@ via three channels, and only these:
    the SDK's `Options.env` REPLACES the subprocess environment wholesale rather than
    merging, so the spread is load-bearing and `env` is left entirely unset when the
    toggle is off, keeping prior behavior byte-identical. **Wave 2 (shipped):** the Codex
-   spawn boundary is now closed too — `codex-adapter-transport.ts`'s `codexSpawnEnv()`
+   spawn boundary is now closed too — `codex-adapter-transport.ts`'s `spawnCodexProcess()`
    layers `CODEX_HOME` onto a full `process.env` spread, and `CodexAdapter.
    startReservedSession` resolves it via the same `getAppHomeEnv`/degrade-to-`undefined`
    contract as Claude, gated on the `codex` connection's `config.useAppHome`.

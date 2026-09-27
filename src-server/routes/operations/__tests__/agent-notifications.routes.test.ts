@@ -374,8 +374,12 @@ describe('notify_user reaches every engine delivery path', () => {
       name: 'notify_user',
       arguments: { title: 'After revoke' },
     });
+    // #2795: the tool-side guard's own code and sentence, as an MCP error.
+    expect(after.result.isError).toBe(true);
     expect(JSON.parse(after.result.content[0].text)).toEqual({
       status: 'caller-required',
+      code: 'station_control_caller_required',
+      error: expect.stringContaining('verified calling session'),
     });
     expect(await service.list()).toHaveLength(1);
     await instance.close();
@@ -385,6 +389,8 @@ describe('notify_user reaches every engine delivery path', () => {
     installStationControlStdioCallerCredential({});
     expect(await notifyUser({ title: 'Anyone there?' })).toEqual({
       status: 'caller-required',
+      code: 'station_control_caller_required',
+      error: expect.stringContaining('verified calling session'),
     });
     expect(await service.list()).toEqual([]);
   });

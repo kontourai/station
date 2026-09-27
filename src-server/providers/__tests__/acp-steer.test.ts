@@ -1,7 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import {
-  acpInterjectParams,
-  acpSessionSteerParams,
   isAcpMethodNotFound,
   resolveAcpSteerChannel,
 } from '../adapters/acp-steer.js';
@@ -30,21 +28,9 @@ describe('resolveAcpSteerChannel', () => {
   });
 });
 
-describe('ACP steer wire params', () => {
-  test('Kiro wraps the text the way kiro-cli _session/steer expects', () => {
-    expect(acpSessionSteerParams('sess-1', 'go left')).toEqual({
-      sessionId: 'sess-1',
-      message: '<user_message>\ngo left\n</user_message>',
-    });
-  });
-
-  test('Grok interject is { sessionId, text }, not content blocks', () => {
-    expect(acpInterjectParams('sess-1', 'course correct')).toEqual({
-      sessionId: 'sess-1',
-      text: 'course correct',
-    });
-  });
-
+// The Kiro and Grok wire params are pinned through AcpAdapter.steerTurn in
+// acp-adapter.test.ts.
+describe('isAcpMethodNotFound', () => {
   test('JSON-RPC method-not-found is the native-miss signal', () => {
     expect(isAcpMethodNotFound({ code: -32601, message: 'nope' })).toBe(true);
     expect(isAcpMethodNotFound(new Error('Method not found'))).toBe(true);

@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import { readInstanceRegistry } from '@kontourai/station-shared/instance-registry';
 import {
   inspectLock,
@@ -23,8 +23,12 @@ import {
   inspectExactKontourDependencyPins,
   type KontourDependencyState,
 } from '../lib/kontour-dependency-drift.js';
-import { CWD, PROJECT_HOME } from './helpers.js';
+import { CWD, LIFECYCLE_CODE_ROOT, PROJECT_HOME } from './helpers.js';
 import { collectInstanceStatus } from './lifecycle.js';
+import {
+  type LifecycleCodeRoot,
+  resolveLifecycleStateLocation,
+} from './lifecycle-code-root.js';
 
 type DoctorCheckStatus = 'pass' | 'warn' | 'fail';
 
@@ -73,6 +77,10 @@ export interface DoctorDeps {
   ) => Promise<ReadonlyArray<string>>;
   /** The checkout's terminal PTY backend — see `probeTerminalPtyModule`. */
   probeTerminalPty: (repoRoot: string) => TerminalCapability;
+  /** What this CLI runs from (#2675): a source tree or a prebuilt archive. */
+  codeRoot: LifecycleCodeRoot;
+  /** The Node.js executing this CLI: an archive runs its bundled one. */
+  processRuntime: { version: string; execPath: string };
 }
 
 export interface DoctorJsonDocument {
@@ -205,6 +213,7 @@ async function inspectSupervisorWedges(
     const status = await collectInstanceStatus(instanceId, {
       probeTimeoutMs: 1_000,
       reclaimStale: false,
+      projectHome,
     });
     if (
       status.found &&
@@ -243,17 +252,24 @@ function buildFixCommands(input: {
   tsxVersion: string | null;
   dependencyMismatchCount: number;
   terminalPtyAvailable: boolean;
+  /**
+   * #2675: the toolchain fixes (nvm, npm install, the PTY rebuild) act on a
+   * source checkout. An archive has none of those scripts, and its runtime
+   * and dependencies are replaced only by installing another archive.
+   */
+  prebuiltArchive: boolean;
 }): DoctorFixCommand[] {
   const fixes: DoctorFixCommand[] = [];
+  const source = !input.prebuiltArchive;
 
-  if (!isSupportedNodeVersion(input.nodeVersion)) {
+  if (source && !isSupportedNodeVersion(input.nodeVersion)) {
     fixes.push({
       label: `Install Node.js ${SUPPORTED_NODE_MAJOR}.x`,
       command: `nvm install ${SUPPORTED_NODE_MAJOR} && nvm use ${SUPPORTED_NODE_MAJOR}`,
       reason: `Station supports Node.js ${SUPPORTED_NODE_MAJOR}.x; found ${input.nodeVersion ?? 'no Node.js runtime'}.`,
     });
   }
-  if (!input.npmVersion) {
+  if (source && !input.npmVersion) {
     fixes.push({
       label: 'Install npm dependencies',
       command: 'npm install',
@@ -267,21 +283,21 @@ function buildFixCommands(input: {
       reason: 'git is required for repo-backed workflows and updates.',
     });
   }
-  if (!input.tsxVersion) {
+  if (source && !input.tsxVersion) {
     fixes.push({
       label: 'Install project dependencies',
       command: 'npm install',
       reason: 'tsx is provided by the project dependency set.',
     });
   }
-  if (input.dependencyMismatchCount > 0) {
+  if (source && input.dependencyMismatchCount > 0) {
     fixes.push({
       label: 'Synchronize project dependencies',
       command: 'npm install',
       reason: `${input.dependencyMismatchCount} exact-pinned @kontourai package(s) do not match the installed versions.`,
     });
   }
-  if (!input.terminalPtyAvailable) {
+  if (source && !input.terminalPtyAvailable) {
     fixes.push({
       label: 'Rebuild the terminal PTY backend',
       command: 'npm run dependencies:install',
@@ -329,6 +345,51 @@ function buildFixCommands(input: {
   return fixes;
 }
 
+/** Checks that concern only a tree that builds itself from source. */
+const SOURCE_TOOLCHAIN_CHECKS = new Set([
+  'npm',
+  'tsx',
+  'Kontour package pins',
+  'Rust',
+]);
+
+/**
+ * #2675: from a prebuilt archive, report the runtime it ships and its release
+ * instead of the source toolchain. A prebuilt archive cannot build itself, so
+ * npm, tsx, Rust and the source manifest's exact pins are neither required
+ * nor inspectable there (git stays: agent workflows on repositories still
+ * need it).
+ */
+export function prebuiltArchiveChecks(
+  sourceChecks: readonly DoctorCheck[],
+  archive: Extract<LifecycleCodeRoot, { kind: 'prebuilt-archive' }>,
+  runtime: { version: string; execPath: string },
+  stateDir: string,
+): DoctorCheck[] {
+  const { release } = archive;
+  return sourceChecks.flatMap((check): DoctorCheck[] => {
+    if (SOURCE_TOOLCHAIN_CHECKS.has(check.label)) return [];
+    if (check.label !== 'Node.js') return [check];
+    const relation = relative(archive.root, runtime.execPath);
+    const bundled =
+      relation !== '' && !relation.startsWith('..') && !isAbsolute(relation);
+    return [
+      bundled
+        ? { ...check, detail: `${check.detail} (bundled: ${runtime.execPath})` }
+        : {
+            label: check.label,
+            status: check.status === 'fail' ? 'fail' : 'warn',
+            detail: `${check.detail} from ${runtime.execPath}, not this archive's bundled runtime; run Station through ${join(archive.root, 'bin', 'station')}`,
+          },
+      {
+        label: 'Prebuilt archive',
+        status: 'pass',
+        detail: `${release.ref} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring, ${release.channel} channel) at ${archive.root}; lifecycle state in ${stateDir}`,
+      },
+    ];
+  });
+}
+
 export async function collectDoctorReport(
   deps: Partial<DoctorDeps> = {},
 ): Promise<DoctorReport> {
@@ -343,8 +404,14 @@ export async function collectDoctorReport(
     inspectKontourDependencies: inspectExactKontourDependencyPins,
     inspectSupervisorWedges,
     probeTerminalPty: probeTerminalPtyModule,
+    codeRoot: LIFECYCLE_CODE_ROOT,
+    processRuntime: { version: process.version, execPath: process.execPath },
     ...deps,
   };
+  const archive =
+    runtimeDeps.codeRoot.kind === 'prebuilt-archive'
+      ? runtimeDeps.codeRoot
+      : null;
 
   const appConfigPath = join(runtimeDeps.projectHome, 'config', 'app.json');
   const providersPath = join(
@@ -355,18 +422,27 @@ export async function collectDoctorReport(
   const awsCredentialsPath = join(homedir(), '.aws', 'credentials');
   const awsConfigPath = join(homedir(), '.aws', 'config');
 
-  const nodeVersion = runtimeDeps.exec('node -v');
-  const npmVersion = runtimeDeps.exec('npm -v');
+  // #2675: an archive runs the Node.js it ships (bin/station never consults
+  // PATH), so the host's `node` -- often absent -- says nothing about it.
+  // Nor are the source toolchain probes run there: their checks are dropped
+  // (`prebuiltArchiveChecks`), and the archive has no package.json whose
+  // exact pins could be compared.
+  const nodeVersion = archive
+    ? runtimeDeps.processRuntime.version
+    : runtimeDeps.exec('node -v');
+  const npmVersion = archive ? null : runtimeDeps.exec('npm -v');
   const gitVersion = runtimeDeps.exec('git --version');
-  const tsxVersion = parseTsxVersion(runtimeDeps.exec('tsx --version'));
-  const rustVersion = runtimeDeps.exec('rustc --version');
+  const tsxVersion = archive
+    ? null
+    : parseTsxVersion(runtimeDeps.exec('tsx --version'));
+  const rustVersion = archive ? null : runtimeDeps.exec('rustc --version');
   const codexVersion = runtimeDeps.exec('codex --version');
   const claudeVersion = runtimeDeps.exec('claude --version');
   const kiroVersion = runtimeDeps.exec('kiro-cli --version');
   const ollamaReachable = await runtimeDeps.checkOllama();
-  const dependencyState = runtimeDeps.inspectKontourDependencies(
-    runtimeDeps.repoRoot,
-  );
+  const dependencyState: KontourDependencyState = archive
+    ? { exactPins: [], mismatches: [] }
+    : runtimeDeps.inspectKontourDependencies(runtimeDeps.repoRoot);
   const supervisorWedges = await runtimeDeps.inspectSupervisorWedges(
     runtimeDeps.projectHome,
   );
@@ -400,7 +476,7 @@ export async function collectDoctorReport(
       runtimeDeps.exists(awsConfigPath),
   );
 
-  const checks: DoctorCheck[] = [
+  const sourceChecks: DoctorCheck[] = [
     {
       label: 'Node.js',
       status: isSupportedNodeVersion(nodeVersion) ? 'pass' : 'fail',
@@ -508,6 +584,16 @@ export async function collectDoctorReport(
           : 'No ACP runtime detected.'),
     },
   ];
+  const checks = archive
+    ? prebuiltArchiveChecks(
+        sourceChecks,
+        archive,
+        runtimeDeps.processRuntime,
+        // The doctor's home, so this is the directory `station stop` reads.
+        resolveLifecycleStateLocation(archive, runtimeDeps.projectHome)
+          .stateDir,
+      )
+    : sourceChecks;
 
   const chatReady =
     enabledLlmProviders.length > 0 || ollamaReachable || awsConfigured;
@@ -541,6 +627,7 @@ export async function collectDoctorReport(
     tsxVersion,
     dependencyMismatchCount: dependencyState.mismatches.length,
     terminalPtyAvailable: terminalCapability.state === 'available',
+    prebuiltArchive: archive !== null,
   });
   const recommendation =
     enabledLlmProviders.length > 0

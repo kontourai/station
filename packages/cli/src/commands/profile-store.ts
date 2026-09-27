@@ -275,7 +275,9 @@ function profileStoreGenesisAdmissible(home: string): boolean {
     // CLI setup creates an empty config parent before first metadata
     // publication. It is not history by itself; any content is.
     if (entry === 'config') return readdirSync(join(home, entry)).length === 0;
-    return entry === 'installs';
+    // Installed releases and prebuilt-archive lifecycle state (#2675) are
+    // installer and process bookkeeping, never saved-Station history.
+    return entry === 'installs' || entry === 'state';
   });
 }
 

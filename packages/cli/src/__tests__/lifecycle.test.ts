@@ -74,6 +74,24 @@ const TEST_ALT_HOME = join(TEST_ROOT, 'alt-home');
 const TEST_SECOND_HOME = join(TEST_ROOT, 'second-home');
 const TEST_PIDFILE = join(TEST_CWD, '.station.pids');
 const TEST_INSTANCE_STATE_DIR = join(TEST_CWD, '.station', 'instances');
+// A Station root whose `instances/stable` is a channel home, as installed
+// Stations use; the other test homes are raw directories that root
+// themselves. Either way no test touches the real ~/.station (#2675).
+const TEST_STATION_ROOT = join(TEST_ROOT, 'station-root');
+const TEST_ROOTED_HOME = join(TEST_STATION_ROOT, 'instances', 'stable');
+
+/**
+ * Where a prebuilt archive keeps records for instances of `home`: the
+ * `state/stable/instances` of the Station root that home belongs to.
+ */
+function archiveStateDir(home: string): string {
+  return join(
+    resolveStationRoot({ STATION_HOME: home }),
+    'state',
+    'stable',
+    'instances',
+  );
+}
 const PROCESS_INTEGRATION_TEST_TIMEOUT_MS = 15_000;
 
 function normalizeInstanceName(value: string): string {
@@ -129,13 +147,35 @@ function getInstanceStatePath(instanceId: string, cwd = TEST_CWD): string {
   return join(cwd, '.station', 'instances', `${instanceId}.json`);
 }
 
+/**
+ * Every instance record the fixture lifecycle has written: a source tree's
+ * (`<cwd>/.station/instances`) and a prebuilt archive's
+ * (`<root of the instance's home>/state/<channel>/instances`, #2675).
+ */
+function liveStateRecords(): Array<Record<string, any>> {
+  return [
+    ...stateRecordsIn(TEST_INSTANCE_STATE_DIR),
+    ...stateRecordsIn(archiveStateDir(TEST_DEFAULT_HOME)),
+    ...stateRecordsIn(archiveStateDir(TEST_ALT_HOME)),
+    ...stateRecordsIn(archiveStateDir(TEST_SECOND_HOME)),
+    ...stateRecordsIn(archiveStateDir(TEST_ROOTED_HOME)),
+  ];
+}
+
+function stateRecordsIn(directory: string) {
+  return existsSync(directory)
+    ? readdirSync(directory)
+        .filter((entry) => entry.endsWith('.json'))
+        .map((entry) =>
+          JSON.parse(readFileSync(join(directory, entry), 'utf8')),
+        )
+    : [];
+}
+
 function readyLifecycleFetch(url: string | URL | Request): Promise<Response> {
   const parsed = new URL(String(url));
   if (parsed.pathname === '/api/system/readiness') {
-    for (const entry of readdirSync(TEST_INSTANCE_STATE_DIR)) {
-      const state = JSON.parse(
-        readFileSync(join(TEST_INSTANCE_STATE_DIR, entry), 'utf8'),
-      );
+    for (const state of liveStateRecords()) {
       if (state.uiPort === Number(parsed.port)) {
         return Promise.resolve(
           new Response(JSON.stringify({ ready: true, status: 'ready' }), {
@@ -150,10 +190,7 @@ function readyLifecycleFetch(url: string | URL | Request): Promise<Response> {
   // consent port. The ready mock answers `listening` for the instance whose
   // server answers this port.
   if (parsed.pathname === '/api/system/instance') {
-    for (const entry of readdirSync(TEST_INSTANCE_STATE_DIR)) {
-      const state = JSON.parse(
-        readFileSync(join(TEST_INSTANCE_STATE_DIR, entry), 'utf8'),
-      );
+    for (const state of liveStateRecords()) {
       if (state.serverPort === Number(parsed.port)) {
         return Promise.resolve(
           new Response(
@@ -188,10 +225,7 @@ function readyLifecycleFetch(url: string | URL | Request): Promise<Response> {
       parsed.pathname === '/api/system/identity'
         ? state.serverPort === Number(parsed.port)
         : state.uiPort === Number(parsed.port);
-    for (const entry of readdirSync(TEST_INSTANCE_STATE_DIR)) {
-      const state = JSON.parse(
-        readFileSync(join(TEST_INSTANCE_STATE_DIR, entry), 'utf8'),
-      );
+    for (const state of liveStateRecords()) {
       if (matchesPort(state)) {
         return Promise.resolve(
           new Response(
@@ -345,6 +379,76 @@ async function loadLifecycleModule(
     });
   }
 
+  // The real code-root and state-location resolvers, so the state location a
+  // test exercises is the one the CLI derives: <cwd>/.station for a source
+  // tree, and <root of the home>/state/<channel> for a prebuilt archive
+  // (#2675).
+  const { resolveLifecycleCodeRoot, resolveLifecycleStateLocation } =
+    await vi.importActual<typeof import('../commands/lifecycle-code-root.js')>(
+      '../commands/lifecycle-code-root.js',
+    );
+  const codeRoot = resolveLifecycleCodeRoot(options.cwd ?? TEST_CWD);
+  const resolveLifecycleHomeTarget = ({
+    baseDir,
+    env,
+    tempHome,
+  }: {
+    baseDir?: string;
+    env?: NodeJS.ProcessEnv;
+    tempHome?: boolean;
+  } = {}) => {
+    const resolvedEnv = env ?? process.env;
+
+    if (tempHome) {
+      const projectHome = mkdtempSync(join(tmpdir(), 'station-dev-home-'));
+      return {
+        isDefaultHome: false,
+        projectHome,
+        source: '--temp-home' as const,
+      };
+    }
+
+    if (baseDir) {
+      const projectHome = resolve(baseDir);
+      return {
+        isDefaultHome: projectHome === TEST_DEFAULT_HOME,
+        projectHome,
+        source: '--base' as const,
+      };
+    }
+
+    if (resolvedEnv.STATION_HOME) {
+      const projectHome = resolve(resolvedEnv.STATION_HOME);
+      return {
+        isDefaultHome: projectHome === TEST_DEFAULT_HOME,
+        projectHome,
+        source: 'env' as const,
+      };
+    }
+
+    return {
+      isDefaultHome: true,
+      projectHome: TEST_DEFAULT_HOME,
+      source: 'default' as const,
+    };
+  };
+  const resolveLifecycleState = (projectHome?: string) =>
+    resolveLifecycleStateLocation(
+      codeRoot,
+      projectHome ?? resolveLifecycleHomeTarget().projectHome,
+    );
+
+  // A prebuilt archive's implicit id is the one the real resolver derives for
+  // THIS root (#2675: channel, not path); the local copy above models only a
+  // source checkout's path-hashed id.
+  const realInstanceId =
+    codeRoot.kind === 'prebuilt-archive'
+      ? (
+          await vi.importActual<typeof import('../commands/helpers.js')>(
+            '../commands/helpers.js',
+          )
+        ).resolveLifecycleInstanceId
+      : null;
   vi.doMock('../commands/helpers.js', () => ({
     AGENTS_DIR: join(TEST_DEFAULT_HOME, 'agents'),
     CWD: options.cwd ?? TEST_CWD,
@@ -352,12 +456,15 @@ async function loadLifecycleModule(
     DEFAULT_PROJECT_HOME: TEST_DEFAULT_HOME,
     DEFAULT_SERVER_PORT: 3141,
     DEFAULT_UI_PORT: 3000,
-    INSTANCE_STATE_DIR: TEST_INSTANCE_STATE_DIR,
-    PIDFILE: TEST_PIDFILE,
+    LIFECYCLE_CODE_ROOT: codeRoot,
     PLUGINS_DIR: join(TEST_DEFAULT_HOME, 'plugins'),
     PROJECT_HOME: TEST_DEFAULT_HOME,
     extractPluginName: () => '',
-    getInstanceStatePath,
+    getInstanceStatePath: (instanceId: string, projectHome?: string) =>
+      join(
+        resolveLifecycleState(projectHome).instanceStateDir,
+        `${instanceId}.json`,
+      ),
     isGitUrl: () => false,
     lookupDepInRegistries: () => null,
     normalizeHomePath:
@@ -365,51 +472,14 @@ async function loadLifecycleModule(
     normalizeInstanceName,
     parseGitSource: () => ({ branch: 'main', url: '' }),
     readManifest: vi.fn(),
-    resolveLifecycleHomeTarget: ({
-      baseDir,
-      env,
-      tempHome,
-    }: {
-      baseDir?: string;
-      env?: NodeJS.ProcessEnv;
-      tempHome?: boolean;
-    } = {}) => {
-      const resolvedEnv = env ?? process.env;
-
-      if (tempHome) {
-        const projectHome = mkdtempSync(join(tmpdir(), 'station-dev-home-'));
-        return {
-          isDefaultHome: false,
-          projectHome,
-          source: '--temp-home' as const,
-        };
-      }
-
-      if (baseDir) {
-        const projectHome = resolve(baseDir);
-        return {
-          isDefaultHome: projectHome === TEST_DEFAULT_HOME,
-          projectHome,
-          source: '--base' as const,
-        };
-      }
-
-      if (resolvedEnv.STATION_HOME) {
-        const projectHome = resolve(resolvedEnv.STATION_HOME);
-        return {
-          isDefaultHome: projectHome === TEST_DEFAULT_HOME,
-          projectHome,
-          source: 'env' as const,
-        };
-      }
-
-      return {
-        isDefaultHome: true,
-        projectHome: TEST_DEFAULT_HOME,
-        source: 'default' as const,
-      };
-    },
-    resolveLifecycleInstanceId: resolveInstanceId,
+    resolveLifecycleHomeTarget,
+    resolveLifecycleState,
+    resolveLifecycleInstanceId: (
+      identity: Parameters<typeof resolveInstanceId>[0] = {},
+    ) =>
+      realInstanceId
+        ? realInstanceId({ ...identity, cwd: codeRoot.root })
+        : resolveInstanceId(identity),
   }));
 
   if (options.childProcessMock) {
@@ -585,6 +655,31 @@ function ensureBuildOutputs(instanceId = 'default'): void {
   writeFileSync(join(TEST_CWD, ui, 'index.html'), '<!doctype html>');
 }
 
+/**
+ * Makes TEST_CWD a prebuilt portable archive (#2675): the builder's marker
+ * and the release provenance it writes, with the one shared build.
+ */
+function ensurePrebuiltArchive(): void {
+  ensureDir(TEST_CWD);
+  writeFileSync(
+    join(TEST_CWD, '.station-prebuilt-archive'),
+    'station-prebuilt-archive-v1\n',
+  );
+  writeFileSync(
+    join(TEST_CWD, '.station-release.json'),
+    `${JSON.stringify({
+      schemaVersion: 2,
+      sha: '0123456789abcdef0123456789abcdef01234567',
+      ref: 'v0.0.0',
+      createdAt: '2026-09-26T00:00:00.000Z',
+      channel: 'stable',
+      releaseChannel: 'stable',
+      prerelease: false,
+    })}\n`,
+  );
+  ensureBuildOutputs();
+}
+
 function writeBuildManifest(
   instanceId: string,
   overrides: Partial<{ branch: string; builtAt: string; sha: string }> = {},
@@ -623,6 +718,8 @@ function writeInstanceState(options: {
   };
   uiFingerprint?: { pid: number; startToken: string; commandDigest: string };
   hostedProbeAuthority?: string;
+  /** Where the lifecycle keeps records; a prebuilt archive's is elsewhere. */
+  stateDir?: string;
 }): string {
   const instanceId =
     options.instanceId ||
@@ -632,10 +729,11 @@ function writeInstanceState(options: {
       serverPort: options.serverPort,
       uiPort: options.uiPort,
     });
-  const statePath = getInstanceStatePath(instanceId);
+  const stateDir = options.stateDir ?? TEST_INSTANCE_STATE_DIR;
+  const statePath = join(stateDir, `${instanceId}.json`);
 
-  ensureDir(TEST_INSTANCE_STATE_DIR);
-  chmodSync(TEST_INSTANCE_STATE_DIR, 0o700);
+  ensureDir(stateDir);
+  chmodSync(stateDir, 0o700);
   writeFileSync(
     statePath,
     JSON.stringify(
@@ -1546,6 +1644,7 @@ describe('lifecycle instance state', () => {
     });
 
     const reported = await lifecycle.collectInstanceStatus('stale-reporting', {
+      projectHome: undefined,
       reclaimStale: false,
     });
 
@@ -1575,7 +1674,9 @@ describe('lifecycle instance state', () => {
 
     // Default (reclaiming) behaviour is unchanged: this is what proves the
     // read-only path above is a real difference and not a no-op.
-    const reported = await lifecycle.collectInstanceStatus('stale-lifecycle');
+    const reported = await lifecycle.collectInstanceStatus('stale-lifecycle', {
+      projectHome: undefined,
+    });
 
     expect(reported.found).toBe(false);
     expect(existsSync(statePath)).toBe(false);
@@ -2069,7 +2170,9 @@ describe('lifecycle instance state', () => {
         httpRequestMock: httpRequest,
       });
       await expect(
-        lifecycle.collectInstanceStatus('hosted-status'),
+        lifecycle.collectInstanceStatus('hosted-status', {
+          projectHome: undefined,
+        }),
       ).resolves.toMatchObject({
         healthy: true,
         server: { reachable: true },
@@ -2669,6 +2772,7 @@ describe('lifecycle instance state', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     const status = lifecycle.collectInstanceStatus('stalled-probe', {
+      projectHome: undefined,
       probeTimeoutMs: 250,
     });
     await vi.advanceTimersByTimeAsync(250);
@@ -2728,7 +2832,9 @@ describe('lifecycle instance state', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     await expect(
-      lifecycle.collectInstanceStatus('mismatch-probe'),
+      lifecycle.collectInstanceStatus('mismatch-probe', {
+        projectHome: undefined,
+      }),
     ).resolves.toMatchObject({
       found: true,
       healthy: false,
@@ -2759,7 +2865,9 @@ describe('lifecycle instance state', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     await expect(
-      lifecycle.collectInstanceStatus('auth-refused-probe'),
+      lifecycle.collectInstanceStatus('auth-refused-probe', {
+        projectHome: undefined,
+      }),
     ).resolves.toMatchObject({
       server: { listening: true, probe: 'http-auth-refused', reachable: false },
       ui: { listening: true, probe: 'http-auth-refused', reachable: false },
@@ -2810,6 +2918,7 @@ describe('lifecycle instance state', () => {
 
     await expect(
       lifecycle.collectInstanceStatus('degraded-probe', {
+        projectHome: undefined,
         probeTimeoutMs: 45_000,
       }),
     ).resolves.toMatchObject({
@@ -2847,7 +2956,7 @@ describe('lifecycle instance state', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     await expect(
-      lifecycle.collectInstanceStatus('slow-probe'),
+      lifecycle.collectInstanceStatus('slow-probe', { projectHome: undefined }),
     ).resolves.toMatchObject({
       found: true,
       healthy: false,
@@ -2895,7 +3004,9 @@ describe('lifecycle instance state', () => {
     const { lifecycle } = await loadLifecycleModule({ netConnectMock });
 
     await expect(
-      lifecycle.collectInstanceStatus('refused-probe'),
+      lifecycle.collectInstanceStatus('refused-probe', {
+        projectHome: undefined,
+      }),
     ).resolves.toMatchObject({
       found: true,
       healthy: false,
@@ -2953,7 +3064,9 @@ describe('lifecycle instance state', () => {
     const { lifecycle } = await loadLifecycleModule({ netConnectMock });
 
     await expect(
-      lifecycle.collectInstanceStatus('exhausted-probe'),
+      lifecycle.collectInstanceStatus('exhausted-probe', {
+        projectHome: undefined,
+      }),
     ).resolves.toMatchObject({
       found: true,
       healthy: false,
@@ -2964,6 +3077,29 @@ describe('lifecycle instance state', () => {
 });
 
 describe('clean', () => {
+  it("removes the home but keeps a prebuilt archive's shared build", async () => {
+    ensurePrebuiltArchive();
+    ensureOwnerControlledStationHome(TEST_ALT_HOME);
+
+    const { lifecycle } = await loadLifecycleModule();
+
+    await lifecycle.clean({
+      allowDefaultHomeClean: false,
+      force: true,
+      homeSource: '--base',
+      instanceName: 'smoke-a',
+      projectHome: TEST_ALT_HOME,
+      serverPort: 3242,
+      uiPort: 5274,
+    });
+
+    expect(existsSync(TEST_ALT_HOME)).toBe(false);
+    expect(
+      existsSync(join(TEST_CWD, 'dist-server', 'command-station.js')),
+    ).toBe(true);
+    expect(existsSync(join(TEST_CWD, 'dist-ui', 'index.html'))).toBe(true);
+  });
+
   it('removes only the explicit base directory and leaves the default home intact', async () => {
     ensureDir(TEST_CWD);
     ensureOwnerControlledStationHome(TEST_DEFAULT_HOME);
@@ -4235,6 +4371,7 @@ describe('upgrade', () => {
   it.each([
     { runtimeChannel: 'stable', releaseChannel: 'stable' },
     { runtimeChannel: 'beta', releaseChannel: 'preview' },
+    { runtimeChannel: 'nightly', releaseChannel: 'nightly' },
   ] as const)(
     'delegates a signed packaged $runtimeChannel upgrade through the installer with the persisted release ring',
     async ({ runtimeChannel, releaseChannel }) => {
@@ -4248,11 +4385,15 @@ describe('upgrade', () => {
         `${JSON.stringify({
           schemaVersion: 2,
           sha: 'b'.repeat(40),
-          ref: releaseChannel === 'stable' ? 'v1.2.3' : 'v1.2.3-preview.4',
+          ref: {
+            stable: 'v1.2.3',
+            preview: 'v1.2.3-preview.4',
+            nightly: 'v1.2.3-nightly.242704',
+          }[releaseChannel],
           createdAt: '2026-07-22T00:00:00.000Z',
           channel: runtimeChannel,
           releaseChannel,
-          prerelease: releaseChannel === 'preview',
+          prerelease: releaseChannel !== 'stable',
         })}\n`,
       );
       writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
@@ -4429,6 +4570,89 @@ describe('upgrade', () => {
     } finally {
       log.mockRestore();
     }
+  });
+
+  it.each([
+    { state: { channel: 'canary', releaseChannel: 'canary' } },
+    {
+      state: { channel: 'nightly-staging', releaseChannel: 'nightly-staging' },
+    },
+    { state: { channel: 'beta', releaseChannel: 'nightly' } },
+  ])(
+    'rejects packaged install state for an unknown ring pairing $state.channel/$state.releaseChannel',
+    async ({ state }) => {
+      const installRoot = join(TEST_ROOT, 'portable-unknown-ring');
+      const release = join(installRoot, 'releases', 'd'.repeat(64));
+      ensureDir(release);
+      writeFileSync(
+        join(release, '.station-release.json'),
+        `${JSON.stringify({
+          schemaVersion: 2,
+          sha: 'e'.repeat(40),
+          ref: 'v1.2.3-nightly.7',
+          createdAt: '2026-07-22T00:00:00.000Z',
+          channel: 'nightly',
+          releaseChannel: 'nightly',
+          prerelease: true,
+        })}\n`,
+      );
+      writeFileSync(
+        join(installRoot, '.station-release-state.json'),
+        `${JSON.stringify({
+          schemaVersion: 3,
+          ...state,
+          installRoot,
+          stationRoot: join(TEST_ROOT, 'root-unknown-ring'),
+          stationHome: join(TEST_ROOT, 'home-unknown-ring'),
+        })}\n`,
+        { mode: 0o600 },
+      );
+      const execFileSync = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        cwd: release,
+        childProcessMock: { execFileSync },
+      });
+
+      await expect(lifecycle.upgrade()).rejects.toThrow(
+        'packaged install state is malformed',
+      );
+      expect(execFileSync).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts nightly packaged provenance and rejects unknown or mismatched rings', async () => {
+    const { lifecycle } = await loadLifecycleModule({});
+    const provenance = (overrides: Record<string, unknown>) => ({
+      schemaVersion: 2,
+      sha: 'a'.repeat(40),
+      ref: 'v0.7.0-nightly.242704',
+      createdAt: '2026-09-25T00:00:00.000Z',
+      channel: 'nightly',
+      releaseChannel: 'nightly',
+      prerelease: true,
+      ...overrides,
+    });
+    expect(lifecycle.validatePackagedReleaseManifest(provenance({}))).toEqual(
+      provenance({}),
+    );
+    for (const overrides of [
+      { channel: 'canary', releaseChannel: 'canary' },
+      // Staging bundles are evidence-only, never an installable ring.
+      {
+        channel: 'nightly-staging',
+        releaseChannel: 'nightly-staging',
+        ref: 'nightly-2026-09-25-1',
+      },
+      { channel: 'beta' },
+      { prerelease: false },
+      { ref: 'v0.7.0-preview.3' },
+      { ref: 'v0.7.0' },
+      { ref: 'v0.7.0-nightly.0' },
+    ])
+      expect(
+        lifecycle.validatePackagedReleaseManifest(provenance(overrides)),
+        JSON.stringify(overrides),
+      ).toBeNull();
   });
 
   it('rejects a packaged release whose provenance channel disagrees with persisted state', async () => {
@@ -7596,6 +7820,42 @@ describe('lifecycle build + restart ergonomics', () => {
     }
   });
 
+  it("keeps a prebuilt archive's shared build when stopping a --temp-home instance", async () => {
+    ensurePrebuiltArchive();
+    // A bare `stop` searches the default home's root (the suite's setup may
+    // export a STATION_HOME of its own).
+    vi.stubEnv('STATION_HOME', '');
+    const statePath = writeInstanceState({
+      stateDir: archiveStateDir(TEST_DEFAULT_HOME),
+      instanceName: 'ephemeral',
+      homeSource: '--temp-home',
+      serverPid: 41001,
+      uiPid: null,
+      serverPort: 39901,
+      uiPort: 39902,
+    });
+
+    const { killProcessTree, killSpy } = makeKillMock([41001]);
+    const execSync = vi.fn(() => '');
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync },
+      platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+    });
+
+    try {
+      lifecycle.stop({ instanceName: 'ephemeral' });
+      expect(existsSync(statePath)).toBe(false);
+      // Every instance of an archive serves this one build; the next start
+      // needs it, and nothing in the archive can rebuild it.
+      expect(
+        existsSync(join(TEST_CWD, 'dist-server', 'command-station.js')),
+      ).toBe(true);
+      expect(existsSync(join(TEST_CWD, 'dist-ui', 'index.html'))).toBe(true);
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
   it('keeps build dirs when stopping a persistent (non temp-home) instance', async () => {
     ensureDir(TEST_CWD);
     ensureBuildOutputs('persistent');
@@ -8093,5 +8353,261 @@ describe('build currency is decided by complete artifacts, not directories', () 
     expect(start).toHaveBeenCalledWith(
       expect.objectContaining({ build: true }),
     );
+  });
+});
+
+/**
+ * #2675 B1: a prebuilt archive is an immutable version directory. The
+ * installer marks it read-only and an upgrade runs the next version from a
+ * sibling directory, so lifecycle state lives under
+ * `<STATION_ROOT>/state/<channel>/` and the instance id does not hash the
+ * archive's path.
+ */
+describe('prebuilt archive lifecycle state (#2675)', () => {
+  const SECOND_VERSION = join(TEST_ROOT, 'second-version');
+
+  /** Every path under `root`, so a test can prove nothing was written there. */
+  function treeListing(root: string): string[] {
+    return readdirSync(root, { recursive: true, withFileTypes: true })
+      .map(
+        (entry) =>
+          `${join(entry.parentPath, entry.name).slice(root.length)}${entry.isDirectory() ? '/' : ''}`,
+      )
+      .sort();
+  }
+
+  /**
+   * `chmod -R a-w`, as the installer will leave a version directory. POSIX
+   * mode bits do not bind root or Windows, where the listing comparison is
+   * the whole proof.
+   */
+  function makeReadOnly(root: string): () => void {
+    if (process.platform === 'win32' || process.getuid?.() === 0) {
+      return () => {};
+    }
+    const paths = [root, ...treeListing(root).map((path) => join(root, path))];
+    for (const path of paths) {
+      chmodSync(path, statSync(path).isDirectory() ? 0o555 : 0o444);
+    }
+    return () => {
+      for (const path of paths) chmodSync(path, 0o755);
+    };
+  }
+
+  /** A second extracted version of the same channel beside TEST_CWD. */
+  function ensureSecondVersion(): void {
+    ensureDir(SECOND_VERSION);
+    for (const name of ['.station-prebuilt-archive', '.station-release.json']) {
+      writeFileSync(
+        join(SECOND_VERSION, name),
+        readFileSync(join(TEST_CWD, name), 'utf8').replace(
+          '0123456789abcdef0123456789abcdef01234567',
+          'fedcba9876543210fedcba9876543210fedcba98',
+        ),
+      );
+    }
+    for (const [dir, file] of [
+      ['dist-server', TEST_SERVER_ENTRY_FILENAME],
+      ['dist-ui', 'index.html'],
+    ] as const) {
+      ensureDir(join(SECOND_VERSION, dir));
+      writeFileSync(join(SECOND_VERSION, dir, file), '');
+    }
+  }
+
+  function readyStartMocks(pids: [number, number]) {
+    const spawn = vi
+      .fn()
+      .mockReturnValueOnce({ pid: pids[0], unref: vi.fn() })
+      .mockReturnValueOnce({ pid: pids[1], unref: vi.fn() });
+    vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+    return spawn;
+  }
+
+  /** Processes that stay alive until `killProcessTree` runs. */
+  function killableProcesses() {
+    let alive = true;
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
+      _pid: number,
+      signal?: NodeJS.Signals | number,
+    ) => {
+      if (signal === 0 && !alive) throw new Error('gone');
+      return true;
+    }) as typeof process.kill);
+    const killProcessTree = vi.fn(() => {
+      alive = false;
+    });
+    return { killProcessTree, killSpy };
+  }
+
+  it("starts and stops from a read-only archive, keeping state in the home's Station root", async () => {
+    ensurePrebuiltArchive();
+    ensureDir(TEST_ALT_HOME);
+    const { killProcessTree, killSpy } = killableProcesses();
+    const spawn = readyStartMocks([41311, 41312]);
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(() => ''), spawn },
+      netConnectMock: makeReadyTcpConnectMock(),
+      platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const before = treeListing(TEST_CWD);
+    const restoreWritable = makeReadOnly(TEST_CWD);
+    // TEST_ALT_HOME is a raw directory, so it is its own Station root.
+    const stateDir = join(TEST_ALT_HOME, 'state', 'stable', 'instances');
+    const statePath = join(stateDir, 'archive-a.json');
+
+    try {
+      await lifecycle.start({
+        instanceName: 'archive-a',
+        baseDir: TEST_ALT_HOME,
+        serverPort: 3262,
+        uiPort: 5294,
+      });
+      expect(JSON.parse(readFileSync(statePath, 'utf8'))).toMatchObject({
+        instanceId: 'archive-a',
+        cwd: TEST_CWD,
+        serverPid: 41311,
+        uiPid: 41312,
+      });
+      if (process.platform !== 'win32') {
+        expect(statSync(stateDir).mode & 0o777).toBe(0o700);
+      }
+      // The printed stop command names the home: a bare `station stop` would
+      // search the default home's root, which holds no record of this one.
+      expect(log.mock.calls.map(([line]) => String(line))).toContain(
+        `\n  Stop with: station stop --home=${TEST_ALT_HOME} --instance=archive-a`,
+      );
+      expect(lifecycle.isRunning({ instanceName: 'archive-a' })).toBe(false);
+
+      lifecycle.stop({ instanceName: 'archive-a', stateHome: TEST_ALT_HOME });
+      expect(killProcessTree).toHaveBeenCalled();
+      expect(existsSync(statePath)).toBe(false);
+      expect(treeListing(TEST_CWD)).toEqual(before);
+    } finally {
+      restoreWritable();
+      log.mockRestore();
+      killSpy.mockRestore();
+    }
+  });
+
+  it('finds the same records whether the home came from STATION_HOME or a flag', async () => {
+    ensurePrebuiltArchive();
+    for (const home of [TEST_ALT_HOME, TEST_ROOTED_HOME]) {
+      ensureDir(home);
+      const { killProcessTree, killSpy } = killableProcesses();
+      const spawn = readyStartMocks([41331, 41332]);
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => ''), spawn },
+        netConnectMock: makeReadyTcpConnectMock(),
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+      });
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        // `STATION_HOME=<home> station start`
+        vi.stubEnv('STATION_HOME', home);
+        await lifecycle.start({
+          instanceName: 'spelled',
+          serverPort: 3282,
+          uiPort: 5314,
+        });
+        expect(existsSync(join(archiveStateDir(home), 'spelled.json'))).toBe(
+          true,
+        );
+        vi.unstubAllEnvs();
+        // `station stop --home=<home>` (the CLI passes its home as stateHome)
+        expect(
+          lifecycle.isRunning({ instanceName: 'spelled', stateHome: home }),
+        ).toBe(true);
+        lifecycle.stop({ instanceName: 'spelled', stateHome: home });
+        expect(killProcessTree).toHaveBeenCalled();
+        expect(readdirSync(archiveStateDir(home))).toEqual([]);
+      } finally {
+        vi.unstubAllEnvs();
+        log.mockRestore();
+        killSpy.mockRestore();
+      }
+    }
+    // A home under <root>/instances shares that root's state; a raw home is
+    // its own root.
+    expect(archiveStateDir(TEST_ROOTED_HOME)).toBe(
+      join(TEST_STATION_ROOT, 'state', 'stable', 'instances'),
+    );
+  });
+
+  it('a second version directory of the channel sees and stops what the first one started', async () => {
+    ensurePrebuiltArchive();
+    ensureSecondVersion();
+    ensureDir(TEST_ALT_HOME);
+    const { killProcessTree, killSpy } = killableProcesses();
+    // No --instance: the implicit id for this home and these ports.
+    const target = { baseDir: TEST_ALT_HOME, serverPort: 3272, uiPort: 5304 };
+    const stateDir = archiveStateDir(TEST_ALT_HOME);
+
+    try {
+      const firstSpawn = readyStartMocks([41321, 41322]);
+      const first = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => ''), spawn: firstSpawn },
+        netConnectMock: makeReadyTcpConnectMock(),
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+      });
+      await first.lifecycle.start(target);
+      const [record] = readdirSync(stateDir);
+      expect(record).toMatch(/^instance-[0-9a-f]{12}\.json$/);
+      const instanceId = record!.slice(0, -'.json'.length);
+
+      const secondSpawn = vi.fn();
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const second = await loadLifecycleModule({
+        cwd: SECOND_VERSION,
+        childProcessMock: { execSync: vi.fn(() => ''), spawn: secondSpawn },
+        netConnectMock: makeReadyTcpConnectMock(),
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+      });
+      // The same start from the other version resolves the same instance and
+      // finds it running, rather than launching a second server.
+      await second.lifecycle.start(target);
+      expect(secondSpawn).not.toHaveBeenCalled();
+      expect(
+        log.mock.calls.some(([line]) =>
+          String(line).includes(
+            `Already running\n  UI:   http://localhost:5304\n  Stop: station stop --home=${TEST_ALT_HOME} --instance=${instanceId}`,
+          ),
+        ),
+      ).toBe(true);
+      log.mockRestore();
+
+      second.lifecycle.stop({
+        instanceName: instanceId,
+        stateHome: TEST_ALT_HOME,
+      });
+      expect(killProcessTree).toHaveBeenCalled();
+      expect(readdirSync(stateDir)).toEqual([]);
+      expect(existsSync(join(TEST_CWD, '.station'))).toBe(false);
+      expect(existsSync(join(SECOND_VERSION, '.station'))).toBe(false);
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it('refuses station upgrade precisely, before touching git or an installer', async () => {
+    ensurePrebuiltArchive();
+    vi.stubEnv('STATION_HOME', TEST_ROOTED_HOME);
+    const execSync = vi.fn(() => '');
+    const execFileSync = vi.fn(() => '');
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync, execFileSync },
+    });
+
+    await expect(lifecycle.upgrade()).rejects.toThrow(
+      [
+        `station upgrade cannot update a prebuilt Station archive in place: ${TEST_CWD} is v0.0.0 (0123456789ab, stable ring). Nothing was changed.`,
+        'Upgrading an archive install is the installer’s job, which arrives with the installer slice (#2675, B2).',
+        'To move to a newer version now: download the newer station-server-<os>-<arch> archive for this ring, run `station stop` here, extract the new archive into its own directory, and run `station start` from there.',
+        `Instance state for the stable channel lives in ${join(TEST_STATION_ROOT, 'state', 'stable')}, outside every version directory, so the new version sees and stops what this one started.`,
+      ].join('\n'),
+    );
+    expect(execSync).not.toHaveBeenCalled();
+    expect(execFileSync).not.toHaveBeenCalled();
   });
 });

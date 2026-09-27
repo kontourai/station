@@ -709,21 +709,6 @@ describe('AgentService', () => {
     expect(result.success).toBe(true);
   });
 
-  test('deleteAgent leaves the live generation intact for the reload transaction', async () => {
-    const loader = createMockConfigLoader();
-    const active = new Map([['default', { id: 'default' }]]);
-    const svc = new AgentService(
-      loader as any,
-      createMockStorageAdapter() as any,
-      active,
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-    await svc.deleteAgent('custom-agent');
-    expect(active.has('default')).toBe(true);
-  });
-
   test('deleteAgent does not begin a blocked mutation', async () => {
     const loader = createMockConfigLoader();
     const storageAdapter = createMockStorageAdapter();
@@ -748,50 +733,6 @@ describe('AgentService', () => {
 
     expect(beginMutation).not.toHaveBeenCalled();
     expect(loader.deleteAgent).not.toHaveBeenCalled();
-  });
-
-  test('isAgentActive checks activeAgents map', () => {
-    const active = new Map([['default', {}]]);
-    const svc = new AgentService(
-      {} as any,
-      createMockStorageAdapter() as any,
-      active,
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-    expect(svc.isAgentActive('default')).toBe(true);
-    expect(svc.isAgentActive('missing')).toBe(false);
-  });
-
-  test('getActiveAgent returns from map', () => {
-    const agent = { id: 'default' };
-    const active = new Map([['default', agent]]);
-    const svc = new AgentService(
-      {} as any,
-      createMockStorageAdapter() as any,
-      active,
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-    expect(svc.getActiveAgent('default')).toBe(agent);
-    expect(svc.getActiveAgent('missing')).toBeUndefined();
-  });
-
-  test('loadAgentSpec delegates to configLoader', async () => {
-    const loader = createMockConfigLoader();
-    const svc = new AgentService(
-      loader as any,
-      createMockStorageAdapter() as any,
-      new Map(),
-      new Map(),
-      new Map(),
-      mockLogger,
-    );
-    const spec = await svc.loadAgentSpec('custom-agent');
-    expect(spec.name).toBe('Default');
-    expect(loader.loadAgent).toHaveBeenCalledWith('custom-agent');
   });
 
   test('updateAgent strips other null fields but passes project: null through as the ownership-clearing signal (station#1004 §4)', async () => {

@@ -46,8 +46,20 @@ describe('machineConditions', () => {
   test('does not pass judgement on the run', () => {
     // Deliberately no saturated/clean verdict: #844's contaminated round was
     // ~0.78 load per core, which a "load > cores" rule would have waved
-    // through. Recording the number beats inventing a threshold.
-    expect(machineConditions()).not.toHaveProperty('saturated');
+    // through. Recording the number beats inventing a threshold. Every field
+    // is a measurement: a number, a missing one, or a map of numbers, so a
+    // boolean or string verdict under any name is refused.
+    const isMeasurement = (value: unknown) =>
+      value === null || (typeof value === 'number' && Number.isFinite(value));
+    for (const [key, value] of Object.entries(machineConditions())) {
+      const measurements =
+        value !== null && typeof value === 'object'
+          ? Object.values(value)
+          : [value];
+      expect(measurements.length, key).toBeGreaterThan(0);
+      for (const measurement of measurements)
+        expect(isMeasurement(measurement), key).toBe(true);
+    }
   });
 });
 

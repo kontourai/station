@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAgentCatalogRead, useAgents } from '../../contexts/AgentsContext';
 import type { SchedulerProviderInfo } from '../../hooks/useScheduler';
 import { useAddJob, useEditJob } from '../../hooks/useScheduler';
-import { errorText } from '../../utils/errorText';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { SkeletonList } from '../state';
@@ -398,7 +398,7 @@ export function JobFormModal({
       <div className="schedule__modal-body">
         {mutationError && (
           <div role="alert" className="schedule__field-error">
-            {errorText(mutationError)}
+            {userFacingErrorMessage(mutationError)}
           </div>
         )}
         {!isEdit && providers.length > 1 && (

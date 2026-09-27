@@ -6,7 +6,9 @@ import {
   expressionReadsCredential,
   FAST_CHECKS_JOB_TIMEOUT_MINUTES,
   findingKey,
+  PNPM_JS_SETUP_STEP,
   PNPM_SETUP_ACTION,
+  PNPM_SETUP_NATIVE_GUARD,
   parseFindings,
   persistentRunnerPolicyFindings,
   REVIEWED_CACHE_RESTORE_ACTION,
@@ -284,6 +286,84 @@ describe('persistent runner policy', () => {
     return [{ file: workflow.file, document }];
   }
 
+  function portableArchiveWorkflowFixture(
+    mutate: (step: Record<string, unknown>) => void = () => {},
+  ) {
+    const workflow = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/portable-server-archives.yml',
+    );
+    if (!workflow) throw new Error('Expected the portable archive workflow.');
+    const document = structuredClone(workflow.document) as {
+      jobs: Record<string, { steps: Array<Record<string, unknown>> }>;
+    };
+    const upload = document.jobs.archive.steps.find(
+      (step) => step.name === 'Upload the archive and its descriptor',
+    );
+    if (!upload) throw new Error('Expected the archive upload step.');
+    mutate(upload);
+    return [{ file: workflow.file, document }];
+  }
+
+  const UNREVIEWED_ACTION = {
+    file: '.github/workflows/portable-server-archives.yml',
+    jobId: 'archive',
+    message:
+      'base-controlled PR workflows must not add unreviewed custom actions or reusable execution',
+  };
+
+  test('admits the exact portable archive upload', () => {
+    expect(
+      persistentRunnerPolicyFindings(portableArchiveWorkflowFixture()),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [
+      'a workspace path with hidden files',
+      (step: Record<string, unknown>) => {
+        step.with = {
+          ...(step.with as object),
+          path: `\${{ github.workspace }}`,
+          'include-hidden-files': true,
+        };
+      },
+    ],
+    [
+      'an added upload input',
+      (step: Record<string, unknown>) => {
+        step.with = { ...(step.with as object), overwrite: true };
+      },
+    ],
+    [
+      'a longer retention',
+      (step: Record<string, unknown>) => {
+        step.with = { ...(step.with as object), 'retention-days': 90 };
+      },
+    ],
+    [
+      'no fork guard',
+      (step: Record<string, unknown>) => {
+        delete step.if;
+      },
+    ],
+    [
+      'a guard that admits fork pull requests',
+      (step: Record<string, unknown>) => {
+        step.if = 'always()';
+      },
+    ],
+    [
+      'an unpinned upload action',
+      (step: Record<string, unknown>) => {
+        step.uses = 'actions/upload-artifact@v7';
+      },
+    ],
+  ])('refuses a portable archive upload with %s', (_label, mutate) => {
+    expect(
+      persistentRunnerPolicyFindings(portableArchiveWorkflowFixture(mutate)),
+    ).toContainEqual(UNREVIEWED_ACTION);
+  });
+
   test('rejects an unguarded self-hosted PR fast-checks job', () => {
     const workflow = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/ci.yml',
@@ -293,16 +373,16 @@ describe('persistent runner policy', () => {
     const document = structuredClone(workflow.document) as {
       jobs: Record<string, Record<string, unknown>>;
     };
-    document.jobs['fast-checks'].if =
+    document.jobs['fast-checks-statics'].if =
       `\${{ always() && github.event_name == 'pull_request' }}`;
 
     expect(
       persistentRunnerPolicyFindings([{ file: workflow.file, document }]),
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
-      jobId: 'fast-checks',
+      jobId: 'fast-checks-statics',
       message:
-        'ci.yml fast-checks must use the exact same-repository pull_request_target guard',
+        'ci.yml fast-checks-statics must use the exact same-repository pull_request_target guard',
     });
   });
 
@@ -315,16 +395,16 @@ describe('persistent runner policy', () => {
     const document = structuredClone(workflow.document) as {
       jobs: Record<string, Record<string, unknown>>;
     };
-    document.jobs['fast-checks'].if =
+    document.jobs['fast-checks-statics'].if =
       `${SAME_REPOSITORY_FAST_CHECKS_CONDITION.slice(0, -3)} || true }}`;
 
     expect(
       persistentRunnerPolicyFindings([{ file: workflow.file, document }]),
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
-      jobId: 'fast-checks',
+      jobId: 'fast-checks-statics',
       message:
-        'ci.yml fast-checks must use the exact same-repository pull_request_target guard',
+        'ci.yml fast-checks-statics must use the exact same-repository pull_request_target guard',
     });
   });
 
@@ -465,7 +545,7 @@ describe('persistent runner policy', () => {
   test.each([
     [
       'fast-checks base checkout ref',
-      'fast-checks',
+      'fast-checks-statics',
       (job: Record<string, unknown>) => {
         const base = (
           job.steps as Array<{
@@ -501,7 +581,7 @@ describe('persistent runner policy', () => {
     ],
     [
       'unquoted title shell interpolation',
-      'fast-checks',
+      'fast-checks-statics',
       (job: Record<string, unknown>) => {
         const titleGate = (job.steps as Array<Record<string, unknown>>).find(
           (step) => step.name === 'Validate base-controlled pull-request title',
@@ -777,7 +857,7 @@ describe('persistent runner policy', () => {
   });
 
   test.each([
-    ['fast-checks', 'Run fast CI lane', 'fast CI execution'],
+    ['fast-checks-statics', 'Run fast CI lane', 'fast CI execution'],
     ['fork-smoke', 'Run isolated fork smoke', 'smoke execution'],
   ])(
     'requires pinned actionlint before %s execution',
@@ -794,8 +874,8 @@ describe('persistent runner policy', () => {
         file: '.github/workflows/ci.yml',
         jobId,
         message:
-          jobId === 'fast-checks'
-            ? 'fast-checks must provision pinned and checksummed actionlint before fast CI execution'
+          jobId === 'fast-checks-statics'
+            ? 'fast-checks-statics must provision pinned and checksummed actionlint before fast CI execution'
             : `fork-smoke must provision pinned and checksummed actionlint before ${execution}`,
       });
     },
@@ -838,7 +918,7 @@ describe('persistent runner policy', () => {
     });
   });
 
-  test.each(['fast-checks', 'fork-smoke'])(
+  test.each(['fast-checks-statics', 'fork-smoke'])(
     'rejects reordered or appended actionlint provisioning in %s',
     (jobId) => {
       for (const mutate of [
@@ -868,15 +948,22 @@ describe('persistent runner policy', () => {
           file: '.github/workflows/ci.yml',
           jobId,
           message:
-            jobId === 'fast-checks'
-              ? 'fast-checks must provision pinned and checksummed actionlint before fast CI execution'
+            jobId === 'fast-checks-statics'
+              ? 'fast-checks-statics must provision pinned and checksummed actionlint before fast CI execution'
               : 'fork-smoke must provision pinned and checksummed actionlint before smoke execution',
         });
       }
     },
   );
 
-  test.each(['fast-checks', 'ui-bundle-delta', 'fork-smoke'])(
+  test.each([
+    'fast-checks',
+    'fast-checks-plan',
+    'fast-checks-shard',
+    'fast-checks-statics',
+    'ui-bundle-delta',
+    'fork-smoke',
+  ])(
     'rejects a credential or whole-github-context reference in %s',
     (jobId) => {
       for (const value of [
@@ -1274,6 +1361,7 @@ describe('persistent runner policy', () => {
       '.github/workflows/ecosystem-packaging.yml',
       '.github/workflows/install-smoke.yml',
       '.github/workflows/merge-queue-regression.yml',
+      '.github/workflows/portable-server-archives.yml',
       '.github/workflows/security-analysis.yml',
     ];
     for (const file of expected) {
@@ -1728,12 +1816,12 @@ describe('persistent runner policy', () => {
   test('admits the reviewed browser evidence commands but still rejects an extra candidate command', () => {
     expect(
       persistentRunnerPolicyFindings(
-        primaryCiJobFixture('fast-checks', () => {}),
+        primaryCiJobFixture('fast-checks-statics', () => {}),
       ),
     ).toEqual([]);
     expect(
       persistentRunnerPolicyFindings(
-        primaryCiJobFixture('fast-checks', (job) => {
+        primaryCiJobFixture('fast-checks-statics', (job) => {
           (job.steps as Array<Record<string, unknown>>).push({
             name: 'Unreviewed extra command',
             run: 'echo unreviewed',
@@ -1742,7 +1830,7 @@ describe('persistent runner policy', () => {
       ),
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
-      jobId: 'fast-checks',
+      jobId: 'fast-checks-statics',
       message:
         'pull_request_target router jobs must not add unreviewed shell execution',
     });
@@ -1750,7 +1838,7 @@ describe('persistent runner policy', () => {
 
   test('the always-on workflow gate rejects removal of required browser smoke', () => {
     const findings = persistentRunnerPolicyFindings(
-      primaryCiJobFixture('fast-checks', (job) => {
+      primaryCiJobFixture('fast-checks-statics', (job) => {
         job.steps = (job.steps as Array<Record<string, unknown>>).filter(
           (step) =>
             step.name !== 'Verify critical browser journeys before merge',
@@ -1761,8 +1849,155 @@ describe('persistent runner policy', () => {
       file: '.github/workflows/ci.yml',
       jobId: 'fast-checks',
       message:
-        'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks.',
+        'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks-statics.',
     });
+  });
+
+  // #2709: the plan, the shards and the aggregator run pull-request head code
+  // under pull_request_target, so each keeps the reviewed isolation.
+  test.each([
+    [
+      'a plan without the same-repository guard',
+      'fast-checks-plan',
+      (job: Record<string, unknown>) => {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        job.if = "${{ github.event_name == 'pull_request_target' }}";
+      },
+      'ci.yml fast-checks-plan must use the exact same-repository pull_request_target guard',
+    ],
+    [
+      'a shard admitted without the plan',
+      'fast-checks-shard',
+      (job: Record<string, unknown>) => {
+        job.if = 'always()';
+      },
+      'ci.yml fast-checks-shard must be admitted only by a successful, non-legacy fast-checks-plan',
+    ],
+    [
+      "#2797's shard condition, which a skipped classify silently skips",
+      'fast-checks-shard',
+      (job: Record<string, unknown>) => {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        job.if = "${{ needs.fast-checks-plan.outputs.legacy == 'false' }}";
+      },
+      'ci.yml jobs with needs must name a status function in their if, or a skipped ancestor silently skips them',
+    ],
+    [
+      'an explicit success(), which a skipped ancestor defeats the same way',
+      'manual-completion-diagnostics',
+      (job: Record<string, unknown>) => {
+        job.if =
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          "${{ success() && github.event_name == 'workflow_dispatch' }}";
+      },
+      'ci.yml jobs with needs must name a status function in their if, or a skipped ancestor silently skips them',
+    ],
+    [
+      'a downstream job with needs and no if',
+      'full-regression',
+      (job: Record<string, unknown>) => {
+        delete job.if;
+      },
+      'ci.yml jobs with needs must name a status function in their if, or a skipped ancestor silently skips them',
+    ],
+    [
+      'a shard that needs a different job',
+      'fast-checks-shard',
+      (job: Record<string, unknown>) => {
+        job.needs = 'classify';
+      },
+      'ci.yml fast-checks-shard must be admitted only by a successful, non-legacy fast-checks-plan',
+    ],
+    [
+      'an aggregator with a fork-admitting guard',
+      'fast-checks',
+      (job: Record<string, unknown>) => {
+        job.if =
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          "${{ always() && github.event_name == 'pull_request_target' }}";
+      },
+      'ci.yml fast-checks must use the exact reviewed aggregate guard',
+    ],
+    [
+      'a shard with write permissions',
+      'fast-checks-shard',
+      (job: Record<string, unknown>) => {
+        job.permissions = { contents: 'write' };
+      },
+      'fast-checks-shard must declare only permissions: { contents: read }',
+    ],
+    [
+      'a self-hosted plan',
+      'fast-checks-plan',
+      (job: Record<string, unknown>) => {
+        job['runs-on'] = 'ubuntu-latest';
+      },
+      'fast-checks-plan must run on a hosted ubuntu-22.04 image',
+    ],
+    [
+      'an aggregator checkout that persists credentials',
+      'fast-checks',
+      (job: Record<string, unknown>) => {
+        const checkout = (job.steps as Array<Record<string, unknown>>).find(
+          (step) => String(step.uses).startsWith('actions/checkout@'),
+        ) as { with: Record<string, unknown> } | undefined;
+        if (!checkout) throw new Error('Expected the aggregator checkout.');
+        checkout.with['persist-credentials'] = true;
+      },
+      'fast-checks must check out exactly the candidate head once with persist-credentials: false',
+    ],
+    [
+      'a shard with an extra command',
+      'fast-checks-shard',
+      (job: Record<string, unknown>) => {
+        (job.steps as Array<Record<string, unknown>>).push({
+          name: 'Unreviewed extra command',
+          run: 'echo unreviewed',
+        });
+      },
+      'pull_request_target router jobs must not add unreviewed shell execution',
+    ],
+    [
+      'an aggregator with a rewritten verification command',
+      'fast-checks',
+      (job: Record<string, unknown>) => {
+        const verify = (job.steps as Array<Record<string, unknown>>).find(
+          (step) => step.name === 'Verify fast-checks shard receipts',
+        );
+        if (!verify) throw new Error('Expected the receipt verification.');
+        verify.run = 'true';
+      },
+      'pull_request_target router jobs must not add unreviewed shell execution',
+    ],
+    [
+      'a plan with an unreviewed action',
+      'fast-checks-plan',
+      (job: Record<string, unknown>) => {
+        (job.steps as Array<Record<string, unknown>>).push({
+          uses: 'example/unreviewed@0123456789abcdef0123456789abcdef01234567',
+        });
+      },
+      'pull_request_target router jobs must not add unreviewed custom actions',
+    ],
+  ])('rejects %s', (_name, jobId, mutate, message) => {
+    expect(
+      persistentRunnerPolicyFindings(primaryCiJobFixture(jobId, mutate)),
+    ).toContainEqual({ file: '.github/workflows/ci.yml', jobId, message });
+  });
+
+  test('accepts a status function in any letter case (#2709)', () => {
+    // GitHub function names are case-insensitive: `Always()` is valid.
+    const findings = persistentRunnerPolicyFindings(
+      primaryCiJobFixture('manual-completion-diagnostics', (job) => {
+        // The only status function, so nothing else can satisfy the rule.
+        job.if =
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          "${{ Always() && github.event_name == 'workflow_dispatch' }}";
+      }),
+    );
+    expect(
+      findings.filter(({ message }) => message.includes('status function')),
+    ).toEqual([]);
   });
 
   test('rejects unreviewed fork shell execution', () => {
@@ -4086,4 +4321,187 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       },
     );
   });
+});
+
+describe('Intel macOS pnpm provisioning (#2675)', () => {
+  type Step = Record<string, unknown>;
+  type Job = {
+    'runs-on'?: unknown;
+    strategy?: { matrix?: { include?: Array<Record<string, unknown>> } };
+    steps: Step[];
+  };
+  const PORTABLE = '.github/workflows/portable-server-archives.yml';
+  const RELEASE = '.github/workflows/release.yml';
+  const INTEL_JOBS = [
+    [PORTABLE, 'archive'],
+    [RELEASE, 'desktop-macos'],
+  ] as const;
+  // Pinned literals, independent of the constants under test.
+  const NATIVE_GUARD = "runner.os != 'macOS' || runner.arch != 'X64'";
+  const JS_GUARD = "runner.os == 'macOS' && runner.arch == 'X64'";
+  const INTEL_MESSAGE = expect.stringContaining(
+    'a job that can run on Intel macOS must guard pnpm/setup',
+  );
+
+  function corpusWith(
+    file: string,
+    jobId: string,
+    mutate?: (job: Job) => void,
+  ) {
+    const workflows = readWorkflowDocuments().map((workflow) => ({
+      ...workflow,
+      document: structuredClone(workflow.document),
+    }));
+    const target = workflows.find((workflow) => workflow.file === file);
+    if (!target) throw new Error(`Expected ${file}.`);
+    const job = (target.document as { jobs: Record<string, Job> }).jobs[jobId];
+    if (!job) throw new Error(`Expected ${file} job ${jobId}.`);
+    mutate?.(job);
+    return { workflows, job };
+  }
+  const nativeSetup = (job: Job) => {
+    const step = job.steps.find((candidate) =>
+      String(candidate.uses).startsWith('pnpm/setup@'),
+    );
+    if (!step) throw new Error('Expected pnpm/setup.');
+    return step;
+  };
+  const withoutJsStep = (job: Job) => {
+    job.steps = job.steps.filter(
+      (step) => step.name !== PNPM_JS_SETUP_STEP.name,
+    );
+  };
+  const findingsFor = (
+    workflows: ReturnType<typeof corpusWith>['workflows'],
+    file: string,
+    jobId: string,
+  ) =>
+    persistentRunnerPolicyFindings(workflows).filter(
+      (finding) => finding.file === file && finding.jobId === jobId,
+    );
+
+  test.each(INTEL_JOBS)(
+    'the checked-in %s %s job is clean and provisions JS pnpm only on Intel',
+    (file, jobId) => {
+      const { workflows, job } = corpusWith(file, jobId);
+      expect(findingsFor(workflows, file, jobId)).toEqual([]);
+      // Non-vacuity: this job really has an Intel leg and an Apple one.
+      const runners = (job.strategy?.matrix?.include ?? []).map(
+        (entry) => entry.runner,
+      );
+      expect(runners).toContain('macos-15-intel');
+      expect(runners).toContain('macos-15');
+      expect(nativeSetup(job).if).toBe(NATIVE_GUARD);
+      const js = job.steps.find(
+        (step) => step.name === PNPM_JS_SETUP_STEP.name,
+      );
+      expect(js).toEqual({ ...PNPM_JS_SETUP_STEP });
+      expect(js?.if).toBe(JS_GUARD);
+      expect(PNPM_SETUP_NATIVE_GUARD).toBe(NATIVE_GUARD);
+      // pnpm must be on PATH before setup-node (release caches with pnpm).
+      const setupNode = job.steps.findIndex((step) =>
+        String(step.uses).startsWith('actions/setup-node@'),
+      );
+      expect(job.steps.indexOf(js as Step)).toBeLessThan(setupNode);
+    },
+  );
+
+  test.each(INTEL_JOBS)(
+    'refuses %s %s reverted to unguarded pnpm/setup',
+    (file, jobId) => {
+      const { workflows } = corpusWith(file, jobId, (job) => {
+        delete nativeSetup(job).if;
+        withoutJsStep(job);
+      });
+      expect(
+        findingsFor(workflows, file, jobId).map(({ message }) => message),
+      ).toContainEqual(INTEL_MESSAGE);
+    },
+  );
+
+  test.each(INTEL_JOBS)(
+    'refuses %s %s with the guard but no JS pnpm step',
+    (file, jobId) => {
+      const { workflows } = corpusWith(file, jobId, withoutJsStep);
+      expect(
+        findingsFor(workflows, file, jobId).map(({ message }) => message),
+      ).toContainEqual(INTEL_MESSAGE);
+    },
+  );
+
+  test.each(INTEL_JOBS)(
+    'refuses a drifted JS pnpm step in %s %s',
+    (file, jobId) => {
+      const { workflows } = corpusWith(file, jobId, (job) => {
+        const js = job.steps.find(
+          (step) => step.name === PNPM_JS_SETUP_STEP.name,
+        );
+        if (!js) throw new Error('Expected the JS pnpm step.');
+        js.run = String(js.run).replace(
+          'npm pack "$manager"',
+          'npm pack pnpm@latest',
+        );
+      });
+      const messages = findingsFor(workflows, file, jobId).map(
+        ({ message }) => message,
+      );
+      expect(messages).toContain(
+        `'${PNPM_JS_SETUP_STEP.name}' must match PNPM_JS_SETUP_STEP exactly`,
+      );
+      expect(messages).toContainEqual(INTEL_MESSAGE);
+    },
+  );
+
+  test('refuses any other condition on pnpm/setup', () => {
+    const { workflows } = corpusWith(PORTABLE, 'archive', (job) => {
+      nativeSetup(job).if = 'always()';
+    });
+    const messages = findingsFor(workflows, PORTABLE, 'archive').map(
+      ({ message }) => message,
+    );
+    expect(messages).toContainEqual(INTEL_MESSAGE);
+    // The base-controlled PR policy stops admitting the bootstrap, too.
+    expect(messages).toContain(
+      'base-controlled PR workflows must not add unreviewed custom actions or reusable execution',
+    );
+  });
+
+  function oneJob(runsOn: unknown, steps: Step[]) {
+    return [
+      {
+        file: '.github/workflows/synthetic.yml',
+        document: {
+          on: { push: {} },
+          jobs: { build: { 'runs-on': runsOn, steps } },
+        },
+      },
+    ];
+  }
+  const unguarded = {
+    name: 'Setup pinned pnpm',
+    uses: PNPM_SETUP_ACTION,
+    with: { install: false },
+  };
+
+  test.each(['macos-15-intel', 'macos-13', 'macos-15-large'])(
+    'refuses unguarded pnpm/setup on %s',
+    (label) => {
+      expect(
+        persistentRunnerPolicyFindings(oneJob(label, [unguarded])).map(
+          ({ message }) => message,
+        ),
+      ).toContainEqual(INTEL_MESSAGE);
+    },
+  );
+
+  test.each(['macos-15', 'macos-15-xlarge', 'ubuntu-latest', 'windows-latest'])(
+    'leaves unguarded pnpm/setup alone on %s (false-positive control)',
+    (label) => {
+      expect(
+        persistentRunnerPolicyFindings(oneJob(label, [unguarded])).map(
+          ({ message }) => message,
+        ),
+      ).not.toContainEqual(INTEL_MESSAGE);
+    },
+  );
 });

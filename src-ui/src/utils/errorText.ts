@@ -1,3 +1,8 @@
+import {
+  envelopeReasons,
+  StationHttpError,
+} from '@kontourai/station-sdk/client';
+
 /**
  * Shared "extract a displayable message from an unknown error" helper (K4
  * this ternary was previously duplicated across
@@ -9,4 +14,22 @@
  */
 export function errorText(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong.';
+}
+
+/**
+ * The sentence a person should read for a failed Station request (#2708).
+ *
+ * A `StationHttpError` thrown by the SDK's envelope helper keeps two views of
+ * a validation refusal: a field-qualified message for CLI and agent readers
+ * (`Validation failed: command Required, secretEnvKey Required`) and the raw
+ * `details`. Schema keys such as `secretEnvKey` are not copy, so this reads
+ * the server's own reason sentences out of `details` — each said once, with
+ * no "Validation failed:" prefix. Any other failure reads as `errorText`.
+ */
+export function userFacingErrorMessage(error: unknown): string {
+  if (error instanceof StationHttpError) {
+    const reasons = envelopeReasons(error.details);
+    if (reasons.length > 0) return reasons.join(' ');
+  }
+  return errorText(error);
 }

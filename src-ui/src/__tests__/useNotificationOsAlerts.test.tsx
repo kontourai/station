@@ -11,6 +11,7 @@ const notifications = { current: undefined as unknown };
 const platform = {
   current: { isTauri: true, isDesktop: true, isMobile: false },
 };
+const queryArgs = { current: [] as unknown[] };
 
 vi.mock('../platform/native/blockingAlert', () => ({
   reconcileBlockingAlerts: (...args: unknown[]) =>
@@ -21,7 +22,10 @@ vi.mock('../platform/native/deliveryFeed', () => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
-  useNotificationsQuery: () => ({ data: notifications.current }),
+  useNotificationsQuery: (...args: unknown[]) => {
+    queryArgs.current = args;
+    return { data: notifications.current };
+  },
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({
@@ -115,7 +119,10 @@ describe('useNotificationOsAlerts (#2587)', () => {
     await waitFor(() => expect(reconcileBlocking).toHaveBeenCalledTimes(1));
   });
 
-  test('never polls the feed off a desktop native host (browser tabs keep toasts only)', async () => {
+  test('neither polls the feed nor posts blocking alerts off a desktop native host (browser tabs keep toasts only)', async () => {
+    // A mobile webview is frozen when backgrounded, so a foreground post there
+    // is silence; a browser has no native notifier at all.
+    notifications.current = [{ id: 'appr-1', category: 'approval-request' }];
     for (const host of [
       { isTauri: true, isDesktop: false, isMobile: true },
       { isTauri: false, isDesktop: true, isMobile: false },
@@ -125,5 +132,28 @@ describe('useNotificationOsAlerts (#2587)', () => {
     }
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(pollFeed).not.toHaveBeenCalled();
+    expect(reconcileBlocking).not.toHaveBeenCalled();
+
+    // Positive control: the same fixture on a desktop native host does both.
+    platform.current = { isTauri: true, isDesktop: true, isMobile: false };
+    renderHook(() => useNotificationOsAlerts());
+    await waitFor(() => expect(pollFeed).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(reconcileBlocking).toHaveBeenCalledTimes(1));
+  });
+
+  test('disables the notifications query where alerts are off, and sets a 10s refetch interval where they are on', () => {
+    // The query is the recurring cost the blocking channel adds; losing
+    // `enabled` would make every browser tab fetch notifications every 10s.
+    platform.current = { isTauri: false, isDesktop: true, isMobile: false };
+    const { rerender } = renderHook(() => useNotificationOsAlerts());
+    expect(queryArgs.current[1]).toMatchObject({ enabled: false });
+
+    platform.current = { isTauri: true, isDesktop: true, isMobile: false };
+    rerender();
+    expect(queryArgs.current[0]).toEqual({ status: ['pending', 'delivered'] });
+    expect(queryArgs.current[1]).toMatchObject({
+      enabled: true,
+      refetchInterval: 10_000,
+    });
   });
 });

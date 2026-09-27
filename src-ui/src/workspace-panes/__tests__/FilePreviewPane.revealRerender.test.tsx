@@ -82,7 +82,10 @@ import {
   RegionModelProvider,
   useRegionModel,
 } from '../../contexts/RegionModelContext';
-import { useOpenPaneInRegion } from '../../contexts/useOpenInRegion';
+import {
+  useOpenFilePreviewInRegion,
+  useOpenPullRequestInRegion,
+} from '../../contexts/useOpenInRegion';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { regionSurfacePane } from '../../regions/region-surface-panes';
 import { getBuiltinWorkspacePaneRenderer } from '../builtinWorkspacePaneRegistry';
@@ -92,16 +95,25 @@ const PROJECT = { projectId: 'project-uuid', projectSlug: 'station' };
 const PATH = 'src/app.ts';
 
 let model: ReturnType<typeof useRegionModel> | null = null;
-let panes: ReturnType<typeof useOpenPaneInRegion> | null = null;
+/** The production openers a region-hosted pane reads, once a model is mounted. */
+type RegionOpeners = {
+  openPullRequest: NonNullable<ReturnType<typeof useOpenPullRequestInRegion>>;
+  openFilePreview: NonNullable<ReturnType<typeof useOpenFilePreviewInRegion>>;
+};
+let panes: RegionOpeners | null = null;
 
 /** The caller a chat link is: not the pane, not the region host. */
 function Opener() {
   const value = useRegionModel();
-  const openers = useOpenPaneInRegion();
+  const openPullRequest = useOpenPullRequestInRegion();
+  const openFilePreview = useOpenFilePreviewInRegion();
   useEffect(() => {
     model = value;
-    panes = openers;
-  }, [value, openers]);
+    panes =
+      openPullRequest && openFilePreview
+        ? { openPullRequest, openFilePreview }
+        : null;
+  }, [value, openPullRequest, openFilePreview]);
   return null;
 }
 

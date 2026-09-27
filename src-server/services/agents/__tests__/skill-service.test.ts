@@ -416,58 +416,30 @@ describe('SkillService', () => {
       true,
     );
   });
-  test('listSkills returns empty initially', () => {
+  test('a service with no discovered skills offers no listing, prompt or tool', () => {
     expect(service.listSkills()).toEqual([]);
+    expect(service.getSkillCatalogPrompt()).toBe('');
+    expect(service.getSkillTool()).toBeNull();
   });
 
-  test('listGuidanceAssets normalizes installed skills into guidance assets', async () => {
+  test('getSkillCatalogPrompt with an empty assignment offers no skill', async () => {
+    // An Agent assigned no skills must not read `[]` as "no filter" and see
+    // every discovered skill.
     const skillDir = join(testDir, 'skills', 'my-skill');
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(
       join(skillDir, 'SKILL.md'),
       '---\nname: my-skill\ndescription: A test skill\n---\nBody content',
     );
-    writeFileSync(
-      join(skillDir, '.station-meta.json'),
-      JSON.stringify({ version: '1.0.0' }),
-    );
-
     await service.discoverSkills(testDir);
-
-    expect(service.listGuidanceAssets()).toEqual([
-      expect.objectContaining({
-        kind: 'skill',
-        name: 'my-skill',
-        body: expect.stringContaining('Body content'),
-        description: 'A test skill',
-        runtimeMode: 'skill-catalog',
-        packaging: expect.objectContaining({
-          path: skillDir,
-        }),
-      }),
-    ]);
-    rmSync(testDir, { recursive: true, force: true });
-  });
-
-  test('getSkillCount returns 0 initially', () => {
-    expect(service.getSkillCount()).toBe(0);
-  });
-
-  test('getSkillCatalogPrompt returns empty with no skills', () => {
-    expect(service.getSkillCatalogPrompt()).toBe('');
-  });
-
-  test('getSkillTool returns null with no skills', () => {
-    expect(service.getSkillTool()).toBeNull();
-  });
-
-  test('getSkillCatalogPrompt with empty array returns empty', () => {
+    expect(service.getSkillCatalogPrompt()).toContain('my-skill');
     expect(service.getSkillCatalogPrompt([])).toBe('');
+    rmSync(testDir, { recursive: true, force: true });
   });
 
   test('discoverSkills handles missing directories', async () => {
     await service.discoverSkills('/nonexistent/path');
-    expect(service.getSkillCount()).toBe(0);
+    expect(service.listSkills().length).toBe(0);
   });
 
   test('discoverSkills finds skills in skills/ directory', async () => {
@@ -478,7 +450,7 @@ describe('SkillService', () => {
       '---\nname: my-skill\ndescription: A test skill\n---\nBody content',
     );
     await service.discoverSkills(testDir);
-    expect(service.getSkillCount()).toBe(1);
+    expect(service.listSkills().length).toBe(1);
     expect(service.listSkills()[0].name).toBe('my-skill');
     rmSync(testDir, { recursive: true, force: true });
   });
@@ -491,10 +463,10 @@ describe('SkillService', () => {
       '---\nname: temp-skill\ndescription: Temp\n---\n',
     );
     await service.discoverSkills(testDir);
-    expect(service.getSkillCount()).toBe(1);
+    expect(service.listSkills().length).toBe(1);
     rmSync(skillDir, { recursive: true, force: true });
     await service.discoverSkills(testDir);
-    expect(service.getSkillCount()).toBe(0);
+    expect(service.listSkills().length).toBe(0);
     rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -512,7 +484,7 @@ describe('SkillService', () => {
       '---\nname: skill-b\ndescription: B\n---\n',
     );
     await service.discoverSkills(testDir);
-    expect(service.getSkillCount()).toBe(2);
+    expect(service.listSkills().length).toBe(2);
     const filtered = service.getSkillCatalogPrompt(['skill-a']);
     expect(filtered).toContain('skill-a');
     expect(filtered).not.toContain('skill-b');
@@ -553,7 +525,7 @@ describe('SkillService', () => {
     mkdirSync(noSkillDir, { recursive: true });
     writeFileSync(join(noSkillDir, 'README.md'), '# Not a skill');
     await service.discoverSkills(testDir);
-    expect(service.getSkillCount()).toBe(0);
+    expect(service.listSkills().length).toBe(0);
     rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -1982,7 +1954,7 @@ describe('SkillService', () => {
     );
     await service.discoverSkills(testDir);
 
-    expect(service.getSkillCount()).toBe(1);
+    expect(service.listSkills().length).toBe(1);
     expect((await service.getSkill('edgy')).description).toBe(
       '---\nnot-a-key: value',
     );

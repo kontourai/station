@@ -95,7 +95,6 @@ const connectExportsSubpaths = [
     'pairing-deep-link',
     '../../../packages/connect/src/core/pairingDeepLink.ts',
   ],
-  ['node-storage', '../../../packages/connect/src/core/nodeStorage.ts'],
 ] as const;
 
 let server: ViteDevServer | undefined;

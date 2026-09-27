@@ -2,21 +2,24 @@ fn main() {
     println!("cargo:rustc-env=STATION_NODE_ENGINE={}", read_node_engine());
     stage_client_build_provenance();
     let mut attributes = tauri_build::Attributes::new();
-    if matches!(std::env::var("CARGO_CFG_TARGET_OS").as_deref(), Ok("windows"))
-        && matches!(std::env::var("CARGO_CFG_TARGET_ENV").as_deref(), Ok("msvc"))
+    if matches!(
+        std::env::var("CARGO_CFG_TARGET_OS").as_deref(),
+        Ok("windows")
+    ) && matches!(std::env::var("CARGO_CFG_TARGET_ENV").as_deref(), Ok("msvc"))
     {
         // The resource-based default manifest does not reach cargo's library
         // test executable. Like Tauri's API example, embed the same Common
         // Controls v6 manifest through the linker for apps AND test harnesses.
         // Otherwise tests import TaskDialogIndirect from v5 and fail to load.
         // https://github.com/tauri-apps/tauri/blob/dev/examples/api/src-tauri/build.rs
-        let manifest = std::env::current_dir().unwrap().join("windows-app-manifest.xml");
+        let manifest = std::env::current_dir()
+            .unwrap()
+            .join("windows-app-manifest.xml");
         println!("cargo:rerun-if-changed={}", manifest.display());
         println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
         println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
-        attributes = attributes.windows_attributes(
-            tauri_build::WindowsAttributes::new_without_app_manifest(),
-        );
+        attributes = attributes
+            .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
     }
     tauri_build::try_build(attributes).expect("build Tauri resources");
 }
@@ -37,9 +40,21 @@ fn stage_client_build_provenance() {
         return;
     };
     for (source, target, valid) in [
-        ("sha", "STATION_CLIENT_BUILD_SHA", valid_sha as fn(&str) -> bool),
-        ("branch", "STATION_CLIENT_BUILD_BRANCH", valid_branch as fn(&str) -> bool),
-        ("builtAt", "STATION_CLIENT_BUILT_AT", valid_utc_timestamp as fn(&str) -> bool),
+        (
+            "sha",
+            "STATION_CLIENT_BUILD_SHA",
+            valid_sha as fn(&str) -> bool,
+        ),
+        (
+            "branch",
+            "STATION_CLIENT_BUILD_BRANCH",
+            valid_branch as fn(&str) -> bool,
+        ),
+        (
+            "builtAt",
+            "STATION_CLIENT_BUILT_AT",
+            valid_utc_timestamp as fn(&str) -> bool,
+        ),
     ] {
         if let Some(value) = object.get(source).and_then(serde_json::Value::as_str) {
             if valid(value) {
@@ -72,10 +87,9 @@ fn valid_utc_timestamp(value: &str) -> bool {
         && value.as_bytes().get(16) == Some(&b':')
         && value.as_bytes().get(19) == Some(&b'.')
         && value.ends_with('Z')
-        && value
-            .bytes()
-            .enumerate()
-            .all(|(index, byte)| matches!(index, 4 | 7 | 10 | 13 | 16 | 19 | 23) || byte.is_ascii_digit())
+        && value.bytes().enumerate().all(|(index, byte)| {
+            matches!(index, 4 | 7 | 10 | 13 | 16 | 19 | 23) || byte.is_ascii_digit()
+        })
 }
 
 fn read_node_engine() -> String {

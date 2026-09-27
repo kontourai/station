@@ -20,6 +20,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        # TODO(#2675, PR 3): add a nightly leg once nightly ships as the
+        # prebuilt per-platform server archive (station-server-<os>-<arch>).
+        # This smoke packages the source tarball, which is not a nightly
+        # artifact; install.sh's nightly path is covered by
+        # scripts/__tests__/ecosystem-manifest.test.ts until then.
         channel: [stable, preview]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -176,7 +181,24 @@ jobs:
             PATH="$SMOKE_HOME/fake-bin:$PATH" \
             STATION_CHANNEL="$RUNTIME_CHANNEL" \
             "${public_install_env[@]}" \
-            sh
+            sh 2>&1 | tee "$RUNNER_TEMP/install.log"
+
+          # #2703: install.sh must build the release under the lifecycle
+          # instance id its start uses. Otherwise the start after install
+          # prints a second "Building application" and rebuilds, leaving the
+          # install-time build orphaned beside the one it serves.
+          build_count=$(grep -c 'Building application' "$RUNNER_TEMP/install.log" || true)
+          if [ "$build_count" != 1 ]; then
+            echo "Expected one build (at install, none at start); saw $build_count" >&2
+            exit 1
+          fi
+          for build_output in dist-server dist-ui; do
+            outputs=$(find "$install_root/current/" -maxdepth 1 -name "$build_output*" | wc -l | tr -d ' ')
+            if [ "$outputs" != 1 ]; then
+              echo "Expected one $build_output build in the release; saw $outputs" >&2
+              exit 1
+            fi
+          done
 
           previous_current=$(readlink "$install_root/current")
           env \

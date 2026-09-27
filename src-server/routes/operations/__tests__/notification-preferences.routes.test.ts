@@ -320,6 +320,9 @@ describe("GET /api/notifications/deliveries (the caller's own feed)", () => {
       cursor: 0,
       epoch: expect.any(String),
       leaseMs: 90_000,
+      now: expect.stringMatching(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+      ),
     });
     expect(desktopHost.registrations()).toEqual([
       { surface: desktop, ref: desktop },

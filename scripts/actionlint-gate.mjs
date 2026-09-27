@@ -37,7 +37,17 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
-import { collectRequiredBrowserSmokeFindings } from './ci-workflow-governance.mjs';
+import {
+  collectRequiredBrowserSmokeFindings,
+  FAST_CHECKS_AGGREGATE_RUN,
+  FAST_CHECKS_LEGACY_DETECT_RUN,
+  FAST_CHECKS_PART_RESULTS_RUN,
+  FAST_CHECKS_PLAN_RUN,
+  FAST_CHECKS_SHARD_IF,
+  FAST_CHECKS_SHARD_RUN,
+  FAST_CHECKS_SLICE_RUN,
+  REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
+} from './ci-workflow-governance.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -329,6 +339,9 @@ const UI_BUNDLE_DELTA_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}
 const PRIMARY_ROUTER_JOBS = new Set([
   'classify',
   'fast-checks',
+  'fast-checks-plan',
+  'fast-checks-shard',
+  'fast-checks-statics',
   'fork-smoke',
   UI_BUNDLE_DELTA_JOB,
   'full-regression',
@@ -414,6 +427,86 @@ const WINDOWS_PR_EVIDENCE_PATHS =
  */
 export const PNPM_SETUP_ACTION =
   'pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b';
+/**
+ * #2675: pnpm/setup installs only pnpm's native single-executable build, and
+ * for pnpm v11 it refuses Intel macOS ("does not provide a working binary for
+ * Intel macOS (darwin-x64) due to an upstream Node.js SEA bug"). A job that
+ * can land on an Intel macOS runner therefore skips pnpm/setup there, behind
+ * exactly this guard, and provisions the same pinned version from the npm
+ * registry's pure-JS `pnpm` package with the one reviewed step below. Every
+ * other runner keeps pnpm/setup. The step is pinned verbatim so its copies
+ * cannot drift apart: `npm pack` fetches exactly packageManager's version and
+ * verifies the tarball against the registry's integrity, runs no lifecycle
+ * scripts, and the unpacked manifest must name that exact version. The
+ * dependency lifecycle runner then re-checks the version before it installs.
+ */
+export const PNPM_SETUP_NATIVE_GUARD =
+  "runner.os != 'macOS' || runner.arch != 'X64'";
+export const PNPM_JS_SETUP_STEP = Object.freeze({
+  name: 'Setup pinned pnpm from its JS package (Intel macOS)',
+  if: "runner.os == 'macOS' && runner.arch == 'X64'",
+  shell: 'bash',
+  run: `set -euo pipefail
+manager="$(node -p "require('./package.json').packageManager")"
+if [[ ! "$manager" =~ ^pnpm@[0-9]+\\.[0-9]+\\.[0-9]+$ ]]; then
+  echo "packageManager must pin an exact pnpm version, got: $manager" >&2
+  exit 1
+fi
+prefix="$RUNNER_TEMP/pnpm-js"
+mkdir -p "$prefix/bin"
+npm pack "$manager" --pack-destination "$prefix" --ignore-scripts
+tar -xzf "$prefix/pnpm-\${manager#pnpm@}.tgz" -C "$prefix"
+test "$(node -p 'const p = require(process.argv[1]); p.name + "@" + p.version' "$prefix/package/package.json")" = "$manager"
+chmod +x "$prefix/package/bin/pnpm.mjs"
+ln -s ../package/bin/pnpm.mjs "$prefix/bin/pnpm"
+echo "$prefix/bin" >> "$GITHUB_PATH"
+`,
+});
+// GitHub-hosted x64 macOS images: the -intel images, macos-13 and the -large
+// images. Apple silicon images (macos-15, macos-*-xlarge) are not listed.
+const INTEL_MACOS_RUNNER_LABEL =
+  /^macos-(?:\d+-intel|13|(?:\d+|latest)-large)$/;
+const INTEL_MACOS_PNPM_MESSAGE = `a job that can run on Intel macOS must guard pnpm/setup with exactly \`if: ${PNPM_SETUP_NATIVE_GUARD}\` and include the reviewed '${PNPM_JS_SETUP_STEP.name}' step`;
+const PNPM_JS_SETUP_DRIFT_MESSAGE = `'${PNPM_JS_SETUP_STEP.name}' must match PNPM_JS_SETUP_STEP exactly`;
+
+function isExactPnpmJsSetup(step) {
+  return (
+    JSON.stringify(Object.keys(step ?? {}).sort()) ===
+      JSON.stringify(Object.keys(PNPM_JS_SETUP_STEP).sort()) &&
+    Object.entries(PNPM_JS_SETUP_STEP).every(
+      ([key, value]) => step[key] === value,
+    )
+  );
+}
+
+function intelMacosPnpmFindings(file, jobId, job) {
+  const steps = job?.steps ?? [];
+  const findings = steps
+    .filter(
+      (step) =>
+        step?.name === PNPM_JS_SETUP_STEP.name && !isExactPnpmJsSetup(step),
+    )
+    .map(() => ({ file, jobId, message: PNPM_JS_SETUP_DRIFT_MESSAGE }));
+  const nativeSetups = steps.filter(
+    (step) =>
+      typeof step?.uses === 'string' &&
+      step.uses.toLowerCase().startsWith('pnpm/setup@'),
+  );
+  const { labels } = resolvedRunnerLabels(job);
+  if (
+    nativeSetups.length > 0 &&
+    labels.some(
+      (label) =>
+        typeof label === 'string' && INTEL_MACOS_RUNNER_LABEL.test(label),
+    ) &&
+    !(
+      nativeSetups.every((step) => step.if === PNPM_SETUP_NATIVE_GUARD) &&
+      steps.some(isExactPnpmJsSetup)
+    )
+  )
+    findings.push({ file, jobId, message: INTEL_MACOS_PNPM_MESSAGE });
+  return findings;
+}
 const DEPENDENCY_REVIEW_CANDIDATE_GUARD = `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`;
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
 const DEPENDENCY_REVIEW_MERGE_GROUP_GUARD = `\${{ github.event_name == 'merge_group' }}`;
@@ -462,6 +555,7 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/gallery-pr-check.yml',
   '.github/workflows/install-smoke.yml',
   '.github/workflows/merge-queue-regression.yml',
+  '.github/workflows/portable-server-archives.yml',
   '.github/workflows/security-analysis.yml',
   '.github/workflows/windows-pr-verification.yml',
 ]);
@@ -561,6 +655,9 @@ const MISSING_CALLEE_MESSAGE =
 const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
   'actions/checkout': noCacheFindings,
   'actions/upload-artifact': noCacheFindings,
+  // Reads this run's own artifacts (#2709: the fast-checks plan and shard
+  // receipts); it has no cache input or cache side effect.
+  'actions/download-artifact': noCacheFindings,
   'actions/dependency-review-action': noCacheFindings,
   'dtolnay/rust-toolchain': noCacheFindings,
   'github/codeql-action/analyze': noCacheFindings,
@@ -632,6 +729,55 @@ const MERGE_QUEUE_REGRESSION_WORKFLOW =
  * artifact holds what the candidate rendered and nothing the token can reach.
  */
 const GALLERY_PR_WORKFLOW = '.github/workflows/gallery-pr-check.yml';
+/**
+ * #2675: the portable server archive check uploads the archive it built and
+ * smoked, so a reviewer can run the exact bytes. The one admitted upload is
+ * pinned exactly: the archive and its descriptor from the runner's temp
+ * output, never a workspace path or hidden files, and never from a fork's
+ * pull request.
+ */
+const PORTABLE_SERVER_ARCHIVES_WORKFLOW =
+  '.github/workflows/portable-server-archives.yml';
+const PORTABLE_SERVER_ARCHIVES_JOB = 'archive';
+const PORTABLE_SERVER_ARCHIVE_UPLOAD = Object.freeze({
+  name: 'Upload the archive and its descriptor',
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  if: "${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}",
+  uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+  with: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    name: 'station-server-${{ matrix.target }}',
+    path:
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      '${{ runner.temp }}/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}\n' +
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      '${{ runner.temp }}/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}.json\n',
+    'if-no-files-found': 'error',
+    'retention-days': 7,
+  },
+});
+
+function isExactPortableServerArchiveUpload(file, jobId, step) {
+  if (
+    file !== PORTABLE_SERVER_ARCHIVES_WORKFLOW ||
+    jobId !== PORTABLE_SERVER_ARCHIVES_JOB
+  )
+    return false;
+  const expected = PORTABLE_SERVER_ARCHIVE_UPLOAD;
+  const sameKeys = (actual, wanted) =>
+    JSON.stringify(Object.keys(actual ?? {}).sort()) ===
+    JSON.stringify(Object.keys(wanted).sort());
+  return (
+    sameKeys(step, expected) &&
+    step.name === expected.name &&
+    step.if === expected.if &&
+    step.uses === expected.uses &&
+    sameKeys(step.with, expected.with) &&
+    Object.entries(expected.with).every(
+      ([key, value]) => step.with[key] === value,
+    )
+  );
+}
 const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
 echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null
@@ -741,13 +887,6 @@ function isLinuxRunner(labels) {
 
 function isFastFeedbackJob(file, jobId) {
   return file === FAST_FEEDBACK_JOB.file && jobId === FAST_FEEDBACK_JOB.jobId;
-}
-
-function hasExactSameRepositoryFastChecksGuard(file, jobId, condition) {
-  return (
-    isFastFeedbackJob(file, jobId) &&
-    condition === SAME_REPOSITORY_FAST_CHECKS_CONDITION
-  );
 }
 
 /**
@@ -1176,6 +1315,7 @@ export function persistentRunnerPolicyFindings(workflows) {
         continue;
       }
       findings.push(...persistentJobPolicyFindings(file, jobId, document, job));
+      findings.push(...intelMacosPnpmFindings(file, jobId, job));
     }
     findings.push(...candidatePullRequestWorkflowFindings(file, document));
     findings.push(...primaryCiRouterFindings(file, document));
@@ -1705,7 +1845,12 @@ function isPinnedPnpmSetup(step) {
     step?.uses === PNPM_SETUP_ACTION &&
     step?.name === 'Setup pinned pnpm' &&
     Object.keys(step).every(
-      (key) => key === 'name' || key === 'uses' || key === 'with',
+      (key) =>
+        key === 'name' ||
+        key === 'uses' ||
+        key === 'with' ||
+        // Only the Intel macOS exclusion; see PNPM_SETUP_NATIVE_GUARD.
+        (key === 'if' && step.if === PNPM_SETUP_NATIVE_GUARD),
     ) &&
     Object.keys(step.with ?? {}).join(',') === 'install' &&
     step.with.install === false
@@ -2049,6 +2194,156 @@ function fullRegressionActionlintFindings(file, document) {
   ];
 }
 
+/** Status functions that keep a skipped ancestor from skipping the job. */
+const SKIP_TOLERANT_STATUS_FUNCTION = /\b(?:always|cancelled|failure)\s*\(/i;
+const FAST_CHECKS_STATICS_JOB = 'fast-checks-statics';
+const FAST_CHECKS_PLAN_JOB = 'fast-checks-plan';
+const FAST_CHECKS_SHARD_JOB = 'fast-checks-shard';
+const FAST_CHECKS_AGGREGATE_JOB = 'fast-checks';
+const CHANGED_SET_CHROMIUM_STEP = Object.freeze({
+  // station#4170: reviewed with its workflow step in the same change.
+  // Marginal surface over the already-reviewed lane is nil: the job runs
+  // `npm run dependencies:ci` + the candidate's test corpus wholesale; this
+  // pins the exact browser-provisioning script (persistent-$HOME convention,
+  // #3453; bounded retry, #3517). fast-checks-shard runs the same script.
+  name: 'Install Chromium for changed-set touch-target checks',
+  run: 'echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"\nfor attempt in 1 2 3; do\n  echo "Playwright install attempt $attempt"\n  if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then\n    exit 0\n  fi\n  echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"\n  sleep 15\ndone\necho "::error::Playwright install failed after 3 attempts"\nexit 1\n',
+});
+
+/**
+ * #2709: the plan, the shards and the `fast-checks` aggregator all run
+ * pull-request head code under pull_request_target, so each carries the same
+ * isolation as fast-checks-statics: read-only contents, a hosted runner, one
+ * credential-free checkout of exactly the candidate, and only reviewed
+ * actions and shell. Admission: the plan uses the exact same-repository
+ * guard; a shard runs only after the plan succeeded (needs it, no `if`); the
+ * aggregator uses the reviewed aggregate guard, whose event clause is the
+ * same. The verdict shape of these jobs is ci-workflow-governance's.
+ */
+function fastChecksShardingFindings(file, jobs) {
+  const findings = [];
+  const finding = (jobId, message) => findings.push({ file, jobId, message });
+  const isolated = (jobId, job, actions, runs) => {
+    if (!hasOnlyReadContentsPermission(job.permissions))
+      finding(
+        jobId,
+        `${jobId} must declare only permissions: { contents: read }`,
+      );
+    if (job['runs-on'] !== 'ubuntu-22.04')
+      finding(jobId, `${jobId} must run on a hosted ubuntu-22.04 image`);
+    if (!hasExplicitCheckout(job, FAST_CHECKOUT_REPOSITORY, FAST_CHECKOUT_REF))
+      finding(
+        jobId,
+        `${jobId} must check out exactly the candidate head once with persist-credentials: false`,
+      );
+    findings.push(
+      ...unapprovedActionFindings(file, jobId, job, actions),
+      ...unapprovedShellFindings(file, jobId, job, runs),
+    );
+  };
+  const plan = jobs[FAST_CHECKS_PLAN_JOB];
+  if (plan) {
+    if (plan.if !== SAME_REPOSITORY_FAST_CHECKS_CONDITION)
+      finding(
+        FAST_CHECKS_PLAN_JOB,
+        'ci.yml fast-checks-plan must use the exact same-repository pull_request_target guard',
+      );
+    isolated(
+      FAST_CHECKS_PLAN_JOB,
+      plan,
+      ['actions/checkout@', 'actions/setup-node@', 'actions/upload-artifact@'],
+      [
+        // TRANSITIONAL (#2709): detection plus the legacy candidate's own
+        // unsharded lane, the same commands fast-checks-statics runs.
+        {
+          name: 'Detect a candidate without the sharded lane',
+          run: FAST_CHECKS_LEGACY_DETECT_RUN,
+        },
+        {
+          name: 'Install pinned actionlint',
+          run: PINNED_ACTIONLINT_PROVISION_RUN,
+        },
+        { name: undefined, run: 'npm run dependencies:ci' },
+        CHANGED_SET_CHROMIUM_STEP,
+        { name: 'Run legacy unsharded ci:fast', run: 'npm run ci:fast' },
+        { name: 'Plan the affected-test selection', run: FAST_CHECKS_PLAN_RUN },
+      ],
+    );
+    if (!hasPinnedActionlintProvision(plan, 'Run legacy unsharded ci:fast'))
+      finding(
+        FAST_CHECKS_PLAN_JOB,
+        'fast-checks-plan must provision pinned and checksummed actionlint before its legacy ci:fast',
+      );
+  }
+  const shard = jobs[FAST_CHECKS_SHARD_JOB];
+  if (shard) {
+    const needs = typeof shard.needs === 'string' ? [shard.needs] : shard.needs;
+    if (
+      shard.if !== FAST_CHECKS_SHARD_IF ||
+      !Array.isArray(needs) ||
+      needs.length !== 1 ||
+      needs[0] !== FAST_CHECKS_PLAN_JOB
+    )
+      finding(
+        FAST_CHECKS_SHARD_JOB,
+        'ci.yml fast-checks-shard must be admitted only by a successful, non-legacy fast-checks-plan',
+      );
+    isolated(
+      FAST_CHECKS_SHARD_JOB,
+      shard,
+      [
+        'actions/checkout@',
+        'actions/setup-node@',
+        'actions/download-artifact@',
+        'actions/upload-artifact@',
+      ],
+      [
+        { name: 'Resolve fast-checks shard slice', run: FAST_CHECKS_SLICE_RUN },
+        {
+          name: 'Install pinned actionlint',
+          run: PINNED_ACTIONLINT_PROVISION_RUN,
+        },
+        { name: undefined, run: 'npm run dependencies:ci' },
+        CHANGED_SET_CHROMIUM_STEP,
+        { name: 'Run fast-checks shard', run: FAST_CHECKS_SHARD_RUN },
+      ],
+    );
+  }
+  if (shard && !hasPinnedActionlintProvision(shard, 'Run fast-checks shard'))
+    finding(
+      FAST_CHECKS_SHARD_JOB,
+      'fast-checks-shard must provision pinned and checksummed actionlint before its tests',
+    );
+  const aggregate = jobs[FAST_CHECKS_AGGREGATE_JOB];
+  if (aggregate) {
+    if (aggregate.if !== REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION)
+      finding(
+        FAST_CHECKS_AGGREGATE_JOB,
+        'ci.yml fast-checks must use the exact reviewed aggregate guard',
+      );
+    isolated(
+      FAST_CHECKS_AGGREGATE_JOB,
+      aggregate,
+      [
+        'actions/checkout@',
+        'actions/setup-node@',
+        'actions/download-artifact@',
+      ],
+      [
+        {
+          name: 'Require every fast-checks part job to succeed',
+          run: FAST_CHECKS_PART_RESULTS_RUN,
+        },
+        {
+          name: 'Verify fast-checks shard receipts',
+          run: FAST_CHECKS_AGGREGATE_RUN,
+        },
+      ],
+    );
+  }
+  return findings;
+}
+
 function primaryCiRouterFindings(file, document) {
   if (!workflowHasTrigger(document, PULL_REQUEST_TARGET)) {
     if (file !== '.github/workflows/ci.yml' || !hasCiRouterTrigger(document))
@@ -2120,25 +2415,49 @@ function primaryCiRouterFindings(file, document) {
   }
 
   findings.push(...ciCredentialFindings(file, jobs));
+  // #2709 re-land: a job with `needs` and no status function in its `if`
+  // gets an implicit success(), which ANY skipped ancestor makes false.
+  // `classify` is skipped on every pull_request_target, so such a job is
+  // silently skipped on every pull request (#2797's shards were). An explicit
+  // success() is the same trap, so only always(), cancelled() (including
+  // !cancelled()) or failure() count; GitHub function names are
+  // case-insensitive.
+  for (const [jobId, job] of Object.entries(jobs)) {
+    const needs = typeof job?.needs === 'string' ? [job.needs] : job?.needs;
+    if (
+      Array.isArray(needs) &&
+      needs.length > 0 &&
+      !SKIP_TOLERANT_STATUS_FUNCTION.test(String(job?.if ?? ''))
+    )
+      findings.push({
+        file,
+        jobId,
+        message:
+          'ci.yml jobs with needs must name a status function in their if, or a skipped ancestor silently skips them',
+      });
+  }
 
-  const fast = jobs['fast-checks'];
+  // #2709: the old single fast-checks job is now fast-checks-statics; the
+  // required `fast-checks` id belongs to the aggregator checked below.
+  const fast = jobs[FAST_CHECKS_STATICS_JOB];
   const fork = jobs['fork-smoke'];
   const scans = jobs['repo-scans'];
   if (scans) findings.push(...repoScansFindings(file, scans));
+  findings.push(...fastChecksShardingFindings(file, jobs));
   if (fast) {
-    if (!hasExactSameRepositoryFastChecksGuard(file, 'fast-checks', fast.if))
+    if (fast.if !== SAME_REPOSITORY_FAST_CHECKS_CONDITION)
       findings.push({
         file,
-        jobId: 'fast-checks',
+        jobId: FAST_CHECKS_STATICS_JOB,
         message:
-          'ci.yml fast-checks must use the exact same-repository pull_request_target guard',
+          'ci.yml fast-checks-statics must use the exact same-repository pull_request_target guard',
       });
     if (!hasOnlyReadContentsPermission(fast.permissions))
       findings.push({
         file,
-        jobId: 'fast-checks',
+        jobId: FAST_CHECKS_STATICS_JOB,
         message:
-          'fast-checks must declare only permissions: { contents: read }',
+          'fast-checks-statics must declare only permissions: { contents: read }',
       });
     if (
       !hasExactPullRequestTitleGateTopology(
@@ -2150,19 +2469,19 @@ function primaryCiRouterFindings(file, document) {
     )
       findings.push({
         file,
-        jobId: 'fast-checks',
+        jobId: FAST_CHECKS_STATICS_JOB,
         message:
-          'fast-checks must validate the pull-request title from exact base policy before candidate checkout',
+          'fast-checks-statics must validate the pull-request title from exact base policy before candidate checkout',
       });
     if (!hasPinnedActionlintProvision(fast, 'Run fast CI lane'))
       findings.push({
         file,
-        jobId: 'fast-checks',
+        jobId: FAST_CHECKS_STATICS_JOB,
         message:
-          'fast-checks must provision pinned and checksummed actionlint before fast CI execution',
+          'fast-checks-statics must provision pinned and checksummed actionlint before fast CI execution',
       });
     findings.push(
-      ...unapprovedActionFindings(file, 'fast-checks', fast, [
+      ...unapprovedActionFindings(file, FAST_CHECKS_STATICS_JOB, fast, [
         'actions/checkout@',
         'actions/setup-node@',
         'actions/upload-artifact@',
@@ -2171,7 +2490,7 @@ function primaryCiRouterFindings(file, document) {
       ]),
     );
     findings.push(
-      ...unapprovedShellFindings(file, 'fast-checks', fast, [
+      ...unapprovedShellFindings(file, FAST_CHECKS_STATICS_JOB, fast, [
         { name: PR_TITLE_GATE_NAME, run: PR_TITLE_GATE_RUN },
         { name: undefined, run: 'npm run dependencies:ci' },
         {
@@ -2187,8 +2506,8 @@ function primaryCiRouterFindings(file, document) {
           // runs `npm run dependencies:ci` + the candidate's test corpus wholesale; this pins
           // the exact browser-provisioning script (persistent-$HOME
           // convention, #3453; bounded retry, #3517).
-          name: 'Install Chromium for changed-set touch-target checks',
-          run: 'echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"\nfor attempt in 1 2 3; do\n  echo "Playwright install attempt $attempt"\n  if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then\n    exit 0\n  fi\n  echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"\n  sleep 15\ndone\necho "::error::Playwright install failed after 3 attempts"\nexit 1\n',
+          name: CHANGED_SET_CHROMIUM_STEP.name,
+          run: CHANGED_SET_CHROMIUM_STEP.run,
         },
         { name: 'Run fast CI lane', run: 'npm run ci:fast' },
         // #1540: these exact commands run on the same isolated, read-only
@@ -2407,6 +2726,7 @@ function baseControlledPrWorkflowFindings(file, document) {
           step.uses.startsWith('actions/upload-artifact@')
         ) &&
         !isExactWindowsPrEvidenceUpload(file, jobId, step) &&
+        !isExactPortableServerArchiveUpload(file, jobId, step) &&
         !isReviewedCacheRestore(file, jobId, step) &&
         !(
           file === SECURITY_ANALYSIS_WORKFLOW &&

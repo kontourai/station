@@ -56,6 +56,7 @@ import {
   OWNED_DEPENDENCY_INSTALL_SCRIPT,
   ownedDependencyInstallerUnavailable,
 } from '@kontourai/station-shared/owned-dependency-installer';
+import { STATION_RELEASE_RINGS } from '@kontourai/station-shared/ports';
 import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
@@ -90,14 +91,22 @@ import {
   DEFAULT_SERVER_PORT,
   DEFAULT_UI_PORT,
   getInstanceStatePath,
-  INSTANCE_STATE_DIR,
+  LIFECYCLE_CODE_ROOT,
   type LifecycleHomeSource,
   normalizeHomePath,
   normalizeInstanceName,
-  PIDFILE,
   resolveLifecycleHomeTarget,
   resolveLifecycleInstanceId,
+  resolveLifecycleState,
 } from './helpers.js';
+import {
+  isPackagedReleaseChannel,
+  type LifecycleCodeRoot,
+  PACKAGED_RELEASE_MANIFEST_FILENAME,
+  type PackagedReleaseChannel,
+  type PackagedRuntimeChannel,
+  validatePackagedReleaseManifest,
+} from './lifecycle-code-root.js';
 import {
   captureStableProcessFingerprint,
   createAppShortcut,
@@ -120,6 +129,14 @@ import {
   IGNORE_SERVICE_STATE_FLAG,
   renderSupervisingServiceRefusal,
 } from './service-upgrade-guard.js';
+
+// Moved to lifecycle-code-root.ts (#2675 B1); re-exported for existing importers.
+export {
+  isPrebuiltArchiveRoot,
+  PREBUILT_ARCHIVE_MARKER_CONTENT,
+  PREBUILT_ARCHIVE_MARKER_FILENAME,
+  validatePackagedReleaseManifest,
+} from './lifecycle-code-root.js';
 
 const SERVER_ENTRY_FILENAME = 'command-station.js';
 
@@ -1124,16 +1141,6 @@ export interface BuildManifest {
   sha: string;
 }
 
-interface PackagedReleaseManifest {
-  schemaVersion: 2;
-  sha: string;
-  ref: string;
-  createdAt: string;
-  channel: 'stable' | 'beta';
-  releaseChannel: 'stable' | 'preview';
-  prerelease: boolean;
-}
-
 export interface InstanceStateRecord {
   baseDir: string;
   bootId?: string;
@@ -1244,6 +1251,13 @@ export interface BuildOptions extends InstanceSelector {}
 
 export interface StopOptions extends InstanceSelector {
   intent?: StopIntent;
+  /**
+   * The home whose lifecycle state to search when `baseDir` does not narrow
+   * the match (#2675): a prebuilt archive keeps records in that home's
+   * Station root. Defaults to `baseDir`, else the home a bare command
+   * targets. A source checkout ignores it.
+   */
+  stateHome?: string;
 }
 
 export interface CleanOptions extends InstanceSelector {
@@ -1415,11 +1429,11 @@ function removeStateRecord(record: InstanceStateRecord): void {
     }
     unlinkSync(quarantine);
     quarantine = undefined;
-    syncInstanceStateDirectory();
+    syncInstanceStateDirectory(dirname(record.statePath));
   } catch (error) {
     if (quarantine && !existsSync(record.statePath) && existsSync(quarantine)) {
       renameSync(quarantine, record.statePath);
-      syncInstanceStateDirectory();
+      syncInstanceStateDirectory(dirname(record.statePath));
     }
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     throw error;
@@ -1429,10 +1443,12 @@ function removeStateRecord(record: InstanceStateRecord): void {
   }
 }
 
-function readPriorPidInstanceState(): InstanceStateRecord | null {
-  if (!existsSync(PIDFILE)) return null;
+function readPriorPidInstanceState(
+  pidFile: string | null,
+): InstanceStateRecord | null {
+  if (pidFile === null || !existsSync(pidFile)) return null;
 
-  const [serverPid, uiPid] = parsePidList(readFileSync(PIDFILE, 'utf-8'));
+  const [serverPid, uiPid] = parsePidList(readFileSync(pidFile, 'utf-8'));
   const record: InstanceStateRecord = {
     instanceId: DEFAULT_INSTANCE_ID,
     serverPid,
@@ -1446,7 +1462,7 @@ function readPriorPidInstanceState(): InstanceStateRecord | null {
     host: '0.0.0.0',
     startedAt: new Date(0).toISOString(),
     cwd: CWD,
-    statePath: PIDFILE,
+    statePath: pidFile,
     priorPidFile: true,
   };
 
@@ -1458,8 +1474,8 @@ function readPriorPidInstanceState(): InstanceStateRecord | null {
   return record;
 }
 
-function validateInstanceStateDirectory(): void {
-  const info = lstatSync(INSTANCE_STATE_DIR);
+function validateInstanceStateDirectory(directory: string): void {
+  const info = lstatSync(directory);
   // POSIX permission bits are meaningless on Windows: `mkdirSync({mode:0o700})`
   // does not set them and `lstat().mode` is synthetic, so this check would
   // always throw and `station start` could never run on Windows. Windows ACLs
@@ -1473,21 +1489,21 @@ function validateInstanceStateDirectory(): void {
     (enforcePosixMode && (info.mode & 0o777) !== 0o700)
   ) {
     throw new Error(
-      `Unsafe Station instance-state directory (expected owned mode 0700): ${INSTANCE_STATE_DIR}`,
+      `Unsafe Station instance-state directory (expected owned mode 0700): ${directory}`,
     );
   }
 }
 
-function ensureInstanceStateDirectory(): void {
-  mkdirSync(INSTANCE_STATE_DIR, { mode: 0o700, recursive: true });
-  validateInstanceStateDirectory();
+function ensureInstanceStateDirectory(directory: string): void {
+  mkdirSync(directory, { mode: 0o700, recursive: true });
+  validateInstanceStateDirectory(directory);
 }
 
-function syncInstanceStateDirectory(): void {
+function syncInstanceStateDirectory(directory: string): void {
   // Windows does not permit fsync on a directory handle (throws EPERM) and does
   // not need this POSIX directory-entry durability flush. Skip it there.
   if (process.platform === 'win32') return;
-  const fd = openSync(INSTANCE_STATE_DIR, fsConstants.O_RDONLY);
+  const fd = openSync(directory, fsConstants.O_RDONLY);
   try {
     fsyncSync(fd);
   } finally {
@@ -1496,7 +1512,7 @@ function syncInstanceStateDirectory(): void {
 }
 
 function readInstanceStateFile(path: string): InstanceStateRecord {
-  validateInstanceStateDirectory();
+  validateInstanceStateDirectory(dirname(path));
   let fd: number | undefined;
   try {
     fd = openSync(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
@@ -1636,16 +1652,26 @@ function discardUnreadableStateRecord(path: string): void {
  * delete them. The next lifecycle command reclaims them.
  */
 function listRunningInstances(
-  options: { reclaimStale?: boolean } = {},
+  options: {
+    reclaimStale?: boolean;
+    /**
+     * The home the command resolved. A prebuilt archive keeps its records in
+     * that home's Station root (#2675); a source checkout ignores it.
+     */
+    projectHome?: string;
+  } = {},
 ): InstanceStateRecord[] {
   const reclaimStale = options.reclaimStale ?? true;
   const records: InstanceStateRecord[] = [];
+  const { instanceStateDir, pidFile } = resolveLifecycleState(
+    options.projectHome,
+  );
 
-  if (existsSync(INSTANCE_STATE_DIR)) {
-    validateInstanceStateDirectory();
-    for (const entry of readdirSync(INSTANCE_STATE_DIR)) {
+  if (existsSync(instanceStateDir)) {
+    validateInstanceStateDirectory(instanceStateDir);
+    for (const entry of readdirSync(instanceStateDir)) {
       if (!entry.endsWith('.json')) continue;
-      const path = join(INSTANCE_STATE_DIR, entry);
+      const path = join(instanceStateDir, entry);
       let record: InstanceStateRecord;
       try {
         record = readInstanceStateFile(path);
@@ -1690,7 +1716,7 @@ function listRunningInstances(
   const hasDefaultRecord = records.some(
     (record) => record.instanceId === DEFAULT_INSTANCE_ID,
   );
-  const priorPidRecord = readPriorPidInstanceState();
+  const priorPidRecord = readPriorPidInstanceState(pidFile);
   if (priorPidRecord && !hasDefaultRecord) {
     records.push(priorPidRecord);
   } else if (priorPidRecord && hasDefaultRecord && reclaimStale) {
@@ -2012,17 +2038,7 @@ function stopRecord(
   // A --temp-home instance is ephemeral; drop its per-instance build dirs too
   // so they don't accumulate. Persistent instances keep theirs for fast restarts.
   if (record.homeSource === '--temp-home') {
-    const buildPaths = resolveBuildPaths(record.instanceId);
-    // Finder can create .DS_Store during removal. Let Node retry transient
-    // ENOTEMPTY/EBUSY for these owned outputs; a persistent failure still fails.
-    for (const output of [buildPaths.server, buildPaths.ui]) {
-      rmSync(join(CWD, output), {
-        recursive: true,
-        force: true,
-        maxRetries: 3,
-        retryDelay: 100,
-      });
-    }
+    removeOwnedBuildOutputs(resolveBuildPaths(record.instanceId));
   }
   if (announce) {
     console.log('  ✓ Stopped');
@@ -2046,7 +2062,8 @@ function ensureSingleMatch(
 }
 
 function writeInstanceState(record: InstanceStateRecord): void {
-  ensureInstanceStateDirectory();
+  const instanceStateDir = dirname(record.statePath);
+  ensureInstanceStateDirectory(instanceStateDir);
   const release = acquireFileMutationLock(`${record.statePath}.mutation`);
   const serialized = JSON.stringify(
     {
@@ -2073,7 +2090,7 @@ function writeInstanceState(record: InstanceStateRecord): void {
     2,
   );
   const temporary = join(
-    INSTANCE_STATE_DIR,
+    instanceStateDir,
     `.instance-${process.pid}-${randomUUID()}.tmp`,
   );
   const backup = `${record.statePath}.prior-${process.pid}-${randomUUID()}`;
@@ -2101,7 +2118,7 @@ function writeInstanceState(record: InstanceStateRecord): void {
     temporaryIdentity = { dev: temporaryInfo.dev, ino: temporaryInfo.ino };
     renameSync(temporary, record.statePath);
     publishedTemporary = true;
-    syncInstanceStateDirectory();
+    syncInstanceStateDirectory(instanceStateDir);
     publishedFd = openSync(
       record.statePath,
       fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
@@ -2127,7 +2144,7 @@ function writeInstanceState(record: InstanceStateRecord): void {
     closeSync(fd);
     fd = undefined;
     rmSync(backup, { force: true });
-    syncInstanceStateDirectory();
+    syncInstanceStateDirectory(instanceStateDir);
     publishedTemporary = false;
   } catch (error) {
     if (publishedTemporary && temporaryIdentity) {
@@ -2142,7 +2159,7 @@ function writeInstanceState(record: InstanceStateRecord): void {
       } catch {}
     }
     if (existsSync(backup)) renameSync(backup, record.statePath);
-    syncInstanceStateDirectory();
+    syncInstanceStateDirectory(instanceStateDir);
     throw error;
   } finally {
     if (publishedFd !== undefined) closeSync(publishedFd);
@@ -2151,7 +2168,32 @@ function writeInstanceState(record: InstanceStateRecord): void {
     rmSync(backup, { force: true });
     release();
   }
-  rmSync(PIDFILE, { force: true });
+  // The record supersedes a prior-format pid file (source checkouts only).
+  const { pidFile } = resolveLifecycleState(record.baseDir);
+  if (pidFile !== null) rmSync(pidFile, { force: true });
+}
+
+/** ` --home=<path>`, shell-quoted when the path needs it. */
+function homeFlag(projectHome: string): string {
+  return ` --home=${/^[\w./~:-]+$/.test(projectHome) ? projectHome : `'${projectHome.replaceAll("'", "'\\''")}'`}`;
+}
+
+/**
+ * The stop command a start prints. A prebuilt archive keeps an instance's
+ * record in the Station root its home belongs to (#2675), so for any home but
+ * the default the command names it; a bare `station stop` would search the
+ * default home's root. A source checkout's records do not depend on the home.
+ */
+function renderStopCommand(
+  instanceId: string,
+  projectHome: string,
+  homeSource: LifecycleHomeSource,
+): string {
+  const home =
+    LIFECYCLE_CODE_ROOT.kind === 'prebuilt-archive' && homeSource !== 'default'
+      ? homeFlag(projectHome)
+      : '';
+  return `station stop${home} --instance=${instanceId}`;
 }
 
 /**
@@ -2208,7 +2250,7 @@ function resolveStartTarget(options: StartOptions) {
     projectHome,
     homeSource,
     instanceId,
-    statePath: getInstanceStatePath(instanceId),
+    statePath: getInstanceStatePath(instanceId, projectHome),
   };
 }
 
@@ -2241,18 +2283,24 @@ function resolveCleanTarget(options: CleanOptions) {
 
 export function isRunning(selector: StopOptions = {}): boolean {
   const normalizedSelector = normalizeSelector(selector);
-  return listRunningInstances().some((record) =>
-    matchesSelector(record, normalizedSelector),
-  );
+  return listRunningInstances({
+    projectHome: selector.stateHome ?? normalizedSelector.baseDir,
+  }).some((record) => matchesSelector(record, normalizedSelector));
 }
 
 interface BuildPaths {
   server: string;
   ui: string;
+  /**
+   * True when these directories are not the instance's own: every instance
+   * of a prebuilt archive serves the archive's one build. A shared build is
+   * never removed, replaced or promoted over on an instance's behalf; see
+   * removeOwnedBuildOutputs and promoteCandidateBuild.
+   */
+  shared?: true;
 }
 
 const BUILD_MANIFEST_FILENAME = 'station-build.json';
-const PACKAGED_RELEASE_MANIFEST_FILENAME = '.station-release.json';
 
 export function normalizeLifecycleHost(host?: string): string {
   if (host === undefined) return '0.0.0.0';
@@ -2338,6 +2386,7 @@ function formatReservedPorts(
 
 function assertNoPortConflicts(
   instanceId: string,
+  projectHome: string,
   serverPort: number,
   uiPort: number,
   consentPort: number = serverPort + 3,
@@ -2345,7 +2394,7 @@ function assertNoPortConflicts(
   const requested = new Set(
     getInstanceServicePorts({ serverPort, uiPort, consentPort }),
   );
-  const conflicts = listRunningInstances().filter((record) => {
+  const conflicts = listRunningInstances({ projectHome }).filter((record) => {
     if (record.instanceId === instanceId) return false;
     return getReservedPorts(record).some((port) => requested.has(port));
   });
@@ -2682,7 +2731,7 @@ function warnOnSharedHome(instanceId: string, projectHome: string): void {
     others = collectSharedHomeInstances(
       instanceId,
       projectHome,
-      listRunningInstances(),
+      listRunningInstances({ projectHome }),
     );
   } catch (error) {
     process.stderr.write(
@@ -2713,6 +2762,12 @@ function warnOnSharedHome(instanceId: string, projectHome: string): void {
 }
 
 export function resolveBuildPaths(instanceId: string): BuildPaths {
+  // A prebuilt archive ships one build and no toolchain to make another.
+  // Nothing in a build is instance-specific (buildApplication varies only its
+  // output directories), so every instance of an archive serves that build.
+  if (LIFECYCLE_CODE_ROOT.kind === 'prebuilt-archive') {
+    return { server: 'dist-server', ui: 'dist-ui', shared: true };
+  }
   if (instanceId === DEFAULT_INSTANCE_ID) {
     return { server: 'dist-server', ui: 'dist-ui' };
   }
@@ -2722,18 +2777,48 @@ export function resolveBuildPaths(instanceId: string): BuildPaths {
   };
 }
 
+/**
+ * Removes an instance's own build directories. The one place build outputs
+ * are deleted on an instance's behalf; a shared build is left untouched.
+ */
+function removeOwnedBuildOutputs(buildPaths: BuildPaths): void {
+  if (buildPaths.shared) return;
+  // Finder can create .DS_Store during removal. Let Node retry transient
+  // ENOTEMPTY/EBUSY for these owned outputs; a persistent failure still fails.
+  for (const output of [buildPaths.server, buildPaths.ui]) {
+    rmSync(join(CWD, output), {
+      recursive: true,
+      force: true,
+      maxRetries: 3,
+      retryDelay: 100,
+    });
+  }
+}
+
 function getBuildManifestPath(buildPaths: BuildPaths): string {
   return join(CWD, buildPaths.server, BUILD_MANIFEST_FILENAME);
+}
+
+/** Only a source tree builds, so only a source tree has candidates. */
+function sourceBuildCandidatesDir(): string {
+  const { buildCandidatesDir } = resolveLifecycleState();
+  if (buildCandidatesDir === null) {
+    throw new Error(
+      `A prebuilt Station archive (${CWD}) has no build candidates.`,
+    );
+  }
+  return buildCandidatesDir;
 }
 
 function createCandidateBuildPaths(instanceId: string): {
   buildPaths: BuildPaths;
   root: string;
 } {
-  const parent = join(CWD, '.station', 'build-candidates');
+  const parent = sourceBuildCandidatesDir();
   mkdirSync(parent, { recursive: true });
   const root = mkdtempSync(join(parent, `${instanceId}-`));
-  const relativeRoot = join('.station', 'build-candidates', basename(root));
+  // Build paths are relative to the code root, which contains the candidates.
+  const relativeRoot = relative(CWD, root);
   return {
     root,
     buildPaths: {
@@ -2760,7 +2845,7 @@ function createCandidateBuildPaths(instanceId: string): {
  * (station#1867 review round).
  */
 export function pruneStaleBuildCandidates(instanceId: string): void {
-  const parent = join(CWD, '.station', 'build-candidates');
+  const parent = sourceBuildCandidatesDir();
   let entries: import('node:fs').Dirent[];
   try {
     entries = readdirSync(parent, { withFileTypes: true });
@@ -2816,6 +2901,11 @@ function promoteCandidateBuild(
   candidate: BuildPaths,
   active: BuildPaths,
 ): void {
+  if (active.shared) {
+    throw new Error(
+      `Refusing to replace the shared build ${active.server}/ and ${active.ui}/ on one instance's behalf.`,
+    );
+  }
   // Both candidates and both backups live on the checkout filesystem, so
   // each rename is atomic. The pair cannot be one filesystem transaction;
   // explicit rollback restores both prior directories if any rename fails.
@@ -2893,58 +2983,6 @@ function validateBuildManifest(value: unknown): BuildManifest | null {
     sha: candidate.sha,
     branch: candidate.branch,
     builtAt: candidate.builtAt,
-  };
-}
-
-export function validatePackagedReleaseManifest(
-  value: unknown,
-): PackagedReleaseManifest | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const candidate = value as Partial<PackagedReleaseManifest>;
-  const keys = Object.keys(value).sort();
-  const expectedKeys = [
-    'channel',
-    'createdAt',
-    'prerelease',
-    'ref',
-    'releaseChannel',
-    'schemaVersion',
-    'sha',
-  ];
-  if (
-    keys.length !== expectedKeys.length ||
-    keys.some((key, index) => key !== expectedKeys[index]) ||
-    candidate.schemaVersion !== 2 ||
-    typeof candidate.sha !== 'string' ||
-    !/^[0-9a-f]{40}$/i.test(candidate.sha) ||
-    typeof candidate.ref !== 'string' ||
-    !/^[A-Za-z0-9._/-]{1,128}$/.test(candidate.ref) ||
-    typeof candidate.createdAt !== 'string' ||
-    !Number.isFinite(Date.parse(candidate.createdAt)) ||
-    new Date(Date.parse(candidate.createdAt)).toISOString() !==
-      candidate.createdAt ||
-    (candidate.channel !== 'stable' && candidate.channel !== 'beta') ||
-    (candidate.releaseChannel !== 'stable' &&
-      candidate.releaseChannel !== 'preview') ||
-    candidate.channel !==
-      (candidate.releaseChannel === 'preview' ? 'beta' : 'stable') ||
-    candidate.prerelease !== (candidate.releaseChannel === 'preview') ||
-    (candidate.releaseChannel === 'stable'
-      ? !/^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(candidate.ref)
-      : !/^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-preview\.(?:[1-9]\d*)$/.test(
-          candidate.ref,
-        ))
-  ) {
-    return null;
-  }
-  return {
-    schemaVersion: 2,
-    sha: candidate.sha,
-    ref: candidate.ref,
-    createdAt: candidate.createdAt,
-    channel: candidate.channel,
-    releaseChannel: candidate.releaseChannel,
-    prerelease: candidate.prerelease,
   };
 }
 
@@ -3119,6 +3157,15 @@ export async function buildApplication(
 ): Promise<BuildManifest> {
   const { instanceId, buildPaths: activeBuildPaths } =
     resolveBuildTarget(options);
+  if (LIFECYCLE_CODE_ROOT.kind === 'prebuilt-archive') {
+    throw new Error(
+      [
+        `This is a prebuilt Station archive (${CWD}): nothing to build.`,
+        `It ships its server and UI already built in ${activeBuildPaths.server}/ and ${activeBuildPaths.ui}/, which every instance uses.`,
+        'Run `station start` without --build.',
+      ].join('\n'),
+    );
+  }
   // station#1869: a supervisor (launchd/systemd KeepAlive) killed mid-build
   // leaves orphan candidate dirs under `.station/build-candidates/`. They do
   // not collide with a fresh `mkdtempSync`, but they accumulate, and a
@@ -3756,11 +3803,23 @@ function requestIdentity(
  */
 export async function collectInstanceStatus(
   instanceName: string,
-  options: { probeTimeoutMs?: number; reclaimStale?: boolean } = {},
+  options: {
+    probeTimeoutMs?: number;
+    reclaimStale?: boolean;
+    /**
+     * The instance's home; see `StopOptions.stateHome` (#2675). Required, not
+     * optional: a prebuilt archive keeps the record in that home's Station
+     * root, and a caller that forgets it silently reads another root (a
+     * service installed with --home then never looks ready). `undefined`
+     * states "the home a bare command targets".
+     */
+    projectHome: string | undefined;
+  },
 ): Promise<CollectedInstanceStatus> {
   const instanceId = normalizeInstanceName(instanceName);
   const record = listRunningInstances({
     reclaimStale: options.reclaimStale,
+    projectHome: options.projectHome,
   }).find((candidate) => candidate.instanceId === instanceId);
   if (!record) {
     return {
@@ -3974,7 +4033,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     ? { Host: hostedProbeAuthority }
     : undefined;
   const runningMatch = ensureSingleMatch(
-    listRunningInstances().filter((record) =>
+    listRunningInstances({ projectHome }).filter((record) =>
       matchesSelector(record, normalizedSelector),
     ),
     'start',
@@ -3986,7 +4045,13 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   const buildPaths = resolveBuildPaths(instanceId);
   const needsBuild = Boolean(build) || !isInstalled(instanceId);
 
-  assertNoPortConflicts(instanceId, serverPort, uiPort, consentPort);
+  assertNoPortConflicts(
+    instanceId,
+    projectHome,
+    serverPort,
+    uiPort,
+    consentPort,
+  );
   // Refuse a NEW start on a shared home (see assertNoSharedHome). Placed
   // before the build so a refused start costs seconds, not minutes; sampled
   // fresh at the exits regardless, so the warning covers anything that
@@ -3997,7 +4062,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     assertNoSharedHome(
       instanceId,
       projectHome,
-      listRunningInstances(),
+      listRunningInstances({ projectHome }),
       opts.allowSharedHome ?? false,
     );
   }
@@ -4012,7 +4077,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     if (!force) {
       warnIfBuildStale(buildPaths);
       console.log(
-        `✓ Already running\n  UI:   http://localhost:${runningMatch.uiPort}\n  Stop: station stop --instance=${runningMatch.instanceId}`,
+        `✓ Already running\n  UI:   http://localhost:${runningMatch.uiPort}\n  Stop: ${renderStopCommand(runningMatch.instanceId, projectHome, homeSource)}`,
       );
       if (typeof runningMatch.serverPid === 'number') {
         // Idempotent refresh: heals an instance started before the CLI was a
@@ -4454,10 +4519,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     // working with no other signal.
     // Same selectors this instance was started with, so the command works as
     // printed (like the "Stop with" line below).
-    const openHome =
-      homeSource === 'default'
-        ? ''
-        : ` --home=${/^[\w./~:-]+$/.test(projectHome) ? projectHome : `'${projectHome.replaceAll("'", "'\\''")}'`}`;
+    const openHome = homeSource === 'default' ? '' : homeFlag(projectHome);
     console.log(
       `            (single-use sign-in link; \`station open --print${openHome} --instance=${instanceId}\` makes a new one)`,
     );
@@ -4491,7 +4553,9 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       `  ✓ Home:   ${projectHome} (${describeHomeSource(homeSource)})`,
     );
     console.log(`  ✓ Instance: ${instanceId}`);
-    console.log(`\n  Stop with: station stop --instance=${instanceId}`);
+    console.log(
+      `\n  Stop with: ${renderStopCommand(instanceId, projectHome, homeSource)}`,
+    );
     // Last thing the user sees: emitted after the start report so a
     // multi-minute build cannot bury it, and sampled here so the present
     // tense is true when it prints.
@@ -4499,7 +4563,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     try {
-      stop({ instanceId });
+      stop({ instanceId, stateHome: projectHome });
     } catch (cleanupError) {
       const cleanupMessage =
         cleanupError instanceof Error
@@ -4547,9 +4611,9 @@ function loadHostedTenantRegistryForLifecycle():
 
 export function stop(opts: StopOptions = {}): void {
   const normalizedSelector = normalizeSelector(opts);
-  const matches = listRunningInstances().filter((record) =>
-    matchesSelector(record, normalizedSelector),
-  );
+  const matches = listRunningInstances({
+    projectHome: opts.stateHome ?? normalizedSelector.baseDir,
+  }).filter((record) => matchesSelector(record, normalizedSelector));
   const match = ensureSingleMatch(matches, 'stop');
   if (!match) {
     // `station stop` normally resolves the CWD-scoped lifecycle record, but a
@@ -4631,9 +4695,7 @@ export async function clean(
 
   stop({ instanceId, serverPort, uiPort, baseDir: projectHome });
   rmSync(projectHome, { recursive: true, force: true });
-  const buildPaths = resolveBuildPaths(instanceId);
-  rmSync(join(CWD, buildPaths.server), { recursive: true, force: true });
-  rmSync(join(CWD, buildPaths.ui), { recursive: true, force: true });
+  removeOwnedBuildOutputs(resolveBuildPaths(instanceId));
   console.log('  ✓ Cleaned');
 }
 
@@ -4684,8 +4746,8 @@ function assertStationHomeInactive(
   operation: 'backup' | 'reset' | 'restore',
 ): void {
   const normalizedSelector = normalizeSelector({ baseDir: projectHome });
-  const runningMatches = listRunningInstances().filter((record) =>
-    matchesSelector(record, normalizedSelector),
+  const runningMatches = listRunningInstances({ projectHome }).filter(
+    (record) => matchesSelector(record, normalizedSelector),
   );
   // Read the registry KEYS too, not just findRunning's values: the id is the
   // only handle a reader has for stopping the thing, and findRunning discards
@@ -4812,8 +4874,8 @@ export function homeRestore(
 
 interface PackagedInstallState {
   schemaVersion: 3;
-  channel: 'stable' | 'beta';
-  releaseChannel: 'stable' | 'preview';
+  channel: PackagedRuntimeChannel;
+  releaseChannel: PackagedReleaseChannel;
   installRoot: string;
   stationHome: string;
   stationRoot: string;
@@ -4851,10 +4913,8 @@ function readSafePackagedInstallState(path: string): PackagedInstallState {
   }
   if (
     value.schemaVersion !== 3 ||
-    !(
-      (value.channel === 'stable' && value.releaseChannel === 'stable') ||
-      (value.channel === 'beta' && value.releaseChannel === 'preview')
-    )
+    !isPackagedReleaseChannel(value.releaseChannel) ||
+    value.channel !== STATION_RELEASE_RINGS[value.releaseChannel].runtimeChannel
   ) {
     throw new Error('packaged install state is malformed');
   }
@@ -4905,7 +4965,7 @@ function delegatePackagedUpgradeIfPresent(
   const state = readSafePackagedInstallState(
     join(installRoot, '.station-release-state.json'),
   );
-  // The manifest's `channel` is the runtime channel (stable|beta); the
+  // The manifest's `channel` is the runtime channel (stable|beta|nightly); the
   // persisted ring is a release channel, so compare releaseChannel to
   // releaseChannel.
   if (manifest.releaseChannel !== state.releaseChannel) {
@@ -5118,7 +5178,35 @@ export interface UpgradeOptions extends BuildOptions {
   ignoreUnknownServiceState?: boolean;
 }
 
+/**
+ * #2675: a prebuilt archive is neither a git checkout nor an install.sh
+ * release tree, so neither upgrade path below applies to it: there is no
+ * `git pull`, no toolchain to rebuild with, and no installer-owned
+ * `releases/`+`current` layout to delegate to. Installing a newer archive is
+ * the installer's job (slice B2). Until it lands, name the manual route.
+ */
+export function renderPrebuiltArchiveUpgradeRefusal(
+  codeRoot: Extract<LifecycleCodeRoot, { kind: 'prebuilt-archive' }>,
+  stateDir: string,
+): string {
+  const { release } = codeRoot;
+  return [
+    `station upgrade cannot update a prebuilt Station archive in place: ${codeRoot.root} is ${release.ref} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring). Nothing was changed.`,
+    'Upgrading an archive install is the installer’s job, which arrives with the installer slice (#2675, B2).',
+    'To move to a newer version now: download the newer station-server-<os>-<arch> archive for this ring, run `station stop` here, extract the new archive into its own directory, and run `station start` from there.',
+    `Instance state for the ${release.channel} channel lives in ${stateDir}, outside every version directory, so the new version sees and stops what this one started.`,
+  ].join('\n');
+}
+
 export async function upgrade(options: UpgradeOptions = {}): Promise<void> {
+  if (LIFECYCLE_CODE_ROOT.kind === 'prebuilt-archive') {
+    throw new Error(
+      renderPrebuiltArchiveUpgradeRefusal(
+        LIFECYCLE_CODE_ROOT,
+        resolveLifecycleState(options.baseDir).stateDir,
+      ),
+    );
+  }
   const { ignoreUnknownServiceState, ...buildOptions } = options;
   // A packaged install proves its provenance first; the service check runs on
   // the home that provenance names, before the installer swaps anything.

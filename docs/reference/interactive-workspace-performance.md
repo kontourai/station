@@ -200,7 +200,7 @@ implication. The Work Board browser/reference test is an acceptance resource;
 the bridge registration unit test and PR smoke are scoped static/diagnostic
 evidence only.
 
-The PR smoke is wired into the existing fast-checks job. The reference
+The PR smoke is wired into the existing fast-checks-statics job. The reference
 workflow remains separate and reports `NOT_VERIFIED` rather than treating
 arbitrary CI hardware as reference evidence. It runs on `workflow_dispatch`
 only: its weekly schedule produced no green run in 12 attempts through

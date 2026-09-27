@@ -17,21 +17,12 @@ describe('trayNavigationTarget', () => {
       pathname: '/settings',
       params: { view: 'system', highlight: 'desktop-app-updates' },
     });
+    // The pre-split `coreUpdates` alias resolves to the same server card as
+    // `serverUpdates`, so an older native host cannot strand its replay.
     expect(trayNavigationTarget('serverUpdates')).toEqual({
       pathname: '/settings',
       params: { view: 'system', highlight: 'core-app-updates' },
     });
-  });
-
-  it('keeps the desktop destination distinct from every server destination', () => {
-    const desktop = trayNavigationTarget('desktopUpdates');
-    const server = trayNavigationTarget('serverUpdates');
-    const legacy = trayNavigationTarget('coreUpdates');
-    expect(desktop).not.toEqual(server);
-    expect(desktop).not.toEqual(legacy);
-    // The pre-split alias keeps resolving to the same server card, so an
-    // older native host cannot strand its replay.
-    expect(server).toEqual(legacy);
   });
 
   it('routes all closed destinations and disposes the exact native subscription', async () => {

@@ -11,7 +11,7 @@
  * (`./index.ts`'s header comment).
  */
 
-import { apiErrorMessage } from './api-error-message';
+import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 
 interface KnowledgeEnvelope<T> {
@@ -29,16 +29,18 @@ interface KnowledgeEnvelope<T> {
  * no-embedder (400) and unexpected-failure (500) paths.
  */
 async function unwrapKnowledgeResponse<T>(response: Response): Promise<T> {
+  const fallback = `Knowledge API error: ${response.status}`;
   let result: KnowledgeEnvelope<T> | null = null;
   try {
     result = (await response.json()) as KnowledgeEnvelope<T>;
   } catch {
-    throw new Error(`Knowledge API error: ${response.status}`);
+    // Unreadable, but answered: the status still says what happened (#2708).
+    throw envelopeError(response, undefined, fallback);
   }
   if (!response.ok || !result.success) {
-    throw new Error(
-      apiErrorMessage(result, `Knowledge API error: ${response.status}`),
-    );
+    // #2708: status, `code` (a station-control refusal, or
+    // `knowledge_migration_failed`) and `details` survive.
+    throw envelopeError(response, result, fallback);
   }
   return result.data as T;
 }

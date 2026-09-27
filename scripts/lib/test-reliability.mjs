@@ -57,6 +57,9 @@ export const VERIFICATION_BEHAVIOR_ENVIRONMENT = Object.freeze([
   // ci:fast selects affected tests against this explicit base. Including it
   // keeps a same-HEAD receipt from being reused for a different diff range.
   'STATION_CI_FAST_BASE',
+  // #2709: `statics` drops the selector from ci:fast (the sharded fast-checks
+  // jobs run it), so a statics-only receipt must never answer for a full lane.
+  'STATION_CI_FAST_SCOPE',
   'STATION_E2E_SEED_REGRESSION',
   'STATION_FEATURES',
   'STATION_SERVICE_ITEST',

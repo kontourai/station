@@ -2124,6 +2124,11 @@ station stop --home=/tmp/station-a
 In a source checkout, pull the latest code, reinstall dependencies, and rebuild.
 In a signed portable install, reuse the persisted release ring and delegate to
 the installer without a Git checkout or pre-stop action. Installed plugins are preserved.
+From a prebuilt server archive (`station-server-<os>-<arch>`), `upgrade`
+refuses and changes nothing: installing a newer archive is the installer's job
+(#2675). Until then, stop Station, extract the newer archive into its own
+directory, and start it from there; it finds the instances the old version
+started (see [Instance State Mechanism](#instance-state-mechanism)).
 
 ```
 station upgrade
@@ -2325,6 +2330,13 @@ Station manifest with its installed package version. A mismatch or missing
 installation is a fail-level check with an `npm install` repair suggestion.
 Optional tools and whether chat and External-agent paths are ready are checked
 separately.
+
+Run from a prebuilt server archive, doctor reports the Node.js the archive
+ships (`Node.js — v24.x (bundled: <archive>/runtime/...)`, a warn when some
+other Node.js is running it) and a `Prebuilt archive` line with the release
+ref, sha, ring, channel and lifecycle-state directory. It skips the npm, tsx,
+Rust and `@kontourai/*` pin checks and the toolchain fix commands: an archive
+cannot build itself and ships no source manifest.
 
 The `Terminal PTY (node-pty)` check reports whether the `node-pty` native
 module loads from the checkout. When it does not — typically a Linux host that
@@ -2576,7 +2588,9 @@ station registry plugins install <id> [--api-base=<url>]
 station registry plugins uninstall <id> [--api-base=<url>]
 ```
 
-Without a URL argument, fetches and displays the registry. The URL is read from
+Without a URL argument, fetches and displays the registry. It does not report
+installed state: the running Station owns that, and
+`station registry plugins list` shows it. The URL is read from
 `<STATION_HOME>/config/app.json` (`registryUrl` field). A legacy
 `<STATION_HOME>/config.json` value is read only to migrate it into the owned
 file.
@@ -2824,10 +2838,13 @@ When `station start` launches the server and UI processes, it writes per-instanc
 
 During rollout, Station still recognizes the prior `<cwd>/.station.pids` file when present and migrates away from it as new-format state is written.
 
-The CLI requires `.station/instances` to be an owned, non-symlinked directory with mode `0700`; if it isn't (e.g. a checkout that predates this check, or a directory created with a looser umask), `station start`/`station build` fails with `Unsafe Station instance-state directory (expected owned mode 0700): <path>`. Fix it with:
+A prebuilt server archive keeps this state outside itself, in `<root>/state/<channel>/instances/` of the Station root the instance's home belongs to. The root follows from the path of the home the command resolved, however it was given (`--home`, `--base`, `STATION_HOME` or the default), and from nothing else: a home at `<root>/instances/...` belongs to `<root>`, which makes the default `~/.station` (`%USERPROFILE%\.station` on Windows); any other home, including a `--temp-home`, is its own root and holds its state, which goes when the home is removed. `STATION_ROOT` does not move it. So `STATION_HOME=/srv/st station start` and `station stop --home=/srv/st` read the same records, and a start from a non-default home prints its stop command with `--home`. A bare `station stop` searches the root of the home a bare command targets (`STATION_HOME` or the default). An archive's port-conflict and shared-home checks likewise see only instances recorded in the same root; a port another root's instance holds still fails the bind. The archive can therefore be read-only, and every extracted version of one channel shares the records: the next version's `station stop` finds what the previous one started. For the same reason an archive's implicit instance id (no `--instance`, non-default home or ports) hashes the channel, home and ports rather than the archive's directory. Source checkouts are unchanged.
+
+The CLI requires the instance-state directory (`.station/instances` in a checkout, `<root>/state/<channel>/instances` for an archive) to be an owned, non-symlinked directory with mode `0700`; if it isn't (e.g. a checkout that predates this check, or a directory created with a looser umask), `station start`/`station build` fails with `Unsafe Station instance-state directory (expected owned mode 0700): <path>`. Fix it with `chmod 700` on the path the error names, for example:
 
 ```bash
-chmod 700 .station/instances
+chmod 700 .station/instances                    # checkout
+chmod 700 ~/.station/state/stable/instances     # stable archive, default home
 ```
 
 **Not the same thing as `<STATION_HOME>/instances.json`.** That is a

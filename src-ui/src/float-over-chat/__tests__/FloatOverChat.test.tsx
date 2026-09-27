@@ -1001,7 +1001,7 @@ describe('placement, keyboard and narrow widths', () => {
     expect(frameOf()).toMatchObject({ x: start.x - 16, width: 304 });
   });
 
-  test('the pill’s controls carry the 44px target rule (structural: jsdom lays nothing out)', async () => {
+  test('no state, media or descendant rule restates the pill controls’ size (structural: jsdom lays nothing out)', async () => {
     const { area } = chatArea();
     renderFloat(area);
     await screen.findByTestId('float-canvas');
@@ -1021,12 +1021,24 @@ describe('placement, keyboard and narrow widths', () => {
       join(dirname(fileURLToPath(import.meta.url)), '../FloatOverChat.css'),
       'utf8',
     );
-    expect(css).toMatch(
-      /\.float-over-chat__handle \{[^}]*height: 44px;[^}]*min-width: 44px;/,
-    );
-    expect(css).toMatch(
-      /\.float-over-chat__action \{[^}]*min-height: 44px;[^}]*min-width: 44px;/,
-    );
+    // The rendered size, base rules included, is measured in Chromium by
+    // `FloatOverChat.touch-target.test.tsx`. What its fixture never enters (a
+    // state class, media or descendant rule in this sheet) must not restate
+    // the size and undercut the base rule.
+    const sizing =
+      /(^|;)\s*(height|width|min-height|min-width|max-height|max-width|zoom|transform)\s*:/;
+    for (const [, selector, body] of css
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const trimmed = selector.trim();
+      if (
+        trimmed === '.float-over-chat__handle' ||
+        trimmed === '.float-over-chat__action' ||
+        !/\.float-over-chat__(handle|action)\b/.test(trimmed)
+      )
+        continue;
+      expect(body, trimmed).not.toMatch(sizing);
+    }
   });
 
   test(`below ${FLOAT_NARROW_WIDTH}px the chat gets a notice with the same actions instead of a player`, async () => {

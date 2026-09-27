@@ -331,10 +331,8 @@ mod tests {
         state: &StartupReadiness,
         ticket: StartupTicket,
     ) -> (StartupReadiness, Vec<ReadinessEffect>) {
-        let (state, mut effects) = transition(
-            state,
-            ReadinessInput::NativeIdentityCommitted(ticket),
-        );
+        let (state, mut effects) =
+            transition(state, ReadinessInput::NativeIdentityCommitted(ticket));
         let (state, mount_effects) = transition(&state, ReadinessInput::RendererMounted);
         effects.extend(mount_effects);
         (state, effects)
@@ -625,11 +623,11 @@ mod tests {
         );
         assert_eq!(s.phase, ReadinessPhase::Waiting);
         assert_eq!(s.epoch, 2);
-        assert_eq!(s.deadline_ms, 10, "the replacement epoch gets a full timeout");
         assert_eq!(
-            effects,
-            vec![ReadinessEffect::ReprobeCurrentTicket]
+            s.deadline_ms, 10,
+            "the replacement epoch gets a full timeout"
         );
+        assert_eq!(effects, vec![ReadinessEffect::ReprobeCurrentTicket]);
         assert!(
             !effects.contains(&ReadinessEffect::RevealMainWindow),
             "a timeout recovery may only ask the renderer to prove the exact ticket"

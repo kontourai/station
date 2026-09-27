@@ -60,10 +60,15 @@
  *     free for it.
  * - No retry: a retryable gateway answer is reported as `retry` and logged,
  *   like Web Push. A 410 clears the registration, as the publisher does.
- * - Notifications the card already alerts for (an orchestration session's
- *   approval, or its finished, stopped or failed turn; see
- *   `isCardAlerted`) are not carried, so one event never raises two alerts
- *   on the same phone. Registry approvals are carried.
+ * - What the card already announces is not carried, so one event never
+ *   raises two alerts on the same phone: `isCardAlerted`
+ *   (card-alerted-categories.ts), the rule the iOS alert channel (#2589)
+ *   shares. It requires the `onActivityCard` mark, which only the
+ *   approval-inbox and turn-completion writers set, and only when the card
+ *   carries the event: an orchestration approval or a Done or Failed turn
+ *   in a session the card lists, and the registry twin of a Station-agent
+ *   approval. An approval in an ephemeral (webhook) session, a stopped turn,
+ *   and any other registry approval are unmarked and carried.
  */
 import {
   isNativePushSessionReference,
@@ -89,6 +94,7 @@ import {
 } from '../native-push-send-floor.js';
 import { notificationSessionIdentity } from '../notification-session.js';
 import type { PushSigningKey } from '../push-signing-key-store.js';
+import { isCardAlerted } from './card-alerted-categories.js';
 import {
   type ChannelTarget,
   type DeliveryChannel,
@@ -114,37 +120,6 @@ const REQUEST_TIMEOUT_MS = 10_000;
 /** Generic copy for a surface that asked to hide notification content. */
 const HIDDEN_TITLE = 'Station';
 const HIDDEN_BODY = 'You have a new notification';
-
-/**
- * Whether the agent-activity card already announces this notification, so
- * this channel skips it and one event is not alerted twice on a phone.
- *
- * FCM still uses the legacy category/session rule. The APNs predicate in
- * `card-alerted-categories.ts` additionally requires `onActivityCard` and
- * recognizes registry twins (#2589); these are no longer equivalent.
- * Reconcile the writers and intended policy before sharing either predicate.
- * See docs/architecture/abstraction-review.md for the observed difference.
- */
-const CARD_ALERTED_CATEGORIES: ReadonlySet<string> = new Set([
-  'approval-request',
-  'turn-completed',
-  'turn-stopped',
-  'turn-failed',
-]);
-
-function isCardAlerted(
-  notification: Pick<Notification, 'category' | 'metadata'>,
-): boolean {
-  if (!CARD_ALERTED_CATEGORIES.has(notification.category)) return false;
-  const { sessionKind, sessionId, requestKind } = (notification.metadata ??
-    {}) as Record<string, unknown>;
-  return (
-    sessionKind === 'runtime' &&
-    typeof sessionId === 'string' &&
-    sessionId.length > 0 &&
-    (requestKind === undefined || requestKind === 'orchestration')
-  );
-}
 
 export interface FcmAlertDevicePairing {
   listNativePushRegistrationsByPlatform(): {
