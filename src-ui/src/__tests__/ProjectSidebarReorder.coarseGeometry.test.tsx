@@ -181,7 +181,7 @@ describe.skipIf(!chromiumAvailable)(
       expect(rows[0].handle.bottom).toBeLessThanOrEqual(rows[1].handle.top);
     }, 120_000);
 
-    test('a fine pointer keeps the handle hidden until hover or focus', async () => {
+    test('a fine pointer leaves the handle hidden at rest', async () => {
       const { coarse, rows } = await measure(false);
       expect(coarse).toBe(false);
       for (const { opacity } of rows) expect(opacity).toBe('0');

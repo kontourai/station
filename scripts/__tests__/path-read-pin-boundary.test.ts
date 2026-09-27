@@ -164,8 +164,7 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'src-ui/src/__tests__/shell-chrome-notice-primitive.test.ts',
   // A whole-tree copy scan of src-ui sources: it reads every file it walks,
   // so no single pin could stand for it. test-impact-manifest.mjs routes it
-  // for any src-ui source change. Its glossary prose pin, the one read the
-  // scanner could resolve, was deleted as editorial.
+  // for any src-ui source change.
   'src-ui/src/__tests__/station-vocabulary.test.ts',
   'src-ui/src/app-shell/__tests__/RoutePendingSkeleton.test.tsx',
   'src-ui/src/components/first-run/__tests__/tour-steps.test.ts',
