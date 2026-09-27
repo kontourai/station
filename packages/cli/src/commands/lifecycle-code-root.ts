@@ -133,7 +133,7 @@ export const PREBUILT_ARCHIVE_MARKER_CONTENT = 'station-prebuilt-archive-v1\n';
  * The release provenance of a prebuilt archive root, or null for anything
  * else: marker, valid release provenance, and no checkout.
  */
-export function readPrebuiltArchiveRelease(
+function readPrebuiltArchiveRelease(
   root: string,
 ): PackagedReleaseManifest | null {
   if (existsSync(join(root, '.git'))) return null;
@@ -186,7 +186,7 @@ export type LifecycleCodeRoot =
     };
 
 /** Where a prebuilt archive of `channel` keeps its lifecycle state. */
-export function prebuiltArchiveStateDir(
+function prebuiltArchiveStateDir(
   channel: PackagedRuntimeChannel,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
