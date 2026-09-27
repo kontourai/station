@@ -68,7 +68,6 @@
     "experiments/browser-host/scripts/workspace-pane-adapter.ts:mapElectronWebContentsView",
     "experiments/browser-host/scripts/workspace-pane-adapter.ts:resolveRestorationAction",
     "packages/cli/src/__tests__/helpers/longrunning-fixture-child.ts:reapLongRunningFixtureChild",
-    "packages/cli/src/commands/core-api.ts:describeValidationDetails",
     "packages/cli/src/commands/core-api.ts:rememberResolvedApiBase",
     "packages/cli/src/commands/core-api.ts:printResolvedTarget",
     "packages/cli/src/commands/helpers.ts:AGENTS_DIR",

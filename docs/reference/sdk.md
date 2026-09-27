@@ -2387,6 +2387,55 @@ Creates a layout context for use in layout plugins. Used internally by `LayoutPr
 
 ---
 
+## Refused requests
+
+`StationHttpError` (exported from `@kontourai/station-sdk` and
+`@kontourai/station-sdk/client`) is the error a refused Station request
+throws. Branch on its fields, never on the message text:
+
+```ts
+class StationHttpError extends Error {
+  readonly status: number;        // the observed HTTP status
+  readonly code?: string;         // the envelope's machine code
+  readonly details?: unknown;     // the envelope's `details`, as sent
+  readonly retryAfterMs?: number; // `Retry-After`, delta-seconds only
+}
+```
+
+Today every field is carried by a fetcher built on `readEnvelopeOrThrow`: the
+integration, review and workspace pane host action fetchers. `readEnvelopeOrThrow(response)`
+throws this error for a non-2xx response or for a body that is not
+`success: true`. A body that is not JSON keeps its status on a non-2xx; on a
+2xx it is a protocol failure and throws a plain `Error`. Other fetchers still
+throw their own errors — some a `StationHttpError` without `details`, some a
+plain `Error` or a family-specific subclass — and move onto the same fields
+in later releases, keeping their subclasses (#2708).
+
+- `status` is the status the response actually carried. A route that answers
+  `200` with `{ success: false }` produces a `StationHttpError` whose status
+  is `200`, so a status check such as `status === 404` stays exact.
+- `code` is the top-level `code`, else the object `error`'s own `code`
+  (the runtime's `{"error":{"code":"authentication_required"}}`). A blank or
+  non-string code is absent.
+- `details` is present when the body carried one. For a validation refusal it
+  is `{ formErrors, fieldErrors }`.
+- The message is a summary — a string `error`, the object `error`'s
+  `message`, then its `code`, the top-level `message`, then the fetcher's
+  fallback — followed by the validation sentences, each named by its field:
+  `Validation failed: command Required, name Required`. The Station CLI prints
+  the same sentence. That form is for CLI and agent readers; field keys are
+  not copy.
+- To show a refusal to a person, read `details` with
+  `envelopeReasons(details)` from `@kontourai/station-sdk/client`: the
+  server's reason sentences, form-level first, each once, without keys.
+  `envelopeDetailsMessage(details)` returns the field-qualified part alone
+  (`command Required, name Required`), or `undefined`; the CLI builds its
+  message from it.
+- `apiErrorMessage(body, fallback)` and `envelopeErrorMessage(body,
+  fallback)` return the shown form for a body a caller has already parsed:
+  the reasons when there are any, else the summary. Their callers throw a
+  plain `Error` that keeps only this text.
+
 ## Utilities
 
 ### `ListenerManager`
