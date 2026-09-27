@@ -6061,6 +6061,77 @@ describe('plugin install consent gate (station#4288)', () => {
       ).rejects.toThrow(/relative source must be a physical directory/);
     });
 
+    test('refuses an absolute dependency source outside the parent package root', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(join(root, 'outside'));
+      const parentSource = join(root, 'packages', 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+
+      await expect(
+        installPluginFromSource(parentSource, [], deps(root), {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        }),
+      ).rejects.toThrow(/absolute source escapes its allowed package root/);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+    });
+
+    test.each([
+      [
+        'a .git-suffixed path',
+        'shared-providers.git',
+        /must be a plain directory/,
+      ],
+      ['a #branch', 'shared-providers#main', /must be a plain directory/],
+      [
+        'a working checkout',
+        'shared-providers',
+        /must not contain git metadata \(\.git\)/,
+      ],
+    ])(
+      'refuses %s as a local dependency source',
+      async (_label, name, reason) => {
+        const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+        cleanupDirs.push(root);
+        const packages = join(root, 'packages');
+        const dependencySource = writeProviderDependency(
+          packages,
+          'shared-providers',
+        );
+        const declared = join(packages, name);
+        if (declared !== dependencySource) {
+          mkdirSync(declared, { recursive: true });
+          for (const file of ['plugin.json', 'provider.js']) {
+            writeFileSync(
+              join(declared, file),
+              readFileSync(join(dependencySource, file)),
+            );
+          }
+        } else {
+          writeFileSync(join(declared, '.git'), 'gitdir: ../../outside/.git\n');
+        }
+        const parentSource = join(packages, 'enterprise-layout');
+        writePlugin(parentSource, {
+          name: 'enterprise-layout',
+          version: '1.0.0',
+          dependencies: [{ id: 'shared-providers', source: `../${name}` }],
+        });
+
+        await expect(
+          installPluginFromSource(parentSource, [], deps(root), {
+            consent: await approvedParent(parentSource, dependencySource, root),
+          }),
+        ).rejects.toThrow(reason);
+        expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(
+          false,
+        );
+      },
+    );
+
     test('rejects a dependency provider collision before grants or bytes land', async () => {
       const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
       cleanupDirs.push(root);

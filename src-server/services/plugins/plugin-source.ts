@@ -179,30 +179,54 @@ function assertSupportedPluginSource(source: string): void {
   }
 }
 
+/**
+ * Resolves a dependency's declared `source` against the plugin that declared
+ * it. A plugin manifest is untrusted content, so what it may name depends on
+ * where the declaring plugin itself came from:
+ *
+ * - A remote dependency (a URL or `git@host:path`) is kept as written;
+ *   {@link fetchPluginSource} admits only git over https or ssh.
+ * - A parent fetched from a remote source may name remote dependencies only:
+ *   no local path, relative or absolute.
+ * - A local parent's local dependencies, relative or absolute, must resolve
+ *   inside `allowedLocalRoot` (by default the directory holding the parent's
+ *   source) with no symbolic link on the way, and must be a plain directory:
+ *   not git-shaped (a `.git` suffix or a `#branch`), and holding no `.git`
+ *   entry. Local git is never cloned for a dependency.
+ */
 export function resolvePluginDependencySource(
   dependency: { id: string; source?: string; version?: string },
   parentSourceDir: string,
   allowedLocalRoot: string = dirname(resolve(parentSourceDir)),
 ): { id: string; source?: string; version?: string } {
-  if (!dependency.source || shouldPreserveDependencySource(dependency.source)) {
+  if (!dependency.source || dangerousProtocolOrGitSource(dependency.source)) {
     return dependency;
   }
   if (dangerousProtocolOrGitSource(parentSourceDir)) {
     throw new Error(
-      `Plugin dependency '${dependency.id}' uses a relative source under a non-local parent source`,
+      `Plugin dependency '${dependency.id}' names a local source under a remote parent source`,
     );
   }
   const source = resolve(parentSourceDir, dependency.source);
+  const kind = isAbsolute(dependency.source) ? 'absolute' : 'relative';
   const root = resolve(allowedLocalRoot);
   const sourceRelative = relative(root, source);
   if (
     sourceRelative === '' ||
-    sourceRelative.startsWith('..') ||
+    sourceRelative === '..' ||
+    sourceRelative.startsWith(`..${sep}`) ||
     isAbsolute(sourceRelative)
   ) {
     throw new Error(
-      `Plugin dependency '${dependency.id}' relative source escapes its allowed package root`,
+      `Plugin dependency '${dependency.id}' ${kind} source escapes its allowed package root`,
     );
+  }
+  for (const path of [dependency.source, source]) {
+    if (path.includes('#') || /\.git$/i.test(path)) {
+      throw new Error(
+        `Plugin dependency '${dependency.id}' local source must be a plain directory; name a git repository by its remote URL`,
+      );
+    }
   }
   let current = root;
   for (const segment of sourceRelative.split(sep)) {
@@ -210,17 +234,34 @@ export function resolvePluginDependencySource(
       const status = lstatSync(current);
       if (status.isSymbolicLink() || !status.isDirectory()) {
         throw new Error(
-          `Plugin dependency '${dependency.id}' relative source has a non-directory or symbolic-link ancestor`,
+          `Plugin dependency '${dependency.id}' ${kind} source has a non-directory or symbolic-link ancestor`,
         );
       }
     }
     current = join(current, segment);
   }
-  if (existsSync(current)) {
+  let exists = true;
+  try {
+    lstatSync(current);
+  } catch {
+    exists = false;
+  }
+  if (exists) {
     const status = lstatSync(current);
     if (status.isSymbolicLink() || !status.isDirectory()) {
       throw new Error(
-        `Plugin dependency '${dependency.id}' relative source must be a physical directory`,
+        `Plugin dependency '${dependency.id}' ${kind} source must be a physical directory`,
+      );
+    }
+    let hasGitEntry = true;
+    try {
+      lstatSync(join(current, '.git'));
+    } catch {
+      hasGitEntry = false;
+    }
+    if (hasGitEntry) {
+      throw new Error(
+        `Plugin dependency '${dependency.id}' local source must not contain git metadata (.git)`,
       );
     }
   }
@@ -232,20 +273,6 @@ export function resolvePluginDependencySource(
 
 function dangerousProtocolOrGitSource(source: string): boolean {
   return source.startsWith('git@') || sourceProtocol(source) !== null;
-}
-
-function looksLikeWindowsAbsolutePath(source: string): boolean {
-  return /^[a-zA-Z]:[\\/]/.test(source);
-}
-
-function isPortableAbsoluteSource(source: string): boolean {
-  return isAbsolute(source) || looksLikeWindowsAbsolutePath(source);
-}
-
-function shouldPreserveDependencySource(source: string): boolean {
-  return (
-    dangerousProtocolOrGitSource(source) || isPortableAbsoluteSource(source)
-  );
 }
 
 function assertPluginDependencyId(id: string): void {
@@ -874,10 +901,9 @@ export async function resolvePluginDependencies(
           getPluginRegistryProvider,
           logger,
           seen,
-          dependencySourceContext &&
-            !dangerousProtocolOrGitSource(dependencySourceContext)
-            ? dependencySourceContext
-            : dependencyDir,
+          // A remote dependency stays the parent of its own dependencies, so
+          // they are held to the remote-parent rule (remote sources only).
+          dependencySourceContext ?? dependencyDir,
           allowedLocalRoot,
           validation,
         )),
