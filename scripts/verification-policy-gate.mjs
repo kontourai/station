@@ -104,6 +104,14 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   // verify:static. Whole-tree reads, ~1s each; see run-ci-fast.mjs.
   Object.freeze(['npm', Object.freeze(['run', 'docs:reference:gate'])]),
   Object.freeze(['npm', Object.freeze(['run', 'docs:links:check'])]),
+  // #2803 review: the docs:truth:gate members that reject a docs-only edit;
+  // see run-ci-fast.mjs.
+  Object.freeze(['npm', Object.freeze(['run', 'docs:public:hygiene'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'docs:issue-lifecycle:check'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'docs:public:contract-examples']),
+  ]),
   // Generates the git-ignored Basis MCP app bundles the typecheck lanes
   // resolve; a precondition of the aggregate below, like `build:connect`.
   Object.freeze([

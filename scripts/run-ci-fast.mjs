@@ -140,6 +140,17 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // fails here too. ~1s each (measured at load ~65).
   Object.freeze(['npm', Object.freeze(['run', 'docs:reference:gate'])]),
   Object.freeze(['npm', Object.freeze(['run', 'docs:links:check'])]),
+  // #2803 review: once docs/** paths complete in fast-checks, these three
+  // docs:truth:gate members must run here too, or a doc edit they reject
+  // (a vendor name in the public pages, a hand-edited generated reference)
+  // reports completed and fails only in the queue. Node builtins and
+  // `git ls-files`, no build; ~0.2-2.7s each (measured at load ~80).
+  Object.freeze(['npm', Object.freeze(['run', 'docs:public:hygiene'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'docs:issue-lifecycle:check'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'docs:public:contract-examples']),
+  ]),
   // PRECONDITION for the typecheck aggregate below, same shape as
   // `build:connect`: the Basis MCP app bundles are git-ignored build output
   // that `typecheck:basis-pane`, `typecheck:server-tests`, and `typecheck:ui`
