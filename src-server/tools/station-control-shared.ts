@@ -543,7 +543,9 @@ function localRefusalCode(error: unknown): string | undefined {
  * its success arm would wrap these tools' results as `{ success, data }`, and
  * its failure arm relays any `.code`, which on these errors can be a peer's.
  */
-export async function delegationToolResult(run: () => Promise<unknown>) {
+export async function delegationToolResult(
+  run: () => Promise<unknown>,
+): Promise<ReturnType<typeof jsonToolResult> & { isError?: true }> {
   try {
     return jsonToolResult(await run());
   } catch (error) {
