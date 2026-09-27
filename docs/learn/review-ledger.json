@@ -989,6 +989,229 @@
       "checks": []
     },
     {
+      "path": "docs/README.md",
+      "documentDigest": "64e4ad431f1427e29089bb51760afe6f90092ba2970b9766113e7522e51314fd",
+      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
+      "kind": "reference",
+      "state": "partial",
+      "summary": "Added Browser guide and corrected Device guide title/summary; root dirty metrics link is external and must be retained during merge.",
+      "limits": "Bounded source/caller review plus named synthetic tests; no real browser acquisition/launch, public-site navigation, physical device/app, SSH host operation, native package, Windows process tree or saturated-origin-pool proof. File hash identifies owner bytes, not whole-file implementation certification.",
+      "sources": [
+        {
+          "path": "packages/contracts/src/live-surface.ts",
+          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-pane.ts",
+          "digest": "34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-preview.ts",
+          "digest": "5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4"
+        },
+        {
+          "path": "packages/sdk/src/mobile-device.ts",
+          "digest": "8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a"
+        },
+        {
+          "path": "src-server/routes/browser-agent.ts",
+          "digest": "eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0"
+        },
+        {
+          "path": "src-server/routes/browser.ts",
+          "digest": "41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e"
+        },
+        {
+          "path": "src-server/routes/device-hosts.ts",
+          "digest": "d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87"
+        },
+        {
+          "path": "src-server/routes/device-toolchain.ts",
+          "digest": "08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c"
+        },
+        {
+          "path": "src-server/routes/device-tools.ts",
+          "digest": "551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf"
+        },
+        {
+          "path": "src-server/routes/live-surface.ts",
+          "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
+        },
+        {
+          "path": "src-server/routes/mobile-device.ts",
+          "digest": "0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/services/browser/browser-access.ts",
+          "digest": "c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870"
+        },
+        {
+          "path": "src-server/services/browser/browser-agent-authority.ts",
+          "digest": "e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf"
+        },
+        {
+          "path": "src-server/services/browser/browser-automation.ts",
+          "digest": "16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97"
+        },
+        {
+          "path": "src-server/services/browser/browser-egress-proxy.ts",
+          "digest": "87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8"
+        },
+        {
+          "path": "src-server/services/browser/browser-host.ts",
+          "digest": "1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94"
+        },
+        {
+          "path": "src-server/services/browser/browser-live-surfaces.ts",
+          "digest": "e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9"
+        },
+        {
+          "path": "src-server/services/browser/browser-local-targets.ts",
+          "digest": "daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83"
+        },
+        {
+          "path": "src-server/services/browser/browser-project-settings.ts",
+          "digest": "6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6"
+        },
+        {
+          "path": "src-server/services/browser/browser-service.ts",
+          "digest": "1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b"
+        },
+        {
+          "path": "src-server/services/browser/browser-session-registry.ts",
+          "digest": "aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a"
+        },
+        {
+          "path": "src-server/services/browser/chromium-acquisition.ts",
+          "digest": "baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6"
+        },
+        {
+          "path": "src-server/services/browser/chromium-screencast-producer.ts",
+          "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
+        },
+        {
+          "path": "src-server/services/browser/egress-policy.ts",
+          "digest": "34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde"
+        },
+        {
+          "path": "src-server/services/browser/hosts/chromium-server-host.ts",
+          "digest": "f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2"
+        },
+        {
+          "path": "src-server/services/browser/station-listeners.ts",
+          "digest": "01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb"
+        },
+        {
+          "path": "src-server/services/browser/url-policy.ts",
+          "digest": "46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39"
+        },
+        {
+          "path": "src-server/services/devices/device-access.ts",
+          "digest": "c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96"
+        },
+        {
+          "path": "src-server/services/devices/device-hub-endpoint.ts",
+          "digest": "1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb"
+        },
+        {
+          "path": "src-server/services/devices/device-live-surface-producer.ts",
+          "digest": "c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77"
+        },
+        {
+          "path": "src-server/services/devices/device-session-service.ts",
+          "digest": "b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2"
+        },
+        {
+          "path": "src-server/services/devices/hosts/device-host-registry.ts",
+          "digest": "02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-hub-connection.ts",
+          "digest": "0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-toolchain-service.ts",
+          "digest": "af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50"
+        },
+        {
+          "path": "src-server/services/live-surface/control-lease.ts",
+          "digest": "8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30"
+        },
+        {
+          "path": "src-server/services/live-surface/producer.ts",
+          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+        },
+        {
+          "path": "src-server/services/live-surface/registry.ts",
+          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+        },
+        {
+          "path": "src-server/services/live-surface/surface-hub.ts",
+          "digest": "ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103"
+        },
+        {
+          "path": "src-server/services/mobile-device/mobile-device-host.ts",
+          "digest": "a1c380f92d4c506db418ff1961cd4edc737488d7c88d13a07dbc877add934a57"
+        },
+        {
+          "path": "src-server/tools/station-browser-mcp-server.ts",
+          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
+        },
+        {
+          "path": "src-server/tools/station-control-browser-tools.ts",
+          "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
+        },
+        {
+          "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
+          "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
+        },
+        {
+          "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
+          "digest": "c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648"
+        },
+        {
+          "path": "src-ui/src/live-surface/useLiveSurface.ts",
+          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+          "digest": "34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+          "digest": "4637deeeeff416880c29085648a9d6193c17613711142e3434d240c3caf2f78f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+          "digest": "5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+          "digest": "495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+          "digest": "56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+          "digest": "38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+          "digest": "bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c"
+        }
+      ],
+      "checks": [
+        "Browser/Device source/caller review; 219 tests across eight files passed, historical bodies preserved.",
+        "Parent inspected key profile/access/egress and lifecycle callers; three source headers corrected with identical emitted JavaScript."
+      ]
+    },
+    {
       "path": "docs/adr/0001-consume-kontour-primitives-through-public-contracts.md",
       "documentDigest": "1ac8c7439b01cfcc5da749bf3d46b2138501a4d10e78e75732debe4a46cfc3cd",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -1336,117 +1559,987 @@
     },
     {
       "path": "docs/adr/0017-browser-preview-host.md",
-      "documentDigest": "103727f9fa56a0ab6db46c12b5faf2cd1a922c0883589331f486ad74ab944eb8",
-      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "documentDigest": "9be14f3fe1a2cd87746feb09a90699767a0957a984a914dacbb21038f2319a85",
+      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
       "kind": "historical",
       "state": "classified",
-      "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation.",
+      "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; keep original desktop choices/platform gaps and dated body. Added current Browser guide link in existing banner.",
       "limits": "Original platform observations and NOT_VERIFIED findings retain their original date. They do not establish current behavior or close the current browser audit.",
-      "sources": [],
-      "checks": []
-    },
-    {
-      "path": "docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md",
-      "sourceRevision": "a5e06e4df2ab56514b7dbabaaacc56c20ddabcf3",
-      "kind": "design",
-      "state": "classified",
-      "summary": "A current reading note distinguishes authenticated fetch-SSE explicit Last-Event-ID handling from EventSource automatic behavior. It scopes durable replay to orchestration, identifies existing binary live-surface routes/viewer, and preserves one-multiplexed-stream-per-client and saturated-pool input handling as unqualified design constraints rather than completed work.",
-      "limits": "No current all-surface connection census, saturated HTTP/1.1 pool, live reconnect/browser/native transport, or proxy deployment was measured. Per-visible-viewer implementation is not proof of the planned per-client multiplexing or its latency guarantee.",
-      "documentDigest": "0663ec8460f3271254bdeeba20df7518812da5b49781c0eb07c12a8f4a9d9bd8",
       "sources": [
         {
-          "path": "packages/sdk/src/client/http.ts",
-          "digest": "8febfd4707f529b432ee1d15d9dbc51c8b225059cc212eb65d3d360a07ebe242"
+          "path": "packages/contracts/src/live-surface.ts",
+          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
         },
         {
-          "path": "packages/sdk/src/__tests__/fetch-sse.test.ts",
-          "digest": "e4cdf570064a3099a4e15e5103638c08e1e2bcd3df8b0b25837ff227fb8b9ee5"
+          "path": "packages/contracts/src/workspace-browser-pane.ts",
+          "digest": "34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e"
         },
         {
-          "path": "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
-          "digest": "1ad63d680fb04d56f0a73cda9870eb1d62425d23f9056744ecc20fe28e2218a2"
+          "path": "packages/contracts/src/workspace-browser-preview.ts",
+          "digest": "5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4"
         },
         {
-          "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "1f41bd4d49611826023ee263ff5dff73aa65465a8d3369c46fb40320e5ac7ddd"
+          "path": "packages/sdk/src/mobile-device.ts",
+          "digest": "8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a"
+        },
+        {
+          "path": "src-server/routes/browser-agent.ts",
+          "digest": "eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0"
+        },
+        {
+          "path": "src-server/routes/browser.ts",
+          "digest": "41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e"
+        },
+        {
+          "path": "src-server/routes/device-hosts.ts",
+          "digest": "d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87"
+        },
+        {
+          "path": "src-server/routes/device-toolchain.ts",
+          "digest": "08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c"
+        },
+        {
+          "path": "src-server/routes/device-tools.ts",
+          "digest": "551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf"
         },
         {
           "path": "src-server/routes/live-surface.ts",
           "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
         },
         {
-          "path": "src-ui/src/live-surface/useLiveSurface.ts",
-          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+          "path": "src-server/routes/mobile-device.ts",
+          "digest": "0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/services/browser/browser-access.ts",
+          "digest": "c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870"
+        },
+        {
+          "path": "src-server/services/browser/browser-agent-authority.ts",
+          "digest": "e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf"
+        },
+        {
+          "path": "src-server/services/browser/browser-automation.ts",
+          "digest": "16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97"
+        },
+        {
+          "path": "src-server/services/browser/browser-egress-proxy.ts",
+          "digest": "87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8"
+        },
+        {
+          "path": "src-server/services/browser/browser-host.ts",
+          "digest": "1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94"
+        },
+        {
+          "path": "src-server/services/browser/browser-live-surfaces.ts",
+          "digest": "e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9"
+        },
+        {
+          "path": "src-server/services/browser/browser-local-targets.ts",
+          "digest": "daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83"
+        },
+        {
+          "path": "src-server/services/browser/browser-project-settings.ts",
+          "digest": "6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6"
+        },
+        {
+          "path": "src-server/services/browser/browser-service.ts",
+          "digest": "1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b"
+        },
+        {
+          "path": "src-server/services/browser/browser-session-registry.ts",
+          "digest": "aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a"
+        },
+        {
+          "path": "src-server/services/browser/chromium-acquisition.ts",
+          "digest": "baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6"
         },
         {
           "path": "src-server/services/browser/chromium-screencast-producer.ts",
           "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
         },
         {
+          "path": "src-server/services/browser/egress-policy.ts",
+          "digest": "34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde"
+        },
+        {
+          "path": "src-server/services/browser/hosts/chromium-server-host.ts",
+          "digest": "f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2"
+        },
+        {
+          "path": "src-server/services/browser/station-listeners.ts",
+          "digest": "01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb"
+        },
+        {
+          "path": "src-server/services/browser/url-policy.ts",
+          "digest": "46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39"
+        },
+        {
+          "path": "src-server/services/devices/device-access.ts",
+          "digest": "c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96"
+        },
+        {
+          "path": "src-server/services/devices/device-hub-endpoint.ts",
+          "digest": "1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb"
+        },
+        {
+          "path": "src-server/services/devices/device-live-surface-producer.ts",
+          "digest": "c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77"
+        },
+        {
+          "path": "src-server/services/devices/device-session-service.ts",
+          "digest": "b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2"
+        },
+        {
+          "path": "src-server/services/devices/hosts/device-host-registry.ts",
+          "digest": "02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-hub-connection.ts",
+          "digest": "0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-toolchain-service.ts",
+          "digest": "af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50"
+        },
+        {
+          "path": "src-server/services/live-surface/control-lease.ts",
+          "digest": "8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30"
+        },
+        {
+          "path": "src-server/services/live-surface/producer.ts",
+          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+        },
+        {
+          "path": "src-server/services/live-surface/registry.ts",
+          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+        },
+        {
+          "path": "src-server/services/live-surface/surface-hub.ts",
+          "digest": "ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103"
+        },
+        {
+          "path": "src-server/services/mobile-device/mobile-device-host.ts",
+          "digest": "a1c380f92d4c506db418ff1961cd4edc737488d7c88d13a07dbc877add934a57"
+        },
+        {
+          "path": "src-server/tools/station-browser-mcp-server.ts",
+          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
+        },
+        {
+          "path": "src-server/tools/station-control-browser-tools.ts",
+          "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
+        },
+        {
+          "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
+          "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
+        },
+        {
+          "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
+          "digest": "c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648"
+        },
+        {
+          "path": "src-ui/src/live-surface/useLiveSurface.ts",
+          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+          "digest": "34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+          "digest": "4637deeeeff416880c29085648a9d6193c17613711142e3434d240c3caf2f78f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+          "digest": "5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+          "digest": "495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+          "digest": "56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+          "digest": "38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+          "digest": "bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c"
+        }
+      ],
+      "checks": [
+        "Browser/Device source/caller review: 219 tests across eight files passed; parent inspected key profile/access/egress and lifecycle callers. Three corrected source headers transpile identically."
+      ]
+    },
+    {
+      "path": "docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md",
+      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
+      "kind": "design",
+      "state": "classified",
+      "summary": "A current reading note distinguishes authenticated fetch-SSE explicit Last-Event-ID handling from EventSource automatic behavior. It scopes durable replay to orchestration, identifies existing binary live-surface routes/viewer, and preserves one-multiplexed-stream-per-client and saturated-pool input handling as unqualified design constraints rather than completed work. Browser/Device tranche: Full read; unchanged. Current viewer is per-visible-viewer, not the planned multiplex owner; no actual pool-starvation measurement. Current repo issue935 is the original ADR task, not archive935.",
+      "limits": "No current all-surface connection census, saturated HTTP/1.1 pool, live reconnect/browser/native transport, or proxy deployment was measured. Per-visible-viewer implementation is not proof of the planned per-client multiplexing or its latency guarantee.",
+      "documentDigest": "0663ec8460f3271254bdeeba20df7518812da5b49781c0eb07c12a8f4a9d9bd8",
+      "sources": [
+        {
           "path": "docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md",
-          "digest": "e2c26ed636abec13ade37890506ff0650f60b977288c8cfa04347ea06ef67197"
+          "digest": "3a45b8bcbd8896078989b913a152b13e14e7bdb14023faa3072208c2bc83f474"
+        },
+        {
+          "path": "packages/contracts/src/live-surface.ts",
+          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-pane.ts",
+          "digest": "34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-preview.ts",
+          "digest": "5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4"
+        },
+        {
+          "path": "packages/sdk/src/__tests__/fetch-sse.test.ts",
+          "digest": "e4cdf570064a3099a4e15e5103638c08e1e2bcd3df8b0b25837ff227fb8b9ee5"
+        },
+        {
+          "path": "packages/sdk/src/client/http.ts",
+          "digest": "8febfd4707f529b432ee1d15d9dbc51c8b225059cc212eb65d3d360a07ebe242"
+        },
+        {
+          "path": "packages/sdk/src/mobile-device.ts",
+          "digest": "8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a"
+        },
+        {
+          "path": "src-server/routes/browser-agent.ts",
+          "digest": "eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0"
+        },
+        {
+          "path": "src-server/routes/browser.ts",
+          "digest": "41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e"
+        },
+        {
+          "path": "src-server/routes/device-hosts.ts",
+          "digest": "d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87"
+        },
+        {
+          "path": "src-server/routes/device-toolchain.ts",
+          "digest": "08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c"
+        },
+        {
+          "path": "src-server/routes/device-tools.ts",
+          "digest": "551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf"
+        },
+        {
+          "path": "src-server/routes/live-surface.ts",
+          "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
+        },
+        {
+          "path": "src-server/routes/mobile-device.ts",
+          "digest": "0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46"
+        },
+        {
+          "path": "src-server/routes/orchestration/orchestration.ts",
+          "digest": "1f41bd4d49611826023ee263ff5dff73aa65465a8d3369c46fb40320e5ac7ddd"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/services/browser/browser-access.ts",
+          "digest": "c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870"
+        },
+        {
+          "path": "src-server/services/browser/browser-agent-authority.ts",
+          "digest": "e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf"
+        },
+        {
+          "path": "src-server/services/browser/browser-automation.ts",
+          "digest": "16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97"
+        },
+        {
+          "path": "src-server/services/browser/browser-egress-proxy.ts",
+          "digest": "87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8"
+        },
+        {
+          "path": "src-server/services/browser/browser-host.ts",
+          "digest": "1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94"
+        },
+        {
+          "path": "src-server/services/browser/browser-live-surfaces.ts",
+          "digest": "e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9"
+        },
+        {
+          "path": "src-server/services/browser/browser-local-targets.ts",
+          "digest": "daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83"
+        },
+        {
+          "path": "src-server/services/browser/browser-project-settings.ts",
+          "digest": "6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6"
+        },
+        {
+          "path": "src-server/services/browser/browser-service.ts",
+          "digest": "1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b"
+        },
+        {
+          "path": "src-server/services/browser/browser-session-registry.ts",
+          "digest": "aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a"
+        },
+        {
+          "path": "src-server/services/browser/chromium-acquisition.ts",
+          "digest": "baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6"
+        },
+        {
+          "path": "src-server/services/browser/chromium-screencast-producer.ts",
+          "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
+        },
+        {
+          "path": "src-server/services/browser/egress-policy.ts",
+          "digest": "34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde"
+        },
+        {
+          "path": "src-server/services/browser/hosts/chromium-server-host.ts",
+          "digest": "f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2"
+        },
+        {
+          "path": "src-server/services/browser/station-listeners.ts",
+          "digest": "01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb"
+        },
+        {
+          "path": "src-server/services/browser/url-policy.ts",
+          "digest": "46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39"
+        },
+        {
+          "path": "src-server/services/devices/device-access.ts",
+          "digest": "c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96"
+        },
+        {
+          "path": "src-server/services/devices/device-hub-endpoint.ts",
+          "digest": "1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb"
+        },
+        {
+          "path": "src-server/services/devices/device-live-surface-producer.ts",
+          "digest": "c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77"
+        },
+        {
+          "path": "src-server/services/devices/device-session-service.ts",
+          "digest": "b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2"
+        },
+        {
+          "path": "src-server/services/devices/hosts/device-host-registry.ts",
+          "digest": "02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-hub-connection.ts",
+          "digest": "0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-toolchain-service.ts",
+          "digest": "af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50"
+        },
+        {
+          "path": "src-server/services/live-surface/control-lease.ts",
+          "digest": "8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30"
+        },
+        {
+          "path": "src-server/services/live-surface/producer.ts",
+          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+        },
+        {
+          "path": "src-server/services/live-surface/registry.ts",
+          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+        },
+        {
+          "path": "src-server/services/live-surface/surface-hub.ts",
+          "digest": "ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103"
+        },
+        {
+          "path": "src-server/services/mobile-device/mobile-device-host.ts",
+          "digest": "a1c380f92d4c506db418ff1961cd4edc737488d7c88d13a07dbc877add934a57"
+        },
+        {
+          "path": "src-server/tools/station-browser-mcp-server.ts",
+          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
+        },
+        {
+          "path": "src-server/tools/station-control-browser-tools.ts",
+          "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
+        },
+        {
+          "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
+          "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
+        },
+        {
+          "path": "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
+          "digest": "1ad63d680fb04d56f0a73cda9870eb1d62425d23f9056744ecc20fe28e2218a2"
+        },
+        {
+          "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
+          "digest": "c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648"
+        },
+        {
+          "path": "src-ui/src/live-surface/useLiveSurface.ts",
+          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+          "digest": "34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+          "digest": "4637deeeeff416880c29085648a9d6193c17613711142e3434d240c3caf2f78f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+          "digest": "5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+          "digest": "495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+          "digest": "56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+          "digest": "38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+          "digest": "bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c"
         }
       ],
       "checks": [
         "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
-        "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun."
+        "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
+        "Browser/Device source/caller review: 219 tests across eight files passed; parent inspected key profile/access/egress and lifecycle callers. Three corrected source headers transpile identically."
       ]
     },
     {
       "path": "docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md",
-      "documentDigest": "e2c26ed636abec13ade37890506ff0650f60b977288c8cfa04347ea06ef67197",
-      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "documentDigest": "3a45b8bcbd8896078989b913a152b13e14e7bdb14023faa3072208c2bc83f474",
+      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
       "kind": "historical",
       "state": "classified",
-      "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation.",
+      "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain dated planned/unverified statements. Current implementation uses per-Project/principal profiles, bound tool grants, shared Device producer. CEF and multiplex plans are not current implementations. Added current guide link only.",
       "limits": "Original platform observations and NOT_VERIFIED findings retain their original date. They do not establish current behavior or close the current browser audit.",
-      "sources": [],
-      "checks": []
+      "sources": [
+        {
+          "path": "packages/contracts/src/live-surface.ts",
+          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-pane.ts",
+          "digest": "34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-preview.ts",
+          "digest": "5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4"
+        },
+        {
+          "path": "packages/sdk/src/mobile-device.ts",
+          "digest": "8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a"
+        },
+        {
+          "path": "src-server/routes/browser-agent.ts",
+          "digest": "eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0"
+        },
+        {
+          "path": "src-server/routes/browser.ts",
+          "digest": "41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e"
+        },
+        {
+          "path": "src-server/routes/device-hosts.ts",
+          "digest": "d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87"
+        },
+        {
+          "path": "src-server/routes/device-toolchain.ts",
+          "digest": "08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c"
+        },
+        {
+          "path": "src-server/routes/device-tools.ts",
+          "digest": "551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf"
+        },
+        {
+          "path": "src-server/routes/live-surface.ts",
+          "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
+        },
+        {
+          "path": "src-server/routes/mobile-device.ts",
+          "digest": "0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/services/browser/browser-access.ts",
+          "digest": "c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870"
+        },
+        {
+          "path": "src-server/services/browser/browser-agent-authority.ts",
+          "digest": "e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf"
+        },
+        {
+          "path": "src-server/services/browser/browser-automation.ts",
+          "digest": "16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97"
+        },
+        {
+          "path": "src-server/services/browser/browser-egress-proxy.ts",
+          "digest": "87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8"
+        },
+        {
+          "path": "src-server/services/browser/browser-host.ts",
+          "digest": "1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94"
+        },
+        {
+          "path": "src-server/services/browser/browser-live-surfaces.ts",
+          "digest": "e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9"
+        },
+        {
+          "path": "src-server/services/browser/browser-local-targets.ts",
+          "digest": "daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83"
+        },
+        {
+          "path": "src-server/services/browser/browser-project-settings.ts",
+          "digest": "6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6"
+        },
+        {
+          "path": "src-server/services/browser/browser-service.ts",
+          "digest": "1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b"
+        },
+        {
+          "path": "src-server/services/browser/browser-session-registry.ts",
+          "digest": "aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a"
+        },
+        {
+          "path": "src-server/services/browser/chromium-acquisition.ts",
+          "digest": "baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6"
+        },
+        {
+          "path": "src-server/services/browser/chromium-screencast-producer.ts",
+          "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
+        },
+        {
+          "path": "src-server/services/browser/egress-policy.ts",
+          "digest": "34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde"
+        },
+        {
+          "path": "src-server/services/browser/hosts/chromium-server-host.ts",
+          "digest": "f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2"
+        },
+        {
+          "path": "src-server/services/browser/station-listeners.ts",
+          "digest": "01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb"
+        },
+        {
+          "path": "src-server/services/browser/url-policy.ts",
+          "digest": "46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39"
+        },
+        {
+          "path": "src-server/services/devices/device-access.ts",
+          "digest": "c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96"
+        },
+        {
+          "path": "src-server/services/devices/device-hub-endpoint.ts",
+          "digest": "1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb"
+        },
+        {
+          "path": "src-server/services/devices/device-live-surface-producer.ts",
+          "digest": "c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77"
+        },
+        {
+          "path": "src-server/services/devices/device-session-service.ts",
+          "digest": "b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2"
+        },
+        {
+          "path": "src-server/services/devices/hosts/device-host-registry.ts",
+          "digest": "02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-hub-connection.ts",
+          "digest": "0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-toolchain-service.ts",
+          "digest": "af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50"
+        },
+        {
+          "path": "src-server/services/live-surface/control-lease.ts",
+          "digest": "8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30"
+        },
+        {
+          "path": "src-server/services/live-surface/producer.ts",
+          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+        },
+        {
+          "path": "src-server/services/live-surface/registry.ts",
+          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+        },
+        {
+          "path": "src-server/services/live-surface/surface-hub.ts",
+          "digest": "ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103"
+        },
+        {
+          "path": "src-server/services/mobile-device/mobile-device-host.ts",
+          "digest": "a1c380f92d4c506db418ff1961cd4edc737488d7c88d13a07dbc877add934a57"
+        },
+        {
+          "path": "src-server/tools/station-browser-mcp-server.ts",
+          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
+        },
+        {
+          "path": "src-server/tools/station-control-browser-tools.ts",
+          "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
+        },
+        {
+          "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
+          "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
+        },
+        {
+          "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
+          "digest": "c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648"
+        },
+        {
+          "path": "src-ui/src/live-surface/useLiveSurface.ts",
+          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+          "digest": "34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+          "digest": "4637deeeeff416880c29085648a9d6193c17613711142e3434d240c3caf2f78f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+          "digest": "5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+          "digest": "495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+          "digest": "56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+          "digest": "38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+          "digest": "bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c"
+        }
+      ],
+      "checks": [
+        "Browser/Device source/caller review: 219 tests across eight files passed; parent inspected key profile/access/egress and lifecycle callers. Three corrected source headers transpile identically."
+      ]
+    },
+    {
+      "path": "docs/architecture.md",
+      "documentDigest": "7041483a8f340090db4947082c42d40e0a6dd15fefc52c938ec644fe390d2220",
+      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
+      "kind": "architecture",
+      "state": "partial",
+      "summary": "Full-read contextual architecture; only one Browser/Device reading-path row added and source-backed. Other subsystem claims not re-certified.",
+      "limits": "Bounded source/caller review plus named synthetic tests; no real browser acquisition/launch, public-site navigation, physical device/app, SSH host operation, native package, Windows process tree or saturated-origin-pool proof. File hash identifies owner bytes, not whole-file implementation certification.",
+      "sources": [
+        {
+          "path": "packages/contracts/src/live-surface.ts",
+          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-pane.ts",
+          "digest": "34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-preview.ts",
+          "digest": "5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4"
+        },
+        {
+          "path": "packages/sdk/src/mobile-device.ts",
+          "digest": "8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a"
+        },
+        {
+          "path": "src-server/routes/browser-agent.ts",
+          "digest": "eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0"
+        },
+        {
+          "path": "src-server/routes/browser.ts",
+          "digest": "41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e"
+        },
+        {
+          "path": "src-server/routes/device-hosts.ts",
+          "digest": "d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87"
+        },
+        {
+          "path": "src-server/routes/device-toolchain.ts",
+          "digest": "08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c"
+        },
+        {
+          "path": "src-server/routes/device-tools.ts",
+          "digest": "551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf"
+        },
+        {
+          "path": "src-server/routes/live-surface.ts",
+          "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
+        },
+        {
+          "path": "src-server/routes/mobile-device.ts",
+          "digest": "0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/services/browser/browser-access.ts",
+          "digest": "c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870"
+        },
+        {
+          "path": "src-server/services/browser/browser-agent-authority.ts",
+          "digest": "e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf"
+        },
+        {
+          "path": "src-server/services/browser/browser-automation.ts",
+          "digest": "16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97"
+        },
+        {
+          "path": "src-server/services/browser/browser-egress-proxy.ts",
+          "digest": "87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8"
+        },
+        {
+          "path": "src-server/services/browser/browser-host.ts",
+          "digest": "1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94"
+        },
+        {
+          "path": "src-server/services/browser/browser-live-surfaces.ts",
+          "digest": "e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9"
+        },
+        {
+          "path": "src-server/services/browser/browser-local-targets.ts",
+          "digest": "daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83"
+        },
+        {
+          "path": "src-server/services/browser/browser-project-settings.ts",
+          "digest": "6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6"
+        },
+        {
+          "path": "src-server/services/browser/browser-service.ts",
+          "digest": "1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b"
+        },
+        {
+          "path": "src-server/services/browser/browser-session-registry.ts",
+          "digest": "aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a"
+        },
+        {
+          "path": "src-server/services/browser/chromium-acquisition.ts",
+          "digest": "baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6"
+        },
+        {
+          "path": "src-server/services/browser/chromium-screencast-producer.ts",
+          "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
+        },
+        {
+          "path": "src-server/services/browser/egress-policy.ts",
+          "digest": "34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde"
+        },
+        {
+          "path": "src-server/services/browser/hosts/chromium-server-host.ts",
+          "digest": "f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2"
+        },
+        {
+          "path": "src-server/services/browser/station-listeners.ts",
+          "digest": "01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb"
+        },
+        {
+          "path": "src-server/services/browser/url-policy.ts",
+          "digest": "46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39"
+        },
+        {
+          "path": "src-server/services/devices/device-access.ts",
+          "digest": "c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96"
+        },
+        {
+          "path": "src-server/services/devices/device-hub-endpoint.ts",
+          "digest": "1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb"
+        },
+        {
+          "path": "src-server/services/devices/device-live-surface-producer.ts",
+          "digest": "c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77"
+        },
+        {
+          "path": "src-server/services/devices/device-session-service.ts",
+          "digest": "b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2"
+        },
+        {
+          "path": "src-server/services/devices/hosts/device-host-registry.ts",
+          "digest": "02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-hub-connection.ts",
+          "digest": "0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-toolchain-service.ts",
+          "digest": "af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50"
+        },
+        {
+          "path": "src-server/services/live-surface/control-lease.ts",
+          "digest": "8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30"
+        },
+        {
+          "path": "src-server/services/live-surface/producer.ts",
+          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+        },
+        {
+          "path": "src-server/services/live-surface/registry.ts",
+          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+        },
+        {
+          "path": "src-server/services/live-surface/surface-hub.ts",
+          "digest": "ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103"
+        },
+        {
+          "path": "src-server/services/mobile-device/mobile-device-host.ts",
+          "digest": "a1c380f92d4c506db418ff1961cd4edc737488d7c88d13a07dbc877add934a57"
+        },
+        {
+          "path": "src-server/tools/station-browser-mcp-server.ts",
+          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
+        },
+        {
+          "path": "src-server/tools/station-control-browser-tools.ts",
+          "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
+        },
+        {
+          "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
+          "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
+        },
+        {
+          "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
+          "digest": "c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648"
+        },
+        {
+          "path": "src-ui/src/live-surface/useLiveSurface.ts",
+          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+          "digest": "34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+          "digest": "4637deeeeff416880c29085648a9d6193c17613711142e3434d240c3caf2f78f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+          "digest": "5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+          "digest": "495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+          "digest": "56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+          "digest": "38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+          "digest": "bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c"
+        }
+      ],
+      "checks": [
+        "Browser/Device source/caller review; 219 tests across eight files passed, historical bodies preserved.",
+        "Parent inspected key profile/access/egress and lifecycle callers; three source headers corrected with identical emitted JavaScript."
+      ]
     },
     {
       "path": "docs/architecture/module-map.md",
-      "documentDigest": "f277b08ead38e55017caa9b5fd3e2e4227f341ad6d3060e6c39f30d0ca895468",
-      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "documentDigest": "9f0b2429e0c70e9e0193be17726de109cc6ded91a7e7741934c07380148c72ce",
+      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
       "kind": "current",
       "state": "partial",
-      "summary": "Reviewed KnowledgeStoreProvider, SqliteVecIndexProvider, Workspace checkpoints, and Personal Work Board against their callers. Moved and qualified optional OIDC under its account owner. Other module sections remain subject to the broader audit.",
+      "summary": "Reviewed KnowledgeStoreProvider, SqliteVecIndexProvider, Workspace checkpoints, and Personal Work Board against their callers. Moved and qualified optional OIDC under its account owner. Other module sections remain subject to the broader audit. Browser/Device tranche: Only added BrowserSessionService and Shared live surface plus corrected existing MobileDeviceHost. Preserve every unrelated module/partial ledger section and OIDC subsection.",
       "limits": "Reviewed sections do not certify the full catalog. No live provider, physical device, deployed identity service, or exact pre-effect/post-effect snapshot guarantee.",
       "sources": [
         {
-          "path": "src-server/knowledge-store/knowledge-store-provider.ts",
-          "digest": "268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85"
+          "path": "packages/contracts/src/live-surface.ts",
+          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
         },
         {
-          "path": "src-server/knowledge-index/sqlite-vec-index-provider.ts",
-          "digest": "96507a6178eaf742a3b48ad4b00706f74c824356b864158308612a19687af0a6"
+          "path": "packages/contracts/src/workspace-browser-pane.ts",
+          "digest": "34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e"
         },
         {
-          "path": "src-server/routes/knowledge/knowledge-index-routes.ts",
-          "digest": "ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c"
+          "path": "packages/contracts/src/workspace-browser-preview.ts",
+          "digest": "5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4"
+        },
+        {
+          "path": "packages/sdk/src/mobile-device.ts",
+          "digest": "8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a"
+        },
+        {
+          "path": "packages/sdk/src/spatial-board.ts",
+          "digest": "0f4daca0da74286a06d4df956d9dd91ddcedfaccc49fa0343a4f04b85e54ece0"
         },
         {
           "path": "src-server/knowledge-index/migrate-pre-index-knowledge.ts",
           "digest": "82dcb6c23161ba8866477fa1eca25b19f757f4d2b028d48f3f379c7424a4a371"
         },
         {
-          "path": "src-server/services/checkpoints/turn-checkpoint-capture.ts",
-          "digest": "160093abc7654f0026fe658438ab33f75d468ec49b90a5e75fb58f9cfba40940"
+          "path": "src-server/knowledge-index/sqlite-vec-index-provider.ts",
+          "digest": "96507a6178eaf742a3b48ad4b00706f74c824356b864158308612a19687af0a6"
         },
         {
-          "path": "src-server/services/checkpoints/checkpoint-restore.ts",
-          "digest": "c0ef6511f6ec5340d86774d6ed6f4ce0908745f05407a46b69b79f51e5c908ac"
+          "path": "src-server/knowledge-store/knowledge-store-provider.ts",
+          "digest": "268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85"
         },
         {
-          "path": "src-server/services/orchestration/workspace-identity.ts",
-          "digest": "45229bf7dcb41fc8d92d45f2d023eee55a9a93a5be2b6407b79af7c564dcd632"
+          "path": "src-server/routes/browser-agent.ts",
+          "digest": "eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0"
         },
         {
-          "path": "src-server/services/spatial-board/spatial-board-store.ts",
-          "digest": "d5e9c1bf6380b16a83af74b7bcfb7fdf5c45a9f04068b78c394c7edf04394f4c"
+          "path": "src-server/routes/browser.ts",
+          "digest": "41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e"
         },
         {
-          "path": "src-server/services/spatial-board/spatial-board-resolver.ts",
-          "digest": "cbcfdf257e846027371b77c11cb9ed41152358141078113deb65d1a6da93a399"
+          "path": "src-server/routes/device-hosts.ts",
+          "digest": "d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87"
+        },
+        {
+          "path": "src-server/routes/device-toolchain.ts",
+          "digest": "08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c"
+        },
+        {
+          "path": "src-server/routes/device-tools.ts",
+          "digest": "551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf"
+        },
+        {
+          "path": "src-server/routes/knowledge/knowledge-index-routes.ts",
+          "digest": "ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c"
+        },
+        {
+          "path": "src-server/routes/live-surface.ts",
+          "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
+        },
+        {
+          "path": "src-server/routes/mobile-device.ts",
+          "digest": "0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -1457,50 +2550,1088 @@
           "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
         },
         {
-          "path": "packages/sdk/src/spatial-board.ts",
-          "digest": "0f4daca0da74286a06d4df956d9dd91ddcedfaccc49fa0343a4f04b85e54ece0"
+          "path": "src-server/services/browser/browser-access.ts",
+          "digest": "c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870"
         },
         {
-          "path": "src-ui/src/lib/queryDefaults.ts",
-          "digest": "ada88d7152a2ebe1e9c89bbd4d9da4ca5681849e5c499546fa0e81b6b90d27ae"
+          "path": "src-server/services/browser/browser-agent-authority.ts",
+          "digest": "e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf"
+        },
+        {
+          "path": "src-server/services/browser/browser-automation.ts",
+          "digest": "16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97"
+        },
+        {
+          "path": "src-server/services/browser/browser-egress-proxy.ts",
+          "digest": "87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8"
+        },
+        {
+          "path": "src-server/services/browser/browser-host.ts",
+          "digest": "1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94"
+        },
+        {
+          "path": "src-server/services/browser/browser-live-surfaces.ts",
+          "digest": "e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9"
+        },
+        {
+          "path": "src-server/services/browser/browser-local-targets.ts",
+          "digest": "daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83"
+        },
+        {
+          "path": "src-server/services/browser/browser-project-settings.ts",
+          "digest": "6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6"
+        },
+        {
+          "path": "src-server/services/browser/browser-service.ts",
+          "digest": "1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b"
+        },
+        {
+          "path": "src-server/services/browser/browser-session-registry.ts",
+          "digest": "aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a"
+        },
+        {
+          "path": "src-server/services/browser/chromium-acquisition.ts",
+          "digest": "baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6"
+        },
+        {
+          "path": "src-server/services/browser/chromium-screencast-producer.ts",
+          "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
+        },
+        {
+          "path": "src-server/services/browser/egress-policy.ts",
+          "digest": "34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde"
+        },
+        {
+          "path": "src-server/services/browser/hosts/chromium-server-host.ts",
+          "digest": "f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2"
+        },
+        {
+          "path": "src-server/services/browser/station-listeners.ts",
+          "digest": "01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb"
+        },
+        {
+          "path": "src-server/services/browser/url-policy.ts",
+          "digest": "46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39"
+        },
+        {
+          "path": "src-server/services/checkpoints/checkpoint-restore.ts",
+          "digest": "c0ef6511f6ec5340d86774d6ed6f4ce0908745f05407a46b69b79f51e5c908ac"
+        },
+        {
+          "path": "src-server/services/checkpoints/turn-checkpoint-capture.ts",
+          "digest": "160093abc7654f0026fe658438ab33f75d468ec49b90a5e75fb58f9cfba40940"
+        },
+        {
+          "path": "src-server/services/devices/device-access.ts",
+          "digest": "c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96"
+        },
+        {
+          "path": "src-server/services/devices/device-hub-endpoint.ts",
+          "digest": "1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb"
+        },
+        {
+          "path": "src-server/services/devices/device-live-surface-producer.ts",
+          "digest": "c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77"
+        },
+        {
+          "path": "src-server/services/devices/device-session-service.ts",
+          "digest": "b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2"
+        },
+        {
+          "path": "src-server/services/devices/hosts/device-host-registry.ts",
+          "digest": "02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-hub-connection.ts",
+          "digest": "0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-toolchain-service.ts",
+          "digest": "af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50"
+        },
+        {
+          "path": "src-server/services/identity/local-account-oidc.ts",
+          "digest": "9c5b3c183634eb1c90d9ed10e1e87c9d58fdce5b5a639ccdc0e63102e3779d3d"
         },
         {
           "path": "src-server/services/identity/local-account-provider.ts",
           "digest": "adcca23a978ad7c38ca7cbcbf1d14b1241a12ab2991723a11cd1e1319668a2de"
         },
         {
-          "path": "src-server/services/identity/local-account-oidc.ts",
-          "digest": "9c5b3c183634eb1c90d9ed10e1e87c9d58fdce5b5a639ccdc0e63102e3779d3d"
+          "path": "src-server/services/live-surface/control-lease.ts",
+          "digest": "8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30"
+        },
+        {
+          "path": "src-server/services/live-surface/producer.ts",
+          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+        },
+        {
+          "path": "src-server/services/live-surface/registry.ts",
+          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+        },
+        {
+          "path": "src-server/services/live-surface/surface-hub.ts",
+          "digest": "ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103"
+        },
+        {
+          "path": "src-server/services/mobile-device/mobile-device-host.ts",
+          "digest": "a1c380f92d4c506db418ff1961cd4edc737488d7c88d13a07dbc877add934a57"
+        },
+        {
+          "path": "src-server/services/orchestration/workspace-identity.ts",
+          "digest": "45229bf7dcb41fc8d92d45f2d023eee55a9a93a5be2b6407b79af7c564dcd632"
+        },
+        {
+          "path": "src-server/services/spatial-board/spatial-board-resolver.ts",
+          "digest": "cbcfdf257e846027371b77c11cb9ed41152358141078113deb65d1a6da93a399"
+        },
+        {
+          "path": "src-server/services/spatial-board/spatial-board-store.ts",
+          "digest": "d5e9c1bf6380b16a83af74b7bcfb7fdf5c45a9f04068b78c394c7edf04394f4c"
+        },
+        {
+          "path": "src-server/tools/station-browser-mcp-server.ts",
+          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
+        },
+        {
+          "path": "src-server/tools/station-control-browser-tools.ts",
+          "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
+        },
+        {
+          "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
+          "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
+        },
+        {
+          "path": "src-ui/src/lib/queryDefaults.ts",
+          "digest": "ada88d7152a2ebe1e9c89bbd4d9da4ca5681849e5c499546fa0e81b6b90d27ae"
+        },
+        {
+          "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
+          "digest": "c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648"
+        },
+        {
+          "path": "src-ui/src/live-surface/useLiveSurface.ts",
+          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+          "digest": "34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+          "digest": "4637deeeeff416880c29085648a9d6193c17613711142e3434d240c3caf2f78f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+          "digest": "5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+          "digest": "495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+          "digest": "56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+          "digest": "38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+          "digest": "bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c"
         }
       ],
       "checks": [
         "Independent Knowledge, Work Board/checkpoint, and authentication source/delta reviews accepted.",
         "Work Board/checkpoint selection: 64 tests across 5 files passed; independent capture selection: 17 tests passed.",
         "OIDC fixture suite: 17 tests passed; bounded held-discovery probe confirmed startup dependency.",
-        "Generated MCP checked: 95 topics from canonical inputs."
+        "Generated MCP checked: 95 topics from canonical inputs.",
+        "Browser/Device source/caller review: 219 tests across eight files passed; parent inspected key profile/access/egress and lifecycle callers. Three corrected source headers transpile identically."
       ]
     },
     {
       "path": "docs/design/browser-preview-host-spike.md",
-      "documentDigest": "f33a88254386fb82803361a67c0d751fe748c40a04234ca10f167f44e2593d93",
-      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "documentDigest": "054668c44ea7e835f73044ed1f004a832f5412d2da133d11f7958f8ba3211510",
+      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
       "kind": "historical",
       "state": "classified",
-      "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation.",
+      "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain dated upstream/platform experiment and go/no-go rationale; source/current guide link added, no experiment rerun or current-upstream claim.",
       "limits": "Original platform observations and NOT_VERIFIED findings retain their original date. They do not establish current behavior or close the current browser audit.",
-      "sources": [],
-      "checks": []
+      "sources": [
+        {
+          "path": "packages/contracts/src/live-surface.ts",
+          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-pane.ts",
+          "digest": "34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-preview.ts",
+          "digest": "5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4"
+        },
+        {
+          "path": "packages/sdk/src/mobile-device.ts",
+          "digest": "8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a"
+        },
+        {
+          "path": "src-server/routes/browser-agent.ts",
+          "digest": "eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0"
+        },
+        {
+          "path": "src-server/routes/browser.ts",
+          "digest": "41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e"
+        },
+        {
+          "path": "src-server/routes/device-hosts.ts",
+          "digest": "d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87"
+        },
+        {
+          "path": "src-server/routes/device-toolchain.ts",
+          "digest": "08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c"
+        },
+        {
+          "path": "src-server/routes/device-tools.ts",
+          "digest": "551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf"
+        },
+        {
+          "path": "src-server/routes/live-surface.ts",
+          "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
+        },
+        {
+          "path": "src-server/routes/mobile-device.ts",
+          "digest": "0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/services/browser/browser-access.ts",
+          "digest": "c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870"
+        },
+        {
+          "path": "src-server/services/browser/browser-agent-authority.ts",
+          "digest": "e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf"
+        },
+        {
+          "path": "src-server/services/browser/browser-automation.ts",
+          "digest": "16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97"
+        },
+        {
+          "path": "src-server/services/browser/browser-egress-proxy.ts",
+          "digest": "87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8"
+        },
+        {
+          "path": "src-server/services/browser/browser-host.ts",
+          "digest": "1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94"
+        },
+        {
+          "path": "src-server/services/browser/browser-live-surfaces.ts",
+          "digest": "e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9"
+        },
+        {
+          "path": "src-server/services/browser/browser-local-targets.ts",
+          "digest": "daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83"
+        },
+        {
+          "path": "src-server/services/browser/browser-project-settings.ts",
+          "digest": "6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6"
+        },
+        {
+          "path": "src-server/services/browser/browser-service.ts",
+          "digest": "1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b"
+        },
+        {
+          "path": "src-server/services/browser/browser-session-registry.ts",
+          "digest": "aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a"
+        },
+        {
+          "path": "src-server/services/browser/chromium-acquisition.ts",
+          "digest": "baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6"
+        },
+        {
+          "path": "src-server/services/browser/chromium-screencast-producer.ts",
+          "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
+        },
+        {
+          "path": "src-server/services/browser/egress-policy.ts",
+          "digest": "34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde"
+        },
+        {
+          "path": "src-server/services/browser/hosts/chromium-server-host.ts",
+          "digest": "f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2"
+        },
+        {
+          "path": "src-server/services/browser/station-listeners.ts",
+          "digest": "01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb"
+        },
+        {
+          "path": "src-server/services/browser/url-policy.ts",
+          "digest": "46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39"
+        },
+        {
+          "path": "src-server/services/devices/device-access.ts",
+          "digest": "c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96"
+        },
+        {
+          "path": "src-server/services/devices/device-hub-endpoint.ts",
+          "digest": "1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb"
+        },
+        {
+          "path": "src-server/services/devices/device-live-surface-producer.ts",
+          "digest": "c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77"
+        },
+        {
+          "path": "src-server/services/devices/device-session-service.ts",
+          "digest": "b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2"
+        },
+        {
+          "path": "src-server/services/devices/hosts/device-host-registry.ts",
+          "digest": "02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-hub-connection.ts",
+          "digest": "0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-toolchain-service.ts",
+          "digest": "af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50"
+        },
+        {
+          "path": "src-server/services/live-surface/control-lease.ts",
+          "digest": "8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30"
+        },
+        {
+          "path": "src-server/services/live-surface/producer.ts",
+          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+        },
+        {
+          "path": "src-server/services/live-surface/registry.ts",
+          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+        },
+        {
+          "path": "src-server/services/live-surface/surface-hub.ts",
+          "digest": "ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103"
+        },
+        {
+          "path": "src-server/services/mobile-device/mobile-device-host.ts",
+          "digest": "a1c380f92d4c506db418ff1961cd4edc737488d7c88d13a07dbc877add934a57"
+        },
+        {
+          "path": "src-server/tools/station-browser-mcp-server.ts",
+          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
+        },
+        {
+          "path": "src-server/tools/station-control-browser-tools.ts",
+          "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
+        },
+        {
+          "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
+          "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
+        },
+        {
+          "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
+          "digest": "c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648"
+        },
+        {
+          "path": "src-ui/src/live-surface/useLiveSurface.ts",
+          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+          "digest": "34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+          "digest": "4637deeeeff416880c29085648a9d6193c17613711142e3434d240c3caf2f78f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+          "digest": "5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+          "digest": "495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+          "digest": "56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+          "digest": "38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+          "digest": "bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c"
+        }
+      ],
+      "checks": [
+        "Browser/Device source/caller review: 219 tests across eight files passed; parent inspected key profile/access/egress and lifecycle callers. Three corrected source headers transpile identically."
+      ]
     },
     {
       "path": "docs/design/browser-preview-pane-mvp.md",
-      "documentDigest": "16b956674d8b3f38255fc5e297aa37fb8aa0fdc5adea9bc79a134adb139de2a4",
-      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "documentDigest": "e01e9883f210cd5785ef82049198220f0e6015c19bb2acf3a6dcc1d56cea4eba",
+      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
       "kind": "historical",
       "state": "classified",
-      "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation.",
+      "summary": "Dated browser design or experiment; its opening note links the current Browser pane explanation. Browser/Device tranche: Full read; retain original native-loopback grants and unavailable mobile/web observations as dated history.2.0 session-reference migration is current owner. Added current guide link only.",
       "limits": "Original platform observations and NOT_VERIFIED findings retain their original date. They do not establish current behavior or close the current browser audit.",
-      "sources": [],
-      "checks": []
+      "sources": [
+        {
+          "path": "packages/contracts/src/live-surface.ts",
+          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-pane.ts",
+          "digest": "34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-preview.ts",
+          "digest": "5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4"
+        },
+        {
+          "path": "packages/sdk/src/mobile-device.ts",
+          "digest": "8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a"
+        },
+        {
+          "path": "src-server/routes/browser-agent.ts",
+          "digest": "eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0"
+        },
+        {
+          "path": "src-server/routes/browser.ts",
+          "digest": "41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e"
+        },
+        {
+          "path": "src-server/routes/device-hosts.ts",
+          "digest": "d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87"
+        },
+        {
+          "path": "src-server/routes/device-toolchain.ts",
+          "digest": "08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c"
+        },
+        {
+          "path": "src-server/routes/device-tools.ts",
+          "digest": "551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf"
+        },
+        {
+          "path": "src-server/routes/live-surface.ts",
+          "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
+        },
+        {
+          "path": "src-server/routes/mobile-device.ts",
+          "digest": "0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/services/browser/browser-access.ts",
+          "digest": "c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870"
+        },
+        {
+          "path": "src-server/services/browser/browser-agent-authority.ts",
+          "digest": "e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf"
+        },
+        {
+          "path": "src-server/services/browser/browser-automation.ts",
+          "digest": "16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97"
+        },
+        {
+          "path": "src-server/services/browser/browser-egress-proxy.ts",
+          "digest": "87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8"
+        },
+        {
+          "path": "src-server/services/browser/browser-host.ts",
+          "digest": "1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94"
+        },
+        {
+          "path": "src-server/services/browser/browser-live-surfaces.ts",
+          "digest": "e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9"
+        },
+        {
+          "path": "src-server/services/browser/browser-local-targets.ts",
+          "digest": "daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83"
+        },
+        {
+          "path": "src-server/services/browser/browser-project-settings.ts",
+          "digest": "6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6"
+        },
+        {
+          "path": "src-server/services/browser/browser-service.ts",
+          "digest": "1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b"
+        },
+        {
+          "path": "src-server/services/browser/browser-session-registry.ts",
+          "digest": "aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a"
+        },
+        {
+          "path": "src-server/services/browser/chromium-acquisition.ts",
+          "digest": "baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6"
+        },
+        {
+          "path": "src-server/services/browser/chromium-screencast-producer.ts",
+          "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
+        },
+        {
+          "path": "src-server/services/browser/egress-policy.ts",
+          "digest": "34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde"
+        },
+        {
+          "path": "src-server/services/browser/hosts/chromium-server-host.ts",
+          "digest": "f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2"
+        },
+        {
+          "path": "src-server/services/browser/station-listeners.ts",
+          "digest": "01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb"
+        },
+        {
+          "path": "src-server/services/browser/url-policy.ts",
+          "digest": "46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39"
+        },
+        {
+          "path": "src-server/services/devices/device-access.ts",
+          "digest": "c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96"
+        },
+        {
+          "path": "src-server/services/devices/device-hub-endpoint.ts",
+          "digest": "1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb"
+        },
+        {
+          "path": "src-server/services/devices/device-live-surface-producer.ts",
+          "digest": "c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77"
+        },
+        {
+          "path": "src-server/services/devices/device-session-service.ts",
+          "digest": "b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2"
+        },
+        {
+          "path": "src-server/services/devices/hosts/device-host-registry.ts",
+          "digest": "02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-hub-connection.ts",
+          "digest": "0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-toolchain-service.ts",
+          "digest": "af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50"
+        },
+        {
+          "path": "src-server/services/live-surface/control-lease.ts",
+          "digest": "8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30"
+        },
+        {
+          "path": "src-server/services/live-surface/producer.ts",
+          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+        },
+        {
+          "path": "src-server/services/live-surface/registry.ts",
+          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+        },
+        {
+          "path": "src-server/services/live-surface/surface-hub.ts",
+          "digest": "ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103"
+        },
+        {
+          "path": "src-server/services/mobile-device/mobile-device-host.ts",
+          "digest": "a1c380f92d4c506db418ff1961cd4edc737488d7c88d13a07dbc877add934a57"
+        },
+        {
+          "path": "src-server/tools/station-browser-mcp-server.ts",
+          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
+        },
+        {
+          "path": "src-server/tools/station-control-browser-tools.ts",
+          "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
+        },
+        {
+          "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
+          "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
+        },
+        {
+          "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
+          "digest": "c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648"
+        },
+        {
+          "path": "src-ui/src/live-surface/useLiveSurface.ts",
+          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+          "digest": "34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+          "digest": "4637deeeeff416880c29085648a9d6193c17613711142e3434d240c3caf2f78f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+          "digest": "5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+          "digest": "495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+          "digest": "56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+          "digest": "38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+          "digest": "bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c"
+        }
+      ],
+      "checks": [
+        "Browser/Device source/caller review: 219 tests across eight files passed; parent inspected key profile/access/egress and lifecycle callers. Three corrected source headers transpile identically."
+      ]
+    },
+    {
+      "path": "docs/design/hosted-execution-isolation.md",
+      "sourceRevision": "98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Proposed isolation boundary already labeled as such; no prose edit needed. Checked current runtime/persistence ownership and admitted plugin-module dynamic import to keep application admission separate from an arbitrary-code sandbox.",
+      "limits": "No tenant/job adversarial runtime experiment, cloud selection, managed-operation qualification, per-member storage completeness, or production sandbox assurance. Most proposal requirements were classified, not semantically verified.",
+      "documentDigest": "51ff3cd20bb8a9cde0ebca3f8c775c4437a75af801031ccef14b4ff6b5f9cb5d",
+      "sources": [
+        {
+          "path": "src-server/runtime/bootstrap/station-runtime.ts",
+          "digest": "7c712a6ebb7d5525d04ad05432f5b8f169b6c3d20d6f64b1b8bff10e38e660ea"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/hosted-persistence-boundary.ts",
+          "digest": "458acba07acf3d7602ca1e8cd97058419a0e36fad50d17645965dc0342acac17"
+        },
+        {
+          "path": "src-server/services/plugins/plugin-public-server.ts",
+          "digest": "779654779ddbec3c1d2d2d54987779832ac18bbc2f3a2f491c1a90b46b6fe344"
+        }
+      ],
+      "checks": [
+        "Full document read: 138 original lines; all original body bytes preserved.",
+        "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
+        "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
+        "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition."
+      ]
+    },
+    {
+      "path": "docs/design/identity.md",
+      "sourceRevision": "98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Mixed ingress-source design. The tailnet ingress owner still exists; a banner distinguishes it from implemented optional deployment-account authentication and the current request-principal composition.",
+      "limits": "Provider roadmap, passkey discussion, historical issue status and complete offline/device/provider behavior were not semantically re-audited. The standing offline journey is a requirement, not executed evidence.",
+      "documentDigest": "74371a604d83779db65b078d199b976b8ec79c5c302c9289468fbd032b5537a6",
+      "sources": [
+        {
+          "path": "src-server/services/identity/identity-source.ts",
+          "digest": "f66dc6ba925c136de72220876a8e9bdfc4359b60759d3459fab077875cae97a5"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/orchestration-request-principal.ts",
+          "digest": "ead42e383cf64108e107275f0848be83adf0e7210660f297dffc6df6d5322376"
+        },
+        {
+          "path": "src-server/services/identity/local-account-runtime.ts",
+          "digest": "fe5b823f91b15a868e183a98f18639531c1ada051ac490268102a26c1f261124"
+        }
+      ],
+      "checks": [
+        "Full document read: 148 original lines; all original body bytes preserved.",
+        "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
+        "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
+        "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition."
+      ]
+    },
+    {
+      "path": "docs/design/local-bootstrap-token.md",
+      "sourceRevision": "98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Retained launch design with current CLI, backend and browser owners. Banner corrects the global-token assumption to purpose-keyed capabilities and distinguishes the removed unauthenticated loopback floor.",
+      "limits": "No live CLI/browser launch, exhaustive origin/rate-limit/refusal/recovery audit, historical issue verification or complete threat-model review. Original body is retained, including its historical browser/referrer rationale.",
+      "documentDigest": "1c09c0d1e43235c8ece3a068708be362214989ac73465926360dbf38d74dfb67",
+      "sources": [
+        {
+          "path": "packages/cli/src/commands/lazy-start.ts",
+          "digest": "c371b8449a0b6f0f646db4c40c1f29b6a7eed31f6c9396a6b2bed9f5f12e06df"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/runtime-http.ts",
+          "digest": "5ed41b4afb2f3f83d80cd8a0957d72427ffd76e6136a6d0feb7fab23e85acca9"
+        },
+        {
+          "path": "src-ui/src/lib/local-ui-bootstrap.ts",
+          "digest": "4b838e0573edcd1b2ba55e7cd9a158e369ea2127a2bf2f0ab8ce898d6a4e901c"
+        }
+      ],
+      "checks": [
+        "Full document read: 82 original lines; all original body bytes preserved.",
+        "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
+        "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
+        "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition."
+      ]
+    },
+    {
+      "path": "docs/design/mobile-credential-authority.md",
+      "sourceRevision": "98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "Historical blocker superseded at source level. Current owner pointers identify mobile host credential registration, OS keyring selection, iOS device-only accessibility, Android resolver and generated backup exclusions.",
+      "limits": "No physical Android/iOS secure-storage, DNS, lifecycle, restart, backup/restore or signed-artifact proof; historical device observations and issue states were not revalidated. Native source presence is not platform verification.",
+      "documentDigest": "7873e74f1dc12a4d75471b90241a2abdc660ea44d23dcdd3ac025f9d855f9661",
+      "sources": [
+        {
+          "path": "src-desktop/src/lib.rs",
+          "digest": "f3f76d133e45b201d64a39df1e9ec0229da0496efb7fc4947aa7e906d45c4bc1"
+        },
+        {
+          "path": "src-desktop/src/android_dns.rs",
+          "digest": "95e6df3036f71259054a42227f598292b6ddcdedd59410c58966ff197b27ebd8"
+        },
+        {
+          "path": "scripts/apply-android-native-bootstrap.mjs",
+          "digest": "de9e3a783c727ac349db61e94fd419c723a1de966ad4d0de1bbd08e30b02169b"
+        },
+        {
+          "path": "src-ui/src/platform/native/stationProfileStorage.ts",
+          "digest": "63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601"
+        }
+      ],
+      "checks": [
+        "Full document read: 24 original lines; all original body bytes preserved.",
+        "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
+        "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
+        "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition.",
+        "Parent inspected only the native log-comment delta from the source baseline; mobile credential code is unchanged."
+      ]
+    },
+    {
+      "path": "docs/design/principals.md",
+      "sourceRevision": "98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Mixed historical decision record. A banner distinguishes retained rollout reasoning from gated account and membership implementation; source existence is not enablement or two-human proof.",
+      "limits": "Historical epics, every principal/authorization edge, all shared-resource admission and actual shared-access enablement remain unverified. No blanket approval of the retained policy or present-tense body.",
+      "documentDigest": "6885d4b09222c1da93e888d9773372768e7f0e8a8687a44077fee496fd859a5a",
+      "sources": [
+        {
+          "path": "src-server/runtime/bootstrap/orchestration-request-principal.ts",
+          "digest": "ead42e383cf64108e107275f0848be83adf0e7210660f297dffc6df6d5322376"
+        },
+        {
+          "path": "src-server/services/projects/project-membership-runtime.ts",
+          "digest": "9fe2ba3155f861ffeea00a89982b1cb00739ab37f334c80beb96e4f109b7ca2a"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/station-runtime.ts",
+          "digest": "7c712a6ebb7d5525d04ad05432f5b8f169b6c3d20d6f64b1b8bff10e38e660ea"
+        }
+      ],
+      "checks": [
+        "Full document read: 266 original lines; all original body bytes preserved.",
+        "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
+        "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
+        "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition."
+      ]
+    },
+    {
+      "path": "docs/design/private-cloud-environment.md",
+      "sourceRevision": "98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Working single-operator VM deployment design already identifies unvalidated provisioning and restore drills; no prose edit needed. Located runtime image and actual container smoke owners without treating them as executed cloud evidence.",
+      "limits": "No container build/smoke run, provider provisioning, workload sizing, quota proof, backup/restore drill, cloud service or live ingress validation. External Docker guidance and every operational recommendation were not independently re-audited.",
+      "documentDigest": "d42528730112f077ab59b4ce7ae31016f4af098f11c0aff63d4fa34e2f4aa1c0",
+      "sources": [
+        {
+          "path": "Dockerfile",
+          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
+        },
+        {
+          "path": "scripts/container-smoke.sh",
+          "digest": "31c9b8355ff35b0a954415a5d11a2813a8f6c1c922c7cffeff11161302218234"
+        },
+        {
+          "path": ".github/workflows/container-smoke.yml",
+          "digest": "8f0d7908fbf4cf305a5fd10ae17bb174b45344f584f8d38fe0be3f422e260ced"
+        }
+      ],
+      "checks": [
+        "Full document read: 114 original lines; all original body bytes preserved.",
+        "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
+        "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
+        "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition."
+      ]
+    },
+    {
+      "path": "docs/design/project-membership.md",
+      "sourceRevision": "98b8c1c0b12851cd2c8c0c6b8ace3130b59e7c80",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Mixed specification and implementation updates. The current membership service, public route composition and runtime are identified; initial missing-API assertions are explicitly historical.",
+      "limits": "No full membership/security audit, complete shared-resource coverage, live second-person/device acceptance or production enablement proof. Dated decisions and original body remain intact.",
+      "documentDigest": "ba10abd70c86465d6c1b46ee26a5b5b2d6889d7c2d8b21f7d9edbc349f58b6c8",
+      "sources": [
+        {
+          "path": "src-server/services/projects/project-membership-service.ts",
+          "digest": "1d35bde19ff70f213d3b0db162489980c2f7fd957481156c3ac1b2907dc58af5"
+        },
+        {
+          "path": "src-server/routes/projects/project-membership-routes.ts",
+          "digest": "f36f3f868773bba2ee5604e2bb4a4725cf33cf39f6af90fe06b72aab806aca21"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/station-runtime.ts",
+          "digest": "7c712a6ebb7d5525d04ad05432f5b8f169b6c3d20d6f64b1b8bff10e38e660ea"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/orchestration-request-principal.ts",
+          "digest": "ead42e383cf64108e107275f0848be83adf0e7210660f297dffc6df6d5322376"
+        }
+      ],
+      "checks": [
+        "Full document read: 260 original lines; all original body bytes preserved.",
+        "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
+        "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
+        "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition."
+      ]
+    },
+    {
+      "path": "docs/glossary.md",
+      "documentDigest": "6f44ffede5005d474d063ad930e2c3fb01a79c7db65f795f1580b674604f08a7",
+      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
+      "kind": "reference",
+      "state": "partial",
+      "summary": "Read surrounding vocabulary; bounded Browser/live-surface/control-lease section review and new guide/module links only. Other concepts not re-certified.",
+      "limits": "Bounded source/caller review plus named synthetic tests; no real browser acquisition/launch, public-site navigation, physical device/app, SSH host operation, native package, Windows process tree or saturated-origin-pool proof. File hash identifies owner bytes, not whole-file implementation certification.",
+      "sources": [
+        {
+          "path": "packages/contracts/src/live-surface.ts",
+          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-pane.ts",
+          "digest": "34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-preview.ts",
+          "digest": "5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4"
+        },
+        {
+          "path": "packages/sdk/src/mobile-device.ts",
+          "digest": "8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a"
+        },
+        {
+          "path": "src-server/routes/browser-agent.ts",
+          "digest": "eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0"
+        },
+        {
+          "path": "src-server/routes/browser.ts",
+          "digest": "41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e"
+        },
+        {
+          "path": "src-server/routes/device-hosts.ts",
+          "digest": "d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87"
+        },
+        {
+          "path": "src-server/routes/device-toolchain.ts",
+          "digest": "08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c"
+        },
+        {
+          "path": "src-server/routes/device-tools.ts",
+          "digest": "551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf"
+        },
+        {
+          "path": "src-server/routes/live-surface.ts",
+          "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
+        },
+        {
+          "path": "src-server/routes/mobile-device.ts",
+          "digest": "0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/services/browser/browser-access.ts",
+          "digest": "c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870"
+        },
+        {
+          "path": "src-server/services/browser/browser-agent-authority.ts",
+          "digest": "e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf"
+        },
+        {
+          "path": "src-server/services/browser/browser-automation.ts",
+          "digest": "16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97"
+        },
+        {
+          "path": "src-server/services/browser/browser-egress-proxy.ts",
+          "digest": "87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8"
+        },
+        {
+          "path": "src-server/services/browser/browser-host.ts",
+          "digest": "1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94"
+        },
+        {
+          "path": "src-server/services/browser/browser-live-surfaces.ts",
+          "digest": "e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9"
+        },
+        {
+          "path": "src-server/services/browser/browser-local-targets.ts",
+          "digest": "daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83"
+        },
+        {
+          "path": "src-server/services/browser/browser-project-settings.ts",
+          "digest": "6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6"
+        },
+        {
+          "path": "src-server/services/browser/browser-service.ts",
+          "digest": "1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b"
+        },
+        {
+          "path": "src-server/services/browser/browser-session-registry.ts",
+          "digest": "aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a"
+        },
+        {
+          "path": "src-server/services/browser/chromium-acquisition.ts",
+          "digest": "baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6"
+        },
+        {
+          "path": "src-server/services/browser/chromium-screencast-producer.ts",
+          "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
+        },
+        {
+          "path": "src-server/services/browser/egress-policy.ts",
+          "digest": "34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde"
+        },
+        {
+          "path": "src-server/services/browser/hosts/chromium-server-host.ts",
+          "digest": "f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2"
+        },
+        {
+          "path": "src-server/services/browser/station-listeners.ts",
+          "digest": "01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb"
+        },
+        {
+          "path": "src-server/services/browser/url-policy.ts",
+          "digest": "46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39"
+        },
+        {
+          "path": "src-server/services/devices/device-access.ts",
+          "digest": "c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96"
+        },
+        {
+          "path": "src-server/services/devices/device-hub-endpoint.ts",
+          "digest": "1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb"
+        },
+        {
+          "path": "src-server/services/devices/device-live-surface-producer.ts",
+          "digest": "c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77"
+        },
+        {
+          "path": "src-server/services/devices/device-session-service.ts",
+          "digest": "b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2"
+        },
+        {
+          "path": "src-server/services/devices/hosts/device-host-registry.ts",
+          "digest": "02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-hub-connection.ts",
+          "digest": "0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-toolchain-service.ts",
+          "digest": "af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50"
+        },
+        {
+          "path": "src-server/services/live-surface/control-lease.ts",
+          "digest": "8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30"
+        },
+        {
+          "path": "src-server/services/live-surface/producer.ts",
+          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+        },
+        {
+          "path": "src-server/services/live-surface/registry.ts",
+          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+        },
+        {
+          "path": "src-server/services/live-surface/surface-hub.ts",
+          "digest": "ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103"
+        },
+        {
+          "path": "src-server/services/mobile-device/mobile-device-host.ts",
+          "digest": "a1c380f92d4c506db418ff1961cd4edc737488d7c88d13a07dbc877add934a57"
+        },
+        {
+          "path": "src-server/tools/station-browser-mcp-server.ts",
+          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
+        },
+        {
+          "path": "src-server/tools/station-control-browser-tools.ts",
+          "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
+        },
+        {
+          "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
+          "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
+        },
+        {
+          "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
+          "digest": "c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648"
+        },
+        {
+          "path": "src-ui/src/live-surface/useLiveSurface.ts",
+          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+          "digest": "34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+          "digest": "4637deeeeff416880c29085648a9d6193c17613711142e3434d240c3caf2f78f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+          "digest": "5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+          "digest": "495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+          "digest": "56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+          "digest": "38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+          "digest": "bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c"
+        }
+      ],
+      "checks": [
+        "Browser/Device source/caller review; 219 tests across eight files passed, historical bodies preserved.",
+        "Parent inspected key profile/access/egress and lifecycle callers; three source headers corrected with identical emitted JavaScript."
+      ]
     },
     {
       "path": "docs/guides/acp.md",
@@ -1610,6 +3741,229 @@
       "checks": [
         "Independent final source delta accepted at document digest de3a6c60020c33c40df7048d425db03acec462a0613750afabe9b2c6b51b943b.",
         "Session diagnostic and importer/follower/request-inspection selections passed (8 and 40 tests)."
+      ]
+    },
+    {
+      "path": "docs/guides/browser-workspace.md",
+      "documentDigest": "1d2dccb5819246936dc0457befef1cbd938447b24213369eddaf981dd172c434",
+      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
+      "kind": "guide",
+      "state": "source-reviewed",
+      "summary": "New guide; acquisition/consent, profile and network boundaries, bound Agent caller, evaluation, lifecycle, shared viewer, limits.",
+      "limits": "Bounded source/caller review plus named synthetic tests; no real browser acquisition/launch, public-site navigation, physical device/app, SSH host operation, native package, Windows process tree or saturated-origin-pool proof. File hash identifies owner bytes, not whole-file implementation certification.",
+      "sources": [
+        {
+          "path": "packages/contracts/src/live-surface.ts",
+          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-pane.ts",
+          "digest": "34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-preview.ts",
+          "digest": "5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4"
+        },
+        {
+          "path": "packages/sdk/src/mobile-device.ts",
+          "digest": "8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a"
+        },
+        {
+          "path": "src-server/routes/browser-agent.ts",
+          "digest": "eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0"
+        },
+        {
+          "path": "src-server/routes/browser.ts",
+          "digest": "41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e"
+        },
+        {
+          "path": "src-server/routes/device-hosts.ts",
+          "digest": "d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87"
+        },
+        {
+          "path": "src-server/routes/device-toolchain.ts",
+          "digest": "08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c"
+        },
+        {
+          "path": "src-server/routes/device-tools.ts",
+          "digest": "551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf"
+        },
+        {
+          "path": "src-server/routes/live-surface.ts",
+          "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
+        },
+        {
+          "path": "src-server/routes/mobile-device.ts",
+          "digest": "0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/services/browser/browser-access.ts",
+          "digest": "c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870"
+        },
+        {
+          "path": "src-server/services/browser/browser-agent-authority.ts",
+          "digest": "e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf"
+        },
+        {
+          "path": "src-server/services/browser/browser-automation.ts",
+          "digest": "16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97"
+        },
+        {
+          "path": "src-server/services/browser/browser-egress-proxy.ts",
+          "digest": "87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8"
+        },
+        {
+          "path": "src-server/services/browser/browser-host.ts",
+          "digest": "1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94"
+        },
+        {
+          "path": "src-server/services/browser/browser-live-surfaces.ts",
+          "digest": "e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9"
+        },
+        {
+          "path": "src-server/services/browser/browser-local-targets.ts",
+          "digest": "daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83"
+        },
+        {
+          "path": "src-server/services/browser/browser-project-settings.ts",
+          "digest": "6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6"
+        },
+        {
+          "path": "src-server/services/browser/browser-service.ts",
+          "digest": "1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b"
+        },
+        {
+          "path": "src-server/services/browser/browser-session-registry.ts",
+          "digest": "aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a"
+        },
+        {
+          "path": "src-server/services/browser/chromium-acquisition.ts",
+          "digest": "baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6"
+        },
+        {
+          "path": "src-server/services/browser/chromium-screencast-producer.ts",
+          "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
+        },
+        {
+          "path": "src-server/services/browser/egress-policy.ts",
+          "digest": "34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde"
+        },
+        {
+          "path": "src-server/services/browser/hosts/chromium-server-host.ts",
+          "digest": "f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2"
+        },
+        {
+          "path": "src-server/services/browser/station-listeners.ts",
+          "digest": "01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb"
+        },
+        {
+          "path": "src-server/services/browser/url-policy.ts",
+          "digest": "46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39"
+        },
+        {
+          "path": "src-server/services/devices/device-access.ts",
+          "digest": "c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96"
+        },
+        {
+          "path": "src-server/services/devices/device-hub-endpoint.ts",
+          "digest": "1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb"
+        },
+        {
+          "path": "src-server/services/devices/device-live-surface-producer.ts",
+          "digest": "c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77"
+        },
+        {
+          "path": "src-server/services/devices/device-session-service.ts",
+          "digest": "b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2"
+        },
+        {
+          "path": "src-server/services/devices/hosts/device-host-registry.ts",
+          "digest": "02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-hub-connection.ts",
+          "digest": "0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-toolchain-service.ts",
+          "digest": "af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50"
+        },
+        {
+          "path": "src-server/services/live-surface/control-lease.ts",
+          "digest": "8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30"
+        },
+        {
+          "path": "src-server/services/live-surface/producer.ts",
+          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+        },
+        {
+          "path": "src-server/services/live-surface/registry.ts",
+          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+        },
+        {
+          "path": "src-server/services/live-surface/surface-hub.ts",
+          "digest": "ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103"
+        },
+        {
+          "path": "src-server/services/mobile-device/mobile-device-host.ts",
+          "digest": "a1c380f92d4c506db418ff1961cd4edc737488d7c88d13a07dbc877add934a57"
+        },
+        {
+          "path": "src-server/tools/station-browser-mcp-server.ts",
+          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
+        },
+        {
+          "path": "src-server/tools/station-control-browser-tools.ts",
+          "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
+        },
+        {
+          "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
+          "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
+        },
+        {
+          "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
+          "digest": "c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648"
+        },
+        {
+          "path": "src-ui/src/live-surface/useLiveSurface.ts",
+          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+          "digest": "34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+          "digest": "4637deeeeff416880c29085648a9d6193c17613711142e3434d240c3caf2f78f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+          "digest": "5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+          "digest": "495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+          "digest": "56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+          "digest": "38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+          "digest": "bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c"
+        }
+      ],
+      "checks": [
+        "Browser/Device source/caller review; 219 tests across eight files passed, historical bodies preserved.",
+        "Parent inspected key profile/access/egress and lifecycle callers; three source headers corrected with identical emitted JavaScript."
       ]
     },
     {
@@ -1761,6 +4115,229 @@
         "Knowledge focused selection: 156 tests across 13 files passed during this audit; subsequent comment edits emit identical JavaScript.",
         "Knowledge UI/MCP/reader selection: 60 tests across 5 files passed during this audit.",
         "Reviewed the corrected Neo4j README anchor and process-registration prerequisite after the example rewrite."
+      ]
+    },
+    {
+      "path": "docs/guides/mobile-device-workspace.md",
+      "documentDigest": "194d80cb4861314943734e486a30079113877b4f8f4cd822a5e3053b1394616b",
+      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
+      "kind": "guide",
+      "state": "source-reviewed",
+      "summary": "Full read/rewrite of stale capture-only premise. Current managed/SSH helpers, sharing, human live control, lifetime, input vs display evidence; retain separate capture SDK example and corrected per-lane bounds/helper-secret distinction.",
+      "limits": "Bounded source/caller review plus named synthetic tests; no real browser acquisition/launch, public-site navigation, physical device/app, SSH host operation, native package, Windows process tree or saturated-origin-pool proof. File hash identifies owner bytes, not whole-file implementation certification.",
+      "sources": [
+        {
+          "path": "packages/contracts/src/live-surface.ts",
+          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-pane.ts",
+          "digest": "34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-preview.ts",
+          "digest": "5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4"
+        },
+        {
+          "path": "packages/sdk/src/mobile-device.ts",
+          "digest": "8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a"
+        },
+        {
+          "path": "src-server/routes/browser-agent.ts",
+          "digest": "eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0"
+        },
+        {
+          "path": "src-server/routes/browser.ts",
+          "digest": "41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e"
+        },
+        {
+          "path": "src-server/routes/device-hosts.ts",
+          "digest": "d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87"
+        },
+        {
+          "path": "src-server/routes/device-toolchain.ts",
+          "digest": "08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c"
+        },
+        {
+          "path": "src-server/routes/device-tools.ts",
+          "digest": "551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf"
+        },
+        {
+          "path": "src-server/routes/live-surface.ts",
+          "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
+        },
+        {
+          "path": "src-server/routes/mobile-device.ts",
+          "digest": "0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/services/browser/browser-access.ts",
+          "digest": "c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870"
+        },
+        {
+          "path": "src-server/services/browser/browser-agent-authority.ts",
+          "digest": "e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf"
+        },
+        {
+          "path": "src-server/services/browser/browser-automation.ts",
+          "digest": "16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97"
+        },
+        {
+          "path": "src-server/services/browser/browser-egress-proxy.ts",
+          "digest": "87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8"
+        },
+        {
+          "path": "src-server/services/browser/browser-host.ts",
+          "digest": "1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94"
+        },
+        {
+          "path": "src-server/services/browser/browser-live-surfaces.ts",
+          "digest": "e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9"
+        },
+        {
+          "path": "src-server/services/browser/browser-local-targets.ts",
+          "digest": "daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83"
+        },
+        {
+          "path": "src-server/services/browser/browser-project-settings.ts",
+          "digest": "6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6"
+        },
+        {
+          "path": "src-server/services/browser/browser-service.ts",
+          "digest": "1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b"
+        },
+        {
+          "path": "src-server/services/browser/browser-session-registry.ts",
+          "digest": "aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a"
+        },
+        {
+          "path": "src-server/services/browser/chromium-acquisition.ts",
+          "digest": "baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6"
+        },
+        {
+          "path": "src-server/services/browser/chromium-screencast-producer.ts",
+          "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
+        },
+        {
+          "path": "src-server/services/browser/egress-policy.ts",
+          "digest": "34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde"
+        },
+        {
+          "path": "src-server/services/browser/hosts/chromium-server-host.ts",
+          "digest": "f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2"
+        },
+        {
+          "path": "src-server/services/browser/station-listeners.ts",
+          "digest": "01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb"
+        },
+        {
+          "path": "src-server/services/browser/url-policy.ts",
+          "digest": "46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39"
+        },
+        {
+          "path": "src-server/services/devices/device-access.ts",
+          "digest": "c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96"
+        },
+        {
+          "path": "src-server/services/devices/device-hub-endpoint.ts",
+          "digest": "1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb"
+        },
+        {
+          "path": "src-server/services/devices/device-live-surface-producer.ts",
+          "digest": "c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77"
+        },
+        {
+          "path": "src-server/services/devices/device-session-service.ts",
+          "digest": "b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2"
+        },
+        {
+          "path": "src-server/services/devices/hosts/device-host-registry.ts",
+          "digest": "02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-hub-connection.ts",
+          "digest": "0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-toolchain-service.ts",
+          "digest": "af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50"
+        },
+        {
+          "path": "src-server/services/live-surface/control-lease.ts",
+          "digest": "8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30"
+        },
+        {
+          "path": "src-server/services/live-surface/producer.ts",
+          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+        },
+        {
+          "path": "src-server/services/live-surface/registry.ts",
+          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+        },
+        {
+          "path": "src-server/services/live-surface/surface-hub.ts",
+          "digest": "ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103"
+        },
+        {
+          "path": "src-server/services/mobile-device/mobile-device-host.ts",
+          "digest": "a1c380f92d4c506db418ff1961cd4edc737488d7c88d13a07dbc877add934a57"
+        },
+        {
+          "path": "src-server/tools/station-browser-mcp-server.ts",
+          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
+        },
+        {
+          "path": "src-server/tools/station-control-browser-tools.ts",
+          "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
+        },
+        {
+          "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
+          "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
+        },
+        {
+          "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
+          "digest": "c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648"
+        },
+        {
+          "path": "src-ui/src/live-surface/useLiveSurface.ts",
+          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+          "digest": "34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+          "digest": "4637deeeeff416880c29085648a9d6193c17613711142e3434d240c3caf2f78f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+          "digest": "5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+          "digest": "495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+          "digest": "56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+          "digest": "38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+          "digest": "bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c"
+        }
+      ],
+      "checks": [
+        "Browser/Device source/caller review; 219 tests across eight files passed, historical bodies preserved.",
+        "Parent inspected key profile/access/egress and lifecycle callers; three source headers corrected with identical emitted JavaScript."
       ]
     },
     {
@@ -2122,6 +4699,229 @@
         "55 tests across three focused notification files passed on unchanged implementation bytes.",
         "Actual-channel synthetic replacement/gone-response probe caught stale cleanup (#2753).",
         "Independent full-guide delta accepted, including browser/native channel distinction."
+      ]
+    },
+    {
+      "path": "docs/guides/workspace-pane-authoring.md",
+      "documentDigest": "cc6346405c70027fe34cff940fc4afb59e8dadb25888bcc21c5eb927719fe52d",
+      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
+      "kind": "guide",
+      "state": "classified",
+      "summary": "Full read for shared vocabulary; unchanged. Browser-specific lifecycle belongs to new Browser guide. No new SDK conformance certification.",
+      "limits": "Bounded source/caller review plus named synthetic tests; no real browser acquisition/launch, public-site navigation, physical device/app, SSH host operation, native package, Windows process tree or saturated-origin-pool proof. File hash identifies owner bytes, not whole-file implementation certification.",
+      "sources": [
+        {
+          "path": "packages/contracts/src/live-surface.ts",
+          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-pane.ts",
+          "digest": "34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e"
+        },
+        {
+          "path": "packages/contracts/src/workspace-browser-preview.ts",
+          "digest": "5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4"
+        },
+        {
+          "path": "packages/sdk/src/mobile-device.ts",
+          "digest": "8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a"
+        },
+        {
+          "path": "src-server/routes/browser-agent.ts",
+          "digest": "eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0"
+        },
+        {
+          "path": "src-server/routes/browser.ts",
+          "digest": "41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e"
+        },
+        {
+          "path": "src-server/routes/device-hosts.ts",
+          "digest": "d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87"
+        },
+        {
+          "path": "src-server/routes/device-toolchain.ts",
+          "digest": "08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c"
+        },
+        {
+          "path": "src-server/routes/device-tools.ts",
+          "digest": "551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf"
+        },
+        {
+          "path": "src-server/routes/live-surface.ts",
+          "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
+        },
+        {
+          "path": "src-server/routes/mobile-device.ts",
+          "digest": "0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/services/browser/browser-access.ts",
+          "digest": "c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870"
+        },
+        {
+          "path": "src-server/services/browser/browser-agent-authority.ts",
+          "digest": "e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf"
+        },
+        {
+          "path": "src-server/services/browser/browser-automation.ts",
+          "digest": "16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97"
+        },
+        {
+          "path": "src-server/services/browser/browser-egress-proxy.ts",
+          "digest": "87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8"
+        },
+        {
+          "path": "src-server/services/browser/browser-host.ts",
+          "digest": "1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94"
+        },
+        {
+          "path": "src-server/services/browser/browser-live-surfaces.ts",
+          "digest": "e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9"
+        },
+        {
+          "path": "src-server/services/browser/browser-local-targets.ts",
+          "digest": "daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83"
+        },
+        {
+          "path": "src-server/services/browser/browser-project-settings.ts",
+          "digest": "6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6"
+        },
+        {
+          "path": "src-server/services/browser/browser-service.ts",
+          "digest": "1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b"
+        },
+        {
+          "path": "src-server/services/browser/browser-session-registry.ts",
+          "digest": "aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a"
+        },
+        {
+          "path": "src-server/services/browser/chromium-acquisition.ts",
+          "digest": "baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6"
+        },
+        {
+          "path": "src-server/services/browser/chromium-screencast-producer.ts",
+          "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
+        },
+        {
+          "path": "src-server/services/browser/egress-policy.ts",
+          "digest": "34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde"
+        },
+        {
+          "path": "src-server/services/browser/hosts/chromium-server-host.ts",
+          "digest": "f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2"
+        },
+        {
+          "path": "src-server/services/browser/station-listeners.ts",
+          "digest": "01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb"
+        },
+        {
+          "path": "src-server/services/browser/url-policy.ts",
+          "digest": "46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39"
+        },
+        {
+          "path": "src-server/services/devices/device-access.ts",
+          "digest": "c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96"
+        },
+        {
+          "path": "src-server/services/devices/device-hub-endpoint.ts",
+          "digest": "1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb"
+        },
+        {
+          "path": "src-server/services/devices/device-live-surface-producer.ts",
+          "digest": "c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77"
+        },
+        {
+          "path": "src-server/services/devices/device-session-service.ts",
+          "digest": "b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2"
+        },
+        {
+          "path": "src-server/services/devices/hosts/device-host-registry.ts",
+          "digest": "02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-hub-connection.ts",
+          "digest": "0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4"
+        },
+        {
+          "path": "src-server/services/devices/toolchain/device-toolchain-service.ts",
+          "digest": "af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50"
+        },
+        {
+          "path": "src-server/services/live-surface/control-lease.ts",
+          "digest": "8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30"
+        },
+        {
+          "path": "src-server/services/live-surface/producer.ts",
+          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
+        },
+        {
+          "path": "src-server/services/live-surface/registry.ts",
+          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
+        },
+        {
+          "path": "src-server/services/live-surface/surface-hub.ts",
+          "digest": "ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103"
+        },
+        {
+          "path": "src-server/services/mobile-device/mobile-device-host.ts",
+          "digest": "a1c380f92d4c506db418ff1961cd4edc737488d7c88d13a07dbc877add934a57"
+        },
+        {
+          "path": "src-server/tools/station-browser-mcp-server.ts",
+          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
+        },
+        {
+          "path": "src-server/tools/station-control-browser-tools.ts",
+          "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
+        },
+        {
+          "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
+          "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
+        },
+        {
+          "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
+          "digest": "c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648"
+        },
+        {
+          "path": "src-ui/src/live-surface/useLiveSurface.ts",
+          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
+          "digest": "34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+          "digest": "4637deeeeff416880c29085648a9d6193c17613711142e3434d240c3caf2f78f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
+          "digest": "5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
+          "digest": "495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
+          "digest": "56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
+          "digest": "38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+          "digest": "bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c"
+        }
+      ],
+      "checks": [
+        "Browser/Device source/caller review; 219 tests across eight files passed, historical bodies preserved.",
+        "Parent inspected key profile/access/egress and lifecycle callers; three source headers corrected with identical emitted JavaScript."
       ]
     },
     {
@@ -3605,7 +6405,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "f277b08ead38e55017caa9b5fd3e2e4227f341ad6d3060e6c39f30d0ca895468"
+          "digest": "9f0b2429e0c70e9e0193be17726de109cc6ded91a7e7741934c07380148c72ce"
         },
         {
           "path": "docs/guides/development.md",
@@ -3627,7 +6427,8 @@
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
         "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
-        "Reviewed subsequent module-map delta: two source-reviewed workspace sections and relocation/qualification of OIDC; the instruction route and policy meaning are unchanged."
+        "Reviewed subsequent module-map delta: two source-reviewed workspace sections and relocation/qualification of OIDC; the instruction route and policy meaning are unchanged.",
+        "Reviewed Browser/Device owner additions and links; existing instruction routing and earlier bounded claims remain intact."
       ]
     },
     {
@@ -3718,7 +6519,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "f277b08ead38e55017caa9b5fd3e2e4227f341ad6d3060e6c39f30d0ca895468"
+          "digest": "9f0b2429e0c70e9e0193be17726de109cc6ded91a7e7741934c07380148c72ce"
         },
         {
           "path": "docs/guides/testing.md",
@@ -3748,7 +6549,8 @@
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
         "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
-        "Reviewed subsequent module-map delta: two source-reviewed workspace sections and relocation/qualification of OIDC; the instruction route and policy meaning are unchanged."
+        "Reviewed subsequent module-map delta: two source-reviewed workspace sections and relocation/qualification of OIDC; the instruction route and policy meaning are unchanged.",
+        "Reviewed Browser/Device owner additions and links; existing instruction routing and earlier bounded claims remain intact."
       ]
     },
     {
