@@ -2297,12 +2297,21 @@ function fastChecksShardingFindings(file, jobs) {
       ],
       [
         { name: 'Resolve fast-checks shard slice', run: FAST_CHECKS_SLICE_RUN },
+        {
+          name: 'Install pinned actionlint',
+          run: PINNED_ACTIONLINT_PROVISION_RUN,
+        },
         { name: undefined, run: 'npm run dependencies:ci' },
         CHANGED_SET_CHROMIUM_STEP,
         { name: 'Run fast-checks shard', run: FAST_CHECKS_SHARD_RUN },
       ],
     );
   }
+  if (shard && !hasPinnedActionlintProvision(shard, 'Run fast-checks shard'))
+    finding(
+      FAST_CHECKS_SHARD_JOB,
+      'fast-checks-shard must provision pinned and checksummed actionlint before its tests',
+    );
   const aggregate = jobs[FAST_CHECKS_AGGREGATE_JOB];
   if (aggregate) {
     if (aggregate.if !== REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION)

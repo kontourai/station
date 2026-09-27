@@ -328,7 +328,11 @@ describe('fast-checks shard runner (in process)', () => {
     );
     return directory;
   }
-  const env = { GITHUB_RUN_ID: '4242', GITHUB_RUN_ATTEMPT: '2' };
+  const env = {
+    GITHUB_RUN_ID: '4242',
+    GITHUB_RUN_ATTEMPT: '2',
+    npm_execpath: '/npm/bin/npm-cli.js',
+  };
   const quiet = { report: () => {}, error: () => {} };
 
   test('a failing slice writes a failing receipt and exits 1', async () => {
@@ -354,6 +358,19 @@ describe('fast-checks shard runner (in process)', () => {
     expect(
       JSON.parse(readFileSync(join(cwd, 'receipt.json'), 'utf8')),
     ).toMatchObject({ status: 'failed', passed: false, runAttempt: 2 });
+  });
+
+  test('a non-empty shard refuses to run outside its npm entry (review F1)', async () => {
+    const cwd = inProcessFixture();
+    const runShard = vi.fn();
+    const { npm_execpath: _npm, ...withoutNpm } = env;
+    expect(
+      await runFastChecksShardCli(
+        ['run', '--plan=plan.json', '--shard=1/4', '--receipt=receipt.json'],
+        { cwd, env: withoutNpm, runShard, ...quiet },
+      ),
+    ).toBe(2);
+    expect(runShard).not.toHaveBeenCalled();
   });
 
   test('a shard that outlives its budget is aborted and fails', async () => {

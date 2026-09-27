@@ -38,9 +38,9 @@ import {
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const USAGE = `usage:
-  node scripts/fast-checks-shard.mjs plan --out=<file>
+  npm run fast-checks:shard -- plan --out=<file>
   node scripts/fast-checks-shard.mjs slice --plan=<file> --shard=<k>/<n>
-  node scripts/fast-checks-shard.mjs run --plan=<file> --shard=<k>/<n> --receipt=<file>
+  npm run fast-checks:shard -- run --plan=<file> --shard=<k>/<n> --receipt=<file>
   node scripts/fast-checks-shard.mjs aggregate --plan-dir=<dir> --receipts-dir=<dir>`;
 
 export class FastChecksUsageError extends Error {}
@@ -196,6 +196,13 @@ async function runCommand(
       status: 'empty',
       counts: { executed: 0, passed: 0, failed: 0, infrastructureErrors: 0 },
     };
+  } else if (!env.npm_execpath) {
+    // Review F1: the lane's tests ran under `npm run ci:fast`, and some read
+    // the npm environment (npm_execpath). A shard started any other way would
+    // report failures the lane never had, so it refuses instead.
+    throw new FastChecksUsageError(
+      'a non-empty fast-checks shard must run through `npm run fast-checks:shard -- run ...`',
+    );
   } else {
     const controller = new AbortController();
     const timer = setTimeout(

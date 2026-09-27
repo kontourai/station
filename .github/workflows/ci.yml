@@ -170,7 +170,9 @@ jobs:
         timeout-minutes: 5
         env:
           STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
-        run: node scripts/fast-checks-shard.mjs plan --out="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json"
+          # Parity with the lane step's env (review F1).
+          STATION_TYPECHECK_SLOTS: '4'
+        run: npm run fast-checks:shard -- plan --out="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json"
 
       # Verdict-bearing: the shards and the aggregator read this plan, so a
       # failed upload must fail this job rather than be swallowed. `overwrite`
@@ -202,17 +204,24 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-22.04
     # The fifteen-minute shard budget (CI_FAST_TIMEOUT_MS, enforced by the
-    # shard runner itself) + install (15) + Chromium (20) + ~3 minutes of
-    # unbounded setup = 53; ci-workflow-contract.test.ts pins the sum.
-    timeout-minutes: 55
+    # shard runner itself) + actionlint (5) + install (15) + Chromium (20) +
+    # ~3 minutes of unbounded setup = 58; ci-workflow-contract.test.ts pins
+    # the sum.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
     steps:
+      # The shard runs the lane's tests, so it gets the lane's environment
+      # (review F1): full history like fast-checks-statics (tests read
+      # origin/main and the base), the same PATH and env-shaping steps before
+      # the tests, and an npm-script entry so npm_execpath and the npm
+      # lifecycle variables match `npm run ci:fast`. ci-workflow-contract.test.ts
+      # pins this parity against fast-checks-statics.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
@@ -240,6 +249,22 @@ jobs:
           SHARD: ${{ matrix.shard }}
         run: node scripts/fast-checks-shard.mjs slice --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/4"
 
+      # The lane's static invariants put actionlint on PATH before its tests
+      # ran; a selected test that shells out to it sees the same binary here.
+      - name: Install pinned actionlint
+        if: ${{ steps.slice.outputs.empty == 'false' }}
+        timeout-minutes: 5
+        env:
+          ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status
+          tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
+          echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
+
       - run: npm run dependencies:ci
         if: ${{ steps.slice.outputs.empty == 'false' }}
         timeout-minutes: 15
@@ -262,10 +287,13 @@ jobs:
           echo "::error::Playwright install failed after 3 attempts"
           exit 1
 
+      # The same env as fast-checks-statics' lane step, minus the scope.
       - name: Run fast-checks shard
         env:
           SHARD: ${{ matrix.shard }}
-        run: node scripts/fast-checks-shard.mjs run --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/4" --receipt=".kontourai/fast-checks/fast-checks-shard-receipt.json"
+          STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
+          STATION_TYPECHECK_SLOTS: '4'
+        run: npm run fast-checks:shard -- run --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/4" --receipt=".kontourai/fast-checks/fast-checks-shard-receipt.json"
 
       # Verdict-bearing: the aggregator fails on a missing receipt, so this
       # upload is never continue-on-error. The attempt is in the name because

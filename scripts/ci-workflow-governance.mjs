@@ -484,9 +484,9 @@ export const FAST_CHECKS_AGGREGATE_STEP_IF =
 export const FAST_CHECKS_AGGREGATE_RUN =
   'node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"';
 export const FAST_CHECKS_PLAN_RUN =
-  'node scripts/fast-checks-shard.mjs plan --out="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json"';
+  'npm run fast-checks:shard -- plan --out="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json"';
 export const FAST_CHECKS_SLICE_RUN = `node scripts/fast-checks-shard.mjs slice --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/${FAST_CHECKS_SHARD_COUNT}"`;
-export const FAST_CHECKS_SHARD_RUN = `node scripts/fast-checks-shard.mjs run --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/${FAST_CHECKS_SHARD_COUNT}" --receipt=".kontourai/fast-checks/fast-checks-shard-receipt.json"`;
+export const FAST_CHECKS_SHARD_RUN = `npm run fast-checks:shard -- run --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/${FAST_CHECKS_SHARD_COUNT}" --receipt=".kontourai/fast-checks/fast-checks-shard-receipt.json"`;
 const FAST_CHECKS_AGGREGATE_NEEDS = ['classify', ...FAST_CHECKS_PART_JOBS];
 
 function needsList(job) {

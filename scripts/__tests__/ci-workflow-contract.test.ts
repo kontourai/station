@@ -1661,7 +1661,8 @@ describe('CI verification workflow contracts', () => {
     expect(FAST_CHECKS_SHARD_COUNT).toBe(4);
     const shardSteps = shard.steps ?? [];
     const shardRuns = shardSteps.flatMap((step) =>
-      typeof step.run === 'string' && step.run.includes('fast-checks-shard.mjs')
+      typeof step.run === 'string' &&
+      /fast-checks-shard\.mjs|fast-checks:shard/.test(step.run)
         ? [step.run]
         : [],
     );
@@ -1711,6 +1712,79 @@ describe('CI verification workflow contracts', () => {
     ).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       'fast-checks-receipt-*-${{ github.run_id }}-*',
+    );
+  });
+
+  it('runs the shards and the plan in the environment the lane ran its tests in (#2709 review F1)', () => {
+    type Step = {
+      name?: string;
+      run?: string;
+      uses?: string;
+      env?: Record<string, string>;
+      with?: Record<string, unknown>;
+    };
+    type Job = { 'runs-on'?: unknown; steps?: Step[] };
+    const jobs = (load(workflow('ci.yml')) as { jobs: Record<string, Job> })
+      .jobs;
+    const statics = jobs['fast-checks-statics'].steps ?? [];
+    const laneIndex = statics.findIndex(
+      (step) => step.run === 'npm run ci:fast',
+    );
+    expect(laneIndex).toBeGreaterThan(-1);
+    const lane = statics[laneIndex];
+    const candidateCheckout = (steps: Step[]) => {
+      const checkouts = steps.filter((step) =>
+        step.uses?.startsWith('actions/checkout@'),
+      );
+      return checkouts[checkouts.length - 1]?.with ?? {};
+    };
+    // Tests that read git history (origin/main, the base) need the same clone.
+    const laneCheckout = candidateCheckout(statics);
+    expect(laneCheckout['fetch-depth']).toBe(0);
+    // Steps that shape the tests' environment before the lane: PATH, job env
+    // and the dependency install.
+    const shaping = statics
+      .slice(0, laneIndex)
+      .filter(
+        (step) =>
+          typeof step.run === 'string' &&
+          (/\$GITHUB_(PATH|ENV)\b/.test(step.run) ||
+            step.run === 'npm run dependencies:ci'),
+      )
+      .map((step) => step.run);
+    expect(shaping.length).toBeGreaterThanOrEqual(3);
+
+    for (const [jobId, entryName] of [
+      ['fast-checks-shard', 'Run fast-checks shard'],
+      ['fast-checks-plan', 'Plan the affected-test selection'],
+    ] as const) {
+      const steps = jobs[jobId].steps ?? [];
+      expect(jobs[jobId]['runs-on'], jobId).toEqual(
+        jobs['fast-checks-statics']['runs-on'],
+      );
+      const checkout = candidateCheckout(steps);
+      for (const key of ['fetch-depth', 'repository', 'ref'])
+        expect(checkout[key], `${jobId} ${key}`).toEqual(laneCheckout[key]);
+      const entryIndex = steps.findIndex((step) => step.name === entryName);
+      const entry = steps[entryIndex];
+      // An npm-script entry, as `npm run ci:fast` was: npm_execpath and the
+      // npm lifecycle environment reach the tests.
+      expect(entry?.run, jobId).toMatch(/^npm run fast-checks:shard -- /);
+      // The lane step's env, minus the scope that only drops the selector.
+      const { STATION_CI_FAST_SCOPE: _scope, ...laneEnv } = lane.env ?? {};
+      expect(Object.keys(laneEnv).length).toBeGreaterThan(0);
+      for (const [key, value] of Object.entries(laneEnv))
+        expect(entry?.env?.[key], `${jobId} ${key}`).toBe(value);
+      if (jobId === 'fast-checks-shard') {
+        const before = steps.slice(0, entryIndex).map((step) => step.run);
+        for (const run of shaping) expect(before, jobId).toContain(run);
+      }
+    }
+    const pkg = JSON.parse(
+      readFileSync(resolve(root, 'package.json'), 'utf8'),
+    ) as { scripts: Record<string, string> };
+    expect(pkg.scripts['fast-checks:shard']).toBe(
+      'node scripts/fast-checks-shard.mjs',
     );
   });
 
