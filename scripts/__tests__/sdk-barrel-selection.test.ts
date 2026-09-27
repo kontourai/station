@@ -701,24 +701,28 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
       expect(result.decisions[0].disposition).toBe('refined');
     });
 
+    // Each initializer is pure at mid.ts itself (Array.from is allowlisted and
+    // a function argument is a pure expression), so mid.ts is not a use of
+    // its own: only reading the callback bodies at load finds scheduler.ts.
     test.each([
       [
         'a callback passed to a call',
-        'export const all = [1].map(() => listJobs());',
-      ],
-      ['an IIFE', 'export const all = (() => listJobs())();'],
-      [
-        'a local helper called in the initializer',
-        'const helper = () => listJobs();\nexport const all = helper();',
+        'export const all = Array.from([1], () => listJobs());',
       ],
       [
-        'a callback passed to a constructor',
-        'export const all = new Promise((resolve) => resolve(listJobs()));',
+        'an IIFE inside that callback',
+        'export const all = Array.from([1], () => (() => listJobs())());',
+      ],
+      [
+        'a local helper called from that callback',
+        'const helper = () => listJobs();\nexport const all = Array.from([1], () => helper());',
       ],
     ])('a function body that runs at load is read: %s', (_label, body) => {
+      const mid = `import { listJobs } from './client/scheduler';\n${body}`;
+      expect(topLevelSideEffect('mid.ts', mid)).toBeNull();
       const result = decide(
         {
-          'packages/sdk/src/mid.ts': `import { listJobs } from './client/scheduler';\n${body}`,
+          'packages/sdk/src/mid.ts': mid,
           [REGISTRATION]: "import { all } from './mid';\nregistry.push(all);",
         },
         SDK_SOURCES[SCHEDULER],
@@ -727,6 +731,29 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
         /registration\.ts line \d+ uses it in a top-level side effect/,
       );
     });
+
+    test.each([
+      ['a top-level IIFE', 'export const all = (() => listJobs())();'],
+      [
+        'a callback passed to a constructor',
+        'export const all = new Promise((resolve) => resolve(listJobs()));',
+      ],
+    ])(
+      'an initializer that is itself a side effect is a use of its own module: %s',
+      (_label, body) => {
+        const result = decide(
+          {
+            'packages/sdk/src/mid.ts': `import { listJobs } from './client/scheduler';\n${body}`,
+            [REGISTRATION]:
+              "import { all } from './mid';\nexport const kept = all;",
+          },
+          SDK_SOURCES[SCHEDULER],
+        );
+        expect(result.decisions[0].reason).toMatch(
+          /mid\.ts line \d+ uses it in a top-level side effect/,
+        );
+      },
+    );
 
     test('a local const that does not read the import is not a use (control)', () => {
       const result = decide(
