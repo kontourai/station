@@ -1187,6 +1187,26 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
           body,
         ),
       ]).toEqual([path, 'passed']);
+    // A portable Project workspace runs on the Station that offers it.
+    for (const route of ['POST /chat', 'POST /delegations'] as const) {
+      const portable = ROUTES[route]!({
+        kind: 'new',
+        workspace: {
+          kind: 'project-portable',
+          portableProjectId: 'portable-1',
+          resourceId: 'resource-1',
+        },
+      })!;
+      expect([
+        route,
+        await outcome(
+          base,
+          portable.path,
+          as('bearer-exposed', 'op-caller-a')(),
+          portable.body,
+        ),
+      ]).toEqual([route, ASSURANCE]);
+    }
     // The listing and options routes take an Environment too; no tool
     // reaches them (the guard refuses them unmapped).
     for (const [method, path, body] of [
