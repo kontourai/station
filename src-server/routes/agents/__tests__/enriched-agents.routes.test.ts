@@ -1482,8 +1482,10 @@ describe('the built-in engine selection is the RUNTIME projection (#3662 review 
     expect(response.status).toBe(200);
     const body = await json(response);
     expect(body.data.execution).toEqual({ agentConnectionId: 'codex' });
-    expect(body.data.engineId).not.toBe('station');
-    expect(body.data.engineDisplayName).not.toBe('Station');
+    // Attribution is unavailable, so the payload names no engine at all:
+    // neither the slug-derived Station nor any other guessed value.
+    expect(body.data).not.toHaveProperty('engineId');
+    expect(body.data).not.toHaveProperty('engineDisplayName');
   });
 
   test('the list projection agrees with the detail read', async () => {
