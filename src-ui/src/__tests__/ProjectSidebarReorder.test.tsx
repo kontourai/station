@@ -47,7 +47,6 @@ import { ProjectSidebarRow } from '../components/project-sidebar/ProjectSidebarR
 import { projectAccents } from '../components/project-sidebar/projectAccent';
 import {
   dropEdgeFor,
-  reorderedSlugs,
   useProjectListReorder,
 } from '../components/project-sidebar/useProjectListReorder';
 
@@ -130,11 +129,6 @@ function layoutRows(container: HTMLElement, rowHeight = 40) {
 afterEach(cleanup);
 
 describe('project sidebar reorder (station#3315)', () => {
-  test('reorderedSlugs applies splice semantics', () => {
-    expect(reorderedSlugs(['a', 'b', 'c'], 0, 2)).toEqual(['b', 'c', 'a']);
-    expect(reorderedSlugs(['a', 'b', 'c'], 2, 0)).toEqual(['c', 'a', 'b']);
-  });
-
   test('keyboard: ArrowDown on the handle commits the moved order', () => {
     const onCommit = vi.fn();
     render(<Harness slugs={['alpha', 'beta', 'gamma']} onCommit={onCommit} />);
@@ -386,9 +380,7 @@ describe('project sidebar reorder (station#3315)', () => {
   // (`projectAccents`), so an order change must never repaint a project.
   test('reordering does not reassign slug-derived accent colors', () => {
     const before = projectAccents(['alpha', 'beta', 'gamma']);
-    const after = projectAccents(
-      reorderedSlugs(['alpha', 'beta', 'gamma'], 0, 2),
-    );
+    const after = projectAccents(['beta', 'gamma', 'alpha']);
     for (const slug of ['alpha', 'beta', 'gamma']) {
       expect(after.get(slug)).toBe(before.get(slug));
     }

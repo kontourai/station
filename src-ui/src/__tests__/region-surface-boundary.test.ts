@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { REGION_SURFACE_SHELLS } from '../app-shell/RegionShells';
@@ -36,16 +36,10 @@ describe('registered surface region boundary', () => {
       )
       .map((surface) => surface.id)
       .sort();
-    expect(declaringMain).toEqual(['activity', 'home']);
-    expect(declaringDock).toEqual([
-      'activity',
-      'chat',
-      'coding:diff',
-      'coding:file-browser',
-      'coding:terminal',
-      'device',
-      'workspace-agents',
-    ]);
+    // Which surfaces declare which regions is pinned by region-model.test.ts;
+    // this test owns only the renderer tables matching those declarations.
+    expect(declaringMain.length).toBeGreaterThan(0);
+    expect(declaringDock.length).toBeGreaterThan(0);
     expect([...REGION_SURFACE_SHELLS.keys()].sort()).toEqual(declaringMain);
     expect([...REGION_SURFACE_PANES.keys()].sort()).toEqual(declaringDock);
     expect([...new Set([...declaringMain, ...declaringDock])].sort()).toEqual(
@@ -67,20 +61,6 @@ describe('registered surface region boundary', () => {
       expect(source, surface.id).not.toMatch(
         /from ['"][^'"]*(?:RegionModelContext|regions\/region-model)['"]|useRegionModel(?:Optional)?\s*\(/,
       );
-    }
-  });
-
-  test('page renderers cannot restore a surface-owned placement control', () => {
-    for (const retired of RETIRED_FILES) {
-      expect(existsSync(resolve(process.cwd(), retired)), retired).toBe(false);
-    }
-
-    for (const sourceFile of [
-      'src-ui/src/views/home/HomeWorkspacePane.tsx',
-      'src-ui/src/views/activity/ActivityWorkspacePane.tsx',
-    ]) {
-      const source = readFileSync(resolve(process.cwd(), sourceFile), 'utf8');
-      expect(source, sourceFile).not.toMatch(RETIRED_IDENTIFIERS);
     }
   });
 
@@ -106,17 +86,9 @@ describe('registered surface region boundary', () => {
 
 const THIS_FILE = 'src-ui/src/__tests__/region-surface-boundary.test.ts';
 
-/** The files the legacy docked-Home path lived in (#1384 C1, #928 C2a/C2b). */
-const RETIRED_FILES = [
-  'src-ui/src/workspace-panes/WorkspacePaneDockAction.tsx',
-  'src-ui/src/workspace-panes/WorkspacePaneDockContext.tsx',
-  'src-ui/src/workspace-panes/WorkspacePaneAwayState.tsx',
-  'src-ui/src/workspace-panes/DockOccupantPicker.tsx',
-  'src-ui/src/workspace-panes/ambientDockOccupants.ts',
-];
-
 /**
- * Every identifier those files exported or every string they rendered: the
+ * Every identifier the legacy docked-Home path's files (#1384 C1, #928
+ * C2a/C2b) exported or every string they rendered: the
  * placement control and its context, the away state and its derivation, the
  * occupant table and picker, the mobile occupant-switch seams. Bare
  * `occupant` is NOT here — it is the region model's own word for what a

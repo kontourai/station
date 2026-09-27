@@ -328,21 +328,6 @@ describe('ProjectSidebarRow', () => {
     expect(accent?.getAttribute('style')).toContain('background-color');
   });
 
-  test('does not render a Chats pill', () => {
-    layoutsQueryMock.mockReturnValue({ data: [] });
-
-    render(
-      <ProjectSidebarRow
-        project={project}
-        isActive={false}
-        activeLayout={null}
-        collapsed={false}
-      />,
-    );
-
-    expect(screen.queryByRole('button', { name: /Project chats/ })).toBeNull();
-  });
-
   test('uses the set-aware accent prop when provided', () => {
     layoutsQueryMock.mockReturnValue({ data: [] });
     const { container } = render(

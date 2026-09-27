@@ -68,12 +68,10 @@ describe('toolbar geometry accounts for the top safe-area inset', () => {
   it.each(JS_CONSUMERS)('%s measures the toolbar, not the token', (path) => {
     const source = read(path);
     expect(source).toContain('readToolbarHeight');
-    // Reading the raw token back in JS is what silently under-measured by the
-    // safe-area inset on an edge-to-edge webview.
-    expect(source).not.toContain(
-      "getPropertyValue(\n            '--app-toolbar",
-    );
-    expect(source).not.toMatch(/getPropertyValue\(\s*'--app-toolbar-height'/);
+    // Reading any raw toolbar token back in JS is what silently under-measured
+    // by the safe-area inset on an edge-to-edge webview (the bare height), or
+    // parsed to NaN (the `calc(...)` total).
+    expect(source).not.toMatch(/getPropertyValue\(\s*['"`]--app-toolbar/);
   });
 
   it('measures the rendered toolbar rather than summing tokens when it can', () => {
