@@ -20,15 +20,6 @@ interface CodexApprovalKnobs {
   sandbox: CodexSandboxMode;
 }
 
-// Historical Station spawn when no `approvalMode` was sent: unattended
-// full-access. Kept only as a named pairing for tests that pin that
-// *previous* behavior. Live adapters no longer apply it — an omitted
-// `approvalMode` now inherits Codex's own config (station#1950).
-export const CODEX_DEFAULT_APPROVAL_KNOBS: CodexApprovalKnobs = {
-  approvalPolicy: 'never',
-  sandbox: 'danger-full-access',
-};
-
 const CODEX_READ_ONLY_REVIEW_KNOBS: CodexApprovalKnobs = {
   approvalPolicy: 'never',
   sandbox: 'read-only',
