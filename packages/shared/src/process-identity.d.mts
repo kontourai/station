@@ -3,7 +3,6 @@ export const WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS: number;
 /** @deprecated Use WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS. */
 export const WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS: number;
 export const WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS: number;
-export const WINDOWS_OWN_PROCESS_BIRTH_ATTEMPTS: number;
 export const WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS: number;
 export const WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS: number;
 export type ExactProcessIdentity = { pid: number; start: string };

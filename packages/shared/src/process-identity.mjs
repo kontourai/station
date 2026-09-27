@@ -15,7 +15,6 @@ export const WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS = 10_000;
 export const WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS =
   WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS;
 export const WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS = 20_000;
-export const WINDOWS_OWN_PROCESS_BIRTH_ATTEMPTS = 2;
 export const WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS = 250;
 export const WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS =
   WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS +
@@ -435,14 +434,23 @@ export async function lookupProcessBirthFingerprintAsync(
 // are cached: a null is ambiguous (dead pid vs. a `ps` deadline miss under
 // load, #1057) and callers deliberately retry it.
 const birthFingerprintCache = new Map();
-// pid → in-flight Promise, so N concurrent async probes for one pid spawn one
-// child process instead of N.
+// probe key (pid + budget + shell) → in-flight Promise, so N concurrent async
+// probes for one pid spawn one child process instead of N. The budget is part
+// of the key so an own-pid lookup on the long cold-start budget never joins a
+// short arbitrary-pid probe and inherits its 1.5s timeout (#2675).
 const birthFingerprintInFlight = new Map();
+// This process's own birth, once observed (#2675). A running process's start
+// time is immutable, so after one success the own-pid path never re-probes —
+// not after the TTL, and not for `fresh` (fresh exists to re-confirm ANOTHER
+// owner's mismatch; our own birth cannot have changed). This is what bounds
+// the Windows cold-start schedule to one successful run per process.
+let ownBirth = null;
 
 /** Test seam: drop every cached fingerprint and in-flight probe. */
 export function clearProcessBirthFingerprintCache() {
   birthFingerprintCache.clear();
   birthFingerprintInFlight.clear();
+  ownBirth = null;
 }
 
 function readBirthCache(pid, now) {
@@ -451,9 +459,17 @@ function readBirthCache(pid, now) {
   return undefined;
 }
 
-function storeBirthCache(pid, birth, now, ttlMs) {
-  if (birth) birthFingerprintCache.set(pid, { birth, expiresAt: now + ttlMs });
-  else birthFingerprintCache.delete(pid);
+// Stamp with the time the probe FINISHED: a probe slower than the TTL (a cold
+// Windows PowerShell start) stamped with its start time is cached expired.
+function storeBirthCache(pid, birth, finishedAt, ttlMs) {
+  if (birth) {
+    birthFingerprintCache.set(pid, { birth, expiresAt: finishedAt + ttlMs });
+    if (pid === process.pid) ownBirth = birth;
+  } else birthFingerprintCache.delete(pid);
+}
+
+function inFlightKey(pid, dependencies) {
+  return `${pid}|${dependencies.timeoutMs ?? ''}|${dependencies.windowsShell ?? ''}`;
 }
 
 /**
@@ -467,17 +483,19 @@ function storeBirthCache(pid, birth, now, ttlMs) {
  * Injection caveat: results land in the ONE module-global cache regardless of
  * which `dependencies` produced them — an injected `exec`/`platform` result
  * for a pid is served back to later callers using the real probes (and vice
- * versa) within the TTL. Test seams must use disjoint pids or clear the cache.
+ * versa) within the TTL, and for `process.pid` for the life of the process
+ * (see `ownBirth`). Test seams must use disjoint pids or clear the cache.
  */
 export function lookupProcessBirthFingerprintCached(pid, dependencies = {}) {
-  const now = (dependencies.now ?? Date.now)();
+  if (pid === process.pid && ownBirth) return ownBirth;
+  const clock = dependencies.now ?? Date.now;
   const ttlMs = dependencies.ttlMs ?? PROCESS_BIRTH_FINGERPRINT_CACHE_TTL_MS;
   if (!dependencies.fresh) {
-    const cached = readBirthCache(pid, now);
+    const cached = readBirthCache(pid, clock());
     if (cached !== undefined) return cached;
   }
   const birth = lookupProcessBirthFingerprint(pid, dependencies);
-  storeBirthCache(pid, birth, now, ttlMs);
+  storeBirthCache(pid, birth, clock(), ttlMs);
   return birth;
 }
 
@@ -486,12 +504,14 @@ export function lookupProcessBirthFingerprintCachedAsync(
   pid,
   dependencies = {},
 ) {
+  if (pid === process.pid && ownBirth) return Promise.resolve(ownBirth);
   const now = (dependencies.now ?? Date.now)();
   const ttlMs = dependencies.ttlMs ?? PROCESS_BIRTH_FINGERPRINT_CACHE_TTL_MS;
+  const key = inFlightKey(pid, dependencies);
   if (!dependencies.fresh) {
     const cached = readBirthCache(pid, now);
     if (cached !== undefined) return Promise.resolve(cached);
-    const pending = birthFingerprintInFlight.get(pid);
+    const pending = birthFingerprintInFlight.get(key);
     if (pending) return pending;
   }
   const probe = lookupProcessBirthFingerprintAsync(pid, dependencies)
@@ -500,11 +520,11 @@ export function lookupProcessBirthFingerprintCachedAsync(
       return birth;
     })
     .finally(() => {
-      if (birthFingerprintInFlight.get(pid) === probe) {
-        birthFingerprintInFlight.delete(pid);
+      if (birthFingerprintInFlight.get(key) === probe) {
+        birthFingerprintInFlight.delete(key);
       }
     });
-  if (!dependencies.fresh) birthFingerprintInFlight.set(pid, probe);
+  if (!dependencies.fresh) birthFingerprintInFlight.set(key, probe);
   return probe;
 }
 

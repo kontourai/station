@@ -25,7 +25,6 @@ import { fsyncDirectorySync } from './fs-windows-compat.js';
 import {
   describeProcessBirthProbe,
   describeRecentProcessBirthProbeFailures,
-  lookupProcessBirthFingerprint,
   lookupProcessBirthFingerprintCached,
   lookupProcessBirthFingerprintCachedAsync,
   ownProcessBirthProbeSchedule,
@@ -202,42 +201,6 @@ function readExistingJournal(file: string): string {
   }
 }
 
-/**
- * Resolve a process birth fingerprint with retries. The single-attempt
- * lookup can time out spuriously under host load (`ps` missed a 1s deadline
- * at load-40 and wedged the dogfood lifecycle, #1057), and the own-pid
- * acquisition path fails closed on null — so only return null once the
- * process is provably gone or every attempt failed against a live process.
- *
- * Used ONLY for the upfront own-pid check in the two lock acquisition entry
- * points. The in-loop reclaim/authority lookups keep the single-attempt
- * `processBirthFingerprint`: they run several times per contested
- * acquisition on the main thread, and their null is fail-SAFE (an owner
- * with an unverifiable birth is treated as alive), so retrying there would
- * multiply worst-case event-loop blocking for no correctness gain.
- * Injectable for tests.
- */
-export function resolveProcessBirthFingerprint(
-  pid: number,
-  dependencies: {
-    lookup?: (pid: number) => string | null;
-    alive?: (pid: number) => boolean;
-    attempts?: number;
-  } = {},
-): string | null {
-  const lookup = dependencies.lookup ?? lookupProcessBirthOnce;
-  const alive = dependencies.alive ?? processExists;
-  const attempts = dependencies.attempts ?? 3;
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const birth = lookup(pid);
-    if (birth) return birth;
-    // A dead process legitimately has no fingerprint — that null is the
-    // correct answer for stale-lock reclaim and must not be retried away.
-    if (!alive(pid)) return null;
-  }
-  return null;
-}
-
 function processExists(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -245,10 +208,6 @@ function processExists(pid: number): boolean {
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'EPERM';
   }
-}
-
-function lookupProcessBirthOnce(pid: number): string | null {
-  return lookupProcessBirthFingerprint(pid);
 }
 
 // ---------------------------------------------------------------------------

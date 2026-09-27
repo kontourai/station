@@ -19,7 +19,6 @@ import {
   classifyLifecycleExit,
   type LifecycleIdentity,
   readLifecycleEvents,
-  resolveProcessBirthFingerprint,
   type StopIntent,
 } from '../lifecycle-events.js';
 import {
@@ -597,45 +596,6 @@ describe('lifecycle event journal', () => {
     );
     expect(JSON.parse(readFileSync(lock, 'utf8')).token).toBe('B');
     expect(existsSync(`${lock}.guard`)).toBe(false);
-  });
-});
-
-describe('resolveProcessBirthFingerprint (#1057 load resilience)', () => {
-  it('retries a spuriously failed lookup for a live process', () => {
-    const lookup = vi
-      .fn<(pid: number) => string | null>()
-      .mockReturnValueOnce(null)
-      .mockReturnValueOnce(null)
-      .mockReturnValueOnce('birth-x');
-    const alive = vi.fn(() => true);
-    expect(resolveProcessBirthFingerprint(1234, { lookup, alive })).toBe(
-      'birth-x',
-    );
-    expect(lookup).toHaveBeenCalledTimes(3);
-  });
-
-  it('a dead process short-circuits to null without retries (stale-lock reclaim semantics)', () => {
-    const lookup = vi.fn(() => null);
-    const alive = vi.fn(() => false);
-    expect(resolveProcessBirthFingerprint(1234, { lookup, alive })).toBeNull();
-    expect(lookup).toHaveBeenCalledTimes(1);
-  });
-
-  it('a live process with persistently failing lookups exhausts attempts and returns null', () => {
-    const lookup = vi.fn(() => null);
-    const alive = vi.fn(() => true);
-    expect(
-      resolveProcessBirthFingerprint(1234, { lookup, alive, attempts: 3 }),
-    ).toBeNull();
-    expect(lookup).toHaveBeenCalledTimes(3);
-  });
-});
-
-describe('resolveProcessBirthFingerprint default wiring', () => {
-  it('resolves a real fingerprint for the current process', () => {
-    const birth = resolveProcessBirthFingerprint(process.pid);
-    expect(birth).toBeTruthy();
-    expect(typeof birth).toBe('string');
   });
 });
 
