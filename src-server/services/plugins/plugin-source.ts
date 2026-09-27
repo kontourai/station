@@ -584,7 +584,14 @@ export async function fetchPluginSource(
           'A proposed plugin install cannot be a local git repository; propose a plain folder or a remote git URL',
       };
     }
-    const cloneArgs = ['clone', '--depth', '1'];
+    // A proposed source is checked out as macOS and Windows git would: git
+    // refuses a tree holding a path any filesystem may resolve as `.git`
+    // (`.g<U+200C>it`, `git~1`, ...) on every platform, not only where these
+    // default on. So the only git metadata a clone holds is its own `.git`.
+    const protectDotGit = options.excludeGitMetadata
+      ? ['-c', 'core.protectHFS=true', '-c', 'core.protectNTFS=true']
+      : [];
+    const cloneArgs = [...protectDotGit, 'clone', '--depth', '1'];
     if (branch) cloneArgs.push('--branch', branch);
     cloneArgs.push(url, tempDir);
     // A local path (`/path/to/plugin.git`) is a supported plugin source, and
@@ -599,19 +606,22 @@ export async function fetchPluginSource(
       rmSync(tempDir, { recursive: true, force: true });
       mkdirSync(tempDir, { recursive: true });
       try {
-        await execGit(['clone', '--depth', '1', url, tempDir], {
-          timeout: 30000,
-          hardening,
-        });
+        await execGit(
+          [...protectDotGit, 'clone', '--depth', '1', url, tempDir],
+          {
+            timeout: 30000,
+            hardening,
+          },
+        );
       } catch (cloneError: unknown) {
         rmSync(tempDir, { recursive: true, force: true });
         return { error: `Failed to clone: ${errorMessage(cloneError)}` };
       }
     }
     // A proposed remote source is staged without git metadata, as its
-    // preview says. A clone's only repository is its top-level `.git`: git
-    // refuses to check out a `.git` path from the tree, and this clone does
-    // not fetch submodules. Every spelling is still removed.
+    // preview says. A clone's only repository is its top-level `.git`: the
+    // protections above refuse a `.git` path anywhere in the tree, and this
+    // clone does not fetch submodules. Every spelling is still removed.
     if (options.excludeGitMetadata) {
       for (const name of readdirSync(tempDir)) {
         if (isGitMetadataName(name))
