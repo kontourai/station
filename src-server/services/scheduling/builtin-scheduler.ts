@@ -1,7 +1,4 @@
-import {
-  type Schedule,
-  validateSchedule,
-} from '@kontourai/ephemeris';
+import { type Schedule, validateSchedule } from '@kontourai/ephemeris';
 import {
   SCHEDULER_EXECUTION_LIMITS,
   type SchedulerConcurrencyDisposition,
