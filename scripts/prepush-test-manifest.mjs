@@ -18,7 +18,6 @@ export const PREPUSH_TEST_GROUPS = Object.freeze({
     'scripts/__tests__/station-vocabulary-gate.test.ts',
     'scripts/__tests__/unsaved-guard-gate.test.ts',
     'scripts/__tests__/state-primitives-ratchet.test.ts',
-    'scripts/__tests__/responsive-surface-ratchet.test.ts',
     'scripts/__tests__/focus-visible-ratchet.test.ts',
     'scripts/__tests__/shell-conformance-ratchet.test.ts',
     'scripts/__tests__/knowledge-kit-import-gate.test.ts',

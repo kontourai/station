@@ -123,7 +123,6 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'scripts/__tests__/repo-guardrail-source.test.ts',
   'scripts/__tests__/screenshot-diff.test.ts',
   'scripts/__tests__/tauri-webdriver-boundary.test.ts',
-  'scripts/__tests__/trust-bundle-claim-prose.test.ts',
   'scripts/__tests__/verification-lanes.test.ts',
   'scripts/__tests__/verification-reporter.test.ts',
   'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
@@ -498,6 +497,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'git ls-files over its own generated outputs, to prove they are untracked',
   'scripts/__tests__/desktop-runtime-port-lease.test.ts':
     'its rmSync mock walks whatever the code under test deletes, a temporary lock directory',
+  'scripts/__tests__/fast-checks-shard-cli.test.ts':
+    'git ls-files over scripts/__tests__ as a real test selection to shard; asserts nothing about those files, only that the shards cover it',
   'scripts/__tests__/generate-app-icons.test.ts':
     'incidental: compares the committed icon sets and .icns files it regenerates',
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts':

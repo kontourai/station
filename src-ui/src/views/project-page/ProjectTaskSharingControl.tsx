@@ -11,7 +11,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
-import { errorText } from '../../utils/errorText';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 export function ProjectTaskSharingControl({
   slug,
@@ -141,7 +141,7 @@ function ProjectTaskSharingControlInner({
       );
     } catch (cause) {
       setNotice(
-        `Sharing state changed or could not be updated. ${errorText(cause)}`,
+        `Sharing state changed or could not be updated. ${userFacingErrorMessage(cause)}`,
       );
     }
   }

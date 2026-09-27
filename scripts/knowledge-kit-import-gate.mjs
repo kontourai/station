@@ -130,11 +130,6 @@ const SCOPED_EXTENSIONS = [
   '.js',
 ];
 
-// This gate's own script file legitimately names the banned patterns in
-// prose/regexes above — self-exclude it, same precedent as
-// rename-inventory.mjs excluding itself.
-const SELF_EXCLUDE = 'scripts/knowledge-kit-import-gate.mjs';
-
 function listTrackedFiles() {
   const out = execFileSync('git', ['ls-files', '--', ...SCOPED_DIRS], {
     encoding: 'utf8',
@@ -147,10 +142,8 @@ function isScopedSourceFile(file) {
   return SCOPED_EXTENSIONS.some((ext) => file.endsWith(ext));
 }
 
-export function listScopedFiles() {
-  return listTrackedFiles()
-    .filter(isScopedSourceFile)
-    .filter((file) => file !== SELF_EXCLUDE);
+function listScopedFiles() {
+  return listTrackedFiles().filter(isScopedSourceFile);
 }
 
 function main() {
