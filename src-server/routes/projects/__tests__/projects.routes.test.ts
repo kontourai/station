@@ -410,14 +410,50 @@ describe('Project Routes', () => {
   test('GET / answers the operator every project, unprojected and without no-store', async () => {
     // No `memberProjectAdmissions`: the operator path. The member projection
     // (above) filters, projects and marks the response no-store; this one
-    // must do none of that.
-    const service = createMockProjectService();
-    await service.createProject({ slug: 'shared', name: 'Shared' });
-    await service.createProject({ slug: 'private', name: 'Private' });
+    // must do none of that. Real storage, so the list carries the owner's
+    // full public metadata (working directory, layout count, knowledge,
+    // provider, position) that a projection would drop.
+    const projectHomeDir = createTempProjectHome();
+    const storage = new FileStorageAdapter(projectHomeDir);
     const app = createProjectRoutes(
-      service as any,
-      createMockStorageAdapter(['shared', 'private']) as any,
-      '/tmp',
+      new ProjectService(storage) as any,
+      storage as any,
+      projectHomeDir,
+      { listAgents: async () => [] },
+    );
+    const workingDirectory = createTempProjectHome();
+    await putProject(storage, {
+      id: 'project-shared',
+      slug: 'shared',
+      name: 'Shared',
+      icon: '🧭',
+      description: 'Shared workspace',
+      workingDirectory,
+      defaultProviderId: 'provider-a',
+      position: 0,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    });
+    await putProject(storage, {
+      id: 'project-private',
+      slug: 'private',
+      name: 'Private',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    });
+    const layout = await app.request('/shared/layouts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: 'main', name: 'Main', type: 'chat' }),
+    });
+    expect(layout.status).toBe(201);
+    // The owner reads knowledge presence from this legacy flat file.
+    mkdirSync(join(projectHomeDir, 'projects', 'shared', 'documents'), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(projectHomeDir, 'projects', 'shared', 'documents', 'metadata.json'),
+      '[]\n',
     );
 
     const response = await app.request('/');
@@ -427,8 +463,27 @@ describe('Project Routes', () => {
     expect(await json(response)).toEqual({
       success: true,
       data: [
-        { id: 'id-1', slug: 'shared', name: 'Shared' },
-        { id: 'id-1', slug: 'private', name: 'Private' },
+        {
+          id: 'project-shared',
+          slug: 'shared',
+          name: 'Shared',
+          icon: '🧭',
+          description: 'Shared workspace',
+          hasWorkingDirectory: true,
+          workingDirectory,
+          layoutCount: 1,
+          hasKnowledge: true,
+          defaultProviderId: 'provider-a',
+          position: 0,
+        },
+        {
+          id: 'project-private',
+          slug: 'private',
+          name: 'Private',
+          hasWorkingDirectory: false,
+          layoutCount: 0,
+          hasKnowledge: false,
+        },
       ],
     });
   });
