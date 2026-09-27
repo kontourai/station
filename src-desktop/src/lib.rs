@@ -20,6 +20,10 @@ mod notification_feed;
 mod notification_watch;
 // Foundation only: this module owns native proof-key custody and signing but
 // is intentionally not registered as renderer IPC or wired to app traffic.
+// Host account proof-key custody. Separate keyring namespace from the relay
+// routing proof key; no Tauri IPC is registered for it yet.
+#[cfg(not(mobile))]
+pub(crate) mod native_account_proof_key;
 #[cfg(not(mobile))]
 mod native_relay_key_approval;
 #[cfg(not(mobile))]
