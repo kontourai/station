@@ -2,8 +2,10 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import {
   copyFileSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -20,14 +22,17 @@ import {
   sliceFastChecksPlan,
 } from '../lib/fast-checks-shards.mjs';
 import {
+  discoverRelatedTestFiles,
   planChangedVerificationShards,
   planChangedVitestExecutions,
   prepareChangedSelection,
+  runChangedVerification,
   runChangedVerificationShard,
   selectChangedVerification,
   vitestExecutionsForGroups,
 } from '../run-changed-verification.mjs';
 import { buildTestImpactManifest } from '../test-impact-manifest.mjs';
+import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const makeTempDir = trackTempDirs();
@@ -199,6 +204,31 @@ describe('fast-checks aggregator exit status (child process)', () => {
       );
     },
   );
+
+  test('fails when the checkout is not the commit the plan was computed for', () => {
+    const directory = aggregateFixture();
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.email=fast-checks@test.invalid',
+        '-c',
+        'user.name=fast-checks',
+        'commit',
+        '--allow-empty',
+        '--no-verify',
+        '-q',
+        '-m',
+        'moved on',
+      ],
+      { cwd: directory, windowsHide: true },
+    );
+    const result = aggregate(directory);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(
+      /plan was computed for [0-9a-f]{40}, not the checked-out [0-9a-f]{40}/,
+    );
+  });
 
   test('fails when a shard left no receipt', () => {
     const result = aggregate(aggregateFixture({ omit: [3] }));
@@ -479,6 +509,21 @@ describe('fast-checks shard execution verdicts', () => {
     },
   );
 
+  test('runs the dependency provenance preflight before any Vitest child', async () => {
+    const run = fakeRun(0, report(0));
+    await expect(
+      runChangedVerificationShard({ deferredLanes: [] }, slice, {
+        root,
+        run,
+        vitestPath: 'vitest.mjs',
+        assertDependencyProvenance: () => {
+          throw new Error('workspace package resolves outside this tree');
+        },
+      }),
+    ).rejects.toThrow('workspace package resolves outside this tree');
+    expect(run).not.toHaveBeenCalled();
+  });
+
   test('runs each file under its resource group profile', async () => {
     const run = fakeRun(0, report(0));
     await runChangedVerificationShard({ deferredLanes: [] }, slice, {
@@ -694,5 +739,113 @@ describe('transitional legacy path: the base-controlled shell in ci.yml (child p
   test('a sharded candidate whose shards were skipped fails, end to end from detection', () => {
     const legacy = detect(true).trim().split('=')[1];
     expect(partResults(needs(legacy, { shard: 'skipped' }))).toBe(1);
+  });
+});
+
+describe('plan-level empty-discovery escalation (#2709 review F2)', () => {
+  test('a committed file nothing imports defers the plan to test-full, as the unsharded lane exits 3', {
+    timeout: 240_000,
+  }, async () => {
+    // A disposable worktree at HEAD with one committed orphan module, so
+    // the diff is a real `git diff` and discovery is the real Vitest graph.
+    const worktree = join(makeTempDir('station-fast-checks-orphan-'), 'wt');
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync('git', args, {
+        cwd,
+        encoding: 'utf8',
+        windowsHide: true,
+      }).trim();
+    git(root, 'worktree', 'add', '--detach', worktree, 'HEAD');
+    try {
+      // A directory of links, not one link: `node_modules/` is ignored only
+      // as a directory, so the diff stays exactly the committed file.
+      mkdirSync(join(worktree, 'node_modules'));
+      for (const entry of readdirSync(join(root, 'node_modules')))
+        symlinkSync(
+          join(root, 'node_modules', entry),
+          join(worktree, 'node_modules', entry),
+        );
+      const orphan = 'scripts/lib/fast-checks-orphan-fixture.mjs';
+      writeFileSync(join(worktree, orphan), 'export const orphan = 1;\n');
+      git(worktree, 'add', orphan);
+      git(
+        worktree,
+        '-c',
+        'user.email=fast-checks@test.invalid',
+        '-c',
+        'user.name=fast-checks',
+        'commit',
+        // A disposable fixture commit: the repository's own hooks are for
+        // authored changes, not this throwaway worktree.
+        '--no-verify',
+        '-q',
+        '-m',
+        'orphan fixture',
+      );
+      const headSha = git(worktree, 'rev-parse', 'HEAD');
+      // Workspace packages link to the primary checkout on purpose; the
+      // provenance preflight would (correctly) refuse that tree.
+      const assertDependencyProvenance = () => ({
+        repositoryRoot: worktree,
+        packages: [],
+      });
+      let discovered: string[] | undefined;
+
+      const plan = await planChangedVerificationShards('HEAD~1', {
+        root: worktree,
+        headSha,
+        assertDependencyProvenance,
+        discoverRelatedFiles: async (
+          discoveryRoot: string,
+          paths: string[],
+          options?: { base?: string },
+        ) => {
+          discovered = await discoverRelatedTestFiles(
+            discoveryRoot,
+            paths,
+            options,
+          );
+          return discovered;
+        },
+      });
+      expect(discovered).toEqual([]);
+      expect(plan.changedPathCount).toBe(1);
+      expect(plan.groups).toEqual([]);
+      expect(plan.fileCount).toBe(0);
+      expect(plan.emptyRelatedSelection?.relatedPaths).toEqual([orphan]);
+      expect(plan.deferredLanes).toEqual([
+        {
+          id: 'test-full',
+          reasons: [expect.stringContaining(`no related suites for ${orphan}`)],
+        },
+      ]);
+
+      // The unsharded lane on the same diff and discovery answer: exit 3.
+      const unsharded = await runChangedVerification(['--base=HEAD~1'], {
+        root: worktree,
+        assertDependencyProvenance,
+        discoverRelatedFiles: async () => discovered ?? [],
+        collectProvenance: () => ({
+          repositoryId: 'd'.repeat(64),
+          worktree,
+          headSha,
+          workspaceDigest: 'b'.repeat(64),
+          environmentDigest: 'e'.repeat(64),
+          dependencyDigest: 'c'.repeat(64),
+          nodeVersion: process.version,
+          toolchain: 'npm@fixture',
+          toolchainIdentity: FIXTURE_TOOLCHAIN_IDENTITY,
+          platform: process.platform,
+          arch: process.arch,
+        }),
+        writeReceipt: vi.fn(),
+      } as unknown as Parameters<typeof runChangedVerification>[1]);
+      expect(unsharded.exitCode).toBe(3);
+      expect(
+        unsharded.selection.lanes.map((lane: { id: string }) => lane.id),
+      ).toEqual(plan.deferredLanes.map((lane: { id: string }) => lane.id));
+    } finally {
+      git(root, 'worktree', 'remove', '--force', worktree);
+    }
   });
 });

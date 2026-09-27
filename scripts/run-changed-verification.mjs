@@ -1680,6 +1680,21 @@ export async function runChangedVerification(
  * discovery or planning fault throws: no plan is written, and the required
  * aggregator fails on the missing plan.
  */
+/**
+ * @param {string} base
+ * @param {{
+ *   root?: string;
+ *   run?: typeof runOwnedChangedCommand;
+ *   changedPathsFn?: typeof changedPaths;
+ *   discoverRelatedFiles?: (root: string, relatedPaths: string[], options?: { base?: string }) => Promise<string[]>;
+ *   resourcePartition?: typeof partitionVitestResourceSubset;
+ *   assertDependencyProvenance?: (options: { cwd: string }) => unknown;
+ *   pathExists?: typeof existsSync;
+ *   signal?: AbortSignal;
+ *   headSha?: string;
+ *   shardCount?: number;
+ * }} [options]
+ */
 export async function planChangedVerificationShards(
   base,
   {
@@ -1769,6 +1784,7 @@ export async function planChangedVerificationShards(
  *   vitestPath?: string;
  *   readReport?: typeof readFileSync;
  *   signal?: AbortSignal;
+ *   assertDependencyProvenance?: (options: { cwd: string }) => unknown;
  * }} [options]
  */
 export async function runChangedVerificationShard(
@@ -1780,8 +1796,12 @@ export async function runChangedVerificationShard(
     vitestPath,
     readReport,
     signal,
+    assertDependencyProvenance = assertWorkspacePackageProvenance,
   } = {},
 ) {
+  // The same preflight the unsharded lane runs before any Vitest child: a
+  // shared node_modules link must not run the tests of another tree.
+  assertDependencyProvenance({ cwd: root });
   const vitest = vitestPath ?? resolve(root, 'node_modules/vitest/vitest.mjs');
   validateSelectedTestFiles(root, slice.files);
   const planned = vitestExecutionsForGroups(slice.groups, {

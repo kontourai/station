@@ -268,6 +268,22 @@ describe('fast-checks aggregate verdict', () => {
     expect(findings).toContain('shard 4/4 left no receipt');
   });
 
+  test('fails when the plan was computed for another commit than the checkout (review F3)', () => {
+    const planText = `${JSON.stringify(SEVEN_FILES, null, 2)}\n`;
+    const other = 'b'.repeat(40);
+    const { findings } = verifyFastChecks({
+      needs: successNeeds,
+      planText,
+      receipts: receiptsFor(SEVEN_FILES, planText),
+      runId: RUN_ID,
+      headSha: other,
+    });
+    // Every receipt agrees with the plan, so only the head check can fire.
+    expect(findings).toEqual([
+      `plan was computed for ${HEAD}, not the checked-out ${other}`,
+    ]);
+  });
+
   test('fails on a missing plan', () => {
     expect(
       verifyFastChecks({
