@@ -24,7 +24,6 @@ use zeroize::{Zeroize, Zeroizing};
 const KEYRING_SERVICE: &str = "io.kontourai.station.account-proof";
 const ACCOUNT_PREFIX: &str = "native-account-proof:v1";
 const RECORD_VERSION: u8 = 1;
-const SIGNATURE_PURPOSE: &[u8] = b"station-account-proof-signature/v1\0";
 const MAX_PKCS8_BYTES: usize = 1024;
 const MAX_PKCS8_BASE64_BYTES: usize = MAX_PKCS8_BYTES.div_ceil(3) * 4;
 // Tauri's per-application single-instance guard excludes a second Station
@@ -252,9 +251,9 @@ impl NativeAccountProofKeyVault {
         Ok(self.inner.restore(owner)?.jwk)
     }
 
-    /// ES256 signature over a domain-separated message in P1363 (fixed-width
-    /// r||s) form. Rust-internal only: no Tauri command reaches this method,
-    /// so it cannot become a renderer-callable signing oracle by accident.
+    /// ES256 signature over the exact JWS `header.payload` bytes in P1363
+    /// (fixed-width r||s) form. The native account proof type is inside that
+    /// signed header. Rust-internal only: no Tauri command reaches this method.
     pub(crate) fn sign_es256_p1363(
         &self,
         owner: &NativeAccountProofKeyOwner,
@@ -410,7 +409,7 @@ impl<B: AccountSecretBackend> AccountProofKeyVault<B> {
         )
         .map_err(|_| AccountProofKeyError::Corrupt)?;
         key_pair
-            .sign(&rng, &signed_message(message))
+            .sign(&rng, message)
             .map(|signature| signature.as_ref().to_vec())
             .map_err(|_| AccountProofKeyError::Signing)
     }
@@ -537,13 +536,6 @@ fn public_metadata(
     Ok(NativeAccountProofKeyPublicMetadata { jwk, thumbprint })
 }
 
-fn signed_message(message: &[u8]) -> Vec<u8> {
-    let mut input = SIGNATURE_PURPOSE.to_vec();
-    input.extend_from_slice(&(message.len() as u64).to_le_bytes());
-    input.extend_from_slice(message);
-    input
-}
-
 fn valid_app_identifier(value: &str) -> bool {
     let mut bytes = value.bytes();
     bytes
@@ -562,7 +554,8 @@ mod tests {
     const CLIENT: &str = "33333333-3333-4333-8333-333333333333";
     const STATION: &str = "11111111-1111-4111-8111-111111111111";
     const DEVICE: &str = "44444444-4444-4444-8444-444444444444";
-    const MESSAGE: &[u8] = b"account-proof test message";
+    // The SDK signs the exact compact-JWS `header.payload` bytes.
+    const MESSAGE: &[u8] = b"native-account-header.native-account-payload";
 
     fn owner() -> NativeAccountProofKeyOwner {
         NativeAccountProofKeyOwner::new(APP, NativeProofKeyChannel::Stable, CLIENT, STATION, DEVICE)
@@ -582,7 +575,7 @@ mod tests {
         point.extend_from_slice(&x);
         point.extend_from_slice(&y);
         UnparsedPublicKey::new(&signature::ECDSA_P256_SHA256_FIXED, point)
-            .verify(&signed_message(message), signature)
+            .verify(message, signature)
             .is_ok()
     }
 
