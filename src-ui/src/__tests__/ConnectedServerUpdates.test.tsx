@@ -194,6 +194,7 @@ function sidecarStatus(
 let identityBody: () => unknown;
 let identityMode: 'auto' | 'queue';
 let identityFailure: number | undefined;
+let probeIdentityBody: (() => unknown) | undefined;
 let identityCalls: Array<{ url: string; signal: AbortSignal | null }>;
 let transportCalls: string[];
 let identityQueue: Array<{
@@ -227,6 +228,7 @@ async function renderHarness({
   authorize = true,
   identity = DEFAULT_IDENTITY,
   identityFailure: failureStatus = undefined,
+  probeIdentity = undefined,
   queueIdentity = false,
   profileOverrides = {},
   coreUpdate = () => ({ updateAvailable: false }),
@@ -236,6 +238,12 @@ async function renderHarness({
   authorize?: boolean;
   identity?: () => unknown;
   identityFailure?: number;
+  /**
+   * Answers the health probe's liveness identity read separately, so a
+   * connection can reach `connected` while the correlation's own identity
+   * read fails or is incomplete.
+   */
+  probeIdentity?: () => unknown;
   queueIdentity?: boolean;
   profileOverrides?: Partial<typeof DESKTOP_PROFILE>;
   coreUpdate?: () => unknown;
@@ -243,6 +251,7 @@ async function renderHarness({
   identityBody = identity;
   identityMode = queueIdentity ? 'queue' : 'auto';
   identityFailure = failureStatus;
+  probeIdentityBody = probeIdentity;
   identityCalls = [];
   transportCalls = [];
   identityQueue = [];
@@ -395,6 +404,12 @@ describe('ConnectedServerUpdates', () => {
           init as { authorityGuard?: () => void } | undefined
         )?.authorityGuard;
         authorityGuard?.();
+        const livenessProbe = (
+          init as { livenessProbe?: boolean } | undefined
+        )?.livenessProbe;
+        if (livenessProbe && probeIdentityBody) {
+          return Response.json(probeIdentityBody());
+        }
         if (identityFailure !== undefined) {
           return new Response('identity unavailable', {
             status: identityFailure,
@@ -625,6 +640,44 @@ describe('ConnectedServerUpdates', () => {
     await new Promise((resolve) => setTimeout(resolve, 25));
     expect(coreUpdateAttempts(queryClient)).toBe(0);
   });
+
+  it.each([
+    { name: 'fails', identityFailure: 503, identity: undefined },
+    {
+      name: 'is incomplete',
+      identityFailure: undefined,
+      identity: () => ({ instanceId: 'remote-instance' }),
+    },
+  ])(
+    'keeps the source check off for a resolved paired server when identity $name',
+    async ({ identityFailure: failure, identity }) => {
+      // A paired connection claims no native owner and has no pending native
+      // observation, so identity success is the only conjunct holding the
+      // automatic check here.
+      const { queryClient } = await renderHarness({
+        store: PAIRED_STORE,
+        profileOverrides: { supervisesBundledServer: false },
+        identityFailure: failure,
+        ...(identity ? { identity } : {}),
+        probeIdentity: () =>
+          identityResponseFor({
+            instanceId: 'remote-instance',
+            bootId: 'remote-boot',
+          }),
+      });
+      await waitConnected();
+      await waitIdentitySettled();
+      expect(context?.identityReady).toBe(false);
+      expect(context?.claimedOwnerUnresolved).toBe(false);
+      expect(context?.nativeObservationPending).toBe(false);
+      expect(context?.reachability).toBe('connected');
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(coreUpdateAttempts(queryClient)).toBe(0);
+      expect(
+        transportCalls.filter((url) => url.includes('/api/system/core-update')),
+      ).toHaveLength(0);
+    },
+  );
 
   it('holds the source check until the native observation arrives, then renders the built-in copy', async () => {
     // Mount with a saved local owner already answering (identity settles)
