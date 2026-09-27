@@ -11,6 +11,7 @@ import {
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  isDesktop: true,
   profiles: [] as readonly Record<string, unknown>[],
   listeners: new Set<() => void>(),
   remove: vi.fn(),
@@ -27,7 +28,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../platform/PlatformProfileContext', () => ({
-  usePlatformProfile: () => ({ isTauri: true }),
+  usePlatformProfile: () => ({ isTauri: true, isDesktop: mocks.isDesktop }),
   nativeProfileRepository: () => ({
     getRelayRouteProfiles: () => mocks.profiles,
     subscribeRelayRouteProfiles: (listener: () => void) => {
@@ -92,6 +93,7 @@ function renderRoutes() {
 
 describe('RelayRouteProfiles', () => {
   beforeEach(() => {
+    mocks.isDesktop = true;
     mocks.listeners.clear();
     mocks.remove.mockReset();
     mocks.save.mockReset();
@@ -176,6 +178,34 @@ describe('RelayRouteProfiles', () => {
       ),
     );
     expect(screen.queryByText('Saved broker routes')).toBeNull();
+  });
+
+  test('explains when the saved-route limit pauses automatic renewal', () => {
+    const template = mocks.profiles[0];
+    mocks.profiles = Array.from({ length: 65 }, (_, index) => ({
+      ...template,
+      name: `Saved route ${index}`,
+    }));
+    renderRoutes();
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /renewal is paused for all saved routes/i,
+    );
+  });
+
+  test('does not promise automatic renewal on mobile', () => {
+    mocks.isDesktop = false;
+    const template = mocks.profiles[0];
+    mocks.profiles = Array.from({ length: 65 }, (_, index) => ({
+      ...template,
+      name: `Saved route ${index}`,
+    }));
+    renderRoutes();
+    expect(
+      screen.queryByText(
+        /approved routing grants renew while this desktop app/i,
+      ),
+    ).toBeNull();
+    expect(screen.queryByText(/automatic grant renewal is paused/i)).toBeNull();
   });
 
   test('hides cached approved trust and disables revocation after a native status refetch fails', async () => {
