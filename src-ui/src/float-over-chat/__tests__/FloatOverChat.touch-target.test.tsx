@@ -79,7 +79,7 @@ const SESSION: BrowserSessionView = {
   surfaceId: 'browser:0f8f7c1e-9a41-4f2b-9d4a-2b8b1c0e5a77:g1',
 };
 
-const CHAT = { width: 900, height: 700, composer: 120 };
+const COMPOSER_HEIGHT = 120;
 
 function rect(left: number, top: number, width: number, height: number) {
   return {
@@ -96,14 +96,17 @@ function rect(left: number, top: number, width: number, height: number) {
 }
 
 /** The open pill's DOM, as the real component renders it over a chat body. */
-async function openPillMarkup(): Promise<string> {
+async function openPillMarkup(chat: {
+  width: number;
+  height: number;
+}): Promise<string> {
   const area = document.createElement('div');
   document.body.appendChild(area);
-  area.getBoundingClientRect = () => rect(0, 0, CHAT.width, CHAT.height);
+  area.getBoundingClientRect = () => rect(0, 0, chat.width, chat.height);
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
     function (this: HTMLElement) {
       return this.classList.contains('float-over-chat__anchor')
-        ? rect(0, CHAT.height - CHAT.composer, CHAT.width, 0)
+        ? rect(0, chat.height - COMPOSER_HEIGHT, chat.width, 0)
         : rect(0, 0, 0, 0);
     },
   );
@@ -171,18 +174,20 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-test('every pill control renders at least 44x44 at rest, hovered, focused and pressed, on a phone and a desktop', async () => {
-  const markup = await openPillMarkup();
-  const failures: string[] = [];
-  for (const viewport of [
-    { width: 390, height: 844 },
-    { width: 1280, height: 800 },
-  ]) {
+// The chat body fills a phone's width; on a desktop it is the dock's column.
+test.each([
+  { viewport: { width: 390, height: 844 }, chat: { width: 390, height: 700 } },
+  { viewport: { width: 1280, height: 800 }, chat: { width: 900, height: 700 } },
+])(
+  'every pill control renders at least 44x44 at rest, hovered, focused and pressed, at $viewport.width px',
+  async ({ viewport, chat }) => {
+    const markup = await openPillMarkup(chat);
+    const failures: string[] = [];
     const page = await browser.newPage({ viewport });
     try {
       await page.setContent(
         `<!doctype html><html><head><style>${css}</style></head><body>` +
-          `<div style="position:relative;width:${CHAT.width}px;height:${CHAT.height}px">${markup}</div>` +
+          `<div style="position:relative;width:${chat.width}px;height:${chat.height}px">${markup}</div>` +
           '</body></html>',
       );
       const controls = page
@@ -204,7 +209,7 @@ test('every pill control renders at least 44x44 at rest, hovered, focused and pr
       const measure = async (state: string) => {
         for (const [index, control] of (await controls.all()).entries()) {
           const box = await control.boundingBox();
-          const label = `${viewport.width}px, ${state}: ${names[index]}`;
+          const label = `${state}: ${names[index]}`;
           if (box === null) failures.push(`${label}: not rendered`);
           else if (
             box.width < MIN_TOUCH_TARGET_PX ||
@@ -215,12 +220,24 @@ test('every pill control renders at least 44x44 at rest, hovered, focused and pr
       };
       await measure('at rest');
       for (const [index, control] of (await controls.all()).entries()) {
-        // The raw pointer, not `locator.hover()`: a control that shrinks
-        // under the pointer never settles, and its actionability wait would
-        // time out instead of reporting the size.
+        // The raw pointer, not `locator.hover()`: a control that shrinks under
+        // the pointer never settles, and its actionability wait would time out
+        // instead of reporting the size.
         const box = await control.boundingBox();
         if (box === null) continue;
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        const x = box.x + box.width / 2;
+        const y = box.y + box.height / 2;
+        // A pointer that lands elsewhere (off screen, under another element)
+        // would measure the resting state and call it hovered.
+        expect(
+          await control.evaluate(
+            (element, [px, py]) =>
+              element.contains(document.elementFromPoint(px, py)),
+            [x, y],
+          ),
+          names[index],
+        ).toBe(true);
+        await page.mouse.move(x, y);
         await measure(`hovering "${names[index]}"`);
         await control.focus();
         await measure(`focusing "${names[index]}"`);
@@ -231,6 +248,7 @@ test('every pill control renders at least 44x44 at rest, hovered, focused and pr
     } finally {
       await page.close();
     }
-  }
-  expect(failures).toEqual([]);
-}, 120_000);
+    expect(failures).toEqual([]);
+  },
+  120_000,
+);
