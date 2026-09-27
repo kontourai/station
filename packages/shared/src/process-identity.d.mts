@@ -20,10 +20,15 @@ export type ProcessIdentityDependencies = {
   now?: () => number;
   retryDelayMs?: number;
   deadlineMs?: number;
-  /** Windows probe shell; absent means the absolute Windows PowerShell. */
+  /**
+   * Windows probe shell; absent means the absolute Windows PowerShell, and
+   * `pwsh.exe` means PowerShell 7 at its standard install path, else PATH.
+   */
   windowsShell?: string;
-  /** Environment used to resolve Windows PowerShell's System32 path. */
+  /** Environment used to resolve the Windows PowerShell paths. */
   env?: NodeJS.ProcessEnv;
+  /** existsSync-shaped seam for PowerShell 7's standard install path. */
+  fileExists?: (path: string) => boolean;
   /** execFileSync-shaped seam; #1669 added it to the impl but not here. */
   exec?: (
     file: string,
