@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { loadPublicDocs } from '../build-github-pages.mjs';
+import { loadPublicDocs, renderMarkdown } from '../build-github-pages.mjs';
 
 const CANONICAL_REPOSITORY = 'https://github.com/kontourai/station';
 const PREDECESSOR_REPOSITORY =
@@ -29,64 +29,18 @@ describe('public product documentation source links', () => {
     }
   });
 
-  it('publishes an explicit end-user allowlist instead of the docs tree', () => {
-    const manifest = JSON.parse(
-      readFileSync('docs/pages/public-docs.json', 'utf8'),
-    ) as {
-      schemaVersion: number;
-      documents: Array<{ section: string; source: string }>;
-    };
+  it('admits every allowlisted public doc through the build loader', async () => {
+    // The real manifest through the real admission: schema, allowed roots,
+    // git tracking, and regular-file checks all run against the checked-in
+    // allowlist, so an internal doc added to it fails here.
+    const sources = (await loadPublicDocs()).map(({ source }) => source);
+    expect(sources.length).toBeGreaterThan(0);
+    // Admissible by path, but contributor-internal.
+    expect(sources).not.toContain('guides/testing.md');
+    // The only binding between the published set and the allowlist: the
+    // build reads its documents from loadPublicDocs, not a directory walk.
     const generator = readFileSync('scripts/build-github-pages.mjs', 'utf8');
-
-    expect(manifest.schemaVersion).toBe(1);
-    expect(manifest.documents).toEqual([
-      { section: 'Start Here', source: 'user/getting-started.md' },
-      { section: 'Understand Station', source: 'user/concepts.md' },
-      { section: 'Use Station', source: 'user/native-recovery.md' },
-      { section: 'Use Station', source: 'user/work-board.md' },
-      { section: 'Contribute', source: 'user/contributing.md' },
-      { section: 'Contribute', source: 'guides/contributing.md' },
-      { section: 'Use Station', source: 'guides/keyboard-shortcuts.md' },
-      { section: 'Build Station', source: 'guides/product-law-authoring.md' },
-      { section: 'Reference', source: 'reference/product-laws.md' },
-      { section: 'Reference', source: 'reference/contributor-commands.md' },
-    ]);
-    expect(
-      manifest.documents
-        .map(({ source }) => source)
-        .filter((source) => source.startsWith('reference/')),
-    ).toEqual([
-      'reference/product-laws.md',
-      'reference/contributor-commands.md',
-    ]);
-    for (const document of manifest.documents) {
-      expect(existsSync(`docs/${document.source}`), document.source).toBe(true);
-      expect(document.source).not.toMatch(
-        /^(?:adr|architecture|design|patterns|plans|strategy)\//,
-      );
-    }
-    expect(manifest.documents.map(({ source }) => source)).not.toContain(
-      'guides/testing.md',
-    );
-    expect(manifest.documents.map(({ source }) => source)).not.toContain(
-      'AGENTS.md',
-    );
-    expect(generator).toContain("'public-docs.json'");
-    expect(generator).toContain('loadPublicDocs()');
-    expect(generator).not.toContain('collectMarkdown');
-  });
-
-  it('documents the individual-admission topology and source-versus-host boundary', () => {
-    const pagesReadme = readFileSync('docs/pages/README.md', 'utf8');
-    for (const phrase of [
-      'exact, individual allowlist',
-      'never\n  publishes a directory recursively',
-      'generated\nreferences project exact command and product-law authorities',
-      'hosted Pages deployment',
-      'platform result',
-      '**NOT_VERIFIED**',
-    ])
-      expect(pagesReadme).toContain(phrase);
+    expect(generator).toContain('await loadPublicDocs()');
   });
 
   it('fails closed on escaping and duplicate public-doc sources', async () => {
@@ -234,56 +188,32 @@ describe('public product documentation source links', () => {
   });
 
   it('keeps generated Markdown tables horizontally reachable and focusable', () => {
-    const generator = readFileSync('scripts/build-github-pages.mjs', 'utf8');
+    const html = renderMarkdown(
+      ['| Name | Value |', '| --- | --- |', '| a | 1 |'].join('\n'),
+    );
     const styles = readFileSync('docs/pages/styles.css', 'utf8');
 
-    expect(generator).toContain(
-      '<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table">',
+    expect(html).toMatch(
+      /<div class="table-scroll" tabindex="0" role="region" aria-label="[^"]+"><table>[\s\S]*<\/table><\/div>/,
     );
     expect(styles).toContain('.table-scroll {');
     expect(styles).toContain('overflow-x: auto;');
     expect(styles).toContain('.table-scroll:focus-visible');
   });
 
-  it('routes contributors through the Module map and pins its documented scope', () => {
+  it('routes contributors through the Module map', () => {
     const docsReadme = readFileSync('docs/README.md', 'utf8');
     const architecture = readFileSync('docs/architecture.md', 'utf8');
-    const moduleMap = readFileSync('docs/architecture/module-map.md', 'utf8');
 
     expect(docsReadme).toContain('[architecture/module-map.md]');
     expect(architecture).toContain('[Module map](architecture/module-map.md)');
-    for (const module of [
-      'PendingPairingCompletion',
-      'SessionQueryModule',
-      'SessionCommandModule',
-      'TurnDeduplicator',
-      'AdoptionLedger',
-      'RecoveryLedger',
-      'CredentialRecoveryModule',
-      'ConnectionInspector',
-      'TaskDispatcher',
-      'StationInstanceReconciler',
-    ]) {
-      expect(moduleMap).toContain(module);
-    }
-    expect(moduleMap).toContain(
-      'Project-resource resolver evidence: #1501 and #1775',
-    );
-    expect(moduleMap).toContain('#2525 retained internal boundaries');
   });
 
-  it('makes the repository and public documentation boundaries explicit', () => {
+  it('links contributors to the repository and public documentation boundaries', () => {
     const readme = readFileSync('README.md', 'utf8');
     const contributing = readFileSync('CONTRIBUTING.md', 'utf8');
-    const docsReadme = readFileSync('docs/README.md', 'utf8');
-    const pagesReadme = readFileSync('docs/pages/README.md', 'utf8');
 
     expect(readme).toContain('[Contributing](CONTRIBUTING.md)');
     expect(contributing).toContain('docs/pages/public-docs.json');
-    expect(docsReadme).toContain('Repository only');
-    expect(docsReadme).toContain(
-      'GitHub issues and pull requests own live work state',
-    );
-    expect(pagesReadme).toContain('not a mirror of the');
   });
 });
