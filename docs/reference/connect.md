@@ -60,13 +60,16 @@ feature detection across a rolling client/server upgrade. See
 for that field's schema and absence-means-unsupported semantics, and
 `hasCapability()` from `@kontourai/station-sdk` for reading it.
 
-Changing a verified environment's endpoint stages an untrusted candidate. On
-explicit confirmation, Connect sends a fresh 256-bit nonce (never the bearer)
-to `POST /.well-known/station/v1/proof` and verifies the returned,
-domain-separated HMAC locally with the saved credential. The endpoint changes
-only when the environment id, nonce, protocol version, and signature all match.
-Remote candidates must use HTTPS; cleartext HTTP is accepted only for strict
-loopback hosts.
+Changing a verified environment's endpoint stages a candidate for explicit
+confirmation. The current confirmation path requires a saved credential, sends
+a fresh 256-bit nonce to `POST /.well-known/station/v1/proof`, and checks the
+returned environment ID, nonce, protocol version and HMAC before committing the
+candidate. The request does not include the bearer credential. Use an endpoint
+whose ownership you have independently established; the public handshake and
+this response check are not a replacement for trusted endpoint selection.
+This confirmation path accepts HTTPS, or HTTP on strict loopback hosts. See the
+[confirmation caller](../../packages/connect/src/react/ConnectionManagerModalContent.tsx)
+and [proof parser](../../packages/connect/src/core/environmentProof.ts).
 
 Version 4 migrates older URL-only and endpoint records idempotently. One verified
 environment can retain typed same-origin, tailnet HTTPS, LAN HTTPS/HTTP, and
@@ -79,8 +82,14 @@ redacted.
 uses bounded exponential retry with jitter, cancels when the environment or
 subscriber set changes, and wakes on browser online/visibility signals. The
 last verified profile/session data may remain visible during a transient
-outage, but it is explicitly stale and read-only. The SDK rejects mutations
-before `fetch` while stale. This health coordinator does not queue mutations.
+outage. Health snapshots do not themselves make all consumers read-only. The
+SDK transport can reject non-safe HTTP methods before dispatch when a host's
+credential resolver supplies `mutationAllowed: () => false`; Station's current
+`ApiBaseContext` resolver does not supply that optional guard. Individual
+features still own their availability checks. See the
+[SDK transport](../../packages/sdk/src/client/http.ts) and
+[Station resolver](../../src-ui/src/contexts/ApiBaseContext.tsx).
+This health coordinator does not queue mutations.
 Station's separate chat outbound queue has its own admission and replay rules;
 this is not a promise that the whole application has no queue.
 
@@ -88,9 +97,9 @@ this is not a promise that the whole application has no queue.
 
 A standalone, transport-agnostic connection state machine: `available ->
 connecting -> connected`, with `backoff` (transient failure, retry scheduled
-on a 1/2/4/8/16s ladder that resets after 30s of stable connection), `blocked`
-(terminal failure — currently just an auth rejection — which never retries
-automatically), and `offline` (no network). It is driven entirely by typed
+on a default 1/2/4/8/16s ladder with 20% jitter that resets after 30s of stable
+connection), `blocked` (a caller-classified terminal failure, which never
+retries automatically), and `offline` (no network). It is driven by typed
 signals (`connectRequested`, `disconnectRequested`, `retryRequested`,
 `networkChanged`, `wakeup`, `credentialChanged`, `attemptSucceeded`,
 `attemptFailed`, `transportClosed`) rather than ad hoc booleans, and it owns
@@ -110,17 +119,15 @@ supervisor's generic classification — today only `authentication-failed`
 (401/403) is terminal. `ConnectionHealthCoordinator` is the first adopter: it
 consults this classifier on each failure and, for a terminal reason, stops
 scheduling its automatic retry ladder (surfaced as a new `blocked: boolean`
-on `ConnectionHealthSnapshot` / `ConnectionStatusResult`) instead of hot
-looping against a stale credential. It resumes on the next explicit
+on `ConnectionHealthSnapshot` / `ConnectionStatusResult`). It resumes on the next explicit
 `trigger()` — already reachable through a manual "Try now", the browser
-regaining network, or (new) a saved-credential change — closing the specific
-hot-loop-on-401 gap this mechanism exists to fix. A full engine swap (the
-coordinator's own multi-endpoint polling loop driven end-to-end by a live
-`ConnectionSupervisor` instance, including its `offline`/wake-probe
-semantics) is deliberately out of scope for this first adoption to avoid
-regressing the proven polling behavior; a per-environment supervisor
-*registry* (one instance per environment, reusable beyond health polling) is
-tracked separately (#1096).
+regaining network, or a saved-credential change). The coordinator keeps its own
+multi-endpoint polling loop; it does not instantiate `ConnectionSupervisor`.
+The hook shares coordinators through a registry, which is separate from the
+proposed reusable supervisor registry (#1096). See the
+[supervisor](../../packages/connect/src/core/ConnectionSupervisor.ts),
+[coordinator](../../packages/connect/src/core/ConnectionHealthCoordinator.ts),
+and [hook registry](../../packages/connect/src/react/useConnectionStatus.ts).
 
 ### `StorageAdapter`
 
@@ -306,9 +313,9 @@ STATION_HOME=/path/to/station-home STATION_PORT=4141 \
 
 The equivalent explicit form is `--api-base=http://127.0.0.1:4141` together
 with the matching `STATION_HOME`. Before sending authorization, the CLI compares
-the public environment identity and verifies a fresh nonce/HMAC proof. A wrong
-port, wrong home, redirect, or copied environment ID fails without sending the
-credential.
+the public environment identity and checks a fresh nonce/HMAC response against
+that home's operator credential. These checks do not make an independently
+untrusted destination safe. Select the home and listener you operate.
 
 The command loads the operator credential inside the host process, sends it
 only to the loopback Station API, asks for interactive confirmation, and prints
@@ -331,9 +338,14 @@ in-app scanner, select **Scanner inside Station** above the QR instead.
 The selected client channel controls both the app-opening QR and any published
 mobile download links. Public store and beta invitation URLs are maintained in
 `packages/connect/src/core/mobileAppDownloads.ts`; absent destinations have no
-install link. Native clients default to their own release channel. Station creates a five-minute, single-use offer containing an environment
-ID, intended HTTPS endpoint,
-one-time challenge, conservative `station:interactive` scope, and expiry. The
+install link. Native clients default to their own release channel. Station
+creates a five-minute, single-use offer containing an environment ID, endpoint,
+one-time challenge, selected scope and expiry. The interactive UI defaults to
+**Standard** (`orchestration:read orchestration:operate terminal:operate`) and
+also offers **Read-only** (`orchestration:read`). `station:interactive` is a
+legacy marker migrated to the historical default grant, not the new UI's
+scope string. HTTPS is accepted; the offer service also accepts local/private
+HTTP endpoints. Browser camera and mixed-content restrictions still apply. The
 QR contains that offer only—never a bearer credential. A 10-character manual
 code plus the Station address is available when camera access is unavailable.
 
@@ -354,13 +366,27 @@ Use the paired-device inventory in the same host panel to revoke one device.
 Revocation is checked by the shared HTTP/SSE/WebSocket credential verifier and
 denies subsequent authenticated admission/delivery without rotating the operator
 credential or revoking other devices. It does not recall data already delivered
-or guarantee cancellation of effects already dispatched. Ordinary paired credentials cannot administer pairing offers or
-revoke other devices. The native desktop’s local grant, minted using proof of
-Station-home possession, can manage pairing within its current scope. Browser
-launcher grants do not inherit that authority. `station environment credential rotate` rotates operator
-bootstrap authority without silently exporting it; `station environment reset`
-changes the environment ID and clears all paired-device authority. If a web
-session is revoked or its site data is cleared, pair again.
+or guarantee cancellation of effects already dispatched. Ordinary paired
+credentials cannot create pairing offers or revoke other devices. A device
+explicitly granted `access:approve` can list and decide pending requests; that
+does not grant device-inventory or offer-management access. The native desktop's
+local grant, minted using proof of Station-home possession, can manage pairing
+within its current scope. Browser launcher grants do not inherit that authority.
+
+The host-managed `station environment credential rotate` path replaces the
+operator credential, preserves the environment ID and paired-device registry,
+and prints the new secret to stdout after confirmation. Keep that output out of
+logs and shared terminals. `station environment reset` replaces the environment
+ID and operator credential and clears paired-device authority; its output is
+metadata rather than the new credential. Both support explicit `--force` to
+bypass the prompt. The separately installed CLI refuses these operations when
+no host security service is supplied; use the host's repository launcher or
+management UI. If a web session is revoked or its site data is cleared, pair
+again. The owners are the
+[CLI dispatcher](../../packages/cli/src/commands/environment.ts),
+[security service](../../src-server/services/ssh/environment-security-service.ts),
+[pairing service](../../src-server/services/ssh/device-pairing-service.ts), and
+[scope contract](../../packages/contracts/src/environment-security.ts).
 
 #### `markDeviceSession(id: string): void`
 

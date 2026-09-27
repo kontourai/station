@@ -1896,7 +1896,8 @@ type LayoutNavigationExcerpt = {
 
 `clearTabState` currently removes storage for an inactive tab, but clears only
 the URL hash for the active tab. It is not a reliable way to erase that active
-tab's saved string; a later restoration can read it again.
+tab's saved string; a later restoration can read it again. Tracked in
+[#2806](https://github.com/kontourai/station/issues/2806).
 
 ---
 
@@ -2016,7 +2017,11 @@ Shape used in the voice lists returned by `GET /api/system/capabilities`.
 `configured` is the server's capability observation, not a successful live
 provider probe. Station can register configured server entries as display
 stubs whose methods warn that a plugin bundle is still needed; presence in the
-registry alone does not establish a working provider.
+registry alone does not establish a working provider. The current capability
+hook does not retire its stubs when a later Station observation omits them, so
+a retained selection can still appear supported after changing connections.
+Lifecycle ownership for these entries is tracked in
+[#2807](https://github.com/kontourai/station/issues/2807).
 
 ```ts
 interface ProviderCapability {
@@ -2496,7 +2501,8 @@ option for conversations without a multi-session lineage.
 `previewCheckpointRestore(apiBase, threadId, turnId, requestScope)` returns a
 short-lived, owner-bound preview for the turn's settle checkpoint. It includes
 the preview id, repository root, target and currently observed tree hashes,
-bounded changed paths, and expiry. `confirmCheckpointRestore` submits that
+up to 200 changed paths with a truncation flag, and a five-minute expiry.
+`confirmCheckpointRestore` submits that
 exact preview with `confirmed: true` and the captured current-tree hash.
 
 ```ts
@@ -2525,7 +2531,11 @@ session/turn mismatch, workspace changes after preview, or a workspace with an
 active or starting local turn. Restore changes repository files only; it does
 not rewind conversation history or external tool effects. Treat an
 indeterminate response as possible effect and inspect the workspace before
-retrying.
+retrying. Previews are held in server memory, so a restart requires a new one.
+See the [client](../../packages/sdk/src/client/checkpoint-restore.ts),
+[route](../../src-server/routes/orchestration/orchestration.ts),
+[restore service](../../src-server/services/checkpoints/checkpoint-restore.ts),
+and [confirmation UI](../../src-ui/src/components/chat/CheckpointRestoreButton.tsx).
 
 ## Feedback analysis
 
@@ -2552,6 +2562,11 @@ guideline formatter. Its response includes `isolated: true`; it does not edit
 saved ratings or the profile used in conversations. It does not establish the
 integrity of the saved feedback file.
 
+See the [SDK mutations](../../packages/sdk/src/query-domains/analytics.ts),
+[HTTP routes](../../src-server/routes/operations/feedback.ts),
+[job owner](../../src-server/services/feedback/feedback-service.ts), and
+[output parser/cache key](../../src-server/services/feedback/feedback-analysis.ts).
+
 ## Monitoring event windows
 
 `fetchMonitoringEventWindow(start, end, signal, { limit: 1000 })` returns
@@ -2565,31 +2580,61 @@ shape and no default limit for existing export callers. Both functions reject
 failed or malformed reads instead of reporting an empty history.
 
 API-base initialization wakes pending callers when configuration is published,
-with the existing 500 ms failure bound; later reads observe the latest configured
-base. Best-effort SDK telemetry retains at most 1,000 events per flush interval
-and drops additional events in that interval. Flushes are single-flight with a
-five-second request timeout. It is not an accounting ledger.
-Events captured under a different selected Station or account authority are
-dropped rather than retargeted at flush time. Browser broker routes currently
-drop optional telemetry; they never send it by direct Station HTTP.
+with a 500 ms failure bound; later reads observe the latest configured base.
+See the [request helpers](../../packages/sdk/src/query-domains/systemRuntimeRequests.ts)
+and [API-base owner](../../packages/sdk/src/api-core.ts).
 
 ## Telemetry
 
 ### `telemetry`
 
-Client-side telemetry utilities for plugins.
+Best-effort client telemetry for plugins. `track(event, attributes?)` buffers
+up to 1,000 events at a time, drops new events while full, and schedules a flush
+after ten seconds. `flush()` also allows an explicit flush. Only one request is
+in flight at a time, with a five-second abort deadline.
 
 ```ts
 import { telemetry } from '@kontourai/station-sdk';
+
+telemetry.track('panel.opened', { panel: 'overview' });
 ```
+
+The buffer is removed before dispatch. Network failures are swallowed, HTTP
+status is not checked, and events are not retried; a resolved `flush()` is not
+proof of server receipt. The sender uses direct browser `fetch`, outside the
+SDK's authenticated transport. The legacy imperative plugin label is currently
+empty, so this helper does not establish package attribution.
+
+With the host's raw-egress policy installed, a changed connection/account
+authority drops its captured events instead of retargeting them. Browser broker
+routes drop optional telemetry. Without that policy, the helper compares only
+the configured API base. Do not put secrets in events or use this buffer as an
+accounting record. See [telemetry](../../packages/sdk/src/telemetry.ts) and the
+[identity getter](../../packages/sdk/src/api-core.ts).
 
 ---
 
 ## Layout Context
 
-### `createLayoutContext()`
+<a id="createlayoutcontext"></a>
 
-Creates a layout context for use in layout plugins. Used internally by `LayoutProvider`.
+### `createLayoutContext(config)`
+
+Creates a plugin-owned `{ Provider, useLayoutContext }` pair. Call the factory
+once for a layout, outside component rendering. Supply `layoutSlug`, optional
+`projectSlug`, and `initialState`; `persist` defaults to `true`. State updates
+shallow-merge partial values. The provider initially merges any parsed
+`sessionStorage` value into the initial state, and later writes updates under
+`layout:[projectSlug:]layoutSlug:context`.
+
+The stored JSON is not schema-validated or partitioned by Station/account
+authority. Use it for non-sensitive presentation state; a plugin that needs
+stronger identity or validation must supply that design itself. Read/parse
+failures fall back to initial state, write failures log a warning, and
+`resetState()` removes the stored key but does not catch storage-removal errors.
+This factory is independent of the SDK's `LayoutProvider`. See the
+[implementation](../../packages/sdk/src/layout/context.tsx) and
+[Enterprise example](../../examples/enterprise-layout/src/EnterpriseContext.tsx).
 
 ---
 
