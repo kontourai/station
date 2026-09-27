@@ -16,7 +16,7 @@ const NO_RELAY_PROFILES: readonly StationProfile[] = [];
 const NO_SUBSCRIBE = () => () => {};
 
 export function RelayRouteProfiles() {
-  const { isTauri } = usePlatformProfile();
+  const { isTauri, isDesktop } = usePlatformProfile();
   const repository = isTauri ? nativeProfileRepository() : null;
   const subscribe = useCallback(
     (listener: () => void) =>
@@ -55,11 +55,16 @@ export function RelayRouteProfiles() {
       <h2 className="relay-route-profiles__heading">Saved broker routes</h2>
       <p className="connections-computers__note">
         These routes are saved locally. They are not connected, signed in, or
-        available for work until the broker transport is enabled. Existing
-        approved routing grants renew while this desktop app is awake; remove a
-        saved route to stop maintaining it.
+        available for work until the broker transport is enabled.
+        {isDesktop && (
+          <>
+            {' '}
+            Existing approved routing grants renew while this desktop app is
+            awake; remove a saved route to stop maintaining it.
+          </>
+        )}
       </p>
-      {profiles.length > MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE && (
+      {isDesktop && profiles.length > MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE && (
         <p className="connections-computers__alert" role="alert">
           Automatic grant renewal is paused for all saved routes because there
           are more than {MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE}. Remove routes to
