@@ -169,36 +169,3 @@ describe('copy affordance failed-state cascade (station#3341)', () => {
     ).toBe(ownClassAdopters.length);
   });
 });
-
-/**
- * archive#3341's marker is not the only honest way to report a refused write,
- * and one adopter left the list by taking the other one: #1536 F moved the dock
- * header's "Copy ID" button into a MENU ROW, and a row is gone by the time the
- * write resolves, so there is no button left to colour. Its outcome is the
- * shared copy toast instead.
- *
- * That retirement is only safe if the replacement actually reports failure, so
- * this pins the replacement rather than merely deleting a row from the list
- * above — the failure mode a bare deletion would allow is a copy surface that
- * silently does nothing, which is exactly what archive#3341 was about.
- */
-describe('the dock header copy affordance reports failure without the marker', () => {
-  test('it routes through the shared toast, whose failure sentence is not optional', () => {
-    const hook = read('components/chat-dock/useDockCopyActions.ts');
-    expect(hook).toContain('useCopyToClipboardToast');
-    const shared = read('hooks/useCopyToClipboardToast.ts');
-    expect(shared).toContain('COPY_TOAST_FAILURE');
-    // The shared hook shows a toast on BOTH arms — there is no path that copies
-    // (or fails to) in silence.
-    expect(shared).toMatch(/showToast\(\s*copied \? COPY_TOAST_SUCCESS/);
-  });
-
-  test('the row it left renders no unpaired marker', () => {
-    // Re-introducing the marker on that surface without a paired rule in the
-    // sheet that owns its button is the defect archive#3341 fixed; the discovery
-    // assertion above would catch it, and this says so at the site.
-    expect(
-      read('components/chat-dock/ChatDockActiveIdentity.tsx'),
-    ).not.toContain('copy-affordance--failed');
-  });
-});

@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest';
 import type { BundledServerStatus } from '../../../platform/native/types';
 import {
   type ConnectedServerCorrelationInput,
-  exactEndpointMatch,
-  exactLoopbackPortMatch,
   resolveEstablishedServerKind,
 } from '../serverUpdateIdentity';
 
@@ -130,7 +128,10 @@ describe('resolveEstablishedServerKind', () => {
   });
 });
 
-describe('exactEndpointMatch', () => {
+// The endpoint identity rules, at the resolver that applies them: an owned
+// sidecar is named only when the selected API base is exactly its endpoint.
+describe('embedded-sidecar endpoint identity', () => {
+  const OWNER = 'desktop-sidecar-stable';
   it.each([
     [
       'userinfo url is rejected',
@@ -160,20 +161,47 @@ describe('exactEndpointMatch', () => {
       LOOPBACK,
       false,
     ],
-  ])('%s', (_name, candidate, native, expected) => {
-    expect(exactEndpointMatch(candidate, native)).toBe(expected);
+  ])('%s', (_name, apiBase, nativeApiBase, sameEndpoint) => {
+    expect(
+      resolveEstablishedServerKind(
+        input({
+          apiBase,
+          nativeStatus: nativeStatus({ apiBase: nativeApiBase }),
+          selection: { ownerId: OWNER, selectedAccessIsDirectHttp: true },
+        }),
+      ),
+    ).toBe(sameEndpoint ? 'embedded-sidecar' : 'unresolved');
   });
 });
 
-describe('exactLoopbackPortMatch', () => {
+// The loopback-port rule, at the resolver that applies it: an owned installed
+// service is named only when the selected API base is its exact loopback port.
+describe('installed-local-service loopback port identity', () => {
+  const OWNER = 'svc-instance-1';
   it.each([
     ['ipv6 loopback', 'http://[::1]:4311', 4311, true],
     ['hostname loopback', 'http://localhost:4311', 4311, true],
     ['non-loopback host', 'https://station.example.test:4311', 4311, false],
     ['port mismatch', 'http://127.0.0.1:4312', 4311, false],
     ['absent port', LOOPBACK, null, false],
-    ['unbounded port', LOOPBACK, 65_536, false],
-  ])('%s', (_name, apiBase, port, expected) => {
-    expect(exactLoopbackPortMatch(apiBase, port)).toBe(expected);
+    ['port zero is out of bounds', 'http://127.0.0.1:0', 0, false],
+  ])('%s', (_name, apiBase, port, samePort) => {
+    expect(
+      resolveEstablishedServerKind(
+        input({
+          apiBase,
+          identity: identity({ instanceId: OWNER }),
+          nativeStatus: nativeStatus({
+            ownership: 'service',
+            phase: 'stopped',
+            instanceId: OWNER,
+            port,
+            generation: null,
+            bootId: null,
+          }),
+          selection: { ownerId: OWNER, selectedAccessIsDirectHttp: true },
+        }),
+      ),
+    ).toBe(samePort ? 'installed-local-service' : 'unresolved');
   });
 });

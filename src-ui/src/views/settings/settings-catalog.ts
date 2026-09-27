@@ -844,20 +844,6 @@ export function matchingSettingsRows(
   });
 }
 
-export function visibleCatalogIds(options: {
-  isMobile: boolean;
-  isDesktop: boolean;
-  /** Absent reads as "not the operator" — the fail-closed direction (#2067). */
-  isOperator?: boolean;
-}) {
-  return SETTINGS_CATALOG.filter((entry) => {
-    if (entry.conditional === 'mobile') return options.isMobile;
-    if (entry.conditional === 'desktop') return options.isDesktop;
-    if (entry.conditional === 'operator') return options.isOperator === true;
-    return true;
-  }).map((entry) => entry.id);
-}
-
 /**
  * The palette projects this one inventory. It deliberately carries data, not
  * handlers or DOM queries: command execution remains at the palette's one

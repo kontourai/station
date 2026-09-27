@@ -1,6 +1,9 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { windowsSystemUtilityPath } from './windows-system-utility.mjs';
+import {
+  windowsPowerShell7Path,
+  windowsSystemUtilityPath,
+} from './windows-system-utility.mjs';
 
 // Keep this small and plain-JS so the verification scripts can use the exact
 // same probe when they are launched by node rather than tsx.
@@ -74,18 +77,33 @@ function windowsCreationDateCommand(pid) {
   ].join('; ');
 }
 
+// The retry shell's logical name in `ownProcessBirthProbeSchedule`. The probe
+// resolves it to PowerShell 7's standard install path when present (#2805).
+const WINDOWS_POWERSHELL_7 = 'pwsh.exe';
+
+function windowsProbeShell(shell, env, fileExists) {
+  if (shell === undefined) return windowsSystemUtilityPath('powershell', env);
+  if (shell === WINDOWS_POWERSHELL_7) {
+    return windowsPowerShell7Path(env ?? process.env, fileExists);
+  }
+  return shell;
+}
+
 // Windows PowerShell ships at a fixed System32 location that a minimal or
 // service-manager PATH does not include, so the default probe never relies
-// on PATH lookup (#2675). `pwsh.exe` (PowerShell 7) has no fixed location and
-// stays a PATH-resolved retry shell.
+// on PATH lookup (#2675). PowerShell 7 is looked for at its standard
+// %ProgramFiles% location before PATH (#2805): on a minimal PATH a bare
+// `pwsh.exe` is ENOENT, which wasted the retry when Windows PowerShell's cold
+// start timed out.
 function windowsCreationDateProbe(
   pid,
   timeoutMs = PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
-  command,
+  shell,
   env,
+  fileExists,
 ) {
   return {
-    command: command ?? windowsSystemUtilityPath('powershell', env),
+    command: windowsProbeShell(shell, env, fileExists),
     args: [
       '-NoProfile',
       '-NonInteractive',
@@ -197,12 +215,20 @@ function canonicalOrRecord(pid, command, output) {
   return birth;
 }
 
-function windowsCreationDateFingerprint(pid, exec, timeoutMs, shell, env) {
+function windowsCreationDateFingerprint(
+  pid,
+  exec,
+  timeoutMs,
+  shell,
+  env,
+  fileExists,
+) {
   const { command, args, options } = windowsCreationDateProbe(
     pid,
     timeoutMs,
     shell,
     env,
+    fileExists,
   );
   let output;
   try {
@@ -224,12 +250,14 @@ async function windowsCreationDateFingerprintAsync(
   timeoutMs,
   shell,
   env,
+  fileExists,
 ) {
   const { command, args, options } = windowsCreationDateProbe(
     pid,
     timeoutMs,
     shell,
     env,
+    fileExists,
   );
   let output;
   try {
@@ -332,6 +360,7 @@ export function lookupProcessBirthFingerprint(pid, dependencies = {}) {
         timeoutMs,
         dependencies.windowsShell,
         dependencies.env,
+        dependencies.fileExists,
       );
     }
     if (platform === 'linux') {
@@ -410,6 +439,7 @@ export async function lookupProcessBirthFingerprintAsync(
         timeoutMs,
         dependencies.windowsShell,
         dependencies.env,
+        dependencies.fileExists,
       );
     }
     if (platform === 'linux') {
@@ -565,7 +595,8 @@ export function probeExactProcessIdentity(pid, dependencies = {}) {
  * Windows: a legacy PowerShell startup failure should not consume both
  * attempts on the same host, so the retry uses PowerShell 7, which reads the
  * identical direct handle and emits the same normalized timestamp. Attempt 0
- * uses the default absolute Windows PowerShell path. Off Windows, a null for
+ * uses the default absolute Windows PowerShell path; the retry's `pwsh.exe`
+ * resolves to %ProgramFiles%\PowerShell\7 when installed there, else PATH. Off Windows, a null for
  * our own live pid is a `ps` that missed its fixed short timeout under load.
  */
 export function ownProcessBirthProbeSchedule(platform = process.platform) {
@@ -579,7 +610,7 @@ export function ownProcessBirthProbeSchedule(platform = process.platform) {
         },
         {
           timeoutMs: WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS,
-          windowsShell: 'pwsh.exe',
+          windowsShell: WINDOWS_POWERSHELL_7,
         },
       ],
     };

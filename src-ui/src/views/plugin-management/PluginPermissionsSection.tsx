@@ -3,7 +3,6 @@ import { Button } from '../../components/Button';
 import { Empty } from '../../components/state';
 import {
   describePermission,
-  revokeNeedsConfirmation,
   TIER_LABEL,
   TIER_MEANING,
 } from '../../core/permission-vocabulary';
@@ -176,5 +175,3 @@ export function PluginPermissionsSection({
     </div>
   );
 }
-
-export { revokeNeedsConfirmation };

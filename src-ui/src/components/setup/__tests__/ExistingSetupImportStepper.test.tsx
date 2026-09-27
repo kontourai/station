@@ -1,8 +1,13 @@
 /** @vitest-environment jsdom */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { resolve } from 'node:path';
+import { chromium } from '@playwright/test';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+import {
+  assertNoImportsSurvive,
+  chromiumIsInstalled,
+  resolveCssImports,
+} from '../../../../../tests/helpers/css-cascade-fixture';
 
 const hooks = vi.hoisted(() => ({
   apply: vi.fn(),
@@ -13,6 +18,8 @@ const hooks = vi.hoisted(() => ({
   resetPreview: vi.fn(),
   resetRollback: vi.fn(),
   resetReview: vi.fn(),
+  /** Set while a test renders the stepper before any preview exists. */
+  noPreviewYet: false,
 }));
 const preview = {
   id: 'preview-1',
@@ -49,7 +56,7 @@ vi.mock('@kontourai/station-sdk/setup-imports-query', () => ({
     isError: false,
   }),
   useCreateSetupImportPreviewMutation: () => ({
-    data: preview,
+    data: hooks.noPreviewYet ? undefined : preview,
     isPending: false,
     isError: false,
     mutate: hooks.preview,
@@ -126,21 +133,11 @@ describe('ExistingSetupImportStepper', () => {
     );
   });
 
-  test('keeps controls labelled and actions fluid at the phone breakpoint', () => {
+  test('keeps review controls labelled', () => {
     render(<ExistingSetupImportStepper compact />);
 
     expect(screen.getByLabelText('one.md')).toHaveProperty('type', 'checkbox');
     expect(screen.getByRole('status')).toBeTruthy();
-    const styles = readFileSync(
-      join(
-        process.cwd(),
-        'src-ui/src/components/setup/ExistingSetupImportStepper.css',
-      ),
-      'utf8',
-    );
-    expect(styles).toContain('@media (max-width: 640px)');
-    expect(styles).toContain('.existing-setup-import__heading .button');
-    expect(styles).not.toContain('.existing-setup-import__actions .button');
   });
 
   test('keeps every workflow action row on the responsive primitive through review, apply, rollback, and reset', () => {
@@ -222,3 +219,95 @@ describe('ExistingSetupImportStepper', () => {
     expect(hooks.resetRollback).toHaveBeenCalled();
   });
 });
+
+const chromiumAvailable = chromiumIsInstalled(process.cwd());
+
+/**
+ * The phone breakpoint, measured in real Chromium over the cascade-resolved
+ * `index.css` and the stepper's own sheet (jsdom does no layout). Before a
+ * preview exists the heading carries the stepper's first action; at 640px and
+ * below the heading stacks and that action takes the full width instead of
+ * squeezing beside the copy. The later workflow rows are the responsive
+ * primitive's, pinned above.
+ */
+describe.skipIf(!chromiumAvailable)(
+  'ExistingSetupImportStepper at the phone breakpoint',
+  () => {
+    let browser: Awaited<ReturnType<typeof chromium.launch>>;
+
+    beforeAll(async () => {
+      browser = await chromium.launch();
+    });
+
+    afterAll(async () => {
+      await browser?.close();
+    });
+
+    test('the heading action spans the stacked heading', async () => {
+      hooks.noPreviewYet = true;
+      let markup: string;
+      try {
+        const { container, unmount } = render(
+          <ExistingSetupImportStepper compact />,
+        );
+        markup = container.innerHTML;
+        unmount();
+      } finally {
+        hooks.noPreviewYet = false;
+      }
+      const css = [
+        resolve('src-ui/src/index.css'),
+        resolve('src-ui/src/components/setup/ExistingSetupImportStepper.css'),
+      ]
+        .map((path) => resolveCssImports(path))
+        .join('\n');
+      assertNoImportsSurvive(css);
+
+      const page = await browser.newPage({
+        viewport: { width: 390, height: 600 },
+      });
+      try {
+        await page.setContent(`<!doctype html>
+<html>
+  <head><style>${css}</style></head>
+  <body style="margin:0">${markup}</body>
+</html>`);
+        const measured = await page.evaluate(() => {
+          const heading = document.querySelector<HTMLElement>(
+            '.existing-setup-import__heading',
+          );
+          const action = heading?.querySelector('button');
+          const copy = heading?.firstElementChild;
+          if (!heading || !action || !copy)
+            throw new Error('the heading action did not render');
+          const style = getComputedStyle(heading);
+          return {
+            headingWidth:
+              heading.getBoundingClientRect().width -
+              Number.parseFloat(style.paddingLeft) -
+              Number.parseFloat(style.paddingRight),
+            actionWidth: action.getBoundingClientRect().width,
+            actionTop: action.getBoundingClientRect().top,
+            copyBottom: copy.getBoundingClientRect().bottom,
+          };
+        });
+        expect(measured.actionTop).toBeGreaterThanOrEqual(measured.copyBottom);
+        expect(measured.actionWidth).toBeCloseTo(measured.headingWidth, 0);
+      } finally {
+        await page.close();
+      }
+    });
+  },
+);
+
+test.skipIf(chromiumAvailable)(
+  'ExistingSetupImportStepper phone geometry — Chromium not installed, cannot verify',
+  () => {
+    throw new Error(
+      'Playwright Chromium is not installed in this worktree, so the ' +
+        'stepper heading geometry could not be checked. This is a missing ' +
+        'precondition, not a passing check. Install it with ' +
+        '`npm run install:playwright` and re-run.',
+    );
+  },
+);

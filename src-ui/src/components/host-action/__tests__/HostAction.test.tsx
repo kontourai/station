@@ -114,14 +114,31 @@ describe('HostAction — three branches, no fourth', () => {
   });
 
   it('does not branch on viewport: the same presentation renders the same way at 390 and 1440', () => {
+    // The UI's viewport seam is `matchMedia` (`useIsMobile`), which jsdom
+    // lacks, so this stub answers every query as a phone at 768px and below
+    // and as a desktop above it.
     const at = (width: number) => {
       window.innerWidth = width;
-      const { container, unmount } = render(
-        <HostAction id="engine-missing" presentation={PAIRED} />,
-      );
-      const html = container.innerHTML;
-      unmount();
-      return html;
+      window.matchMedia = ((query: string) => ({
+        matches: width <= 768,
+        media: query,
+        onchange: null,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        dispatchEvent: () => false,
+      })) as unknown as typeof window.matchMedia;
+      try {
+        const { container, unmount } = render(
+          <HostAction id="engine-missing" presentation={PAIRED} />,
+        );
+        const html = container.innerHTML;
+        unmount();
+        return html;
+      } finally {
+        delete (window as { matchMedia?: unknown }).matchMedia;
+      }
     };
     expect(at(390)).toBe(at(1440));
   });
@@ -151,7 +168,7 @@ describe('the copy map is the single source', () => {
     }
   });
 
-  it('renders the map entry verbatim — no surface re-words it', () => {
+  it('hostActionCopy returns the map entry verbatim for both branches', () => {
     for (const id of ids) {
       const entry = HOST_ACTION_COPY[id];
       expect(hostActionCopy(id, PAIRED)).toBe(entry.paired('workshop'));

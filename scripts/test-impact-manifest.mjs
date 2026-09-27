@@ -218,6 +218,17 @@ const ORCHESTRATION_STORE_EDGES = Object.freeze([
 ]);
 
 /** Repository data readers and explicit runtime seams supplementing import analysis. */
+/**
+ * Every file under fallow-baselines/, enumerated rather than globbed: the
+ * three baselines code-health-gate.mjs passes to fallow. A new file there is
+ * an unknown path until it is added here with its own evidence.
+ */
+export const FALLOW_BASELINE_FILES = Object.freeze([
+  'fallow-baselines/dead-code.json',
+  'fallow-baselines/dupes.json',
+  'fallow-baselines/health.json',
+]);
+
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   {
     // #2458: the same overflow class as SDK_TRANSPORT_EDGES (#2301). The
@@ -481,6 +492,30 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'related-file edge and the selector reported an infrastructure error ' +
       'instead of running the policy test (station#1753)',
   }),
+  // #2781: release metadata and code-health baselines are known paths. Each
+  // is gated by a ci:fast static (FAST_STATIC_COMMANDS in run-ci-fast.mjs,
+  // which fast-checks-statics runs) and selects only the suite that runs the
+  // same gate over the repository's real files. As unknown paths they
+  // deferred the whole diff, so a published-package pull request ran none of
+  // its related suites in fast-checks.
+  Object.freeze({
+    pattern: '.changeset/**',
+    tests: Object.freeze(['scripts/__tests__/check-changesets.repo.test.ts']),
+    reason:
+      'changeset: evidence is check-changesets (ci:fast static); its suite ' +
+      'plans the repository changesets with the same planner (#2781)',
+  }),
+  ...FALLOW_BASELINE_FILES.map((path) =>
+    Object.freeze({
+      pattern: path,
+      tests: Object.freeze(['scripts/__tests__/code-health-gate.test.ts']),
+      reason:
+        'fallow baseline: evidence is code-health-gate (ci:fast static; it ' +
+        'reads the base revision baselines, so a candidate cannot rebaseline ' +
+        'itself); its suite runs the gate over fixtures copied from these ' +
+        'files (#2781)',
+    }),
+  ),
   Object.freeze({
     pattern: 'scripts/mobile-css-baseline.json',
     tests: Object.freeze(['scripts/__tests__/mobile-css-ratchet.test.ts']),
@@ -652,7 +687,6 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
   'scripts/__tests__/test-import-existence-gate.scan.test.ts',
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
-  'scripts/__tests__/trust-bundle-claim-prose.test.ts',
   'src-server/providers/__tests__/child-work-conformance.test.ts',
   'src-server/providers/__tests__/turn-started-attachment-projection.test.ts',
   'src-server/routes/__tests__/sse-response-tripwire.test.ts',

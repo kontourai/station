@@ -5,6 +5,7 @@ import {
   useFileSystemBrowseQuery,
 } from '@kontourai/station-sdk';
 import { type FormEvent, useEffect, useState } from 'react';
+import { userFacingErrorMessage } from '../utils/errorText';
 import { trackRecentLayout } from './useRecentLayouts';
 
 interface ProjectDraft {
@@ -206,7 +207,9 @@ export function useNewProjectSubmit({
 
       onComplete(project.slug);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(
+        err instanceof Error ? userFacingErrorMessage(err) : String(err),
+      );
     }
   }
 

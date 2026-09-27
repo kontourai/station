@@ -9,6 +9,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -33,6 +34,10 @@ import { readUntrustedPluginManifestSyncWithFormat } from '../../services/plugin
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { execGitSync } from '../../utils/git-exec.js';
+import {
+  endsAsGitName,
+  isGitMetadataName,
+} from '../../utils/git-metadata-name.js';
 import type { Logger } from '../../utils/logger.js';
 import type { InstallResult, RegistryItem } from '../provider-contracts.js';
 import type {
@@ -272,7 +277,8 @@ function assertPhysicallyInside(
  * by either its manifest spelling or its physical path (both installers pick
  * git by an `.git` suffix and split `#branch` off the string), and a top-level
  * `.git` entry, which the plugin update route would later `git pull` through.
- * Git sources must be remote URLs.
+ * Both name checks use the shared matcher, so every spelling a filesystem may
+ * read as `.git` is refused too. Git sources must be remote URLs.
  */
 function assertPlainLocalDirectorySource(
   source: string,
@@ -280,20 +286,20 @@ function assertPlainLocalDirectorySource(
   physical: string,
 ): void {
   for (const path of [source, location, physical]) {
-    if (path.includes('#') || /\.git$/i.test(path)) {
+    if (path.includes('#') || endsAsGitName(basename(path))) {
       throw new RegistrySourceConfinementError(
         source,
         'a local registry source must be a plain directory; name a git repository by its remote URL',
       );
     }
   }
-  let hasGitEntry = true;
+  let entries: string[] = [];
   try {
-    lstatSync(join(physical, '.git'));
+    entries = readdirSync(physical);
   } catch {
-    hasGitEntry = false;
+    // Not a readable directory: nothing git could use; the copy refuses it.
   }
-  if (hasGitEntry) {
+  if (entries.some(isGitMetadataName)) {
     throw new RegistrySourceConfinementError(
       source,
       'a local registry source must not contain git metadata (.git)',

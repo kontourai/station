@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { win32 } from 'node:path';
 
 // Plain JS so process-identity.mjs (loaded by node-run scripts without tsx)
@@ -28,4 +29,45 @@ export function windowsSystemUtilityPath(utility, env = process.env) {
     default:
       return win32.join(system32, `${utility}.exe`);
   }
+}
+
+function localAbsoluteDirectory(value) {
+  return typeof value === 'string' &&
+    win32.isAbsolute(value) &&
+    !value.startsWith('\\\\')
+    ? win32.normalize(value)
+    : null;
+}
+
+/**
+ * PowerShell 7 (`pwsh.exe`) installs to `%ProgramFiles%\PowerShell\7`, which
+ * a minimal or service-manager PATH does not include (#2805). Return that
+ * absolute path when the file is there, else the bare name so a PATH that
+ * does carry pwsh (a portable or user-scoped install) still finds it.
+ *
+ * `ProgramW6432` names the native Program Files even from a 32-bit process.
+ * When neither variable is set (the portable smoke's scrubbed environment),
+ * the default is `Program Files` on the Windows directory's drive. A relative
+ * or UNC value is ignored, as `windowsSystemUtilityPath` refuses one.
+ */
+export function windowsPowerShell7Path(
+  env = process.env,
+  fileExists = existsSync,
+) {
+  const roots = [env.ProgramW6432, env.ProgramFiles]
+    .map(localAbsoluteDirectory)
+    .filter(Boolean);
+  const systemRoot = localAbsoluteDirectory(env.SystemRoot ?? env.WINDIR);
+  roots.push(
+    win32.join(win32.parse(systemRoot ?? 'C:\\Windows').root, 'Program Files'),
+  );
+  for (const root of new Set(roots)) {
+    const candidate = win32.join(root, 'PowerShell', '7', 'pwsh.exe');
+    try {
+      if (fileExists(candidate)) return candidate;
+    } catch {
+      // An unreadable location is an absent one; PATH lookup still follows.
+    }
+  }
+  return 'pwsh.exe';
 }

@@ -10,19 +10,26 @@ import { StationHttpError } from '@kontourai/station-sdk';
  * disagrees. `LayoutView` renders "Layout not found" from it;
  * `ProjectLayoutRenderer` reaches it through `isUnplacedLayoutRecord` below.
  *
- * `StationHttpError.status` is the derivation. The message check is the
- * compatibility tail for a response that is NOT a non-2xx: on a 200 carrying
- * `{"success":false,...}`, `unwrapProjectResponse`
- * (`packages/sdk/src/client/project-response.ts`) throws a plain `Error` with
- * the envelope's message and no status at all. It is what `LayoutView` read
- * before this extraction, kept so `LayoutView`'s verdict is unchanged.
+ * `StationHttpError.status` is the derivation for a FAILURE status. The
+ * message check is the compatibility tail for an answer that is not one: a
+ * 2xx carrying `{"success":false,...}`. Station's own layout route never
+ * answers that way (a missing Project or Layout is a 404,
+ * `projectReadFailure`), but an older or intermediary server can.
+ * `unwrapProjectResponse` used to throw that as a plain `Error`; since #2708
+ * A-2 it is a `StationHttpError` whose status is the observed 200, so a 2xx
+ * status says nothing about absence and falls through to the message, keeping
+ * `LayoutView`'s verdict unchanged.
  */
 export function isLayoutRecordAbsent(
   error: unknown,
   loading: boolean,
 ): boolean {
   if (loading) return false;
-  if (error instanceof StationHttpError) return error.status === 404;
+  if (
+    error instanceof StationHttpError &&
+    (error.status < 200 || error.status >= 300)
+  )
+    return error.status === 404;
   return (
     error instanceof Error && error.message.toLowerCase().includes('not found')
   );

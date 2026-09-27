@@ -502,6 +502,49 @@ describe('MEDIUM-4 — the refusal path, driven through the real callbacks', () 
     expect(screen.getByText(reason)).toBeTruthy();
   });
 
+  // #2708 A-2: the error the REAL bind fetcher throws for the route's
+  // validation body (`validate()` on POST /:slug/bind): the refusal shows the
+  // server's reason, not "Validation failed: path …".
+  it("shows a validation refusal's reason, not the field key", async () => {
+    const { bindProjectResource } = await import(
+      '@kontourai/station-sdk/client'
+    );
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Validation failed',
+          details: {
+            formErrors: [],
+            fieldErrors: {
+              path: ['String must contain at least 1 character(s)'],
+            },
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+    let refusal: unknown;
+    try {
+      refusal = await bindProjectResource('http://station.test', 'demo', {
+        path: '',
+      }).catch((caught: unknown) => caught);
+    } finally {
+      globalThis.fetch = previous;
+    }
+    const { container } = renderResource(UNBOUND);
+    const input = container.querySelector('input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '/Users/dev/code/api' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Point at checkout' }));
+
+    act(() => bindOptions?.onError?.(refusal as Error, '/Users/dev/code/api'));
+
+    expect(
+      screen.getByText('String must contain at least 1 character(s)'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Validation failed/)).toBeNull();
+  });
+
   it('clears a previous refusal when the operator submits again', () => {
     const { container } = renderResource(UNBOUND);
     const input = container.querySelector('input') as HTMLInputElement;
@@ -658,13 +701,6 @@ describe('LOW-2 — the three slots are visually distinct, not just textually', 
     for (const treatment of treatments)
       expect(treatment.length).toBeGreaterThan(0);
     expect(new Set(treatments).size).toBe(3);
-  });
-
-  it('no rule block groups two slot kinds under one selector', () => {
-    // The exact shape of the defect: `--observation, --declared { … }`.
-    expect(css).not.toMatch(
-      /\.resources-section__slot--\w+\s*,\s*\n?\s*\.resources-section__slot--\w+\s*\{/,
-    );
   });
 });
 

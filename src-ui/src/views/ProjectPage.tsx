@@ -30,7 +30,7 @@ import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
 import { trackRecentLayout } from '../hooks/useRecentLayouts';
 import { requestProjectChat } from '../lib/projectChatEvents';
-import { errorText } from '../utils/errorText';
+import { errorText, userFacingErrorMessage } from '../utils/errorText';
 import { ProjectWorkspacePaneModal } from '../workspace-panes/ProjectWorkspacePaneCatalog';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspace-panes/workspacePaneAvailabilityPresentation';
@@ -331,7 +331,7 @@ function ProjectOperatorPage({
           updateWorkingDirectory={updateWorkingDirectory}
           workingDirectoryError={
             updateProjectMutation.error
-              ? errorText(updateProjectMutation.error)
+              ? userFacingErrorMessage(updateProjectMutation.error)
               : null
           }
           navigateToSettings={() => navigate(`/projects/${slug}/edit`)}

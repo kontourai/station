@@ -2801,12 +2801,13 @@ class StationHttpError extends Error {
 }
 ```
 
-The integration, review and workspace pane host-action catalog/preparation fetchers (built on
-`readEnvelopeOrThrow`), plus the scheduler, skills, knowledge, secret-binding,
-conversation and orchestration fetchers preserve supplied refusal fields.
-The conversation and orchestration fetchers used to throw a plain `Error` for
-a `200` carrying `{ success: false }`; that is now a `StationHttpError` with
-status `200` too. `respondToRequest`'s error still carries the failure
+The integration, review and workspace pane host-action catalog/preparation
+fetchers (built on `readEnvelopeOrThrow`), plus the scheduler,
+skills, knowledge, secret-binding, conversation, orchestration, plugin and
+Project fetchers (built on `unwrapProjectResponse`) preserve supplied refusal fields. The
+conversation, orchestration and Project fetchers used to throw a plain `Error`
+for a `200` carrying `{ success: false }`; that is now a `StationHttpError`
+with status `200` too. `respondToRequest`'s error still carries the failure
 `receipt`. `readEnvelopeOrThrow(response)`
 throws this error for a non-2xx response or a missing/false `success` value.
 It checks truthiness, not a literal-boolean schema, and does not validate the
@@ -2822,9 +2823,9 @@ Family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerRunFailedError`, `SchedulerRunRefusedError`) are built from the
 error the envelope helper made of the response, so they keep its status,
 `details` and `Retry-After`; a run error's `code` stays its own fixed value.
-`PluginCollectionHttpError` keeps the envelope's `code` on the error and on
-its `envelope`, and keeps the refusal's `details`; it does not yet preserve
-`Retry-After`.
+`PluginCollectionHttpError` is built the same way: it keeps the envelope's
+`code` on the error and on its `envelope`, and keeps the refusal's `details`
+and `Retry-After`.
 Host-action execution deliberately returns `indeterminate` after any failed or
 unreadable response; it does not expose the helper's exception to the caller.
 

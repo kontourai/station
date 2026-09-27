@@ -22,9 +22,9 @@ import {
   OPERATOR_ONLY_SECTION_IDS,
   SETTINGS_CATALOG,
   SETTINGS_SECTIONS,
-  visibleCatalogIds,
 } from '../views/settings/settings-catalog';
 import { RESETTABLE_STATION_SETTING_KEYS } from '../views/settings/station-reset';
+import { visibleCatalogIds } from './helpers/settings-catalog-visibility';
 
 vi.mock('@kontourai/station-connect', () => ({
   QRDisplay: () => <div />,

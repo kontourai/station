@@ -27,6 +27,8 @@ const harness = vi.hoisted(() => {
   type Call = { pid: number; file: string; timeout: unknown };
   const state = {
     calls: [] as Call[],
+    // Whether PowerShell 7 sits at its standard install path (#2805).
+    pwshInstalled: false,
     respond: (_file: string, _attempt: number): string =>
       '2026-08-29T16:16:27.1234567Z\n',
   };
@@ -35,6 +37,7 @@ const harness = vi.hoisted(() => {
 
 const POWERSHELL =
   'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+const PWSH7 = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe';
 
 vi.mock('../process-identity.mjs', async (importOriginal) => {
   const actual =
@@ -47,6 +50,7 @@ vi.mock('../process-identity.mjs', async (importOriginal) => {
       ...dependencies,
       platform: 'win32',
       env: { SystemRoot: 'C:\\Windows' },
+      fileExists: (path: string) => harness.pwshInstalled && path === PWSH7,
       exec: (file, _args, options) => {
         harness.calls.push({ pid, file, timeout: options?.timeout });
         return harness.respond(file, harness.calls.length - 1);
@@ -73,6 +77,7 @@ function temporaryLockPath(): string {
 
 afterEach(() => {
   harness.calls = [];
+  harness.pwshInstalled = false;
   harness.respond = () => '2026-08-29T16:16:27.1234567Z\n';
 });
 
@@ -120,6 +125,22 @@ describe.each(Object.entries(drivers))(
       expect(harness.calls.slice(0, 2)).toEqual([
         { pid: process.pid, file: POWERSHELL, timeout: 10_000 },
         { pid: process.pid, file: 'pwsh.exe', timeout: 20_000 },
+      ]);
+    });
+
+    it('retries with PowerShell 7 at its standard install path when PATH cannot find it (#2805)', async () => {
+      harness.pwshInstalled = true;
+      harness.respond = (file) =>
+        file === PWSH7
+          ? '2026-08-29T16:16:27.1234567Z\n'
+          : file === 'pwsh.exe'
+            ? missing(file)
+            : coldStartTimeout();
+      const release = await acquire(temporaryLockPath());
+      await release();
+      expect(harness.calls.slice(0, 2)).toEqual([
+        { pid: process.pid, file: POWERSHELL, timeout: 10_000 },
+        { pid: process.pid, file: PWSH7, timeout: 20_000 },
       ]);
     });
 

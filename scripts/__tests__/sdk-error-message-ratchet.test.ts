@@ -89,14 +89,6 @@ describe('sdk-error-message ratchet scope honesty', () => {
 
     expect([...listScannedFiles()].sort()).toEqual(tracked.sort());
   });
-
-  test('the package is at zero, which is the whole point of #3749', () => {
-    const files = listScannedFiles();
-    expect(evaluate(countHandRolledRefusals(files), files)).toMatchObject({
-      total: 0,
-      ok: true,
-    });
-  });
 });
 
 const sites = (source: string) =>

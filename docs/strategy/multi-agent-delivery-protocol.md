@@ -685,11 +685,10 @@ to any surface that makes claims:
   claim that substantiates none of it, and the human audience takes it as a
   result (station#1552). On an attestation claim, either name the class in
   the sentence — *"recorded as a session-local attestation, not a
-  CI-reconcilable test_output claim"* — or omit the count. Pinned by
-  `scripts/__tests__/trust-bundle-claim-prose.test.ts`; the two
-  pre-existing instances are disclosed in `delivery/README.md` rather than
-  reworded, because a claim's id is derived from its prose and the
-  checkpoint keys off that id.
+  CI-reconcilable test_output claim"* — or omit the count. This is a
+  review rule, not an automated check: Station's trust-bundle writer emits
+  no attestation evidence, so no committed bundle exists for a test to
+  scan.
 - **A documented capability needs a producer, not just a reader.** A
   contract that describes a live dereference path while nothing writes the
   field is the same defect as a fabricated value, arriving through the docs
