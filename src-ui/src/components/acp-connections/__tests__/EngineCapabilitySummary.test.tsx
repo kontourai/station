@@ -113,10 +113,13 @@ describe('EngineCapabilitySummary derivations', () => {
   it('the gating row carries the tool-policy coverage limit VERBATIM — paraphrased limits get overstated', () => {
     const summary = deriveGatingSummary(ENGINE_CAPABILITY_MATRICES.acp);
     const policy = ENGINE_CAPABILITY_MATRICES.acp.toolPolicy;
-    expect(policy.state).toBe('partial');
-    if (policy.state === 'partial' && policy.coverageLimit) {
-      expect(summary).toContain(policy.coverageLimit);
+    if (policy.state !== 'partial') {
+      throw new Error(`acp tool policy must be partial, got ${policy.state}`);
     }
+    // A matrix that drops its limit must fail here, not skip the check.
+    const coverageLimit = policy.coverageLimit ?? '';
+    expect(coverageLimit).not.toBe('');
+    expect(summary).toContain(coverageLimit);
     expect(summary).toContain('can require your approval');
   });
 
