@@ -4,6 +4,7 @@ import {
   readInstanceRegistry,
   upsertInstance,
 } from '@kontourai/station-shared/instance-registry';
+import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
@@ -273,5 +274,49 @@ describe('the versioned child of the service launcher (#2675 D)', () => {
     expect(order).toEqual(['published', 'ready', 'tick']);
     ticks.shift()?.();
     await vi.waitFor(() => expect(link.tick).toHaveBeenCalledTimes(2));
+  });
+
+  test('`station service update-home` backs up and restores the home it is given', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const root = makeTempDir('station-update-home-');
+    const home = join(root, 'home');
+    ensureStationHomeSchemaSync(home);
+    mkdirSync(join(home, 'config'));
+    writeFileSync(join(home, 'config', 'app.json'), '{"a":1}\n');
+    const backupDir = join(root, 'backup');
+    const lifecycle = {
+      baseDir: home,
+      homeSource: '--base' as const,
+      serverPort: 3242,
+      uiPort: 5274,
+    };
+    const write = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    try {
+      await runServiceCommand(
+        ['update-home', 'backup', `--backup-dir=${backupDir}`],
+        lifecycle,
+        { platform: 'linux' },
+      );
+      writeFileSync(join(home, 'config', 'app.json'), '{"a":2}\n');
+      await runServiceCommand(
+        ['update-home', 'restore', `--backup-dir=${backupDir}`],
+        lifecycle,
+        { platform: 'linux' },
+      );
+    } finally {
+      write.mockRestore();
+    }
+    expect(readFileSync(join(home, 'config', 'app.json'), 'utf8')).toBe(
+      '{"a":1}\n',
+    );
+    await expect(
+      runServiceCommand(
+        ['update-home', 'backup', '--backup-dir=relative'],
+        lifecycle,
+        {
+          platform: 'linux',
+        },
+      ),
+    ).rejects.toThrow('--backup-dir must be an absolute path');
   });
 });
