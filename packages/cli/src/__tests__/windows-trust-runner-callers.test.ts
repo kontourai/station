@@ -9,7 +9,14 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 
-const recorded = vi.hoisted(() => ({ runners: [] as unknown[] }));
+const recorded = vi.hoisted(() => ({
+  runners: [] as unknown[],
+  // Stands in for the shared runner: records the budget, spawns nothing.
+  shared: vi.fn((_command: string, _args: string[], _options?: unknown) => ({
+    status: 0,
+    stdout: '{"trusted":true}',
+  })),
+}));
 class Stop extends Error {}
 
 vi.mock('../commands/windows-path-trust.js', async (importOriginal) => {
@@ -21,13 +28,17 @@ vi.mock('../commands/windows-path-trust.js', async (importOriginal) => {
   };
   return {
     ...actual,
+    runWindowsTrustCommand: recorded.shared,
     assertWindowsPathsTrusted: record,
     ensureWindowsDirectoriesTrusted: record,
     hardenWindowsPathsTrusted: record,
   };
 });
 
-import { readDesktopCompanion } from '../commands/desktop-companion.js';
+import {
+  DESKTOP_COMPANION_TRUST_TIMEOUT_MS,
+  readDesktopCompanion,
+} from '../commands/desktop-companion.js';
 import { ensureProfileStoreGenesis } from '../commands/profile-store.js';
 import { createTriageRunDirectory } from '../commands/triage.js';
 import { runWindowsTrustCommand } from '../commands/windows-path-trust.js';
@@ -37,6 +48,7 @@ const temporaryDirectory = () => makeTempDir('station-trust-callers-');
 
 afterEach(() => {
   recorded.runners = [];
+  recorded.shared.mockClear();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
@@ -53,13 +65,25 @@ describe('CLI Windows trust callers use the shared runner (#2805)', () => {
     expect(recorded.runners).toEqual([runWindowsTrustCommand]);
   });
 
-  it('desktop companion registration', () => {
+  it('desktop companion registration, on its short per-tick budget', () => {
     const home = temporaryDirectory();
     mkdirSync(join(home, 'runtime'));
     writeFileSync(join(home, 'runtime', 'desktop-companion.json'), '{}');
     // The trust check is the Windows branch of the registration read.
     vi.stubGlobal('process', { ...process, platform: 'win32' });
     expect(() => readDesktopCompanion(home)).toThrow(Stop);
-    expect(recorded.runners).toEqual([runWindowsTrustCommand]);
+    expect(recorded.runners).toHaveLength(1);
+    // The supervisor reads this every 5s tick: the shared runner, with a
+    // 10s budget in place of the 120s cold-host default the operation asks for.
+    expect(DESKTOP_COMPANION_TRUST_TIMEOUT_MS).toBe(10_000);
+    const run = recorded.runners[0] as (
+      command: string,
+      args: string[],
+      options?: { timeout: number },
+    ) => unknown;
+    run('powershell.exe', ['-NoProfile'], { timeout: 120_000 });
+    expect(recorded.shared.mock.calls).toEqual([
+      ['powershell.exe', ['-NoProfile'], { timeout: 10_000 }],
+    ]);
   });
 });

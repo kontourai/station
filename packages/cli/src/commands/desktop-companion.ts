@@ -16,6 +16,22 @@ interface Registration {
   pausedForService?: string;
 }
 
+/**
+ * A short trust budget for this caller only (#2805). The service supervisor
+ * reads the registration on every 5s tick (service-run's CHECK_INTERVAL_MS)
+ * with up to two blocking trust checks; at the shared 120s cold-host budget a
+ * slow host could stall the supervisor's event loop for minutes. A timeout
+ * here only skips one tick: `createDesktopCompanion().check()` catches it,
+ * warns, and tries again on the next tick.
+ */
+export const DESKTOP_COMPANION_TRUST_TIMEOUT_MS = 10_000;
+
+function runCompanionTrustCommand(command: string, args: string[]) {
+  return runWindowsTrustCommand(command, args, {
+    timeout: DESKTOP_COMPANION_TRUST_TIMEOUT_MS,
+  });
+}
+
 export function readDesktopCompanion(home: string): Registration | null {
   const directory = join(home, 'runtime');
   const path = join(directory, 'desktop-companion.json');
@@ -31,7 +47,7 @@ export function readDesktopCompanion(home: string): Registration | null {
     throw new Error('Invalid desktop companion registration');
   }
   if (process.platform === 'win32') {
-    assertWindowsPathsTrusted(runWindowsTrustCommand, [
+    assertWindowsPathsTrusted(runCompanionTrustCommand, [
       { kind: 'directory', path: directory },
       { kind: 'file', path },
     ]);
@@ -69,7 +85,7 @@ export function readDesktopCompanion(home: string): Registration | null {
     );
   }
   if (process.platform === 'win32') {
-    assertWindowsPathsTrusted(runWindowsTrustCommand, [
+    assertWindowsPathsTrusted(runCompanionTrustCommand, [
       { kind: 'file', path: value.executable, policy: 'execution-safe' },
     ]);
   } else if (

@@ -9,9 +9,14 @@ import { windowsSystemUtilityPath } from './windows-system-utility.mjs';
  * on a GitHub Windows runner saturated by scanning a freshly extracted
  * 44k-file archive, the server's first trust call timed out at 30s
  * (run 36326088380) while a bare `where.exe` took ~58s. 120s covers that
- * host with room, and still fits inside `station start`'s readiness wait,
- * which extends to 180s while the server process is alive (lifecycle.ts,
- * STARTUP_READINESS_MAX_TIMEOUT_MS).
+ * host with room. ONE call at the full budget fits inside `station start`'s
+ * readiness wait, which extends to 180s while the server process is alive
+ * (lifecycle.ts, STARTUP_READINESS_MAX_TIMEOUT_MS); two sequential calls at
+ * the full budget would not. The server's boot makes two
+ * (`writeLocalGrantSecretFile`: the directory, then the new empty file), so
+ * its worst case is 240s. They stay separate on purpose — see there — and in
+ * practice only the first PowerShell start is cold. A caller that runs on a
+ * repeating tick passes its own shorter budget (desktop-companion.ts).
  */
 export const WINDOWS_TRUST_COMMAND_TIMEOUT_MS = 120_000;
 

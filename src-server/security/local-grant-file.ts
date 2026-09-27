@@ -37,6 +37,13 @@ export function writeLocalGrantSecretFile(secretPath: string): string {
     recursive: true,
     mode: LOCAL_GRANT_DIRECTORY_MODE,
   });
+  // Two trust calls, deliberately not one (#2805): the directory must be
+  // current-user protected BEFORE the temporary file exists, so the file is
+  // born with a protected inherited ACL. Hardening both in one call after
+  // creating the file would leave the file, on a first boot, created under
+  // the directory's unprotected ACL, and a handle another principal opened in
+  // that window survives the later DACL change. Worst case this is two
+  // trust budgets (see WINDOWS_TRUST_COMMAND_TIMEOUT_MS).
   ensureWindowsDirectoriesTrusted(runWindowsTrustCommand, [
     dirname(secretPath),
   ]);
