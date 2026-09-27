@@ -98,15 +98,14 @@ export interface NativeApplicationSessionChallengeV1 {
 
 export interface NativeApplicationSessionChallengeRequestV1 {
   readonly version: typeof APPLICATION_SESSION_NATIVE_VERSION;
-  readonly providerSessionId: string;
   readonly publicKey: ApplicationSessionPublicKey;
 }
 
-/** Opaque provider session references are supplied only to the exchange call and never returned. */
+/** Credentials go only to the configured provider-native login adapter over the encrypted application path. */
 export interface NativeApplicationSessionExchangeV1 {
   readonly version: typeof APPLICATION_SESSION_NATIVE_VERSION;
   readonly challengeId: string;
-  readonly providerSessionId: string;
+  readonly credentials: Readonly<Record<string, unknown>>;
   readonly proof: string;
 }
 
@@ -123,7 +122,8 @@ export interface NativeApplicationSessionProofClaimsV1 {
   readonly path: string;
   readonly credentialHash?: string;
   readonly challengeIdHash?: string;
-  readonly providerSessionHash?: string;
+  /** SHA-256 of the canonical provider login payload, only for exchange proofs. */
+  readonly credentialsHash?: string;
   readonly jti: string;
   readonly iat: number;
 }

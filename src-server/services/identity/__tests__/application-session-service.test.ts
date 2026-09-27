@@ -115,8 +115,32 @@ async function nativeKey() {
     },
   };
 }
+function readNativeProviderSessionId(
+  home: string,
+  continuation: { credential: string },
+) {
+  const database = new DatabaseSync(
+    join(home, 'authentication', 'application-sessions.sqlite'),
+  );
+  try {
+    const row = database
+      .prepare(
+        'SELECT record FROM application_session_native_sessions WHERE token_hash=?',
+      )
+      .get(nativeHash(continuation.credential));
+    if (typeof row?.record !== 'string')
+      throw new Error('Native continuation fixture is missing.');
+    const record = JSON.parse(row.record) as { providerSessionId?: unknown };
+    if (typeof record.providerSessionId !== 'string')
+      throw new Error('Native provider session fixture is missing.');
+    return record.providerSessionId;
+  } finally {
+    database.close();
+  }
+}
 afterEach(async () => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   for (const close of cleanup.splice(0)) await close();
 });
 
@@ -344,6 +368,19 @@ async function nativeContinuationFixture() {
   const account = await nativeAccount(h);
   h.setNativeRequestFacts(nativeFacts());
   const key = await nativeKey();
+  const credentials = { username: 'alice', password: h.password };
+  const providerLoginHeaders: Headers[] = [];
+  const providerLoginBodies: string[] = [];
+  const loginVirtualSession = h
+    .accounts()
+    .service.loginVirtualSession.bind(h.accounts().service);
+  vi.spyOn(h.accounts().service, 'loginVirtualSession').mockImplementation(
+    async (providerRequest) => {
+      providerLoginHeaders.push(new Headers(providerRequest.headers));
+      providerLoginBodies.push(await providerRequest.clone().text());
+      return loginVirtualSession(providerRequest);
+    },
+  );
   const challengeRequest = new Request(
     `${origin}${APPLICATION_SESSION_NATIVE_CHALLENGE_PATH}`,
     {
@@ -352,7 +389,6 @@ async function nativeContinuationFixture() {
     },
   );
   const challenge = await h.sessions().nativeChallenge(challengeRequest, {
-    providerSessionId: account.session.sessionId,
     publicKey: key.publicKey,
   });
   const exchangeRequest = () =>
@@ -372,14 +408,14 @@ async function nativeContinuationFixture() {
       method: 'POST',
       path: APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
       challengeIdHash: nativeHash(challenge.challengeId),
-      providerSessionHash: nativeHash(account.session.sessionId),
+      credentialsHash: nativeHash(JSON.stringify(credentials)),
       jti: randomUUID(),
       iat: Math.floor(Date.now() / 1000),
     });
   const establish = async (proof?: string) =>
     h.sessions().establishNative(exchangeRequest(), {
       challengeId: challenge.challengeId,
-      providerSessionId: account.session.sessionId,
+      credentials,
       proof: proof ?? (await exchangeProof()),
     });
   const continuation = await establish();
@@ -413,6 +449,9 @@ async function nativeContinuationFixture() {
     account,
     key,
     challenge,
+    credentials,
+    providerLoginHeaders,
+    providerLoginBodies,
     continuation,
     exchangeProof,
     exchangeRequest,
@@ -422,7 +461,7 @@ async function nativeContinuationFixture() {
 }
 
 describe('native application-session continuation service seam', () => {
-  test('binds exchange to the verified Station surface, provider session, Device and independent proof key', async () => {
+  test('binds exchange to provider login, the verified Station surface, Device and independent proof key', async () => {
     const f = await nativeContinuationFixture();
     expect(f.continuation.target).toEqual({
       kind: 'station-native',
@@ -436,6 +475,11 @@ describe('native application-session continuation service seam', () => {
     expect(f.continuation.keyThumbprint).not.toBe(nativeSurface.keyThumbprint);
     expect(f.continuation).not.toHaveProperty('requestOrigin');
     expect(f.continuation).not.toHaveProperty('clientOrigin');
+    expect(f.challenge).not.toHaveProperty('providerSessionId');
+    expect(f.continuation).not.toHaveProperty('providerSessionId');
+    expect(f.providerLoginHeaders).toHaveLength(1);
+    expect([...f.providerLoginHeaders[0]!.keys()]).toEqual(['content-type']);
+    expect(JSON.parse(f.providerLoginBodies[0]!)).toEqual(f.credentials);
     await expect(f.establish(await f.exchangeProof())).rejects.toMatchObject({
       code: 'invalid',
     });
@@ -450,11 +494,12 @@ describe('native application-session continuation service seam', () => {
         method: 'POST',
         headers: { Authorization: `Bearer ${f.h.device.credential}` },
       }),
-      {
-        providerSessionId: f.account.session.sessionId,
-        publicKey: key.publicKey,
-      },
+      { publicKey: key.publicKey },
     );
+    const credentials = {
+      username: 'alice',
+      password: f.h.password,
+    };
     const proofClaims = {
       version: APPLICATION_SESSION_NATIVE_VERSION,
       purpose: 'exchange',
@@ -466,7 +511,7 @@ describe('native application-session continuation service seam', () => {
       method: 'POST',
       path: APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
       challengeIdHash: nativeHash(challenge.challengeId),
-      providerSessionHash: nativeHash(f.account.session.sessionId),
+      credentialsHash: nativeHash(JSON.stringify(credentials)),
       jti: randomUUID(),
       iat: Math.floor(Date.now() / 1000),
     };
@@ -476,7 +521,7 @@ describe('native application-session continuation service seam', () => {
     await expect(
       f.h.sessions().establishNative(f.exchangeRequest(), {
         challengeId: challenge.challengeId,
-        providerSessionId: f.account.session.sessionId,
+        credentials,
         proof: await signNativeProof(key.privateKey, proofClaims),
       }),
     ).rejects.toMatchObject({ code: 'invalid' });
@@ -487,7 +532,7 @@ describe('native application-session continuation service seam', () => {
     await expect(
       f.h.sessions().establishNative(f.exchangeRequest(), {
         challengeId: challenge.challengeId,
-        providerSessionId: f.account.session.sessionId,
+        credentials,
         proof: badProof,
       }),
     ).rejects.toMatchObject({ code: 'invalid' });
@@ -496,7 +541,7 @@ describe('native application-session continuation service seam', () => {
       .sessions()
       .establishNative(f.exchangeRequest(), {
         challengeId: challenge.challengeId,
-        providerSessionId: f.account.session.sessionId,
+        credentials,
         proof,
       });
     expect(established.target.surface.clientInstanceId).toBe(
@@ -505,7 +550,7 @@ describe('native application-session continuation service seam', () => {
     await expect(
       f.h.sessions().establishNative(f.exchangeRequest(), {
         challengeId: challenge.challengeId,
-        providerSessionId: f.account.session.sessionId,
+        credentials,
         proof,
       }),
     ).rejects.toMatchObject({ code: 'invalid' });
@@ -529,6 +574,36 @@ describe('native application-session continuation service seam', () => {
     ).toBe('invalid');
   });
 
+  test('bounds the native replay journal after provider and Device checks', async () => {
+    const f = await nativeContinuationFixture();
+    const database = new DatabaseSync(
+      join(f.h.home, 'authentication', 'application-sessions.sqlite'),
+    );
+    const expiresAt = Date.now() + 120_000;
+    const insert = database.prepare(
+      'INSERT INTO application_session_native_proofs VALUES (?,?,?)',
+    );
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      for (let index = 0; index < 100_000; index += 1)
+        insert.run(
+          nativeHash(f.continuation.credential),
+          `capacity-${index.toString().padStart(20, '0')}`,
+          expiresAt,
+        );
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.close();
+    }
+    expect(
+      (await f.h.sessions().authenticateNative(await f.authenticateRequest()))
+        .kind,
+    ).toBe('unavailable');
+  });
+
   test('refuses a revoked provider session and does not accept native credentials on browser authentication', async () => {
     const f = await nativeContinuationFixture();
     const browserResult = await f.h
@@ -538,7 +613,7 @@ describe('native application-session continuation service seam', () => {
     await f.h
       .accounts()
       .service.revokeSessionReference(
-        f.account.session.sessionId,
+        readNativeProviderSessionId(f.h.home, f.continuation),
         new AbortController().signal,
       );
     expect(
@@ -547,7 +622,7 @@ describe('native application-session continuation service seam', () => {
     ).toBe('invalid');
   });
 
-  test('fails closed when the provider cannot verify account session references or native facts are absent', async () => {
+  test('fails closed when the provider cannot perform native login or trusted native facts are absent', async () => {
     const h = await harness();
     const key = await nativeKey();
     const unavailable = vi
@@ -559,28 +634,25 @@ describe('native application-session continuation service seam', () => {
           method: 'POST',
           headers: { Authorization: `Bearer ${h.device.credential}` },
         }),
-        { providerSessionId: 'unsupported-session', publicKey: key.publicKey },
+        { publicKey: key.publicKey },
       ),
     ).rejects.toMatchObject({ code: 'unsupported' });
     unavailable.mockRestore();
-    const account = await nativeAccount(h);
+    await nativeAccount(h);
     await expect(
       h.sessions().nativeChallenge(
         new Request(`${origin}${APPLICATION_SESSION_NATIVE_CHALLENGE_PATH}`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${h.device.credential}` },
         }),
-        {
-          providerSessionId: account.session.sessionId,
-          publicKey: key.publicKey,
-        },
+        { publicKey: key.publicKey },
       ),
     ).rejects.toMatchObject({ code: 'invalid' });
   });
 
   test('refuses a different HTTP audience and stale Pion connection facts', async () => {
     const h = await harness();
-    const account = await nativeAccount(h);
+    await nativeAccount(h);
     h.setNativeRequestFacts(nativeFacts());
     const key = await nativeKey();
     const makeRequest = (requestOrigin: string) =>
@@ -593,16 +665,26 @@ describe('native application-session continuation service seam', () => {
       );
     await expect(
       h.sessions().nativeChallenge(makeRequest(alternateOrigin), {
-        providerSessionId: account.session.sessionId,
         publicKey: key.publicKey,
       }),
+    ).rejects.toMatchObject({ code: 'invalid' });
+    await expect(
+      h.sessions().nativeChallenge(
+        new Request(`${origin}${APPLICATION_SESSION_NATIVE_CHALLENGE_PATH}`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${h.device.credential}`,
+            Origin: alternateOrigin,
+          },
+        }),
+        { publicKey: key.publicKey },
+      ),
     ).rejects.toMatchObject({ code: 'invalid' });
     h.setNativeRequestFacts(
       nativeFacts(nativeSurface, '44444444-4444-4444-8444-444444444444'),
     );
     await expect(
       h.sessions().nativeChallenge(makeRequest(origin), {
-        providerSessionId: account.session.sessionId,
         publicKey: key.publicKey,
       }),
     ).rejects.toMatchObject({ code: 'invalid' });
@@ -612,7 +694,6 @@ describe('native application-session continuation service seam', () => {
     });
     await expect(
       h.sessions().nativeChallenge(makeRequest(origin), {
-        providerSessionId: account.session.sessionId,
         publicKey: key.publicKey,
       }),
     ).rejects.toMatchObject({ code: 'invalid' });
