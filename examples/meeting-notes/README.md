@@ -70,8 +70,8 @@ Agent/model. See the [plugin guide](../../docs/guides/plugins.md).
    Inspect the selected Station and rebuild result. The
    [record route](../../src-server/routes/knowledge/knowledge-record-routes.ts)
    writes the store; it does not rebuild the retrieval index.
-5. **Ask:** choose one relevant root or all personal + active-Project roots,
-   then search. [AskPane](src/AskPane.tsx) uses
+5. **Ask:** the scope starts at all personal + active-Project roots. Choose a
+   specific relevant root if needed, then search. [AskPane](src/AskPane.tsx) uses
    `useSearchKnowledgeIndexMutation` and shows title, category, excerpt, and
    score. **View source record** fetches the current full record. The
    [search route](../../src-server/routes/knowledge/knowledge-index-routes.ts)

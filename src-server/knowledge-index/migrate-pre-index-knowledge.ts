@@ -225,9 +225,9 @@ async function ensureMigrationRoot(
 /**
  * Migrate one pre-index (projectSlug, namespace) pair into a K2 store root + K3 index (extracted
  * from `migratePreIndexKnowledge`'s per-namespace orchestration body — code-review HIGH-2).
- * Returns `null` when the namespace has no `metadata.json`, no documents, or every document was
- * already migrated on a prior run (a genuine no-op, not a failure) — the caller doesn't count
- * this as an error or an entry in `namespacesProcessed`. Throws on a real failure (a store/index
+ * Returns `null` when the namespace has no `metadata.json` or no documents.
+ * Existing records skip creation but still participate in index repair on retry.
+ * Throws on a real failure (a store/index
  * error partway through); the caller catches this per-namespace so one namespace's failure never
  * discards another's already-completed result (code-review MED-3).
  */

@@ -45,8 +45,10 @@ library never attempts to write to it.
 Root selection is explicit and is filtered to personal + active-Project roots.
 That filter is a UI convenience, not proof of server authorization. Changing
 or removing the selected root clears the applicable selection; canonical detail
-is keyed to the root incarnation rather than relabeling an old record with a
-new root. If a graph references a missing record, the detail surface reports it
+is keyed to registration metadata rather than relabeling an old record with
+different metadata. This is a cache key, not an immutable owner revision;
+identical replacement metadata can produce the same key. If a graph references
+a missing record, the detail surface reports it
 instead of treating the graph node as canonical content.
 
 ## Boundaries
@@ -62,3 +64,9 @@ tests cover graph/detail navigation and root replacement using SDK fixtures.
 A successful build does not qualify a real vault, multi-person authorization,
 or an installed native/mobile journey. The broader root-scope and integration
 limits remain in the [Knowledge guide](../../docs/guides/knowledge.md).
+
+The [repository-graph dogfood](../../docs/guides/repository-knowledge-graph.md)
+also exercised an installed Library in a separate Station instance with real
+file records. Its wide and narrow browser views covered selection, canonical
+detail and keyboard return to the record list. That evidence does not qualify native devices,
+embedding/model behavior or multi-person authorization.

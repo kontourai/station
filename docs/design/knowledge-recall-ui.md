@@ -33,7 +33,8 @@ The SDK owns:
   geometry.
 
 The shared browser accepts a graph-renderer boundary. Knowledge Library uses
-the default accessible record list. Meeting Notes supplies its existing radial
+the SDK's accessible record list inside its own scroll and focus shell. Meeting
+Notes supplies its existing radial
 SVG renderer so K5's geometry, keyboard behavior, Files/Neo4j switch, and sync
 controls remain product-owned while selection and record detail converge.
 
@@ -119,8 +120,12 @@ remain the owning signals.
 
 - SDK unit tests cover root scoping, incarnation identity, navigation, canonical
   detail, provenance, lifecycle, and outside-graph links.
-- Knowledge Library focused unit and Playwright tests prove the pilot behavior
-  now travels through the shared boundary.
+- Knowledge Library focused unit and Playwright cases exercise the pilot through
+  the shared boundary; fixture results retain their fixture scope.
 - Meeting Notes focused unit and Playwright tests remain the K5 regression
   floor, including SVG keyboard navigation and Neo4j honest states.
 - A source gate rejects cross-example imports in the final change.
+
+The [repository-graph dogfood](../guides/repository-knowledge-graph.md) adds a
+specific installed-browser journey with real file records. It does not extend
+the UI tests into a claim about live embeddings, models, Neo4j or native devices.

@@ -60,6 +60,25 @@ its own adapters and exposes it through the public SDK. No Kit-internal imports
 are needed. Knowledge Library reads the canonical record after graph selection;
 vector search is a separate derived index and is not required for this journey.
 
+## Kit consumer dogfood and release boundary
+
+On 2026-09-27, an isolated Station imported a retained repository snapshot with
+1,149 records and 2,089 links; a repeat created no records or links. Knowledge
+Library's installed browser view exercised canonical detail and keyboard navigation
+at wide and narrow widths. These are snapshot-specific observations, not a
+current repository inventory or a live model/embedding/Neo4j qualification.
+
+The published Flow Agents 6.4.0 Kit exposed two consumer limits in that run:
+its public provider entry eagerly required optional Surface, and its YAML subset
+reader misread aliases in 139 mutation histories. A local Flow Agents candidate,
+built and installed through the public Kit CLI, read all 1,149 copied records
+and 2,089 links with no field differences or canonical-byte changes. Its graph
+projection also retained all original provenance objects and link labels in
+attributes, separately from provider-read provenance. These local fixes were
+not published by this audit. Station still uses its own adapters and public SDK;
+the check imported only the installed Kit's manifest-declared consumer entries,
+not sibling source as Station runtime authority.
+
 Follow [documentation maintenance](documentation.md) for source review and
 downstream document updates. The graph and any dependency report are review
 leads; neither grants semantic approval or refreshes evidence hashes for you.

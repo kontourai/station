@@ -19,7 +19,16 @@ The K2/K3 snippets preserve the original interface design. Use the checked-in
 contracts and current [Knowledge guide](../guides/knowledge.md) when implementing
 or integrating; the historical snippets are not a copy-paste API reference.
 
-## Today's seam (what is being extended/replaced)
+Current differences that matter when following the sketches: the registry can
+hold multiple personal roots; no production listener automatically indexes
+`onRecordsChanged`; Settings does not implement every K4 onboarding proposal;
+and Neo4j requires a process-local connection registration with no production
+setup caller. Historical dependency pins and milestone statements below are
+dated records, not the installed version or new live-provider evidence. The
+[repository-graph guide](../guides/repository-knowledge-graph.md) records the
+separate, bounded Kit consumer dogfood.
+
+## Original seam before K2
 
 - One globally-resolved vector connection: `resolveRuntimeVectorDbProvider` →
   `findRuntimeCapabilityConnection(providerService, 'vectordb')`
@@ -340,12 +349,14 @@ Actual current on-disk layout (verified in source, 2026-07-05):
 Migration path (K3, one-time, **explicit command — never automatic on startup**):
 
 1. `./station knowledge migrate [--project <slug>]` reads, per project namespace: the document
-   metadata + `files/` content (canonical text) and the old `vectors.json` (reusable vectors when
-   the embedding connection is unchanged; re-embed otherwise).
+   metadata + `files/` content (canonical text, with stored chunk text as a fallback)
+   and the old `vectors.json`. The current importer checks vector width, not model
+   identity: matching dimensions can permit reuse from a different embedding model.
 2. Each project's namespace is re-expressed as a project-scoped K2 store root: documents become Kit
    `raw` records (provenance noting the migration) via the root's adapter — written only through
    the §8 contract.
-3. The new index is built by `rebuildRoot` from that store root.
+3. Compatible stored chunks are upserted into the derived index; missing or
+   incompatible vectors trigger `rebuildRoot` for the destination root.
 4. **The old directories are never touched**: `{dataDir}/vectordb/<namespace>/` and
    `{dataDir}/projects/<slug>/knowledge/<namespace>/` are preserved as-is, and the old read path
    keeps working, until the user explicitly confirms cutover. Cutover flips the read path to the
@@ -353,8 +364,11 @@ Migration path (K3, one-time, **explicit command — never automatic on startup*
    of the migration. Rollback before cutover = do nothing (old path still live); the new root and
    index are additive.
 
-This satisfies the program risk note ("K3 migration is the data-risk center: never destructive")
-and issue #201's AC ("migration verified on a copy of a real home").
+The numbered cutover description records the original rollout plan. The current
+[importer](../../src-server/knowledge-index/migrate-pre-index-knowledge.ts) copies
+records and indexes them; it does not switch the application read path or remove
+the old store. The program's real-home-copy acceptance criterion is not established
+by a source review or synthetic migration tests.
 
 Migration observations are non-authoritative: telemetry and logging failures cannot interrupt
 record creation or derived indexing. A retry skips an existing record but still idempotently
@@ -446,7 +460,7 @@ explicit validation AC.
 > `examples/meeting-notes/` (`plugin.json`, `layout.json`, `src/index.tsx`) — three tabs, **Capture**
 > (`src/CaptureModal.tsx` + `src/compile.ts`, a plugin-contributed `compile` agent at
 > `agents/compile/agent.json`), **Library** (`src/GraphPane.tsx`, the wikilink graph pane), **Ask**
-> (`src/AskPane.tsx`, retrieval-grounded Q&A). Two flagged core route additions close the primitive
+> (`src/AskPane.tsx`, indexed excerpts with source-record reads, not generated answers). Two flagged core route additions close the primitive
 > gaps this plan named: `src-server/routes/knowledge/knowledge-record-routes.ts` (record create/get/listByType/
 > link + a file-adapter `GET /roots/:rootId/graph`) and `knowledge-index-routes.ts`'s new
 > `POST /index/search` (embeds the query, calls `KnowledgeIndexProvider.search`, re-resolves every hit
@@ -527,6 +541,8 @@ explicit validation AC.
 >   records is skipped and counted (`linksSkippedDangling`), never written as an edge to a
 >   non-existent node, but an already-synced-then-deleted record's own stale node is left in place.
 >   Named here as an accepted gap of the sync's "additive projection only" scope, not a silent one.
-> - **K6 routing/recall policy remains parked** — no issue exists yet; K5 does not attempt automatic
->   root selection (capture and Ask both require a manual root choice per R3) or any ranking/routing
->   logic beyond the K3 index's own similarity search.
+> - **K6 routing/recall policy is outside this design.** Capture requires a root;
+>   Ask starts with all personal + active-Project roots and allows an explicit
+>   narrower choice. Neither performs semantic root routing beyond that scope
+>   selection and the index's own similarity search. Consult GitHub for current
+>   follow-up ownership rather than treating the original planning status as live.
