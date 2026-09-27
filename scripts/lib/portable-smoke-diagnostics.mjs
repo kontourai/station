@@ -7,7 +7,7 @@ import { lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 export const DIAGNOSTIC_TAIL_CHARS = 16_000;
-export const DIAGNOSTIC_MAX_LOG_FILES = 6;
+const DIAGNOSTIC_MAX_LOG_FILES = 6;
 // Deep enough for <home>/.station/instances/<channel>/logs and a temporary
 // home's <home>/Temp/station/dev-home-*/logs; node_modules is never entered.
 const LOG_SEARCH_DEPTH = 8;
