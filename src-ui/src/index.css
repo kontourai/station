@@ -4968,6 +4968,64 @@ button.tool-call__line:hover {
   font-size: 0.9em;
 }
 
+/* Reasoning disclosure — the same quiet single-line weight as a collapsed
+   tool-call batch, so an engine that thinks before every tool round (one
+   reasoning row per round) does not stack full-size cards between them. The
+   expanded text hangs off a rule instead of a box for the same reason. */
+.reasoning-section {
+  margin: 2px 0;
+}
+
+.reasoning-section__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85em;
+  line-height: 1.5;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.reasoning-section__summary:hover {
+  background: var(--overlay-bg);
+  color: var(--text-primary);
+}
+
+.reasoning-section__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reasoning-section__chevron {
+  flex-shrink: 0;
+  opacity: 0.6;
+  font-size: 0.9em;
+}
+
+.reasoning-section__body {
+  margin: 2px 0 6px 4px;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--border-primary);
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  font-style: italic;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .tool-call-batch-sheet__overlay {
   position: fixed;
   inset: 0;
@@ -6728,7 +6786,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   .tool-call__line,
-  .tool-call-batch__summary {
+  .tool-call-batch__summary,
+  .reasoning-section__summary {
     min-height: 44px;
   }
 
