@@ -278,8 +278,9 @@ export function runAdapterContractSuite(options: ContractSuiteOptions): void {
         ],
         provenance: { agent: 'agent-1' },
       });
-      const readLinks = () => {
-        const raw = readFileSync(findRecordFilePath(dir, sourceId), 'utf-8');
+      const filePath = findRecordFilePath(dir, sourceId);
+      const readFrontmatter = () => {
+        const raw = readFileSync(filePath, 'utf-8');
         return yaml.load(raw.slice(4, raw.indexOf('\n---\n', 4))) as {
           links: Array<{ label?: string }>;
           status: string;
@@ -288,7 +289,6 @@ export function runAdapterContractSuite(options: ContractSuiteOptions): void {
 
       // Hand-tamper the on-disk frontmatter, bypassing the adapter's own
       // sanitize-on-write path, and confirm a real embedded newline landed.
-      const filePath = findRecordFilePath(dir, sourceId);
       const maliciousLabel = 'evil\nlabel\nwith\nnewlines';
       writeFileSync(
         filePath,
@@ -298,7 +298,7 @@ export function runAdapterContractSuite(options: ContractSuiteOptions): void {
         ),
         'utf-8',
       );
-      expect(readLinks().links[0].label).toBe(maliciousLabel);
+      expect(readFrontmatter().links[0].label).toBe(maliciousLabel);
 
       loggerWarnSpy.mockClear();
       await adapter.retire(sourceId, 'retired', {
@@ -306,7 +306,7 @@ export function runAdapterContractSuite(options: ContractSuiteOptions): void {
         rationale: 'no longer relevant',
       });
 
-      const after = readLinks();
+      const after = readFrontmatter();
       expect(after.status).toBe('retired');
       expect(after.links[0].label).toBe('evil label with newlines');
       expect(loggerWarnSpy).toHaveBeenCalledWith(
