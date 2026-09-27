@@ -2031,15 +2031,6 @@ export const e2eManifest = [
     rationale: 'Android mobile-layout coverage runs in the Android matrix.',
     exceptions: ['waitForTimeout'],
   },
-  {
-    path: 'tests/android/split-pane-mobile.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale: 'Android split-pane coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
 ];
 
 export function getSpecsForSuite(suite) {
