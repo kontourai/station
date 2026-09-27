@@ -8515,6 +8515,20 @@ export class OrchestrationService {
   }
 
   /**
+   * #2377 slice C1: whether `threadId` runs unconfined (`host`): its start
+   * stamp or a recorded `never`, exactly as its next turn reads it
+   * (`ApprovalPosture.standingConfinement`).
+   */
+  sessionRunsHost(threadId: string): boolean {
+    return (
+      this.approvalPosture.standingConfinement(
+        threadId,
+        this.readStartConfinementStamp(threadId),
+      ) === 'host'
+    );
+  }
+
+  /**
    * #2377 slice C1: whether recording `pick` on `threadId` would run any
    * engine of its conversation at full access
    * (`ApprovalPosture.pickReachesFullAccess`), reading each session's start

@@ -115,14 +115,21 @@ export type StationControlHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
  *   approve its own requests or loosen its own approvals, so both need a
  *   bound operator caller (decision 3 names bound + Project approve for
  *   respond, which slice C adds; until then only the operator).
- * - `steer-needs-own-thread` (slice C1): the same leaf also carries
- *   `steerTurn`, which injects input into a live turn. An agent may steer
- *   only a thread whose recorded owner is the principal its own session
- *   acts for (the ownership record slice B reads). A bound operator caller
- *   keeps the operator's reach (decision 3: dispatch beyond the caller's own
- *   scope needs bound + operator); the route's own session authorization
- *   still applies to it. The guard reads the thread's owner
- *   (`commandThreadOwnerId`); an owner it could not read refuses.
+ * - `thread-commands-stay-in-scope` (slice C1, owner decision recorded on
+ *   #2377): the same leaf carries `steerTurn`, which injects input into a
+ *   live turn, and `adoptSession`, which copies another session's
+ *   transcript and joins its posture. Both name a thread the caller may act
+ *   on only within its own scope:
+ *   - a bound operator caller keeps the operator's reach (decision 3); the
+ *     route's own session authorization still limits which threads that is;
+ *   - a bound caller acting for anyone else: a thread its own session's
+ *     owner owns;
+ *   - any other caller: a thread with the same owner AND the same
+ *     session-record Project as its own session (decision 3's dispatch
+ *     scope), and never a thread that runs `host` (unconfined).
+ *   The guard reads the thread's owner, Project and confinement
+ *   (`commandThread`); a thread it cannot read refuses, and a Project that
+ *   is not a session record counts as unreadable.
  * - `retarget-of-granted-job-is-person-only`: an unattended grant a person
  *   gave a scheduled job is keyed by the job, not by what it runs. Changing a
  *   granted job's prompt, agent, provider or monitor (a monitor dispatch runs
@@ -132,7 +139,7 @@ export type StationControlHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
  */
 export type StationControlRouteRule =
   | 'approval-commands-need-bound-operator'
-  | 'steer-needs-own-thread'
+  | 'thread-commands-stay-in-scope'
   | 'retarget-of-granted-job-is-person-only';
 
 export interface StationControlRoute {
@@ -281,7 +288,7 @@ export const DISPATCH_ROUTES: readonly StationControlRoute[] = [
   post(
     '/api/orchestration/commands',
     'approval-commands-need-bound-operator',
-    'steer-needs-own-thread',
+    'thread-commands-stay-in-scope',
   ),
   get('/api/orchestration/sessions/read-model'),
   get('/api/orchestration/sessions/:threadId'),
@@ -821,6 +828,19 @@ export interface StationControlPolicyCaller {
     readonly id: string;
     readonly elevationEligible: boolean;
   };
+  /** Its own session's Project; authority needs `session-record`. */
+  readonly localProjectId?: string;
+  readonly projectIdSource?: 'session-record' | 'slug-lookup';
+}
+
+/** The server's records for a thread a command names. */
+export interface StationControlCommandThread {
+  /** Its recorded owner; absent when it has none. */
+  readonly ownerId?: string;
+  /** Its session-record Project (`ProjectConfig.id`); absent otherwise. */
+  readonly localProjectId?: string;
+  /** Whether it runs `host` (unconfined): its start stamp or a recorded `never`. */
+  readonly host: boolean;
 }
 
 export interface StationControlPolicyContext {
@@ -841,12 +861,11 @@ export interface StationControlPolicyContext {
    */
   readonly retargetsGrantedJob?: boolean;
   /**
-   * For `steer-needs-own-thread`: the recorded owner of the thread a
-   * `steerTurn` names. Only the server can know it; `undefined` means the
-   * thread has no recorded owner or the guard could not read one, and
-   * either refuses.
+   * For `thread-commands-stay-in-scope`: what the server's records say about
+   * the thread a `steerTurn` or `adoptSession` names. Only the server can
+   * know it; absent means the guard could not read it, which refuses.
    */
-  readonly commandThreadOwnerId?: string;
+  readonly commandThread?: StationControlCommandThread;
 }
 
 const ASSURANCE_RANK = {
@@ -1092,29 +1111,50 @@ function approvalCommandRefusal(
   return undefined;
 }
 
+/** The commands `thread-commands-stay-in-scope` holds to the caller's scope. */
+const SCOPED_THREAD_COMMANDS: ReadonlySet<string> = new Set([
+  'steerTurn',
+  'adoptSession',
+]);
+
 /**
- * `steer-needs-own-thread`: a `steerTurn` names a thread its caller's session
- * owner owns, or the caller is a bound operator. Past its own threads the
- * refusal names what would have admitted it: an operator-owned session
- * short of `bound` needs a stronger credential; anyone else needs to be the
- * operator.
+ * `thread-commands-stay-in-scope`. Past its scope the refusal names what
+ * would have admitted it: `station_control_assurance_insufficient` when a
+ * bound caller acting for the same person would pass (an operator-owned
+ * session, a `host` thread, another Project, an unreadable one);
+ * `station_control_role_required` when no credential would (another owner's
+ * thread, or a caller that acts for no one).
  */
-function steerRefusal(
+function threadCommandRefusal(
   context: StationControlPolicyContext,
 ): StationControlRefusal | undefined {
-  if (commandType(context.body) !== 'steerTurn') return undefined;
+  const type = commandType(context.body);
+  if (type === undefined || !SCOPED_THREAD_COMMANDS.has(type)) return undefined;
   const caller = context.caller;
   if (!caller) return stationControlRefusal('station_control_caller_required');
   const operator = isOperatorCaller(caller, context);
-  if (operator && caller.assurance === 'bound') return undefined;
-  const owner = caller.principal?.id;
-  if (owner !== undefined && owner === context.commandThreadOwnerId)
-    return undefined;
-  return stationControlRefusal(
-    operator
-      ? 'station_control_assurance_insufficient'
-      : 'station_control_role_required',
-  );
+  const bound = caller.assurance === 'bound';
+  if (operator && bound) return undefined;
+  const thread = context.commandThread;
+  // Only a recorded owner owns anything (`elevationEligible`).
+  const owner = caller.principal?.elevationEligible
+    ? caller.principal.id
+    : undefined;
+  if (!thread || owner === undefined || thread.ownerId !== owner)
+    return stationControlRefusal(
+      operator
+        ? 'station_control_assurance_insufficient'
+        : 'station_control_role_required',
+    );
+  if (bound) return undefined;
+  const sameProject =
+    caller.projectIdSource === 'session-record' &&
+    caller.localProjectId !== undefined &&
+    thread.localProjectId !== undefined &&
+    caller.localProjectId === thread.localProjectId;
+  return thread.host || !sameProject
+    ? stationControlRefusal('station_control_assurance_insufficient')
+    : undefined;
 }
 
 const ROUTE_RULE_REFUSALS: Record<
@@ -1122,7 +1162,7 @@ const ROUTE_RULE_REFUSALS: Record<
   (context: StationControlPolicyContext) => StationControlRefusal | undefined
 > = {
   'approval-commands-need-bound-operator': approvalCommandRefusal,
-  'steer-needs-own-thread': steerRefusal,
+  'thread-commands-stay-in-scope': threadCommandRefusal,
   'retarget-of-granted-job-is-person-only': (context) =>
     context.retargetsGrantedJob
       ? stationControlRefusal('station_control_person_only')

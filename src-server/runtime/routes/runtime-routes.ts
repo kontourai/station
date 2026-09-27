@@ -1662,11 +1662,21 @@ export function configureRuntimeRoutes(
           () => schedulerService.listJobs(),
           unattendedGrantStore,
         ),
-      // Slice C1: whose thread a `steerTurn` names, from the same ownership
-      // record the caller's own principal is read from.
-      sessionOwnerId: (threadId) =>
-        context.orchestrationService.resolveSessionActingPrincipal(threadId)
-          ?.id,
+      // Slice C1: the thread a `steerTurn` or `adoptSession` names, read
+      // from the same records the caller's own session is: its owner and
+      // session-record Project (`resolveStationControlCallerRecord`), and
+      // whether it runs unconfined.
+      commandThread: (threadId) => {
+        const record = resolveStationControlCallerRecord(threadId);
+        return {
+          ...(record?.principal ? { ownerId: record.principal.id } : {}),
+          ...(record?.projectIdSource === 'session-record' &&
+          record.localProjectId
+            ? { localProjectId: record.localProjectId }
+            : {}),
+          host: context.orchestrationService.sessionRunsHost(threadId),
+        };
+      },
       onRefusal: (refusal, method, path) =>
         context.logger.warn(
           `station-control authority refused ${method} ${path}: ${refusal.code}`,

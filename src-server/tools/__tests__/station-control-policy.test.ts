@@ -14,6 +14,7 @@ import {
   STATION_CONTROL_INFRASTRUCTURE_POLICY,
   STATION_CONTROL_OPERATOR_PRINCIPAL_ID,
   STATION_CONTROL_TOOL_POLICY,
+  type StationControlCommandThread,
   type StationControlPolicyCaller,
   type StationControlPolicyContext,
   type StationControlToolPolicy,
@@ -540,52 +541,98 @@ describe('station-control authority: route matching and refusals', () => {
     ).toBe('station_control_assurance_insufficient');
   });
 
-  test('slice C1: a steerTurn reaches only the caller’s own threads, unless the caller is a bound operator', () => {
+  test('slice C1: steerTurn and adoptSession stay in the caller’s owner, Project and confinement', () => {
     const OTHER = 'human:local:someone-else';
-    const decide = (
-      caller: StationControlPolicyCaller | null,
-      commandThreadOwnerId: string | undefined,
-    ) =>
-      authorizeStationControlRequest('POST', '/api/orchestration/commands', {
-        caller,
-        isOperatorPrincipal,
-        body: { type: 'steerTurn', threadId: 't', input: 'go' },
-        ...(commandThreadOwnerId ? { commandThreadOwnerId } : {}),
-      })?.code;
-    // Its own owner's thread, at every assurance.
-    for (const name of [
-      'bound-operator',
-      'delegated-operator',
-      'bearer-operator',
-    ])
-      expect([name, decide(CALLERS[name] ?? null, OPERATOR)]).toEqual([
-        name,
-        undefined,
-      ]);
-    expect(
-      decide(CALLERS['bound-other-person'] ?? null, OTHER),
-    ).toBeUndefined();
-    // Another owner's thread, or one with no recorded owner.
-    for (const owner of [OTHER, undefined]) {
-      expect(decide(CALLERS['bound-operator'] ?? null, owner)).toBeUndefined();
-      expect(decide(CALLERS['delegated-operator'] ?? null, owner)).toBe(
+    const inProject = (
+      caller: StationControlPolicyCaller | null | undefined,
+      localProjectId = 'project-a',
+      projectIdSource: 'session-record' | 'slug-lookup' = 'session-record',
+    ): StationControlPolicyCaller | null =>
+      caller ? { ...caller, localProjectId, projectIdSource } : null;
+    const thread = (
+      ownerId: string | undefined,
+      extra: { localProjectId?: string; host?: boolean } = {},
+    ) => ({
+      ...(ownerId ? { ownerId } : {}),
+      localProjectId: 'project-a',
+      host: false,
+      ...extra,
+    });
+    for (const body of [
+      { type: 'steerTurn', threadId: 't', input: 'go' },
+      { type: 'adoptSession', sourceThreadId: 't' },
+    ]) {
+      const decide = (
+        caller: StationControlPolicyCaller | null,
+        commandThread?: StationControlCommandThread,
+      ) =>
+        authorizeStationControlRequest('POST', '/api/orchestration/commands', {
+          caller,
+          isOperatorPrincipal,
+          body,
+          ...(commandThread ? { commandThread } : {}),
+        })?.code;
+      const bearer = inProject(CALLERS['bearer-operator']);
+      const delegated = inProject(CALLERS['delegated-operator']);
+      const boundOther = inProject(CALLERS['bound-other-person']);
+      // Same owner, same session-record Project.
+      expect(decide(bearer, thread(OPERATOR))).toBeUndefined();
+      expect(decide(delegated, thread(OPERATOR))).toBeUndefined();
+      // Another Project, a thread with no session-record Project, or a
+      // caller whose own Project is a slug lookup.
+      for (const [caller, target] of [
+        [bearer, thread(OPERATOR, { localProjectId: 'project-b' })],
+        [bearer, { ownerId: OPERATOR, host: false }],
+        [
+          inProject(CALLERS['bearer-operator'], 'project-a', 'slug-lookup'),
+          thread(OPERATOR),
+        ],
+        [{ ...CALLERS['bearer-operator']! }, thread(OPERATOR)],
+      ] as const)
+        expect(decide(caller, target)).toBe(
+          'station_control_assurance_insufficient',
+        );
+      // A host thread needs a bound caller.
+      expect(decide(bearer, thread(OPERATOR, { host: true }))).toBe(
         'station_control_assurance_insufficient',
       );
-      expect(decide(CALLERS['bearer-operator'] ?? null, owner)).toBe(
+      expect(decide(delegated, thread(OPERATOR, { host: true }))).toBe(
         'station_control_assurance_insufficient',
       );
-      expect(decide(CALLERS['bound-operator-inferred'] ?? null, owner)).toBe(
+      expect(
+        decide(
+          boundOther,
+          thread(OTHER, { host: true, localProjectId: 'project-b' }),
+        ),
+      ).toBeUndefined();
+      // Another owner's thread, or one with no recorded owner.
+      expect(decide(bearer, thread(OTHER))).toBe(
+        'station_control_assurance_insufficient',
+      );
+      expect(decide(bearer, thread(undefined))).toBe(
+        'station_control_assurance_insufficient',
+      );
+      expect(decide(boundOther, thread(OPERATOR))).toBe(
         'station_control_role_required',
       );
+      expect(
+        decide(inProject(CALLERS['bound-operator-inferred']), thread(OPERATOR)),
+      ).toBe('station_control_role_required');
+      // An unreadable thread refuses.
+      expect(decide(bearer)).toBe('station_control_assurance_insufficient');
+      expect(decide(boundOther)).toBe('station_control_role_required');
+      // The bound operator keeps the operator's reach.
+      expect(
+        decide(
+          inProject(CALLERS['bound-operator']),
+          thread(OTHER, { host: true }),
+        ),
+      ).toBeUndefined();
+      expect(decide(inProject(CALLERS['bound-operator']))).toBeUndefined();
+      expect(decide(null, thread(OPERATOR))).toBe(
+        'station_control_caller_required',
+      );
     }
-    expect(decide(CALLERS['bound-other-person'] ?? null, OPERATOR)).toBe(
-      'station_control_role_required',
-    );
-    expect(decide(null, OPERATOR)).toBe('station_control_caller_required');
-    // A caller with no recorded owner owns nothing, even an ownerless thread.
-    expect(decide({ assurance: 'bound' }, undefined)).toBe(
-      'station_control_role_required',
-    );
   });
 
   test('retargeting a granted job is a person’s step even for the bound operator', () => {

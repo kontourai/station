@@ -49,6 +49,7 @@ import { PrincipalUnresolvedError } from '../services/identity/principal-resolve
 import {
   authorizeStationControlRequest,
   matchStationControlRoute,
+  type StationControlCommandThread,
   type StationControlRefusal,
   stationControlRefusal,
   stationControlRefusalBody,
@@ -124,11 +125,12 @@ export interface StationControlAuthorityGuardOptions {
     changes: Record<string, unknown>,
   ): boolean | Promise<boolean>;
   /**
-   * The recorded owner of a session (`resolveSessionActingPrincipal`), for
-   * the `steer-needs-own-thread` rule. Absent, throwing or answering nothing:
-   * the steer is refused (fail closed).
+   * For the `thread-commands-stay-in-scope` rule: the server's records for
+   * a thread a `steerTurn` or `adoptSession` names (owner, session-record
+   * Project, whether it runs `host`). Absent, throwing or answering nothing:
+   * the command is refused (fail closed).
    */
-  sessionOwnerId?(threadId: string): string | undefined;
+  commandThread?(threadId: string): StationControlCommandThread | undefined;
   /** Called once per refusal, for the operator's logs. */
   onRefusal?(
     refusal: StationControlRefusal,
@@ -205,28 +207,40 @@ async function retargetsGrantedJob(
   }
 }
 
+/** The thread each scoped command names, by its body field. */
+const COMMAND_THREAD_FIELD: Readonly<Record<string, string>> = {
+  steerTurn: 'threadId',
+  adoptSession: 'sourceThreadId',
+};
+
 /**
- * For `steer-needs-own-thread`: the recorded owner of the thread a
- * `steerTurn` body names. Read only for that command on that leaf.
+ * For `thread-commands-stay-in-scope`: the server's records for the thread
+ * a scoped command names. Read only for those commands on that leaf.
  */
-function commandThreadOwnerId(
+function commandThread(
   options: StationControlAuthorityGuardOptions,
   method: string,
   path: string,
   body: unknown,
-): string | undefined {
+): StationControlCommandThread | undefined {
   if (
     !matchStationControlRoute(method, path)?.rules.includes(
-      'steer-needs-own-thread',
+      'thread-commands-stay-in-scope',
     ) ||
     !body ||
     typeof body !== 'object'
   )
     return undefined;
-  const { type, threadId } = body as { type?: unknown; threadId?: unknown };
-  if (type !== 'steerTurn' || typeof threadId !== 'string') return undefined;
+  const record = body as Record<string, unknown>;
+  const field =
+    typeof record.type === 'string' &&
+    Object.hasOwn(COMMAND_THREAD_FIELD, record.type)
+      ? COMMAND_THREAD_FIELD[record.type]
+      : undefined;
+  const threadId = field ? record[field] : undefined;
+  if (typeof threadId !== 'string') return undefined;
   try {
-    return options.sessionOwnerId?.(threadId);
+    return options.commandThread?.(threadId);
   } catch {
     return undefined;
   }
@@ -287,7 +301,7 @@ export function createStationControlAuthorityGuard(
         path,
         body,
       ),
-      commandThreadOwnerId: commandThreadOwnerId(options, method, path, body),
+      commandThread: commandThread(options, method, path, body),
     });
     if (!refusal) {
       await next();
