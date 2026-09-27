@@ -1173,9 +1173,26 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
                 continue;
             }
             if stored.grant.expires_at <= now {
-                if !allow_expired_for_renewal
-                    || now.saturating_sub(stored.grant.expires_at) > NATIVE_GRANT_RENEWAL_GRACE_MS
-                {
+                if !allow_expired_for_renewal {
+                    continue;
+                }
+                let within_initial_grace =
+                    now.saturating_sub(stored.grant.expires_at) <= NATIVE_GRANT_RENEWAL_GRACE_MS;
+                // A renewal can commit at the end of the original grace and
+                // lose its reply. The broker retains that exact receipt until
+                // the resulting 24-hour grant plus another seven-day grace.
+                // Extend lookup only for a validated durable intent; open/read
+                // still use the non-renewal path and refuse expired grants.
+                let within_pending_receipt_window =
+                    stored.renewal_intent.as_ref().is_some_and(|intent| {
+                        validate_native_renewal_intent(intent, &stored.grant).is_ok()
+                    }) && now
+                        <= stored
+                            .grant
+                            .expires_at
+                            .saturating_add(NATIVE_GRANT_RENEWAL_GRACE_MS.saturating_mul(2))
+                            .saturating_add(MAX_GRANT_AGE_MS);
+                if !within_initial_grace && !within_pending_receipt_window {
                     continue;
                 }
                 validate_native_grant(owner, &stored.grant, stored.grant.expires_at - 1)?;
@@ -3096,7 +3113,7 @@ fn grant_account(binding: &NativeRelayGrantBinding) -> RedemptionResult<String> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::mpsc::{self, Receiver, Sender};
 
     const NOW: u64 = 1_700_000_000_000;
@@ -3222,6 +3239,162 @@ mod tests {
         let grant = sample_grant(prepared, expires_at);
         grants.store(&prepared.owner, &grant, NOW).unwrap();
         grants
+    }
+
+    struct NativeRenewTransport {
+        drop_first_response: AtomicBool,
+        seen_renewal_ids: Mutex<Vec<String>>,
+    }
+
+    impl NativeBrokerRequestTransport for NativeRenewTransport {
+        fn send_fixed_request(
+            &self,
+            grant: &NativeRelayClientGrantV2,
+            challenge: &NativeBrokerRequestProofChallenge,
+            compact_proof: &str,
+        ) -> RedemptionResult<BrokerResponse> {
+            assert_eq!(challenge.path(), RENEW_PATH);
+            assert_eq!(compact_proof.split('.').count(), 3);
+            let body: NativeGrantRenewalRequestBody =
+                serde_json::from_slice(challenge.body()).unwrap();
+            assert_eq!(body.scope, grant.scope);
+            assert_eq!(body.surface, grant.surface);
+            assert_eq!(body.expected_expires_at, grant.expires_at);
+            self.seen_renewal_ids
+                .lock()
+                .unwrap()
+                .push(body.renewal_id.clone());
+            if self.drop_first_response.swap(false, Ordering::SeqCst) {
+                return Err(NativeRedemptionError::BrokerTransport);
+            }
+            let receipt = NativeGrantRenewalReceipt {
+                version: NATIVE_RENEWED_VERSION.to_owned(),
+                renewal_id: body.renewal_id,
+                expires_at: NOW + MAX_GRANT_AGE_MS,
+            };
+            Ok(BrokerResponse {
+                status: 200,
+                body: Zeroizing::new(serde_json::to_vec(&receipt).unwrap()),
+            })
+        }
+    }
+
+    #[test]
+    fn native_renewal_reuses_durable_intent_after_lost_response() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = stored_signal_grant_until(&prepared, NOW + 12 * 60 * 60 * 1000);
+        let transport = NativeRenewTransport {
+            drop_first_response: AtomicBool::new(true),
+            seen_renewal_ids: Mutex::new(Vec::new()),
+        };
+        let service = native_signal_service(&prepared, &transport, &grants);
+        assert_eq!(
+            service.renew("Local", 7),
+            Err(NativeRedemptionError::BrokerTransport)
+        );
+        let pending = grants
+            .load_request_grant(
+                &prepared.owner,
+                &prepared.authority.0.lock().unwrap(),
+                NOW,
+                true,
+            )
+            .unwrap();
+        assert!(pending.renewal_intent.is_some());
+        let metadata = service.renew("Local", 7).unwrap();
+        assert_eq!(metadata.expires_at, NOW + MAX_GRANT_AGE_MS);
+        let completed = grants
+            .load_request_grant(
+                &prepared.owner,
+                &prepared.authority.0.lock().unwrap(),
+                NOW,
+                true,
+            )
+            .unwrap();
+        assert!(completed.renewal_intent.is_none());
+        let seen = transport.seen_renewal_ids.lock().unwrap();
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[0], seen[1]);
+    }
+
+    #[test]
+    fn native_renewal_recovers_receipt_after_original_grace_ends() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = NativeRelayGrantVault::new(MemoryNativeGrantBackend::default());
+        let old_expiry = NOW - NATIVE_GRANT_RENEWAL_GRACE_MS + 3_600_000;
+        let original = sample_grant(&prepared, old_expiry);
+        grants
+            .store(&prepared.owner, &original, old_expiry - 3_600_000)
+            .unwrap();
+        let transport = NativeRenewTransport {
+            drop_first_response: AtomicBool::new(true),
+            seen_renewal_ids: Mutex::new(Vec::new()),
+        };
+        let clock = AtomicU64::new(NOW);
+        let service = NativeRelaySignalService::new(
+            prepared.authority.as_ref(),
+            &prepared.proof_keys,
+            &transport,
+            &grants,
+            || clock.load(Ordering::SeqCst),
+        );
+        assert_eq!(
+            service.renew("Local", 7),
+            Err(NativeRedemptionError::BrokerTransport)
+        );
+        clock.store(NOW + 2 * 3_600_000, Ordering::SeqCst);
+        assert!(clock.load(Ordering::SeqCst) > old_expiry + NATIVE_GRANT_RENEWAL_GRACE_MS);
+        let renewed = service.renew("Local", 7).unwrap();
+        assert_eq!(renewed.expires_at, NOW + MAX_GRANT_AGE_MS);
+        let seen = transport.seen_renewal_ids.lock().unwrap();
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[0], seen[1]);
+    }
+
+    #[test]
+    fn native_renewal_grace_does_not_enable_expired_open_until_receipt_commits() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = NativeRelayGrantVault::new(MemoryNativeGrantBackend::default());
+        let expired = sample_grant(&prepared, NOW - 1_000);
+        grants
+            .store(&prepared.owner, &expired, NOW - 3_600_000)
+            .unwrap();
+        let context = prepared.authority.0.lock().unwrap().clone();
+        assert!(grants
+            .load_request_grant(&prepared.owner, &context, NOW, false)
+            .is_err());
+        let transport = NativeRenewTransport {
+            drop_first_response: AtomicBool::new(false),
+            seen_renewal_ids: Mutex::new(Vec::new()),
+        };
+        native_signal_service(&prepared, &transport, &grants)
+            .renew("Local", 7)
+            .unwrap();
+        assert!(grants
+            .load_request_grant(&prepared.owner, &context, NOW, false)
+            .is_ok());
+    }
+
+    #[test]
+    fn native_renewal_rechecks_profile_even_after_transport_failure() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = stored_signal_grant_until(&prepared, NOW + 12 * 60 * 60 * 1000);
+        let transport = NativeSignalTransport {
+            authority: Arc::clone(&prepared.authority),
+            status: 200,
+            response_body: Vec::new(),
+            mutate_profile_after_request: true,
+            return_transport_error: true,
+            observed: Mutex::new(None),
+        };
+        assert_eq!(
+            native_signal_service(&prepared, &transport, &grants).renew("Local", 7),
+            Err(NativeRedemptionError::StaleProfile)
+        );
+        assert_eq!(
+            transport.observed.lock().unwrap().as_ref().unwrap().0,
+            RENEW_PATH
+        );
     }
 
     #[test]
@@ -5886,6 +6059,106 @@ where
         })
     }
 
+    /// Renew a routing grant without exposing its bearer or accepting a
+    /// renderer-supplied renewal ID. A persisted intent makes a lost broker
+    /// response retry the same renewal instead of extending the lease twice.
+    pub(crate) fn renew(
+        &self,
+        profile_name: &str,
+        expected_profile_revision: u64,
+    ) -> RedemptionResult<NativeRelayGrantMetadata> {
+        let (context, owner, record) =
+            self.context_provider
+                .with_current_context(profile_name, |context| {
+                    validate_profile_context(&context)?;
+                    if context.profile.profile_name != profile_name
+                        || context.profile.revision != expected_profile_revision
+                    {
+                        return Err(NativeRedemptionError::StaleProfile);
+                    }
+                    let owner = NativeProofKeyOwner::new(
+                        &context.profile.app_identifier,
+                        context.profile.channel,
+                        &context.profile.client_instance_id,
+                    )
+                    .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+                    let record =
+                        self.grants
+                            .load_request_grant(&owner, &context, (self.now)(), true)?;
+                    Ok((context, owner, record))
+                })?;
+        let grant = &record.grant;
+        let intent = match record.renewal_intent {
+            Some(intent) => {
+                validate_native_renewal_intent(&intent, grant)?;
+                intent
+            }
+            None => {
+                let renewal_id = uuid::Uuid::new_v4().to_string();
+                let challenge = NativeBrokerRequestProofChallenge::from_request(
+                    native_request_identity(grant),
+                    NativeBrokerRequestBody::Renew {
+                        renewal_id: &renewal_id,
+                        expected_expires_at: grant.expires_at,
+                    },
+                    (self.now)() / 1000,
+                )
+                .map_err(|_| NativeRedemptionError::GrantInvalid)?;
+                let intent = NativeGrantRenewalIntent {
+                    renewal_id,
+                    expected_expires_at: grant.expires_at,
+                    request_body: challenge.body().to_vec(),
+                };
+                self.grants.save_renewal_intent(&owner, grant, intent)?
+            }
+        };
+        let challenge = NativeBrokerRequestProofChallenge::from_request(
+            native_request_identity(grant),
+            NativeBrokerRequestBody::Renew {
+                renewal_id: &intent.renewal_id,
+                expected_expires_at: intent.expected_expires_at,
+            },
+            (self.now)() / 1000,
+        )
+        .map_err(|_| NativeRedemptionError::GrantInvalid)?;
+        if challenge.body() != intent.request_body {
+            return Err(NativeRedemptionError::GrantRenewalConflict);
+        }
+        let signature = self
+            .proof_keys
+            .sign_native_request(&owner, &challenge)
+            .map_err(|_| NativeRedemptionError::ProofKey)?;
+        let compact_proof = challenge
+            .compact_jws(&signature)
+            .map_err(|_| NativeRedemptionError::ProofKey)?;
+        let response = self
+            .http
+            .send_fixed_request(grant, &challenge, &compact_proof);
+        self.context_provider
+            .with_current_context(profile_name, |current| {
+                validate_profile_context(&current)?;
+                if current != context {
+                    return Err(NativeRedemptionError::StaleProfile);
+                }
+                let latest =
+                    self.grants
+                        .load_request_grant(&owner, &current, (self.now)(), true)?;
+                if !same_native_grant(&latest.grant, grant)
+                    || latest.renewal_intent.as_ref() != Some(&intent)
+                {
+                    return Err(NativeRedemptionError::GrantRenewalConflict);
+                }
+                let response = response?;
+                if response.status != 200 || response.body.len() > MAX_RESPONSE_BYTES {
+                    return Err(NativeRedemptionError::BrokerRejected);
+                }
+                let receipt: NativeGrantRenewalReceipt = serde_json::from_slice(&response.body)
+                    .map_err(|_| NativeRedemptionError::BrokerRejected)?;
+                self.grants
+                    .complete_renewal(&owner, grant, &intent, &receipt, (self.now)())
+            })
+    }
+
     fn load_current_grant(
         &self,
         profile_name: &str,
@@ -6431,6 +6704,44 @@ pub(crate) async fn station_native_relay_grant_revoke(
     })
     .await
     .map_err(|_| "Station could not revoke native relay grants.".to_owned())?
+}
+
+/// Renews only the current saved profile's host-owned routing grant. The
+/// renderer selects a profile revision, never a broker URL, bearer, proof or
+/// renewal ID; this grants no Station application authority.
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_grant_renew(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    profile_name: String,
+    expected_profile_revision: u64,
+) -> Result<NativeRelayGrantMetadata, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if !valid_diagnostic_profile_name(&profile_name)
+        || expected_profile_revision == 0
+        || expected_profile_revision > JS_SAFE_INTEGER_MAX
+    {
+        return Err("The selected saved Station is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        with_native_relay_route_operation_lock(|| {
+            let context = AppNativeRedemptionContextProvider::new(app);
+            let proof_keys = NativeRelayProofKeyVault::new();
+            let http = UreqNativeBrokerTransport::new();
+            let grants = native_relay_grant_vault();
+            NativeRelaySignalService::new(
+                &context,
+                &proof_keys,
+                &http,
+                &grants,
+                native_now_ms_or_zero,
+            )
+            .renew(&profile_name, expected_profile_revision)
+            .map_err(|_| "Station could not renew the saved native relay route.".to_owned())
+        })
+    })
+    .await
+    .map_err(|_| "Station could not renew the saved native relay route.".to_owned())?
 }
 
 #[tauri::command(rename_all = "camelCase")]
