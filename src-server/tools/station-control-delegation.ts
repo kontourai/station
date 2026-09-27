@@ -2029,6 +2029,10 @@ async function connectSshTarget(
     `${currentControlApiBase()}/api/environments/ssh`,
     trustedRequest(),
     'Saved SSH environments are unavailable',
+    // This Station's own control API, and the first leaf every saved
+    // Environment resolves through: its typed refusal (#2377 slice C2a, a
+    // remote target needs a bound operator) reaches the agent.
+    { kind: 'current' },
   );
   if (!list.success || !Array.isArray(list.data)) {
     throw new Error(list.error || 'Saved SSH environments are unavailable');

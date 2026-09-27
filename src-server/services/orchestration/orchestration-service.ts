@@ -4020,6 +4020,25 @@ export class OrchestrationService {
   }
 
   /**
+   * #2377 slice C2a: whether Station recorded a start for this session, so a
+   * station-control call that names it is a follow-up, not a new session.
+   */
+  hasSessionStartRecord(threadId: string): boolean {
+    return this.firstStartedRecordOfThread(threadId) !== undefined;
+  }
+
+  /**
+   * #2377 slice C2a: the owner the session's start recorded
+   * (`metadata.userId`), the owner every session read and command compares
+   * against. Unlike `resolveSessionActingPrincipal`, a session an agent
+   * started unattributed still names its owner here: it acts for no one,
+   * but it belongs to that person.
+   */
+  sessionRecordedOwnerId(threadId: string): string | undefined {
+    return this.sessionAuthz.sessionOwnerUserId(threadId);
+  }
+
+  /**
    * #2601: the engine (`provider`) of the SAME record
    * `firstStartedMetadataOfThread` reads, so a caller's Agent-less identity
    * and its metadata can never come from two different events.
