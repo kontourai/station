@@ -107,6 +107,11 @@ describe('GraphPane', () => {
 
     expect(screen.getByText(/Select a knowledge root/)).toBeTruthy();
     expect(screen.queryByTestId('mn-graph-svg')).toBeNull();
+    expect(graphRefetchMock).not.toHaveBeenCalled();
+    expect(useKnowledgeGraphQueryMock).toHaveBeenCalled();
+    for (const [rootId] of useKnowledgeGraphQueryMock.mock.calls) {
+      expect(rootId).toBeUndefined();
+    }
   });
 
   test('renders a loading skeleton while the graph query is pending', async () => {
@@ -152,6 +157,7 @@ describe('GraphPane', () => {
     expect(
       await screen.findByText(/Capture a meeting in the Capture tab/),
     ).toBeTruthy();
+    expect(screen.queryByText(/^No /)).toBeNull();
     expect(screen.queryByTestId('mn-graph-svg')).toBeNull();
   });
 
@@ -319,7 +325,8 @@ describe('GraphPane', () => {
       selectPersonalRoot();
 
       await waitFor(() => expect(graphRefetchMock).toHaveBeenCalled());
-      expect(screen.queryByTestId('mn-graph-neo4j-loading')).toBeNull();
+      expect(useKnowledgeGraphNeo4jQueryMock).not.toHaveBeenCalled();
+      expect(neo4jRefetchMock).not.toHaveBeenCalled();
       expect(
         screen.getByTestId('mn-graph-view-files').getAttribute('aria-pressed'),
       ).toBe('true');

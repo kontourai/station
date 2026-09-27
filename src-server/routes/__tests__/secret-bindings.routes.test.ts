@@ -12,7 +12,10 @@ const binding = {
   updatedAt: '2026-08-24T00:00:00.000Z',
   availability: { backend: 'env' as const, available: true },
 };
-test('secret binding routes expose only operator metadata and revisioned mutation responses', async () => {
+test('secret binding routes pass service results through and map a missing binding to 404', async () => {
+  // The route does no projection; the metadata-only shape is the service's.
+  const revoked = { ...binding, revokedAt: binding.updatedAt };
+  let revokeInput: unknown;
   const app = createSecretBindingRoutes({
     list: async () => [binding],
     get: async (id) => (id === 'github' ? binding : null),
@@ -20,7 +23,10 @@ test('secret binding routes expose only operator metadata and revisioned mutatio
     replace: async () => binding,
     grant: async () => binding,
     ungrant: async () => binding,
-    revoke: async () => ({ ...binding, revokedAt: binding.updatedAt }),
+    revoke: async (input) => {
+      revokeInput = input;
+      return revoked;
+    },
   });
   expect(await (await app.request('/')).json()).toEqual({
     success: true,
@@ -33,8 +39,8 @@ test('secret binding routes expose only operator metadata and revisioned mutatio
     headers: { 'content-type': 'application/json' },
   });
   expect(response.status).toBe(200);
-  const responseBody = (await response.json()) as { data: unknown };
-  expect(responseBody.data).not.toHaveProperty('secret');
+  expect(revokeInput).toEqual({ id: 'github', expectedRevision: 1 });
+  expect(await response.json()).toEqual({ success: true, data: revoked });
 });
 
 test('typed conflicts retain their stable public response without leaking a hostile Error message', async () => {

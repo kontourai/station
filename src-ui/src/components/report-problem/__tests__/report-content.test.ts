@@ -5,7 +5,6 @@ import {
   MAX_ISSUE_URL_LENGTH,
   type ReportContext,
   renderReportBundleText,
-  reportTitle,
 } from '../report-content';
 
 function entry(message: string, level: 'error' | 'warn' = 'error') {
@@ -127,11 +126,5 @@ describe('renderReportBundleText', () => {
     });
     expect(text).toContain('## Recent console errors and warnings');
     expect(text).toContain('_None captured._');
-  });
-});
-
-describe('reportTitle', () => {
-  test('names the route', () => {
-    expect(reportTitle(baseContext)).toBe('Problem report: /agents');
   });
 });

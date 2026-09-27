@@ -29,11 +29,11 @@ import {
  * OWNERSHIP, after #1536 F merged: `ChatDockActiveIdentity.overflow.test.tsx`
  * is the identity row's authority — it measures real dock widths (down to
  * 260px, below `MIN_DOCK_WIDTH`) and pins the yield ORDER their policy sets
- * (engine, then agent, then title). The identity assertions below still hold
- * under that policy and are kept as containment guards, not as a second opinion
- * on priority. What this file uniquely owns is the PROJECT-CONTEXT half: the
- * project badge and the git badge, which #1536 F left in place when it deleted
- * the visible path segment beside them.
+ * (engine, then agent, then title), including containment and the title's
+ * floors, so this file no longer re-measures them. What it owns is the
+ * PROJECT-CONTEXT half: the project badge and the git badge, which #1536 F left
+ * in place when it deleted the visible path segment beside them, plus the
+ * clip-or-fit rule across the shared row.
  *
  * DRIVEN: three widths, each chosen because it makes a different part of the
  * row the binding constraint — 320px (the identity row's own contents no
@@ -158,14 +158,6 @@ type Measurement = {
 
 const WIDTHS = [320, 800, 1200] as const;
 
-/**
- * The widths this component actually renders at. Below the dock's 768px
- * breakpoint the shell mounts `ChatDockMobileHeader` instead, so 320px exists in
- * `WIDTHS` only to squeeze the identity row hard enough to expose an unclipped
- * overflow — it is not a width whose READABILITY this component owns.
- */
-const DESKTOP_WIDTHS = [800, 1200] as const;
-
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 
 describe.skipIf(!chromiumAvailable)(
@@ -224,24 +216,6 @@ describe.skipIf(!chromiumAvailable)(
       entry.scrollWidth > entry.clientWidth + 1;
 
     test.each(WIDTHS)(
-      "the identity row's members yield to fit inside it at %ipx",
-      async (width) => {
-        const measurements = await measure(width);
-        const row = measurements.find(
-          (entry) => entry.selector === '.chat-dock__active-identity-text',
-        );
-        if (!row) throw new Error('missing identity row');
-        // THE defect: `flex-shrink: 0` on the agent name and model meant this
-        // box's contents were wider than the box, and painted outside it.
-        expect(
-          doesNotFit(row),
-          `${row.selector} holds ${row.scrollWidth}px of content in a ` +
-            `${row.clientWidth}px box, so its members are painting outside it`,
-        ).toBe(false);
-      },
-    );
-
-    test.each(WIDTHS)(
       'anything that still cannot fit is clipped, never painted over its neighbour, at %ipx',
       async (width) => {
         const measurements = await measure(width);
@@ -286,43 +260,6 @@ describe.skipIf(!chromiumAvailable)(
       );
       expect(branch?.clientWidth).toBeGreaterThan(0);
     });
-
-    test.each(DESKTOP_WIDTHS)(
-      'the session title keeps at least one glyph while the agent name yields, at %ipx',
-      async (width) => {
-        // #1536 L9/L10, under #1536 F's yield order: the engine token gives way
-        // first, then the agent name, and the TITLE yields LAST — it is the row's
-        // subject. (This originally read the other way round, off a
-        // `flex-shrink: 4` on the title that F's measurement superseded and the
-        // reconciliation deleted.) So the risk this pins is no longer "the title
-        // was traded away first"; it is that a title which yields last can still
-        // reach zero once everything ahead of it has already collapsed. One glyph
-        // is the floor: an ellipsis alone still says "there is a title here,
-        // truncated", which a zero-width box does not.
-        //
-        // Only the two desktop widths are driven here. Narrower than these the
-        // identity row is `ChatDockActiveIdentity.overflow.test.tsx`'s subject,
-        // not this file's — it measures real dock widths down to 260px (below
-        // `MIN_DOCK_WIDTH`) and owns where each token starts truncating. 320px
-        // keeps its place in the overflow assertions above, where it is the only
-        // width that makes the containment constraint bite.
-        const measurements = await measure(width);
-        const title = measurements.find(
-          (m) => m.selector === '.chat-dock__active-identity-title',
-        );
-        if (!title) throw new Error('missing title');
-        expect(
-          title.visible,
-          `the session title box collapsed to ${title.clientWidth}px at ${width}px`,
-        ).toBe(true);
-        // A rendered glyph, not merely a non-zero box: below one character's
-        // width there is nothing to read.
-        expect(
-          title.clientWidth,
-          `the session title has ${title.clientWidth}px, under one glyph`,
-        ).toBeGreaterThanOrEqual(title.lineHeight * 0.4);
-      },
-    );
 
     test.each(WIDTHS)(
       'the git badge stays inside its own box at %ipx',

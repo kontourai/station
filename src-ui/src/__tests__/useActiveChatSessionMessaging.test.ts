@@ -2260,27 +2260,28 @@ describe('useCancelMessage', () => {
   });
 
   // The label must describe what the SERVER derived. A cooperative stop keeps
-  // the engine warm; only the forced path ends the process.
+  // the engine warm; only the forced path ends the process. A stop that took
+  // effect leads with "Stopped." (#898).
   it.each([
     [
       'cooperative',
       { outcome: 'cooperative', threadId: 'server-thread-1', turnId: 't' },
-      'engine is kept warm',
+      /^Stopped\. .*engine is kept warm/,
     ],
     [
       'forced',
       { outcome: 'forced', threadId: 'server-thread-1', turnId: 't' },
-      'forced the turn to stop',
+      /^Stopped\. .*forced the turn to stop/,
     ],
     [
       'turn-completed',
       { outcome: 'turn-completed', threadId: 'server-thread-1', turnId: 't' },
-      'finished before the stop took effect',
+      /finished before the stop took effect/,
     ],
     [
       'no-active-turn',
       { outcome: 'no-active-turn', threadId: 'server-thread-1' },
-      'no turn running to stop',
+      /no turn running to stop/,
     ],
   ])(
     'renders the %s outcome the server derived',
@@ -2294,9 +2295,10 @@ describe('useCancelMessage', () => {
       });
 
       expect(outcome).toEqual({ kind: 'settled', result: serverResult });
-      expect(describeStopTurnOutcome(outcome as StopTurnOutcome)).toContain(
-        expected,
-      );
+      const copy = describeStopTurnOutcome(outcome as StopTurnOutcome);
+      expect(copy).toMatch(expected);
+      // The raw engine field never reaches the reader (#898).
+      expect(copy).not.toContain('stop_reason');
     },
   );
 });

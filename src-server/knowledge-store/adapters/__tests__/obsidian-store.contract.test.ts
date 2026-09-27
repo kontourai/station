@@ -48,6 +48,7 @@ runAdapterContractSuite({
   label: 'kit-obsidian-store',
   createAdapter: (storeRoot) => new KitObsidianStoreAdapter({ storeRoot }),
   findRecordFilePath: findObsidianRecordFilePath,
+  loggerWarnSpy,
 });
 
 describe('KitObsidianStoreAdapter — vault-shape assertions (store-contract.md Addendum C.3, obsidian-store README)', () => {
@@ -850,82 +851,6 @@ describe('KitObsidianStoreAdapter — vault-shape assertions (store-contract.md 
       expect(record?.body).toBe('Original body.');
       expect(loggerWarnSpy).not.toHaveBeenCalled();
     });
-  });
-
-  // Wave-3 fast-follow (code-review new finding, Wave 2 review pass 4): closes the
-  // gap where label sanitization only fired on link-touching mutations (via
-  // `appendUniqueLinks`), so a metadata-only mutation (e.g. `retire()`, which
-  // spreads `...record` untouched) would carry forward an already-bad, legacy/
-  // externally-authored `KitLink.label` on disk indefinitely instead of ever
-  // cleaning it up at rest -- and would keep re-triggering
-  // `neutralizeSentinelShapedLines`'s warning on every future write. `writeRecord`
-  // now sanitizes unconditionally on every persisted write.
-  test('a legacy newline-label already on disk is sanitized on the very next write, even through a metadata-only mutation (retire) that never touches links itself', async () => {
-    const targetId = await adapter.create({
-      type: 'concept',
-      title: 'Link target',
-      body: 'target body',
-      category: 'engineering',
-      provenance: { agent: 'agent-1' },
-    });
-    const sourceId = await adapter.create({
-      type: 'concept',
-      title: 'Legacy label source',
-      body: 'Original body.',
-      category: 'engineering',
-      links: [
-        {
-          target_id: targetId,
-          kind: 'related',
-          label: 'SAFE_PLACEHOLDER_LABEL',
-        },
-      ],
-      provenance: { agent: 'agent-1' },
-    });
-
-    // Hand-tamper the on-disk frontmatter to simulate a legacy/externally-authored
-    // record whose label predates write-time sanitization -- same fixture
-    // technique as the H1 sentinel-collision tests above, but WITHOUT placing the
-    // sentinel string itself on its own line, so this test is purely about label
-    // persistence/cleanliness, not sentinel-corruption defense.
-    const filePath = findObsidianRecordFilePath(dir, sourceId);
-    const maliciousLabel = 'evil\nlabel\nwith\nnewlines';
-    const tampered = readFileSync(filePath, 'utf-8').replace(
-      'label: SAFE_PLACEHOLDER_LABEL',
-      `label: ${JSON.stringify(maliciousLabel)}`,
-    );
-    writeFileSync(filePath, tampered, 'utf-8');
-
-    // Confirm the tamper actually landed with a real embedded newline before
-    // exercising the fix (otherwise this test would pass vacuously).
-    const beforeRaw = readFileSync(filePath, 'utf-8');
-    expect(beforeRaw).toContain(JSON.stringify(maliciousLabel));
-
-    loggerWarnSpy.mockClear();
-    // retire() is a metadata-only mutation: it spreads `...record` (including the
-    // tampered, unsanitized `links`) untouched except for `status`/`updated_at`/
-    // `mutation_log` -- it never calls `appendUniqueLinks`/`mergeLinks` itself.
-    await adapter.retire(sourceId, 'retired', {
-      agent: 'agent-1',
-      rationale: 'no longer relevant',
-    });
-
-    const afterRaw = readFileSync(filePath, 'utf-8');
-    expect(afterRaw).toContain('status: retired');
-    expect(afterRaw).not.toContain(maliciousLabel);
-    expect(afterRaw).toContain('evil label with newlines');
-    expect(loggerWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('embedded line break'),
-      expect.objectContaining({
-        original: maliciousLabel,
-        sanitized: 'evil label with newlines',
-      }),
-    );
-
-    // The record's public shape reflects the same sanitized label -- not merely
-    // the on-disk bytes.
-    const record = await adapter.get(sourceId);
-    expect(record?.links?.[0].label).toBe('evil label with newlines');
   });
 
   test('graph-index.json is present at the store root per §5.1 (required regardless of vault layout)', async () => {

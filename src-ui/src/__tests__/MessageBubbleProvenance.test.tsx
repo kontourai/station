@@ -199,9 +199,13 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
     expect(screen.queryByRole('button', { name: 'Provenance' })).toBeNull();
 
     // The MENU lists both the record and the action…
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'More answer actions' }),
-    );
+    const more = await screen.findByRole('button', {
+      name: 'More answer actions',
+    });
+    // It rides the footer's action cluster, so it shares that cluster's
+    // hover reveal and keyboard access.
+    expect(more.closest('.turn-footer__actions')).not.toBeNull();
+    fireEvent.click(more);
     expect(
       await screen.findByRole(
         'menuitem',

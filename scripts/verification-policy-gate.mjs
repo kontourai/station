@@ -100,6 +100,18 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   // CLI help ↔ docs/reference/cli.md parity. Pure source read, ~50ms; see
   // run-ci-fast.mjs for why this belongs on the PR-visible lane.
   Object.freeze(['npm', Object.freeze(['run', 'docs:cli-parity:check'])]),
+  // #2803: the docs-reference and link gates, until then composed only by
+  // verify:static. Whole-tree reads, ~1s each; see run-ci-fast.mjs.
+  Object.freeze(['npm', Object.freeze(['run', 'docs:reference:gate'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'docs:links:check'])]),
+  // #2803 review: the docs:truth:gate members that reject a docs-only edit;
+  // see run-ci-fast.mjs.
+  Object.freeze(['npm', Object.freeze(['run', 'docs:public:hygiene'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'docs:issue-lifecycle:check'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'docs:public:contract-examples']),
+  ]),
   // Generates the git-ignored Basis MCP app bundles the typecheck lanes
   // resolve; a precondition of the aggregate below, like `build:connect`.
   Object.freeze([

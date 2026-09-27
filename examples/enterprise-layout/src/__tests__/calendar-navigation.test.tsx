@@ -85,9 +85,23 @@ describe('useCalendarNavigation', () => {
     );
   });
 
-  test('formats dates in local time, not UTC', () => {
-    // 23:30 local on 1 March is 2 March in UTC for any zone west of UTC.
-    expect(formatLocalDate(new Date(2026, 2, 1, 23, 30))).toBe('2026-03-01');
+  // CI runners default to UTC, where local and UTC dates agree, so pin zones
+  // on both sides of UTC. The Date is built after TZ is set so its local
+  // fields are that zone's.
+  test.each([
+    ['America/Los_Angeles', 23, 30],
+    ['Asia/Tokyo', 0, 30],
+  ])('formats dates in local time, not UTC (%s)', (zone, hour, minute) => {
+    const previous = process.env.TZ;
+    process.env.TZ = zone;
+    try {
+      const date = new Date(2026, 2, 1, hour, minute);
+      expect(date.toISOString().slice(0, 10)).not.toBe('2026-03-01');
+      expect(formatLocalDate(date)).toBe('2026-03-01');
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    }
   });
 });
 

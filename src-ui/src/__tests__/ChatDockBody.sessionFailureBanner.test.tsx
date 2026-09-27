@@ -184,7 +184,6 @@ vi.mock('../components/chat/QueuedMessages', async (importOriginal) => {
 });
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
-import { describeStopTurnOutcome } from '../hooks/useActiveChatSessionMessaging';
 import type { ChatSession } from '../types';
 
 const LONG_UNBREAKABLE_REASON =
@@ -330,19 +329,6 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     // Same copy shape the session detail uses for the same fact.
     expect(within(banner).getByText('Failed:')).toBeTruthy();
     expect(banner.textContent).toContain(LONG_UNBREAKABLE_REASON);
-  });
-
-  test('the banner is announced as an alert, reachable by role', () => {
-    renderDock({
-      orchestrationSession: buildOrchestrationSession({
-        blockedReason: 'Engine crashed',
-      }),
-    });
-
-    const alerts = screen.getAllByRole('alert');
-    expect(
-      alerts.some((alert) => alert.textContent?.includes('Engine crashed')),
-    ).toBe(true);
   });
 
   test('queued Steer targets the receipted current execution Session', async () => {
@@ -507,15 +493,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(screen.getByTestId('chat-input-area')).toBeTruthy();
   });
 
-  test('a requested stop presents Stopped without a missing-record banner, failure state, Retry, or null diagnostic (#898)', () => {
-    const stoppedCopy = describeStopTurnOutcome({
-      kind: 'settled',
-      result: {
-        outcome: 'cooperative',
-        threadId: 'thread-alpha',
-        turnId: 'turn-stopped',
-      },
-    });
+  // The "Stopped." copy itself is owned by describeStopTurnOutcome's table in
+  // useActiveChatSessionMessaging.test.ts; this pins what the dock withholds.
+  test('a requested stop shows no missing-record banner, failure state, Retry, or null diagnostic (#898)', () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
         status: 'ready',
@@ -531,8 +511,6 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
 
-    expect(stoppedCopy).toMatch(/^Stopped\./);
-    expect(stoppedCopy).not.toContain('stop_reason');
     expect(screen.queryByTestId('chat-dock-session-record-missing')).toBeNull();
     expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();

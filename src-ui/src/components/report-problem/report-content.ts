@@ -74,7 +74,7 @@ function reportBody(context: ReportContext, omittedCount: number): string {
   ].join('\n');
 }
 
-export function reportTitle(context: ReportContext): string {
+function reportTitle(context: ReportContext): string {
   return `Problem report: ${context.route}`;
 }
 

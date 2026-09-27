@@ -73,6 +73,7 @@ import type { RegistryTrustPolicyAuthority } from '../../services/plugins/regist
 import { pluginUpdates } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
+import { ownGitRepositoryArgs } from '../../utils/own-git-repository.js';
 import { assertPathInside } from '../../utils/path-containment.js';
 import { errorMessage, param } from '../schemas/schemas.js';
 import {
@@ -547,14 +548,24 @@ export function registerPluginLifecycleRoutes(
         const registryInstall = registryOwner?.success
           ? await resolvePluginRegistryInstall(registryOwner.registryId)
           : null;
+        // The package's own repository only: a package without one has no
+        // update source, whatever checkout the Station home sits inside.
+        const ownRepository = registryOwner?.success
+          ? null
+          : ownGitRepositoryArgs(installedRoot.packageRoot);
         const source = registryOwner?.success
           ? registryInstall?.source
-          : (
-              await execGit(['remote', 'get-url', 'origin'], {
-                cwd: installedRoot.packageRoot,
-                timeout: 30000,
-              })
-            ).stdout.trim();
+          : ownRepository
+            ? (
+                await execGit(
+                  [...ownRepository, 'remote', 'get-url', 'origin'],
+                  {
+                    cwd: installedRoot.packageRoot,
+                    timeout: 30000,
+                  },
+                )
+              ).stdout.trim()
+            : undefined;
         if (!source)
           return c.json(
             {
@@ -640,9 +651,9 @@ export function registerPluginLifecycleRoutes(
         return c.json({ success: false, error: errorMessage(error) }, 409);
       }
     }
-    const gitDir = join(pluginDir, '.git');
-    const isGitPlugin = existsSync(gitDir);
-    if (!isGitPlugin && !registryOwner) {
+    // Only the plugin's own repository: never one enclosing `pluginDir`.
+    const ownRepository = ownGitRepositoryArgs(pluginDir);
+    if (!ownRepository && !registryOwner) {
       return c.json({ success: false, error: 'Plugin is not git-backed' }, 400);
     }
     if (
@@ -732,8 +743,8 @@ export function registerPluginLifecycleRoutes(
                     if (!result.success) {
                       throw new PluginUpdateRejectedError(result.message);
                     }
-                  } else if (isGitPlugin) {
-                    await execGit(['pull', '--ff-only'], {
+                  } else if (ownRepository) {
+                    await execGit([...ownRepository, 'pull', '--ff-only'], {
                       cwd: pluginDir,
                       timeout: 30000,
                       // Station-owned plugin directory; its origin is the

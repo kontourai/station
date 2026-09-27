@@ -7,16 +7,28 @@
  * are stood in for, and the New Chat picker is a probe that records what it
  * was handed and picks an Agent on request (the picker itself is covered by
  * `NewChatModalSelectDispatch.test.tsx`).
+ *
+ * The same real pane also owns the dock's file-drop wiring: which view-model
+ * state counts as an attachment owner is decided in `ChatDock.tsx`, not in
+ * `ChatPaneFileDropBoundary`.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, beforeAll, expect, test, vi } from 'vitest';
 import { ActiveChatsProvider } from '../../../contexts/ActiveChatsContext';
 import { ConversationsProvider } from '../../../contexts/ConversationsContext';
 import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
+import { navigationStore } from '../../../contexts/navigation-store';
 import { RegionModelProvider } from '../../../contexts/RegionModelContext';
 import { ToastProvider } from '../../../contexts/ToastContext';
+import { useShowSurface } from '../../../contexts/useShowSurface';
 import {
   type ProjectChatComposerDraft,
   requestProjectChat,
@@ -98,6 +110,13 @@ vi.mock('../../../contexts/AgentsContext', async (importOriginal) => ({
   useAgentsLoaded: () => true,
 }));
 
+// The active chat's transcript and composer are stood in for: the file-drop
+// test asks only which pane owns attachments, and the marker shows a chat is
+// active.
+vi.mock('../ChatDockBody', () => ({
+  ChatDockBody: () => <div data-testid="active-chat-body" />,
+}));
+
 vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useConnections: () => ({ captureCredentialEvidence: () => null }),
@@ -128,6 +147,8 @@ afterEach(() => {
   updateChat.mockClear();
   dockProbe.mobile = false;
   dockProbe.sessions = [];
+  showSurface = undefined;
+  navigationStore.navigate('/', { chat: null });
 });
 
 const draft: ProjectChatComposerDraft = {
@@ -137,6 +158,12 @@ const draft: ProjectChatComposerDraft = {
   detail: 'Continue building Pulse',
   message: 'Read the `plugin-authoring` topic, then run `validate_plugin`.',
 };
+
+let showSurface: ReturnType<typeof useShowSurface> | undefined;
+function CaptureShowSurface() {
+  showSurface = useShowSurface();
+  return null;
+}
 
 function renderPane(projectSlug: string) {
   const queryClient = new QueryClient({
@@ -150,6 +177,7 @@ function renderPane(projectSlug: string) {
             <ConversationsProvider>
               <ActiveChatsProvider>
                 <RegionModelProvider>
+                  <CaptureShowSurface />
                   <ChatWorkspacePane
                     placement="fullscreen"
                     projectSlug={projectSlug}
@@ -279,4 +307,64 @@ test('the dock passes a background-only session into its mobile work badge', asy
   expect(
     (await screen.findByTestId('mobile-dock-work-badge')).textContent,
   ).toBe('1');
+});
+
+function chatSession(id: string): Record<string, any> {
+  return {
+    id,
+    agentSlug: 'assistant',
+    agentName: 'Assistant',
+    title: 'Pulse chat',
+    projectSlug: 'pulse',
+    status: 'idle',
+    source: 'manual',
+    input: '',
+    attachments: [],
+    queuedMessages: [],
+    inputHistory: [],
+    messages: [],
+    hasUnread: false,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
+
+/** Drags one file over the pane and reports whether it offered to take it. */
+function dragFileOverPane(): boolean {
+  const pane = screen.getByRole('region', { name: 'Chat dock' });
+  const dataTransfer = {
+    types: ['Files'],
+    files: [new File(['x'], 'note.txt')],
+    items: [],
+  } as unknown as DataTransfer;
+  fireEvent.dragEnter(pane, { dataTransfer, relatedTarget: null });
+  const offered = screen.queryByTestId('chat-pane-file-drop-overlay') !== null;
+  fireEvent.dragLeave(pane, { dataTransfer, relatedTarget: null });
+  return offered;
+}
+
+test('file drops follow the pane’s attachment owner: none without an active chat, none over an imported conversation', async () => {
+  dockProbe.sessions = [chatSession('chat-a')];
+  renderPane('pulse');
+  expect(dragFileOverPane(), 'a pane with no active chat took a file').toBe(
+    false,
+  );
+  cleanup();
+
+  navigationStore.navigate('/', { chat: 'chat-a' });
+  renderPane('pulse');
+  await act(async () => {});
+  expect(screen.getByTestId('active-chat-body')).toBeTruthy();
+  expect(dragFileOverPane(), 'the active chat’s pane refused a file').toBe(
+    true,
+  );
+
+  // An imported conversation takes over the reading surface; the chat behind
+  // it still exists, but nothing on screen can hold an attachment.
+  act(() => showSurface!('chat', { session: 'imported-thread' }));
+  await act(async () => {});
+  expect(
+    dragFileOverPane(),
+    'an imported conversation’s pane took a file',
+  ).toBe(false);
 });

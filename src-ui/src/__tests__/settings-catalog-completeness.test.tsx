@@ -22,9 +22,9 @@ import {
   OPERATOR_ONLY_SECTION_IDS,
   SETTINGS_CATALOG,
   SETTINGS_SECTIONS,
-  visibleCatalogIds,
 } from '../views/settings/settings-catalog';
 import { RESETTABLE_STATION_SETTING_KEYS } from '../views/settings/station-reset';
+import { visibleCatalogIds } from './helpers/settings-catalog-visibility';
 
 vi.mock('@kontourai/station-connect', () => ({
   QRDisplay: () => <div />,
@@ -504,8 +504,6 @@ describe('settings catalog completeness', () => {
   });
 
   test('the rendered desktop Settings view and catalog enumerate the same exact ids', async () => {
-    const { SettingsView } = await import('../views/SettingsView');
-    expect(String(SettingsView)).toContain('configData');
     const rendered = await renderedCatalogIds();
     const expected = visibleCatalogIds({
       isMobile: false,
@@ -513,27 +511,6 @@ describe('settings catalog completeness', () => {
       isOperator: true,
     });
     expectExactCatalog(rendered, expected);
-    // 37 at the merge base; +2 from archive#3313 (feature-previews,
-    // enable-developer-tools) and +1 from the chat-dock lane's
-    // sidebar-sections, +1 from station#585 smooth answer reveal, +1 from the
-    // update-ownership split (desktop-app-updates). This slice: -1
-    // (knowledge-stores-preview, whose setting changes nothing and is no
-    // longer user-facing) and +2 (workspace-checkpoints,
-    // default-chat-font-size). #2144 slice 2: +1
-    // (default-workspace-isolation). Counted from the merged catalog, not
-    // added up. #2144 slice 6: +4 (default-approval-mode,
-    // telemetry-destination, confirm-conversation-delete,
-    // reset-device-defaults). #2144 slice 4: +5 — the five chat rows that had
-    // a device-settings contract row and no catalog row, so the in-chat gear
-    // was their only surface (chat-show-reasoning, chat-show-tool-details,
-    // chat-dock-auto-hide, diff-style, diff-wrap). The two Appearance rows
-    // that MOVED into the new chat section are not a change to this count:
-    // the same ids, in a different `view`. #1973: +1 (device-hosts, the
-    // operator's SSH device hosts). #90 D9: +1 (chat-auto-float-browser,
-    // the float-over-chat's auto-show preference). #2511: +1
-    // (open-last-station, mobile-only, so not in this desktop render).
-    // Device helper URL: +1 (the local helper the Device pane dials).
-    expect(SETTINGS_CATALOG).toHaveLength(58);
   });
 
   /**

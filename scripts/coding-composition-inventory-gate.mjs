@@ -108,13 +108,6 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/CodingInspectorPanel.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/CodingLayout.css': 'presentation',
-    // #2064: independent-review receipts moved from /review-queue into the
-    // Coding inspector's Reviews tab. This is the tab's content: it lists a
-    // project's receipts and opens the run modal. Privileged because running
-    // a review POSTs a receipt-producing job. No production surface mounts it
-    // since the unused inspector shell was deleted.
-    'src-ui/src/components/coding-layout/IndependentReviewInspectorContent.tsx':
-      'privileged-renderer',
     'src-ui/src/components/coding-layout/BranchToolbar.css': 'presentation',
     'src-ui/src/components/coding-layout/BranchToolbar.tsx': 'git-review',
     'src-ui/src/components/coding-layout/CodingTerminalPane.tsx':
