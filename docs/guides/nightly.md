@@ -1,17 +1,20 @@
 # Station Nightly
 
-Station Nightly is the main-edge dogfood channel. Its macOS, Windows, and
-Android builds consume one SHA from the shared Nightly test gate and use separate
+Station Nightly is the main-edge dogfood channel. Its macOS, Windows, Android
+and iOS builds consume one SHA from the shared Nightly test gate and use separate
 platform delivery authorities while sharing one channel identifier:
 
 | Platform | Artifact | Identifier | Built by | Delivered by |
 | --- | --- | --- | --- | --- |
 | macOS | notarized app, DMG, updater archive | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-macos` | rolling GitHub prerelease and shared signed Tauri feed |
 | Windows | NSIS installer and Tauri updater signature | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-windows` | shared rolling GitHub prerelease and signed Tauri feed |
-| Android | signed AAB/APK | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-android` | Play internal testing track |
+| Android | signed arm64 AAB/APK | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-android` | Play internal testing track |
+| iOS | signed App Store IPA | `io.kontourai.station.nightly` | reusable TestFlight delivery in build mode | TestFlight delivery in upload mode |
 
-Because the nightly uses its own identifier, these channels install alongside a
-stable Station install (`io.kontourai.station`) and never touch it.
+Distinct application identifiers support coexistence with Stable. That is an
+identity contract, not proof of every installer, shared-resource or physical
+update journey. This guide describes source wiring; inspect exact provider and
+device receipts for current availability.
 
 ## Android nightly (Play internal testing)
 
@@ -31,15 +34,11 @@ Scheduled same-day ships of new content automatically take the next reserved
 version code. Manual `rebuild_index` remains the exception for rebuilding a
 commit that already shipped, below.
 
-**What a tester should expect.** The job has a 90-minute timeout (plus
-possible queueing for fleet capacity), and Play typically processes an
-internal-track upload within minutes, so on an active day expect a new build
-within a few hours of each scheduled slot — and query Play Console, not this
-doc or the workflow's exit code, for actual delivery state. When it reaches a given
-device after that is the device's Play auto-update policy, not this pipeline;
-opening the Play Store listing and updating manually is always current. The
-nightly appears as its own app ("Station Nightly", with the nightly launcher
-icon) side by side with any production Station install.
+**What a tester should expect.** Queueing, separate stage timeouts, signing and
+provider processing determine delivery time. The six-hour schedule is not a
+promise that a build reaches a phone within a few hours. Play auto-update and
+tester eligibility are separate device/provider conditions. Read the final
+per-platform receipt and Play state; a job exit alone is not installation proof.
 
 **Identity.** The version is `X.Y.Z-nightly.<day>`, where `<day>` is a
 monotonic day counter (whole UTC days since 2020-01-01, deliberately not a
@@ -53,35 +52,28 @@ See [native-releases.md](./native-releases.md) for the ledger and its
 [Manually dispatching Nightly](./native-releases.md#manually-dispatching-nightly)
 section for an exceptional same-day rebuild (`rebuild_index`).
 
-A manual cross-platform promotion may also pass `source_sha`. The source and
-browser gate validates that exact commit is still on `main`; the reusable
-hosted full-regression gate then proves the same SHA before Android or desktop
-can start. Both producers check out the source gate's one output instead of
-independently resolving a moving branch. This is the supported way to make
-both Nightly artifacts companions of a specific Stable/TestFlight candidate.
+A manual `source_sha` may only echo the current workflow event SHA. It cannot
+select an older Stable/TestFlight candidate. Native staging needs the source
+gate and can run alongside full regression; promotion needs both completed
+staging and the exact-SHA full-regression receipt.
 
-**Signing and upload.** The job authenticates to Google Cloud with GitHub
-OIDC, fetches the upload keystore from Secret Manager, verifies the built APK
-and AAB signatures against the pinned upload-certificate fingerprint
-(`ANDROID_UPLOAD_CERT_SHA256`) along with the nightly package identity, and
-only then uploads the AAB to the internal testing track (transient Play API
-failures are retried). When the Google Cloud or keystore configuration is
-absent, the run skips publication with a notice instead of failing. The
-workflow also attempts to archive the signed APK/AAB as a 7-day workflow
-artifact, but archival is best-effort and happens before verification — its
-outcome is reported separately, and an artifact must not be assumed present
-or treated as verified output.
+**Signing and upload.** `nightly-native-stage.yml` authenticates through Google
+OIDC, fetches the upload key from Secret Manager, and checks the APK/AAB package,
+provenance, upload-certificate fingerprint and ABI inventory. It retains required
+14-day staged artifacts; missing signing inputs or required artifacts fail the
+stage. `nightly-native-cohort.yml` separately admits those bytes and uploads to
+Play internal testing. It does not silently skip missing credentials as success.
 
-**The rolling `nightly` tag advances only after a successful publish.** A
-failed run leaves the tag alone, so the next scheduled run retries the same
-content instead of silently skipping an interval.
+The Android and desktop jobs declare the protected `native-release` environment;
+iOS uses `ios-nightly`. Whether those environments currently require manual
+approval is live GitHub configuration, not determined by the schedule trigger.
+Their provider credentials and permissions have distinct scopes.
 
-Trust boundary: this is an internal testing track for invited testers, not a
-public release ring. Unlike tag releases, the scheduled job does not pause for
-the approval-gated `native-release` environment — it runs unattended, and its
-Play credential is provisioned per [mobile-release.md](./mobile-release.md)
-with only the release-to-testing-tracks permission, not production release.
-Public distribution remains stable and preview only.
+The rolling `nightly` marker moves only after Android is verified and recorded.
+Desktop has its own `nightly-desktop` publication marker. Partial or ambiguous
+provider outcomes retain their own status; a failed overall run can already have
+published a subset. See the [cohort and recovery contract](native-releases.md#native-nightly-cohort)
+before retrying or changing a marker.
 
 ## macOS nightly (local install)
 
@@ -102,7 +94,7 @@ reservations. Do not change one target's ports to recover another target.
 | --- | --- | --- |
 | Station Dogfood | Server `3141-3143`; UI `3000` | Dogfood reconciler |
 | Station Nightly | Server `38141-38143` | Nightly app bundle |
-| `station dev` | Server/terminal/voice band `39140-39642`; UI band `40140-40640` | Per-worktree allocator |
+| `station dev` | Server bases `39141-39640`, with terminal/voice/consent at base +1/+2/+3; UI `40141-40640` | Per-worktree allocator |
 
 Nightly's `Info.nightly.plist` is merged into its macOS app bundle through
 Tauri's supported `bundle.macOS.infoPlist` configuration. Its app-specific
@@ -112,9 +104,10 @@ This prevents an ambient `STATION_DESKTOP_PORT=3141` from selecting Dogfood's
 reservation for Nightly. Stable Station continues to own its existing optional
 `STATION_DESKTOP_PORT` behavior.
 
-The nightly lane is for contributor dogfooding. It is locally signed on the Mac
-that builds it and is not a public, notarized release ring. Stable and preview
-remain the only public distribution rings.
+The local installer below and the hosted desktop publisher are separate paths.
+The hosted cohort stages notarized macOS artifacts and publishes a rolling
+GitHub prerelease with a signed updater feed. A locally certificate-signed build
+does not acquire that publication or notarization receipt.
 
 ## Update checks in Settings: source check vs release check
 
@@ -152,7 +145,7 @@ not run both against the same install.
 Use Node 24 from a clean checkout with the intended `origin` remote:
 
 ```sh
-export PATH="$HOME/.local/share/mise/installs/node/24.18.0/bin:$PATH"
+export PATH="$HOME/.local/share/mise/installs/node/24.19.0/bin:$PATH"
 ./ops/nightly/install-macos.zsh
 ```
 
@@ -226,8 +219,9 @@ plutil -p \
   "/Applications/Station Nightly.app/Contents/Info.plist"
 ```
 
-The receipt SHA must equal the current `origin/main` commit, and the bundle
-identifier must be `io.kontourai.station.nightly`.
+Compare the receipt with the exact source SHA selected for that build;
+`origin/main` can advance afterward. The bundle identifier must be
+`io.kontourai.station.nightly`.
 
 To inspect the packaged listener profile directly:
 
@@ -244,14 +238,12 @@ of its supported reconciler.
 
 ## Distribution boundary (macOS)
 
-Do not upload this locally signed macOS app or represent it as a notarized
-nightly release. The Android nightly above is different: it is store-delivered
-under the release upload keystore, but only to an invite-only internal testing
-track — the distinction is notarization and distribution, not signing. A
-future *public* nightly ring on any platform must go through the protected
-native release environment, produce immutable provenance-attested artifacts,
-use a separate updater channel, and preserve the existing stable and preview
-trust contracts.
+Local build/install success is not permission or evidence for hosted
+publication. A build-only archive can request notarization explicitly and its
+receipt distinguishes not-requested, notarized and failed outcomes. The hosted
+Nightly cohort already publishes notarized macOS downloads and a separate
+signed updater channel. Preserve the Stable/Beta trust contracts; do not mix
+local archives into that feed or infer store/device delivery from signing.
 
 ## Windows desktop and the shared update feed
 

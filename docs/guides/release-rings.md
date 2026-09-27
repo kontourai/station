@@ -18,13 +18,13 @@ Every release contains exactly these installer inputs:
 - `station-portable.tar.gz.sha256`
 - `station-portable.tar.gz`
 
-The tag-triggered release workflow builds those inputs in that order and uploads
+The tag-triggered release workflow produces those inputs and uploads
 them only after the full native release inventory validates. It creates a draft;
 the protected manual `Publish Station release` workflow revalidates that draft
 and is the only workflow allowed to publish it. The tag workflow identity and
 the release tag must name the same Git ref.
 
-The installer requires an authenticated `gh` with attestation support. Before it
+The default installer path requires an authenticated `gh` with attestation support. Before it
 parses a manifest, checksum, or archive, it verifies that file against:
 
 - repository `kontourai/station`
@@ -44,15 +44,24 @@ temporary environment prevents accidental inheritance of the verifier token and
 normal GitHub CLI credential lookup; it does not claim to confine malicious code
 already authorized through the pinned repository/workflow/tag policy.
 
+The optional `STATION_INSTALL_PUBLIC_MANIFEST_URL` path instead verifies an
+Ed25519 envelope against pinned channel-authorized keys, then verifies the
+archive digest. It needs no `gh` token. This is a separate opt-in trust path,
+not the default ring resolver: signature validity proves origin/integrity,
+not freshness. Existing-install downgrade guards do not prevent an old signed
+manifest from being offered to a fresh installation. Read the exact owner in
+[`install.sh`](../../install.sh) before changing that policy.
+
 ## Publish a preview
 
-Start from the exact reviewed commit on `main`:
+Release actions below require an authorized release handoff. Use a clean
+exclusive checkout of the exact reviewed `main` commit, and choose the version
+from current repository/provider state rather than these illustrative tags:
 
 ```sh
-git switch main
-git pull --ff-only origin main
 git status --short
-git tag -s v0.2.0-preview.1 -m 'Station v0.2.0-preview.1'
+reviewed_sha=<exact-reviewed-commit>
+git tag -s v0.2.0-preview.1 "$reviewed_sha" -m 'Station v0.2.0-preview.1'
 git push origin v0.2.0-preview.1
 ```
 
@@ -92,9 +101,8 @@ If a fix was needed, publish and dogfood a new preview tag from that newer
 commit first; Stable always names bytes that Beta already exercised:
 
 ```sh
-git switch main
-git pull --ff-only origin main
-git tag -s v0.2.0 -m 'Station v0.2.0'
+reviewed_sha=$(git rev-parse 'v0.2.0-preview.1^{commit}')
+git tag -s v0.2.0 "$reviewed_sha" -m 'Station v0.2.0'
 git push origin v0.2.0
 ```
 
@@ -107,29 +115,27 @@ reviewed; do not promote on a fixed calendar when evidence is incomplete.
 
 The installer records the selected channel and canonical install/data roots in a
 mode-0600 state file only as part of promotion. `station upgrade` delegates to the
-same signed installer contract and never falls back to another ring or unsigned
-assets. The previous release link and prior ring state are restored if the new
-release cannot start.
+same installer contract and does not silently switch rings or accept unsigned
+inputs. Failed startup attempts restoration of the prior link/state and runtime.
+A failed rollback is reported separately; it is not a guarantee that recovery
+will always succeed.
 
-For a failed draft, fix the source and publish a new version; do not reuse a tag.
-Delete an unpublished, incomplete release and its remote tag before creating the
-replacement:
+For a failed draft, fix the source and use a new immutable tag. Do not move
+or reuse the failed tag. Retaining its draft, artifacts and receipts preserves
+diagnosis; deletion is a separate owner-managed retention decision, not a
+routine prerequisite to the replacement release.
 
-```sh
-gh release delete v0.2.0-preview.1 --repo kontourai/station --yes
-git push origin :refs/tags/v0.2.0-preview.1
-git tag -d v0.2.0-preview.1
-```
-
-If a published release is compromised, immediately remove it from installer
-resolution and then announce the affected version:
+For an authorized withdrawal, making the tag release a draft removes it from
+the default installer resolver:
 
 ```sh
 gh release edit v0.2.0 --repo kontourai/station --draft
 ```
 
-Publish a higher replacement version and rerun the signed installer. Never
-silently move the compromised tag.
+That does not repair independent desktop rolling feeds or external stores.
+Follow [native release recovery](native-releases.md#stage-inspect-publish-and-roll-back)
+for those authorities, communicate the affected version through the incident
+owner, and publish a higher fixed version. Never silently move the tag.
 
 ## Rotating the attestation action pin
 

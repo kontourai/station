@@ -25,7 +25,9 @@ fails closed when Play or App Store Connect credentials, signing material, or
 provider acceptance is unavailable; it cannot attach artifacts and quietly
 imply the declared mobile delivery happened. The iOS job additionally waits
 for Apple processing and retains an App Store Connect receipt bound to the
-exact source SHA, IPA digest, app ID, build ID, and build number.
+candidate source SHA, IPA digest, app ID, build ID, and build number. A new
+upload and an already-existing provider build have different provenance: see
+the receipt boundary at the end of this guide.
 
 ## Native app update feed
 
@@ -129,24 +131,27 @@ for public signing-identity metadata; it does not import/export keys, sign,
 log in to Apple services, or upload anything. A nonzero result names every
 local blocker and is not a claim that TestFlight or App Store Connect is ready.
 
-Only after it reports `ready: true`, generate the normal release overlay with
-`scripts/lib/native-release-config.mjs`, install the already-validated profile
-under `~/Library/MobileDevice/Provisioning Profiles/`, and pass the same team
-and identity to the existing Tauri/Xcode path:
+`ready: true` is local preflight evidence, not a complete archive recipe.
+Channel delivery also needs the matching identity overlay, regenerated icon
+catalog, native build provenance, privacy resources, signing configuration,
+and (for Beta/Nightly) the Live Activity extension and its profile. The owning
+sequence is [testflight-delivery.yml](../../.github/workflows/testflight-delivery.yml);
+a bare `tauri ios init` plus `ios build` does not reproduce it.
+
+For a separately authorized local archive, preserve that channel's preparation
+and validate the exported bytes. The profile checker accepts `--station`, not
+`--profile`. From the repository root after unpacking the IPA into an owned
+scratch directory, use:
 
 ```sh
-node scripts/lib/native-release-config.mjs --tag vX.Y.Z --output /tmp/tauri.release.conf.json
-cd src-desktop
-npx tauri ios init --ci --skip-targets-install --config /tmp/tauri.release.conf.json
-APPLE_DEVELOPMENT_TEAM=TEAMID APPLE_SIGNING_IDENTITY='Apple Distribution: Organization (TEAMID)' npx tauri ios build --target aarch64-sim --no-sign --ci --config /tmp/tauri.release.conf.json
-APPLE_DEVELOPMENT_TEAM=TEAMID APPLE_SIGNING_IDENTITY='Apple Distribution: Organization (TEAMID)' npx tauri ios build --export-method app-store-connect --ci --config /tmp/tauri.release.conf.json
+node scripts/check-ios-store-profile.mjs --station /absolute/scratch/Payload/Station.app/embedded.mobileprovision --label exported-IPA-profile
+node scripts/check-mobile-package.mjs ios --root /absolute/scratch/Payload
 ```
 
-Verify the exported IPA using `scripts/check-ios-store-profile.mjs` and
-`scripts/check-mobile-package.mjs` before an operator-controlled archive/export
-handoff: unpack its `Payload/*.app`, then run `node ../scripts/check-ios-store-profile.mjs --profile Payload/*.app/embedded.mobileprovision --label exported-IPA-profile` and `node ../scripts/check-mobile-package.mjs ios --root Payload`. Beta and Nightly remain gated until each has its own App ID, App Store
-profile, signing identity, and App Store Connect/TestFlight setup; this command
-does not change that matrix.
+Add expected team/bundle/profile constraints from the selected channel. A profile
+class check alone does not establish the full signed-app/extension contract.
+Beta and Nightly have source-configured delivery routes; their actual protected
+profiles, app records and provider acceptance must still be established.
 
 ## Channel app icon on iOS
 
@@ -167,7 +172,7 @@ in `config/channel-platform-matrix.json` — over the catalog. It fails closed w
 the set lacks a file the catalog's `Contents.json` references or when any file
 the template wrote survives. After the build,
 `node scripts/ios-channel-icons.mjs verify <channel> --app <Payload/*.app> --receipt provider-receipts/channel-icon-receipt.json`
-compares the compiled catalog to the set byte for byte and the loose
+compares the generated input catalog to the set byte for byte and the loose
 `AppIcon60x60@2x.png` inside the `.app` to the set pixel for pixel (Xcode
 re-encodes it as CgBI, so it is reverted with `pngcrush` and decoded with
 `sips` first). The receipt's `catalogMatchesChannelSet`,
@@ -176,7 +181,8 @@ those comparisons; the upload job refuses a staged receipt without them. The
 overlay step seeds that receipt with `channel`, `sourceSha`,
 `desktopBundleIcon`, and `desktopBundleIconSha256`: the desktop master
 `bundle.icon` named, which never reaches the IPA. The shipped icon's digest is
-`shippedIconSha256`.
+`shippedIconSha256`. The workflow also checks that `Assets.car` exists; it
+does not compare every compiled catalog rendition to its source pixels.
 
 The sets are generated, not hand-edited: `node scripts/generate-app-icons.mjs`
 emits them from each channel's opaque square master (iOS rejects alpha; the
@@ -230,17 +236,21 @@ confirmed the synchronous durable commit. Remove the patch only after a
 reviewed upstream release carries the same fail-loud contract; a read-after-
 write probe is not equivalent durability evidence.
 
-Closed-app completion delivery remains blocked by #917: neither Tauri local
-notifications nor a running Rust watcher can wake a terminated app. A real
-implementation must provision an APNs/FCM application, device-token
-registration, and an authenticated server delivery path. There is no honest
-provider-neutral implementation that omits those credentials, so the native
-capability report remains `remote-push: unsupported` and #1225 stays open.
+Closed-app delivery now has a native agent-activity implementation. Android
+builds with a complete Firebase identity advertise `remote-push: enabled`;
+iOS builds with the Live Activity half can advertise it too. Missing build
+configuration remains unsupported. The report means registration is available,
+not that a person opted in or a provider delivered a message. The public Settings
+control and host publisher are the owning callers; see
+[`remote_push_capability`](../../src-desktop/src/lib.rs) and
+[`agent-activity-publisher.ts`](../../src-server/services/notifications/agent-activity-publisher.ts).
+A local notification or Rust watcher alone still cannot establish terminated-app
+provider delivery; retain exact build, permission, registration and device proof.
 
-The #2013 keyboard dependency search was repeated against crates.io, npm, the
-official Tauri plugin workspace, and GitHub on 2026-08-09. No maintained Tauri
-2 Android+iOS software-keyboard avoidance plugin exists; the similarly named
-npm packages are absent, and repository search returned no viable plugin.
+The historical archive#2013 keyboard dependency search was repeated against crates.io, npm, the
+official Tauri plugin workspace, and GitHub on 2026-08-09. At that time, it found no maintained Tauri
+2 Android+iOS software-keyboard avoidance plugin; the similarly named
+npm packages were absent, and repository search returned no viable plugin.
 Station therefore keeps the supported OS/WebView contract above rather than a
 fake adapter: Android `adjustResize`, iOS/WKWebView layout behavior, and the
 shared Visual Viewport surface contract. A future dependency must demonstrate
@@ -248,13 +258,11 @@ active Tauri 2 Android+iOS maintenance before replacing that boundary.
 
 ## Secrets checklist
 
-Add all of these to the same `native-release` GitHub Environment that already
-holds the Android keystore and Apple iOS distribution secrets (Settings →
-Environments → `native-release` → Environment secrets) — not bare repository
-secrets. That keeps them behind the same required-reviewer approval gate as
-every other real signing/publish credential in this pipeline, and keeps the
-job's `environment: native-release` declaration the single source of secret
-scope.
+Apple signing and delivery inputs belong to the selected channel environment:
+`native-release` for Stable, `ios-beta` for Beta and `ios-nightly` for Nightly.
+Read the environment declarations and current GitHub protection settings;
+this guide does not prove that reviewers, profiles or credentials are provisioned.
+Google's keyless upload and Secret Manager path is separate, as described below.
 
 | Secret | Platform | Used for | Workflow role |
 | --- | --- | --- | --- |
@@ -443,8 +451,7 @@ fetched signing values are masked and exist only for the build step.
 ### `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, `APPLE_API_PRIVATE_KEY`
 
 1. In [App Store Connect](https://appstoreconnect.apple.com/) → **Users and
-   Access** → **Integrations** → **Team Keys** (Apple has since renamed the
-   "Individual Keys" tab referenced in older guides to "Team Keys") → Generate
+   Access** → **Integrations** → **Team Keys** → Generate
    API Key. Name it, choose an access role (App Manager is enough to upload
    builds; do not grant Admin unless something else needs it), and click
    Generate.
@@ -453,8 +460,8 @@ fetched signing values are masked and exist only for the build step.
 3. The **Key ID** is the value in the Key ID column for the row you just
    created → `APPLE_API_KEY_ID`.
 4. Download the private key (`AuthKey_<KEY ID>.p8`) — **this is only
-   downloadable once**, immediately after generation, and only visible after
-   a page reload. Store it somewhere durable before closing the tab; if lost,
+   downloadable once**. Team and Individual keys are distinct options,
+   not renamed versions of one another. Follow Apple's [current API-key instructions](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api). Store it somewhere durable before closing the tab; if lost,
    revoke the key and generate a new one, there is no recovery. Set
    `APPLE_API_PRIVATE_KEY` to the full contents of that `.p8` file (including
    the `-----BEGIN PRIVATE KEY-----`/`-----END PRIVATE KEY-----` lines).
@@ -463,32 +470,21 @@ fetched signing values are masked and exist only for the build step.
 
 ## First-run manual steps that cannot be automated
 
-Both stores refuse to let an API create the *very first* release of a new
-app/package — this is a deliberate anti-abuse measure on both platforms, not
-a gap in this pipeline:
+This repository expects existing provider app records and an owned internal
+tester group; it does not create them during delivery. Complete the provider's
+first-app setup before an authorized upload.
 
-- **Google Play.** The Play Developer API's `edits` resource (which
-  `r0adkll/upload-google-play` and every other Play automation wraps)
-  operates only on an app that already has at least one upload. Google's own
-  API reference states it plainly: *"You can only use this API to make
-  changes to an existing app (that has at least one APK uploaded) ...
-  you will have to upload at least one APK through the Play Console before
-  you can use this API."* Concretely: create the app listing in
-  [Play Console](https://play.google.com/console/), fill in the store
-  listing, content rating, and data-safety sections Play requires before any
-  release can go out, then manually upload one signed AAB (build one locally
-  or download the signed AAB this pipeline already attaches to a GitHub
-  release) to any track once by hand. Only after that will
-  keyless Play API uploads succeed.
-- **Apple / App Store Connect.** The bundle identifier
-  (`io.kontourai.station`, from `src-desktop/tauri.conf.json`) must be
-  registered in the Apple Developer portal, and the app record itself must be
-  created in App Store Connect (My Apps → +) before any build can be
-  associated with it. Apple's own App Store Connect API documentation is
-  explicit that the `apps` resource is read/update only — *"Don't use this
-  API to create new apps; instead, create new apps on the App Store Connect
-  website."* Do this once, by hand, before the first tagged release.
-- Both of the above are one-time, per-app setup — not a per-release step.
+- Google documents that the [Edits API](https://developers.google.com/android-publisher/edits)
+  operates on an existing app with an initial Console upload. Create the
+  package/listing and complete the required Console setup, then establish the
+  first signed upload before expecting the automated update path to work.
+- Create the matching Apple app record and internal group for each channel.
+  Station preflights their exact IDs/names. Apple does expose a
+  [beta-group creation API](https://developer.apple.com/documentation/appstoreconnectapi/post-v1-betagroups);
+  Station's choice to require a pre-existing group is not an API limitation.
+
+These steps are provider/account prerequisites, not a reason to infer
+anti-abuse intent or claim that this review provisioned them.
 
 ## Cutting a release and verifying store upload landed
 
@@ -496,28 +492,26 @@ Follow [release-rings.md](./release-rings.md#publish-a-preview) to tag and
 push (`git tag -s vX.Y.Z -m '...' && git push origin vX.Y.Z`), then:
 
 1. Watch the `Stage Station release` run. The `android` and `ios-device` jobs
-   pause for `native-release` environment approval like every other signing
-   job in this workflow — approve once and both proceed.
+   use their declared environments: Android uses `native-release`; iOS uses
+   the selected channel environment. Approval requirements depend on current
+   GitHub environment protection; one approval is not a universal guarantee.
 2. In the job logs for `android`, confirm "Upload to Play internal testing
    track" ran; its own logs report the Play Console edit ID and uploaded
    version code. A missing OIDC or signing prerequisite is a red release.
 3. For `ios-device`, confirm "Upload to TestFlight" and "Record the processed
    TestFlight build receipt" both ran. Download the workflow artifact named
    `station-<channel>-ios-testflight-<bundle-version>` (for example,
-   `station-nightly-ios-testflight-10542`) and require the receipt's source
-   SHA, bundle version, processing state, IPA digest, and
+   `station-nightly-ios-testflight-10542`) and require the receipt's
+   candidate SHA, bundle version, processing state, delivery mode, and
    `testflight-update-authority.json` to match the release. With no custom
    feed, that authority receipt must state `TestFlight/App Store` and
    `customFeed: null`.
 4. In [Play Console](https://play.google.com/console/) → your app → Testing →
-   Internal testing, confirm the new version code appears (Play typically
-   processes an upload within a few minutes).
+   Internal testing, confirm the new version code and track state. Processing time is provider-controlled.
 5. In App Store Connect → TestFlight, confirm the new build appears under
-   "iOS Builds" — Apple's own build-processing step (virus/binary scan) can
-   take anywhere from a few minutes to over an hour before the build is
-   selectable for a test group; a build not yet listed immediately after
-   upload is expected, not a failure.
-6. The draft assembler runs only after the required Android and Stable iOS
+   "iOS Builds". Inspect processing state and the owned internal-group receipt;
+   an upload response alone does not establish tester availability.
+6. The draft assembler runs only after the required Android and selected iOS
    jobs succeed. Store credential or upload failure therefore prevents the
    draft rather than producing a release whose declared delivery cell is
    silently absent.
@@ -525,8 +519,12 @@ push (`git tag -s vX.Y.Z -m '...' && git push origin vX.Y.Z`), then:
 ## What's NOT verified by this pipeline
 
 Per [native-releases.md](./native-releases.md#required-protected-environments-and-secrets):
-The retained TestFlight receipt proves that App Store Connect exposes the exact
-processed build as `VALID`; it does not prove assignment to a tester group,
-installation on a physical iPhone, or App Store review. Play likewise owns
-track visibility and device rollout. Read provider/device state for "did
-testers get this build" rather than generalizing from another platform cell.
+The processed-build receipt establishes a provider build in `VALID` state.
+For `deliveryMode: uploaded`, it records the candidate IPA/source association
+with that run's upload. For `deliveryMode: reconciled`, provider bytes are not
+retrievable through this API: `candidateIpaSha256` is local evidence,
+`providerIpaSha256` is null and `providerSourceSha` is `NOT_VERIFIED`.
+The separate internal-group receipt verifies membership; it still does not
+prove that a tester installed the app, that push/background behavior worked,
+or that App Store review passed. Play likewise owns track visibility and rollout.
+Read exact provider/device state rather than generalizing across platforms.
