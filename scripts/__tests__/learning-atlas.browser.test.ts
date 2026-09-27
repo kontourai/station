@@ -18,13 +18,21 @@ import {
 
 let browser: Browser;
 let atlas: Awaited<ReturnType<typeof buildLearningGuide>>;
-const assets = new Map<string, { body: string; contentType: string }>();
+const assets = new Map<
+  string,
+  { body: string | Buffer; contentType: string }
+>();
 const contexts: BrowserContext[] = [];
 const makeTempDir = trackTempDirs();
 
 beforeAll(async () => {
   atlas = await buildLearningGuide({ check: true });
   const manifest = learningClientData(atlas);
+  for (const capture of atlas.captures)
+    assets.set(`/${capture.url}`, {
+      body: await readFile(capture.path),
+      contentType: capture.kind === 'image' ? 'image/png' : 'video/webm',
+    });
   assets.set('/diagrams.js', {
     body: await buildDiagramBundle(),
     contentType: 'text/javascript',
@@ -76,6 +84,13 @@ async function pageAt(width: number, suffix = '') {
   contexts.push(context);
   await context.route('**/*', async (route) => {
     const url = new URL(route.request().url());
+    const asset =
+      url.origin === 'http://atlas.test' &&
+      assets.get(url.pathname === '/' ? '/index.html' : url.pathname);
+    if (asset) {
+      await route.fulfill({ status: 200, ...asset });
+      return;
+    }
     const sourcePath = Object.keys(atlas.sourceSnapshots).find(
       (file) => `/${atlas.sourceSnapshots[file]}` === url.pathname,
     );
@@ -87,11 +102,7 @@ async function pageAt(width: number, suffix = '') {
       });
       return;
     }
-    const asset =
-      url.origin === 'http://atlas.test' &&
-      assets.get(url.pathname === '/' ? '/index.html' : url.pathname);
-    if (asset) await route.fulfill({ status: 200, ...asset });
-    else await route.abort();
+    await route.abort();
   });
   const page = await context.newPage();
   await page.goto(`http://atlas.test/${suffix}`);
@@ -126,22 +137,20 @@ test('a reader follows a concept into its exact module, searches, and returns th
   ).toEqual(['SessionCommandModule']);
   await browserExpect(page.locator('.review-status')).toBeVisible();
   await browserExpect(page.locator('.review-status')).toContainText(
-    'Partially reviewed',
+    'Reviewed against code',
   );
   await browserExpect(page.locator('.review-status')).toContainText(
-    'the full page is not verified',
+    'live outcomes need their own evidence',
   );
   await page.locator('summary').filter({ hasText: 'Sources & review' }).click();
   await browserExpect(page.locator('.source-details')).toContainText(
-    'Reviewed sections do not certify the full catalog.',
+    'Review scope.',
   );
   await browserExpect(
-    page.getByRole('link', { name: 'Source on GitHub' }),
+    page.getByRole('link', { name: 'Markdown source', exact: true }),
   ).toHaveAttribute(
     'href',
-    new RegExp(
-      `${atlas.revision}/docs/architecture/module-map.md#sessioncommandmodule$`,
-    ),
+    atlas.sourceSnapshots['docs/architecture/module-map.md'],
   );
   const sourceLink = page.getByRole('article').getByRole('link', {
     name: 'src-server/services/orchestration/__tests__/session-command-module.test.ts',
@@ -200,6 +209,68 @@ test('a reader follows a concept into its exact module, searches, and returns th
   expect(page.url()).toContain('#doc=docs%2Fguides%2Fstarter-work.md');
   expect(errors).toEqual([]);
 }, 30_000);
+
+test.each([390, 1440])(
+  'application captures decode and play without autoplay at width %i',
+  async (width) => {
+    const page = await pageAt(width, '#doc=docs%2Flearn%2Fwalkthroughs.md');
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    const images = page.locator('article .learning-capture img');
+    await browserExpect(images).toHaveCount(6);
+    for (const image of await images.all()) {
+      await image.scrollIntoViewIfNeeded();
+      await browserExpect
+        .poll(() =>
+          image.evaluate(
+            (element: HTMLImageElement) =>
+              element.complete && element.naturalWidth > 0,
+          ),
+        )
+        .toBe(true);
+      expect(
+        await image.evaluate(
+          (element: HTMLImageElement) =>
+            element.clientWidth <= element.naturalWidth,
+        ),
+      ).toBe(true);
+    }
+    const videos = page.locator('article video');
+    await browserExpect(videos).toHaveCount(2);
+    for (const video of await videos.all()) {
+      await video.scrollIntoViewIfNeeded();
+      expect(
+        await video.evaluate((element: HTMLVideoElement) => ({
+          paused: element.paused,
+          autoplay: element.autoplay,
+          controls: element.controls,
+        })),
+      ).toEqual({ paused: true, autoplay: false, controls: true });
+      await video.evaluate((element: HTMLVideoElement) => element.play());
+      await browserExpect
+        .poll(() =>
+          video.evaluate((element: HTMLVideoElement) => element.currentTime),
+        )
+        .toBeGreaterThan(0);
+      expect(
+        await video.evaluate(
+          (element: HTMLVideoElement) =>
+            element.duration > 10 &&
+            element.videoWidth > 0 &&
+            element.error === null,
+        ),
+      ).toBe(true);
+      await video.evaluate((element: HTMLVideoElement) => element.pause());
+    }
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    expect(errors).toEqual([]);
+  },
+  30_000,
+);
 
 test('narrow reading, keyboard disclosure, and section links preserve visible content', async () => {
   const page = await pageAt(390);

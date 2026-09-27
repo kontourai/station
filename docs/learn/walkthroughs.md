@@ -16,7 +16,8 @@ matters: work can exist before an engine is ready to execute it.
 The Task's shared document and conversation keep revisions and discussion with
 that work. In this example a person saved a document; the room history records
 revision evidence. This does not demonstrate an external Agent editing alongside
-them. The editor's current size and the clipped heading are visible in the capture.
+them. The editor's current size and the clipped heading are visible in the capture;
+[#2844](https://github.com/kontourai/station/issues/2844) tracks those usability fixes.
 
 ![A saved shared Task document and its revision history.](media/shared-task-document.png)
 
@@ -34,8 +35,17 @@ reach an agent app that owns its own loop. The tabs separate those responsibilit
 This screenshot uses **sample API responses**. Its Ready label shows how that
 state is presented; it is not a successful test against a live model service.
 The detail pane exposes the endpoint, chosen model, last check and test action.
+The screenshot shows the resting selection. Hovering that selection currently
+reduces its text contrast; [#2843](https://github.com/kontourai/station/issues/2843)
+tracks the shared style fix.
 
 ![The Models page with an example local connection selected.](media/connections-models.png)
+
+This short, silent walkthrough opens the model's settings, switches to Engines,
+and expands an engine's details. The sample engine still needs setup. It does
+not run a connection test or log in to an account.
+
+![Open model settings and inspect an engine that needs setup.](media/connections-tour.webm)
 
 Read [Connections](../guides/connections.md) for the readiness states and
 [smoke confidence](../reference/agent-smoke-confidence.md) for what an explicitly
@@ -59,6 +69,31 @@ a changed or unavailable request needs a fresh inspection.
 Continue with [approval and receipt inspection](../guides/starter-work.md#inspect-approval-and-review-evidence)
 and the [Session API](../reference/session-api.md). A request decision authorizes
 an action; it is not a review of the resulting work or a passed gate.
+
+The silent clip follows those steps: open **Inspect request**, expand
+**Request identity**, then close the inspector. Neither decision button is used.
+
+![Inspect a pending request without approving or denying it.](media/inspect-request.webm)
+
+## Explore repository knowledge
+
+The Knowledge Library example can display the repository graph through Station's
+public Knowledge API. Select a record on the left to read its canonical content
+on the right. The list and detail panes scroll independently, so a deep selection
+does not move the detail out of reach. At narrow widths they stack vertically.
+
+![Repository records and the selected KnowledgeStoreProvider explanation.](media/repository-knowledge.png)
+
+![The same record list and detail at a narrow browser width.](media/repository-knowledge-narrow.png)
+
+These captures use an actual imported snapshot: 1,149 records and 2,089 links.
+Those counts describe this capture, not a fixed application limit or the latest
+repository. The record identifies the snapshot and attributes its purpose text
+to the module map. No model, embedding service or vector index was used.
+
+Follow the [repository graph guide](../guides/repository-knowledge-graph.md) to
+create a fresh snapshot, or the [Knowledge Library example](../../examples/knowledge-library/README.md)
+to understand the UI and its read-only permissions.
 
 ## Follow the implementation
 

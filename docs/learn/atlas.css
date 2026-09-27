@@ -1141,11 +1141,14 @@ body:has(#navigation-dialog[open]) {
 .learning-capture img,
 .learning-capture video {
   display: block;
-  width: 100%;
+  max-width: 100%;
   height: auto;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel);
+}
+.learning-capture video {
+  width: 100%;
 }
 .capture-caption,
 .capture-evidence,

@@ -136,7 +136,6 @@ function showDocument(doc, section, module) {
     module &&
     atlas.groups.find((entry) => entry.modules.includes(module.title));
   breadcrumbs.innerHTML = `<a href="#">Station</a> / ${group ? `<a href="${groupHref(group.id)}">${escapeText(group.title)}</a> / ` : ''}${escapeText(module?.title ?? doc.title)}`;
-  const sourcePath = doc.path.split('/').map(encodeURIComponent).join('/');
   const review = doc.reviewRecord;
   const kindLabels = {
     current: 'Current guide',
@@ -171,8 +170,8 @@ function showDocument(doc, section, module) {
   const evidence = review
     ? `<p><strong>Review scope.</strong> ${escapeText(review.summary)}</p><p><strong>Limits.</strong> ${escapeText(review.limits)}</p><p>Recorded against source revision <code>${escapeText(review.sourceRevision)}</code>.</p>${review.sources.length ? `<ul>${review.sources.map((source) => `<li><a href="${atlas.sourceSnapshots[source.path]}">${escapeText(source.path)}</a></li>`).join('')}</ul>` : ''}${review.checks.length ? `<p>Recorded checks:</p><ul>${review.checks.map((check) => `<li>${escapeText(check)}</li>`).join('')}</ul>` : ''}`
     : '';
-  readingStatus.innerHTML = `<p class="review-status"><strong>${escapeText(reviewTitle)}.</strong> ${escapeText(reviewText)} <a href="${documentHref('docs/plans/documentation-code-audit.md#initial-findings')}">See reviewed claims and corrections</a>.</p><details class="source-details"><summary>Sources & review</summary><div class="doc-actions"><a href="${doc.sourceUrl}">Markdown source</a><a href="https://github.com/kontourai/station/blob/${atlas.revision}/${sourcePath}${module ? `#${module.id}` : ''}">Source on GitHub</a><a href="${documentHref('docs/plans/documentation-code-audit.md')}">Audit status</a></div>
-    <p class="provenance">${escapeText(doc.path)}${atlas.dirty ? ' · Working-tree changes included; unpublished changes may not exist at the GitHub revision.' : ''}</p>${evidence}</details>`;
+  readingStatus.innerHTML = `<p class="review-status"><strong>${escapeText(reviewTitle)}.</strong> ${escapeText(reviewText)} <a href="${documentHref('docs/plans/documentation-code-audit.md#initial-findings')}">See reviewed claims and corrections</a>.</p><details class="source-details"><summary>Sources & review</summary><div class="doc-actions"><a href="${doc.sourceUrl}">Markdown source</a><a href="${documentHref('docs/plans/documentation-code-audit.md')}">Audit status</a></div>
+    <p class="provenance">${escapeText(doc.path)}${atlas.dirty ? ' · Working-tree changes included.' : ''} This panel links to the captured source files.</p>${evidence}</details>`;
   article.className = 'view-document';
   article.innerHTML = module?.html ?? doc.html;
   const prefix = module ? moduleHref(module.id) : documentHref(doc.path);
