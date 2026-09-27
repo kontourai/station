@@ -86,7 +86,7 @@ export function isSessionUnanswerable(
  * `POST /api/notifications` have nothing to join to, and inventing a join
  * for them would be the fuzzy-match this repo's honesty bar forbids.
  */
-export function notificationThreadId(
+function notificationThreadId(
   notification: Notification,
 ): string | undefined {
   const metadata = notification.metadata ?? {};
