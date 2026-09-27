@@ -11,7 +11,6 @@ import {
   AUTHORITY_CACHE_KEY_PREFIX,
   authorityPersistenceKey,
   buildAuthorityNamespace,
-  LEGACY_AUTHORITY_CACHE_KEY,
 } from '../authorityNamespace';
 import { QUERY_PERSISTENCE_STORAGE_KEY } from '../queryPersistence';
 
@@ -102,12 +101,9 @@ describe('buildAuthorityNamespace', () => {
     }
   });
 
-  it('is deterministic across calls (no epoch/generation churn by construction)', () => {
-    // The observation type carries no activationEpoch/authorityGeneration —
-    // this pins that repeated builds of the same observed facts agree, so a
-    // re-pair or tab churn can never orphan a shelf.
+  it('encodes the device tuple canonically', () => {
     expect(buildAuthorityNamespace({ ...deviceObservation })).toBe(
-      buildAuthorityNamespace({ ...deviceObservation }),
+      'v1|env=11111111-1111-4111-8111-111111111111|principal=human:human%3Alocal%3Aoperator|grant=device:device-abc:scopes=orchestration%3Aread,pairing%3Achat',
     );
   });
 });
@@ -125,10 +121,9 @@ describe('authorityPersistenceKey', () => {
   });
 
   it('never produces the legacy singleton — quarantine is structural', () => {
-    expect(LEGACY_AUTHORITY_CACHE_KEY).toBe(QUERY_PERSISTENCE_STORAGE_KEY);
     const namespaced = authorityPersistenceKey(
       buildAuthorityNamespace({ ...operatorObservation }),
     );
-    expect(namespaced).not.toBe(LEGACY_AUTHORITY_CACHE_KEY);
+    expect(namespaced).not.toBe(QUERY_PERSISTENCE_STORAGE_KEY);
   });
 });
