@@ -536,7 +536,8 @@ function localRefusalCode(error: unknown): string | undefined {
 /**
  * A delegation tool's result: its value on success, exactly as before, and on
  * ANY failure `toToolEnvelope`'s failure shape — `{ success: false, error,
- * code? }` — so one tool never fails two ways. `error` is the tool's own
+ * code? }` — marked `isError`, so one tool never fails two ways and every
+ * consumer that reads the MCP flag sees the failure. `error` is the tool's own
  * sentence. `code` is present only when a `LocalStationRefusal` is in the
  * error's cause chain: this Station decided it. Not `toToolEnvelope` itself:
  * its success arm would wrap these tools' results as `{ success, data }`, and
@@ -547,11 +548,17 @@ export async function delegationToolResult(run: () => Promise<unknown>) {
     return jsonToolResult(await run());
   } catch (error) {
     const code = localRefusalCode(error);
-    return jsonToolResult({
-      success: false,
-      error: error instanceof Error ? error.message : 'Request failed',
-      ...(code === undefined ? {} : { code }),
-    });
+    // `isError` is load-bearing: the native invoke route recognises a failed
+    // control tool only by it, and without it answered a refusal as a 200
+    // success with success telemetry (catch s5-436).
+    return {
+      ...jsonToolResult({
+        success: false,
+        error: error instanceof Error ? error.message : 'Request failed',
+        ...(code === undefined ? {} : { code }),
+      }),
+      isError: true as const,
+    };
   }
 }
 

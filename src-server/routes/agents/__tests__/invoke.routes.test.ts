@@ -895,6 +895,132 @@ describe('Invoke Routes', () => {
     });
   });
 
+  // #2708 A-1b review (catch s5-436): the delegation tools now RETURN a
+  // failure envelope. The REAL `respond_to_task_request` handler runs here —
+  // not a mocked `isError` — against this Station answering the guard's
+  // refusal, and the route must still answer 500 with failure telemetry.
+  test('a real delegation tool failure stays a failure through the invoke route', async () => {
+    const { createStationControlMcpServer } = await import(
+      '../../../tools/station-control-mcp-server.js'
+    );
+    const { withStationControlCallerContext, stationControlCallerPrincipal } =
+      await import('../../../tools/station-control-shared.js');
+    const { LOCAL_OPERATOR_PRINCIPAL_ID } = await import(
+      '../../../services/identity/principal-resolver.js'
+    );
+    const handler = (
+      createStationControlMcpServer() as unknown as {
+        _registeredTools: Record<
+          string,
+          { handler: (args: unknown, extra?: unknown) => Promise<unknown> }
+        >;
+      }
+    )._registeredTools.respond_to_task_request!.handler;
+    const API = 'http://127.0.0.1:65009';
+    const previousBase = process.env.STATION_API_BASE;
+    process.env.STATION_API_BASE = API;
+    const answer = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.endsWith('/.well-known/station/v1'))
+          return answer({ environmentId: 'env-self', capabilities: {} });
+        return answer(
+          {
+            success: false,
+            code: 'station_control_caller_required',
+            error: 'This action needs a verified calling session.',
+          },
+          403,
+        );
+      }),
+    );
+    // The tool-side check sees a bound operator; only this Station answers.
+    const execute = vi.fn((args: unknown) =>
+      withStationControlCallerContext(
+        {
+          token: undefined,
+          resolve: () => ({
+            sessionId: 'claims-operator',
+            assurance: 'bound',
+            principal: stationControlCallerPrincipal(
+              LOCAL_OPERATOR_PRINCIPAL_ID,
+              'session-owner',
+            ),
+          }),
+        },
+        () => handler(args, {}),
+      ),
+    );
+    vi.mocked(controlActions.add).mockClear();
+    try {
+      const ctx = createMockCtx({
+        agentTools: new Map([
+          [
+            'default',
+            [
+              nativeControlTool({
+                name: 'stationControl_respondToTaskRequest',
+                execute,
+              }),
+            ],
+          ],
+        ]),
+        getOriginalToolName: vi.fn((name: string) =>
+          name === 'stationControl_respondToTaskRequest'
+            ? 'station-control_respond_to_task_request'
+            : name,
+        ),
+      });
+      const res = await createInvokeRoutes(ctx as any).request(
+        '/agents/station/tools/stationControl_respondToTaskRequest',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId: 'task-1',
+            requestId: 'request-1',
+            decision: 'accept',
+          }),
+        },
+      );
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      const toolResult = (await execute.mock.results[0]!.value) as {
+        isError?: boolean;
+        content: Array<{ text: string }>;
+      };
+      // The agent's view still carries this Station's typed code.
+      expect(JSON.parse(toolResult.content[0]!.text)).toMatchObject({
+        success: false,
+        code: 'station_control_caller_required',
+      });
+      expect(res.status).toBe(500);
+      const body = (await json(res)) as Record<string, unknown>;
+      expect(body.success).toBe(false);
+      expect(controlActions.add).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({
+          tool: 'station-control_respond_to_task_request',
+          outcome: 'failure',
+        }),
+      );
+      expect(controlActions.add).not.toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ outcome: 'success' }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      if (previousBase === undefined) delete process.env.STATION_API_BASE;
+      else process.env.STATION_API_BASE = previousBase;
+    }
+  });
+
   test('a station-control-named remote tool has no native-control exemption', async () => {
     const canary = 'remote-control-name-prefix-canary';
     vi.mocked(controlActions.add).mockClear();

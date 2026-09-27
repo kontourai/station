@@ -1896,6 +1896,15 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
                 );
               }),
               delegationToolResult(async () => {
+                const { listDelegatedTasks } = await import(
+                  '../../../tools/station-control-delegation.js'
+                );
+                return listDelegatedTasks(
+                  { environmentId: PEER_ENV, userId: 'user-1' },
+                  undefined,
+                );
+              }),
+              delegationToolResult(async () => {
                 const { interruptDelegatedTask } = await import(
                   '../../../tools/station-control-delegation.js'
                 );
@@ -1912,8 +1921,9 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
             // Each call reached the peer: the refusal is the peer's answer.
             expect(
               fetchCalls.filter((call) => call.includes(PEER_API)),
-            ).toHaveLength(3);
+            ).toHaveLength(4);
             for (const result of results) {
+              expect(result.isError).toBe(true);
               const envelope = JSON.parse(result.content[0]!.text) as Record<
                 string,
                 unknown
