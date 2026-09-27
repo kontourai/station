@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 
-import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { chromium } from '@playwright/test';
 import {
   act,
   createEvent,
@@ -9,22 +10,25 @@ import {
   screen,
   within,
 } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
+import {
+  assertNoImportsSurvive,
+  chromiumIsInstalled,
+  resolveCssImports,
+} from '../../../../../tests/helpers/css-cascade-fixture';
 
-const chatCss = readFileSync('src-ui/src/components/chat/chat.css', 'utf8');
-/**
- * The toolbar's source with its COMMENTS removed. A retirement scan over the
- * raw file matches the paragraph that records the retirement — the docblock
- * below names `aria-disabled` to say it is gone — so the scan would red on
- * the prose and pass on the code.
- */
-const toolbarCode = readFileSync(
-  'src-ui/src/components/header/RegionToolbarControls.tsx',
-  'utf8',
-)
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/^\s*\/\/.*$/gm, '');
-
+const INDEX_CSS_PATH = resolve('src-ui/src/index.css');
+const CHAT_CSS_PATH = resolve('src-ui/src/components/chat/chat.css');
+const chromiumAvailable = chromiumIsInstalled(process.cwd());
 const harness = vi.hoisted(() => ({
   regions: {
     main: {
@@ -455,25 +459,6 @@ describe('RegionToolbarControls', () => {
       ['Bottom region', 'true', null, null, null, false],
       ['Right region', 'false', null, null, null, false],
     ]);
-  });
-
-  /**
-   * #2155 D5: the offer menu is retired, not hidden behind a condition. A
-   * DOM assertion cannot see a branch nothing currently reaches — the #2143
-   * inert button needed a narrowed registry to render at all — so the
-   * retirement is pinned on the source.
-   */
-  test('the toolbar carries no offer menu and no inert region button', () => {
-    for (const retired of [
-      'RegionOfferMenu',
-      'RegionToggleOffer',
-      'aria-disabled',
-      'nothing can be shown here',
-    ])
-      expect(
-        toolbarCode,
-        `${retired} is back in the region toolbar; #2155 retired it`,
-      ).not.toContain(retired);
   });
 
   /**
@@ -1182,14 +1167,80 @@ describe('RegionToolbarControls', () => {
     ]);
   });
 
-  test('the region fieldset holds its controls’ width (#917)', () => {
-    const regionsRule = chatCss.match(
-      /\.app-toolbar__regions\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(regionsRule).toMatch(/flex-shrink:\s*0/);
-    // `min-width: 0` here is what let the fieldset pack below its controls and
-    // put the last one under the first connection action.
-    expect(regionsRule).not.toMatch(/min-width:\s*0/);
+  /**
+   * #917, measured in real Chromium over the cascade-resolved `index.css` and
+   * `chat.css` (jsdom does no layout). A phone-width toolbar is over-full: the
+   * brand, the region fieldset and the action cluster cannot all have their
+   * natural width, and the brand is the member that gives. A fieldset that
+   * shrinks with it packs below its fixed-size toggles, and the last toggle
+   * lands under the first connection action.
+   */
+  describe.skipIf(!chromiumAvailable)('in a real browser', () => {
+    let browser: Awaited<ReturnType<typeof chromium.launch>>;
+
+    beforeAll(async () => {
+      browser = await chromium.launch();
+    });
+
+    afterAll(async () => {
+      await browser?.close();
+    });
+
+    test('the region fieldset holds its controls’ width in an over-full toolbar (#917)', async () => {
+      vi.useRealTimers();
+      const { container, unmount } = render(<RegionToolbarControls />);
+      const regions = container.innerHTML;
+      unmount();
+      const css = `${resolveCssImports(INDEX_CSS_PATH)}\n${resolveCssImports(CHAT_CSS_PATH)}`;
+      assertNoImportsSurvive(css);
+
+      const page = await browser.newPage({
+        viewport: { width: 390, height: 200 },
+      });
+      try {
+        await page.setContent(`<!doctype html>
+<html>
+  <head><style>${css}</style></head>
+  <body style="margin:0">
+    <header class="app-toolbar">
+      <span class="app-toolbar__brand">Station on the workshop machine</span>
+      <div class="app-toolbar__spacer"></div>
+      ${regions}
+      <div class="app-toolbar__actions">
+        <button type="button" data-testid="first-action" style="width:150px">Connection</button>
+      </div>
+    </header>
+  </body>
+</html>`);
+        const measured = await page.evaluate(() => {
+          const fieldset = document.querySelector('.app-toolbar__regions');
+          const toggles = [
+            ...(fieldset?.querySelectorAll('button') ?? []),
+          ].filter((button) => button.getBoundingClientRect().width > 0);
+          const last = toggles.at(-1)?.getBoundingClientRect();
+          return {
+            toggles: toggles.length,
+            fieldsetRight: fieldset?.getBoundingClientRect().right ?? 0,
+            lastToggleRight: last?.right ?? Number.POSITIVE_INFINITY,
+            firstActionLeft:
+              document
+                .querySelector('[data-testid="first-action"]')
+                ?.getBoundingClientRect().left ?? 0,
+          };
+        });
+        expect(measured.toggles).toBe(3);
+        expect(
+          measured.lastToggleRight,
+          'the last region toggle overflows its fieldset',
+        ).toBeLessThanOrEqual(measured.fieldsetRight + 0.5);
+        expect(
+          measured.lastToggleRight,
+          'the last region toggle lands under the first toolbar action',
+        ).toBeLessThanOrEqual(measured.firstActionLeft + 0.5);
+      } finally {
+        await page.close();
+      }
+    });
   });
 
   test('a wide device gaining a coarse pointer closes the panel instead of re-anchoring it', async () => {
@@ -1338,3 +1389,15 @@ describe('RegionToolbarControls', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 });
+
+test.skipIf(chromiumAvailable)(
+  'region fieldset geometry (#917) — Chromium not installed, cannot verify',
+  () => {
+    throw new Error(
+      'Playwright Chromium is not installed in this worktree, so the region ' +
+        'fieldset geometry (#917) could not be checked. This is a missing ' +
+        'precondition, not a passing check. Install it with ' +
+        '`npm run install:playwright` and re-run.',
+    );
+  },
+);

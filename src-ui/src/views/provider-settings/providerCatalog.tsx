@@ -320,16 +320,13 @@ type ProviderCatalogInput =
       discovery?: 'detected-unconfigured';
     });
 
-type ProviderCatalogItem = ProviderCatalogInput & {
+interface ProviderPresentation {
   brand: string;
   readiness: ProviderReadiness;
   tone: ProviderTone;
   detail: string;
   actionLabel: string;
-  accessibleName: string;
-  duplicateBrandIndex: number | null;
-  duplicateBrandCount: number;
-};
+}
 
 interface ProviderChoicePresentation {
   badge?: string;
@@ -491,10 +488,7 @@ const REMEDY_PRESENTATION: Record<
 
 export function resolveProviderPresentation(
   input: ProviderCatalogInput,
-): Pick<
-  ProviderCatalogItem,
-  'brand' | 'readiness' | 'tone' | 'detail' | 'actionLabel'
-> {
+): ProviderPresentation {
   const brand = normalizeBrand(input);
   const prerequisites = input.prerequisites ?? [];
 
@@ -721,62 +715,4 @@ export function resolveProviderChoicePresentation(
 ): ProviderChoicePresentation {
   const presentation = resolveProviderPresentation(input);
   return { badge: presentation.readiness, detail: presentation.detail };
-}
-
-export function buildProviderCatalog(
-  inputs: ProviderCatalogInput[],
-): ProviderCatalogItem[] {
-  const byId = new Map<string, ProviderCatalogInput>();
-  for (const input of inputs) {
-    if (!byId.has(input.id)) byId.set(input.id, input);
-  }
-
-  const resolved = Array.from(byId.values()).map((input) => ({
-    input,
-    presentation: resolveProviderPresentation(input),
-  }));
-  const brandCounts = new Map<string, number>();
-  for (const { presentation } of resolved) {
-    brandCounts.set(
-      presentation.brand,
-      (brandCounts.get(presentation.brand) ?? 0) + 1,
-    );
-  }
-  const sorted = resolved.sort((left, right) => {
-    const brandOrder = left.presentation.brand.localeCompare(
-      right.presentation.brand,
-    );
-    return brandOrder !== 0
-      ? brandOrder
-      : left.input.name.localeCompare(right.input.name) ||
-          left.input.id.localeCompare(right.input.id);
-  });
-  const brandIndexes = new Map<string, number>();
-
-  return sorted.map(({ input, presentation }): ProviderCatalogItem => {
-    const duplicateBrandCount = brandCounts.get(presentation.brand) ?? 1;
-    const duplicateBrandIndex =
-      duplicateBrandCount > 1
-        ? (brandIndexes.get(presentation.brand) ?? 0) + 1
-        : null;
-    if (duplicateBrandIndex !== null) {
-      brandIndexes.set(presentation.brand, duplicateBrandIndex);
-    }
-    const identity =
-      input.name === presentation.brand
-        ? presentation.brand
-        : `${presentation.brand} — ${input.name}`;
-    const duplicateIdentity =
-      duplicateBrandIndex === null
-        ? identity
-        : `${identity} — instance ${duplicateBrandIndex} of ${duplicateBrandCount}`;
-
-    return {
-      ...input,
-      ...presentation,
-      duplicateBrandIndex,
-      duplicateBrandCount,
-      accessibleName: `${duplicateIdentity} — ${presentation.readiness} — ${presentation.actionLabel}`,
-    };
-  });
 }

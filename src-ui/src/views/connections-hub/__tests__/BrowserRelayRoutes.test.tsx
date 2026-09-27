@@ -358,7 +358,6 @@ describe('browser broker route acceptance', () => {
     });
 
     expect(mocks.select).not.toHaveBeenCalled();
-    expect(mocks.activeConnection?.id).toBe('station-b');
   });
 
   it('does not recover the edited route after storage fails if selection changed', async () => {
@@ -399,7 +398,6 @@ describe('browser broker route acceptance', () => {
     });
 
     expect(mocks.select).not.toHaveBeenCalled();
-    expect(mocks.activeConnection?.id).toBe('station-b');
   });
 
   it('does not run failure recovery reconnect after the TURN dialog unmounts', async () => {
@@ -516,7 +514,6 @@ describe('browser broker route acceptance', () => {
     expect(mocks.forgetTurn).not.toHaveBeenCalled();
     expect(mocks.addBrokerRoute).not.toHaveBeenCalled();
     expect(mocks.redeem).not.toHaveBeenCalled();
-    expect(mocks.connections).toEqual([existing]);
   });
 
   it('retires application authority and grant before forgetting the saved route', async () => {

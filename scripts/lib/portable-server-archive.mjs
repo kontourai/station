@@ -548,6 +548,7 @@ export async function buildPortableServerArchive({
   createdAt,
   nodeDistribution,
   keepStage = false,
+  expectedRing,
 }) {
   const target = resolvePortableServerTarget(
     platform,
@@ -565,6 +566,13 @@ export async function buildPortableServerArchive({
     );
   }
   const release = createPackagedReleaseManifest({ tag, sha, createdAt });
+  // A caller that names the ring it is building for (the nightly publication
+  // workflow) must get exactly that ring, not whichever ring the tag parses as.
+  if (expectedRing !== undefined && release.releaseChannel !== expectedRing) {
+    throw new Error(
+      `${tag} is a ${release.releaseChannel} release, not the requested ${expectedRing} ring`,
+    );
+  }
   const distributionBytes = await obtainNodeDistribution(target, {
     cacheDir: join(outputDir, 'node-cache'),
     nodeDistribution,

@@ -1,11 +1,17 @@
 /** @vitest-environment jsdom */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   closeSessionInventoryOccurrence,
-  readSessionInventoryOccurrence,
   registerSessionInventoryHost,
+  useSessionInventoryOccurrence,
 } from '../../chat-dock/sessionInventoryOccurrence';
 
 const mocks = vi.hoisted(() => ({
@@ -79,7 +85,10 @@ describe('ConnectedAnswerBasisAffordance', () => {
         expect.objectContaining({ enabled: true }),
       ),
     );
-    expect(readSessionInventoryOccurrence()).toMatchObject({
+    const occurrence = renderHook(() =>
+      useSessionInventoryOccurrence('chat-host'),
+    ).result.current;
+    expect(occurrence).toMatchObject({
       projectId: 'project-canonical-id',
       requestedScope: {
         kind: 'current-answer',
@@ -87,9 +96,7 @@ describe('ConnectedAnswerBasisAffordance', () => {
         turnId: 'turn-a',
       },
     });
-    expect(readSessionInventoryOccurrence()?.projectId).not.toBe(
-      'project-route-slug',
-    );
+    expect(occurrence?.projectId).not.toBe('project-route-slug');
   });
 
   test('settles into the responsive fallback when the canonical Project id is unavailable', async () => {
@@ -121,7 +128,10 @@ describe('ConnectedAnswerBasisAffordance', () => {
         expect.objectContaining({ enabled: true }),
       ),
     );
-    expect(readSessionInventoryOccurrence()).toBeUndefined();
+    expect(
+      renderHook(() => useSessionInventoryOccurrence('chat-host')).result
+        .current,
+    ).toBeNull();
     expect(mocks.openBasis).toHaveBeenCalledWith(
       null,
       expect.objectContaining({

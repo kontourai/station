@@ -1,7 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  capturedShareToken,
   captureShareToken,
   reloadSharePage,
   resetCapturedShareTokenForTests,
@@ -34,13 +33,11 @@ describe('share-token', () => {
     // The boundary retrying, or StrictMode's double render, must not conclude
     // the link was incomplete.
     expect(captureShareToken()).toBe(TOKEN);
-    expect(capturedShareToken()).toBe(TOKEN);
   });
 
   it('reports no token for a link that never carried one', () => {
     window.location.hash = '';
     expect(captureShareToken()).toBeUndefined();
-    expect(capturedShareToken()).toBeUndefined();
   });
 
   it('ignores a malformed fragment rather than capturing garbage', () => {

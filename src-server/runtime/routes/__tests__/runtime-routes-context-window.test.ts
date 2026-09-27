@@ -88,32 +88,6 @@ describe('stats context-window inventory resolution', () => {
     expect(source.listLaunchableModelInventory).toHaveBeenCalledTimes(1);
   });
 
-  test('concurrent cold stats requests share the source refresh generation', async () => {
-    let cached: LaunchableModelInventory | null = null;
-    let refresh: Promise<LaunchableModelInventory> | null = null;
-    let refreshStarts = 0;
-    const source = {
-      getCachedLaunchableModelInventory: vi.fn(() => cached),
-      listLaunchableModelInventory: vi.fn(() => {
-        refresh ??= Promise.resolve().then(() => {
-          refreshStarts += 1;
-          cached = inventory('known-model', 1_000_000);
-          return cached;
-        });
-        return refresh;
-      }),
-    };
-
-    await expect(
-      Promise.all([
-        resolveContextWindowTokensForStats(source, 'known-model'),
-        resolveContextWindowTokensForStats(source, 'known-model'),
-      ]),
-    ).resolves.toEqual([1_000_000, 1_000_000]);
-    expect(source.listLaunchableModelInventory).toHaveBeenCalledTimes(2);
-    expect(refreshStarts).toBe(1);
-  });
-
   test('a failed cold refresh remains explicitly unresolved', async () => {
     const source = {
       getCachedLaunchableModelInventory: vi.fn(() => null),

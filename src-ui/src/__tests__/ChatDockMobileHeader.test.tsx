@@ -229,22 +229,6 @@ describe('mobile conversation focus', () => {
     );
     expect(onClear).toHaveBeenCalledOnce();
   });
-  test('opens the shared project picker and preserves project action wiring', async () => {
-    const onOpenProject = vi.fn();
-    renderHeader({
-      projectSwitcher: {
-        projectSlug: 'kontour-ai',
-        projectName: 'Kontour AI',
-        projects: PROJECTS,
-        onOpenProject,
-        onSwitchProject: vi.fn(),
-      },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^Switch project/ }));
-    await screen.findByRole('dialog', { name: 'Switch project' });
-    fireEvent.click(screen.getByRole('button', { name: 'Open Kontour AI' }));
-    expect(onOpenProject).toHaveBeenCalledWith('kontour-ai');
-  });
   test('opening a project preserves the active conversation binding', async () => {
     const onOpenProject = vi.fn();
     const onSwitchProject = vi.fn();

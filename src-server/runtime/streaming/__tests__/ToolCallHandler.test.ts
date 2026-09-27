@@ -14,10 +14,7 @@ describe('ToolCallHandler', () => {
     } as unknown as StreamChunk;
     const result = await collect(handler.process(toStream([input])));
 
-    expect(result).toHaveLength(1);
-    expect(result[0].type).toBe('tool-call');
-    expect((result[0] as any).server).toBeDefined();
-    expect((result[0] as any).tool).toBeDefined();
+    expect(result).toEqual([{ ...input, server: 'myServer', tool: 'doThing' }]);
   });
 
   test('passes through non-tool-call events', async () => {

@@ -201,11 +201,10 @@ export const RUNTIME_DEFAULT_AGENT_KEY = 'default';
  *    fact — which is the defect class this whole change removes, made worse
  *    by `listAgents` preferring a stored file over the registry projection.
  *
- * So the record stays unbound and every reader consults this projection
- * instead. Exported so the catalog (`enriched-agents.ts`) and this service
- * read the same field rather than each reaching into the map.
+ * So the record stays unbound and readers consult this projection instead
+ * (Station-identity reads through `projectStationEngineBinding` below).
  */
-export function runtimeStationEngineExecution(
+function runtimeStationEngineExecution(
   agentMetadataMap: ReadonlyMap<string, { execution?: AgentSpec['execution'] }>,
 ): AgentSpec['execution'] | undefined {
   return agentMetadataMap.get(RUNTIME_DEFAULT_AGENT_KEY)?.execution;

@@ -11,6 +11,7 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { execGitSync } from '../../../utils/git-exec.js';
 import {
   computePluginContentDigest,
   PluginContentLockCycleError,
@@ -18,6 +19,7 @@ import {
   withPluginContentLock,
 } from '../plugin-content-integrity.js';
 import {
+  getPluginGitInfo,
   installPluginDependency,
   resolvePluginDependencySource,
 } from '../plugin-source.js';
@@ -956,5 +958,69 @@ describe('resolvePluginDependencySource', () => {
         parent,
       ).source,
     ).toBe(join(root, 'shared-dep'));
+  });
+});
+
+describe('getPluginGitInfo', () => {
+  function enclosingCheckout(): string {
+    const root = createRoot();
+    execGitSync(['init', '-b', 'main'], { cwd: root });
+    execGitSync(
+      ['remote', 'add', 'origin', 'https://git.example.test/enclosing.git'],
+      { cwd: root },
+    );
+    writeFileSync(join(root, 'file.txt'), 'enclosing');
+    execGitSync(['add', '-A'], { cwd: root });
+    execGitSync(
+      [
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        'commit',
+        '-m',
+        'enclosing',
+      ],
+      { cwd: root },
+    );
+    return root;
+  }
+  const logger = { debug: vi.fn() } as any;
+
+  test('reports only the plugin root’s own repository, never an enclosing checkout', async () => {
+    const root = enclosingCheckout();
+    const plugin = writePluginSource(root, 'plugin', { name: 'plugin' });
+    // An unusable `.git` (an empty directory) of the plugin's own.
+    mkdirSync(join(plugin, '.git'));
+    await expect(getPluginGitInfo(plugin, logger)).resolves.toBeUndefined();
+    const plain = writePluginSource(root, 'plain', { name: 'plain' });
+    await expect(getPluginGitInfo(plain, logger)).resolves.toBeUndefined();
+  });
+
+  test('reports the plugin root’s own repository (positive control)', async () => {
+    const root = enclosingCheckout();
+    const plugin = writePluginSource(root, 'plugin', { name: 'plugin' });
+    execGitSync(['init', '-b', 'trunk'], { cwd: plugin });
+    execGitSync(
+      ['remote', 'add', 'origin', 'https://git.example.test/plugin.git'],
+      { cwd: plugin },
+    );
+    execGitSync(['add', '-A'], { cwd: plugin });
+    execGitSync(
+      [
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        'commit',
+        '-m',
+        'plugin',
+      ],
+      { cwd: plugin },
+    );
+    await expect(getPluginGitInfo(plugin, logger)).resolves.toMatchObject({
+      branch: 'trunk',
+      remote: 'https://git.example.test/plugin.git',
+    });
   });
 });

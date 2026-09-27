@@ -141,7 +141,7 @@ function calloutIdOf(child: unknown): string | null {
  * stack holds whatever the page puts in it, and only the callouts it can
  * identify are deduped.
  */
-export function dedupePageCallouts(children: readonly unknown[]): unknown[] {
+function dedupePageCallouts(children: readonly unknown[]): unknown[] {
   const seen = new Set<string>();
   const kept: unknown[] = [];
   for (const child of children) {

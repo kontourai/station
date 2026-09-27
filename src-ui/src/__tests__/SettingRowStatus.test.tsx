@@ -23,7 +23,7 @@ import {
 } from '../views/settings/SettingInheritanceLayers';
 import {
   SettingRowStatus,
-  scopeBadgeLabel,
+  type SettingRowStatusProps,
 } from '../views/settings/SettingRowStatus';
 
 afterEach(cleanup);
@@ -237,26 +237,6 @@ describe('inheritance layers', () => {
   });
 });
 
-describe('scope badge', () => {
-  test('names the document that owns the value', () => {
-    expect(scopeBadgeLabel('station', { source: 'file' })).toBe('Station');
-    expect(scopeBadgeLabel('defaults', undefined)).toBe('Station');
-    expect(scopeBadgeLabel('device', undefined)).toBe('This device');
-    // A project override is a fact about THIS value and wins over the
-    // catalog's fact about the setting.
-    expect(
-      scopeBadgeLabel('station', { source: 'file', scope: 'project' }),
-    ).toBe('Project');
-  });
-
-  test('says nothing for a row with no single owner', () => {
-    for (const scope of ['mixed', 'temporary', 'informational'] as const) {
-      expect(scopeBadgeLabel(scope, { source: 'file' })).toBeUndefined();
-    }
-    expect(scopeBadgeLabel(undefined, undefined)).toBeUndefined();
-  });
-});
-
 describe('SettingRowStatus', () => {
   test('the inheritance trigger has an accessible name and loads its body on demand', async () => {
     render(
@@ -319,40 +299,59 @@ describe('SettingRowStatus', () => {
   });
 });
 
+/** The scope chip a row renders, or `undefined` when it prints none. */
+function renderedScopeChip(
+  props: Pick<
+    SettingRowStatusProps,
+    'catalogScope' | 'provenance' | 'containerScope'
+  >,
+): string | undefined {
+  const { container, unmount } = render(
+    <SettingRowStatus definition={definition} {...props} />,
+  );
+  const chip = container.querySelector('.setting-row-status__scope');
+  const text = chip ? (chip.textContent ?? '') : undefined;
+  unmount();
+  return text;
+}
+
 /**
- * #2144 slice 7 — the chip is a DIFFERENCE from the enclosing caption, not a
- * restatement of it. The pure derivation is pinned first; then the render,
- * because the slot has to exist on a row that prints no chip (that is what
- * keeps the rows of a group in one control column), and the inheritance
- * trigger has to survive the chip's absence.
+ * The chip names the document that owns the value, and (#2144 slice 7) it is
+ * a DIFFERENCE from the enclosing caption, not a restatement of it. The slot
+ * has to exist on a row that prints no chip (that is what keeps the rows of a
+ * group in one control column), and the inheritance trigger has to survive
+ * the chip's absence.
  */
 describe('scope chip against its container', () => {
-  test('a Station row inside the Station box prints no chip', () => {
-    expect(scopeBadgeLabel('station', { source: 'file' }, 'station')).toBe(
-      undefined,
-    );
-    expect(scopeBadgeLabel('defaults', undefined, 'station')).toBe(undefined);
-  });
-
-  test("a row whose scope is not its container's still prints one", () => {
-    expect(scopeBadgeLabel('device', undefined, 'station')).toBe('This device');
-    expect(scopeBadgeLabel('station', undefined, 'device')).toBe('Station');
-  });
-
-  test('a project override prints regardless of the container', () => {
-    expect(
-      scopeBadgeLabel(
-        'station',
-        { source: 'file', scope: 'project' },
-        'station',
-      ),
-    ).toBe('Project');
-  });
-
-  test('no container named means the chip is unchanged from before', () => {
-    expect(scopeBadgeLabel('station', undefined, undefined)).toBe('Station');
-    expect(scopeBadgeLabel('device', undefined, undefined)).toBe('This device');
-  });
+  const project = { source: 'file', scope: 'project' } as const;
+  test.each([
+    // No container named: the chip names the owning document.
+    ['station', { source: 'file' }, undefined, 'Station'],
+    ['defaults', undefined, undefined, 'Station'],
+    ['device', undefined, undefined, 'This device'],
+    // A project override is a fact about THIS value and wins over the
+    // catalog's fact about the setting, whatever the container.
+    ['station', project, undefined, 'Project'],
+    ['station', project, 'station', 'Project'],
+    // A row with no single owner says nothing.
+    ['mixed', { source: 'file' }, undefined, undefined],
+    ['temporary', { source: 'file' }, undefined, undefined],
+    ['informational', { source: 'file' }, undefined, undefined],
+    [undefined, undefined, undefined, undefined],
+    // A Station row inside the Station box prints no chip...
+    ['station', { source: 'file' }, 'station', undefined],
+    ['defaults', undefined, 'station', undefined],
+    // ...but a row whose scope is not its container's still prints one.
+    ['device', undefined, 'station', 'This device'],
+    ['station', undefined, 'device', 'Station'],
+  ] as const)(
+    'catalog scope %s, provenance %o, container %s: chip %s',
+    (catalogScope, provenance, containerScope, expected) => {
+      expect(
+        renderedScopeChip({ catalogScope, provenance, containerScope }),
+      ).toBe(expected);
+    },
+  );
 
   test('a row with no chip still carries its inheritance trigger', () => {
     const { container } = render(
