@@ -67,7 +67,7 @@ of them invalidates the key:
 | `worktree` | real path of this worktree | running in a different linked worktree |
 | `headSha` | `git rev-parse HEAD` | a new commit, an amend, or a rebase |
 | `workspaceDigest` | tracked diff + untracked regular files | any working-tree change |
-| `environmentDigest` | SHA-256 of allowlisted behavior toggles only | changing `STATION_CI_FAST_BASE`, `STATION_CI_FAST_SCOPE`, `STATION_E2E_SEED_REGRESSION`, `STATION_FEATURES`, `STATION_SERVICE_ITEST`, or the effective `PRODUCT_LAW_OBSERVATION_TIMEOUT_MS` |
+| `environmentDigest` | SHA-256 of allowlisted behavior toggles only | changing `STATION_CI_FAST_BASE`, `STATION_E2E_SEED_REGRESSION`, `STATION_FEATURES`, `STATION_SERVICE_ITEST`, or the effective `PRODUCT_LAW_OBSERVATION_TIMEOUT_MS` |
 | `laneId` / `command` | lane catalog | selecting a different lane |
 | `manifestDigest` | prepush test groups, the E2E spec→bucket assignment, or the command | a test-file list or E2E bucket assignment change |
 | `dependencyDigest` | `package-lock.json` at the **repository root** (resolved from the Git toplevel, not `process.cwd()`) | a lockfile change |
@@ -98,8 +98,7 @@ identical whether the caller runs from the repository root or from
 The environment identity is deliberately allowlisted rather than a digest of
 the whole shell. It covers only toggles that change verification behavior:
 `STATION_CI_FAST_BASE` (the affected-test diff base for bounded `ci:fast`
-feedback), `STATION_CI_FAST_SCOPE` (`statics` drops that selection from the
-lane because the sharded `fast-checks` jobs run it), `STATION_E2E_SEED_REGRESSION`, `STATION_FEATURES`,
+feedback), `STATION_E2E_SEED_REGRESSION`, `STATION_FEATURES`,
 `STATION_SERVICE_ITEST`, and the effective
 `PRODUCT_LAW_OBSERVATION_TIMEOUT_MS`. An unset, invalid, or explicit default
 product-law timeout normalizes to 30,000ms before hashing; only a changed
