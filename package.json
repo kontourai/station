@@ -123,6 +123,7 @@
     "audit:policy": "node scripts/dependency-advisory-policy.mjs",
     "ci:fast": "node scripts/run-verification.mjs request ci-fast",
     "ci:fast:raw": "node scripts/run-ci-fast.mjs",
+    "fast-checks:shard": "node scripts/fast-checks-shard.mjs",
     "full:regression": "node scripts/run-verification.mjs request full-regression",
     "full:regression:submit": "node scripts/run-verification.mjs submit full-regression",
     "full:regression:raw": "npm run proof:repo-governance && npm run proof:sdk-builds && npm run verify:static:raw && npm run test:full:raw && npm run proof:app-builds",
