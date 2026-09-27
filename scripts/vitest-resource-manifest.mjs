@@ -193,8 +193,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Type-only child_process import; the macro's spawn boundary is simulated
   // with streams, so this adds no real child launches or timing assertion.
   'scripts/__tests__/run-connected-agent-tests.test.ts',
-  // Type-only ChildProcess fixture for testing shell stop cleanup; the
-  // termination boundary is injected, so the test starts no real child.
+  // Owns a real detached process group with a delayed sidecar-like descendant
+  // to prove shell cleanup waits for descendants before removing its root.
   'scripts/__tests__/tauri-shell-fixture-cleanup.test.ts',
   // Real peer EventStores share one disposable SQLite home and survive owner death.
   'src-server/services/plugins/__tests__/package-mcp-admission.test.ts',

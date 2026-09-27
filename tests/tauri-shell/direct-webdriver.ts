@@ -16,6 +16,11 @@ import {
   findFreePortBlock,
   findFreePortOutside,
 } from '../../scripts/lib/free-ports.mjs';
+import {
+  executeOwnedCommand,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from '../../scripts/lib/owned-process.mjs';
 
 type WebDriverEnvelope<T> = {
   value: T & { error?: string; message?: string; stacktrace?: string };
@@ -36,6 +41,21 @@ export type TauriShellFixture = {
   stationRoot: string;
   stop(): Promise<void>;
 };
+
+export interface TauriShellFixtureCleanupReceipt {
+  driverCloseError?: string;
+  terminationError?: string;
+  processGroupId: number | null;
+  processGroupSettled: boolean;
+  childExitCodeBeforeTermination: number | null;
+  childSignalCodeBeforeTermination: NodeJS.Signals | null;
+  childExitCodeAfterTermination: number | null;
+  childSignalCodeAfterTermination: NodeJS.Signals | null;
+  appConfigRemoved: boolean;
+  fixtureRootExistsImmediatelyAfterRemoval: boolean | undefined;
+  fixtureRootExistsAfterQuietPeriod: boolean | undefined;
+  fixtureRootRemoved: boolean;
+}
 
 const sleep = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
@@ -97,24 +117,6 @@ export const SCRIPT_TIMEOUT_MS = 5_000;
  * ordering cannot drift.
  */
 const REQUEST_TIMEOUT_MS = SCRIPT_TIMEOUT_MS + 30_000;
-
-async function terminate(child: ChildProcess) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  child.kill('SIGTERM');
-  const exited = new Promise<void>((resolve) =>
-    child.once('exit', () => resolve()),
-  );
-  if (
-    await Promise.race([
-      exited.then(() => true),
-      sleep(5_000).then(() => false),
-    ])
-  ) {
-    return;
-  }
-  child.kill('SIGKILL');
-  await exited;
-}
 
 /**
  * A request the driver answered with a WebDriver error, carrying the error
@@ -425,23 +427,48 @@ export class DirectWebDriver {
 
 export async function stopTauriShellFixtureResources(input: {
   driver: Pick<DirectWebDriver, 'close'>;
-  child: ChildProcess;
+  execution: ReturnType<typeof executeOwnedCommand>;
   appLog: ReturnType<typeof createWriteStream>;
   stationRoot: string;
-  terminateChild?: (child: ChildProcess) => Promise<void>;
+  onReceipt?: (receipt: TauriShellFixtureCleanupReceipt) => void;
 }) {
   const errors: unknown[] = [];
+  let driverCloseError: string | undefined;
+  let terminationError: string | undefined;
+  let processGroupSettled = false;
+  const child = input.execution.child as ChildProcess;
+  const childExitCodeBeforeTermination = child.exitCode;
+  const childSignalCodeBeforeTermination = child.signalCode;
   try {
     await input.driver.close();
   } catch (error) {
     errors.push(error);
   }
   try {
-    await (input.terminateChild ?? terminate)(input.child);
+    const termination = await terminateSuiteExecution(input.execution, {
+      waitForSuiteSettlement,
+      terminationGraceMs: 5_000,
+      terminationForceMs: 5_000,
+      processLabel: 'Tauri shell fixture process group',
+    });
+    processGroupSettled = termination.settled && !input.execution.isAlive();
+    if (!processGroupSettled || termination.errors.length > 0)
+      throw new Error(
+        'Could not prove the owned Tauri shell process group exited cleanly.',
+      );
+    const completion = await Promise.race([
+      input.execution.completion.then(() => true),
+      sleep(5_000).then(() => false),
+    ]);
+    if (!completion)
+      throw new Error(
+        'Owned Tauri shell launcher did not close after its process group exited.',
+      );
   } catch (error) {
+    terminationError = error instanceof Error ? error.message : String(error);
     errors.push(error);
   }
-  if (!input.appLog.closed) {
+  if (processGroupSettled && !input.appLog.closed) {
     try {
       const closed = new Promise<void>((resolve, reject) => {
         input.appLog.once('error', reject);
@@ -459,7 +486,7 @@ export async function stopTauriShellFixtureResources(input: {
     errors.push(
       new Error(`Refusing to remove unexpected fixture: ${input.stationRoot}`),
     );
-  } else if (input.child.exitCode !== null || input.child.signalCode !== null) {
+  } else if (processGroupSettled) {
     const appConfig = join(
       input.stationRoot,
       'instances',
@@ -497,10 +524,25 @@ export async function stopTauriShellFixtureResources(input: {
   } else {
     errors.push(
       new Error(
-        'Could not confirm the shell app exited; fixture root was retained.',
+        'Could not confirm the owned shell process group exited; fixture root was retained.',
       ),
     );
   }
+
+  input.onReceipt?.({
+    ...(driverCloseError ? { driverCloseError } : {}),
+    ...(terminationError ? { terminationError } : {}),
+    processGroupId: child.pid ?? null,
+    processGroupSettled,
+    childExitCodeBeforeTermination,
+    childSignalCodeBeforeTermination,
+    childExitCodeAfterTermination: child.exitCode,
+    childSignalCodeAfterTermination: child.signalCode,
+    appConfigRemoved,
+    fixtureRootExistsImmediatelyAfterRemoval,
+    fixtureRootExistsAfterQuietPeriod,
+    fixtureRootRemoved,
+  });
 
   if (errors.length === 1) throw errors[0];
   if (errors.length)
@@ -509,10 +551,10 @@ export async function stopTauriShellFixtureResources(input: {
 
 export function createMemoizedTauriShellFixtureStop(input: {
   driver: Pick<DirectWebDriver, 'close'>;
-  child: ChildProcess;
+  execution: ReturnType<typeof executeOwnedCommand>;
   appLog: ReturnType<typeof createWriteStream>;
   stationRoot: string;
-  terminateChild?: (child: ChildProcess) => Promise<void>;
+  onReceipt?: (receipt: TauriShellFixtureCleanupReceipt) => void;
 }) {
   let stopTask: Promise<void> | undefined;
   return () => {
@@ -686,12 +728,13 @@ export async function startTauriShellFixture(
   };
   if (options.realCredentialStore)
     delete childEnv.STATION_TAURI_E2E_MOCK_CREDENTIAL;
-  const child = spawn(binary, [], {
+  const execution = executeOwnedCommand(binary, [], spawn, 'Tauri shell app', {
     cwd: root,
     env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
+  const child = execution.child as ChildProcess;
   child.stdout?.pipe(appLog, { end: false });
   child.stderr?.pipe(appLog, { end: false });
   const driver = new DirectWebDriver(driverPort);
@@ -700,7 +743,7 @@ export async function startTauriShellFixture(
   } catch (error) {
     await stopTauriShellFixtureResources({
       driver,
-      child,
+      execution,
       appLog,
       stationRoot,
     }).catch((cleanupError) => {
@@ -721,7 +764,7 @@ export async function startTauriShellFixture(
     stationRoot,
     stop: createMemoizedTauriShellFixtureStop({
       driver,
-      child,
+      execution,
       appLog,
       stationRoot,
     }),
