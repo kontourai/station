@@ -347,7 +347,7 @@ jobs:
           npm run build:portable-server -- --ref v0.0.0-preview.1 \
             --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-1"
           git -c user.name='install smoke' -c user.email='install-smoke@invalid' \
-            commit --quiet --allow-empty -m 'install smoke: second archive generation'
+            commit --quiet --allow-empty -m 'test(install-smoke): second archive generation'
           npm run build:portable-server -- --ref v0.0.0-preview.2 \
             --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-2"
       - name: Start a systemd user manager for the service path
