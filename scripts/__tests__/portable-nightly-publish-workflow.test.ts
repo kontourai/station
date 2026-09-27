@@ -2,16 +2,15 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   assertNotRegressing,
   checkArchives,
@@ -434,8 +433,9 @@ describe('portable Nightly helpers', () => {
   });
 });
 
-const scratch = mkdtempSync(join(tmpdir(), 'station-portable-nightly-'));
-afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+const makeTempDir = trackTempDirs({ lifetime: 'file' });
+const scratch = makeTempDir('station-portable-nightly-');
+let archiveFixtures = 0;
 
 function runNode(script: string, args: string[]) {
   return spawnSync(process.execPath, [join(repoRoot, script), ...args], {
@@ -606,7 +606,9 @@ describe('publication checks', () => {
   });
 
   function archiveFixture() {
-    const dir = mkdtempSync(join(scratch, 'archives-'));
+    archiveFixtures += 1;
+    const dir = join(scratch, `archives-${archiveFixtures}`);
+    mkdirSync(dir);
     const artifacts = ['darwin-arm64', 'win32-x64'].map((id, index) => {
       const format = id.startsWith('win32') ? 'zip' : 'tar.gz';
       const name = `station-server-${id}.${format}`;
