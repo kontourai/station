@@ -181,14 +181,6 @@ export function closestBasePreset(scope: string): PairingScopePreset | null {
   return null;
 }
 
-/** The tokens the editor's current selection resolves to. */
-export function scopeSelectionTokens(
-  preset: PairingScopePreset | null,
-  capabilities: ReadonlySet<PairingScope>,
-): PairingScope[] {
-  return scopeChoiceTokens(preset, capabilities);
-}
-
 /** True when the scope holds exactly the delegation token set, no more. */
 function isExactDelegationScope(scope: string): boolean {
   const tokens = parsePairingScope(scope) ?? [];
