@@ -22,7 +22,12 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
  *   server's router decides them (focus, quiet hours, mutes, minUrgency,
  *   hideContent); the client only skips posting while its window is focused.
  *   Polled every {@link DELIVERY_FEED_POLL_MS}, inside the server's 90 s
- *   host lease.
+ *   host lease. On a desktop host that consumes the feed natively (#2608,
+ *   `notification_feed.rs`) the poll reads nothing and posts nothing: the
+ *   host is the single consumer, keeps reading while hidden in the tray,
+ *   closes retracted alerts where the platform allows, and opens an alert's
+ *   link on click. This poll then only hands over a cursor an older build
+ *   stored (see `deliveryFeed.ts`).
  *
  * The original account of the blocking alert follows.
  *
@@ -42,12 +47,14 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
  * that case needs the host-side watch (archive#917), which stays dormant.
  * - **Blocking categories and enveloped records only** — the channels above;
  *   other legacy categories stay in-app.
- * - **Not while hidden in the tray.** The poll below does not run then: React
- *   Query pauses `refetchInterval` while `document.visibilityState` is
- *   `hidden` (no `refetchIntervalInBackground`), and WKWebView's default
- *   inactive scheduling policy suspends a hidden window's page (Station sets
- *   no `backgroundThrottling`). Covering that needs a host-side watch; the
- *   dormant `notification_watch.rs` is not it — it posts raw titles.
+ * - **Blocking categories not while hidden in the tray.** Their poll does
+ *   not run then: React Query pauses `refetchInterval` while
+ *   `document.visibilityState` is `hidden` (no `refetchIntervalInBackground`),
+ *   and WKWebView's default inactive scheduling policy suspends a hidden
+ *   window's page (Station sets no `backgroundThrottling`). Enveloped
+ *   notifications are covered while hidden by the native feed consumer
+ *   above; the dormant `notification_watch.rs` is not revived — it posts raw
+ *   titles.
  * - **Additive.** The in-app surfaces are unchanged and remain where
  *   decisions are made; a refused or unavailable notifier changes nothing.
  *
