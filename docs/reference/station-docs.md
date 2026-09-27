@@ -50,9 +50,8 @@ tool server does not grant full access or operator authority.
 
 Station Docs needs no credential, but it still needs a supported tool-server
 delivery path and the genuine shipped server. For example, the Muse adapter has
-no MCP tool-server delivery channel. An engine that receives docs without
-control can explain the product but cannot perform Station operations through
-these tools. The [connection guide](../guides/connections.md) and
+no MCP tool-server delivery channel. An engine with docs and no `station-control` can explain Station operations
+but cannot perform them through the docs tools. The [connection guide](../guides/connections.md) and
 [Session API](session-api.md) describe engine capabilities and delivery limits.
 Say which capabilities are actually available; do not imply an operation ran
 because its documentation was retrieved.

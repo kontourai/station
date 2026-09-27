@@ -100,7 +100,7 @@ describe('station-docs content', () => {
     // Station. If this topic ever stops saying so, an engine reading it will
     // answer about Station as if it could act on it.
     expect(body).toMatch(
-      /An engine with docs and no `station-control` can explain Station\b[^.]*\bcannot perform it\./,
+      /An engine with docs and no `station-control` can explain Station operations\s+but cannot perform them through the docs tools\./,
     );
   });
 
@@ -148,6 +148,14 @@ describe('station-docs plugin-authoring topic', () => {
    */
   const install =
     /\b(?:install(?:s|ing|ed|ation)?|set(?:s|ting)?\s+up)\b[^.;:\n]*?\b(?:plugins?|it\s+for\s+(?:them|you|the\s+person))\b/i;
+
+  const installationStatements = (body: string) =>
+    body
+      .split(/\n\s*\n/)
+      .flatMap((paragraph) =>
+        paragraph.replace(/\n/g, ' ').split(/(?<=[.!?])\s+/),
+      )
+      .filter((sentence) => install.test(sentence));
 
   /** The paragraph that starts with `heading`, as written in the body. */
   const paragraph = (heading: string) => {
@@ -376,7 +384,7 @@ describe('station-docs plugin-authoring topic', () => {
     expect(assistant).toContain('It proposes instead');
   });
 
-  test('every sentence pairing install with plugin is one a person approved, word for word', () => {
+  test('every installation statement matches the reviewed permission and architecture text', () => {
     // An explicit allow-list, not a heuristic. Any sentence that pairs
     // install/installs/installing/installed/installation with plugin(s) in
     // the same clause, whatever sits between them ("install your plugin"),
@@ -392,11 +400,11 @@ describe('station-docs plugin-authoring topic', () => {
       ['builtin-assistant', 'Its Station tools cannot install a plugin.'],
       [
         'builtin-assistant',
-        'An install is approved by a person who has read its preview — its permissions and the parts that run in Station’s own page — on the Plugins page or with `station plugin install <source>`.',
+        'An install is approved by a person who has read its preview \u2014 its permissions and the parts that run in Station\u2019s own page \u2014 on the Plugins page or with `station plugin install <source>`.',
       ],
       [
         'plugins',
-        'The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person’s approval of its preview), with an install lifecycle that includes updates and removal.',
+        'The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person\u2019s approval of its preview), with an install lifecycle that includes updates and removal.',
       ],
       [
         'plugin-authoring',
@@ -408,10 +416,8 @@ describe('station-docs plugin-authoring topic', () => {
       ],
       [
         'plugin-authoring',
-        'A person installs from Plugins → Install plugin, entering the folder path or git URL, or runs `station plugin install <path-or-url>` in a terminal.',
+        'A person installs from Plugins \u2192 Install plugin, entering the folder path or git URL, or runs `station plugin install <path-or-url>` in a terminal.',
       ],
-      // Existing architecture statements describe captured identity, inventory,
-      // and grant reconciliation. They grant no new installation authority.
       [
         'architecture-workspacepanehostadmission',
         'It captures the installation journal incarnation and selected physical artifact digest, explicit own-plugin clean Agent identity/ownership marker, Project revision, authored Agent spec and exact literal or registered prompt body.',
@@ -422,7 +428,7 @@ describe('station-docs plugin-authoring topic', () => {
       ],
       [
         'architecture-installedplugininventory',
-        '**Intent and Interface.** `scanInstalledPluginInventory()` performs one fresh deterministic scan of the existing installed-plugin directory.',
+        '[The inventory scanner](../../src-server/services/plugins/installed-plugin-inventory.ts) keeps broken installations visible so a user can repair them.',
       ],
       [
         'architecture-installedplugininventory',
@@ -437,15 +443,19 @@ describe('station-docs plugin-authoring topic', () => {
         '**Intent and Interface.** `PluginGrantReconciliationService.reconcile({ pluginName, permissions })` converges the runtime generation for one installed plugin after its durable grant state changes.',
       ],
       [
+        'architecture-operationaleventdelivery',
+        'The active [subscription registry](#operationaleventsubscriptions) wraps them for installed plugin observers; registration is no longer merely future work.',
+      ],
+      [
         'architecture-operationaleventsubscriptions',
-        '`PluginOperationalEventSubscriptionService` is the first production registrar: it strictly reads versioned installed-manifest declarations, derives stable consumer identity from plugin/subscription identity, requires current `plugin.server` plus `events.subscribe` grants (and `events.read-payload` for an envelope), acquires the existing quiescence-aware server module, and gives every subscription its own bounded dispatch queue.',
+        'It reads installed manifest declarations, checks the current artifact and `plugin.server`/`events.subscribe` grants, and additionally requires `events.read-payload` for an envelope.',
       ],
     ];
     const found = STATION_DOCS_TOPICS.flatMap((entry) =>
-      entry.body
-        .split(/(?<=[.!?])\s+|\n+/)
-        .filter((sentence) => install.test(sentence))
-        .map((sentence) => [entry.id, sentence]),
+      installationStatements(entry.body).map((sentence) => [
+        entry.id,
+        sentence,
+      ]),
     );
     expect(found).toEqual(PERMITTED);
   });
@@ -453,6 +463,7 @@ describe('station-docs plugin-authoring topic', () => {
   test('the install guard catches the phrasings the allow-list exists for', () => {
     for (const claim of [
       'The assistant installs plugins for a person.',
+      'The assistant\ninstalls your plugin.',
       'It can install plugins, not just list them.',
       'Ask the agent to install your plugin.',
       'The agent installed the new plugin.',
@@ -460,7 +471,7 @@ describe('station-docs plugin-authoring topic', () => {
       'Write it, then install it for them.',
       'Setting up your plugin is automatic.',
     ]) {
-      expect(install.test(claim), claim).toBe(true);
+      expect(installationStatements(claim), claim).not.toEqual([]);
     }
   });
 });
