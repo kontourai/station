@@ -714,6 +714,8 @@ describe('Plugin Routes', () => {
       [
         '--git-dir',
         expect.stringMatching(/test-plugin[\\/]\.git$/),
+        '--work-tree',
+        expect.stringMatching(/test-plugin$/),
         'pull',
         '--ff-only',
       ],
