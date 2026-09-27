@@ -53,6 +53,11 @@ const support = vi.hoisted(() => ({
   projects: new Map<string, string | null>(),
   /** Sessions that run unconfined (`host`). */
   hostThreads: new Set<string>(),
+  /**
+   * Sessions that started before the Project id stamp: only a slug, which
+   * resolves now (`slug-lookup`) and so grants no Project authority.
+   */
+  slugOnly: new Map<string, string>(),
 }));
 
 vi.mock('../runtime-route-support.js', () => {
@@ -98,6 +103,7 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
     support.appConfig = {};
     support.projects.clear();
     support.hostThreads.clear();
+    support.slugOnly.clear();
     for (const close of closers.splice(0)) await close();
   });
 
@@ -174,6 +180,8 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
         // The start record of the calling session: its agent, and a
         // model-written delegation root that must choose nothing.
         firstStartedMetadataOfThread: (threadId: string) => {
+          const slug = support.slugOnly.get(threadId);
+          if (slug) return { projectSlug: slug };
           const project = support.projects.has(threadId)
             ? support.projects.get(threadId)
             : 'project-a';
@@ -185,7 +193,9 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
           support.hostThreads.has(threadId),
       }),
       storageAdapter: deepStub({
-        getProject: () => {
+        // The slug a pre-stamp session recorded still names project-a now.
+        getProject: (slug: string) => {
+          if (slug === 'project-a-slug') return { id: 'project-a' };
           throw new Error('no project');
         },
       }),
@@ -380,6 +390,7 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
     support.projects.set('op-thread-none', null);
     support.hostThreads.add('op-thread-host');
     support.hostThreads.add('person-thread-host');
+    support.slugOnly.set('op-thread-slug', 'project-a-slug');
     const bodyFor = (type: 'steerTurn' | 'adoptSession', threadId: string) =>
       type === 'steerTurn'
         ? { type, threadId, input: 'also check the tests' }
@@ -414,6 +425,14 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
           'bearer no Project',
           bearer,
           'op-thread-none',
+          'station_control_assurance_insufficient',
+        ],
+        // Its slug names the caller's Project now, but a slug lookup is not
+        // the record Station stamped at its start.
+        [
+          'bearer slug-lookup Project',
+          bearer,
+          'op-thread-slug',
           'station_control_assurance_insufficient',
         ],
         // A host thread needs a bound caller.

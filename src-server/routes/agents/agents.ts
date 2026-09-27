@@ -296,7 +296,9 @@ export function createAgentRoutes(
    * it. Clearing an Agent's own default over a Station default of `never`
    * raises it as surely as saving `never`. `readPrevious` answers the
    * Agent's own default before the write, read only when the result is
-   * `never`; absent for a create. An unreadable Agent counts as having none.
+   * `never`; absent for a create. An Agent it cannot read (missing or
+   * unreadable) is no evidence of an earlier `never`, so the write counts as
+   * a raise.
    */
   async function refuseRaisedAgentDefault(
     c: Parameters<typeof refuseUngrantedFullAccess>[0],
@@ -311,13 +313,20 @@ export function createAgentRoutes(
     }
     if (effectiveDefaultPosture(next, station) !== 'never') return undefined;
     if (readPrevious) {
-      let previous: unknown;
+      // Only an Agent read back at an effective `never` makes this no raise.
+      // One that cannot be read counts as a raise (fail closed), and one
+      // that does not exist is a create, held to the create rule: both
+      // refuse here, as a create whose effective default is `never` does.
+      let previous: { approvalMode: unknown } | undefined;
       try {
-        previous = await readPrevious();
+        previous = { approvalMode: await readPrevious() };
       } catch {
         previous = undefined;
       }
-      if (effectiveDefaultPosture(previous, station) === 'never')
+      if (
+        previous &&
+        effectiveDefaultPosture(previous.approvalMode, station) === 'never'
+      )
         return undefined;
     }
     return refuseUngrantedFullAccess(c, ['never']);
