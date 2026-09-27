@@ -52,8 +52,7 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
   "tools": {
     "mcpServers": ["filesystem", "github"],
     "available": ["read_file", "list_directory", "create_pull_request"],
-    "autoApprove": ["read_file", "list_directory"],
-    "aliases": { "ls": "list_directory" }
+    "autoApprove": ["read_file", "list_directory"]
   }
 }
 ```
@@ -62,7 +61,11 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 - `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers
 - `autoApprove` — tools that execute without user confirmation in attended chat; all other tools trigger the approval flow
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
-- `aliases` — rename tools in prompts without changing the underlying tool name
+
+`tools.aliases` is retired. Older files still load because the loader removes
+that key before validation, and the next save omits it. It did not rename tools
+at execution time. Use the exposed tool names; see the
+[configuration loader](../../src-server/domain/config-loader-agents.ts).
 
 Station negotiates MCP automatically. It tries the current `2026-07-28`
 discovery flow first and falls back to the legacy `initialize` flow when a

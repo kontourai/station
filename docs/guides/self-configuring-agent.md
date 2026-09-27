@@ -1,17 +1,22 @@
 # Build a Self-Configuring Agent
 
-This guide shows how to build an agent that can set up its own workspace in Station using `station-control`.
+Use `station-control` to let an Agent inspect Station's project records, refine
+existing skills, and delegate a bounded task. Tool availability and approval
+policy determine which changes it can actually make.
 
 ## Goal
 
-The agent should be able to:
+The example supports:
 
-- inspect the current workspace state
-- create or refine skills
+- inspect project and Agent metadata
+- refine an existing writable skill
 - delegate bounded work to another agent
-- configure the project enough that the user lands in a useful environment
+- report changes that need a person or an additional authorized tool
 
 The concrete example bundle lives in [examples/self-configuring-agent](../../examples/self-configuring-agent/README.md).
+It does not provide filesystem inspection, create a new skill, or change Project
+configuration by itself. Those require a separately authorized surface; the
+example does not grant one implicitly.
 
 ## What `station-control` gives you
 
@@ -23,7 +28,7 @@ The concrete example bundle lives in [examples/self-configuring-agent](../../exa
 - `list_delegation_environments`, `list_delegation_targets`,
   `list_delegated_tasks`, `delegate_task`, `get_task`, `get_task_events`,
   `continue_task`, and `interrupt_task` for resumable work through either a
-  Station agent or an Agent app, on this Station or a verified SSH environment
+  Station Agent or external engine, on this Station or a supported saved environment
 - `respond_to_task_request` for an open approval or permission request from a
   delegated worker
 - config and navigation tools for steering the workspace
@@ -32,7 +37,9 @@ The concrete example bundle lives in [examples/self-configuring-agent](../../exa
   `get_job_logs`, `add_job`, `update_job`, `run_job`, `enable_job`,
   `disable_job`, and `delete_job`
 
-This means the same agent loop that writes code can also shape its own working environment.
+The Agent's tool allowlist and the calling Session's authority still apply.
+Exposing a management tool does not grant the operator's identity or bypass
+Project access checks.
 
 ## Recommended setup pattern
 
@@ -53,9 +60,11 @@ This means the same agent loop that writes code can also shape its own working e
    and never returns prompts, messages, raw events, or connection details.
    Station injects the calling agent's authenticated user automatically.
    Poll `get_task_events` with its returned `nextCursor` when a coordinator
-   needs incremental output. Each page is capped at 100 events and excludes
-   prompts, reasoning text, tool inputs/results, approval payloads, provider
-   diagnostics, paths, and extension payloads.
+   needs incremental output. Each page is capped at 100 events and omits raw
+   prompt, reasoning, tool input/result, approval payload, diagnostic, path,
+   and extension fields. It retains bounded assistant text and request titles;
+   those strings are not scrubbed of paths or other sensitive content the
+   worker wrote.
 4. Keep child sessions isolated with delegation limits.
 5. Refine successful skills instead of baking everything into one giant system prompt.
 
@@ -107,6 +116,14 @@ choosing **This Station** explicitly permits a local launch. An explicit choice
 survives later Project-default and inventory updates. Project settings likewise
 retain the selected remote while their saved-environment list loads.
 
+A chat linked to a Project has additional placement rules. A paired Station
+requires that Project's prepared portable identity and an execution resource;
+the receiver verifies its current offer when the task is submitted. This UI
+refuses a linked Project on an SSH target and keeps the draft. SSH delegation
+without a linked Project is a separate supported path; selecting a remote
+computer does not authorize substituting a same-named Project there. See
+[machine relationships](machine-relationships.md).
+
 Delegation uses the persisted orchestration task contract. Its result can be
 observed, interrupted and resumed through the owning execution environment.
 
@@ -119,12 +136,18 @@ controls.
 
 ## Example agent
 
+Use this as an attended Station-engine Agent after configuring a usable Model
+connection and default model in [Connections](connections.md). No engine binding
+is declared, so it uses Station's engine. Only the four listed reads are
+auto-approved; mutations and delegation remain subject to the normal approval
+and authority checks. Start with an existing writable skill and a ready worker.
+
 Use the example `agent.json` as a starting point:
 
 ```json
 {
   "name": "Workspace Bootstrapper",
-  "prompt": "You set up useful project workspaces. Inspect the current project, create or refine skills when you find reusable workflows, and delegate narrow tasks to specialist child agents. Prefer small reversible changes.",
+  "prompt": "Inspect the current project's Station metadata, suggest useful workflow improvements, refine an existing writable skill when asked, and delegate narrow tasks to ready specialist agents. Explain missing tools or approvals. Prefer small reversible changes.",
   "tools": {
     "mcpServers": ["station-control"],
     "available": [
@@ -149,36 +172,27 @@ Use the example `agent.json` as a starting point:
       "station-control_list_agents",
       "station-control_list_projects",
       "station-control_get_project",
-      "station-control_list_skills",
-      "station-control_list_delegation_environments"
-    ]
-  },
-  "delegation": {
-    "maxDepth": 2,
-    "blockedTools": [
-      "station-control_update_config",
-      "station-control_delete_*"
+      "station-control_list_skills"
     ]
   }
 }
 ```
 
-The `delegation` block above is not accepted yet.
+Do not add a `delegation` block to this file.
 [`schemas/agent.schema.json`](../../schemas/agent.schema.json) has no
 `delegation` field and refuses unknown fields, so a spec that carries one fails
-to load: the Agent is unusable, not only unable to delegate. Remove the block
-before you use this example. Every Agent's children get the default policy described
-below.
+to load: the Agent is unusable, not only unable to delegate. The runtime derives
+the default child policy described below; this is not an editable Agent setting.
 
 ## Delegation rules
 
-Station now enforces child-agent isolation for delegated sessions:
-
-- delegated children inherit a depth counter
-- blocked tools and allowlists can be enforced per child
-- delegated children can be denied approval-bound tools entirely
-
-That gives you a safe default for “planner delegates to worker” patterns without giving every child full platform control.
+Station records a child's lineage and derives its depth and tool policy at
+delegation. Policy delivery also depends on the selected engine: the
+Station-engine example below uses Station's pre-tool checks. For other engines,
+consult the [tool-policy delivery contract](../conformance/tool-policy-delivery.md)
+and current capabilities before relying on the same restrictions. A recorded
+delegation context alone is not proof of external tool enforcement or a
+filesystem sandbox.
 
 ### Where a child's lineage comes from
 
@@ -201,13 +215,13 @@ dropped any context, so every `delegate_task` child started as an unrestricted
 root, including children of Station's own engine and of the default Agents
 (`station`, `claude`, `codex`). A `send_message` child on another engine
 carried whatever context the model wrote, or none. Every such child now gets
-lineage and the default policy. A delegated child therefore cannot:
+lineage and the default policy. Where Station's pre-tool policy is delivered,
+the built-in denials prevent a delegated child from:
 
-- create, update, or delete Station resources (Agents, skills, jobs,
-  Projects), or add or remove anything through station-control;
-- start a scheduled job with `run_job`, or delegate or message further;
-- do work that needs an approval: approval-bound tools are refused rather
-  than routed to a person.
+- calling the matching create, update, delete, add, or remove station-control tools;
+- starting a scheduled job with `run_job`, or delegating or messaging further;
+- asking a person for tool approval when `denyApprovals` applies. A call already
+  allowed by the applicable policy can still run; otherwise it is refused.
 
 Give such work to a top-level conversation instead of a delegated child.
 
@@ -242,35 +256,44 @@ context it was given, and `delegate_task` forwards none.
 
 ## Skill refinement loop
 
-The loop is intentionally simple:
+1. Identify a repeated task and choose an existing writable skill.
+2. Request an edit through `update_skill`. Creating a new skill instead uses
+   `POST /api/skills/local`; there is no `create_skill` tool in this example's
+   management surface.
+3. Station's engine adds Agent/conversation source context to `update_skill`
+   when it is absent, and the trusted internal route records it as
+   `updatedFrom`. This is not a universal, independently verified authorship
+   guarantee for arbitrary API callers or external engines.
+4. Call `track_skill_run` explicitly to count use. The existence of this tool
+   does not mean every skill invocation automatically increments the counter.
+5. `record_skill_outcome` can record an explicit success/failure assessment if
+   separately exposed to the Agent; it is not in the example's allowlist.
 
-1. Agent notices a repeated task.
-2. Agent creates or updates a skill (`POST /api/skills/local`, or
-   `update_skill` for one it already has).
-3. Station records the agent/conversation provenance for that edit.
-4. When the skill is used, Station tracks runs through `track_skill_run`.
-5. Success/failure outcomes can be recorded through `record_skill_outcome` to
-   build a quality signal over time.
-
-This is enough to support self-improving agents without needing a full offline training system.
+These records support iteration on a workflow. They do not train the model or
+independently establish the quality of its work. The
+[skill tools](../../src-server/tools/station-control-catalog-tools.ts) and
+[routes](../../src-server/routes/agents/skills.ts) own these operations.
 
 ## Approval model
 
 Approval-bound tools still respect the human-in-the-loop path.
 
-- human approval requests aggregate into the notifications inbox
+- canonical Session requests appear in the Inbox and their owning Session;
+  the legacy per-Agent chat route has its own SSE approval flow
 - an optional guardian review layer can allow, deny, or defer risky tool calls before they reach the human path
-- delegated child agents can be configured to avoid approval-bound tools altogether
+- the default child policy includes `denyApprovals`; its delivery follows the
+  selected engine's policy contract, not an editable `delegation` JSON block
 
-That combination keeps the bootstrap agent useful without giving it silent unrestricted power.
+See the [Agent approval guide](agents.md#tool-approval-flow) for ordering and
+the distinction between attended and unattended runs.
 
 ## Recommended first demo
 
 Use the example bundle to demonstrate this flow:
 
-1. Ask the bootstrap agent to inspect a repo.
-2. Let it create a “review this repo” skill.
-3. Let it delegate a focused task to a child agent.
-4. Watch the workspace update in the UI and the resulting skill appear in Skills.
-
-That is the clearest demo of Station’s “agents managing agents” model.
+1. Configure the model and prepare a writable “review this repo” skill.
+2. Ask the bootstrap Agent to inspect the Project metadata and propose a skill edit.
+3. Review its tool approval before accepting the edit.
+4. Choose a ready worker with the tools the task needs and approve a focused
+   delegation. Follow its task handle in the UI; do not assume the worker has
+   repository access just because the coordinator can see Project metadata.
