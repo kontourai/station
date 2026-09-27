@@ -15,6 +15,7 @@ import {
   refinedSeedsFor,
   refineSdkBarrelRelatedPaths,
   topLevelSideEffect,
+  topLevelUseAnalysis,
 } from '../lib/sdk-barrel-selection.mjs';
 import { discoverRelatedTestFiles } from '../run-changed-verification.mjs';
 
@@ -475,13 +476,25 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
       [REGISTRY]:
         'export const voiceSessionAdapterRegistry = new VoiceSessionAdapterRegistry();',
     };
+    const REGISTRATION = 'packages/sdk/src/registration.ts';
     const decide = (
       headOverrides: Record<string, string>,
       baseSource: string | null,
     ) =>
       refineSdkBarrelRelatedPaths('/repo', [SCHEDULER], {
         base: 'merge-base',
-        loadGraph: () => fixtureGraph({ ...withRegistry, ...headOverrides }),
+        loadGraph: () =>
+          fixtureGraph({
+            ...withRegistry,
+            // A top-level use matters only in a module the barrel
+            // evaluates, so the fixture's registration module is one.
+            ...(REGISTRATION in headOverrides
+              ? {
+                  [ROOT_BARREL]: `${SDK_SOURCES[ROOT_BARREL]}\nexport * from './registration';`,
+                }
+              : {}),
+            ...headOverrides,
+          }),
         readBase: () => baseSource,
       });
 
@@ -602,6 +615,118 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
         );
       },
     );
+
+    test('an `export default <expr>` re-exporter carries what its expression reads', () => {
+      const result = decide(
+        {
+          'packages/sdk/src/mid.ts':
+            "import { listJobs } from './client/scheduler';\nexport default [listJobs];",
+          [REGISTRATION]: "import jobs from './mid';\nregistry.push(...jobs);",
+        },
+        SDK_SOURCES[SCHEDULER],
+      );
+      expect(result.decisions[0].reason).toMatch(
+        /registration\.ts line \d+ uses it in a top-level side effect/,
+      );
+    });
+
+    test('a module that resolves but cannot be read counts as providing', () => {
+      const GHOST = 'packages/sdk/src/ghost.ts';
+      const sources = new Map(
+        Object.entries({
+          ...SDK_SOURCES,
+          ...OUTSIDE_SOURCES,
+          ...withRegistry,
+          [ROOT_BARREL]: `${SDK_SOURCES[ROOT_BARREL]}\nexport * from './registration';`,
+          [REGISTRATION]:
+            "import { thing } from './ghost';\nregistry.push(thing);",
+        }),
+      );
+      const graph = buildSdkImportGraph({
+        sources,
+        // On disk (so it resolves) but never read into the graph.
+        fileSet: [...sources.keys(), GHOST].filter((path) =>
+          path.startsWith('packages/sdk/'),
+        ),
+        sdkExports: {
+          '.': './src/index.ts',
+          './client': './src/client/index.ts',
+        },
+      });
+      const result = refineSdkBarrelRelatedPaths('/repo', [SCHEDULER], {
+        base: 'merge-base',
+        loadGraph: () => graph,
+        readBase: () => SDK_SOURCES[SCHEDULER],
+      });
+      expect(result.decisions[0].reason).toMatch(
+        /registration\.ts line \d+ uses it in a top-level side effect/,
+      );
+    });
+
+    test('a module only a subpath evaluates is not a barrel importer’s concern; its own importers still are', () => {
+      const SUBPATH_ONLY = 'packages/sdk/src/subpath-registration.ts';
+      const importer = 'src-ui/src/__tests__/subpath-registration.test.ts';
+      const result = decide(
+        {
+          [SUBPATH_ONLY]:
+            "import { listJobs } from './client/scheduler';\nregistry.push(listJobs());",
+          [importer]:
+            "import '../../../packages/sdk/src/subpath-registration';",
+        },
+        SDK_SOURCES[SCHEDULER],
+      );
+      expect(result.decisions[0].disposition).toBe('refined');
+      expect(result.paths).toContain(importer);
+      // Control: the same module, evaluated by the barrel, is a use.
+      const reachable = decide(
+        {
+          [REGISTRATION]:
+            "import { listJobs } from './client/scheduler';\nregistry.push(listJobs());",
+        },
+        SDK_SOURCES[SCHEDULER],
+      );
+      expect(reachable.decisions[0].disposition).toBe('whole-barrel');
+    });
+
+    test('a function in a non-invoked position of an initializer is not read at load', () => {
+      const result = decide(
+        {
+          'packages/sdk/src/mid.ts':
+            "import { listJobs } from './client/scheduler';\nexport const queries = { list: () => listJobs(), all: [function () { return listJobs; }] };",
+          [REGISTRATION]:
+            "import { queries } from './mid';\nregistry.push(queries);",
+        },
+        SDK_SOURCES[SCHEDULER],
+      );
+      expect(result.decisions[0].disposition).toBe('refined');
+    });
+
+    test.each([
+      [
+        'a callback passed to a call',
+        'export const all = [1].map(() => listJobs());',
+      ],
+      ['an IIFE', 'export const all = (() => listJobs())();'],
+      [
+        'a local helper called in the initializer',
+        'const helper = () => listJobs();\nexport const all = helper();',
+      ],
+      [
+        'a callback passed to a constructor',
+        'export const all = new Promise((resolve) => resolve(listJobs()));',
+      ],
+    ])('a function body that runs at load is read: %s', (_label, body) => {
+      const result = decide(
+        {
+          'packages/sdk/src/mid.ts': `import { listJobs } from './client/scheduler';\n${body}`,
+          [REGISTRATION]: "import { all } from './mid';\nregistry.push(all);",
+        },
+        SDK_SOURCES[SCHEDULER],
+      );
+      expect(result.decisions[0].reason).toMatch(
+        /registration\.ts line \d+ uses it in a top-level side effect/,
+      );
+    });
 
     test('a local const that does not read the import is not a use (control)', () => {
       const result = decide(
@@ -862,5 +987,49 @@ describe('discoverRelatedTestFiles hands the refined seeds to vitest', () => {
       },
     });
     expect(files).toEqual([]);
+  });
+});
+
+describe('top-level use analysis through re-export cycles', () => {
+  const X = 'packages/sdk/src/client/x.ts';
+  const A = 'packages/sdk/src/client/a.ts';
+  const B = 'packages/sdk/src/client/b.ts';
+  const C = 'packages/sdk/src/client/c.ts';
+  const EARLY = 'packages/sdk/src/early.ts';
+  const REG = 'packages/sdk/src/reg.ts';
+  // a and b re-export each other; only c (through a) reaches x. `early`
+  // asks for a's `f` first in one order, so the analysis walks b while a is
+  // on the stack; `reg` then asks b directly. A partial answer for b cached
+  // during early's walk would hide x from reg.
+  const cycleGraph = (earlyFirst: boolean) => {
+    const modules = earlyFirst ? ['./reg', './early'] : ['./early', './reg'];
+    const sources = new Map(
+      Object.entries({
+        [ROOT_BARREL]: modules.map((m) => `export * from '${m}';`).join('\n'),
+        [A]: "export * from './b';\nexport * from './c';",
+        [B]: "export * from './a';",
+        [C]: "export { f } from './x';",
+        [X]: 'export function f() { return 1; }',
+        [EARLY]: "import { f } from './client/a';\nregister(f);",
+        [REG]:
+          "import { f } from './client/b';\nexport const registry = [];\nregistry.push(f());",
+      }),
+    );
+    return buildSdkImportGraph({
+      sources,
+      fileSet: [...sources.keys()],
+      sdkExports: { '.': './src/index.ts' },
+    });
+  };
+
+  test.each([
+    ['early before reg', true],
+    ['reg before early', false],
+  ])('%s: both uses reach x through the cycle', (_order, earlyFirst) => {
+    const uses = topLevelUseAnalysis(cycleGraph(earlyFirst));
+    const importers = uses.map((use) => use.importer);
+    // Population: both modules were analysed, in the intended order.
+    expect(importers).toEqual(earlyFirst ? [EARLY, REG] : [REG, EARLY]);
+    for (const use of uses) expect([...use.mods]).toContain(X);
   });
 });

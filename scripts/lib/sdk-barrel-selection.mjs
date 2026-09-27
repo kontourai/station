@@ -993,18 +993,39 @@ function edgeTargets(graph, edge, extraNames) {
  * @returns {{ seeds: string[], reached: string[] }} `reached` lists the SDK
  *   source modules (and barrels) that depend on `changed`, for diagnostics.
  */
+// The reverse import index does not depend on the changed module, so it is
+// built once per graph and shared by every candidate in a refinement call.
+const reverseIndexes = new WeakMap();
+function reverseIndex(graph) {
+  if (!reverseIndexes.has(graph)) {
+    const reverse = new Map();
+    const barrelNamedEdges = [];
+    for (const [path, fileEdges] of graph.edges)
+      for (const edge of fileEdges) {
+        for (const target of edgeTargets(graph, edge, new Map())) {
+          if (!reverse.has(target)) reverse.set(target, []);
+          reverse.get(target).push(path);
+        }
+        if (graph.barrels.has(edge.target) && edge.names !== null)
+          barrelNamedEdges.push({ path, names: edge.names });
+      }
+    reverseIndexes.set(graph, { reverse, barrelNamedEdges });
+  }
+  return reverseIndexes.get(graph);
+}
+
 export function refinedSeedsFor(graph, changed, { baseExportNames } = {}) {
-  const extraNames = new Map();
-  if (baseExportNames?.size) extraNames.set(changed, baseExportNames);
-  const reverse = new Map();
-  const dependents = (target) => {
-    if (!reverse.has(target)) reverse.set(target, []);
-    return reverse.get(target);
-  };
-  for (const [path, fileEdges] of graph.edges)
-    for (const edge of fileEdges)
-      for (const target of edgeTargets(graph, edge, extraNames))
-        dependents(target).push(path);
+  const { reverse, barrelNamedEdges } = reverseIndex(graph);
+  // Importers of a name `changed` exported at the base depend on it too.
+  const extraImporters = baseExportNames?.size
+    ? barrelNamedEdges
+        .filter(({ names }) => names.some((name) => baseExportNames.has(name)))
+        .map(({ path }) => path)
+    : [];
+  const importersOf = (path) =>
+    path === changed
+      ? [...(reverse.get(path) ?? []), ...extraImporters]
+      : (reverse.get(path) ?? []);
   const reached = new Set([changed]);
   const queue = [changed];
   const visit = (path) => {
@@ -1015,7 +1036,7 @@ export function refinedSeedsFor(graph, changed, { baseExportNames } = {}) {
   for (const path of graph.opaque) visit(path);
   while (queue.length) {
     const path = queue.pop();
-    for (const importer of reverse.get(path) ?? []) visit(importer);
+    for (const importer of importersOf(path)) visit(importer);
   }
   // SDK source and barrels are never seeds: a barrel re-exports them, so
   // their vitest audience is every barrel importer again. Their importers
@@ -1111,10 +1132,49 @@ function listSdkReferencingFiles(root) {
 }
 
 /** The file at `base`, or null when it did not exist there. Throws if git cannot say. */
-function readAtBase(root, base, path) {
-  if (git(root, ['ls-tree', '--name-only', base, '--', path]).trim() === '')
-    return null;
-  return git(root, ['show', `${base}:${path}`]);
+/**
+ * Every path's content at `base` in two git processes, not two per path:
+ * `rev-parse --verify` proves the base exists (so "missing" below means the
+ * path is absent there, not that git could not look), then one
+ * `cat-file --batch` reads every blob. Absent paths map to null.
+ */
+function readAllAtBase(root, base, paths) {
+  execFileSync(
+    'git',
+    ['rev-parse', '--verify', '--quiet', `${base}^{commit}`],
+    {
+      cwd: root,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
+  const output = execFileSync('git', ['cat-file', '--batch'], {
+    cwd: root,
+    input: paths.map((path) => `${base}:${path}\n`).join(''),
+    maxBuffer: 256 * 1024 * 1024,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  const contents = new Map();
+  let offset = 0;
+  for (const path of paths) {
+    const newline = output.indexOf(0x0a, offset);
+    if (newline < 0)
+      throw new Error(`git cat-file output ended before ${path}`);
+    const header = output.subarray(offset, newline).toString('utf8');
+    offset = newline + 1;
+    if (header.endsWith(' missing')) {
+      contents.set(path, null);
+      continue;
+    }
+    const match = header.match(/^[0-9a-f]+ (\w+) (\d+)$/);
+    if (match?.[1] !== 'blob')
+      throw new Error(`unexpected git cat-file header for ${path}: ${header}`);
+    const size = Number(match[2]);
+    contents.set(path, output.subarray(offset, offset + size).toString('utf8'));
+    offset += size + 1; // the blob and its trailing newline
+  }
+  return contents;
 }
 
 export function loadSdkImportGraph(root, { readFile = readFileSync } = {}) {
@@ -1156,159 +1216,323 @@ function runtimeImportKey(path, source) {
 }
 
 /**
- * An SDK module (or barrel) whose top-level evaluation has a side effect
- * that references a binding it imports from `changed` — `registry.add(fn)`
- * with `fn` from the changed module. Every barrel importer evaluates that
- * statement, so the change is observable without importing any of its
- * names. The binding may come directly or through any re-exporter (a
- * barrel or `export { f as g } from`); a call that reaches the changed
- * module only inside another module's function body is not traced.
+ * Top-level uses (#2707). A module that a barrel evaluates, whose top-level
+ * side effect reads a binding whose value can come from the changed module
+ * (`registry.push(f())` with `f` from it), makes the change observable to
+ * every barrel importer without importing any of its names.
+ *
+ * Only barrel-reachable modules are considered: a module reached only
+ * through its own subpath is evaluated only by its importers, and those
+ * already reach the changed module through the import graph.
+ *
+ * A binding's ORIGINS are every module its value can come from: each
+ * module on its re-export chain, plus, for a local `const`/`let`/`var`
+ * export or `export default <expr>`, the origins of the imported bindings
+ * its initializer reads at load time. "At load time" follows invocation:
+ * an IIFE body, a function passed as a call argument, and a local helper
+ * called in the initializer are read; a function in any other position (a
+ * variable initializer, an object property value, an array element, a
+ * return value, a class method) is not, since nothing calls it while the
+ * module loads. Calling such a function later at top level from another
+ * module (`queries.resolved()`) is the documented two-hop gap.
+ *
+ * Resolution fails CLOSED: a star it cannot enumerate, or a module it cannot
+ * read, is ANY origin. An import cycle is neither provided nor cached; the
+ * frame that first entered it explores the sibling branches.
+ *
+ * The analysis does not depend on the changed module, so it runs once per
+ * graph and is shared by every candidate.
  */
-function topLevelUseOf(graph, changed) {
-  // Does importing `name` from `target` bind something whose value comes
-  // from `changed`? Walks the re-export chain like resolveName, but fails
-  // CLOSED: a star it cannot enumerate, or a module it cannot read, counts
-  // as providing. A local `const`/`let`/`var` export counts when its
-  // initializer reads a binding that itself provides (`export const g = f`
-  // with `f` imported from the changed module). A local function or class
-  // does not: its body runs only when called — the documented two-hop gap.
-  const cache = new Map();
-  const providesAt = (module, name, seen) => {
-    if (module === changed) return true;
-    const key = `${module}\0${name}`;
-    if (cache.has(key)) return cache.get(key);
-    if (seen.has(key)) return false;
+const topLevelUseAnalyses = new WeakMap();
+
+function barrelReachable(graph) {
+  const reached = new Set();
+  const queue = [...graph.barrels];
+  while (queue.length) {
+    const path = queue.pop();
+    if (reached.has(path)) continue;
+    reached.add(path);
+    for (const edge of graph.edges.get(path) ?? []) queue.push(edge.target);
+  }
+  return reached;
+}
+
+/** Identifiers `node` reads while the module loads (see above). */
+function loadTimeIdentifiers(node, locals, into = new Set(), seen = new Set()) {
+  const isFunction = (candidate) =>
+    ts.isArrowFunction(candidate) || ts.isFunctionExpression(candidate);
+  const unwrap = (candidate) => {
+    let current = candidate;
+    while (ts.isParenthesizedExpression(current)) current = current.expression;
+    return current;
+  };
+  const readLocal = (name, invoked) => {
+    const local = locals.get(name);
+    const key = `${name}\0${invoked}`;
+    if (!local || seen.has(key)) return;
     seen.add(key);
-    const answer = providesUncached(module, name, seen);
-    cache.set(key, answer);
-    return answer;
+    if (ts.isFunctionDeclaration(local)) {
+      if (invoked && local.body) visit(local.body, false);
+    } else if (local.initializer) visit(local.initializer, invoked);
   };
-  const providesUncached = (module, name, seen) => {
-    const table = graph.exportsOf(module);
-    if (!table) return true;
-    if (table.local.has(name)) return localValueProvides(module, name, seen);
-    const entry = table.named.get(name);
-    if (entry) {
-      const target = graph.resolveSpecifier(module, entry.specifier);
-      if (target === null) return false;
-      if (target === UNKNOWN) return true;
-      if (entry.name === null) return namespaceProvides(target, seen);
-      return providesAt(target, entry.name, seen);
+  const visit = (current, invoked) => {
+    if (ts.isIdentifier(current)) {
+      into.add(current.text);
+      readLocal(current.text, invoked);
+      return;
     }
-    if (name === 'default') return false;
-    for (const specifier of table.stars) {
-      const target = graph.resolveSpecifier(module, specifier);
-      // An external or unresolvable star could be where the name lives.
-      if (target === null || target === UNKNOWN) return true;
-      if (providesAt(target, name, seen)) return true;
+    if (isFunction(current)) {
+      // Its body runs now only when this position invokes it.
+      if (invoked) visit(current.body, false);
+      return;
     }
-    return false;
-  };
-  const localValueProvides = (module, name, seen) => {
-    const source = graph.sources.get(module);
-    if (source === undefined) return true;
-    const file = parse(module, source);
-    const importedFrom = new Map();
-    for (const statement of file.statements) {
-      if (!ts.isImportDeclaration(statement)) continue;
-      const clause = statement.importClause;
-      if (!clause || clause.isTypeOnly) continue;
-      const target = graph.resolveSpecifier(
-        module,
-        statement.moduleSpecifier.text,
-      );
-      if (target === null) continue;
-      if (clause.name) importedFrom.set(clause.name.text, [target, 'default']);
-      const bindings = clause.namedBindings;
-      if (bindings && ts.isNamespaceImport(bindings))
-        importedFrom.set(bindings.name.text, [target, null]);
-      else if (bindings)
-        for (const element of bindings.elements)
-          if (!element.isTypeOnly)
-            importedFrom.set(element.name.text, [
-              target,
-              (element.propertyName ?? element.name).text,
-            ]);
+    if (
+      ts.isMethodDeclaration(current) ||
+      ts.isGetAccessorDeclaration(current) ||
+      ts.isSetAccessorDeclaration(current) ||
+      ts.isConstructorDeclaration(current)
+    )
+      return;
+    if (ts.isPropertyAccessExpression(current)) {
+      visit(current.expression, false);
+      return;
     }
-    const readsProvider = (node) =>
-      [...referencedIdentifiers(node)].some((identifier) => {
-        const source = importedFrom.get(identifier);
-        if (!source) return false;
-        const [target, importedName] = source;
-        if (target === UNKNOWN) return true;
-        return importedName === null
-          ? namespaceProvides(target, seen)
-          : providesAt(target, importedName, seen);
-      });
-    for (const statement of file.statements) {
-      if (name === 'default' && ts.isExportAssignment(statement))
-        return readsProvider(statement.expression);
-      if (!ts.isVariableStatement(statement)) continue;
-      for (const declaration of statement.declarationList.declarations)
-        if (
-          bindingNames(declaration.name, []).includes(name) &&
-          declaration.initializer
-        )
-          return readsProvider(declaration.initializer);
+    if (ts.isPropertyAssignment(current)) {
+      if (ts.isComputedPropertyName(current.name))
+        visit(current.name.expression, false);
+      visit(current.initializer, false);
+      return;
     }
-    return false;
-  };
-  const provides = (target, name) => providesAt(target, name, new Set());
-  // A namespace import binds every export; a star re-export is not
-  // enumerated here, so it counts.
-  const namespaceProvides = (target, seen = new Set()) => {
-    if (target === changed) return true;
-    const table = graph.exportsOf(target);
-    if (!table || table.stars.length) return true;
-    return [...table.local, ...table.named.keys()].some((name) =>
-      providesAt(target, name, seen),
-    );
-  };
-  for (const [importer, fileEdges] of graph.edges) {
-    if (importer === changed) continue;
-    if (!isSdkSourceModule(importer) && !graph.barrels.has(importer)) continue;
-    const reaches = (edge) =>
-      edge.names === null
-        ? namespaceProvides(edge.target)
-        : edge.names.some((name) => provides(edge.target, name));
-    if (!fileEdges.some(reaches)) continue;
-    const file = parse(importer, graph.sources.get(importer), true);
-    const bound = new Set();
-    for (const statement of file.statements) {
-      if (!ts.isImportDeclaration(statement)) continue;
-      const clause = statement.importClause;
-      if (!clause || clause.isTypeOnly) continue;
-      const target = graph.resolveSpecifier(
-        importer,
-        statement.moduleSpecifier.text,
-      );
-      if (target === null || target === UNKNOWN) continue;
-      if (clause.name && provides(target, 'default'))
-        bound.add(clause.name.text);
-      const bindings = clause.namedBindings;
-      if (bindings && ts.isNamespaceImport(bindings)) {
-        if (namespaceProvides(target)) bound.add(bindings.name.text);
-      } else if (bindings)
-        for (const element of bindings.elements)
-          if (
-            !element.isTypeOnly &&
-            provides(target, (element.propertyName ?? element.name).text)
-          )
-            bound.add(element.name.text);
+    if (ts.isCallExpression(current) || ts.isNewExpression(current)) {
+      // The callee runs; a function handed to it may run too.
+      visit(unwrap(current.expression), true);
+      for (const argument of current.arguments ?? []) visit(argument, true);
+      return;
     }
-    if (bound.size === 0) continue;
-    const imported = importedBindings(file);
-    for (const statement of file.statements)
+    if (ts.isTaggedTemplateExpression(current)) {
+      visit(unwrap(current.tag), true);
+      visit(current.template, true);
+      return;
+    }
+    if (ts.isPropertyDeclaration(current)) {
+      // A static initializer runs at class evaluation; an instance one
+      // runs only on construction.
       if (
-        statementHasSideEffect(statement, imported) &&
-        [...referencedIdentifiers(statement)].some((name) => bound.has(name))
+        hasModifier(current, ts.SyntaxKind.StaticKeyword) &&
+        current.initializer
       )
-        return {
+        visit(current.initializer, false);
+      return;
+    }
+    if (ts.isClassStaticBlockDeclaration(current)) {
+      visit(current.body, false);
+      return;
+    }
+    ts.forEachChild(current, (child) => {
+      visit(child, false);
+    });
+  };
+  visit(node, false);
+  return into;
+}
+
+/**
+ * Every top-level use in barrel-evaluated modules, with the origins of what
+ * it reads. Exported for its tests; `topLevelUseOf` is the consumer.
+ *
+ * @returns {Array<{ importer: string, line: number, any: boolean, mods: Set<string> }>}
+ */
+export function topLevelUseAnalysis(graph) {
+  if (topLevelUseAnalyses.has(graph)) return topLevelUseAnalyses.get(graph);
+  const infos = new Map();
+  const info = (module) => {
+    if (!infos.has(module)) {
+      const source = graph.sources.get(module);
+      if (source === undefined) {
+        infos.set(module, null);
+        return null;
+      }
+      const file = parse(module, source, true);
+      const importedFrom = new Map();
+      const locals = new Map();
+      for (const statement of file.statements) {
+        if (ts.isImportDeclaration(statement)) {
+          const clause = statement.importClause;
+          if (!clause || clause.isTypeOnly) continue;
+          const target = graph.resolveSpecifier(
+            module,
+            statement.moduleSpecifier.text,
+          );
+          if (target === null) continue;
+          if (clause.name)
+            importedFrom.set(clause.name.text, [target, 'default']);
+          const bindings = clause.namedBindings;
+          if (bindings && ts.isNamespaceImport(bindings))
+            importedFrom.set(bindings.name.text, [target, null]);
+          else if (bindings)
+            for (const element of bindings.elements)
+              if (!element.isTypeOnly)
+                importedFrom.set(element.name.text, [
+                  target,
+                  (element.propertyName ?? element.name).text,
+                ]);
+        } else if (ts.isVariableStatement(statement)) {
+          for (const declaration of statement.declarationList.declarations)
+            if (ts.isIdentifier(declaration.name))
+              locals.set(declaration.name.text, declaration);
+        } else if (ts.isFunctionDeclaration(statement) && statement.name)
+          locals.set(statement.name.text, statement);
+      }
+      infos.set(module, { file, importedFrom, locals });
+    }
+    return infos.get(module);
+  };
+
+  const memo = new Map();
+  const fresh = (module) => ({
+    mods: new Set(module ? [module] : []),
+    any: false,
+    found: false,
+    cyclic: false,
+  });
+  const merge = (into, from) => {
+    for (const module of from.mods) into.mods.add(module);
+    into.any ||= from.any;
+    into.cyclic ||= from.cyclic;
+  };
+  const stack = new Set();
+  const memoized = (key, compute) => {
+    if (memo.has(key)) return memo.get(key);
+    if (stack.has(key)) return { ...fresh(null), cyclic: true };
+    stack.add(key);
+    const result = compute();
+    stack.delete(key);
+    // A result computed beneath a cycle hit is partial: never cache it.
+    if (!result.cyclic) memo.set(key, result);
+    return result;
+  };
+  const bindingOrigins = (target, importedName) => {
+    if (target === UNKNOWN) return { ...fresh(null), any: true, found: true };
+    return importedName === null
+      ? namespaceOrigins(target)
+      : origins(target, importedName);
+  };
+  const localOrigins = (module, name, result) => {
+    const moduleInfo = info(module);
+    if (!moduleInfo) {
+      result.any = true;
+      return;
+    }
+    let initializer;
+    for (const statement of moduleInfo.file.statements) {
+      if (name === 'default' && ts.isExportAssignment(statement))
+        initializer = statement.expression;
+      else if (ts.isVariableStatement(statement))
+        for (const declaration of statement.declarationList.declarations)
+          if (bindingNames(declaration.name, []).includes(name))
+            initializer = declaration.initializer;
+    }
+    if (!initializer) return; // a function or class: its body is not run
+    for (const identifier of loadTimeIdentifiers(
+      initializer,
+      moduleInfo.locals,
+    )) {
+      const source = moduleInfo.importedFrom.get(identifier);
+      if (source) merge(result, bindingOrigins(source[0], source[1]));
+    }
+  };
+  const origins = (module, name) =>
+    memoized(`${module}\0${name}`, () => {
+      const result = fresh(module);
+      const table = graph.exportsOf(module);
+      if (!table) {
+        result.any = result.found = true;
+        return result;
+      }
+      if (table.local.has(name)) {
+        result.found = true;
+        localOrigins(module, name, result);
+        return result;
+      }
+      const entry = table.named.get(name);
+      if (entry) {
+        result.found = true;
+        const target = graph.resolveSpecifier(module, entry.specifier);
+        if (target === null) return result;
+        merge(result, bindingOrigins(target, entry.name));
+        return result;
+      }
+      if (name === 'default') return result;
+      for (const specifier of table.stars) {
+        const target = graph.resolveSpecifier(module, specifier);
+        // An external or unresolvable star could be where the name lives.
+        if (target === null || target === UNKNOWN) {
+          result.any = result.found = true;
+          continue;
+        }
+        const nested = origins(target, name);
+        if (nested.found || nested.any) {
+          merge(result, nested);
+          result.found = true;
+        } else result.cyclic ||= nested.cyclic;
+      }
+      return result;
+    });
+  // A namespace binds every export; a star re-export is not enumerated.
+  const namespaceOrigins = (module) =>
+    memoized(`${module}\0*`, () => {
+      const result = fresh(module);
+      result.found = true;
+      const table = graph.exportsOf(module);
+      if (!table || table.stars.length) {
+        result.any = true;
+        return result;
+      }
+      for (const name of [...table.local, ...table.named.keys()])
+        merge(result, origins(module, name));
+      return result;
+    });
+
+  const uses = [];
+  for (const importer of barrelReachable(graph)) {
+    if (!isSdkSourceModule(importer) && !graph.barrels.has(importer)) continue;
+    const moduleInfo = info(importer);
+    if (!moduleInfo || moduleInfo.importedFrom.size === 0) continue;
+    const imported = importedBindings(moduleInfo.file);
+    for (const statement of moduleInfo.file.statements) {
+      if (!statementHasSideEffect(statement, imported)) continue;
+      const use = fresh(null);
+      // Everything the statement reads, including through local bindings
+      // (`const l = [f]; registry.push(l)`), whatever the position: the
+      // use site is already a side effect, so this side over-approximates.
+      const read = referencedIdentifiers(statement);
+      for (const identifier of read) {
+        const local = moduleInfo.locals.get(identifier);
+        if (local) referencedIdentifiers(local, read);
+      }
+      for (const identifier of read) {
+        const source = moduleInfo.importedFrom.get(identifier);
+        if (source) merge(use, bindingOrigins(source[0], source[1]));
+      }
+      if (use.any || use.mods.size)
+        uses.push({
           importer,
           line:
-            file.getLineAndCharacterOfPosition(statement.getStart()).line + 1,
-        };
+            moduleInfo.file.getLineAndCharacterOfPosition(statement.getStart())
+              .line + 1,
+          any: use.any,
+          mods: use.mods,
+        });
+    }
   }
+  topLevelUseAnalyses.set(graph, uses);
+  return uses;
+}
+
+function topLevelUseOf(graph, changed) {
+  for (const use of topLevelUseAnalysis(graph))
+    if (use.importer !== changed && (use.any || use.mods.has(changed)))
+      return { importer: use.importer, line: use.line };
   return null;
 }
 
@@ -1380,7 +1604,7 @@ function decideCandidate(root, base, path, graph, readBase) {
 export function refineSdkBarrelRelatedPaths(
   root,
   relatedPaths,
-  { base, loadGraph = loadSdkImportGraph, readBase = readAtBase } = {},
+  { base, loadGraph = loadSdkImportGraph, readBase } = {},
 ) {
   const candidates = relatedPaths.filter(
     (path) => isSdkSourceModule(path) && !SDK_BARREL_PATHS.includes(path),
@@ -1404,10 +1628,25 @@ export function refineSdkBarrelRelatedPaths(
     }
     return { paths: [...paths].sort(), decisions };
   }
+  // Without an injected reader, read every candidate at the base at once.
+  let readCandidate = readBase;
+  if (!readCandidate) {
+    let contents;
+    let failure;
+    try {
+      contents = readAllAtBase(root, base, candidates);
+    } catch (error) {
+      failure = error;
+    }
+    readCandidate = (_root, _base, path) => {
+      if (failure) throw failure;
+      return contents.get(path);
+    };
+  }
   for (const path of candidates) {
     let decision;
     try {
-      decision = decideCandidate(root, base, path, graph, readBase);
+      decision = decideCandidate(root, base, path, graph, readCandidate);
     } catch (error) {
       // Refinement only narrows. An internal failure for one path selects
       // MORE (plain related selection), never fails the lane.
