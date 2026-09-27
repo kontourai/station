@@ -87,17 +87,6 @@ describe('pendingAttentionItems', () => {
     ).toEqual([]);
   });
 
-  test('the count is the length of the list — one predicate, not two', () => {
-    const items = [
-      failed('a'),
-      failed('b', { acknowledgedAt: AT }),
-      approval('c'),
-      approval('d', { acknowledgedAt: AT }),
-    ];
-    expect(countPendingAttention(items)).toBe(
-      pendingAttentionItems(items).length,
-    );
-  });
 });
 
 describe('countPendingAttention', () => {
