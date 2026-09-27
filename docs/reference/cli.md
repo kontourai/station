@@ -2075,6 +2075,11 @@ station stop --home=/tmp/station-a
 In a source checkout, pull the latest code, reinstall dependencies, and rebuild.
 In a signed portable install, reuse the persisted release ring and delegate to
 the installer without a Git checkout or pre-stop action. Installed plugins are preserved.
+From a prebuilt server archive (`station-server-<os>-<arch>`), `upgrade`
+refuses and changes nothing: installing a newer archive is the installer's job
+(#2675). Until then, stop Station, extract the newer archive into its own
+directory, and start it from there; it finds the instances the old version
+started (see [Instance State Mechanism](#instance-state-mechanism)).
 
 ```
 station upgrade
@@ -2268,6 +2273,12 @@ Station manifest with its installed package version. A mismatch or missing
 installation is a fail-level check with an `npm install` repair suggestion.
 Optional tools and whether chat and External-agent paths are ready are checked
 separately.
+
+Run from a prebuilt server archive, doctor reports the Node.js the archive
+ships (`Node.js — v24.x (bundled: <archive>/runtime/...)`, a warn when some
+other Node.js is running it) and a `Prebuilt archive` line with the release
+ref, sha, ring, channel and lifecycle-state directory. It skips the npm, tsx
+and Rust checks and the toolchain fix commands: an archive cannot build itself.
 
 The `Terminal PTY (node-pty)` check reports whether the `node-pty` native
 module loads from the checkout. When it does not — typically a Linux host that
@@ -2755,6 +2766,8 @@ When `station start` launches the server and UI processes, it writes per-instanc
 `station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
 
 During rollout, Station still recognizes the prior `<cwd>/.station.pids` file when present and migrates away from it as new-format state is written.
+
+A prebuilt server archive keeps this state outside itself, in `<STATION_ROOT>/state/<channel>/instances/` (`STATION_ROOT` defaults to `~/.station`, or `%USERPROFILE%\.station` on Windows; an explicit `STATION_HOME` derives it as elsewhere). The archive can therefore be read-only, and every extracted version of one channel shares the records: the next version's `station stop` finds what the previous one started. For the same reason an archive's implicit instance id (no `--instance`, non-default home or ports) hashes the channel, home and ports rather than the archive's directory. Source checkouts are unchanged.
 
 The CLI requires `.station/instances` to be an owned, non-symlinked directory with mode `0700`; if it isn't (e.g. a checkout that predates this check, or a directory created with a looser umask), `station start`/`station build` fails with `Unsafe Station instance-state directory (expected owned mode 0700): <path>`. Fix it with:
 
