@@ -210,8 +210,11 @@ describe('a service updates itself across two real archives (#2675 D)', {
       readFileSync(join(staged, '.station-install-complete'), 'utf8'),
     ).toMatch(/^[0-9a-f]{64}\n$/);
     expect(lstatSync(staged).mode & 0o222).toBe(0);
-    expect(realpathSync(join(install.installRoot, 'current'))).toBe(
-      realpathSync(staged),
+    await waitFor(
+      'current to follow the commit',
+      () =>
+        realpathSync(join(install.installRoot, 'current')) ===
+        realpathSync(staged),
     );
     expect(homeSchemaVersion(install)).toBe(3);
     expect(readState(install)?.activeVersion).toBe('1.1.0');
@@ -282,6 +285,47 @@ describe('a service updates itself across two real archives (#2675 D)', {
     expect(fixtureLog(install)).toContain('1.1.0 ready');
     expect(realpathSync(join(install.installRoot, 'current'))).toBe(
       realpathSync(join(install.installRoot, 'versions', '1.1.0')),
+    );
+  });
+
+  it('install.sh refuses to touch an install whose supervised update is unfinished', async () => {
+    const { install, launcher, env, manifestPath } =
+      await twoArchiveInstall('prepare');
+    launcher.process.kill('SIGTERM');
+    await launcher.exited;
+    const state = join(install.installRoot, 'runtime', 'service-state.json');
+    writeFileSync(
+      state,
+      JSON.stringify({
+        protocol: 1,
+        activeVersion: '1.0.0',
+        update: {
+          id: '00000000-0000-4000-8000-000000000000',
+          fromVersion: '1.0.0',
+          targetVersion: '1.1.0',
+          status: 'pending',
+          phase: 'restoring',
+          attempts: 1,
+        },
+      }),
+    );
+    const before = readFileSync(state, 'utf8');
+    const upgraded = spawnSync('sh', [installScript], {
+      encoding: 'utf8',
+      timeout: 120_000,
+      windowsHide: true,
+      env: {
+        ...env,
+        STATION_INSTALL_PUBLIC_MANIFEST_URL: pathToFileURL(manifestPath).href,
+      },
+    });
+    expect(upgraded.status).not.toBe(0);
+    expect(upgraded.stderr).toContain(
+      'a supervised Station update is unfinished',
+    );
+    expect(readFileSync(state, 'utf8')).toBe(before);
+    expect(realpathSync(join(install.installRoot, 'current'))).toBe(
+      realpathSync(join(install.installRoot, 'versions', '1.0.0')),
     );
   });
 });

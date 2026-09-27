@@ -72,7 +72,10 @@ async function serviceRun(): Promise<void> {
   if (!context) throw new Error('fixture service run needs a launcher');
   log(`run ${context.role}`);
   // A booting server establishes its home, as Station's does.
-  if (context.role === 'active') ensureStationHomeSchemaSync(home);
+  // (A version that migrates the home knows its own schema; this fixture's
+  // bundled Station code knows only the current one.)
+  if (context.role === 'active' && fixture.homeSchemaVersion === undefined)
+    ensureStationHomeSchemaSync(home);
   mkdirSync(join(home, 'config'), { recursive: true });
   process.on('SIGTERM', () => {
     if (fixture.ignoreTerm) {

@@ -133,12 +133,15 @@ describe('the fixed service launcher (#2675 D)', { timeout: 90_000 }, () => {
       attempts: 1,
     });
     expect(readState(install)?.activeVersion).toBe('1.1.0');
-    expect(currentVersion(install)).toBe('1.1.0');
-    expect(
-      existsSync(
-        join(install.installRoot, 'runtime', 'update-backups', update.id),
-      ),
-    ).toBe(false);
+    // `current` moves and the backup goes right after the commit is recorded.
+    await waitFor(
+      'current and the backup to follow',
+      () =>
+        currentVersion(install) === '1.1.0' &&
+        !existsSync(
+          join(install.installRoot, 'runtime', 'update-backups', update.id),
+        ),
+    );
     const log = fixtureLog(install);
     // Stopped, backed up with the old version's own code, then trialled.
     const order = [
@@ -419,10 +422,14 @@ describe('a launcher killed after each durable write finishes the update (#2675 
       expect(update.attempts).toBeLessThanOrEqual(2);
       await servingAgain('1.1.0');
       expect(readState(install)?.activeVersion).toBe('1.1.0');
-      expect(currentVersion(install)).toBe('1.1.0');
-      expect(
-        readdirSync(join(install.installRoot, 'runtime', 'update-backups')),
-      ).toEqual([]);
+      // `current` and the backup follow the committed state.
+      await waitFor(
+        'current and the backup to follow',
+        () =>
+          currentVersion(install) === '1.1.0' &&
+          readdirSync(join(install.installRoot, 'runtime', 'update-backups'))
+            .length === 0,
+      );
     },
   );
 
@@ -432,6 +439,14 @@ describe('a launcher killed after each durable write finishes the update (#2675 
       const { install, update, schemaBefore, servingAgain } =
         await crashThenRecover(point, 'exit');
       expect(update.status).toBe('rolled-back');
+      // The interrupted rollback is finished, never retried as a new trial.
+      expect(update).toMatchObject({
+        reason: 'candidate-exited:3',
+        attempts: 1,
+      });
+      expect(
+        fixtureLog(install).filter((line) => line === '1.1.0 run trial'),
+      ).toHaveLength(1);
       await servingAgain('1.0.0');
       expect(readState(install)?.activeVersion).toBe('1.0.0');
       expect(currentVersion(install)).toBe('1.0.0');
