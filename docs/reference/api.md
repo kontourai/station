@@ -28,30 +28,15 @@ not mean every deployment mounts or admits it.
 
 ## Table of Contents
 
-- [Agent Management](#agent-management)
-- [Integration Management](#integration-management)
-- [Layout Management](#layout-management)
-- [Workflow Management](#workflow-management)
-- [Conversation Management](#conversation-management)
-- [Configuration](#configuration)
-- [Connections](#connections)
-- [Fleet Inference](#fleet-inference)
-- [Bedrock Models](#bedrock-models)
-- [Analytics](#analytics)
-- [Monitoring](#monitoring)
-- [Agent Invocation](#agent-invocation)
-- [Auth & Users](#auth--users)
-- [Branding](#branding)
-- [Events (SSE)](#events-sse)
-- [File System](#file-system)
-- [Insights](#insights)
-- [Standalone Model Capability Routes](#standalone-model-capability-routes)
-- [Plugins](#plugins)
-- [Registry](#registry)
-- [Scheduler](#scheduler)
-- [System](#system)
-- [Starter Work](#starter-work)
-- [Spatial Board](#spatial-board)
+| Area | Route families |
+| --- | --- |
+| Work and layouts | [Starter Work](#starter-work), [Spatial Board](#spatial-board), [personal Boards](#personal-boards), [Layouts](#layout-management), [workflow files](#workflow-management), [independent review](#independent-review-evidence) |
+| Agents and conversations | [Agent management](#agent-management), [invocation](#agent-invocation), [orchestration model selection](#orchestration-model-launch-behavior), [conversations](#conversation-management), [attachments](#attachments), [global routes](#global-routes) |
+| Models and configuration | [App configuration](#configuration), [connections](#connections), [fleet inference](#fleet-inference), [Bedrock catalog](#bedrock-models), [model capabilities](#model-capabilities), [standalone model routes](#standalone-model-capability-routes) |
+| Activity and observations | [Analytics](#analytics), [monitoring](#monitoring), [insights](#insights), [events](#events-sse), [analytics reset](#additional-analytics) |
+| Extensions | [Plugins](#plugins), [Registry](#registry), [frontend clients](#frontend-usage-summary) |
+| Host operations | [Scheduler](#scheduler), [system](#system), [additional system reads](#additional-system-routes), [filesystem browse](#file-system), [UI commands](#ui-commands) |
+| Identity and protocol | [Auth and users](#auth--users), [person binding](#bind-a-paired-device-to-its-verified-person), [branding](#branding), [errors](#error-handling), [registration/auth/CORS](#architecture-notes) |
 
 ---
 
@@ -59,79 +44,57 @@ not mean every deployment mounts or admits it.
 
 ```http
 GET /api/starter-work
-POST /api/starter-work/bind
-POST /api/starter-work/launch
 GET /api/starter-work/:starterId
 GET /api/starter-work/:starterId/candidate
 GET /api/starter-work/:starterId/observation
+POST /api/starter-work/bind
+POST /api/starter-work/launch
+DELETE /api/starter-work/:starterId/binding
 ```
 
-Starter Work is a bounded server catalog, not a client-defined checklist. The
-catalog exposes `start-task`, `continue-session`, `inspect-approval`, and
-`inspect-receipt`, plus `run-scheduled-check`; all require the durable
-completed first-run decision. Their targets are, respectively, an exact Task
-with its matching Project ID and an exact Station-owned continuation Session.
-`GET` returns catalog projections (including each starter's correlation
-status). Binding accepts only the registered target kind and owner identity and
-returns `409` for a conflicting binding or mismatched/missing owner, `404` for
-an unknown starter, and `503` when the durable ledger is unavailable. A bind
-does not declare a Task complete: Task Session, run, and receipt owners remain
-the completion authority.
+Starter Work links a bounded onboarding catalog to real Work owners. Its five
+IDs are `start-task`, `continue-session`, `inspect-approval`, `inspect-receipt`,
+and `run-scheduled-check`. Binding/launch and inspection candidates require the
+home's completed first-run decision. Catalog/status reads describe readiness
+and correlation; they do not make a browser checklist authoritative.
 
-`POST /api/starter-work/launch` is the first vertical's only create-and-start
-intent. Readiness is checked first: `200` with `state: deferred|unavailable`
-and `retrySafe: true` creates no Task and dispatches nothing. A ready launch
-returns `201` with `state: started`: it creates a real Task idempotently,
-persists its exact binding and operation fence, then asks the existing Task
-dispatcher exactly once. The response separates correlation from the total
-dispatch disposition. `indeterminate` is never retried automatically;
-`NOT_VERIFIED` remains until the Task's owner evidence reports a passed receipt
-or explicit exception. Hosted tenant execution exposes no personal-home
-Starter route until it has equivalent tenant-bound Work owners.
+The [routes](../../src-server/routes/starter-work.ts) return
+`{success: true, data}` for successful reads/actions. Unknown starters return 404;
+invalid targets, prerequisites, or conflicting correlation return 409; unavailable
+owner/storage paths return 503. Launch results with state `started`, `continued`,
+or `opened` use 201; other typed dispositions use 200. Always inspect the data:
+HTTP status alone does not prove useful-work completion.
 
-For `continue-session`, the launch body carries only the exact read-only source
-Session ID and an operation ID. Station validates that source through the
-orchestration owner and uses the existing adoption ledger's idempotency key to
-create or replay one Station-owned child. A `201 state: continued` response
-contains the exact child Session and command receipt identity; failures remain
-typed as `failed`, `unavailable`, or `indeterminate`, with the same operation ID
-safe to retry when `retrySafe` is true. The command receipt proves admission,
-not useful-work completion, so evidence remains `NOT_VERIFIED`.
-The catalog binding is one-time: after it is bound, later attached-session
-continuations stay on the ordinary orchestration owner API rather than
-overwriting Starter correlation.
+- **Start a Task:** the body names `starterId`, a stable `operationId`, and
+  `task` with its Project ID/title, plus optional top-level `dispatch` inputs. The
+  [registry](../../src-server/services/starter-work/starter-registry.ts) checks
+  readiness before creation. Deferred/unavailable readiness is retry-safe and
+  creates no Task. A ready request creates the Task idempotently, then binds and
+  fences dispatch. `state: "started"` can still contain unverified correlation
+  or failed/indeterminate dispatch; read those fields before claiming execution.
+- **Continue a Session:** the body names only the Starter ID, operation ID, and
+  exact source Session ID. The [session owner](../../src-server/services/starter-work/starter-session-owner.ts)
+  validates and adopts the source through the existing idempotency ledger.
+  Its child Session/command receipt proves admission, not useful completion.
+- **Inspect approval/receipt:** candidate reads return exact typed references.
+  Launch revalidates the owner and returns an approval-inbox or Project Review
+  layout link. Inspection does not approve a request or turn review findings
+  into a gate verdict. Observation rereads the owner; it does not trust copied
+  browser state.
+- **Run a scheduled check:** the server prepares `station-starter-check` disabled,
+  using the Station Agent, no generic retries, and a 24-hour interval. It binds
+  the exact manual scheduler-run receipt before activation. Repeated operation
+  IDs replay that prepared run. The Home recovery action uses the stored
+  operation ID; observing `completed` proves the check ran, not that its findings
+  passed a gate.
 
-The two inspection starters are read-only owner journeys. Candidate reads
-select only a validated Approval Inbox notification or independent-review
-receipt and return its exact typed reference; they never select by title.
-Launching revalidates that owner, binds the exact reference idempotently, and
-returns a server-built `/notifications?approval=...` or
-`/projects/<slug>/layouts/review?receipt=...` link — the Project's own Review
-layout, which #2065 made the home of review evidence when the global
-`/review-queue` was retired. A stored `/review-queue?receipt=...&project=...`
-link still resolves: it redirects to that same layout with the receipt
-selected, and one carrying no `project` goes to `/notifications` rather than
-guessing a Project. Observation re-reads the owner every
-time, so resolved, expired, missing, stale, unavailable, and `NOT_VERIFIED`
-states do not come from a browser checkbox or copied payload. Inspecting does
-not approve an approval, and independent-review findings remain input-only
-evidence rather than a pass, exception, or gate verdict. Hosted execution does
-not mount candidate or launch routes until tenant-bound owners exist.
-Starter telemetry remains default-off until the product telemetry decision is
-resolved.
-
-`run-scheduled-check` accepts only its Starter ID and stable operation ID. The
-server creates the canonical `station-starter-check` job disabled, with the
-Station Agent, no retries, and a daily schedule that does not recur until an
-operator explicitly enables it. SchedulerLedger atomically prepares the exact
-manual run; Starter Work binds its canonical `scheduler-run` receipt before
-activation. Response loss replays that run rather than invoking again. The
-bound Home recovery action reuses the binding's stored `operationId`, including
-for SDK-created identities, so restart recovery cannot drift to a new run. The
-result and observation link to `/schedule?run=...`; running, completed, failed,
-and indeterminate are derived from RunService. Completion proves the check ran,
-not that its free-form findings passed a gate, so evidence remains
-`NOT_VERIFIED`.
+The [binding store](../../src-server/services/starter-work/starter-work-module.ts)
+keeps correlation separate from dispatch fencing. Explicitly clearing a binding
+does not delete the underlying Work or erase an admitted dispatch fence.
+`NOT_VERIFIED` remains appropriate until the referenced owner supplies the
+relevant evidence. Starter counters use the normal monitoring instrumentation;
+see [telemetry configuration](env-vars.md#telemetry) for export/usage controls.
+These personal Starter routes are not mounted in hosted mode.
 
 ## Spatial Board
 
@@ -147,20 +110,28 @@ POST /api/spatial-board/cleanup
 POST /api/spatial-board/undo
 ```
 
-The Spatial Board is a personal, revision-checked schema-v2 layout store. Pins
-persist only a full WorkReference (Project, Task, Session, approval, Flow
-run/gate, scheduler or independent-review receipt, run-output Artifact, or
-Agent) and bounded geometry. Titles, states, verdicts, and evidence remain
-with their owners. `GET /resolved` reads only the current board's stored refs,
-groups them by owner, and returns ephemeral `current`, `missing`, `stale`,
-`unavailable`, `ambiguous`, or `NOT_VERIFIED` projections; it is not a general
-cross-product query API. Every mutation supplies the last observed
-`expectedRevision`; stale writes return `409`, missing pins return `404`,
-capacity returns `413`, and unreadable/corrupt storage returns a redacted
-`503`. Cleanup accepts exact full WorkReferences observed missing by the
-caller, and undo exchanges one bounded prior snapshot. Hosted tenant execution
-mounts none of these routes until equivalent tenant-bound owner and storage
-seams exist.
+The Spatial Board is a separate, personal-mode pin store—not a personal Layout
+from `/api/me/layouts`. Its [schema-v2 store](../../src-server/services/spatial-board/spatial-board-store.ts)
+persists board title/camera and pins containing an ID, full WorkReference, and
+bounded geometry/order. Work titles, state, verdicts, and evidence stay with the
+referenced owners.
+
+[GET resolved](../../src-server/services/spatial-board/spatial-board-resolver.ts)
+groups only the current board's stored references by owner. It returns ephemeral
+`current`, `missing`, `stale`, `unavailable`, `ambiguous`, or `NOT_VERIFIED`
+projections rather than a general cross-product query result.
+
+Every mutation carries `expectedRevision`, including DELETE and undo. The
+[routes](../../src-server/routes/spatial-board.ts) return 409 for revision/identity
+conflict, 404 for a missing pin, 413 for capacity, and a redacted 503 for unavailable
+storage. Successful results use `{success: true, data}`. PUT also requires the
+body pin ID to match the path.
+
+Cleanup accepts full references that the caller observed as missing. The store
+checks they belong to the board and removes matching pins; it does not rerun
+owner resolution inside that write. Undo swaps one prior bounded snapshot and
+advances revision; it is not an unbounded edit history. Hosted mode does not
+mount these personal-storage routes.
 
 ## Agent Management
 
@@ -501,7 +472,9 @@ Tool add/remove/allow-list writes can carry the same 202 activation receipt as
 Agent writes. An empty `available` list filters out all loaded tools; omit it or
 use `["*"]` to include all loaded tools.
 
-**Used by**: `ConversationsContext.tsx`, tool displays, agent editor
+The current [Agent editor](../../src-ui/src/views/agent-editor/useAgentsViewModel.ts)
+reads this catalog through [useAgentToolsQuery](../../packages/sdk/src/query-domains/agentAdmin.ts).
+
 
 ---
 
@@ -525,7 +498,6 @@ POST /agents/:slug/tools
 }
 ```
 
-**Used by**: Agent editor, integration management
 
 ---
 
@@ -541,7 +513,6 @@ DELETE /agents/:slug/tools/:toolId
 }
 ```
 
-**Used by**: Agent editor, integration management
 
 ---
 
@@ -569,151 +540,102 @@ PUT /agents/:slug/tools/allowed
 }
 ```
 
-**Used by**: Agent editor
 
 ---
 
 ## Layout Management
 
 Standalone `/layouts` endpoints were removed during project-layout convergence.
-Use the project-scoped layout endpoints under `/api/projects/:slug/layouts` instead.
+Use the [Project layout routes](../../src-server/routes/projects/projects.ts)
+under `/api/projects/:slug/layouts`, or the separate [personal Board](#personal-boards)
+routes for principal-owned layouts.
 
-**Used by**: project-scoped layout management flows
 
 ---
 
 ## Personal Boards
 
-A **Board** is a Layout owned by a principal rather than a project
-(`docs/design/shell-ownership-and-boards.md`, decision D1). Boards are stored
-under the Station home keyed by principal, so the same Boards are served to
-every device that resolves to the same principal — a device identified by
-Tailscale WhoIs, or a paired device bound to a person. A bare paired device
-with no person binding resolves to a per-device principal instead and sees
-its own Boards; see `docs/design/principals.md` for how a request is placed.
+A Board here is a **Layout owned by a principal**. It differs from the Spatial
+Board's Work-reference pins. The [owner-scoped storage](../../src-server/domain/layout-owner-storage.ts)
+keys personal layouts from the exact principal ID, so devices resolving to the
+same person can share them. An unbound paired device normally has its own
+device principal. The request's identity resolver supplies the owner; the body
+cannot choose it.
 
-A caller the resolver cannot place at all is refused with `400` and
-`code: "principal_unresolved"` — a deterministic authorization failure, not a
-transient one, so retrying the same request with the same credential fails
-the same way.
-
-The owning principal is resolved from the request's own authentication. No
-path segment, body field, or query parameter names it, and a body that carries
-an `owner` is refused with 400 rather than accepted and stripped. A slug
-another principal owns answers exactly like a slug nobody owns — the same 404
-status and the same body — so the response cannot be used to discover whether
-someone else has a Board by that name.
+The [routes](../../src-server/routes/me/personal-layouts.ts) return 400 with
+`principal_unresolved` when no principal can be resolved. A Board outside the
+resolved owner's store has the same 404 as an absent Board. Operations use the
+[personal-layout service](../../src-server/services/layouts/personal-layout-service.ts).
 
 ### List My Boards
-```http
-GET /api/me/layouts
-```
+
+`GET /api/me/layouts` returns `{success: true, data: layouts}` for that owner.
 
 ### Create a Board
+
 ```http
 POST /api/me/layouts
-Content-Type: application/json
-
-{
-  "slug": "daily-brief",
-  "name": "Daily brief",
-  "type": "custom",
-  "icon": "star",
-  "description": "Morning view",
-  "config": {}
-}
 ```
-
-`slug` must be unique among the caller's own Boards; a repeat answers 409.
-
-### Get a Board
-```http
-GET /api/me/layouts/:layoutSlug
-```
-
-The response may carry `paneReferences` (#2090), a response-only verdict
-naming the Board's own tabs that cannot be shown to this caller:
 
 ```json
-{ "paneReferences": { "unavailableTabIds": ["notes"] } }
+{ "slug": "daily-brief", "name": "Daily brief", "type": "custom", "config": {} }
 ```
 
-It is present only when something really is withheld, it carries no reason,
-no source and no action, and it is never stored. A Board tab reaches the same
-renderer a project Layout's does, so a tab naming a component from a plugin
-this person cannot see would otherwise render "…is not installed or
-registered" — a cause the server never derived. Unlike the project layout
-read, this route withholds nothing else: it performs no live plugin read and
-no catalog backfill, and a Board's `config.plugin` is the caller's own input
-into their own record.
+Creation returns 201 with `{success: true, data: board}`. A duplicate slug within
+that owner's store returns 409. Unknown fields, including a supplied owner, are
+refused by the strict request schema.
+
+### Get a Board
+
+`GET /api/me/layouts/:layoutSlug` returns `{success: true, data: board}`.
+It can add response-only `paneReferences: {unavailableTabIds}` for tabs withheld
+from that viewer. The verdict contains no cause/source/action and is not stored.
+Unlike Project layout detail, this handler does not merge live plugin files or
+backfill a catalog contribution. See [plugin identity projection](#which-routes-return-plugin-identity).
 
 ### Update a Board
-```http
-PUT /api/me/layouts/:layoutSlug
-Content-Type: application/json
 
-{ "name": "Renamed" }
-```
+`PUT /api/me/layouts/:layoutSlug` accepts a partial writable shape, for example
+`{name: "Renamed"}`, and returns the updated Board. Omitted top-level fields
+remain stored; each update reads and writes under the owner's record transaction.
+Concurrent replacements of the same field still have ordinary last-write
+semantics, and `config` is not a deep merge of independent nested edits.
 
-Fields the body omits are left as stored. `id`, `slug`, `createdAt`, and the
-owner are immutable. The read and the write happen inside one per-record
-transaction, so two concurrent updates cannot lose one another's change.
-
-This body is otherwise strict — an unrecognized key is refused rather than
-quietly dropped — with one exception: `paneReferences` is ACCEPTED and
-discarded, so that reading a Board and writing it back is not a 400 against a
-field this route itself attached. It never reaches storage. The response
-carries the same verdict the read does.
+The schema refuses `id`, `slug`, owner, and timestamps. It tolerates then discards
+`paneReferences`. This does **not** make an entire GET response a valid PUT body;
+clients must still select writable fields. The returned verdict is recomputed.
 
 ### Delete a Board
-```http
-DELETE /api/me/layouts/:layoutSlug
-```
+
+`DELETE /api/me/layouts/:layoutSlug` returns `{success: true}` or 404 when absent.
 
 ### Promote a Board into a project
+
 ```http
 POST /api/me/layouts/:layoutSlug/promote
-Content-Type: application/json
-
-{ "projectSlug": "campfit" }
 ```
 
-A **move**, not a copy: on success the personal record is gone and the project
-owns the Layout under the same slug, keeping the Board's `id` and `createdAt`
-verbatim. Carrying the same id IS the lineage — there is no `promotedFrom`
-field, because layout ids are a record field rather than a directory key and
-nothing else records the move.
+```json
+{ "projectSlug": "project-slug" }
+```
 
-`projectSlug` is the only field the body may name; anything else is 400. A
-project that does not exist answers 404 `Project not found` — the project
-routes' own answer, given before the personal record is touched, so a promote
-that cannot land never destroys the Board. A slug the project already uses for
-a different Layout answers 409 and moves nothing.
+The body names only the destination Project. This is a move: it preserves the
+Board's ID, slug, and creation time, publishes under the Project owner, then
+deletes the personal record. A missing Project returns 404, and a different
+layout already occupying that slug returns 409.
 
-A Board the destination project would not accept is refused before anything
-moves. Promote runs the same admission `POST /api/projects/:slug/layouts`
-runs — the same function, not a second copy of its rules — so a layout naming
-an agent the project cannot reach answers 400 with that route's diagnostics,
-and a `coding` Board carrying its own `config.workingDirectory` is refused by
-name (that value is derived from the project). A promoted `coding` Board
-therefore persists no `workingDirectory` of its own.
+Before publication, the service uses the same
+[layout admission](../../src-server/routes/projects/project-layout-admission.ts)
+as Project creation: Agent reachability and derived workspace constraints still
+apply. A coding layout cannot bring its own `config.workingDirectory`; the
+Project supplies it. This data-admission step does not itself grant Project
+membership. The route retains the existing operation-scope boundary rather than
+adding a separate membership decision in this service.
 
-Promote grants no capability that `POST /api/projects/:slug/layouts` does not:
-it publishes through the same project transaction, and both carry the same
-`orchestration:operate` pairing scope. Read that as a statement about WHO may
-call, which is a different question from what a call may contain — the
-admission above is the second one, and the two are enforced separately.
-Station applies no per-project membership check to layout writes today
-(`docs/design/project-membership.md` specifies that contract and does not claim
-it is implemented), so promote does not claim one either.
-
-The two writes are ordered create-then-delete, which accepts a visible
-duplicate over a possible loss: if the process dies between them, the Layout is
-in the project AND still listed personally. Repeating the promote closes it —
-the second call sees the project occupant carrying this Board's own id,
-recognizes the interrupted run, and completes the delete.
-
-**Used by**: the Boards section of the left panel (#2062)
+Create-then-delete preserves the record if the process stops between writes,
+but can temporarily leave both copies. Repeating promotion recognizes the
+matching ID at the destination and finishes the personal deletion. That recovery
+is not a transaction spanning both stores.
 
 ---
 
@@ -1370,14 +1292,15 @@ GET /api/attachments/:ref
 
 The bytes behind an attachment a transcript is showing, where `:ref` is the
 `sha256-<64 hex>` content reference persisted on the turn's `attachments`
-(station#3374/#3385). Authenticated at the `orchestration:read` pairing tier.
+(see [attachment storage](config.md#chat-attachments)). The route requires the
+`orchestration:read` pairing tier.
 
 The response deliberately **does not name the image's type**: the store is
 addressed by bytes alone and holds no MIME type, and two attachments with
 different declared names can share one digest. The declared type lives on the
 attachment metadata in the event, and the client applies it when it builds the
-Blob. Serving inert bytes under `nosniff` also means a direct navigation
-downloads rather than renders.
+Blob. The response uses `application/octet-stream` and `nosniff` to request
+inert handling rather than serve the caller-supplied MIME type as active content.
 
 | status | meaning |
 |---|---|
@@ -1894,7 +1817,7 @@ capture current, contained bytes. Unavailable/missing bytes return 404.
 ### Serve Plugin Bundle (CSS)
 
 `GET /api/plugins/:name/bundle.css` returns text/css for present bytes. The current
-handler returns an empty200 when its reader returns no CSS, including unavailable
+handler returns an empty 200 when its reader returns no CSS, including unavailable
 reads. That result is not proof of a complete CSS-free installation.
 
 ### Get Plugin Permissions
@@ -2071,8 +1994,8 @@ The [scheduler routes](../../src-server/routes/operations/scheduler.ts) call
 [SchedulerService](../../src-server/services/scheduling/scheduler-service.ts),
 which aggregates registered providers and routes job operations to their owner.
 This personal scheduler surface returns 404 in hosted mode. Typed invalid
-schedules return 400, conflicts409, unavailable durable storage503, and other
-thrown failures500.
+schedules return 400, conflicts 409, unavailable durable storage 503, and other
+thrown failures 500.
 
 ### List Scheduler Providers
 
@@ -2147,7 +2070,7 @@ back to the recorded run/artifact and asks that provider to read it. Hosted
 scheduled output is unavailable. A readable result is
 `{success: true, data: {content}}`; a missing supported result returns 404,
 while typed storage failure returns 503. Other malformed/unresolvable references
-can reach the handler's500 error path.
+can reach the handler's 500 error path.
 
 ### Create Job
 
@@ -2347,6 +2270,12 @@ client origin. Knowing an approval ID alone is not sufficient. The
 [approval handler](../../src-server/routes/agents/invoke.ts) returns 404 when it
 cannot resolve an authorized pending request.
 
+The current [inline approval handler](../../src-ui/src/hooks/useToolApproval.ts)
+uses orchestration for parts carrying an approval thread ID, including the exact
+request-event identity. It falls back to this retained registry route only when
+that thread ID is absent. This endpoint is not a universal responder for every
+external-engine approval.
+
 **Request Body**:
 ```json
 {
@@ -2361,7 +2290,6 @@ cannot resolve an authorized pending request.
 }
 ```
 
-**Used by**: `useToolApproval.ts`, `ToolApprovalHandler.ts`
 
 ---
 
@@ -2441,36 +2369,63 @@ statistics from retained sources. See the
 
 ## Independent Review Evidence
 
-Independent review runs one to eight selected reviewer Agents over an exact Git range. The server resolves both revisions to commit SHAs, resolves host-authoritative actor identities, provisions a detached read-only workspace, validates each finding against the reviewed head, and returns a durable request status. Reviewer findings are evidence input only: the completed receipt never represents approval, rejection, pass, fail, or gate completion.
+The [review routes](../../src-server/routes/evidence/reviews.ts) submit and read
+independent-review evidence for an exact Project Git range. Explicit reviewer
+lists contain one to eight entries; the contract also supports
+`selection: {kind: "repo-map"}` with an empty reviewer list for owner-resolved
+selection. Do not mix the two forms.
 
 ```http
 POST /api/projects/:projectSlug/reviews
-Content-Type: application/json
+```
 
+```json
 {
-  "requestId": "018f4d95-7c1a-7c4d-a3f4-62d53ed0d1b8",
+  "requestId": "review-operation-id",
   "mode": "initial",
   "target": {
     "kind": "git-range",
-    "projectSlug": "station",
+    "projectSlug": "project-slug",
     "baseRevision": "origin/main",
     "headRevision": "HEAD"
   },
-  "implementerAgentSlug": "terra",
+  "implementerAgentSlug": "implementer-agent",
   "reviewers": [{
     "reviewerId": "reviewer-1",
-    "executorAgentSlug": "sol",
-    "lens": {
-      "id": "failure-totality",
-      "instructions": "Review durable effects and exact outcomes."
-    }
+    "executorAgentSlug": "reviewer-agent",
+    "lens": { "id": "correctness", "instructions": "Review incorrect behavior and missing failure handling." }
   }]
 }
 ```
 
-The caller-generated `requestId` is the durable idempotency key. `201` returns a completed status whose `result` contains `{receipt, attachment, cleanup}`; `202` returns the same request in `running` state. Rejected and indeterminate statuses are durable and never authorize automatic retry. `attachment` reports whether optional Flow evidence was attached; `cleanup` truthfully reports completed, retained, or unavailable workspace cleanup. The canonical SDK bounds each HTTP request to 30 seconds, recovers an ambiguous submission through the status endpoint, and polls until terminal; an explicit caller deadline or AbortSignal still wins.
+The [module](../../src-server/services/evidence/review-evidence-module.ts) resolves
+host-authoritative actor identities and Git revisions, provisions an exact
+[detached worktree](../../src-server/services/evidence/git-review-workspace-source.ts),
+and validates finding locations against the reviewed head. Read-only access is
+an execution policy enforced through the
+[review executor](../../src-server/services/evidence/orchestration-review-executor.ts)
+and supported engine boundary, not a property inferred from the directory name.
+The current runtime composition requests the executor's default Codex provider
+and carries each reviewer's Agent slug as attribution; the request is not a
+promise to dispatch arbitrary reviewer engines.
 
-Delta mode adds `delta: {priorReceiptId, claimedFindingIds}` and requires every claimed prior finding to be assessed exactly once. Read operations are:
+`requestId` is the durable idempotency identity. The envelope is
+`{success: true, data: status}` for recorded outcomes: completed uses 201, running
+202, rejected 400, and indeterminate 409. A completed `result` contains
+`receipt`, optional Flow-evidence attachment disposition, and cleanup result.
+Reviewer findings remain evidence input; the receipt is not approval, pass,
+exception, or gate completion. A cleanup result can retain the workspace when
+shutdown was not confirmed.
+
+The [SDK helper](../../packages/sdk/src/client/reviews.ts) defaults each HTTP
+request to 30 seconds. After submission failure it reads status; if that read
+also fails, it retries the same request ID once. It polls a running status every
+500 ms and honors the caller's AbortSignal. This is a per-request timeout, not a
+30-second deadline for the whole review. Terminal rejected/indeterminate status
+is surfaced as a typed error, not a new automatic review with another ID.
+
+Delta mode adds `delta: {priorReceiptId, claimedFindingIds}`; every claimed prior
+finding must receive exactly one assessment. Reads are:
 
 ```http
 GET /api/projects/:projectSlug/reviews
@@ -2479,7 +2434,12 @@ GET /api/projects/:projectSlug/reviews/:receiptId
 GET /api/review-evidence
 ```
 
-Receipts and request outcomes are immutable protected evidence. Station never silently evicts them; Project admission fails at the configured protected-capacity bound. Aggregate inventory uses bounded receipt references and returns only the newest 512 receipts.
+The [protected store](../../src-server/services/evidence/review-receipt-store.ts)
+refuses identity collisions and capacity exhaustion rather than evicting old
+evidence. The aggregate selects up to the newest 512 receipt references across
+at most 256 Project slugs. Unreadable Projects appear in `unavailableProjects`;
+Projects whose workspace is missing contribute no receipts. Use the returned
+coverage, not an empty receipt array alone, when assessing availability.
 
 ## Architecture Notes
 
@@ -2516,31 +2476,42 @@ admission does not replace authentication or scope. See
 
 ## Bind a paired device to its verified person
 
-`POST /api/pairing/requests/:requestId/confirm` accepts an optional JSON body:
+```http
+POST /api/pairing/requests/:requestId/confirm
+```
 
 ```json
 { "bindVerifiedIdentity": true }
 ```
 
-The operator must deliberately select this option. The pending device request
-must carry server-verified Tailscale identity; the server derives its subject.
-Only a current operator credential or a verified local-grant operator may bind
-it. Ordinary paired-device approval authority, an internal proxy token or a
-self-declared subject is insufficient. Hosted binding is unavailable until the
-device store is tenant-bound (`409 person_binding_unavailable`). Invalid fields/types return `400`; insufficient
-operator authority returns `403`. Bodyless approval preserves device-only access. A binding approval returns
-`personBindingApproved: true`; clients must require that acknowledgment because
-older servers can accept an ordinary approval without understanding the option.
+This explicitly approves a **verified Tailscale-person binding** for a pending
+Device request. The [confirmation route](../../src-server/runtime/routes/runtime-routes.ts)
+requires a current operator credential or a qualifying local-grant credential;
+ordinary paired-device approval, UI-bootstrap locality, or an internal token
+alone cannot approve this binding. The request must have server-verified
+Tailnet identity. The server chooses the subject; the body cannot supply one.
 
-The existing one-time exchange persists `device.principalBinding` together with
-the credential. Its provider, subject, approval time, approval id and approving
-principal record explicit consent; they grant no Project membership or added
-wire scope. The binding lasts with the device grant and is removed from active
-authority by revoking that device. Two approved devices for the same verified
-subject resolve to the same person over direct connections. A conflicting live
-identity is refused. Existing grants/history are not relabeled automatically.
+Invalid fields/types return 400 and insufficient authority returns 403. This
+verified-person binding is unavailable in hosted mode (409
+`person_binding_unavailable`). Ordinary personal Device requests can still be
+approved without a body and remain device-only. Account/relay enrollment that
+requires an account binding cannot use that ordinary path. The separate
+`bindAccountIdentity` option is mutually exclusive with `bindVerifiedIdentity`.
 
-Use the host pairing panel's **Recognize this device as …** checkbox or
-`station environment access approve <request-id> --bind-person` on the Station
-computer for this flow. See [Project membership and enrollment](../design/project-membership.md)
-for the accepted pilot contract and the remaining shared-Project work.
+A successful binding response includes `personBindingApproved: true`; callers
+must require that acknowledgement. The subsequent one-time exchange persists
+the binding with the Device credential, including provider/subject and approval
+provenance. A Tailscale-person binding changes identity resolution; it does not
+add wire scope or Project membership, or relabel existing history.
+
+The [principal owner](../../src-server/runtime/bootstrap/orchestration-request-principal.ts)
+uses that approved binding on direct requests and rejects a conflicting live
+identity. Devices bound to the same provider/subject resolve to the same person;
+revoking a Device removes that grant from active authority.
+
+The [pairing panel](../../packages/connect/src/react/DevicePairingPanel.tsx) offers
+**Recognize this device as …**, and
+`station environment access approve <request-id> --bind-person` carries the same
+explicit choice through the [CLI owner](../../packages/cli/src/commands/environment.ts).
+See [Project membership and enrollment](../design/project-membership.md) for the
+separate account-binding and membership paths.
