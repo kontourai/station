@@ -53,6 +53,7 @@ on:
       - 'scripts/lib/git-environment.mjs'
       - 'scripts/lib/module-entry.mjs'
       - 'scripts/lib/portable-server-archive.mjs'
+      - 'scripts/lib/portable-smoke-diagnostics.mjs'
       - 'scripts/lib/server-build-config.mjs'
   pull_request_target:
     paths:
@@ -80,6 +81,7 @@ on:
       - 'scripts/lib/git-environment.mjs'
       - 'scripts/lib/module-entry.mjs'
       - 'scripts/lib/portable-server-archive.mjs'
+      - 'scripts/lib/portable-smoke-diagnostics.mjs'
       - 'scripts/lib/server-build-config.mjs'
 
 permissions:

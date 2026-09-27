@@ -44,6 +44,11 @@ import {
   PORTABLE_ARCHIVE_ROOT,
   readPortableNodeRuntime,
 } from './lib/portable-server-archive.mjs';
+import {
+  describeCommandFailure,
+  redact,
+  stationLogReport,
+} from './lib/portable-smoke-diagnostics.mjs';
 
 const WINDOWS = process.platform === 'win32';
 const MAX_PATH = 260;
@@ -66,6 +71,31 @@ const { values } = parseArgs({
 
 function fail(message) {
   throw new Error(message);
+}
+
+// Where a failed smoke looks for Station's logs (#2805): the throwaway HOME,
+// and every Station home a launcher announced (a POSIX --temp-home lives in
+// the OS temporary directory, outside HOME).
+const diagnosticRoots = new Set();
+
+function noteAnnouncedHome(output) {
+  const announced = /Station home: (.+) \(/.exec(output ?? '')?.[1];
+  if (announced) diagnosticRoots.add(announced);
+}
+
+/** Runs the launcher once, recording any Station home it announces. */
+function spawnLauncherSync(launcher, args, env, cwd, timeout) {
+  const { command, args: argv, options } = launcherInvocation(launcher, args);
+  const result = spawnSync(command, argv, {
+    ...options,
+    cwd,
+    env,
+    encoding: 'utf8',
+    timeout,
+    windowsHide: true,
+  });
+  noteAnnouncedHome(result.stdout);
+  return result;
 }
 
 function log(message) {
@@ -135,39 +165,23 @@ function launcherInvocation(launcher, args) {
 }
 
 function runLauncher(launcher, args, env, cwd, timeout = 30_000) {
-  const { command, args: argv, options } = launcherInvocation(launcher, args);
-  const result = spawnSync(command, argv, {
-    ...options,
-    cwd,
-    env,
-    encoding: 'utf8',
-    timeout,
-    windowsHide: true,
-  });
+  const result = spawnLauncherSync(launcher, args, env, cwd, timeout);
   const shown = args.map((arg) => arg.replace(cwd, '<home>')).join(' ');
-  if (result.error) fail(`station ${shown}: ${result.error}`);
+  if (result.error || result.status !== 0) {
+    fail(describeCommandFailure(shown, result, timeout));
+  }
   log(
     `$ station ${shown} -> exit ${result.status}:\n${redact(result.stdout.trim())}`,
   );
-  if (result.status !== 0) {
-    fail(`launcher exited ${result.status}: ${redact(result.stderr)}`);
-  }
   return result.stdout.trim();
 }
 
 /** Runs a command that must fail, and returns what it printed. */
 function runLauncherExpectingFailure(launcher, args, env, cwd) {
-  const { command, args: argv, options } = launcherInvocation(launcher, args);
-  const result = spawnSync(command, argv, {
-    ...options,
-    cwd,
-    env,
-    encoding: 'utf8',
-    timeout: 60_000,
-    windowsHide: true,
-  });
+  const timeout = 60_000;
+  const result = spawnLauncherSync(launcher, args, env, cwd, timeout);
   const shown = args.map((arg) => arg.replace(cwd, '<home>')).join(' ');
-  if (result.error) fail(`station ${shown}: ${result.error}`);
+  if (result.error) fail(describeCommandFailure(shown, result, timeout));
   const output = `${result.stdout}${result.stderr}`.trim();
   log(`$ station ${shown} -> exit ${result.status}:\n${redact(output)}`);
   if (result.status === 0) fail(`station ${shown} was expected to refuse`);
@@ -266,11 +280,6 @@ function makeReadOnly(root) {
   return () => {
     for (const [path, mode] of [...modes].reverse()) chmodSync(path, mode);
   };
-}
-
-/** A launch receipt names a single-use sign-in link; never echo the token. */
-function redact(text) {
-  return text.replace(/(#station-ui-bootstrap=)[^\s]+/g, '$1<redacted>');
 }
 
 async function fetchChecked(url, headers = {}) {
@@ -568,16 +577,11 @@ async function proveArchiveLifecycle({
 
 /** Runs the launcher and returns its result whatever its exit status. */
 function spawnLauncher(launcher, args, env, cwd) {
-  const { command, args: argv, options } = launcherInvocation(launcher, args);
-  const result = spawnSync(command, argv, {
-    ...options,
-    cwd,
-    env,
-    encoding: 'utf8',
-    timeout: 60_000,
-    windowsHide: true,
-  });
-  if (result.error) fail(`station ${args.join(' ')}: ${result.error}`);
+  const timeout = 60_000;
+  const result = spawnLauncherSync(launcher, args, env, cwd, timeout);
+  if (result.error) {
+    fail(describeCommandFailure(args.join(' '), result, timeout));
+  }
   log(`$ station ${args.join(' ')} -> exit ${result.status}`);
   return result;
 }
@@ -697,6 +701,7 @@ async function main() {
       launcherName,
     );
     const home = join(work, 'home');
+    diagnosticRoots.add(home);
     const env = scrubbedEnvironment(home);
     mkdirSync(env.TEMP ?? home, { recursive: true });
     mkdirSync(env.APPDATA ?? home, { recursive: true });
@@ -732,6 +737,12 @@ async function main() {
     }
     log(`archive unchanged: ${listing.length} entries`);
     log('PASS');
+  } catch (error) {
+    // Before cleanup removes them: the logs of every Station this smoke ran.
+    console.error(
+      `[portable-smoke] Station logs after the failure:\n${stationLogReport(diagnosticRoots)}`,
+    );
+    throw error;
   } finally {
     if (!values.keep) {
       try {
