@@ -186,14 +186,16 @@ export class NativeRelayGrantRenewalSupervisor {
   /** Recheck every saved route, including after explicit grant redemption. */
   refresh(): Promise<void> {
     if (!this.started) return Promise.resolve();
-    this.reconcileProfiles(false);
-    if (this.issue) return Promise.resolve();
     this.refreshRequested = true;
     if (!this.refreshWaiter) {
       let resolve!: () => void;
       const promise = new Promise<void>((done) => (resolve = done));
       this.refreshWaiter = { promise, resolve };
     }
+    // Mark the refresh before reconciliation can start the pump. Otherwise a
+    // due cached renewal can run ahead of the fresh host status observation.
+    this.reconcileProfiles(false);
+    if (this.issue) return this.refreshWaiter?.promise ?? Promise.resolve();
     this.startPumpIfNeeded();
     return this.refreshWaiter.promise;
   }
@@ -276,7 +278,10 @@ export class NativeRelayGrantRenewalSupervisor {
     ) {
       return;
     }
-    const operation = this.drain();
+    // Publish pump ownership before calling an adapter. A synchronous wake
+    // event inside its first status() call must join this pump, not start a
+    // second renewal drain before `processing` has been assigned.
+    const operation = Promise.resolve().then(() => this.drain());
     this.processing = operation;
     void operation.then(
       () => this.finishPump(operation),
@@ -291,6 +296,14 @@ export class NativeRelayGrantRenewalSupervisor {
         for (const entry of this.sortedRoutes()) {
           if (!this.isCurrent(entry)) continue;
           await this.observeStatus(entry);
+          // Wake events may arrive throughout a long inventory scan. Give a
+          // due route one turn after each observation so repeated refreshes
+          // cannot postpone renewal indefinitely.
+          const due = this.nextFairRoute(this.dueRoutes());
+          if (due) {
+            this.fairCursor = due.key;
+            await this.processDueWork(due);
+          }
         }
         continue;
       }
@@ -342,6 +355,17 @@ export class NativeRelayGrantRenewalSupervisor {
     if (!this.isCurrent(entry) || !entry.nextKind) return;
     if (entry.nextKind === 'status') {
       await this.observeStatus(entry);
+      return;
+    }
+    // Timers can be hours old. A removed, replaced, or revoked grant must be
+    // observed from host custody immediately before asking it to renew.
+    await this.observeStatus(entry);
+    if (
+      !this.isCurrent(entry) ||
+      entry.nextKind !== 'renew' ||
+      entry.nextAt === undefined ||
+      entry.nextAt > this.now()
+    ) {
       return;
     }
     if (
