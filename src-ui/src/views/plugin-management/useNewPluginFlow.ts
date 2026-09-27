@@ -9,6 +9,7 @@ import {
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useNavigation } from '../../contexts/NavigationContext';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   buildPluginAuthoringPrimer,
   startPluginAuthoringChat,
@@ -163,7 +164,11 @@ export function useNewPluginFlow(onDone: () => void) {
       setProject(project.slug);
       onDone();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setError(
+        caught instanceof Error
+          ? userFacingErrorMessage(caught)
+          : String(caught),
+      );
     }
   }
 

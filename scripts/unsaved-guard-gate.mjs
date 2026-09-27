@@ -70,12 +70,12 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 // immediately followed by `(`, with nothing word-like (or `.`/`$`) directly
 // before it. Never matches `onConfirm(`, `confirmLabel`, `ConfirmModal`,
 // `PromptModal`, `showConfirm(`, or `someObj.confirm(`.
-export const BARE_CONFIRM_PROMPT_PATTERN = /(?<![\w.$])(confirm|prompt)\(/g;
+const BARE_CONFIRM_PROMPT_PATTERN = /(?<![\w.$])(confirm|prompt)\(/g;
 
 // Matches `window.confirm(`/`window.prompt(` explicitly — the leading `.`
 // before `confirm`/`prompt` means the bare pattern above never matches
 // these, so they need their own pattern.
-export const WINDOW_CONFIRM_PROMPT_PATTERN = /\bwindow\.(confirm|prompt)\(/g;
+const WINDOW_CONFIRM_PROMPT_PATTERN = /\bwindow\.(confirm|prompt)\(/g;
 
 function lineNumberAt(content, index) {
   let line = 1;
@@ -143,12 +143,12 @@ export const KNOWN_DIRTY_STATE_EDITORS = [
 // design (see file header) — every entry must be a reasoned exception, and
 // stale entries (no longer matching any current heuristic finding) fail the
 // gate just like an un-triaged finding does.
-export const KNOWN_NON_EDITOR_EXCLUSIONS = [];
+const KNOWN_NON_EDITOR_EXCLUSIONS = [];
 
-export const USE_UNSAVED_GUARD_IMPORT_PATTERN =
+const USE_UNSAVED_GUARD_IMPORT_PATTERN =
   /import\s*\{[^}]*\buseUnsavedGuard\b[^}]*\}\s*from\s*['"][^'"]*useUnsavedGuard['"]/;
 
-export const DIRTY_STATE_DECLARATION_PATTERN =
+const DIRTY_STATE_DECLARATION_PATTERN =
   /\bconst\s*\[?\s*(dirty|isDirty|hasChanges|hasUnsavedChanges)\b/;
 
 /**

@@ -22,7 +22,7 @@ function walk(directory) {
   });
 }
 
-export function discoverResponsiveSurfaces() {
+function discoverResponsiveSurfaces() {
   return SOURCE_ROOTS.flatMap((root) => walk(join(ROOT, root)))
     .map((path) => relative(ROOT, path).replaceAll('\\', '/'))
     .filter((path) => SURFACE_FILE.test(path))
@@ -30,7 +30,7 @@ export function discoverResponsiveSurfaces() {
     .sort();
 }
 
-export function discoverResponsiveActionSurfaces() {
+function discoverResponsiveActionSurfaces() {
   return SOURCE_ROOTS.flatMap((root) => walk(join(ROOT, root)))
     .map((path) => relative(ROOT, path).replaceAll('\\', '/'))
     .filter((path) => path.endsWith('.tsx'))
@@ -50,7 +50,7 @@ function parseActionInventory(path) {
     });
 }
 
-export function validateResponsiveSurfaceInventory() {
+function validateResponsiveSurfaceInventory() {
   const inventory = JSON.parse(readFileSync(INVENTORY, 'utf8'));
   const entries = inventory.surfaces ?? [];
   const ownerRules = inventory.ownerRules ?? [];

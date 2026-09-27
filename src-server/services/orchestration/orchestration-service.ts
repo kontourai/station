@@ -8515,6 +8515,45 @@ export class OrchestrationService {
   }
 
   /**
+   * #2377 slice C1: whether `threadId` runs unconfined (`host`): its start
+   * stamp or a recorded `never`, exactly as its next turn reads it
+   * (`ApprovalPosture.standingConfinement`).
+   */
+  sessionRunsHost(threadId: string): boolean {
+    return (
+      this.approvalPosture.standingConfinement(
+        threadId,
+        this.readStartConfinementStamp(threadId),
+      ) === 'host'
+    );
+  }
+
+  /**
+   * #2377 slice C1: whether recording `pick` on `threadId` would run any
+   * engine of its conversation at full access
+   * (`ApprovalPosture.pickReachesFullAccess`), reading each session's start
+   * stamp and Agent the way a turn does (`agentSlug` stands in for a thread
+   * with no session yet).
+   */
+  async approvalPickReachesFullAccess(input: {
+    threadId: string;
+    pick: ApprovalMode;
+    agentSlug?: string;
+  }): Promise<boolean> {
+    return this.approvalPosture.pickReachesFullAccess({
+      ...input,
+      startOf: (threadId) => {
+        const agentSlug =
+          this.readLatestSessionStartMetadata(threadId)?.agentSlug;
+        return {
+          stamp: this.readStartConfinementStamp(threadId),
+          ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
+        };
+      },
+    });
+  }
+
+  /**
    * #2436: a (re)spawn's start input in the conversation's posture, for the
    * paths that start an engine without `prepareStart`: a dormant session's
    * respawn and a credential-profile restart.

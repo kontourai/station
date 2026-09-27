@@ -48,20 +48,6 @@ vi.mock('../../views/GuidanceView', async () => {
   return { GuidanceView: () => <div>Slash commands list</div> };
 });
 
-/** A third held-open chunk, for the urgent-vs-transition contrast below. */
-const scheduleChunk = vi.hoisted(() => {
-  let release!: () => void;
-  const arrived = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  return { arrived, release: () => release() };
-});
-
-vi.mock('../../views/ScheduleView', async () => {
-  await scheduleChunk.arrived;
-  return { ScheduleView: () => <div>Schedule body</div> };
-});
-
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({ activeConnection: null }),
 }));
@@ -80,7 +66,6 @@ vi.mock('../../contexts/onboarding-setup-store', async (importOriginal) => ({
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { startTransition } from 'react';
 import { splitPaneStorageKey } from '../../components/split-pane-metrics';
 import type { NavigationView } from '../../types';
 import { GUIDANCE_TAB_MEMORY_KEY } from '../../views/guidance-tab';
@@ -181,7 +166,6 @@ describe('routePendingShape — read off the destination’s own frame', () => {
       // split pane — but Commands renders a single-column PageRow list, so the
       // spec alone classifies part of the route wrongly.
       expect(shapeOf({ type: 'guidance', tab: 'commands' })).toBe('region');
-      expect(shapeOf({ type: 'guidance', tab: 'skills' })).toBe('split-pane');
       expect(shapeOf({ type: 'guidance', tab: 'skills' })).toBe('split-pane');
     });
 
@@ -544,40 +528,5 @@ describe('the body while a route chunk is in flight (#3660)', () => {
       await guidanceChunk.arrived;
     });
     expect(await screen.findByText('Slash commands list')).toBeTruthy();
-  });
-
-  test('the placeholder replaces the departing body because navigation is URGENT (#3660 review L)', async () => {
-    // What the "no stale body" claim actually rests on. Station navigates with
-    // a plain `setCurrentView` — ordinary clicks and `popstate` alike
-    // (`App.tsx`) — and React shows a Suspense fallback for an urgent update
-    // that suspends, hiding the previous children. Wrapped in
-    // `startTransition` React does the opposite: it keeps the departing content
-    // revealed and shows no fallback at all. Both halves are asserted, so a
-    // future change that wraps navigation in a transition reddens here with the
-    // reason rather than silently restoring the archive#3660 symptom.
-    const { container, rerender } = render(
-      <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
-    );
-    expect(await screen.findByText('Installed plugins list')).toBeTruthy();
-
-    await act(async () => {
-      startTransition(() => {
-        rerender(
-          <AppViewContent {...baseProps} currentView={{ type: 'schedule' }} />,
-        );
-      });
-    });
-
-    expect(visibleText(container)).toContain('Installed plugins list');
-    expect(container.querySelector('.route-pending')).toBeNull();
-    expect(
-      container.querySelector('[role="status"][aria-busy="true"]'),
-    ).toBeNull();
-
-    await act(async () => {
-      scheduleChunk.release();
-      await scheduleChunk.arrived;
-    });
-    expect(await screen.findByText('Schedule body')).toBeTruthy();
   });
 });

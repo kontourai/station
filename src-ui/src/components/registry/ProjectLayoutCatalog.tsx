@@ -2,6 +2,7 @@ import type { LayoutCatalogItem } from '@kontourai/station-contracts/distributio
 import type { LayoutMetadata } from '@kontourai/station-contracts/layout';
 import { layoutCatalogErrorReason, telemetry } from '@kontourai/station-sdk';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import './ProjectLayoutCatalog.css';
 
@@ -179,7 +180,7 @@ function ApplyError({ error }: { error: unknown }) {
       title="Couldn't add that layout"
       description={
         error instanceof Error && error.message
-          ? error.message
+          ? userFacingErrorMessage(error)
           : 'Station could not add this layout to the project. Try again.'
       }
     />

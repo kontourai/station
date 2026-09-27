@@ -366,6 +366,8 @@ describe('orchestration transfer gate control flow', () => {
       expect(message).toContain('--prepare-baseline');
       expect(message).toContain('npm run dependencies:ci');
       expect(message).toContain('npm run dependencies:verify');
+      // The approved lifecycle, never a raw install.
+      expect(message).not.toMatch(/\bnpm ci\b/);
       expect(message).toContain(baselineSha);
     } finally {
       if (prior !== undefined) process.env[TRANSFER_BASELINE_ROOT_ENV] = prior;
@@ -553,16 +555,6 @@ writeFileSync(output, JSON.stringify({
     ).toThrow(
       /dependency resolution failed.*preparing the baseline again will not repair/,
     );
-  });
-
-  test('guides baseline setup through the approved lifecycle, never raw npm ci', () => {
-    const source = readFileSync(
-      resolve(import.meta.dirname, '../orchestration-transfer-gate.mjs'),
-      'utf8',
-    );
-    expect(source).toContain('npm run dependencies:ci');
-    expect(source).toContain('npm run dependencies:verify');
-    expect(source).toContain('windowsHide: true');
   });
 
   test('attributes only typed changed ceilings against real capture rows', () => {

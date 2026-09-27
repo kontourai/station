@@ -1,11 +1,11 @@
 /**
  * station#1137 — `randomCorrelationId()` is the one fallback for
  * `crypto.randomUUID()` being absent (not throwing) in an insecure context.
- * These tests drive all three tiers directly: real `crypto.randomUUID`,
+ * These tests drive all three tiers directly: a spied `crypto.randomUUID`,
  * `crypto.getRandomValues` with `randomUUID` removed, and neither present at
  * all.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { randomCorrelationId } from '../random-id';
 
 const UUID_SHAPE =
@@ -33,9 +33,16 @@ function stashGlobalCrypto() {
 
 describe('randomCorrelationId', () => {
   it('uses crypto.randomUUID when available', () => {
-    const id = randomCorrelationId();
-    expect(id).toMatch(UUID_SHAPE);
-    expect(id).toBe(id.toLowerCase());
+    const minted = '0f1e2d3c-4b5a-4987-a654-3210fedcba98';
+    const spy = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValue(minted);
+    try {
+      expect(randomCorrelationId()).toBe(minted);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('falls back to crypto.getRandomValues when randomUUID is absent', () => {

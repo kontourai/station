@@ -9,6 +9,7 @@ import { Button } from '../../components/Button';
 import { DetailHeader } from '../../components/DetailHeader';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { usePermissions } from '../../core/PermissionManager';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import type { ReadyPlugin } from './types';
 
 export function PluginRecoveryPanel({
@@ -81,7 +82,7 @@ export function PluginRecoveryPanel({
     } catch (error) {
       setNotice(
         error instanceof Error
-          ? error.message
+          ? userFacingErrorMessage(error)
           : 'Recovery is unavailable. Review the current installation before retrying.',
       );
     } finally {
@@ -110,7 +111,9 @@ export function PluginRecoveryPanel({
           replacement or reset stored data.
         </p>
         {notice && <p role="status">{notice}</p>}
-        {preview.error && <p role="alert">{preview.error.message}</p>}
+        {preview.error && (
+          <p role="alert">{userFacingErrorMessage(preview.error)}</p>
+        )}
         {basis && (
           <section aria-label="Recovery review">
             <h3>Review recovery</h3>
