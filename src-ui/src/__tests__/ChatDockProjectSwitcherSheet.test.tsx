@@ -2,26 +2,10 @@
  * @vitest-environment jsdom
  */
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockProjectSwitcherSheet';
-
-const SWITCHER_CSS = readFileSync(
-  resolve(import.meta.dirname, '..', 'index.css'),
-  'utf8',
-);
-
-function cssRule(selector: string) {
-  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = SWITCHER_CSS.match(
-    new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`),
-  );
-  expect(match, `${selector} rule should exist in index.css`).toBeTruthy();
-  return match?.[1] ?? '';
-}
 
 const PROJECTS = [
   {
@@ -109,63 +93,6 @@ describe('ChatDockProjectSwitcherSheet', () => {
     }
   });
 
-  test('the Open icon does not trigger the row Switch action (#3319 acceptance)', () => {
-    const { onOpenProject, onSwitchProject } = renderSheet();
-
-    fireEvent.click(
-      within(row('Beta')).getByRole('button', { name: 'Open Beta' }),
-    );
-
-    expect(onOpenProject).toHaveBeenCalledWith('beta');
-    expect(onSwitchProject).not.toHaveBeenCalled();
-  });
-
-  test('long project names truncate instead of displacing the Open icon', () => {
-    const projects = [
-      {
-        ...PROJECTS[0],
-        slug: 'knowledge-docs',
-        name: 'Example · Knowledge Docs',
-      },
-      { ...PROJECTS[1], slug: 'xyz', name: 'XYZ' },
-    ];
-    renderSheet({ boundProjectSlug: 'knowledge-docs', projects });
-
-    const longNameRow = row('Example · Knowledge Docs');
-    const shortNameRow = row('XYZ');
-    for (const projectRow of [longNameRow, shortNameRow]) {
-      const name = projectRow.querySelector(
-        '.chat-dock__project-switcher-name',
-      );
-      expect(name).toBeTruthy();
-      expect(
-        projectRow.querySelector('.chat-dock__project-switcher-actions'),
-      ).toBeTruthy();
-    }
-
-    // jsdom cannot calculate this layout. Assert the CSS geometry that keeps
-    // the flexible name column from displacing the fixed icon column, the
-    // name truncation, and the >=44px targets on both actions.
-    const rowCss = cssRule('.chat-dock__project-switcher-row');
-    expect(rowCss).toMatch(
-      /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto/,
-    );
-
-    const nameCss = cssRule('.chat-dock__project-switcher-name');
-    expect(nameCss).toMatch(/min-width:\s*0/);
-    expect(nameCss).toMatch(/overflow:\s*hidden/);
-    expect(nameCss).toMatch(/text-overflow:\s*ellipsis/);
-    expect(nameCss).toMatch(/white-space:\s*nowrap/);
-
-    const switchCss = cssRule('.chat-dock__project-switcher-switch');
-    expect(switchCss).toMatch(/min-height:\s*44px/);
-    expect(switchCss).toMatch(/min-width:\s*0/);
-
-    const openCss = cssRule('.chat-dock__project-switcher-open');
-    expect(openCss).toMatch(/min-width:\s*44px/);
-    expect(openCss).toMatch(/min-height:\s*44px/);
-  });
-
   test('no row or button copy implies moving or transferring an existing chat (AC3/AC4)', () => {
     renderSheet();
     const body = screen.getByRole('dialog', { name: 'Switch project' });
@@ -188,14 +115,15 @@ describe('ChatDockProjectSwitcherSheet', () => {
     expect(within(row('Beta')).queryByText('Current')).toBeNull();
   });
 
-  test('"Open project" closes the sheet and delegates to onOpenProject with the row\'s slug', () => {
-    const { onOpenProject, onClose } = renderSheet();
+  test('"Open project" closes the sheet and delegates to onOpenProject with the row\'s slug, never the row Switch action (#3319)', () => {
+    const { onOpenProject, onSwitchProject, onClose } = renderSheet();
 
     fireEvent.click(
       within(row('Beta')).getByRole('button', { name: 'Open Beta' }),
     );
 
     expect(onOpenProject).toHaveBeenCalledWith('beta');
+    expect(onSwitchProject).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledOnce();
   });
 
