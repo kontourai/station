@@ -5,6 +5,7 @@ import {
   type AuthenticatedE2ERequest,
   test,
 } from './helpers/authenticated-request';
+import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 /**
  * E8 — one parametrised sweep over the surface registry at 390x844.
@@ -47,6 +48,8 @@ const ROUTES: readonly string[] = [
 const SPLIT_PANE_ROUTES: ReadonlyArray<{ path: string; item: string }> = [
   { path: '/agents', item: 'E2E Sweep Agent' },
   { path: '/guidance?tab=skills', item: 'e2e-sweep-skill' },
+  // The built-in tool server every runtime registers, so no seed is needed.
+  { path: '/connections/tools', item: 'Station Control' },
 ];
 
 const SWEEP_AGENT_SLUG = 'e2e-sweep-agent';
@@ -223,6 +226,13 @@ test.describe('Mobile surface sweep at 390x844', () => {
         .filter({ hasText: surface.item })
         .first();
       await expect(item).toBeVisible({ timeout: 30_000 });
+      // The rendered row, not its computed min-height: a clipped or
+      // `display: contents` row can declare 44px and still paint smaller.
+      const row = await item.boundingBox();
+      expect(
+        row?.height ?? 0,
+        `${surface.path} list row is below the touch floor`,
+      ).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
       await item.click();
 
       const back = page.locator('.split-pane__back');
