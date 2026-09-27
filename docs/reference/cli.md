@@ -2277,8 +2277,9 @@ separately.
 Run from a prebuilt server archive, doctor reports the Node.js the archive
 ships (`Node.js — v24.x (bundled: <archive>/runtime/...)`, a warn when some
 other Node.js is running it) and a `Prebuilt archive` line with the release
-ref, sha, ring, channel and lifecycle-state directory. It skips the npm, tsx
-and Rust checks and the toolchain fix commands: an archive cannot build itself.
+ref, sha, ring, channel and lifecycle-state directory. It skips the npm, tsx,
+Rust and `@kontourai/*` pin checks and the toolchain fix commands: an archive
+cannot build itself and ships no source manifest.
 
 The `Terminal PTY (node-pty)` check reports whether the `node-pty` native
 module loads from the checkout. When it does not — typically a Linux host that

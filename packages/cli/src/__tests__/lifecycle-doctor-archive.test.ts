@@ -77,10 +77,14 @@ describe('doctor from a prebuilt archive (#2675)', () => {
     const codeRoot = archiveCodeRoot();
     if (codeRoot.kind !== 'prebuilt-archive') throw new Error('fixture');
     const execPath = join(codeRoot.root, 'runtime', 'bin', 'node');
-    const exec = vi.fn(() => null);
+    const exec = vi.fn((_command: string) => null);
+    const inspectKontourDependencies = vi.fn(() => {
+      throw new Error('ENOENT: no package.json');
+    });
     const report = await collectDoctorReport(
       bareHostDeps({
         exec,
+        inspectKontourDependencies,
         codeRoot,
         repoRoot: codeRoot.root,
         processRuntime: { version: 'v24.11.1', execPath },
@@ -101,11 +105,16 @@ describe('doctor from a prebuilt archive (#2675)', () => {
       { label: 'git', status: 'fail', detail: 'Not found' },
     ]);
     const labels = report.checks.map((check) => check.label);
-    for (const toolchain of ['npm', 'tsx', 'Rust']) {
+    for (const toolchain of ['npm', 'tsx', 'Kontour package pins', 'Rust']) {
       expect(labels).not.toContain(toolchain);
     }
-    // The host's `node` is never consulted for an archive.
-    expect(exec).not.toHaveBeenCalledWith('node -v');
+    // No source toolchain is probed, and the host's `node` is never
+    // consulted: the archive runs its own.
+    expect(exec.mock.calls.map(([command]) => command)).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/^(node|npm|tsx|rustc) /)]),
+    );
+    // An archive has no package.json; inspecting its pins threw (#2675).
+    expect(inspectKontourDependencies).not.toHaveBeenCalled();
     const commands = report.fixCommands.map((fix) => fix.command);
     expect(commands).not.toContain('npm install');
     expect(commands).not.toContain('npm run dependencies:install');

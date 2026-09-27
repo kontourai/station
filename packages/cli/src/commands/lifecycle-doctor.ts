@@ -342,13 +342,19 @@ function buildFixCommands(input: {
 }
 
 /** Checks that concern only a tree that builds itself from source. */
-const SOURCE_TOOLCHAIN_CHECKS = new Set(['npm', 'tsx', 'Rust']);
+const SOURCE_TOOLCHAIN_CHECKS = new Set([
+  'npm',
+  'tsx',
+  'Kontour package pins',
+  'Rust',
+]);
 
 /**
  * #2675: from a prebuilt archive, report the runtime it ships and its release
  * instead of the source toolchain. A prebuilt archive cannot build itself, so
- * npm, tsx and Rust are neither required nor useful there (git stays: agent
- * workflows on repositories still need it).
+ * npm, tsx, Rust and the source manifest's exact pins are neither required
+ * nor inspectable there (git stays: agent workflows on repositories still
+ * need it).
  */
 export function prebuiltArchiveChecks(
   sourceChecks: readonly DoctorCheck[],
@@ -413,20 +419,25 @@ export async function collectDoctorReport(
 
   // #2675: an archive runs the Node.js it ships (bin/station never consults
   // PATH), so the host's `node` -- often absent -- says nothing about it.
+  // Nor are the source toolchain probes run there: their checks are dropped
+  // (`prebuiltArchiveChecks`), and the archive has no package.json whose
+  // exact pins could be compared.
   const nodeVersion = archive
     ? runtimeDeps.processRuntime.version
     : runtimeDeps.exec('node -v');
-  const npmVersion = runtimeDeps.exec('npm -v');
+  const npmVersion = archive ? null : runtimeDeps.exec('npm -v');
   const gitVersion = runtimeDeps.exec('git --version');
-  const tsxVersion = parseTsxVersion(runtimeDeps.exec('tsx --version'));
-  const rustVersion = runtimeDeps.exec('rustc --version');
+  const tsxVersion = archive
+    ? null
+    : parseTsxVersion(runtimeDeps.exec('tsx --version'));
+  const rustVersion = archive ? null : runtimeDeps.exec('rustc --version');
   const codexVersion = runtimeDeps.exec('codex --version');
   const claudeVersion = runtimeDeps.exec('claude --version');
   const kiroVersion = runtimeDeps.exec('kiro-cli --version');
   const ollamaReachable = await runtimeDeps.checkOllama();
-  const dependencyState = runtimeDeps.inspectKontourDependencies(
-    runtimeDeps.repoRoot,
-  );
+  const dependencyState: KontourDependencyState = archive
+    ? { exactPins: [], mismatches: [] }
+    : runtimeDeps.inspectKontourDependencies(runtimeDeps.repoRoot);
   const supervisorWedges = await runtimeDeps.inspectSupervisorWedges(
     runtimeDeps.projectHome,
   );
