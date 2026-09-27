@@ -34,7 +34,7 @@ intercepts before extending its evidence to a backend or provider.
 
 | Surface | Current spec owners | What to inspect |
 | --- | --- | --- |
-| Home / continuity rail | `task-first-home`, `root-route-restore`, Android `navigation`, `mobile-chat-composer` | Continuation, first steps, deep links, loading/retry state, mobile geometry, and composer reachability; many Home responses are mocked |
+| Home / continuity rail | `task-first-home`, `root-route-restore`, Android `mobile-layout`, `mobile-chat-composer` | Continuation, first steps, deep links, loading/retry state, mobile geometry, and composer reachability; many Home responses are mocked |
 | Projects | `project-lifecycle`, `project-forms`, `project-architecture`, `coding-layout-plan-panel` | Create/edit/delete, layout selection, unsaved guards, failed saves, and phone-sized form containment |
 | Agents | `agents-pane`, `agents-readiness-board`, `agents-editor-gates`, `agents-editor-roundtrip`, `agents-copy-existing`, `agents-new-model-turn`, `agents-new-cli-turn`, `agents-new-muse-echo-turn`, `default-agent-workflow` | Separate browsing, readiness, editing, copying, and engine-specific turn journeys; `agents.spec.ts` is no longer the owner |
 | Skills | `skills` | Create/edit/source labeling, command switches, variable resolution, test runs, read-only explanation, and the retired playbook redirect |
