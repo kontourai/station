@@ -220,7 +220,7 @@ it('the real builder publishes immutable media bytes and its strict entry detect
     ),
   ).toEqual(image);
   expect(
-    result.documents.find((doc) => doc.path === 'guide.md').html,
+    result.documents.find((doc) => doc.path === 'guide.md')?.html,
   ).toContain(url);
   write('code.ts', 'changed UI');
   await expect(buildLearningGuide({ root, check: true })).rejects.toThrow(

@@ -253,7 +253,9 @@ describe('documentation impact', () => {
       { cwd: root, env: cleanEnv, encoding: 'utf8', windowsHide: true },
     );
     expect(run.status).toBe(0);
-    const report = JSON.parse(run.stdout);
+    const report: ReturnType<typeof documentationCatchUp> = JSON.parse(
+      run.stdout,
+    );
     expect(report.catchUp.removedDependencies).toEqual([
       { path: 'guide.md', recordRemoved: false, sourcesRemoved: ['code.ts'] },
     ]);

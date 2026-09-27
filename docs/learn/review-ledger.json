@@ -1257,7 +1257,12 @@
       "state": "classified",
       "summary": "Tested additive proposal, catch/restoration results, optional-versus-required distinction and remaining owner activation. All underlying candidate runs retained their separate protected-hash refusal.",
       "limits": "Purpose and recorded evidence reviewed; no policy activation, exhaustive semantic certification or live provider/device proof.",
-      "sources": [],
+      "sources": [
+        {
+          "path": ".veritas/init-plans/documentation-maintenance-additions.json",
+          "digest": "1d6e82db92b59840fc88181edecb174ac6dd006abe25f5ecef2e82d381afdc75"
+        }
+      ],
       "checks": [
         "Proposal reviewed against actual override trial receipts: default-only failure warned; required candidate caught recorded drift, exact restoration removed that evidence failure. Protected policy remained unchanged.",
         "Reviewed frozen CI selection and the tested required-check proposal plus impact guidance. It remains explicitly inactive pending protected-policy approval."
@@ -13220,7 +13225,8 @@
       "checks": [
         "Independently reviewed anchor-check guidance, including local/current-revision scope, historical external links, parser behavior, and semantic-review limits.",
         "Reviewed added guidance to inspect pinned dependency defaults; factory mocks do not establish persisted or emitted fields.",
-        "Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed."
+        "Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed.",
+        "Final type repair independently reviewed: scripts typecheck passed (367 compiled files; existing 56 deferred), impact/media/browser selection passed 22 tests, and corrected native-element browser callbacks passed all seven reader tests. Earlier type and callback failures remain separate receipts."
       ]
     },
     {
@@ -19359,7 +19365,7 @@
         },
         {
           "path": "scripts/__tests__/learning-atlas.browser.test.ts",
-          "digest": "73271d6d39a8b61e51e1dae8be0bf2b1468ddea526aed6123a9526b87b3c5e73"
+          "digest": "71480f97f39655c612f23a98691f2494ac59ac22d741967d7bdf5aff823c27fa"
         },
         {
           "path": "scripts/build-learning-guide.mjs",
@@ -19367,7 +19373,7 @@
         },
         {
           "path": "scripts/documentation-impact.mjs",
-          "digest": "30e2cb96caec4381e2f043c1e93beea16f4e4e9fd177f40a6ace646a9d333b29"
+          "digest": "b3aee36a9d2eddb8cfc092a63c3e13bcda2ed12a60e599084421ff568a503a40"
         },
         {
           "path": "scripts/lib/documentation-model.mjs",
@@ -19384,6 +19390,18 @@
         {
           "path": "src-server/tools/station-docs-server.ts",
           "digest": "c76912b19734775f650634f5b97639c60168fe9995b61f927c0e35a62b3fb1ae"
+        },
+        {
+          "path": "docs/learn/index.html",
+          "digest": "71b2481e03e5c2de05d969458d515e1fdf8ae8505952dc94c8a7f1a7e41f2abb"
+        },
+        {
+          "path": "docs/learn/atlas.css",
+          "digest": "40c53ad655686cec61730294088350d83ccf48ff252a18d8ebbaf62441a6bc29"
+        },
+        {
+          "path": "docs/learn/diagrams.js",
+          "digest": "dd72f02140d05078f0423312e01ea8fd8bd8d1b66c125f94d275f3f323642c24"
         }
       ],
       "checks": [
@@ -19392,7 +19410,10 @@
         "Reviewed integration deltas: Reviewed navigation wording and explicit source/evidence limits; graph and capture routes use canonical owners. docs/learn/atlas.json: Added the reviewed native renewal module and Knowledge graph/walkthrough links to their existing branches; canonical module membership checked by generator.",
         "Integrated browser/MCP selection passed; strict atlas validates 415 Markdown documents and 74 modules, with 100 generated MCP topics. All 13 documentation gates passed, including 163 foundation tests.",
         "Browser review caught an invalid #overview route. Both static home links now navigate to ./; the real-reader test exercises each link after opening a document.",
-        "After the manual browser caught the invalid overview hash, all seven real-reader tests passed with explicit sidebar and brand return-to-overview actions."
+        "After the manual browser caught the invalid overview hash, all seven real-reader tests passed with explicit sidebar and brand return-to-overview actions.",
+        "Scripts typecheck repair: declared real input/topic contracts, return catchUp as part of the result shape, type parsed CLI output, execute DOM observations in the browser context without changing the Node type environment, and let a missing media document fail the assertion. No evidence bypass or policy change.",
+        "Bound the reviewed reader template, styles and diagram controls as explicit impact dependencies, in addition to renderer and browser tests.",
+        "Final type repair independently reviewed: scripts typecheck passed (367 compiled files; existing 56 deferred), impact/media/browser selection passed 22 tests, and corrected native-element browser callbacks passed all seven reader tests. Earlier type and callback failures remain separate receipts."
       ]
     },
     {

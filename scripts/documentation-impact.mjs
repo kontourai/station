@@ -63,7 +63,10 @@ function validateLedger(ledger) {
   }
 }
 
-/** Recorded semantic dependencies are review leads, not a complete code import graph. */
+/**
+ * Recorded dependencies are review leads, not a complete code import graph.
+ * @param {{ changedPaths: string[], ledgers: unknown[], topics: { id: string, sourcePath: string }[] }} input
+ */
 export function documentationImpact({ changedPaths, ledgers, topics }) {
   const reverse = new Map();
   const records = new Map();
@@ -177,6 +180,7 @@ function historicalLedgers(root, refs) {
   });
 }
 
+/** @param {{ root?: string, changedPaths?: string[], mergeBase?: string }} [input] */
 export function readDocumentationImpact({
   root = process.cwd(),
   changedPaths,
@@ -239,6 +243,7 @@ export function formatDocumentationImpact(report) {
   ].join('\n');
 }
 
+/** @param {{ root?: string, base?: string }} [input] */
 export function documentationCatchUp({ root = process.cwd(), base } = {}) {
   const reader = createLearningSourceReader(root);
   const ledger = JSON.parse(reader.read(ledgerPath).toString('utf8'));
@@ -349,16 +354,18 @@ export function documentationCatchUp({ root = process.cwd(), base } = {}) {
   report.documents = report.documents.filter(
     (doc) => staleDocs.has(doc.path) || doc.reviewState === 'unrecorded',
   );
-  report.catchUp = {
-    coverageBase: selection.mergeBase,
-    reviewedDocuments: ledger.records.length,
-    staleReviews: reviews,
-    removedDependencies,
-    unchangedReviews: ledger.records.length - reviews.length,
-    limits:
-      'Hashes compare only recorded document/source bytes; this is not a semantic rescan. Last committed edit excludes working-tree edits. The review source revision plus recorded hashes identifies the prior evidence; it is distinct from the page edit commit. Unmapped changes are searched since coverageBase, including staged, unstaged and untracked files. Do not advance that baseline to hide unresolved coverage.',
+  return {
+    ...report,
+    catchUp: {
+      coverageBase: selection.mergeBase,
+      reviewedDocuments: ledger.records.length,
+      staleReviews: reviews,
+      removedDependencies,
+      unchangedReviews: ledger.records.length - reviews.length,
+      limits:
+        'Hashes compare only recorded document/source bytes; this is not a semantic rescan. Last committed edit excludes working-tree edits. The review source revision plus recorded hashes identifies the prior evidence; it is distinct from the page edit commit. Unmapped changes are searched since coverageBase, including staged, unstaged and untracked files. Do not advance that baseline to hide unresolved coverage.',
+    },
   };
-  return report;
 }
 
 export function main(argv = process.argv.slice(2)) {

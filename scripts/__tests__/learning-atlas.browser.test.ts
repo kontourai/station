@@ -25,6 +25,23 @@ const assets = new Map<
 const contexts: BrowserContext[] = [];
 const makeTempDir = trackTempDirs();
 
+type CaptureImage = HTMLImageElement & {
+  complete: boolean;
+  naturalWidth: number;
+  clientWidth: number;
+};
+type CaptureVideo = HTMLVideoElement & {
+  paused: boolean;
+  autoplay: boolean;
+  controls: boolean;
+  currentTime: number;
+  duration: number;
+  videoWidth: number;
+  error: unknown;
+  play(): Promise<void>;
+  pause(): void;
+};
+
 beforeAll(async () => {
   atlas = await buildLearningGuide({ check: true });
   const manifest = learningClientData(atlas);
@@ -236,14 +253,14 @@ test.each([390, 1440])(
       await browserExpect
         .poll(() =>
           image.evaluate(
-            (element: HTMLImageElement) =>
+            (element: CaptureImage) =>
               element.complete && element.naturalWidth > 0,
           ),
         )
         .toBe(true);
       expect(
         await image.evaluate(
-          (element: HTMLImageElement) =>
+          (element: CaptureImage) =>
             element.clientWidth <= element.naturalWidth,
         ),
       ).toBe(true);
@@ -253,31 +270,31 @@ test.each([390, 1440])(
     for (const video of await videos.all()) {
       await video.scrollIntoViewIfNeeded();
       expect(
-        await video.evaluate((element: HTMLVideoElement) => ({
+        await video.evaluate((element: CaptureVideo) => ({
           paused: element.paused,
           autoplay: element.autoplay,
           controls: element.controls,
         })),
       ).toEqual({ paused: true, autoplay: false, controls: true });
-      await video.evaluate((element: HTMLVideoElement) => element.play());
+      await video.evaluate((element: CaptureVideo) => element.play());
       await browserExpect
         .poll(() =>
-          video.evaluate((element: HTMLVideoElement) => element.currentTime),
+          video.evaluate((element: CaptureVideo) => element.currentTime),
         )
         .toBeGreaterThan(0);
       expect(
         await video.evaluate(
-          (element: HTMLVideoElement) =>
+          (element: CaptureVideo) =>
             element.duration > 10 &&
             element.videoWidth > 0 &&
             element.error === null,
         ),
       ).toBe(true);
-      await video.evaluate((element: HTMLVideoElement) => element.pause());
+      await video.evaluate((element: CaptureVideo) => element.pause());
     }
     expect(
       await page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
+        'document.documentElement.scrollWidth <= window.innerWidth',
       ),
     ).toBe(true);
     expect(errors).toEqual([]);
