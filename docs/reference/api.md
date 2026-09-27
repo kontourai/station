@@ -1674,853 +1674,394 @@ same implementation as `/bedrock/pricing`.
 
 ## Plugins
 
-> **New section** — routes from `src-server/routes/plugins/plugins.ts`
+[Plugin route composition](../../src-server/routes/plugins/plugins.ts) mounts
+these handlers under `/api/plugins`. Installation, visibility, permissions,
+selected code, retained data, and runtime activation have separate owners.
+The [Agent Plugins reference](agent-plugins.md) covers the package format;
+[installation lifecycle](../design/plugin-installation-lifecycle.md) covers
+retained generations and recovery.
 
 ### List Installed Plugins
-```http
-GET /plugins
-```
 
-Returns the installed plugins **the calling principal can see**, with manifest
-info, bundle status, git metadata, and permission state.
+`GET /api/plugins` returns `{plugins}` after projecting the installed inventory
+for the calling principal. The instance operator sees the installed set;
+other principals see its intersection with their visibility grants. An unresolved
+principal returns 400; unreadable visibility, grants, or installation inventory
+returns 503 instead of an empty success.
 
-Installation is instance-wide, but the list is a per-principal projection
-(#2067): the operator receives every installed plugin, and anybody else
-receives only the ones an operator has granted them sight of. A plugin outside
-the caller's projection is ABSENT from the array — there is no `visible: false`
-flag, because a flag would be a second copy of the projection that a client
-could reassemble an inventory from. A caller this Station cannot attribute to a
-principal gets `400` with the principal-unresolved code, never a default list.
-
-**Response**:
-```json
-{
-  "plugins": [
-    {
-      "name": "my-plugin",
-      "displayName": "My Plugin",
-      "version": "1.0.0",
-      "description": "A plugin",
-      "hasBundle": true,
-      "layout": { "slug": "my-layout" },
-      "agents": [{ "slug": "assistant" }],
-      "providers": [],
-      "links": [],
-      "git": { "hash": "abc1234", "branch": "main", "remote": "https://github.com/org/my-plugin.git" },
-      "permissions": {
-        "declared": ["network.fetch"],
-        "granted": ["network.fetch"],
-        "missing": []
-      }
-    }
-  ]
-}
-```
-
----
+Rows include manifest metadata, `installationReadiness`, bundle/settings
+availability, git observations when readable, and permission state. Rejected
+installed entries can still appear with their rejection. `hasBundle` and a
+listed provider declaration are not proof that its runtime contribution is
+active. The [list handler](../../src-server/routes/plugins/plugin-install-routes.ts)
+shows the complete current projection.
 
 ### Revoke Plugin Permissions
+
 ```http
-DELETE /plugins/:name/grant
+DELETE /api/plugins/:name/grant
 ```
-
-The grant-store withdrawal commits before runtime reconciliation begins. New
-per-call use stops immediately. Lifecycle permissions additionally retire the
-exact installed plugin generation's server module, operational-event
-subscriptions, provider registrations/adapters, and engine connections.
-
-`200` means reconciliation reached a terminal `completed`, `superseded`, or
-`incomplete` result. `202` means the durable withdrawal succeeded but existing
-work is still `winding-down`; its operation id and generation identify that
-owned continuation. An `incomplete` result names bounded cleanup stages and can
-be retried with the same idempotent DELETE.
-
-Trusted approvals use the same reconciliation service. After an approval is
-terminal, `GET /plugins/host-approvals/:id` retains its `reconciliation`
-projection—including status, operation id, generation, and bounded effect or
-failure stage names—alongside `approval.status`. An approved consent record
-therefore does not erase a still-winding or incomplete withdrawal caused by
-grant rebinding.
 
 ```json
-{
-  "success": true,
-  "revoked": ["providers.register"],
-  "granted": [],
-  "reconciliation": {
-    "status": "completed",
-    "operationId": "8f3f...",
-    "generation": 4,
-    "installationGeneration": "sha256:...",
-    "effects": ["provider-retirement", "adapter-retirement", "engine-connections"]
-  }
-}
+{ "permissions": ["network.fetch"] }
 ```
 
----
+The body names permissions to withdraw. The grant store commits withdrawal before
+runtime reconciliation. Lifecycle permissions can additionally retire the
+captured generation's server module, subscriptions, providers/adapters, and
+engine connections. The response contains `success`, `revoked`, `granted`, and
+`reconciliation`.
+
+`winding-down` returns 202. A terminal `completed`, `superseded`, or `incomplete`
+reconciliation returns 200, so HTTP success alone does not prove all cleanup
+completed. An unavailable grant store returns 503. The
+[permission routes](../../src-server/routes/plugins/plugin-public-routes.ts)
+and [reconciliation service](../../src-server/services/plugins/plugin-grant-reconciliation.ts)
+own those results. Host-approval reads retain reconciliation separately from
+approval status; approving consent does not erase pending cleanup.
 
 ### Plugin Visibility Directory (operator only)
-```http
-GET /plugins/visibility
-```
 
-Every principal this instance has a record of, and the plugins each has been
-granted sight of. The directory is the trusted device registry's own list
-(`DevicePairingService.listKnownPrincipals`) plus the operator's row; a revoked
-device stays listed, carrying `revoked: true`, so its grants can still be
-removed.
+`GET /api/plugins/visibility` returns `{success: true, data: {principals}}`.
+Its directory comes from known device/person principals in the trusted device
+registry plus the operator row; it is not an inventory of every account or
+principal the application could know. A principal with any active device is not
+reported revoked solely because another device was revoked.
 
-Authorization is the request's own resolved principal, re-checked in the
-handler: a caller who is not the instance operator gets `403`, and a caller who
-cannot be resolved at all gets `400`. The body's fields are never consulted as
-authority.
-
-The operator's row reports `plugins: []` as recorded. That is not a rendering
-gap: the operator sees every installed plugin because the projection derives
-it, so writing the installed set into the grant column would display a record
-that does not exist.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "principals": [
-      { "id": "human:local:operator", "display": "Operator", "revoked": false, "plugins": [], "operator": true },
-      { "id": "human:device:laptop", "display": "Laptop", "revoked": false, "plugins": ["notes"], "operator": false }
-    ]
-  }
-}
-```
-
----
+Each row carries its recorded plugin grants and an `operator` flag. The operator's
+blanket sight is derived by the visibility service, not stored as an enumerated
+list of every installed plugin.
 
 ### Grant or Revoke Plugin Visibility (operator only)
+
 ```http
-POST /plugins/visibility/grants
-DELETE /plugins/visibility/grants
+POST /api/plugins/visibility/grants
+DELETE /api/plugins/visibility/grants
 ```
 
-Body: `{ "principalId": "human:device:laptop", "plugin": "notes" }`.
-
-`principalId` is the TARGET of the change, never the authority for it. Both
-verbs answer `403` to a non-operator caller before the body is read, and `400`
-when `principalId` or `plugin` could never name a principal or a canonical
-plugin. Grants are written through the store's serialized per-path updater, so
-two grants issued concurrently cannot lose each other.
-
-Visibility is a listing and composition projection, not execution authority.
-Hiding a plugin from a person does not revoke anything the plugin may do —
-that remains the plugin permission grant state, which every bundle delivery and
-every invocation rechecks on its own.
-
-**Response**:
 ```json
-{ "success": true, "data": { "principalId": "human:device:laptop", "plugins": ["notes"] } }
+{ "principalId": "human:device:laptop", "plugin": "notes" }
 ```
 
----
+`principalId` is the target, not caller authority. The
+[handlers](../../src-server/routes/plugins/plugin-visibility-routes.ts) require
+the resolved instance operator and validate the request. Non-operator callers
+with a valid body receive 403; unresolved principals or invalid inputs receive
+400. The [service](../../src-server/services/plugins/plugin-visibility-service.ts)
+serializes its read/modify/write and returns the target's updated grant list as
+`{success: true, data: {principalId, plugins}}`.
+
+Visibility controls listing and composition. It does not grant a plugin runtime
+permission or revoke an already granted execution capability.
 
 ### Which routes return plugin identity
 
-The acceptance criterion behind #2067 is about ENUMERATION, not about one
-route: a collaborator must not be able to learn what is installed on this
-instance. `GET /plugins` was the obvious enumerator; four more were found on
-the same read tier afterwards, and five more plus the event stream after
-that. The dispositions are written down in
-`src-server/routes/plugins/plugin-identity-enumeration.ts`. Each is driven
-against its real handler — most in that file's paired test, the Pane
-catalogue and layout-picker rows in
-`src-server/routes/projects/__tests__/pane-visibility.routes.test.ts` and the
-Home-role rows in
-`src-server/routes/plugins/__tests__/plugin-home-role-routes.test.ts`, each
-citation checked to name a file that exists. And because a written inventory is only as good as the thing that
-checks it, `scripts/plugin-identity-enumeration-scan.mjs` fails the pre-push
-gate when a handler returns plugin identity and has neither a disposition nor
-a written exclusion. That scan states its own blind spots in its docblock;
-read them before trusting it as complete.
+The [route inventory](../../src-server/routes/plugins/plugin-identity-enumeration.ts)
+and [scanner](../../scripts/plugin-identity-enumeration-scan.mjs) record three
+current dispositions. The scanner is structural and has documented exclusions;
+it is not proof that every possible response path was executed.
 
-| Route | Disposition |
+| Surface | Current disposition |
 | --- | --- |
-| `GET /plugins` | projected — a plugin outside the caller's projection is absent from the array |
-| `GET /projects/:slug/panes` | projected — contributions, descriptors, instances and availability for an unseen plugin are all dropped (see "Discovery only" below) |
-| `GET /projects/layouts/available` | projected — the layout picker |
-| `GET /registry/layouts` | projected |
-| `GET /registry/layouts/installed` | projected |
-| `GET /projects/:slug/layouts` | projected with residual — the stored `config.plugin` is dropped; the rest of a row is the project's own record |
-| `GET /projects/:slug/layouts/:layoutSlug` | projected with residual — the live plugin read, the catalog backfill, `config.plugin`, `catalogContribution` and the plugin's global actions are all withheld |
-| `GET /plugins/home-role/candidates` | projected — a user-facing picker, so a collaborator chooses from what they can see |
-| `GET /plugins/home-role` | projected — a holder the caller cannot see is reported as `none` |
-| `GET /plugins/check-updates` | operator only |
-| `POST /plugins/reload` | operator only |
-| `GET /registry/plugins` | operator only |
-| `GET /registry/plugins/installed` | operator only |
-| `GET /registry/agents/installed` | operator only |
-| `GET /registry/integrations/installed` | operator only |
+| `/api/plugins`, Project Pane catalog, layout pickers, Registry layouts, Home-role candidates/holder | Projected for the calling principal |
+| Project layout list/detail | Projected with retained user-record text |
+| Plugin update checks/reload, Registry plugin available/installed lists, Registry Agent/integration installed lists | Instance operator only |
 
-Projected routes answer everybody and narrow the answer. Operator-only routes
-refuse a non-operator outright, because they are maintenance surfaces whose
-actions are operator actions anyway — a projected half-answer there would
-still enumerate while answering a question the caller cannot act on.
+[Project layout reads](../../src-server/routes/projects/projects.ts) withhold a
+hidden plugin's binding, live package merge, catalog attribution, global actions,
+and skills. The user's stored layout name, slug, description, or component
+strings can remain; this is not a claim that the entire response contains no
+plugin-authored text. Apply/from-plugin operations check visibility before
+installed/enabled state.
 
-**`projected-with-residual`** is the third disposition, and the two layout
-READ routes are why it exists (#2090/#2103). For a caller who cannot see the
-owning plugin they perform no live `plugins/<name>` read and no catalog
-backfill, and they withhold `config.plugin`, `catalogContribution` and the
-plugin's global actions and skills — so a hidden plugin and a name nobody
-ever installed answer identically, which is what closes the enumeration
-question. What they cannot do is satisfy the plain `projected` contract, that
-the response body names no ungranted plugin at all: these routes answer about
-the PROJECT's own stored record, whose component ids are plugin-namespaced by
-convention, whose `name` and `description` the catalog parser falls back to
-the plugin manifest's (and finally to the plugin name itself), and whose
-`slug` is plugin-authored and IS the route address.
+The [Pane-reference owner](../../src-server/services/layouts/layout-pane-reference.ts)
+can attach response-only `paneReferences: {unavailableTabIds}`. It names affected
+stored tabs without claiming a cause, source, or remedy. Field presence matters
+even when the array is empty: it indicates a withheld binding. The
+[layout view](../../src-ui/src/views/layout-workspace-shape.ts) carries the verdict
+to the renderer. This can conservatively mark multiple plugin-component tabs
+when the record does not identify which plugin owns each component. Portable
+Kit references follow their Kit lifecycle rather than a fictitious installed
+plugin directory.
 
-Calling them `projected` would have put them under a whole-body string
-assertion they cannot satisfy and that a fixture can be chosen to dodge;
-excusing them in the scan would have dropped them out of the enumerated list
-and out of any executable coverage, leaving a prose citation. So they are
-rows, and their test names the exact strings that must be absent for a
-collaborator and present for the operator — the stored binding, the catalog
-attribution, the `plugins/<name>` source, the contribution version, and the
-tab only the live merge could have produced — and then asserts the residual
-is still there rather than pretending otherwise.
+Plugin event frames on `/events` use the same projection; update-available lists
+reach the operator only. The Home-role slot frame has a reserved name and marker
+and names no installed plugin. See the [event gate](../../src-server/routes/plugins/plugin-identity-enumeration.ts)
+and [relay](../../src-server/routes/orchestration/events.ts).
 
-`POST /projects/:slug/layouts/apply` and `POST
-/projects/:slug/layouts/from-plugin` refuse a plugin the caller cannot see
-with the message an id nobody has already gets; the apply check runs before
-the installed-and-enabled check, so "exists here, disabled" is not
-distinguishable from "does not exist".
-
-**The event stream.** The six `plugins:*` channels
-(`installed`, `removed`, `updated`, `settings-changed`, `grants-changed`,
-`updates-available`) were `broadcast`, meaning `GET /events` relayed them to
-every listener unconditionally — so a collaborator holding the stream open
-watched the inventory change by name. They are `scoped` now, which in that
-relay means denied unless a named gate passes them, and the gate is the same
-projection. `plugins:updates-available` carries a list rather than one name
-and reaches the operator only, matching its route. The Home-role
-`grants-changed` frame is exempt because it names no plugin — it reports the
-one instance-level Home slot — and the exemption requires the grants-changed
-channel plus a payload marker no plugin frame sets, with the sentinel name
-reserved in BOTH manifest readers so no plugin can be installed under it.
-The two axes are independent on purpose: a plugin installed under such a name
-before the reservation existed still cannot ride the exemption, because it
-cannot produce the marker.
-
-**Discovery, and the reference half beside it.** A plugin outside the
-caller's projection is dropped from the Pane catalogue entirely. That is
-discovery — "what could I add?". The other half, a layout that ALREADY names
-such a pane, is #2090 and is now answered: the layout read routes consult
-`src-server/services/layouts/layout-pane-reference.ts` and attach a
-response-only `paneReferences` verdict, and the host renders that tab as
-unavailable instead of resolving a component it cannot load and asserting
-`Plugin layout component "X" is not installed or registered.` — a cause the
-server never derived and that is false.
-
-The verdict carries NO reason, NO source and NO action: only the ids of the
-layout's own tabs that cannot be shown. The server cannot tell a plugin this
-person cannot see from one that was never installed — the visibility
-predicate reads a grant list, not the install tree — and that
-indistinguishability is exactly what keeps the read from being an existence
-oracle, so a reason code would give it back. It is therefore NOT a
-`WorkspacePaneAvailability`: the `pane-not-available-to-viewer` reason stamps
-`source: "visibility"` and its copy names an operator and Settings. That
-reason code still has no producer and its precedence is still kept as a
-contract; see `packages/contracts/src/workspace-pane-availability.ts`.
-
-The verdict's PRESENCE is also a signal: a response carrying it has had its
-plugin binding withheld, which is why `unavailableTabIds` may be empty and
-why absence of the whole field — not an empty array — is what means nothing
-was withheld.
-
-Two earlier implementations were tried and removed: one was an existence
-oracle (a project member can seed guessed descriptor ids); the other could
-not work, because a saved layout names a pane by `component` and no
-descriptor id is persisted for a producer to find, and the client catalogue
-builds its entries exclusively from `descriptors` so a descriptor-free entry
-would have been discarded anyway.
-
-**What is not closed.** `GET /plugins/:name/bundle.js`, `bundle.css` and
-`permissions` are addressed by name and reveal no other plugin, but a 200
-against a 404 is a weak existence oracle for a caller who can already guess an
-exact plugin name. Gating asset delivery on the projection is a separate
-change with its own UI path to prove; the exclusion is recorded with that
-reasoning in the scan.
-
-A portable Kit pane is deliberately NOT subject to this projection. Its pane
-carries `origin: "plugin"` with the Kit's contribution ref, because the
-provenance union has no Kit origin to name, but that ref has no
-`plugins/<name>` directory, never appears in `GET /plugins`, and an operator
-has no way to grant it. Kit visibility belongs to the Kit lifecycle record and
-is a separate question.
-
----
+Addressed bundle, permission, and plugin-server routes are separate from catalog
+projection. Their responses can reveal whether a guessed exact name is present;
+the scanner records this as a residual limitation. Hiding a catalog entry is not
+a guarantee that every addressed asset responds identically for hidden and
+missing packages.
 
 ### Preview Plugin (Pre-install Validation)
+
 ```http
-POST /plugins/preview
+POST /api/plugins/preview
 ```
 
-Fetches a plugin from a git URL or local path, validates it, and returns manifest, components, conflicts, and dependencies — without installing.
-
-For a registry entry, send `registryId`; the host resolves its source and claim.
-When a selected registry policy verifies the claim, preview also returns
-`registryTrustRevision` for the root and each verified dependency. Return those
-opaque values in the corresponding install consent. They bind the reviewed
-claim, signing key, and applied policy; request bodies cannot supply trust keys
-or a verified claim. Required signatures are scoped to that registry, while
-unrelated unsigned local sources remain supported.
-
-Trust refusal is HTTP 409 with `code: "registry-trust-refused"`, a closed `reason`
-(such as `stale-review`, `missing-claim`, `signature-mismatch`, or
-`continuity-change`), and a bounded message. A stale review needs another
-preview. Continuity changes and unavailable receipts retain data and require
-the separately reviewed remedy; they are not automatically retried or migrated.
-See [registry trust policy](../design/registry-trust-policy.md) for the supported
-local profile, execution fences, and tenant/hosted limits.
-
-Dependencies with unsupported lifecycle features return HTTP 400 with
-`code: "unsupported-plugin-dependency"` and `valid: false`, without a digest or
-permission approval payload. Preview and install use the same support policy;
-preview does not grant or expand permissions. Registry-backed local dependencies
-resolve relative transitive sources from the registry source directory under the
-same allowed sibling-root containment rules as installation.
-
-**Request Body**:
 ```json
-{
-  "source": "https://github.com/org/my-plugin.git"
-}
+{ "source": "/absolute/path/to/plugin" }
 ```
 
-**Response**:
-```json
-{
-  "valid": true,
-  "manifest": { "name": "my-plugin", "version": "1.0.0", "agents": [], "providers": [] },
-  "components": [
-    { "type": "agent", "id": "my-plugin:assistant" },
-    { "type": "layout", "id": "my-layout" }
-  ],
-  "conflicts": [],
-  "dependencies": [],
-  "git": { "hash": "abc1234", "branch": "main" }
-}
-```
+Alternatively send `registryId` so the host resolves the registry source and
+claim. The [preview handler](../../src-server/routes/plugins/plugin-install-routes.ts)
+stages source, validates it, reports components/conflicts/dependencies, and
+cleans the staged directory without installing it. `valid: true` also carries
+`contentDigest`, `grantRevision`, applicable `registryTrustRevision`, the
+observed `installationRevision`, `existingDataScope`, and permission/dependency
+consent information.
 
-**Error** (`400`/`500`):
-```json
-{ "valid": false, "error": "Not a valid plugin: plugin.json not found", "components": [], "conflicts": [] }
-```
-
----
+A source-fetch refusal can be HTTP200 with `valid: false`; inspect the body.
+Invalid manifests/context or unsupported dependencies return400; a missing
+registry entry returns404; changed registry source or trust refusal returns409.
+A trust refusal includes a closed reason such as stale review or a missing
+claim. Request data cannot supply trusted signing keys or declare itself
+verified. See [registry trust policy](../design/registry-trust-policy.md).
 
 ### Install Plugin
+
 ```http
-POST /plugins/install
+POST /api/plugins/install
 ```
 
-Installs a plugin from a git URL or local path, including agents, layout config, providers, tools, and dependencies.
+The body contains `source`, optional `skip`, and a **required** `consent` object
+from the reviewed preview. Consent carries `contentDigest`, `permissions`,
+`grantRevision`, applicable `registryTrustRevision`, and approved dependency IDs
+and their individual approval records. `dataPolicy` and `expectedInstallation`
+cover preserve/reset and the observed installed generation. Do not construct
+fake revisions or reuse a preview after its source changes; use the
+[SDK install flow](sdk.md).
 
-**Request Body**:
-```json
-{
-  "source": "https://github.com/org/my-plugin.git",
-  "skip": ["agent:my-plugin:assistant"]
-}
-```
+This route uses the [person-approval predicate](../../src-server/routes/plugins/plugin-person-approval.ts):
+internal agent tools and unconfirmed person-device callers cannot install
+directly. An Agent can propose work for a person to complete. Normal request
+scope and other admission rules still apply.
 
-- `source`: Git URL (supports `#branch` suffix) or local path
-- `skip`: Optional array of component IDs to exclude (e.g. `"agent:<slug>"`, `"layout:<slug>"`, `"provider:<type>"`, `"tool:<id>"`)
+The successful result carries plugin/tools/dependencies and permission state.
+`permissions.dependencies` reports the installed transitive graph's remaining
+approval needs, not merely the preview's requirements. Older responses can omit
+it, which means unknown. A persisted install awaiting activation returns202
+with `success: false` and `configurationActivation`, or a pending lifecycle
+receipt. It is not complete solely because the HTTP request was accepted.
 
-**Response**:
-```json
-{
-  "success": true,
-  "plugin": { "name": "my-plugin", "displayName": "My Plugin", "version": "1.0.0", "hasBundle": true },
-  "tools": [{ "id": "my-tool", "status": "installed" }],
-  "dependencies": [{ "id": "dep-plugin", "status": "installed" }],
-  "permissions": {
-    "autoGranted": ["network.fetch"],
-    "pendingConsent": [],
-    "dependencies": [{ "id": "dep-plugin", "pendingConsent": [] }]
-  }
-}
-```
-
-`permissions.dependencies` reports current missing permissions for the actual
-installed transitive dependency graph, after installation and grant binding.
-Unlike preview consent requirements, an already-granted permission is absent
-from this pending list. Older servers may omit it; clients must then report
-dependency approval status as unknown rather than infer it from preview.
-
-A parent or dependency content/permission approval mismatch returns HTTP 400
-with structured `consent.reason`, `consent.required`, and `consent.consented`.
-This does not claim that no earlier dependency effects occurred: completed
-compensation may precede the refusal. Failed compensation is not a simple
-consent refusal and may leave retained dependency state (HTTP 500 for cleanup
-failure, or the existing HTTP 409 for a diagnosed content-lock cycle).
-
----
+Missing/mismatched consent returns400, registry trust or diagnosed content-lock
+conflicts return409, and unexpected/compensation failure can return500.
+A dependency refusal is not a promise that no earlier staged/dependency effect
+occurred; the [transaction owner](../../src-server/services/plugins/plugin-install-transaction.ts)
+records compensation and retained-state limits.
 
 ### Check for Plugin Updates
-```http
-GET /plugins/check-updates
-```
 
-**Operator only (#2067).** This enumerates every installed plugin's name and
-version, and runs `git fetch` in each plugin directory on the way. Acting on
-the result is operator work, so a non-operator is refused with `403` rather
-than served a projected half-list — see "Which routes return plugin identity"
-below. A caller this Station cannot attribute gets `400`.
-
-Checks all installed plugins for available updates via git fetch (git-installed) or registry version comparison. Registry-installed plugins report the installed plugin name in `name`; when a registry entry id differs from the installed manifest name, callers should use the reported installed name as the route target.
-
-**Response**:
-```json
-{
-  "updates": [
-    {
-      "name": "my-plugin",
-      "currentVersion": "1.0.0",
-      "latestVersion": "newer commit available",
-      "source": "git"
-    }
-  ]
-}
-```
-
----
+`GET /api/plugins/check-updates` is operator-only. It reads installed names and
+checks git/registry update sources. Results use the installed manifest name as
+`name`, even when a registry entry ID differs. A caught top-level check failure
+currently returns200 with `{updates: []}`; that legacy result cannot prove
+there were no available updates.
 
 ### Update Plugin
-```http
-POST /plugins/:name/update
-```
 
-Updates a plugin via `git pull` (git-installed) or registry reinstall. Registry-installed plugins may be addressed by either their installed plugin name or their registry entry id; filesystem, build, prompt, and integration ownership use the installed manifest identity, while the registry provider receives its registry id. A plugin name is immutable across an update. Station snapshots the installed generation, synchronizes its owned agent definitions, activates providers, and reloads runtime agents as one configuration mutation. If validation, build, provider activation, runtime reload, or retired-adapter cleanup fails, the prior plugin files, agents, and provider source are restored or the response remains explicitly activation-pending; a removed provider is never reported as fully activated while its cleanup is unconfirmed.
+`POST /api/plugins/:name/update` uses the person-approval predicate and resolves
+the installed identity/current generation. A managed installation selects new
+retained code with `dataPolicy: "preserve"`; this is not an in-place `git pull`
+of its selected bytes. Its update path supplies no new operator consent, so
+changes requiring a preview decision must be completed through preview/install.
+Missing update source or managed update refusal returns409; pending lifecycle
+or activation returns202.
 
-**Response**:
-```json
-{
-  "success": true,
-  "plugin": { "name": "my-plugin", "version": "1.1.0" }
-}
-```
-
----
+The legacy path can still use git/registry update with a backup and restoration
+on failure. Do not treat either path's response as proof that unmanaged child
+processes or remote work ended. The
+[lifecycle handler](../../src-server/routes/plugins/plugin-lifecycle-routes.ts)
+contains the current identity, compensation, and activation branches.
 
 ### Remove Plugin
-```http
-DELETE /plugins/:name
-```
 
-Removes a plugin, its agents, layout config, and permission grants. Conversation memory is preserved. Removal is not reported as complete until runtime agent maps have reloaded and retired provider adapters have confirmed cleanup. A durable file removal whose runtime reload is still pending returns HTTP `202` with `success: false` and a `configurationActivation` receipt.
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`DELETE /api/plugins/:name` also requires person approval. It resolves the
+installed manifest identity, withdraws owned contributions/grants, and reconciles
+runtime state while preserving conversation memory. Managed package removal
+retains code/data for its lifecycle owner; it is not immediate disk reclamation.
+A pending activation returns202 with `success: false` and its receipt. Inspect
+the outcome before retrying or declaring cleanup complete.
 
 ### Serve Plugin Bundle (JS)
-```http
-GET /plugins/:name/bundle.js
-```
 
-Serves the compiled JavaScript bundle for a plugin. Returns `404` if no bundle exists.
-
-**Response**: `application/javascript`
-
----
+`GET /api/plugins/:name/bundle.js` returns JavaScript with `Cache-Control: no-cache`
+when the [bundle reader](../../src-server/routes/plugins/plugin-bundles.ts) can
+capture current, contained bytes. Unavailable/missing bytes return404.
 
 ### Serve Plugin Bundle (CSS)
-```http
-GET /plugins/:name/bundle.css
-```
 
-Serves the compiled CSS bundle for a plugin. Returns empty `200` if no CSS exists.
-
-**Response**: `text/css`
-
----
+`GET /api/plugins/:name/bundle.css` returns text/css for present bytes. The current
+handler returns an empty200 when its reader returns no CSS, including unavailable
+reads. That result is not proof of a complete CSS-free installation.
 
 ### Get Plugin Permissions
-```http
-GET /plugins/:name/permissions
-```
 
-Returns declared and granted permissions for a plugin.
-
-**Response**:
-```json
-{
-  "declared": ["network.fetch", "fs.read"],
-  "granted": ["network.fetch"]
-}
-```
-
----
+`GET /api/plugins/:name/permissions` returns `declared`, `granted`,
+`contentBinding`, and `withheld` for the captured installation. Missing runtime
+artifact returns404; unreadable grants return503.
 
 ### Grant Plugin Permissions
-```http
-POST /plugins/:name/grant
-```
 
-Grants one or more permissions to a plugin.
-
-**Request Body**:
-```json
-{ "permissions": ["fs.read"] }
-```
-
-**Response**:
-```json
-{ "success": true, "granted": ["fs.read"] }
-```
-
----
+`POST /api/plugins/:name/grant` accepts `{permissions: [...]}` for declared,
+grantable permissions. Trusted permissions require the isolated host approval
+channel and are refused here with403. An accepted response can include
+`granted`, `withdrawn`, and reconciliation: binding a new decision can withdraw
+old permissions, so a grant request is not necessarily an additive-only effect.
+Winding reconciliation returns202.
 
 ### Plugin Fetch Proxy (Scoped)
-```http
-POST /plugins/:name/fetch
-```
 
-Server-side HTTP proxy for a plugin. Requires the plugin to have the `network.fetch` permission grant.
-
-**Request Body**:
-```json
-{
-  "url": "https://api.example.com/data",
-  "method": "GET",
-  "headers": { "Authorization": "Bearer <token>" },
-  "body": null
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "status": 200,
-  "contentType": "application/json",
-  "body": "{\"key\":\"value\"}"
-}
-```
-
-**Error** (`403`): Plugin does not have `network.fetch` permission.
-
----
+`POST /api/plugins/:name/fetch` is currently disabled. It checks the named
+`network.fetch` grant, then returns403 because plugin execution identity is not
+yet verifiable. A grant does not make this endpoint an operational HTTP proxy.
 
 ### Unscoped Plugin Fetch Proxy
-```http
-POST /plugins/fetch
-```
 
-Server-side HTTP proxy with no permission check. It has the same request/response shape as the scoped variant above; new integrations must use the scoped route.
-
----
+`POST /api/plugins/fetch` returns403 requiring a named route. The development CLI
+proxy is a separate implementation; neither production route provides the
+successful proxy response previously shown here.
 
 ### Reload Plugin Providers
-```http
-POST /plugins/reload
-```
 
-Clears and reloads all plugin providers from disk. Useful after manual plugin changes.
-
-**Response**:
-```json
-{ "success": true, "loaded": 3 }
-```
-
----
+`POST /api/plugins/reload` is operator-only. It reconciles installation
+projections, quiesces server modules/subscriptions, prepares and publishes the
+provider generation, and reconciles Agent state. A pending projection or runtime
+activation returns202 with `success: false`. Completed responses include
+`loaded`; a failed quiescence/reload returns500. It is not a raw unconditional
+"clear and reload everything" action.
 
 ### Get Plugin Providers
-```http
-GET /plugins/:name/providers
-```
 
-Returns provider declarations for a plugin with their enabled/disabled state.
-
-**Response**:
-```json
-{
-  "providers": [
-    { "type": "auth", "module": "dist/auth-provider.js", "layout": null, "enabled": true }
-  ]
-}
-```
-
----
+`GET /api/plugins/:name/providers` returns `{providers}` with declared `type`,
+`module`, retained legacy `layout`, and `enabled` from provider overrides.
+`enabled` here is configuration, not proof of runtime activation.
 
 ### Get Plugin Overrides
-```http
-GET /plugins/:name/overrides
-```
 
-Returns the current provider override config for a plugin (e.g. which providers are disabled).
-
-**Response**:
-```json
-{ "disabled": ["auth"] }
-```
-
----
+`GET /api/plugins/:name/overrides` returns `{disabled: [...]}` from the override
+record for the current captured package.
 
 ### Update Plugin Overrides
-```http
-PUT /plugins/:name/overrides
-```
 
-Updates provider override config for a plugin.
-
-**Request Body**:
-```json
-{ "disabled": ["auth"] }
-```
-
-**Response**:
-```json
-{ "success": true }
-```
+`PUT /api/plugins/:name/overrides` accepts `{disabled: [...]}`, preserves other
+stored overrides, and returns `{success: true}` after saving. This handler does
+not itself reload providers. Current-artifact checks can return409, including
+when a change was saved before currentness was lost; reload and inspect before
+retrying. See [config handlers](../../src-server/routes/plugins/plugin-config-routes.ts).
 
 ---
 
 ## Registry
 
-> **New section** — routes from `src-server/routes/plugins/registry.ts`
+The [registry routes](../../src-server/routes/plugins/registry.ts) are mounted
+under `/api/registry`. Catalogs and mutation results depend on registered
+providers; a list entry is not proof of successful installation or activation.
+Plugin-backed Agent entries use the full plugin lifecycle when resolved as such.
 
 ### List Available Agents (Registry)
-```http
-GET /registry/agents
-```
 
-Lists agents available in the configured agent registry provider.
-
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-agent", "version": "1.0.0", "description": "..." }] }
-```
-
----
+`GET /api/registry/agents` returns `{success: true, data}` from the Agent registry
+provider's available catalog.
 
 ### List Installed Agents (Registry)
-```http
-GET /registry/agents/installed
-```
 
-Lists agents currently installed via the registry.
-
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-agent", "version": "1.0.0" }] }
-```
-
----
+`GET /api/registry/agents/installed` returns that provider's installed rows under
+`{success: true, data}` and requires the instance operator.
 
 ### Install Agent from Registry
-```http
-POST /registry/agents/install
-```
 
-**Request Body**:
-```json
-{ "id": "my-agent" }
-```
-
-**Response**:
-```json
-{ "success": true, "message": "Installed" }
-```
-
----
+`POST /api/registry/agents/install` accepts `{id, ...pluginInstallFields}`.
+When the ID resolves to a plugin, it uses the plugin install/consent path below.
+Otherwise it calls the Agent registry provider and returns its result. A
+successful provider result triggers ACP-mode refresh, whose failure is currently
+caught separately; it is not a universal runtime-activation receipt.
 
 ### Uninstall Agent from Registry
-```http
-DELETE /registry/agents/:id
-```
 
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`DELETE /api/registry/agents/:id` likewise resolves a plugin-backed entry through
+plugin removal, or calls the Agent registry provider. Plugin lifecycle pending
+results retain their activation semantics; a plain provider result is not the
+same receipt.
 
 ### List Available Integrations (Registry)
-```http
-GET /registry/integrations
-```
 
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-tool", "version": "1.0.0", "description": "..." }] }
-```
-
----
+`GET /api/registry/integrations` returns `{success: true, data}` after the route's
+ID filtering, first-ID deduplication, and display-text cleanup.
 
 ### List Installed Integrations (Registry)
-```http
-GET /registry/integrations/installed
-```
 
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-tool", "version": "1.0.0" }] }
-```
-
----
+`GET /api/registry/integrations/installed` is operator-only and returns the
+integration registry provider's installed catalog.
 
 ### Install Integration from Registry
-```http
-POST /registry/integrations/install
-```
 
-Installs an integration and auto-generates its `integration.json` from provider metadata.
-
-**Request Body**:
-```json
-{ "id": "my-tool" }
-```
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`POST /api/registry/integrations/install` accepts `{id}`. After successful provider
+installation, an available ToolDef is saved **disabled**. An existing
+credential-binding configuration can refuse replacement with409. Provider
+installation success does not prove connection, enablement, or Agent attachment.
 
 ### Uninstall Integration from Registry
-```http
-DELETE /registry/integrations/:id
-```
 
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`DELETE /api/registry/integrations/:id` returns the provider's uninstall result.
+After provider success it attempts to delete the local definition; that deletion
+error is currently caught, so success is not proof that local cleanup completed.
 
 ### Sync Integration Registry
-```http
-POST /registry/integrations/sync
-```
 
-Triggers a sync of the integration registry provider.
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`POST /api/registry/integrations/sync` awaits provider sync and returns
+`{success: true}`.
 
 ### List Available Skills (Registry)
-```http
-GET /registry/skills
-```
 
-Lists skills available in the configured registry provider.
-
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-skill", "description": "..." }] }
-```
-
----
+`GET /api/registry/skills` merges registered Skill catalogs and deduplicates IDs,
+keeping the first occurrence. No registered providers gives an empty list.
 
 ### Install Skill from Registry
-```http
-POST /registry/skills/install
-```
 
-**Request Body**:
-```json
-{ "id": "my-skill" }
-```
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`POST /api/registry/skills/install` accepts `{id}` and returns SkillService's
+result. It attempts a Skill reload after success; a caught reload failure does
+not change the install result.
 
 ### Uninstall Skill from Registry
-```http
-DELETE /registry/skills/:id
-```
 
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`DELETE /api/registry/skills/:id` returns SkillService's removal result and uses
+the same reload behavior. Package-owned read-only Skills retain their owner's
+mutation rules.
 
 ### List Available Plugins (Registry)
-```http
-GET /registry/plugins
-```
 
-Lists plugins available in the configured registry provider.
-
-**Operator only (#2067).** Every row carries an `installed` flag, so this is
-the instance's plugin inventory restated against a catalog. Installing is
-operator work; a non-operator is refused with `403`.
-
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-plugin", "version": "1.0.0", "description": "..." }] }
-```
-
----
+`GET /api/registry/plugins` is operator-only and returns
+`{success: true, data}` with catalog installation status.
 
 ### List Installed Plugins (Registry)
-```http
-GET /registry/plugins/installed
-```
 
-**Operator only (#2067).** This is the instance plugin inventory with a
-registry shape around it; a non-operator is refused with `403`.
-
-**Response**:
-```json
-{ "success": true, "data": [{ "id": "my-plugin", "version": "1.0.0" }] }
-```
-
----
+`GET /api/registry/plugins/installed` filters the same availability projection to
+installed entries; it is also operator-only.
 
 ### Install Plugin from Registry
-```http
-POST /registry/plugins/install
-```
 
-Installs a plugin from the configured plugin registry providers. If multiple plugin registry providers claim the same plugin id, Station rejects the install as ambiguous instead of selecting the first provider.
+`POST /api/registry/plugins/install` resolves the registry ID to a unique source
+and uses the full plugin transaction. Its body can carry the same preview
+consent, skip list, data policy, and expected installation as source installation.
+Ambiguous registry ownership is refused rather than resolved by choosing the
+first provider.
 
-**Request Body**:
-```json
-{ "id": "my-plugin" }
-```
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+Unlike direct `/api/plugins/install`, this compatibility path can construct a
+`no-operator-decision` request when consent is absent. The
+[consent owner](../../src-server/services/plugins/plugin-install-consent.ts)
+permits that only when there are neither consent-requiring permissions nor
+undisclosed contributions. A UI/Agent/dependency-bearing package cannot use that
+absence as approval. Person, scope, current content/grant revision, registry trust,
+and activation checks still apply. Prefer preview and an explicit decision.
 
 ### Uninstall Plugin from Registry
-```http
-DELETE /registry/plugins/:id
-```
 
-**Response**:
-```json
-{ "success": true }
-```
+`DELETE /api/registry/plugins/:id` resolves installed identity and uses the full
+person-gated removal transaction. Pending runtime activation returns202 with
+`success: false` and `configurationActivation`; normal completion returns200.
 
 ---
 
