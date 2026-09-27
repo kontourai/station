@@ -25,22 +25,18 @@ const unavailableInstall = Object.freeze({
 } as const);
 
 /** Station's existing IAgentHooks projection, narrower than each host's full API. */
-export function stationFrameworkCapabilities(
-  _framework: StationFrameworkKind,
-): HostCapabilities {
-  return Object.freeze({
-    lifecycle: Object.freeze({
-      'session-start': 'unavailable',
-      'before-model': 'unavailable',
-      'before-tool': 'native',
-      'after-tool': 'native',
-      stop: 'approximated',
-    }),
-    contextInjection: 'unavailable',
-    blocking: 'native',
-    install: unavailableInstall,
-  });
-}
+const stationFrameworkCapabilities: HostCapabilities = Object.freeze({
+  lifecycle: Object.freeze({
+    'session-start': 'unavailable',
+    'before-model': 'unavailable',
+    'before-tool': 'native',
+    'after-tool': 'native',
+    stop: 'approximated',
+  }),
+  contextInjection: 'unavailable',
+  blocking: 'native',
+  install: unavailableInstall,
+});
 
 export function createStationFrameworkConduitAdapter(
   framework: StationFrameworkKind,
@@ -53,7 +49,7 @@ export function createStationFrameworkConduitAdapter(
     framework === 'strands'
       ? createStrandsAdapter(bridge)
       : createVoltAgentAdapter(bridge);
-  const capabilities = stationFrameworkCapabilities(framework);
+  const capabilities = stationFrameworkCapabilities;
 
   return Object.freeze({
     id: `station-${framework}`,
