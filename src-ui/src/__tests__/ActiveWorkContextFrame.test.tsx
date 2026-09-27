@@ -9,8 +9,6 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   ActiveWorkContextFrame,
   ActiveWorkModalBoundary,
-  changedFileEntry,
-  collectAttachedContext,
 } from '../components/chat-dock/ActiveWorkContextFrame';
 import type { ChatSession } from '../types';
 
@@ -71,32 +69,26 @@ const gitStatus: GitStatusResult = {
 };
 
 describe('ActiveWorkContextFrame', () => {
-  test('derives real changed-file paths and deduplicated attached context', () => {
-    expect(changedFileEntry(' M src-ui/src/App.tsx')).toEqual({
-      displayPath: 'src-ui/src/App.tsx',
-      editorPath: 'src-ui/src/App.tsx',
-      status: 'M',
-    });
-    expect(changedFileEntry('R  old.ts -> new.ts')).toEqual({
-      displayPath: 'old.ts -> new.ts',
-      editorPath: null,
-      status: 'R',
-    });
-    expect(changedFileEntry(' M "docs/unsafe path.md"').editorPath).toBeNull();
-    expect(changedFileEntry(' M ../outside.ts').editorPath).toBeNull();
-    expect(collectAttachedContext(session).map((item) => item.name)).toEqual([
-      'CONTEXT.md',
-      'Issue #333',
-    ]);
-  });
-
   test('shows sourced task, branch, changed files, attachments, and explicit unavailable checks', () => {
     const onOpenProjectContext = vi.fn();
+    // The session's own CONTEXT.md, attached again to a later message under
+    // the same id: the panel lists one attachment, not one per mention.
+    const withRepeatedAttachment: ChatSession = {
+      ...session,
+      messages: [
+        ...session.messages,
+        {
+          role: 'user',
+          content: 'Same context again',
+          attachments: [session.attachments[0]],
+        },
+      ],
+    };
     render(
       <ActiveWorkContextFrame
         panel="context"
         isMobile={false}
-        session={session}
+        session={withRepeatedAttachment}
         gitStatus={gitStatus}
         canOpenFiles
         onClose={vi.fn()}
@@ -107,8 +99,11 @@ describe('ActiveWorkContextFrame', () => {
 
     expect(screen.getByText('Contextual active work')).toBeTruthy();
     expect(screen.getByText('feat/contextual-active-work')).toBeTruthy();
-    expect(screen.getByText('CONTEXT.md')).toBeTruthy();
-    expect(screen.getByText('Issue #333')).toBeTruthy();
+    expect(
+      screen
+        .getAllByRole('listitem')
+        .map((attachment) => attachment.textContent),
+    ).toEqual(['CONTEXT.md', 'Issue #333']);
     expect(screen.getByText('Checks').nextElementSibling?.textContent).toBe(
       'Unavailable',
     );
@@ -142,7 +137,14 @@ describe('ActiveWorkContextFrame', () => {
         panel="files"
         isMobile={false}
         session={session}
-        gitStatus={gitStatus}
+        gitStatus={{
+          ...gitStatus,
+          changes: [
+            ...gitStatus.changes,
+            ' M "docs/unsafe path.md"',
+            ' M ../outside.ts',
+          ],
+        }}
         canOpenFiles
         onClose={vi.fn()}
         onOpenFile={onOpenFile}
@@ -153,13 +155,27 @@ describe('ActiveWorkContextFrame', () => {
       screen.getByRole('button', { name: /Open src-ui\/src\/App.tsx/ }),
     );
     expect(onOpenFile).toHaveBeenCalledWith('src-ui/src/App.tsx');
-    const ambiguous = screen.getByRole('button', {
-      name: 'Changed file old.ts -> new.ts',
-    }) as HTMLButtonElement;
-    expect(ambiguous.disabled).toBe(true);
-    expect(ambiguous.title).toBe(
-      'Editor navigation is unavailable for this path',
-    );
+    // Each row's badge is the change's git status code.
+    expect(
+      Array.from(
+        document.querySelectorAll('.active-work-frame__file-status'),
+        (badge) => badge.textContent,
+      ).slice(0, 2),
+    ).toEqual(['M', 'R']);
+    // A rename, a quoted path, and a traversal stay listed but never deep-link.
+    for (const displayPath of [
+      'old.ts -> new.ts',
+      '"docs/unsafe path.md"',
+      '../outside.ts',
+    ]) {
+      const unsafe = screen.getByRole('button', {
+        name: `Changed file ${displayPath}`,
+      }) as HTMLButtonElement;
+      expect(unsafe.disabled).toBe(true);
+      expect(unsafe.title).toBe(
+        'Editor navigation is unavailable for this path',
+      );
+    }
   });
 
   test('uses the canonical empty state for a clean working tree', () => {
@@ -237,29 +253,6 @@ describe('ActiveWorkContextFrame', () => {
     trigger.remove();
   });
 
-  test('mobile backdrop is a semantic dismiss button that preserves pointer close', () => {
-    const onClose = vi.fn();
-    render(
-      <ActiveWorkContextFrame
-        panel="context"
-        isMobile
-        session={session}
-        gitStatus={gitStatus}
-        canOpenFiles
-        onClose={onClose}
-        onOpenFile={vi.fn()}
-        onOpenProjectContext={vi.fn()}
-      />,
-    );
-
-    const dismiss = screen.getByRole('button', {
-      name: 'Dismiss task context',
-    }) as HTMLButtonElement;
-    expect(dismiss.type).toBe('button');
-    fireEvent.mouseDown(dismiss);
-    expect(onClose).toHaveBeenCalledOnce();
-  });
-
   test('mobile backdrop closes once for pointer and native button activation', () => {
     const onPointerClose = vi.fn();
     const pointerView = render(
@@ -276,8 +269,11 @@ describe('ActiveWorkContextFrame', () => {
     );
     const pointerDismiss = screen.getByRole('button', {
       name: 'Dismiss task context',
-    });
+    }) as HTMLButtonElement;
+    expect(pointerDismiss.type).toBe('button');
+    // Pointer close happens on press, before any click arrives.
     fireEvent.mouseDown(pointerDismiss);
+    expect(onPointerClose).toHaveBeenCalledOnce();
     fireEvent.click(pointerDismiss);
     expect(onPointerClose).toHaveBeenCalledOnce();
     pointerView.unmount();

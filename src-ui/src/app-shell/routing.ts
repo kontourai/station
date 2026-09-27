@@ -7,10 +7,7 @@ import {
   canonicalConnectionPath,
 } from '../views/connections-hub/connection-sections';
 import { boardPath, parseBoardPath } from './board-route';
-import {
-  APP_DESTINATION_REGISTRY,
-  type ManagementDestinationId,
-} from './destination-registry';
+import { APP_DESTINATION_REGISTRY } from './destination-registry';
 
 export const DEVELOPER_TABS = [
   'logs',
@@ -725,19 +722,4 @@ export function getParentView(view: NavigationView): NavigationView | null {
     default:
       return null;
   }
-}
-
-type ManagementNavigationGroup = ManagementDestinationId;
-
-export function getManagementNavigationGroup(
-  view: NavigationView,
-): ManagementNavigationGroup | null {
-  const destination = APP_DESTINATION_REGISTRY.getDestinationForView(view);
-  return destination?.managementGroup ?? null;
-}
-
-export function getPathForManagementNavigationGroup(
-  group: ManagementNavigationGroup,
-): string {
-  return APP_DESTINATION_REGISTRY.get(group)?.route ?? '/';
 }

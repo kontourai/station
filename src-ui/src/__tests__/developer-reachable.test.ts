@@ -18,18 +18,14 @@ import {
   APP_DESTINATION_REGISTRY,
   DEVELOPER_TOOLS_FLAG,
 } from '../app-shell/destination-registry';
-import {
-  getManagementNavigationGroup,
-  getPathForView,
-  resolveViewFromPath,
-} from '../app-shell/routing';
+import { getPathForView, resolveViewFromPath } from '../app-shell/routing';
 import { settingsSectionNavItems } from '../views/SettingsView';
 
 /**
  * The /developer surface (Slice F) replaced the old Monitoring sidebar entry.
  * Modeled on notifications-reachable.test.ts: a destination is only real if it
- * round-trips its route, is a navigable management group something can
- * highlight, and is actually advertised by a control someone can press.
+ * round-trips its route and is actually advertised by a control someone can
+ * press.
  *
  * #2059 (D3) moved that control: Developer is a configuration surface, so it
  * left the left panel for Settings. #2144 slice 4 then retired the separate
@@ -51,12 +47,6 @@ describe('the developer surface is a destination', () => {
     });
     expect(getPathForView({ type: 'developer', tab: 'system' })).toBe(
       '/developer/system',
-    );
-  });
-
-  test('is a navigable group, so the sidebar can highlight it', () => {
-    expect(getManagementNavigationGroup({ type: 'developer' })).toBe(
-      'developer',
     );
   });
 

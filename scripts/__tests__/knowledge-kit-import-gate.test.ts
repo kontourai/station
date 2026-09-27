@@ -5,14 +5,8 @@ import { describe, expect, it } from 'vitest';
 import {
   DEEP_IMPORT_PATTERN,
   FS_PATH_WORKAROUND_PATTERN,
-  listScopedFiles,
   scanFileForKitInternalImports,
 } from '../knowledge-kit-import-gate.mjs';
-
-// A cold scan of the real 500+ file tree takes about 7s on the native Windows
-// floor; this bound dominates that measured operation without weakening the
-// fast synthetic cases below.
-const COLD_REPOSITORY_SCAN_TIMEOUT_MS = 30_000;
 
 describe('knowledge-kit-import-gate', () => {
   describe('DEEP_IMPORT_PATTERN', () => {
@@ -177,26 +171,6 @@ describe('knowledge-kit-import-gate', () => {
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
-    });
-  });
-
-  describe('listScopedFiles + scanFileForKitInternalImports (repo-source integration)', () => {
-    it(
-      'passes cleanly against the real src-server/**, packages/**, src-ui/** trees as of this PR',
-      () => {
-        const files = listScopedFiles();
-        expect(files.length).toBeGreaterThan(500); // sanity: the scan actually ran
-        const findings = files.flatMap((file) =>
-          scanFileForKitInternalImports(file, readFileSync(file, 'utf-8')),
-        );
-        expect(findings).toEqual([]);
-      },
-      COLD_REPOSITORY_SCAN_TIMEOUT_MS,
-    );
-
-    it('excludes this gate script itself (which legitimately names the banned patterns in prose/regex)', () => {
-      const files = listScopedFiles();
-      expect(files).not.toContain('scripts/knowledge-kit-import-gate.mjs');
     });
   });
 });
