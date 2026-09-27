@@ -25,6 +25,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | --- | --- | --- |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
+| [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
 | [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
@@ -792,6 +793,46 @@ This is the read boundary for a Session’s messages and exact answer/input/resu
 **Behavior.** The Implementation resolves the session, checks authority, then replays its events exactly once in stored order. An absent session and denied authority are both `not-found`, preventing disclosure. Title and messages are derived from that same event set. Exact assistant-answer reads require a normally completed, non-cancelled turn and return its latest eligible answer. Input and result reads use event identity, not transcript position. Basis reads use an exact descriptor-only turn window (at most 1,000 events and 128 KiB at the storage owner); raw replay fallback is rejected, and corruption has a separate outcome. Durable query failure becomes `unavailable`, not an empty successful read.
 
 **Code and evidence.** `OrchestrationService` composes the Module from private session lookup, authorization, and event-reader Adapters. The migrated callers are the orchestration conversation route and `knowledge-store/adapters/conversation-store.ts`; runtime composition passes that same Interface to hosted callers. Quote-source, answer, tool-result, and Basis callers use the corresponding exact-read operation. Other inventories remain with their owning modules. The message-list route maps `not-found` to an empty list; exact-answer routes use non-disclosing refusals. The focused real contract is `src-server/services/orchestration/__tests__/session-query-module.test.ts`. **Do not reintroduce:** route-local authorization plus event replay, or expose the event store as a query Interface.
+
+## StationControlDispatchScope
+
+An agent tool can cause the server to resolve an Agent, use a Connection or
+contact another Station. The scope decision must happen before those later
+server operations. [StationControlDispatchScope](../../src-server/runtime/mcp/station-control-dispatch-scope.ts)
+reads the target facts used by the shared
+[caller policy](../../src-server/tools/station-control-policy.ts).
+
+**Interface and ownership.** `target(ref, action)` resolves a new Session,
+thread or Conversation from Station-owned records. The caller supplies a
+reference, not trusted owner/Project facts. The result identifies the recorded
+owner, effective Project/global scope, remote placement, required Project
+action and whether the Conversation lineage includes host execution. A
+Conversation target uses its newest started Session. Directory scope uses the
+deepest containing canonical Project directory; missing or unreadable paths
+cannot establish a target. This does not rewrite a Session's stored Project.
+
+**Admission.** A bound operator retains operator reach under ordinary route
+authorization. Other callers must target the same recorded owner, stay local
+and satisfy the required Project action. A caller without bound assurance must
+also stay within its own Session's Project/global scope and avoid host
+execution. Approving a global target requires the operator. These are verified
+Station-control caller rules, not additional restrictions on every paired
+person UI request.
+
+**Composition and evidence.** [Runtime routes](../../src-server/runtime/routes/runtime-routes.ts)
+supply record readers and Project authorization. The
+[dispatch route helper](../../src-server/routes/orchestration/dispatch-scope.ts)
+applies the shared rule before privileged downstream hops and passes the
+resolved directory rather than the caller's original alias. The
+[execution-target resolver](../../src-server/services/execution-target/execution-target-resolver.ts)
+also requires local Project cwd overrides to exist inside that Project when
+there is no separately verified remote path. Source tests include the
+[scope reader](../../src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts),
+[mounted route composition](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts)
+and [target resolver](../../src-server/services/execution-target/__tests__/execution-target-resolver.test.ts).
+Their presence is not a new executed or remote-device receipt. See
+[agent configuration](../guides/self-configuring-agent.md#dispatch-authority) for tool-level
+restrictions and caller binding.
 
 ## ConversationSessionLineage
 

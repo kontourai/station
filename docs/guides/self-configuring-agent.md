@@ -41,12 +41,46 @@ The Agent's tool allowlist and the calling Session's authority still apply.
 Exposing a management tool does not grant the operator's identity or bypass
 Project access checks.
 
+### Dispatch authority
+
+Station checks an Agent's dispatch against its verified Session caller:
+
+- A bound caller acting for the operator retains the operator's reach, subject
+  to the route's existing Session authorization.
+- Other bound callers can reach only their own owner's Sessions on this Station,
+  with that owner's `execute` action in the target Project.
+- Other verified callers also stay within their calling Session's Project or
+  global scope and cannot reach a conversation that runs unconfined (`host`).
+
+Here, `bound` describes verified caller assurance, not a selected approval mode.
+A plain folder target belongs to the deepest Project whose canonical working
+directory contains it; otherwise it is global. A missing or unreadable folder
+does not establish a scope. With no workspace, Station checks the default
+Session directory. Conversation follow-ups use the newest started Session's
+scope and check unconfined execution across the conversation's lineage,
+including reserved successors.
+
+Saved-Environment discovery and remote dispatch require a bound operator caller.
+Remote task reads, event reads, and interrupts carry the same restriction.
+For a non-operator caller, `respond_to_task_request` requires bound assurance,
+the same task owner, and that owner's Project `approve` action. Global-scope
+approval requires a bound operator. The separate Session `respondToRequest`
+command remains restricted to a bound operator when called through
+station-control.
+
+These rules apply to station-control callers. The operator UI, paired Devices,
+and Station's own server code retain their separate authorization boundaries.
+The [scope owner](../../src-server/runtime/mcp/station-control-dispatch-scope.ts)
+and [policy](../../src-server/tools/station-control-policy.ts) define the checks;
+tool approval does not bypass them.
+
 ## Recommended setup pattern
 
 1. Start with one orchestrator agent.
 2. Give it `station-control` plus only the MCP servers it actually needs.
 3. Call `list_delegation_environments`, then `list_delegation_targets` to choose
-   a ready worker with the capabilities the task needs. Environment listing is
+   a ready worker with the capabilities the task needs, using a bound operator
+   caller for saved-Environment discovery. Environment listing is
    secret-free, read-only, and never reconnects; inspecting a selected saved SSH
    Station's targets may reconnect its verified binding, so only that second
    step remains approval-gated. Use `delegate_task` when the work needs a
@@ -58,7 +92,8 @@ Project access checks.
    compact task handles before using `get_task`; the inventory defaults to 50
    results, caps at 100, verifies each environment and Station-user binding,
    and never returns prompts, messages, raw events, or connection details.
-   Station injects the calling agent's authenticated user automatically.
+   Station resolves the caller from its Session records; a model-supplied user
+   identity grants no authority.
    Poll `get_task_events` with its returned `nextCursor` when a coordinator
    needs incremental output. Each page is capped at 100 events and omits raw
    prompt, reasoning, tool input/result, approval payload, diagnostic, path,
@@ -244,15 +279,15 @@ Give such work to a top-level conversation instead of a delegated child.
 ### Forwarding to a saved Environment
 
 When `delegate_task` or `send_message` targets another Station, this Station
-derives the child's context first and forwards it without an attestation.
+requires a bound operator caller, derives the child's context, and forwards it
+without an attestation.
 The receiving Station stores it as the sending Station's assertion. There is
 one known gap: a receiver older than this change strips the unknown
 `delegation` field from `POST /api/orchestration/delegations`. On that
 receiver the child starts as a root, which is the same as the behaviour before
 this change. A `send_message` forward to such a receiver still carries its
-context. A station-control connection with no verified caller and no
-attestation keeps the old forwarding behaviour: `send_message` forwards the
-context it was given, and `delegate_task` forwards none.
+context. A station-control request with no verified caller and no runtime
+attestation is refused before dispatch; it has no supported forwarding path.
 
 ## Skill refinement loop
 

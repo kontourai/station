@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  'dcca6aedf78355b274bd3f8cff7414bb0984eaa9beb920c47e9fca5af3cdb6fb';
+  '6d023c07029b9f40eaef30a201291d268f8aa06dafb3d8ea0a2520dbe855d9c8';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -722,7 +722,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Identity, Devices, and connection paths',
     summary:
       'How a person signs in, a Device pairs, and requests reach the right Station with the right authority.',
-    body: 'How a person signs in, a Device pairs, and requests reach the right Station with the right authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- What does an account prove that a paired Device does not?\n- Does the same authorization run over direct and relayed requests?\n- Who owns a secret, its reference, and the authority to rotate it?\n\nRead module topics with get_station_docs_topic:\n- architecture-deploymentauthentication: DeploymentAuthentication\n- architecture-virtualapplicationingress: VirtualApplicationIngress\n- architecture-nativerelaygrantrenewalsupervisor: NativeRelayGrantRenewalSupervisor\n- architecture-pendingpairingcompletion: PendingPairingCompletion\n- architecture-connectioninspector: ConnectionInspector\n- architecture-secretbindingadministration-and-integrationsecretresolver: SecretBindingAdministration and IntegrationSecretResolver\n\nCanonical reading:\n- docs/design/station-topology.md\n- docs/guides/connections.md\n- docs/guides/deployment-authentication.md\n- docs/guides/self-hosted-broker.md\n- docs/security/remote-access-threat-model.md\n- docs/learn/walkthroughs.md#connections',
+    body: 'How a person signs in, a Device pairs, and requests reach the right Station with the right authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- What does an account prove that a paired Device does not?\n- Does the same authorization run over direct and relayed requests?\n- Who owns a secret, its reference, and the authority to rotate it?\n\nRead module topics with get_station_docs_topic:\n- architecture-deploymentauthentication: DeploymentAuthentication\n- architecture-virtualapplicationingress: VirtualApplicationIngress\n- architecture-nativerelaygrantrenewalsupervisor: NativeRelayGrantRenewalSupervisor\n- architecture-pendingpairingcompletion: PendingPairingCompletion\n- architecture-connectioninspector: ConnectionInspector\n- architecture-secretbindingadministration-and-integrationsecretresolver: SecretBindingAdministration and IntegrationSecretResolver\n- architecture-stationcontroldispatchscope: StationControlDispatchScope\n\nCanonical reading:\n- docs/design/station-topology.md\n- docs/guides/connections.md\n- docs/guides/deployment-authentication.md\n- docs/guides/self-hosted-broker.md\n- docs/security/remote-access-threat-model.md\n- docs/learn/walkthroughs.md#connections',
     tags: ['architecture', 'connections'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -797,6 +797,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-connections',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'secretbindingadministration-and-integrationsecretresolver',
+  },
+  {
+    id: 'architecture-stationcontroldispatchscope',
+    title: 'StationControlDispatchScope',
+    summary:
+      'Interface, composition, invariants, and documented evidence for StationControlDispatchScope.',
+    body: "Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## StationControlDispatchScope\n\nAn agent tool can cause the server to resolve an Agent, use a Connection or\ncontact another Station. The scope decision must happen before those later\nserver operations. [StationControlDispatchScope](../../src-server/runtime/mcp/station-control-dispatch-scope.ts)\nreads the target facts used by the shared\n[caller policy](../../src-server/tools/station-control-policy.ts).\n\n**Interface and ownership.** `target(ref, action)` resolves a new Session,\nthread or Conversation from Station-owned records. The caller supplies a\nreference, not trusted owner/Project facts. The result identifies the recorded\nowner, effective Project/global scope, remote placement, required Project\naction and whether the Conversation lineage includes host execution. A\nConversation target uses its newest started Session. Directory scope uses the\ndeepest containing canonical Project directory; missing or unreadable paths\ncannot establish a target. This does not rewrite a Session's stored Project.\n\n**Admission.** A bound operator retains operator reach under ordinary route\nauthorization. Other callers must target the same recorded owner, stay local\nand satisfy the required Project action. A caller without bound assurance must\nalso stay within its own Session's Project/global scope and avoid host\nexecution. Approving a global target requires the operator. These are verified\nStation-control caller rules, not additional restrictions on every paired\nperson UI request.\n\n**Composition and evidence.** [Runtime routes](../../src-server/runtime/routes/runtime-routes.ts)\nsupply record readers and Project authorization. The\n[dispatch route helper](../../src-server/routes/orchestration/dispatch-scope.ts)\napplies the shared rule before privileged downstream hops and passes the\nresolved directory rather than the caller's original alias. The\n[execution-target resolver](../../src-server/services/execution-target/execution-target-resolver.ts)\nalso requires local Project cwd overrides to exist inside that Project when\nthere is no separately verified remote path. Source tests include the\n[scope reader](../../src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts),\n[mounted route composition](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts)\nand [target resolver](../../src-server/services/execution-target/__tests__/execution-target-resolver.test.ts).\nTheir presence is not a new executed or remote-device receipt. See\n[agent configuration](../guides/self-configuring-agent.md#dispatch-authority) for tool-level\nrestrictions and caller binding.",
+    tags: ['architecture', 'connections', 'StationControlDispatchScope'],
+    parentId: 'architecture-connections',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'stationcontroldispatchscope',
   },
   {
     id: 'architecture-collaboration',

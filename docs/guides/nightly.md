@@ -88,6 +88,11 @@ confirms the pinned key table refuses that envelope. That is the whole run
 unless the owner gate is on; nothing is uploaded except short-lived run
 artifacts.
 
+This is the platform-array schema v2 manifest, which current `install.sh`
+does not accept. The fixed launcher that would consume these archives is
+also still pending. Publishing this manifest does not complete installer
+delivery; see the [manifest formats and consumers](../../packaging/manifest/README.md#formats-and-consumers).
+
 The `publish` job is the only one with `contents: write` or a secret. It runs
 only when the repository variable `STATION_PORTABLE_NIGHTLY_PUBLISH` is exactly
 `enabled`, the run came from `nightly.yml` on `main`, and the version is a
@@ -121,6 +126,13 @@ To enable it (owner only):
   `vX.Y.Z-nightly.<code>` (the versioned assets pinned and rollback manifests
   point at): one for each Nightly that builds, and up to four
   scheduled runs a day.
+- Provision the `portable-nightly-signing` environment and its
+  `STATION_PORTABLE_NIGHTLY_MANIFEST_SIGNING_KEY` secret, matching the public
+  key pinned as `station-portable-nightly-2026-09` in
+  `config/release-manifest-keys.json`. Review the environment's access,
+  approval and deployment-branch policy before enabling publication. The
+  workflow names the environment; its current policy and secret provisioning
+  are live GitHub configuration and remain `NOT_VERIFIED` by this source review.
 - Create the `portable-nightly` prerelease pointer, then set the variable, for
   example
   `gh variable set STATION_PORTABLE_NIGHTLY_PUBLISH --repo kontourai/station --body enabled`.

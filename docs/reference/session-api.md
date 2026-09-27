@@ -35,7 +35,7 @@ Content-Type: application/json
     "workspace": {
       "kind": "project",
       "projectSlug": "station",
-      "cwd": "/optional/verified/override"
+      "cwd": "/work/project/subdir"
     }
   },
   "message": "Inspect this change",
@@ -43,11 +43,25 @@ Content-Type: application/json
 }
 ```
 
+`workspace.cwd` is optional for a Project target. When supplied, its path must
+exist and resolve inside that Project's configured working directory,
+including symlink resolution and whole path segments. The example assumes the
+selected Project contains `/work/project/subdir`. An outside or unresolvable
+override refuses before execution. A separately verified remote workspace keeps
+its remote-path admission; the controlling Station does not resolve that path
+against its own filesystem.
+
 For a saved Environment use `{ "kind": "saved", "id": "..." }`. The
 controlling Station reaches that Environment through its configured peer or SSH
 access, rewrites the forwarded target to `current`, and the target Station resolves
 its own Agent. Tunnel URLs, provider IDs, and connection IDs are never request inputs
 or response data.
+
+Calls made by a station-control Agent also pass the
+[dispatch authority checks](../guides/self-configuring-agent.md#dispatch-authority):
+owner and Project scope constrain local work, and remote reach requires a bound
+operator caller. These checks also cover input replies and follow-ups. They do
+not replace the operator UI or paired Device's own request authorization.
 
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the

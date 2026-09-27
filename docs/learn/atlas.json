@@ -106,7 +106,8 @@
         "NativeRelayGrantRenewalSupervisor",
         "PendingPairingCompletion",
         "ConnectionInspector",
-        "SecretBindingAdministration and IntegrationSecretResolver"
+        "SecretBindingAdministration and IntegrationSecretResolver",
+        "StationControlDispatchScope"
       ],
       "questions": [
         "What does an account prove that a paired Device does not?",

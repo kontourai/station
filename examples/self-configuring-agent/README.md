@@ -19,6 +19,12 @@ Only four metadata reads are auto-approved. Skill edits, delegation, task contro
 and other exposed calls remain subject to approval and the caller's authority.
 No unattended grants are included.
 
+Delegation also obeys [dispatch authority](../../docs/guides/self-configuring-agent.md#dispatch-authority).
+Non-operator callers stay with their own owner's local work and required Project
+actions; callers without bound assurance also stay within their Session's scope.
+Saved-Environment discovery and remote work require a bound operator caller.
+Approving a tool call does not supply that authority.
+
 ## Files
 
 - [agent.json](./agent.json) — example orchestrator agent config

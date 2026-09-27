@@ -30,6 +30,10 @@ The [manifest README](../../packaging/manifest/README.md) maps these consumers.
 [#2675](https://github.com/kontourai/station/issues/2675) owns the prebuilt-server
 delivery integration; the existence of the assembler is not publication proof.
 
+The [portable Nightly publication workflow](nightly.md#portable-server-nightly-dry-run-until-the-owner-enables-it)
+uses this platform-array payload. It defaults to a dry run; its separately
+enabled publication path does not change the current installer limitation.
+
 The [packaging workflow](../../.github/workflows/ecosystem-packaging.yml) is
 configured to run a macOS fixture dry-run: it generates ephemeral signing
 material, verifies/renders a manifest and cask, exercises a packaged installer,

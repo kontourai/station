@@ -838,7 +838,12 @@ station agents chat planner "Summarize the open work"
 For a new chat, `--project=<slug>` selects Project context for either engine
 kind. The current CLI also sends `process.cwd()` as that target's workspace
 directory; it does not simply request the Project's configured directory. The
-server resolves and validates the target. Use `--project` or `--cwd`, not both.
+server requires this directory to resolve inside the selected Project's
+configured directory, following symlinks and comparing whole path segments.
+Run the CLI from that Project or a contained subdirectory; an outside or
+unresolvable directory refuses before execution. Separately verified remote
+workspace paths retain their remote-path admission. Use `--project` or `--cwd`,
+not both.
 
 The checkout launcher changes directory to the Station checkout before running
 the CLI. Chat currently uses that process directory rather than the preserved
