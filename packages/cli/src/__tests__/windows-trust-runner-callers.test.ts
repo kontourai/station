@@ -4,10 +4,10 @@
  * spawnSync with its own timeout or none. Each trust operation is replaced by
  * a recorder that captures the runner it was handed and stops the caller.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 
 const recorded = vi.hoisted(() => ({ runners: [] as unknown[] }));
 class Stop extends Error {}
@@ -32,20 +32,13 @@ import { ensureProfileStoreGenesis } from '../commands/profile-store.js';
 import { createTriageRunDirectory } from '../commands/triage.js';
 import { runWindowsTrustCommand } from '../commands/windows-path-trust.js';
 
-const temporary: string[] = [];
-function temporaryDirectory(): string {
-  const path = mkdtempSync(join(tmpdir(), 'station-trust-callers-'));
-  temporary.push(path);
-  return path;
-}
+const makeTempDir = trackTempDirs();
+const temporaryDirectory = () => makeTempDir('station-trust-callers-');
 
 afterEach(() => {
   recorded.runners = [];
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
-  for (const path of temporary.splice(0)) {
-    rmSync(path, { recursive: true, force: true });
-  }
 });
 
 describe('CLI Windows trust callers use the shared runner (#2805)', () => {
