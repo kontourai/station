@@ -211,11 +211,39 @@ Skill/server, or placeholder expansion in commands/URLs/headers.
 
 ## DestinationRegistry
 
-**Intent and Interface.** `createDestinationRegistry(definitions)` composes one immutable destination inventory. Callers may read registered destinations, advertised destinations for an explicit preview-flag set, ordered sidebar or command-palette projections, exact root routes, and the destination owning a `NavigationView`. Labels and badges resolve when projected, after locale, branding, and live attention facts exist. The built-in application composition is `APP_DESTINATION_REGISTRY`.
+**Intent and Interface.** `createDestinationRegistry(definitions)` composes one
+immutable destination inventory. Callers read registered destinations, advertised
+destinations for an explicit flag set, ordered sidebar, Settings-navigation or
+command-palette projections, exact root routes, and the destination owning a
+`NavigationView`. Labels and badges resolve when projected, after locale, branding, and
+live attention facts exist. The built-in application composition is
+`APP_DESTINATION_REGISTRY`.
 
-**Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate exact-route owners, duplicate view owners, and duplicate sidebar or palette order slots. It never invokes a label or badge while composing or filtering; locale, branding, and attention state remain render-time inputs. A preview surface stays registered and routable while `getAdvertised` hides it until its named flag is enabled. `hiddenFromNav` removes only the sidebar affordance; route, palette, badge, and header callers remain independent projections. Parameterized Project, layout, task, Agent, connection, and Workspace Pane routes retain their domain parsers. Dynamic Workspace Panes retain their typed availability catalog and join the command palette after static registry projection rather than becoming unvalidated root-route contributions.
+**Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate
+exact-route owners, duplicate management-view owners, and duplicate sidebar or palette
+order slots. Settings rows have unique order within each group and cannot also be
+sidebar entries or hidden from navigation. Composition and filtering do not invoke
+labels or badges; Settings projection resolves its optional label/route overrides. A
+flag-gated surface stays registered and routable while `getAdvertised` hides it.
+Developer advertisement uses the device-scoped `device:developer-tools` flag; other
+flags can come from server previews. `hiddenFromNav` removes the sidebar affordance;
+route, palette, badge, and header callers remain independent projections. Parameterized
+Project, layout, Task, Agent, connection, and Workspace Pane routes retain their domain
+parsers. Dynamic Workspace Panes use their typed availability catalog and join the
+palette after static destination projection.
 
-**Seam, Implementation, callers, and tests.** The UI shell composes built-in descriptors. `routing.ts` consumes exact routes and semantic management ownership; `ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their ordered projections. Icons are a presentation Adapter keyed by the registry's finite icon vocabulary. Future trusted plugin surface contributions must enter at registry composition and pass the same validation; there is no mutable global `register()` operation or renderer callback in persisted plugin data. Contract coverage is `src-ui/src/app-shell/__tests__/destination-registry.test.ts` plus sidebar, palette, routing, and header suites. **Do not reintroduce:** component-local static destination arrays, route-to-sidebar switch statements, hard-coded badge copy outside the registry, mutable post-construction registration, or treating a contributed renderer declaration as navigation authority.
+**Seam, Implementation, callers, and tests.** The UI shell composes built-in
+descriptors. `routing.ts` consumes exact routes and semantic management ownership;
+`ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their
+ordered projections. Icons are a presentation Adapter keyed by the registry's finite
+icon vocabulary. Future trusted plugin surface contributions must enter at registry
+composition and pass the same validation; there is no mutable global `register()`
+operation or renderer callback in persisted plugin data. Contract coverage is
+`src-ui/src/app-shell/__tests__/destination-registry.test.ts` plus sidebar, palette,
+routing, and header suites. **Do not reintroduce:** component-local static destination
+arrays, route-to-sidebar switch statements, hard-coded badge copy outside the registry,
+mutable post-construction registration, or treating a contributed renderer declaration
+as navigation authority.
 
 ## Keyboard shortcuts
 
@@ -261,10 +289,11 @@ its owner before navigation.
 **Contract.** Query, provider, result, string, count, byte, continuation, and
 result-acceptance deadlines are fixed by the host. Elapsed monotonic checks
 reject late results even when synchronous work prevents the timer from firing.
-This in-process foundation cannot preempt synchronous provider/source work and
-does not establish a server responsiveness bound. Production composition is
-blocked on an isolated, cancellable execution/read-owner boundary; making a
-synchronous source method return a Promise is not that boundary.
+This in-process aggregator cannot preempt synchronous provider callbacks and
+does not establish a server responsiveness bound. The production Task and
+transcript providers use the isolated read owners described below; arbitrary
+providers do not inherit that isolation. Returning a Promise alone would not
+establish it.
 Provider output is cloned and validated;
 unknown shapes, duplicate identities, excessive pages, throwing accessors,
 timeouts, and exceptions become source-level unavailable state without error
@@ -286,12 +315,18 @@ live in `src-server/services/search/unified-search-service.ts`. Initial local
 Adapters map the existing authority-filtered Session message index and the
 personal-mode TaskGraph list. The Task Adapter is deliberately not eligible for
 hosted composition until a tenant-bound Task store exists. The runtime/API/SDK
-slice below adds read-only transport; there is no command-palette row, file
-scan, or output/receipt Provider. Focused behavioral evidence lives in
+slice below adds read-only transport and the palette's separate Workspace-search
+mode. File scans, output/receipt providers, and a published Console adapter are
+not part of this composition. Focused behavioral evidence lives in
 `src-server/services/search/__tests__/`. **Do not reintroduce:** a universal
 resource graph, sibling-repository scraping, provider-supplied owner stamping,
 unauthorized hit/count projection, cached-snippet authority, inferred identity,
 unbounded fan-out, or a second command-palette registry.
+
+The current Task and message providers return bounded result windows and do
+not issue search-page continuations; they reject a provider continuation if
+one is supplied. The generic aggregator's continuation support is a separate
+contract from the inspector's content-bound message pagination.
 
 **Task-only isolation prerequisite (#1413).** `TaskGraphService.createPersonalSearchReader(stationId)`
 binds one explicit-lifecycle reader to that owner's canonical file. Its fixed
@@ -300,8 +335,11 @@ missing-primary `.previous` recovery; corrupt primary data never falls back.
 The worker accepts files up to 8 MiB (with a bounded one-byte overflow probe;
 oversize is unavailable, not empty), scans the
 existing bounded Task window, and transfers only a bounded provider page.
-One request may execute; there is no queue. The two-second deadline includes
-worker startup. Deadline/cancellation fences result acceptance and retains the
+One request may execute per reader; there is no queue. The runtime warms both
+workers at composition and awaits the readers needed by each operation before
+starting its read deadlines. Readiness is bounded by the worker's own deadline;
+a cold or replacement worker can therefore add wait time outside the read
+budget. Deadline/cancellation fences result acceptance and retains the
 exact worker until exit/termination is confirmed. An uncertain or rejected
 cleanup occupies the slot; `inspect()` reports retiring/incomplete and bounded
 `close()` reports winding-down/incomplete. Repeated close joins pending cleanup
@@ -366,8 +404,8 @@ leaves transcript shutdown to Orchestration/EventStore. SDK cached hooks require
 the existing API-base/authority-epoch request scope and hide cached snippets
 until a fresh successful read. Real owner+Hono tests live in
 `services/search/__tests__/runtime-search.test.ts`; mounted SDK tests cover
-same-origin epoch replacement. CommandPalette/UI, additional source kinds, and
-supported-platform responsiveness qualification remain deferred.
+same-origin epoch replacement. The palette caller is described below. Additional
+source kinds and supported-platform responsiveness qualification remain deferred.
 
 The SDK root publishes hooks/query keys only; direct operations stay on the
 existing React-free `/client` entry. Hooks load that client lazily after
@@ -403,24 +441,92 @@ ChatDock current-conversation resolution, default Agent, second index or worker
 is introduced. Task navigation passes existing unsaved guards, then performs a
 fresh exact-open read and a final synchronous currentness check before the
 canonical route commit. The managed-browser exact-message proof and focused
-owner/SDK/UI tests qualify this tracer; broader source and platform qualification
-remains separate.
+owner/SDK/UI tests are the evidence route for this tracer; broader source and
+platform qualification remains separate. The runtime warmup regression suite
+is `services/search/__tests__/runtime-search-worker-warmup.test.ts`; it tests
+worker ownership, cold-start readiness and shutdown rather than a production
+latency guarantee.
 
 ## WorkspacePaneHostContributions
 
-**Intent and Interface.** `createWorkspacePaneHostContribution()` binds one versioned package-level contribution to an exact plugin installation generation and Project. It projects host-level prompt actions plus explicit available/default Agent state and dispatches only an owner-qualified action key. Pane-local actions remain on their descriptor; a host action is declared once and is never duplicated across every Pane.
+**Intent and Interface.** `createWorkspacePaneHostContribution()` binds one versioned
+package-level contribution to an exact plugin installation generation and Project. It
+projects host-level prompt actions plus explicit available/default Agent state and
+dispatches only an owner-qualified action key. Pane-local actions remain on their
+descriptor; a host action is declared once and is never duplicated across every Pane.
 
-**Contract.** An `own-plugin-agent` declaration carries only a clean Agent id; the host adds plugin and installation-generation identity and re-resolves that exact ownership before every launch. A `station-agent` is explicit and still passes Project availability policy. Every action Agent and default must appear in the declaration's available set. `requiredAgents` remains only a Pane availability requirement and is not accepted as action or selection authority. Projection and dispatch recheck installation authority around awaited Agent resolution, and a resolver that returns a different owner, generation, or Agent is unavailable. Legacy migration is deterministic and read-only: exact `<plugin>:<clean-agent>` spellings become owner-relative references and `globalSkills[].prompt` remains literal prompt data. Legacy `prompt` actions require manual review because the old path ambiguously used both `data` and `label`; another namespace, an external/internal action, or an action with no explicit/default Agent likewise returns `manual-review` rather than inventing routing.
+**Contract.** An `own-plugin-agent` declaration carries only a clean Agent id; the host
+adds plugin and installation-generation identity and re-resolves that exact ownership
+before every launch. A `station-agent` is explicit and still passes Project availability
+policy. Every action Agent and default must appear in the declaration's available set.
+`requiredAgents` remains only a Pane availability requirement and is not accepted as
+action or selection authority. Projection and dispatch recheck installation authority
+around awaited Agent resolution, and a resolver that returns a different owner,
+generation, or Agent is unavailable. Legacy migration is deterministic and read-only:
+exact `<plugin>:<clean-agent>` spellings become owner-relative references and
+`globalSkills[].prompt` remains literal prompt data. Legacy `prompt` actions require
+manual review because the old path ambiguously used both `data` and `label`; another
+namespace, an external/internal action, or an action with no explicit/default Agent
+likewise returns `manual-review` rather than inventing routing.
 
-**Seam, Implementation, callers, and tests.** Public data shapes live in `@kontourai/station-contracts/workspace-pane-host-contribution`; validation, deterministic legacy projection, owner/Agent resolution, and prompt-launch dispatch live in `src-server/services/plugins/workspace-pane-host-contributions.ts`. The injected prototype dispatcher is not production admission. WorkspacePaneHostAdmission below supplies the real invocation guard; WorkspacePaneHostActions composes its production route, SDK, host UI and example semantic migration under #1372. Focused tests execute dispatch through the bound launcher and prove owner retirement, identity equivocation, namespaced migration, and refusal without an Agent. **Do not reintroduce:** first-required-Agent selection, punctuation-based owner inference beyond exact legacy migration, ambient default Agent fallback, duplicated global actions, caller-provided plugin ownership, navigation URLs in prompt intents, or persisted Layout rewrites.
+**Seam, Implementation, callers, and tests.** Public data shapes live in
+`@kontourai/station-contracts/workspace-pane-host-contribution`; validation,
+deterministic legacy projection, owner/Agent resolution, and prompt-launch dispatch live
+in `src-server/services/plugins/workspace-pane-host-contributions.ts`. The injected
+prototype dispatcher is not production admission. WorkspacePaneHostAdmission below
+supplies the real invocation guard; WorkspacePaneHostActions composes its production
+route, SDK, host UI and example semantic migration under #1372. Focused tests execute
+dispatch through the bound launcher and prove owner retirement, identity equivocation,
+namespaced migration, and refusal without an Agent. **Do not reintroduce:**
+first-required-Agent selection, punctuation-based owner inference beyond exact legacy
+migration, ambient default Agent fallback, duplicated global actions, caller-provided
+plugin ownership, navigation URLs in prompt intents, or persisted Layout rewrites.
 
 ## WorkspacePaneHostAdmission
 
-**Intent and Interface.** `createWorkspacePaneHostAdmission()` prepares one installed package's inert `workspacePaneHost` action for an exact Project, then lends one server-only invocation capability to the existing foreground execution owner. It captures the installation journal incarnation and selected physical artifact digest, explicit own-plugin clean Agent identity/ownership marker, Project revision, authored Agent spec and exact literal or registered prompt body. Legacy direct installations retain explicit compatibility. Preparation is not activation or permission to execute; the capability is one-shot and valid only inside its installation lease.
+**Intent and Interface.** `createWorkspacePaneHostAdmission()` prepares one installed
+package's inert `workspacePaneHost` action for an exact Project, then lends one
+server-only invocation capability to the existing foreground execution owner. It
+captures the installation journal incarnation and selected physical artifact digest,
+explicit own-plugin clean Agent identity/ownership marker, Project revision, authored
+Agent spec and exact literal or registered prompt body. Legacy direct installations
+retain explicit compatibility. Preparation is not activation or permission to execute;
+the capability is one-shot and valid only inside its installation lease.
 
-**Contract.** Admission linearizes at the irreversible provider invocation, not when its Promise later settles. The existing plugin-content full-effect lease is acquired outside Session coordination. At the final start call, and before the existing turn `beginInvocation`/provider call, the Project revision read guard precedes the short Agent identity guard. These guards recheck the exact Project, Agent bytes/owner, installation digest and body binding, then synchronously invoke and return a boxed Promise; Project/Agent locks release before network settlement. The identity lock never spans an awaited provider operation. Reentrant installed-content changes are checked again, not hidden by the outer lease. After invocation, existing receipts retain accepted/pending/unknown effect truth; policy change cannot turn that into cancellation or permission to replay. Captured Agent, Project, credential, presentation and stall-window inputs are passed through the existing resolver rather than rereading ambient replacements.
+**Contract.** Admission linearizes at the irreversible provider invocation, not when its
+Promise later settles. The existing plugin-content full-effect lease is acquired outside
+Session coordination. At the final start call, and before the existing turn
+`beginInvocation`/provider call, the Project revision read guard precedes the short
+Agent identity guard. These guards recheck the exact Project, Agent bytes/owner,
+installation digest and body binding, then synchronously invoke and return a boxed
+Promise; Project/Agent locks release before network settlement. The identity lock never
+spans an awaited provider operation. Reentrant installed-content changes are checked
+again, not hidden by the outer lease. After invocation, existing receipts retain
+accepted/pending/unknown effect truth; policy change cannot turn that into cancellation
+or permission to replay. Captured Agent, Project, credential, presentation and
+stall-window inputs are passed through the existing resolver rather than rereading
+ambient replacements.
 
-**Seam, Implementation, callers, and tests.** `ProjectFileTransactions` owns the additive exact-revision read guard; `capturePluginAgentInvocation` reuses the canonical Agent parser and identity mutation lock; installation and admission share one plugin-Agent marker parser. Prompt-file discovery remains the in-place command-skill source with bounded invocation reads. `OrchestrationService` and the existing foreground tool adapter accept the server-only capability, never public JSON. The production WorkspacePaneHostActions bridge below adds the route, SDK and host UI caller, with a separate grant admission and one-shot delivery ticket. Its controlled-provider tests exercise actual Session commands, turn invocation and EventStore receipt/event readback, including pending-resolution and final-boundary races. Native execution carries a private companion through the existing authorized-turn relay and repeats captured admission at the native model-call boundary. Worktree provisioning enters the canonical execution owner through a guarded phase and mints a private exact Session/Project/CWD binding; start cannot use a pending, cross-Session, or different-directory binding. Explicit non-plugin Agent references remain unavailable; none silently substitutes another execution path. This is not Agent Plugins namespace activation or migration completion. **Do not reintroduce:** a content lock acquired inside Session coordination, a network await while holding the Agent identity lock, label/colon inference for registered prompts, mutable captured snapshots, first-required-Agent defaults, raw database authority or an automatic retry after possible invocation.
+**Seam, Implementation, callers, and tests.** `ProjectFileTransactions` owns the
+additive exact-revision read guard; `capturePluginAgentInvocation` reuses the canonical
+Agent parser and identity mutation lock; installation and admission share one
+plugin-Agent marker parser. Prompt-file discovery remains the in-place command-skill
+source with bounded invocation reads. `OrchestrationService` and the existing foreground
+tool adapter accept the server-only capability, never public JSON. The production
+WorkspacePaneHostActions bridge below adds the route, SDK and host UI caller, with a
+separate grant admission and one-shot delivery ticket. Its controlled-provider tests
+exercise actual Session commands, turn invocation and EventStore receipt/event readback,
+including pending-resolution and final-boundary races. Native execution carries a
+private companion through the existing authorized-turn relay and repeats captured
+admission at the native model-call boundary. Worktree provisioning enters the canonical
+execution owner through a guarded phase and mints a private exact Session/Project/CWD
+binding; start cannot use a pending, cross-Session, or different-directory binding.
+Explicit non-plugin Agent references remain unavailable; none silently substitutes
+another execution path. This is not Agent Plugins namespace activation or migration
+completion. **Do not reintroduce:** a content lock acquired inside Session coordination,
+a network await while holding the Agent identity lock, label/colon inference for
+registered prompts, mutable captured snapshots, first-required-Agent defaults, raw
+database authority or an automatic retry after possible invocation.
 
 ## PackageMcpAdmissionJournal
 
@@ -845,11 +951,48 @@ after a model/source change or prove live embedding-service availability.
 
 ## SharedWorkingState
 
-**Intent and Interface.** `createSharedWorkingState()` composes a `live` port and a separate Adapter-owned `recovery` port over one private authority. `live.apply(operation, authorization)` admits an untrusted write and returns exactly `applied`, `duplicate`, `deferred`, or named `rejected` truth; it exposes no recovery verb. `recovery.replay()` recovers already-admitted authoritative facts as `replayed`, and `recovery.reconcile(currentGrant)` settles pending live work only after current-grant revalidation. `text`, `revision`, `snapshot`, `compact`, and `resync` expose one document's converged projection, content-addressed revision, self-verifying checkpoint, and bounded replay contract. `negotiateSharedWorkingStateVersion` is the version boundary. Callers receive no operation-store cursor, atom mutation API, transport, or permission directory.
+**Purpose and interface.** [SharedWorkingState](../../src-server/domain/shared-working-state.ts)
+owns converged text for one exact Project/Task/document. `createSharedWorkingState()`
+separates untrusted `live.apply(operation, authorization)` from the adapter-owned
+`recovery.replay()` and `recovery.reconcile(currentGrant)` ports. Live results
+are `applied`, `duplicate`, `deferred` or a named rejection. Trusted replay can
+also return `replayed`; missing dependencies can still defer. The text,
+content-addressed revision, snapshot, compaction and resync APIs expose document
+state without granting transport, storage or participant-directory authority.
 
-**Contract.** The Module accepts only schema-v1 well-formed-Unicode text/code operations at its exact Project/Task/document scope. Operations carry stable document, replica, actor, operation, and causal-parent identities; display labels and Project/Task/session/run/proposed-change correlations are non-authorizing attribution and are excluded from convergence identity. Current server-derived authorization checks actor ID and epoch before duplicate/defer decisions and again before a live deferred write releases, so malformed, unsupported, cross-document, unauthorized, and stale-writer input fails closed. Same-ID different-digest input is `operation_equivocation`, never a silent duplicate; a same-ID/digest authoritative replay promotes matching live-deferred work to trusted, then reconciles it. Missing causal parents/atoms defer and unified reconciliation drains ready trusted facts while current authority decides live facts. Deferred ID/digest/admission is part of the revision/checkpoint, so pending divergence cannot masquerade as equal state. Rejected live deferred work is not an operation, so its source removes the affected replay history and forces snapshot fallback rather than advertising an unrealizable delta. Count and byte bounds fail closed; snapshots retain pending work and always restore it. Iterative RGA-style predecessor ordering and tombstones yield an arrival-order-independent byte/revision result. Resync emits only an exact delta inside the configured retained window or a revision-verified snapshot. Presence/follow/cursor state is ephemeral and forbidden from durable facts. See `docs/design/shared-working-state.md` for scope and mechanism comparison.
+**Invariants.** Version-one operations require well-formed Unicode and exact
+document identity. Actor ID and current writer epoch are checked before live
+duplicate/defer decisions and again when deferred live work is released.
+Same operation ID with a different digest is `operation_equivocation`.
+Authoritative replay of an identical deferred operation promotes it to trusted;
+recovery without a current grant leaves live obligations pending. Causal parents,
+predecessor atoms and tombstones determine ordering, not wall-clock timestamps.
+Display labels and Session/run correlations are attribution, not authorization
+or convergence identity.
 
-**Seam, Implementation, callers, and tests.** `src-server/domain/shared-working-state.ts` is the Station-owned seam and contains the current private reference mechanism, not a third-party wire contract. A later transport/persistence Adapter supplies current authorization and stores snapshots/deltas without widening this Interface. `shared-working-state.test.ts` is the deterministic adversarial convergence harness: permutations, duplication, delay, partition/reconnect, delta/snapshot recovery, compaction, version rejection, and stale/unauthorized/malformed failures. `station.shared_working_state.operations` records only bounded operation/outcome telemetry. **Do not reintroduce:** client-trusted display identities or epochs, timestamp/LWW ordering, ephemeral presence in the durable log, a raw third-party CRDT envelope, unbounded replay, or treating the conversation log as this document store.
+Pending IDs, digests and admission class contribute to revision/checkpoint
+identity. A snapshot preserves pending obligations and validates its claimed
+revision on restore. Rejecting deferred live work invalidates the affected
+replay window; resync returns a snapshot rather than an impossible delta.
+Deferred count/byte and replay limits bound those windows, not total process
+memory for an indefinitely growing document. Presence and cursors never enter
+the durable document facts. The [design record](../design/shared-working-state.md)
+explains mechanism choices and historical constraints.
+
+**Current composition.** [ProjectTaskRoomWorkingState](../../src-server/services/orchestration/project-task-room-working-state.ts)
+and its worker own private SQLite settlement and snapshots. They instantiate
+this document mechanism; [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
+supplies current authority and projects text/revision through the closed browser
+contract. This persistence adapter exists today. The browser neither owns an
+operation factory nor receives the atom graph.
+
+**Evidence and limits.** `src-server/domain/__tests__/shared-working-state.test.ts`
+checks permutations, duplicate and delayed delivery, compaction, snapshot/delta
+recovery and stale/malformed authority. Room working-state/runtime suites test
+the persistence composition separately. These are first-party document
+contracts, not compatibility evidence for a third-party CRDT wire format.
+`station.shared_working_state.operations` emits bounded operation/outcome labels.
+
 
 ## LiveWorkSession
 
@@ -858,24 +1001,29 @@ ephemeral projection for an exact Project/Task/surface/session. Its public
 Interface is join, heartbeat, explicit announce/withdraw/depart, watch, follow,
 local input, typing, bounded material replay, projection, revision reference,
 and system-authorized export/restore/recovery. Server identity/work and revision
-authorities supply attributable product facts. The authorization seam is
-re-evaluated on every call, with independent join/read/write/watch/follow/
-announce/history-read capabilities.
+authorities supply attributable product facts. Actor-facing operations re-evaluate
+authorization, with independent join/read/write/watch/follow/announce/history-read
+capabilities.
 
 **Contract.** No current liveness is reconstructed from replay or recovery.
 Private participants are self-only; only a confirmed announcement publishes
-targetable state. Explicit departure and TTL remove presence immediately while
-retaining a recoverable material closure. One announcement owns one canonical
-closure and reserves its worst-case count/bytes before publication. Fixed-size
+targetable state. Explicit departure removes presence; TTL expiry is applied
+when the caller supplies time to an admitted operation or projection. The pure
+module does not run its own wall-clock timer. Both retain a recoverable material
+closure. One announcement owns one canonical closure and reserves its worst-case
+count/bytes before publication. Fixed-size
 IDs digest an explicit ordered scalar projection including durable occurrence
 and request identity. Only indeterminate intents remain pending; terminal facts,
 dependencies, ordinals, reservation, terminal-linked self-contained replay, and
-safe clock survive a bounded, server-authorized restart record. Actor and recovery retries have separate rate
-budgets. Revisions require exact resolver-owned ID/Project/Task/session/run
+safe clock survive a bounded, server-authorized restart record. Actor and recovery
+retries have separate rate budgets. Revisions require exact resolver-owned ID/Project/Task/session/run
 evidence. Missing Adapters fail before creating/restoring an obligation.
 
-**Seam, Implementation, callers, and tests.**
-`ProjectTaskLiveWorkHistoryAdapter` is the composition seam: it consumes only
+**Current composition.** `ProjectTaskRoomRuntime` constructs the live session,
+binds server identity/grant resolution, persists private recovery records and
+projects browser-safe presence. It does not restore participants as live after
+a restart.
+`ProjectTaskLiveWorkHistoryAdapter` is the history seam: it consumes only
 `ProjectTaskRoomAuthority` plus a server grant issuer, revalidates an actor/scope/
 capability grant for every append, and maps stable live intent IDs to room proposal
 IDs. Its async settlement path projects exact committed or duplicate room receipts;
@@ -889,26 +1037,118 @@ facts, insertion-order IDs, authority inferred from replay, or restored liveness
 
 ## CollaborativeEditorPane
 
-This is a retained pure controller, not the mounted Task editor. The production
-Task workspace uses `ProjectTaskRoomRuntime` and `TaskRoomEditorPane`, described
-below. The controller contracts and their fixture tests do not establish that
-this controller is connected to a current product renderer.
+**Status and purpose.** [CollaborativeEditorPaneController](../../src-shared/collaborative-editor-pane.ts)
+is a retained pure controller with fixture callers. No production renderer
+instantiates it. Its former, unmounted React projection was deleted. The
+mounted Task workspace uses the server/browser composition below; controller
+tests do not prove that its complete watch/follow/navigation API is shipped UI.
 
-**Intent and Interface.** `CollaborativeEditorPaneController` projects one text/code document for a Workspace Pane occurrence. Composition binds an exact pane, local actor, Project/Task/document scope, and correlation to dynamic server-owned authority plus narrow convergence, editing-capability, transport, room-stream, target-projection, principal, cursor-output, host-navigation, and immutable-revision Adapters. Callers dispatch intent—local input/selection, an accepted remote operation, one versioned room projection, watch/follow/jump/join/share, resync, or immutable evidence restore—and observe one immutable non-secret state. They never receive a convergence atom graph, snapshot, pending operation/transform payload, writer epoch, room log, filesystem path, raw cursor store, transport session, or host placement authority.
+**Retained controller contract.** Composition binds one Pane occurrence, local
+actor and exact Project/Task/document to separate document, editing, room,
+principal, target, cursor, transport and navigation authorities. Intent enters
+through local input/selection, remote operations, room projections, recovery,
+or watch/follow/jump/join/share. Public state omits atoms, snapshots, operations,
+writer epochs, grants, raw room logs, filesystem paths and host placement
+capabilities.
 
-**Contract.** Every ingress resolves current exact actor/scope authority. Document operation projection, solo read/write, and restore/resync require only document authority; room grants gate only presence/cursors/watch/follow/share. Revocation masks every document-derived public text/payload/attribution/cursor while retaining possible-effect batches only inside the private recovery ledger. Public pending projection contains non-content intent ID, operation counts, aggregate exact `uninvoked|possible-effect|indeterminate|committed-awaiting-projection|refused` states, timestamp, and bounded safe reason. `createSharedWorkingStateProjectionAdapter` converts #2889 `applied|replayed|duplicate|deferred|rejected` truth including `operationDeferred`; pending settles only when proved non-deferred or named in exact releases. One exact planned batch has a server-owned canonical SHA-256 effect digest over version, intent, scope, and ordered #2889 semantics; it remains `uninvoked` until the immediate `submitBatch` boundary. A pre-effect lifecycle/authority fence definitely refuses it without inventing possible effect. A fully projected submitted batch remains in the bounded private ledger until its exact total result settles; late refusal/not-invoked quarantines it as integrity evidence, accepted finalizes, and indeterminate retains evidence without resubmission. An accepted batch plus member refusal likewise makes the pane stale rather than finalizing an ordinary rejection. The editing capability chunks delete targets by measured serialized bytes under shared operation/batch byte and count ceilings. Navigation mints an opaque revision/actor/scope/view/expiry/nonce capability; the Host Adapter validates and consumes it inside one `joinAndNavigate` effect, so there is no navigation-then-recheck race. Working-state revision and immutable evidence revision remain distinct; one authoritative-transition helper prunes stale cursors/views across remote apply, restore, and resync, while one abort generation fences recovery races.
+Current exact actor/scope authority is checked at ingress. Solo document
+read/write/resync uses document authority; room permission separately gates
+presence, cursors and sharing. Revoked read authority masks document-derived
+text and attribution while private possible-effect evidence remains available
+for reconciliation. A planned batch stays `uninvoked` until `submitBatch`.
+Its digest binds version, intent, scope and ordered operation semantics.
+Deferred or uncertain effects remain pending; projected operations alone do
+not settle a batch whose total transport result is outstanding. Contradictory
+member/total outcomes quarantine the batch and make the document stale.
+Retries reuse the exact batch rather than minting another edit.
 
-Ephemeral room input has a closed schema, exact scope, server-owned monotonic generation+bound epoch, sequence, TTL, UTF-8/count bounds, duplicate refusal, and O(1) oversized-array rejection. Missing/malformed current stream authority masks the live projection as stale; an authenticated old packet is merely ignored. Stable principal identity is actor ID+kind; session/run are mutable presence correlations but immutable on each accepted attribution receipt. Resulting room capacity applies transactionally and quiet expiry removes principals safely. Followable views resolve through a separate exact target projection authority. The controller binds the authority revision, re-resolves before/after host join/navigation, and refuses active watch or navigation when authority changes mid-effect. Pane watch remains `off|active|paused` with explicit unwatch and local exit. The editing capability maps authoritative cursor boundaries through the same private pending operation batches into `displayText` coordinates or suppresses them. An earlier, unmounted React prototype used one synchronized aria-hidden overlay for range marks and a bounded screen-reader count. That prototype was deleted; these rendering details are historical, not the current Task editor contract.
+Room projections have closed schemas, exact scope, server-owned generation and
+epoch, sequence, TTL and capacity bounds. An authenticated old packet is
+ignored; missing current stream authority makes the projection stale. Actor
+ID/kind is stable while Session/run presence can change; accepted edit
+attribution remains immutable. Cursor coordinates are transformed through the
+same private pending operations or suppressed. Follow/navigation resolves an
+exact target and uses a consumed, revision/scope/actor-bound host capability.
+Local input can leave follow mode; unwatch is explicit. Restore and resync share
+an abort generation so late recovery cannot overwrite a newer state. Working
+revisions and immutable evidence revisions have different owners.
 
-**Seam, Implementation, callers, and tests.** `src-shared/collaborative-editor-pane.ts` is the deep pure controller/privacy/validation locality and `src-server/domain/shared-working-state-editing.ts` owns atom-aware edit planning. There is no renderer projection of this controller. A host-neutral projection component existed under `src-ui/src/workspace-panes/`, but no pane host, catalog entry or lazy route ever mounted it, and it has been deleted rather than left as a surface the product does not reach. The shipped Task workspace retains the narrower browser-security Adapter: `ProjectTaskRoomRuntime` owns private operations, per-subscriber authority projection, ephemeral cursor bounds, and SQLite settlement; the route emits only the closed browser DTO and prioritizes exact-order document delivery over queued ephemeral room projections without moving the immediate currentness check; the SDK owns exact opaque edit receipts plus the one SSE connection and synchronously offers parsed accepted documents to the mounted host before normalizing that same object into its query cache; `ProjectTaskRoomProvider`, `TaskRoomEditorPane`, and `ProjectTaskRoomPresence` project that authority without creating a client operation factory or second room. Gaps, duplicates, malformed events, terminal streams, and Task changes retain the authoritative recovery/currentness path. Adversarial tests cover private batch settlement/retry, dynamic revocation secret masking, deferred duplicate and large release, solo editing/recovery, revision fencing, server-owned room generations, symmetric subscriber projection, cursor TTL/rate/capacity and exact revision binding, principal run change/kind equivocation, cross-document target movement, direct #2889 convergence, keyboard/selection, and reduced motion. Real two-browser acceptance is `tests/project-task-room-collaboration.spec.ts`. **Do not reintroduce:** editor-local CRDT/OT/LWW logic, client-owned authority, exported pending payload, opaque-epoch freshness guesses, JSON metadata equivocation, per-cursor document copies, caller-asserted revision verification, local paths, capability conflation, durable chat/history ownership, host placement policy, or renderer-specific transport.
+**Mounted Task path.** [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
+mounts `ProjectTaskRoomProvider`, `ProjectTaskRoomPresence`, `TaskRoomEditorPane`
+and `ProjectTaskRoomConversation` through `WorkspacePaneHost`.
+[ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
+owns server edit planning, request/principal checks, per-subscriber projection,
+ephemeral cursor limits, working-state settlement and history composition.
+The [route](../../src-server/routes/orchestration/project-task-rooms.ts) emits
+closed browser DTOs; exact-order document events take priority over queued
+presence events without bypassing the final currentness check.
+
+The [SDK](../../packages/sdk/src/client/project-task-rooms.ts) parses opaque
+edit receipts and the shared SSE stream. Accepted document objects are offered
+synchronously to mounted listeners before the same object enters query-cache
+normalization. The [editor](../../src-ui/src/workspace-panes/TaskRoomEditorPane.tsx)
+keeps unsaved text and an exact possible-effect receipt locally. It uses host
+and navigation close guards, rechecks Task/authority generations after awaits,
+and recovers from authoritative reads. A query gap or unavailable/error state
+revokes edit authority even when previously applied text remains visible.
+Terminal streams clear live presence; reconnect, duplicate/gap handling and
+Task changes use the authoritative recovery path. Unsaved browser text is not
+a durable server operation, and closing a stream does not undo a submitted edit.
+
+**Evidence.** `src-shared/__tests__/collaborative-editor-pane.test.ts` tests the
+retained controller, including dynamic revocation, exact batch settlement,
+room bounds, stale recovery and navigation fencing. Room-runtime, working-state,
+route and SDK tests cover the separate production composition. Mounted
+`TaskRoomEditorPane.cache-integration.test.tsx` and `ProjectTaskRoomContext.test.tsx`
+cover shared document delivery and recovery. `tests/project-task-room-collaboration.spec.ts`
+is the two-browser acceptance route; a unit-test run is not that acceptance run.
+Keep renderer-specific overlays from the deleted prototype in historical
+records, not in the current Task editor contract.
+
 
 ## SharedWorkingStateEditingCapability
 
-**Intent and Interface.** `createSharedWorkingStateEditingCapability()` owns an exact #2889 snapshot/authorization/actor/replica composition. `plan({ currentText, desiredText, selection, pending })` returns unchanged, bounded refusal, or one frozen local intent batch; `projectPending({ pending })` returns the text/revision obtained by replaying those same exact operations over the current snapshot. The pane never receives the atom snapshot.
+**Purpose and interface.** [The editing capability](../../src-server/domain/shared-working-state-editing.ts)
+turns a desired text value and selection into exact operations over a private
+SharedWorkingState snapshot. `plan({ currentText, desiredText, selection, pending })`
+returns unchanged, a bounded refusal, or a frozen batch. `projectPending()`
+replays those exact operations; `transformSelection()` maps exact atom
+boundaries through pending batches. Neither is an independent text-rebase
+algorithm.
 
-**Contract.** The capability restores and validates the supplied snapshot through `SharedWorkingState`, applies existing pending batches, and requires its projection to equal the editor base. It clones/validates actor and attribution before freezing only module-owned values. It derives one Unicode-scalar-safe textarea replacement, maps UTF-16 boundaries to the exact visible atom traversal used by #2889, deletes only those atom IDs, and inserts after the exact predecessor. Replacement is a causal delete+insert batch. Preview is accepted only when applying that very batch to a cloned `SharedWorkingState` under exact authorization yields the desired text; no string-diff transform or independent preview algorithm exists. Remote atoms inserted inside a planned deletion are not targeted and survive; same-position/disjoint operations retain #2889 ordering. Shared operation/batch byte ceilings and a conservative 128-atom delete ceiling make every advertised plan controller-admissible; code-unit, UTF-8, atom-ID, and post-delete selection bounds fail before large allocation. `transformSelection` maps exact source atom boundaries through pending batches for decoration coordinates.
+**Planning rules.** The capability restores and validates the snapshot, applies
+pending batches, and requires the resulting text to equal the supplied editor
+base. It clones actor/attribution data and maps UTF-16 selection boundaries to
+Unicode scalars and visible atoms. Deletions name exact atoms; remote atoms
+inserted later are not swept into that deletion. Insertion names the exact
+predecessor. Where immutable RGA sibling ordering would put a retained suffix
+before the inserted text, the planner reinserts that suffix to obtain the
+requested text. Applying the resulting batch to a cloned document must reproduce
+the desired text before the plan is accepted.
 
-**Seam, Implementation, callers, and tests.** Implementation lives in `src-server/domain/shared-working-state-editing.ts`; shared ceilings live in `src-shared/collaborative-edit-limits.ts`; the controller consumes only the narrow capability type. Focused tests exercise insert/delete/replacement, maximum and over-cap deletion, emoji/malformed Unicode, post-delete selection, clone ownership, remote insertion inside deletion, same-position/disjoint convergence, cursor transforms, and reordered/duplicate/partial batches. **Do not reintroduce:** `ReferenceOperationFactory`, positional string rebase, exported pending transform payload, preview using different operations, divergent byte claims, timestamp ordering, deleting unplanned remote atoms, or snapshot exposure to UI/shared callers.
+Deletion operations are chunked by measured JSON UTF-8 bytes, replacing the
+older fixed 128-atom limit. [Shared limits](../../src-shared/collaborative-edit-limits.ts)
+bound each operation to 256 KiB, the sum of operation bytes to 96 MiB, and a
+batch to 384 operations. Text has separate 256 Ki code-unit and 256 KiB UTF-8
+limits; atom IDs and selections are checked too. These are admission ceilings,
+not a promise that every maximum-sized edit has acceptable interactive latency.
+
+**Callers.** `ProjectTaskRoomRuntime.editPlan()` and `publishAgentDocumentEdit()`
+use this capability on the server. Browser edits receive an opaque intent ID
+and digest plus text/selection preview, never atoms, operations or a writer
+grant. The runtime keeps at most 256 private plans, expires a plan after five
+minutes, and settles only its exact scope/principal/digest. If the in-memory
+plan is absent, submit can read an already durable matching receipt; it cannot
+reconstruct an unsubmitted plan after restart. The retained
+CollaborativeEditorPaneController consumes the narrow capability type in its
+fixtures, but is not the mounted Task editor.
+
+**Evidence.** `shared-working-state-editing.test.ts` checks Unicode, exact
+preview, byte chunking, insertion ordering, deletion, clone ownership and
+selection transforms. `project-task-room-runtime.test.ts` checks the production
+server composition; mounted Task editor tests check opaque receipt handling.
+Keep those layers distinct when changing planning, retry or browser payloads.
+
 
 ## RevisionEvidenceModule
 
@@ -1219,35 +1459,65 @@ move command or external ownership lease. See the
 
 ### Project-resource resolver evidence: #1501 and #1775
 
-The project-resource shadow report is an evidence gate, not a cutover signal. Its own report says a passing record has no versioned current-resolver provenance and does not cover caller-supplied-cwd precedence, the home/ACP terminus, or final effective-cwd existence. Keep #1501 slice 3c and #1775 explicitly gated until a versioned current-resolver observation and the remaining owner decisions exist. Do not use accumulated shadow populations as proof that a resolver migration is safe. See [`scripts/project-resource-shadow-report.ts`](../../scripts/project-resource-shadow-report.ts) and [portable project identity](../design/portable-project-identity.md).
+The project-resource shadow report is an evidence gate, not a cutover signal. Its own
+report says a passing record has no versioned current-resolver provenance and does not
+cover caller-supplied-cwd precedence, the home/ACP terminus, or final effective-cwd
+existence. Keep #1501 slice 3c and #1775 explicitly gated until a versioned
+current-resolver observation and the remaining owner decisions exist. Do not use
+accumulated shadow populations as proof that a resolver migration is safe. See
+[`scripts/project-resource-shadow-report.ts`](../../scripts/project-resource-shadow-report.ts)
+and [portable project identity](../design/portable-project-identity.md).
 
 ### #2525 retained internal boundaries
 
-Turn deduplication, adoption, recovery, and private credential application are completed behavioural ledgers. Remaining EventStore details are retained on purpose: command receipts still participate in adoption's atomic commit; delivery checkpoints currently have one narrow caller; and a broader session journal has no deletion-complete caller family. Wrapping any of these in storage-shaped CRUD would be shallow. Their disposition and the next evidence required for a deep extraction are in [EventStore ledger migration](../design/event-store-ledger-migration.md).
+Turn deduplication, adoption, recovery, and private credential application are completed
+behavioural ledgers. Remaining EventStore details are retained on purpose: command
+receipts still participate in adoption's atomic commit; Console delivery progress uses
+`readConsoleDeliveryProgress`/`writeConsoleDeliveryProgress`, consumed by
+[ConsoleBridgeService](../../src-server/services/evidence/console-bridge-service.ts),
+with monotonic SQLite advancement; and a broader session journal has no
+deletion-complete caller family. Wrapping any of these in storage-shaped CRUD would be
+shallow. Their disposition and the next evidence required for a deep extraction are in
+[EventStore ledger migration](../design/event-store-ledger-migration.md).
 
 ## WorkspacePaneHostActions
 
 `workspace-pane-host-actions.ts` projects the existing contribution contract and
-transports already captured admission through bounded one-shot tickets. It does
-not create another run database: Session commands and EventStore remain execution
-and receipt authority. Tickets expire after one minute, are scoped to the request
-principal, tenant and Project, and are removed before invocation. Missing/spent
-tickets are indeterminate and never recreate work. Permission admission uses the
-canonical grant-store read lease before the existing short Project/Agent locks;
-all three release before network settlement. Public contracts expose intent and
-opaque installation identity, never physical artifact paths.
+transports already captured admission through bounded one-shot tickets. It does not
+create another run database: Session commands and EventStore remain execution and
+receipt authority. Tickets expire after one minute, are scoped to the request principal,
+tenant and Project, and are removed before invocation. Missing/spent tickets are
+indeterminate and never recreate work. Permission admission uses the canonical
+grant-store read lease before the existing short Project/Agent locks; all three release
+before network settlement. Public contracts expose intent and opaque installation
+identity, never physical artifact paths.
 
-`workspace-pane-host-actions.ts` routes are composed with the same request
-principal and session read authority as foreground chat. SDK queries/mutations
-own HTTP and React Query behavior. `WorkspacePaneHostActionsFrame` composes one
-bar around direct and placed Project surfaces. `LayoutView` never launches
-plugin-owned actions through the unqualified chat path: safe installed legacy
-declarations reuse captured host admission, while saved or unsupported controls
-are review-only with an explanation. Non-plugin user-authored actions retain
-their explicit Agent launch. Persisted Layout data is unchanged. Native Agents use the existing runtime instance under a configuration lease, with a private relay companion that is never serialized as Agent data. Native execution location has a separate private ALS/cleanup scope, so ordinary later turns and child Sessions retain the persisted directory even when optional output-declaration grants are unavailable. Canonical Git path/branch and Session-derived ownership checks mint an opaque exact start binding for a retained worktree; public metadata cannot supply that capability. The directory reaches Project context, per-invocation Bash children, and relative file operations. Known worktree Sessions require their private relay marker, and closed scopes refuse late tool entry. Explicit MCP resource roots retain their configured meaning; this is execution location, not a universal filesystem sandbox. Non-plugin Agent execution remains unavailable. Tests cover
+`workspace-pane-host-actions.ts` routes are composed with the same request principal and
+session read authority as foreground chat. SDK queries/mutations own HTTP and React
+Query behavior. `AppViewContent` mounts `WorkspacePaneHostActionsFrame` around Project
+Layout and direct Workspace Pane routes. It does not mount that bar around Task or
+personal Board routes. A docked `LayoutWorkspacePane` has no prompt launcher; it reads
+and navigates, as recorded in the [placement design](../design/placement.md).
+`LayoutView` never launches plugin-owned actions through the unqualified chat path: safe
+installed legacy declarations reuse captured host admission, while saved or unsupported
+controls are review-only with an explanation. Non-plugin user-authored actions retain
+their explicit Agent launch. Persisted Layout data is unchanged.
+
+Native Agents use the existing runtime instance under a configuration lease, with a private relay companion
+that is never serialized as Agent data. Native execution location has a separate private
+ALS/cleanup scope, so ordinary later turns and child Sessions retain the persisted
+directory even when optional output-declaration grants are unavailable. Canonical Git
+path/branch and Session-derived ownership checks mint an opaque exact start binding for
+a retained worktree; public metadata cannot supply that capability. The directory
+reaches Project context, per-invocation Bash children, and relative file operations.
+Known worktree Sessions require their private relay marker, and closed scopes refuse
+late tool entry. Explicit MCP resource roots retain their configured meaning; this is
+execution location, not a universal filesystem sandbox. Explicit `station-agent`
+references in installed host contributions remain unavailable; this restriction does not
+describe ordinary non-plugin chat or user-authored Layout actions. Tests cover
 actor/Project isolation, duplicate delivery, final permission withdrawal, stale
-installation/Agent identity, fixed bindings, public response certainty, and the
-real host control surface.
+installation/Agent identity, fixed bindings, public response certainty, and the real
+host control surface.
 
 ## Cloud move preparation
 
@@ -1283,8 +1553,16 @@ remain integration requirements under the
 explicit provider selection. The AWS adapter in `packages/shared/src/cloud-aws-ec2.ts`
 renders a deployment template; `packages/cli/src/commands/cloud.ts` is the thin
 command caller. Preview is non-atomic and never grants transfer or execution
-authority. Credential stores, plugin journals, live capabilities, workspace bytes,
-and session databases are not exported. The [cloud-move design](../design/cloud-move.md)
+authority. The preview exports no credential stores, plugin journals, live
+capabilities, workspace bytes or Session databases. Separate CLI workspace
+commands use [workspace-package.ts](../../packages/shared/src/workspace-package.ts)
+to pack, inspect, unpack and verify an encrypted Git workspace package. Its
+receipt explicitly reports no execution-authority transfer or credential
+enrollment; source/target quiescence remains the operator's prerequisite.
+`cloud import-project` composes unpack/verification with the selected target's
+Project creation API and retains an import if that HTTP mutation fails. These
+operations do not activate a home transfer or resume an agent.
+The [cloud-move design](../design/cloud-move.md)
 owns the remaining transfer, enrollment, fencing, and UI sequence.
 
 Actual filesystem and command tests live in
@@ -1452,30 +1730,54 @@ native platform parity from a decoded frame or an accepted socket write.
 
 ## MobileDeviceHost
 
-**Owner:** `src-server/services/mobile-device/mobile-device-host.ts`.
-**Contract:** `packages/contracts/src/mobile-device.ts`. The personal runtime
-composes the bounded helper adapter through the device-host resolver: a
-configured local endpoint, consented managed helper, or admitted SSH host.
-Hosted tenant execution does not mount it. `src-server/routes/mobile-device.ts`
-publishes inventory and explicit single-frame captures only after current request
-authorization, with the screenshot leaf requiring terminal authority. The
-helper adapter owns target validation, fresh membership checks, redirect refusal,
-response/deadline bounds and image metadata, and forwards no generic routes.
-Its per-use connection resolver may start an already-consented managed helper;
-process ownership stays with the toolchain/host service.
-`packages/sdk/src/mobile-device.ts` validates
-responses and preserves the selected Station's HTTP authority. This single-frame
-API does not infer app identity from a screen or live readiness from a snapshot.
+**Purpose and boundary.** [LocalMobileDeviceHost](../../src-server/services/mobile-device/mobile-device-host.ts)
+is Station's typed adapter to a simulator/emulator helper. It supports inventory,
+a single PNG capture, boot, stream attachment and shutdown through fixed routes;
+it does not forward arbitrary helper paths or shell commands. Physical phones
+are excluded from this inventory. The [contract](../../packages/contracts/src/mobile-device.ts)
+and [SDK](../../packages/sdk/src/mobile-device.ts) carry host-qualified device
+identities and bounded responses.
 
-`DeviceSessionService` and `DeviceLiveSurfaceProducer` now supply the separate
-live view/control path; they are callers of the shared live-surface module
-above. Toolchain consent, operator-owned host registration and Project device
-shares remain separate from the capture adapter's bounded read interface.
+**Composition and authority.** The personal runtime builds a
+[device-host resolver](../../src-server/services/devices/device-host-resolver.ts)
+for a configured local endpoint, an already-consented managed helper, or an
+operator-managed SSH host. Hosted tenant execution does not mount this path.
+Resolving a connection may start a consented helper; helper installation and
+process ownership remain with the toolchain/host services. There is no peer
+Station device transport merely because the resolver is extensible.
 
-**Evidence:** `src-server/services/mobile-device/__tests__/mobile-device-host.test.ts`,
-`src-server/routes/__tests__/mobile-device.routes.test.ts`, and
-`packages/sdk/src/__tests__/mobile-device.test.ts`. See the
-[operator guide](../guides/mobile-device-workspace.md).
+[Mobile-device routes](../../src-server/routes/mobile-device.ts) check current
+request authority and device access before calling the helper, then recheck
+currentness before publishing. The operator can use all devices; active admins
+or owners use devices explicitly shared with their Project. Inventory is
+filtered. Capture, start and open require device `drive` access. Power-off and
+ending the session for everyone require operator authority. The outer pairing
+scope gate separately requires terminal authority for mutation routes.
+
+**Lifecycle and failure.** [DeviceSessionService](../../src-server/services/devices/device-session-service.ts)
+owns one in-memory session/live surface per host/device. Starting a cold device
+returns `starting` while boot continues; inventory carries progress or the last
+start error. Opening a running simulator can attach its stream helper and
+rechecks authority before surface registration. A viewer closing detaches only
+that viewer. With no viewers the idle grace eventually ends the session;
+ending a session leaves the device running, while power-off ends the session
+and asks the helper to shut it down. Helper exit or an observed device stop
+ends sessions; an unavailable inventory is not proof of a stop. A restart does
+not restore live session/control authority from saved Pane data.
+
+The helper adapter validates targets, checks fresh membership for capture,
+refuses redirects, and bounds response size, image metadata and request/body
+waits. Capture is a snapshot, not evidence of app identity or ongoing readiness.
+The separate [Device producer](../../src-server/services/devices/device-live-surface-producer.ts)
+feeds the shared live-surface path. The Tools drawer uses its own typed
+[service](../../src-server/services/devices/device-tools.ts), device
+access and control-conflict checks; it is not a generic extension of capture.
+
+**Evidence.** `mobile-device-host.test.ts`, `mobile-device.routes.test.ts`,
+`device-live-surface-producer.test.ts` and SDK tests exercise helper fixtures,
+authorization and lifecycle. They do not establish a physical-device journey,
+SSH host readiness, decoder compatibility or application effects. The
+[operator guide](../guides/mobile-device-workspace.md) owns setup and controls.
 
 
 ## Project session directory
