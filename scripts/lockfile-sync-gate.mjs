@@ -11,7 +11,7 @@
  *
  * It also reports a resolved peer whose version falls outside the declared
  * range (or its override). That shape made dependency updates impossible on
- * main for an unknown stretch (#1233) while frozen installs stayed green.
+ * main for an unknown stretch (archive#1233) while frozen installs stayed green.
  *
  * This is a pure lock-vs-manifest check. No network.
  */

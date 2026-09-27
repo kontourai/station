@@ -114,7 +114,7 @@ describe('the gate list', () => {
    * rather than running each gate: executing all eleven cost ~8s of the
    * process-heavy phase's 240s budget, and that group already runs at ~226s
    * on a quiet host — this suite's addition was most of the remaining
-   * headroom (#3127). The stubbed CLI runs below keep the spawn path proven.
+   * headroom (archive#3127). The stubbed CLI runs below keep the spawn path proven.
    */
   it('names scripts that exist and parse', () => {
     for (const name of PREPUSH_STATIC_GATES) {

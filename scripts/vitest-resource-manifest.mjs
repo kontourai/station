@@ -333,7 +333,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // read. Both are the contract — the reporter must never fail a job it only
   // reports on — and neither is observable from an imported function.
   'scripts/__tests__/verification-gate-summary.test.ts',
-  // #3208: same shape one gate over — parses each static gate it lists in a
+  // archive#3208: same shape one gate over — parses each static gate it lists in a
   // real child process, so the list cannot name a script that no longer
   // resolves, and runs the guard's own CLI against stub gates.
   'scripts/__tests__/prepush-static-gates.test.ts',
