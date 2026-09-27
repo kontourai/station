@@ -821,41 +821,83 @@ describe('Registry Routes', () => {
     expect(uninstallInstalledPlugin).not.toHaveBeenCalled();
   });
 
-  test('GET /skills returns { success, data } array with id/name', async () => {
+  test("GET /skills returns the registry providers' available skills", async () => {
     const { app } = setup();
     const body = await json(await app.request('/skills'));
-    expect(body.success).toBe(true);
-    expect(Array.isArray(body.data)).toBe(true);
-    expect(body.data[0]).toHaveProperty('id');
-    expect(body.data[0]).toHaveProperty('name');
+    expect(body).toEqual({
+      success: true,
+      data: [{ id: 's1', name: 'Skill 1', description: 'A skill' }],
+    });
   });
 
-  test('POST /skills/install returns { success }', async () => {
-    const { app } = setup();
-    const body = await json(
-      await app.request('/skills/install', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: 's1' }),
-      }),
+  test('POST /skills/install installs into the project home, then reloads skills', async () => {
+    const { app, skillService, reloadSkills } = setup();
+    const response = await app.request('/skills/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 's1' }),
+    });
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual({ success: true });
+    expect(skillService.installSkill).toHaveBeenCalledExactlyOnceWith(
+      's1',
+      '/tmp',
     );
-    expect(body.success).toBe(true);
+    expect(reloadSkills).toHaveBeenCalledOnce();
   });
 
-  test('DELETE /skills/:id returns { success }', async () => {
-    const { app } = setup();
-    const body = await json(
-      await app.request('/skills/s1', { method: 'DELETE' }),
+  test('DELETE /skills/:id removes from the project home, then reloads skills', async () => {
+    const { app, skillService, reloadSkills } = setup();
+    const response = await app.request('/skills/s1', { method: 'DELETE' });
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual({ success: true });
+    expect(skillService.removeSkill).toHaveBeenCalledExactlyOnceWith(
+      's1',
+      '/tmp',
     );
-    expect(body.success).toBe(true);
+    expect(reloadSkills).toHaveBeenCalledOnce();
   });
 
-  test('POST /skills/:id/update returns { success }', async () => {
-    const { app } = setup();
-    const body = await json(
-      await app.request('/skills/s1/update', { method: 'POST' }),
-    );
-    expect(body.success).toBe(true);
+  test('POST /skills/:id/update removes, then reinstalls, then reloads', async () => {
+    const { app, skillService, reloadSkills } = setup();
+    const order: string[] = [];
+    skillService.removeSkill.mockImplementation(async (id: string) => {
+      order.push(`remove ${id}`);
+      return { success: true };
+    });
+    skillService.installSkill.mockImplementation(async (id: string) => {
+      order.push(`install ${id}`);
+      return { success: true };
+    });
+    reloadSkills.mockImplementation(async () => {
+      order.push('reload');
+    });
+
+    const response = await app.request('/skills/s1/update', { method: 'POST' });
+
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual({ success: true });
+    expect(order).toEqual(['remove s1', 'install s1', 'reload']);
+    expect(skillService.removeSkill).toHaveBeenCalledWith('s1', '/tmp');
+    expect(skillService.installSkill).toHaveBeenCalledWith('s1', '/tmp');
+  });
+
+  test('POST /skills/:id/update stops when the remove fails', async () => {
+    const { app, skillService, reloadSkills } = setup();
+    skillService.removeSkill.mockResolvedValueOnce({
+      success: false,
+      message: 'not installed',
+    });
+
+    const response = await app.request('/skills/s1/update', { method: 'POST' });
+
+    expect(response.status).toBe(500);
+    expect(await json(response)).toEqual({
+      success: false,
+      message: 'not installed',
+    });
+    expect(skillService.installSkill).not.toHaveBeenCalled();
+    expect(reloadSkills).not.toHaveBeenCalled();
   });
 
   test('GET /skills/:id/content returns { success, data: string }', async () => {
