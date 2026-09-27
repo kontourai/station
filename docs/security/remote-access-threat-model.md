@@ -10,7 +10,7 @@ trusted proxies are outside this boundary. An explicitly configured,
 loopback-only Tailscale Serve identity adapter is inside the boundary only as
 pairing-request provenance. Host-confirmed, one-time pairing is
 inside the boundary. Persistent, revocable same-origin browser sessions are the
-mobile continuity baseline; broader reconnect work remains tracked in
+mobile continuity baseline; the earlier reconnect work is recorded in
 [archive#303](https://github.com/kontourai/station-archive/issues/303).
 
 ## Trust boundary

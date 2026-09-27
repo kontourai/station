@@ -481,10 +481,10 @@ provide the real account adapter without requiring hosted identity.
 
 This fixture does not verify live Tailscale identity, production key admission,
 browser/native trust distribution, internet/NAT reachability, invitation email
-delivery or the [real two-human journey](https://github.com/kontourai/station-archive/issues/497).
+delivery or the [real two-human journey](https://github.com/kontourai/station/issues/497).
 Two security homes in one process and relays running as the same OS user do not
 prove tenant or hostile-code isolation. Those remain separate acceptance under
-[archive#487](https://github.com/kontourai/station-archive/issues/487).
+[#487](https://github.com/kontourai/station/issues/487).
 
 ### Separate self-hosted broker and production browser consumer
 

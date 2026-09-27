@@ -128,8 +128,8 @@ offers; viewing a shared Task does not open the owner's fleet or private work.
 A Device connects to a Station and authenticates as a principal. Several
 Devices may represent one person through an explicitly approved binding; a
 network address or device display name never establishes that relationship.
-See [membership archive#488](https://github.com/kontourai/station-archive/issues/488) and the
-[two-human acceptance journey archive#497](https://github.com/kontourai/station-archive/issues/497).
+See [membership #488](https://github.com/kontourai/station/issues/488) and the
+[two-human acceptance journey #497](https://github.com/kontourai/station/issues/497).
 The implemented read and administration surfaces do not establish the full
 independent-human journey. Physical two-person and browser/native qualification
 remain separate acceptance work.

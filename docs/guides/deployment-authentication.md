@@ -10,8 +10,9 @@ grants, Project membership, private Session access and execution offers remain
 independent. An account cookie alone cannot load the personal Project catalog.
 Built-in username/password accounts and manually shared invitation links work
 without a mail service. The implemented administration and membership boundaries
-are described below; complete shared-content/device admission is tracked in archive#488.
-Optional configured OIDC choices use the same local account/session owner (see below); the official hosted identity service is tracked in archive#489.
+are described below and in [Project rooms #488](https://github.com/kontourai/station/issues/488).
+Independent-person acceptance is tracked separately in [#497](https://github.com/kontourai/station/issues/497).
+Optional configured OIDC choices use the same local account/session owner (see below); the official hosted identity service is tracked in [#489](https://github.com/kontourai/station/issues/489).
 Optional provider integration does not make hosted identity a core prerequisite.
 
 ## Enable local accounts without email
@@ -287,8 +288,10 @@ versions, extra fields and malformed member views fail validation.
 Shared Task list/history/document reads are implemented separately from that
 restricted base Project projection. Shared editing and execution, compute-offer
 access, and the fully qualified two-person browser/native journey remain
-separate work discussed in archive#483, archive#488 and archive#497. Tailnet member integration is discussed in
-#1513 and archive#488.
+separate work discussed in [#483](https://github.com/kontourai/station/issues/483),
+[#488](https://github.com/kontourai/station/issues/488) and
+[#497](https://github.com/kontourai/station/issues/497). Tailnet member integration is discussed in
+#1513 and [#488](https://github.com/kontourai/station/issues/488).
 
 ## Browser invitation entry
 
@@ -325,7 +328,8 @@ publication and membership, revalidated through guarded response delivery;
 base Project metadata alone grants neither. Shared Task editing and execution
 remain outside this entry. Optional native opening, compatible
 platform downloads and installation continuation are required follow-up
-acceptance discussed in archive#488 and archive#497. Their completion requires real browser/native
+acceptance discussed in [#488](https://github.com/kontourai/station/issues/488) and
+[#497](https://github.com/kontourai/station/issues/497). Their completion requires real browser/native
 evidence and published artifacts; the account page does not establish that an
 app is installed or that a device has been approved.
 
