@@ -26,6 +26,7 @@ import {
 } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { ruleBodiesFor } from '../../__tests__/helpers/css-rules';
 
 const h = vi.hoisted(() => ({
   autoFloat: undefined as boolean | undefined,
@@ -1021,12 +1022,26 @@ describe('placement, keyboard and narrow widths', () => {
       join(dirname(fileURLToPath(import.meta.url)), '../FloatOverChat.css'),
       'utf8',
     );
-    expect(css).toMatch(
-      /\.float-over-chat__handle \{[^}]*height: 44px;[^}]*min-width: 44px;/,
-    );
-    expect(css).toMatch(
-      /\.float-over-chat__action \{[^}]*min-height: 44px;[^}]*min-width: 44px;/,
-    );
+    // Every rule for the class, later declarations winning, in any order.
+    const declared = (selector: string) => {
+      const result: Record<string, string> = {};
+      for (const body of ruleBodiesFor(css, selector)) {
+        for (const declaration of body.split(';')) {
+          const [property, ...value] = declaration.split(':');
+          if (value.length > 0)
+            result[property.trim()] = value.join(':').trim();
+        }
+      }
+      return result;
+    };
+    expect(declared('.float-over-chat__handle')).toMatchObject({
+      height: '44px',
+      'min-width': '44px',
+    });
+    expect(declared('.float-over-chat__action')).toMatchObject({
+      'min-height': '44px',
+      'min-width': '44px',
+    });
   });
 
   test(`below ${FLOAT_NARROW_WIDTH}px the chat gets a notice with the same actions instead of a player`, async () => {
