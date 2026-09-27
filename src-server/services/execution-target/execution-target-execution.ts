@@ -30,7 +30,11 @@ import type {
   WorkspaceIsolationConfig,
   WorktreeSessionMetadata,
 } from '@kontourai/station-contracts/workspace-isolation';
-import type { FullAccessGrant } from '../../security/coding-authority.js';
+import {
+  type FullAccessGrant,
+  FullAccessNotGrantedError,
+  isFullAccessGrant,
+} from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
@@ -336,6 +340,16 @@ export interface ExecutionTargetExecutionDependencies
     },
   ) => SetApprovalModeResult | undefined;
   /**
+   * #2377 slice C1: whether recording `pick` would run `threadId`'s engine at
+   * full access (`OrchestrationService.approvalPickReachesFullAccess`).
+   * Absent beside `recordApprovalMode`, a Default or `never` pick without a
+   * grant is refused as if it did.
+   */
+  approvalPickReachesFullAccess?: (
+    access: EnvironmentAccess,
+    input: { threadId: string; pick: ApprovalMode; agentSlug: string },
+  ) => Promise<boolean>;
+  /**
    * Server-owned durable conversation/session resolution. It is optional for
    * remote compatibility until every Station speaks lineage, but the current
    * runtime composes it for all local foreground entries.
@@ -420,6 +434,35 @@ export interface ExecutionTargetExecutionDependencies
   /** Loud operational seam for a provisioned worktree whose compensation failed. */
   warn?: (message: string, fields: Record<string, unknown>) => void;
   createConversationId?: () => string;
+}
+
+/**
+ * #2377 slice C1: a carried pick that would run the engine at full access
+ * needs the request's grant, as a literal `never` does at the route
+ * (`refuseUngrantedFullAccess`). A Default is decided only here, where its
+ * thread and Agent are known.
+ */
+async function refuseUngrantedCarriedPick(
+  input: ForegroundMessageInput,
+  deps: ExecutionTargetExecutionDependencies,
+  resolved: { access: EnvironmentAccess; agentId: string },
+  threadId: string,
+): Promise<void> {
+  const pick = input.setApprovalMode;
+  if (
+    !pick ||
+    !deps.recordApprovalMode ||
+    isFullAccessGrant(input.fullAccessGrant)
+  )
+    return;
+  const fullAccess = deps.approvalPickReachesFullAccess
+    ? await deps.approvalPickReachesFullAccess(resolved.access, {
+        threadId,
+        pick,
+        agentSlug: resolved.agentId,
+      })
+    : pick === 'never' || pick === 'connection-default';
+  if (fullAccess) throw new FullAccessNotGrantedError();
 }
 
 /**
@@ -637,6 +680,7 @@ export async function executeForegroundMessage(
       'A carried approval pick needs setApprovalModeBasedOn (null when no decision had been seen).',
     );
   }
+  await refuseUngrantedCarriedPick(input, deps, resolved, sessionId);
   const approvalMode = input.setApprovalMode
     ? deps.recordApprovalMode?.(resolved.access, {
         threadId: sessionId,

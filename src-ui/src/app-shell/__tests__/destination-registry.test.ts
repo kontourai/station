@@ -482,12 +482,9 @@ describe('DestinationRegistry', () => {
   // gone; the one that replaced it keeps the retired words as KEYWORDS, so
   // someone who learned "playbooks" still finds the surface while reading the
   // one noun that survives.
+  // Palette membership (Commands in, Playbooks out) is the exact inventory
+  // above; this pins only what that inventory cannot see.
   test('the retired Playbooks palette entry is replaced by Commands', () => {
-    const palette = APP_DESTINATION_REGISTRY.getPalette().map(
-      (destination) => destination.id,
-    );
-    expect(palette).not.toContain('guidance-playbooks');
-    expect(palette).toContain('guidance-commands');
     const commands = APP_DESTINATION_REGISTRY.get('guidance-commands');
     expect(commands?.label()).toBe('Commands');
     expect(commands?.keywords).toContain('playbooks');

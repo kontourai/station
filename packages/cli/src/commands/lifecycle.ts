@@ -2173,9 +2173,25 @@ function writeInstanceState(record: InstanceStateRecord): void {
   if (pidFile !== null) rmSync(pidFile, { force: true });
 }
 
-/** ` --home=<path>`, shell-quoted when the path needs it. */
-function homeFlag(projectHome: string): string {
-  return ` --home=${/^[\w./~:-]+$/.test(projectHome) ? projectHome : `'${projectHome.replaceAll("'", "'\\''")}'`}`;
+/**
+ * ` --home=<path>`, quoted for the shell a user of this platform pastes it
+ * into when the path needs it.
+ *
+ * POSIX: single quotes, with `'` escaped. Windows: double quotes (#2805).
+ * cmd.exe keeps single quotes as literal characters, so a pasted
+ * `--home='C:\...'` named a home that does not exist and `station stop`
+ * found nothing to stop. Double quotes are quoting in both cmd.exe and
+ * PowerShell, and a Windows path cannot contain `"`, so they need no
+ * escaping. Both shells still expand `%VAR%` (cmd) or `$name` (PowerShell)
+ * inside them; a path containing those needs editing by hand.
+ */
+export function homeFlag(
+  projectHome: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (/^[\w./~:-]+$/.test(projectHome)) return ` --home=${projectHome}`;
+  if (platform === 'win32') return ` --home="${projectHome}"`;
+  return ` --home='${projectHome.replaceAll("'", "'\\''")}'`;
 }
 
 /**
@@ -3498,6 +3514,38 @@ export interface IdentityWaitOptions {
   extensionMs?: number;
   maxExtensions?: number;
   log?: (line: string) => void;
+  /**
+   * Stops the wait (rejecting) once aborted: `start()` aborts its sibling
+   * readiness waits as soon as one of them fails (#2805).
+   */
+  signal?: AbortSignal;
+}
+
+/**
+ * The readiness wait gave up because the child it waits for has exited
+ * (#2805): a server that failed its startup exits at once, and waiting out
+ * the full readiness deadline for it only delays the error by ~90s.
+ */
+export function childExitedBeforeReadinessMessage(
+  url: string,
+  lastFailure: string,
+  lastKind: IdentityWaitFailureKind | null,
+  mismatchDetail = '',
+): string {
+  // Something else answered with another boot's identity: the station#1177
+  // lost port race (our child failed to bind and exited). Say so, with the
+  // differing fields, rather than claim nothing answered.
+  if (lastKind === 'identity-mismatch') {
+    return `Station process exited; ${url} answered as a different instance (${lastFailure}): ${mismatchDetail}`;
+  }
+  if (lastKind === 'http-error' || lastKind === 'gateway-unavailable') {
+    return `Station process exited; ${url} answered ${lastFailure}`;
+  }
+  return `Station process exited before ${url} answered (${lastFailure})`;
+}
+
+function throwIfReadinessAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new Error('Readiness wait abandoned');
 }
 
 export async function waitForIdentity(
@@ -3519,6 +3567,7 @@ export async function waitForIdentity(
   // exact phrase `classifyStartFailure` (scripts/run-e2e-suite.mjs) matches.
   let lastMismatchDetail = '';
   while (true) {
+    throwIfReadinessAborted(options?.signal);
     if (Date.now() >= deadline) {
       // Last-attempt-only by design: a mismatch followed by a refused connect
       // re-enables extension. That is correct (the port owner went away, so
@@ -3577,6 +3626,17 @@ export async function waitForIdentity(
       lastKind = classifyIdentityWaitError(error);
     } finally {
       if (timeout) clearTimeout(timeout);
+    }
+    // Not ready yet and the child is gone: it never will be (#2805).
+    if (options?.childAlive && !options.childAlive()) {
+      throw new Error(
+        childExitedBeforeReadinessMessage(
+          url,
+          lastFailure,
+          lastKind,
+          lastMismatchDetail,
+        ),
+      );
     }
     const retryDelayMs = Math.min(200, Math.max(0, deadline - Date.now()));
     if (retryDelayMs > 0) {
@@ -3952,10 +4012,30 @@ async function fetchConsentAvailability(
   }
 }
 
+/**
+ * Runs `start()`'s readiness waits together, and ends the others as soon as
+ * one fails (#2805): a server that exited during startup must fail `start`
+ * now, not after every sibling wait (the TCP probes, the UI identity) has run
+ * out its own deadline and kept the CLI's event loop alive meanwhile.
+ */
+export async function awaitReadiness(
+  waits: ReadonlyArray<(signal: AbortSignal) => Promise<unknown>>,
+): Promise<void> {
+  const readiness = new AbortController();
+  try {
+    // Promise.all settles on the first rejection; the others are then told
+    // to stop (their later rejections are already handled by Promise.all).
+    await Promise.all(waits.map((wait) => wait(readiness.signal)));
+  } finally {
+    readiness.abort();
+  }
+}
+
 async function waitForTcpOk(
   host: string,
   port: number,
   timeoutMs = STARTUP_READINESS_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): Promise<void> {
   const probeHost =
     host === '0.0.0.0' ? 'localhost' : host === '::' ? '::1' : host;
@@ -3963,6 +4043,7 @@ async function waitForTcpOk(
   let lastFailure = 'No connection established';
 
   while (Date.now() < deadline) {
+    throwIfReadinessAborted(signal);
     const outcome = await new Promise<{ ok: boolean; failure?: string }>(
       (resolve) => {
         const socket = createConnection({ host: probeHost, port });
@@ -4457,35 +4538,49 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         return (error as NodeJS.ErrnoException).code === 'EPERM';
       }
     };
-    await Promise.all([
-      waitForIdentity(
-        hostedProbeAuthority
-          ? `http://${healthHost}:${uiPort}/api/system/identity`
-          : `http://${healthHost}:${serverPort}/api/system/identity`,
-        { instanceId, sha: serverEnv.STATION_BUILD_SHA, bootId },
-        STARTUP_READINESS_TIMEOUT_MS,
-        readinessHeaders,
-        { childAlive: childAliveProbe(serverProc.pid) },
-      ),
-      waitForTcpOk(host, serverPort + 1),
-      waitForTcpOk(host, serverPort + 2),
+    await awaitReadiness([
+      (signal) =>
+        waitForIdentity(
+          hostedProbeAuthority
+            ? `http://${healthHost}:${uiPort}/api/system/identity`
+            : `http://${healthHost}:${serverPort}/api/system/identity`,
+          { instanceId, sha: serverEnv.STATION_BUILD_SHA, bootId },
+          STARTUP_READINESS_TIMEOUT_MS,
+          readinessHeaders,
+          { childAlive: childAliveProbe(serverProc.pid), signal },
+        ),
+      (signal) =>
+        waitForTcpOk(
+          host,
+          serverPort + 1,
+          STARTUP_READINESS_TIMEOUT_MS,
+          signal,
+        ),
+      (signal) =>
+        waitForTcpOk(
+          host,
+          serverPort + 2,
+          STARTUP_READINESS_TIMEOUT_MS,
+          signal,
+        ),
       // station#1177 (review MED): the UI wait must validate the SAME boot
       // identity as the server wait — a competing instance's UI answering
       // 200 here let a lost port race look like a successful start. The
       // expected sha mirrors EXACTLY what buildUiServerScript was handed
       // above (`buildManifest?.sha ?? 'unknown'`), not the server env —
       // the two can legitimately differ in harness boots.
-      waitForIdentity(
-        `http://${healthHost}:${uiPort}/__station/identity`,
-        {
-          instanceId,
-          sha: buildManifest?.sha ?? 'unknown',
-          bootId,
-        },
-        STARTUP_READINESS_TIMEOUT_MS,
-        hostedProbeHeaders,
-        { childAlive: childAliveProbe(uiProc.pid) },
-      ),
+      (signal) =>
+        waitForIdentity(
+          `http://${healthHost}:${uiPort}/__station/identity`,
+          {
+            instanceId,
+            sha: buildManifest?.sha ?? 'unknown',
+            bootId,
+          },
+          STARTUP_READINESS_TIMEOUT_MS,
+          hostedProbeHeaders,
+          { childAlive: childAliveProbe(uiProc.pid), signal },
+        ),
     ]);
     const activeApiBase = activeLocalApiBase(host, serverPort);
     if (activeApiBase) {

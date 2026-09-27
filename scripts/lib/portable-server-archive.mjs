@@ -86,6 +86,7 @@ export function resolvePortableServerTarget(
   return {
     id,
     platform,
+    arch,
     format: target.format,
     archiveName: `station-server-${id}.${target.format}`,
     node: {
@@ -417,7 +418,12 @@ async function stagePortableServerTree({
     throw new Error(`${uiIndex} is missing; run \`npm run build:ui\` first`);
   }
   // Removes and recreates stageRoot, then stages node_modules into it.
-  stageDesktopServerRuntime({ projectRoot, outputRoot: stageRoot });
+  stageDesktopServerRuntime({
+    projectRoot,
+    outputRoot: stageRoot,
+    platform: target.platform,
+    arch: target.arch,
+  });
   // The CLI resolves every instance of a prebuilt archive to dist-server/
   // and dist-ui/ (lifecycle.ts resolveBuildPaths).
   const serverDir = join(stageRoot, 'dist-server');
@@ -548,6 +554,16 @@ export async function buildPortableServerArchive({
     arch,
     readPortableNodeRuntime(projectRoot),
   );
+  // The staged node_modules are this host's install: its native modules and
+  // platform packages (the Claude Agent SDK binary, esbuild) are the host's,
+  // whatever the prune is told. A cross-target build would ship them under
+  // another target's name, so refuse it before anything is written.
+  const host = `${process.platform}-${process.arch}`;
+  if (target.id !== host) {
+    throw new Error(
+      `cannot build the ${target.id} portable archive on ${host}: its native modules come from this host's install; build it on a ${target.id} host`,
+    );
+  }
   const release = createPackagedReleaseManifest({ tag, sha, createdAt });
   const distributionBytes = await obtainNodeDistribution(target, {
     cacheDir: join(outputDir, 'node-cache'),

@@ -54,7 +54,9 @@ on:
       - 'scripts/lib/git-environment.mjs'
       - 'scripts/lib/module-entry.mjs'
       - 'scripts/lib/portable-server-archive.mjs'
+      - 'scripts/lib/portable-smoke-diagnostics.mjs'
       - 'scripts/lib/server-build-config.mjs'
+      - 'scripts/lib/station-stop-hint.mjs'
   pull_request_target:
     paths:
       - '.github/workflows/portable-server-archives.yml'
@@ -82,7 +84,9 @@ on:
       - 'scripts/lib/git-environment.mjs'
       - 'scripts/lib/module-entry.mjs'
       - 'scripts/lib/portable-server-archive.mjs'
+      - 'scripts/lib/portable-smoke-diagnostics.mjs'
       - 'scripts/lib/server-build-config.mjs'
+      - 'scripts/lib/station-stop-hint.mjs'
 
 permissions:
   contents: read

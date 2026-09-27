@@ -2738,6 +2738,145 @@ describe('lifecycle instance state', () => {
     expect(log).not.toHaveBeenCalled();
   });
 
+  it('fails at once when the child exits before answering, not at the deadline (#2805)', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() =>
+      Promise.reject(new TypeError('fetch failed')),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { lifecycle } = await loadLifecycleModule();
+    const url = 'http://localhost:3246/api/system/identity';
+    let alive = true;
+    let failure: Error | null = null;
+    const waiting = lifecycle
+      .waitForIdentity(
+        url,
+        { instanceId: 'smoke-b', sha: 'identity-sha', bootId: 'identity-boot' },
+        90_000,
+        undefined,
+        { childAlive: () => alive, log: vi.fn() },
+      )
+      .catch((error: Error) => {
+        failure = error;
+      });
+
+    // Still booting: the wait keeps polling.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(failure).toBeNull();
+    // The server failed its startup and exited (process.exit(1)).
+    alive = false;
+    await vi.advanceTimersByTimeAsync(500);
+    // Settled within one poll of the exit, 88s before the deadline.
+    expect(failure).not.toBeNull();
+    await waiting;
+    expect(failure!.message).toBe(
+      `Station process exited before ${url} answered (fetch failed)`,
+    );
+    expect(failure!.message).toBe(
+      lifecycle.childExitedBeforeReadinessMessage(
+        url,
+        'fetch failed',
+        'no-listener',
+      ),
+    );
+  });
+
+  it('names the other instance when the child exits after a mismatch, keeping the detail (#2805)', async () => {
+    vi.useFakeTimers();
+    // Another instance owns the port: it answers with its own boot triple.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              instanceId: 'smoke-b',
+              sha: 'identity-sha',
+              bootId: 'other-boot',
+            }),
+        } as unknown as Response),
+      ),
+    );
+    const { lifecycle } = await loadLifecycleModule();
+    const url = 'http://localhost:3246/api/system/identity';
+    let alive = true;
+    let failure: Error | null = null;
+    const waiting = lifecycle
+      .waitForIdentity(
+        url,
+        { instanceId: 'smoke-b', sha: 'identity-sha', bootId: 'identity-boot' },
+        90_000,
+        undefined,
+        { childAlive: () => alive, log: vi.fn() },
+      )
+      .catch((error: Error) => {
+        failure = error;
+      });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(failure).toBeNull();
+    // Our child lost the bind race and exited.
+    alive = false;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(failure).not.toBeNull();
+    await waiting;
+    expect(failure!.message).toBe(
+      `Station process exited; ${url} answered as a different instance (managed boot identity mismatch): bootId expected "identity-boot", got "other-boot"`,
+    );
+  });
+
+  it('stops a readiness wait once its signal is aborted (#2805)', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new TypeError('fetch failed'))),
+    );
+    const { lifecycle } = await loadLifecycleModule();
+    const abort = new AbortController();
+    let failure: Error | null = null;
+    const waiting = lifecycle
+      .waitForIdentity(
+        'http://localhost:3246/api/system/identity',
+        { instanceId: 'smoke-b', sha: 'identity-sha', bootId: 'identity-boot' },
+        90_000,
+        undefined,
+        { childAlive: () => true, signal: abort.signal, log: vi.fn() },
+      )
+      .catch((error: Error) => {
+        failure = error;
+      });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(failure).toBeNull();
+    abort.abort();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(failure).not.toBeNull();
+    await waiting;
+    expect(failure!.message).toBe('Readiness wait abandoned');
+  });
+
+  it('ends every sibling readiness wait when one fails (#2805)', async () => {
+    const { lifecycle } = await loadLifecycleModule();
+    const siblingSignals: AbortSignal[] = [];
+    const sibling = (signal: AbortSignal) =>
+      new Promise<void>((_resolve, reject) => {
+        siblingSignals.push(signal);
+        signal.addEventListener('abort', () =>
+          reject(new Error('Readiness wait abandoned')),
+        );
+      });
+    await expect(
+      lifecycle.awaitReadiness([
+        sibling,
+        async () => {
+          throw new Error('Station process exited before x answered (y)');
+        },
+        sibling,
+      ]),
+    ).rejects.toThrow('Station process exited before x answered (y)');
+    expect(siblingSignals).toHaveLength(2);
+    expect(siblingSignals.every((signal) => signal.aborted)).toBe(true);
+  });
+
   it('bounds collectInstanceStatus when both managed identity probes never answer', async () => {
     vi.useFakeTimers();
     ensureDir(TEST_CWD);

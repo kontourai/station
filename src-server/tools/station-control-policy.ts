@@ -114,8 +114,22 @@ export type StationControlHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
  *   connection default loosen it as surely as `never`). An agent must not
  *   approve its own requests or loosen its own approvals, so both need a
  *   bound operator caller (decision 3 names bound + Project approve for
- *   respond, which slice C adds; until then only the operator). `steerTurn`
- *   is dispatch and stays with slice C.
+ *   respond, which slice C adds; until then only the operator).
+ * - `thread-commands-stay-in-scope` (slice C1, owner decision recorded on
+ *   #2377): the same leaf carries `steerTurn`, which injects input into a
+ *   live turn, and `adoptSession`, which copies another session's
+ *   transcript and joins its posture. Both name a thread the caller may act
+ *   on only within its own scope:
+ *   - a bound operator caller keeps the operator's reach (decision 3); the
+ *     route's own session authorization still limits which threads that is;
+ *   - a bound caller acting for anyone else: a thread its own session's
+ *     owner owns;
+ *   - any other caller: a thread with the same owner AND the same
+ *     session-record Project as its own session (decision 3's dispatch
+ *     scope), and never a thread that runs `host` (unconfined).
+ *   The guard reads the thread's owner, Project and confinement
+ *   (`commandThread`); a thread it cannot read refuses, and a Project that
+ *   is not a session record counts as unreadable.
  * - `retarget-of-granted-job-is-person-only`: an unattended grant a person
  *   gave a scheduled job is keyed by the job, not by what it runs. Changing a
  *   granted job's prompt, agent, provider or monitor (a monitor dispatch runs
@@ -125,11 +139,12 @@ export type StationControlHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
  */
 export type StationControlRouteRule =
   | 'approval-commands-need-bound-operator'
+  | 'thread-commands-stay-in-scope'
   | 'retarget-of-granted-job-is-person-only';
 
 export interface StationControlRoute {
   readonly method: StationControlHttpMethod;
-  readonly rule?: StationControlRouteRule;
+  readonly rules?: readonly StationControlRouteRule[];
   /**
    * A path pattern: literal segments and `:name` segments, each `:name`
    * matching exactly one non-empty segment. No wildcards: every leaf a tool
@@ -165,12 +180,20 @@ export interface StationControlToolPolicy {
 const get = (path: string): StationControlRoute => ({ method: 'GET', path });
 const post = (
   path: string,
-  rule?: StationControlRouteRule,
-): StationControlRoute => ({ method: 'POST', path, ...(rule ? { rule } : {}) });
+  ...rules: StationControlRouteRule[]
+): StationControlRoute => ({
+  method: 'POST',
+  path,
+  ...(rules.length > 0 ? { rules } : {}),
+});
 const put = (
   path: string,
-  rule?: StationControlRouteRule,
-): StationControlRoute => ({ method: 'PUT', path, ...(rule ? { rule } : {}) });
+  ...rules: StationControlRouteRule[]
+): StationControlRoute => ({
+  method: 'PUT',
+  path,
+  ...(rules.length > 0 ? { rules } : {}),
+});
 const del = (path: string): StationControlRoute => ({ method: 'DELETE', path });
 
 /**
@@ -262,7 +285,11 @@ export const DISPATCH_ROUTES: readonly StationControlRoute[] = [
   get('/api/orchestration/delegations/:taskId/events'),
   post('/api/orchestration/delegations/:taskId/continue'),
   post('/api/orchestration/delegations/:taskId/interrupt'),
-  post('/api/orchestration/commands', 'approval-commands-need-bound-operator'),
+  post(
+    '/api/orchestration/commands',
+    'approval-commands-need-bound-operator',
+    'thread-commands-stay-in-scope',
+  ),
   get('/api/orchestration/sessions/read-model'),
   get('/api/orchestration/sessions/:threadId'),
   get('/api/orchestration/sessions/:threadId/event-page'),
@@ -801,6 +828,19 @@ export interface StationControlPolicyCaller {
     readonly id: string;
     readonly elevationEligible: boolean;
   };
+  /** Its own session's Project; authority needs `session-record`. */
+  readonly localProjectId?: string;
+  readonly projectIdSource?: 'session-record' | 'slug-lookup';
+}
+
+/** The server's records for a thread a command names. */
+export interface StationControlCommandThread {
+  /** Its recorded owner; absent when it has none. */
+  readonly ownerId?: string;
+  /** Its session-record Project (`ProjectConfig.id`); absent otherwise. */
+  readonly localProjectId?: string;
+  /** Whether it runs `host` (unconfined): its start stamp or a recorded `never`. */
+  readonly host: boolean;
 }
 
 export interface StationControlPolicyContext {
@@ -820,6 +860,12 @@ export interface StationControlPolicyContext {
    * (it reads the grant store); absent means it does not.
    */
   readonly retargetsGrantedJob?: boolean;
+  /**
+   * For `thread-commands-stay-in-scope`: what the server's records say about
+   * the thread a `steerTurn` or `adoptSession` names. Only the server can
+   * know it; absent means the guard could not read it, which refuses.
+   */
+  readonly commandThread?: StationControlCommandThread;
 }
 
 const ASSURANCE_RANK = {
@@ -942,8 +988,8 @@ function buildRouteIndex(): readonly IndexedRoute[] {
       };
       entry.owners.push(owner);
       entry.policies.push(policy);
-      if (route.rule && !entry.rules.includes(route.rule))
-        entry.rules.push(route.rule);
+      for (const rule of route.rules ?? [])
+        if (!entry.rules.includes(rule)) entry.rules.push(rule);
       byKey.set(key, entry);
     }
   };
@@ -1030,6 +1076,112 @@ const APPROVAL_COMMANDS: ReadonlySet<string> = new Set([
   'setApprovalMode',
 ]);
 
+/** The `type` of an `/api/orchestration/commands` body, if it has one. */
+function commandType(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const type = (body as { type?: unknown }).type;
+  return typeof type === 'string' ? type : undefined;
+}
+
+function isOperatorCaller(
+  caller: StationControlPolicyCaller,
+  context: StationControlPolicyContext,
+): boolean {
+  const isOperator =
+    context.isOperatorPrincipal ??
+    ((id: string) => id === STATION_CONTROL_OPERATOR_PRINCIPAL_ID);
+  return (
+    caller.principal?.elevationEligible === true &&
+    isOperator(caller.principal.id)
+  );
+}
+
+/** `approval-commands-need-bound-operator`. */
+function approvalCommandRefusal(
+  context: StationControlPolicyContext,
+): StationControlRefusal | undefined {
+  const type = commandType(context.body);
+  if (type === undefined || !APPROVAL_COMMANDS.has(type)) return undefined;
+  const caller = context.caller;
+  if (!caller) return stationControlRefusal('station_control_caller_required');
+  if (caller.assurance !== 'bound')
+    return stationControlRefusal('station_control_assurance_insufficient');
+  if (!isOperatorCaller(caller, context))
+    return stationControlRefusal('station_control_role_required');
+  return undefined;
+}
+
+/** The commands `thread-commands-stay-in-scope` holds to the caller's scope. */
+const SCOPED_THREAD_COMMANDS: ReadonlySet<string> = new Set([
+  'steerTurn',
+  'adoptSession',
+]);
+
+/**
+ * `thread-commands-stay-in-scope`. Past its scope the refusal names what
+ * would have admitted it: `station_control_assurance_insufficient` when a
+ * bound caller acting for the same person would pass (an operator-owned
+ * session, a `host` thread, another Project, an unreadable one);
+ * `station_control_role_required` when no credential would (another owner's
+ * thread, or a caller that acts for no one).
+ */
+function threadCommandRefusal(
+  context: StationControlPolicyContext,
+): StationControlRefusal | undefined {
+  const type = commandType(context.body);
+  if (type === undefined || !SCOPED_THREAD_COMMANDS.has(type)) return undefined;
+  const caller = context.caller;
+  if (!caller) return stationControlRefusal('station_control_caller_required');
+  const operator = isOperatorCaller(caller, context);
+  if (operator && caller.assurance === 'bound') return undefined;
+  const thread = context.commandThread;
+  if (!thread || !ownsThread(caller, thread))
+    return stationControlRefusal(
+      operator
+        ? 'station_control_assurance_insufficient'
+        : 'station_control_role_required',
+    );
+  return caller.assurance === 'bound' ||
+    (!thread.host && sharesSessionRecordProject(caller, thread))
+    ? undefined
+    : stationControlRefusal('station_control_assurance_insufficient');
+}
+
+/** Only a recorded owner (`elevationEligible`) owns a thread. */
+function ownsThread(
+  caller: StationControlPolicyCaller,
+  thread: StationControlCommandThread,
+): boolean {
+  return (
+    caller.principal?.elevationEligible === true &&
+    thread.ownerId === caller.principal.id
+  );
+}
+
+/** Both Projects are session records, and they are the same one. */
+function sharesSessionRecordProject(
+  caller: StationControlPolicyCaller,
+  thread: StationControlCommandThread,
+): boolean {
+  return (
+    caller.projectIdSource === 'session-record' &&
+    caller.localProjectId !== undefined &&
+    caller.localProjectId === thread.localProjectId
+  );
+}
+
+const ROUTE_RULE_REFUSALS: Record<
+  StationControlRouteRule,
+  (context: StationControlPolicyContext) => StationControlRefusal | undefined
+> = {
+  'approval-commands-need-bound-operator': approvalCommandRefusal,
+  'thread-commands-stay-in-scope': threadCommandRefusal,
+  'retarget-of-granted-job-is-person-only': (context) =>
+    context.retargetsGrantedJob
+      ? stationControlRefusal('station_control_person_only')
+      : undefined,
+};
+
 /**
  * The leaf's own body-dependent rules, applied after some tool's policy
  * admitted the request (so no tool reaching the leaf can loosen them).
@@ -1039,31 +1191,8 @@ function routeRuleRefusal(
   context: StationControlPolicyContext,
 ): StationControlRefusal | undefined {
   for (const rule of rules) {
-    if (rule === 'retarget-of-granted-job-is-person-only') {
-      if (context.retargetsGrantedJob)
-        return stationControlRefusal('station_control_person_only');
-      continue;
-    }
-    const body = context.body;
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      !APPROVAL_COMMANDS.has(String((body as { type?: unknown }).type))
-    )
-      continue;
-    const caller = context.caller;
-    if (!caller)
-      return stationControlRefusal('station_control_caller_required');
-    if (caller.assurance !== 'bound')
-      return stationControlRefusal('station_control_assurance_insufficient');
-    const isOperator =
-      context.isOperatorPrincipal ??
-      ((id: string) => id === STATION_CONTROL_OPERATOR_PRINCIPAL_ID);
-    if (
-      !caller.principal?.elevationEligible ||
-      !isOperator(caller.principal.id)
-    )
-      return stationControlRefusal('station_control_role_required');
+    const refusal = ROUTE_RULE_REFUSALS[rule](context);
+    if (refusal) return refusal;
   }
   return undefined;
 }

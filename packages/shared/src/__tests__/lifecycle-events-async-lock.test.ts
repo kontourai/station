@@ -277,6 +277,8 @@ describe('process birth-fingerprint cache (#2646 probe cost)', () => {
     const windows = {
       platform: 'win32' as const,
       env: { SystemRoot: 'C:\\Windows' },
+      // PowerShell 7 absent from its install path: the bare name below.
+      fileExists: () => false,
       exec,
     };
     await Promise.all([

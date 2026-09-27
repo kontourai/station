@@ -1,11 +1,16 @@
 /** @vitest-environment jsdom */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from '@playwright/test';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { ruleBodiesFor } from '../../__tests__/helpers/css-rules';
+import {
+  assertNoImportsSurvive,
+  chromiumIsInstalled,
+  resolveCssImports,
+} from '../../../../tests/helpers/css-cascade-fixture';
 import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../contexts/NavigationContext';
 import {
@@ -40,6 +45,8 @@ vi.mock('../../contexts/ProjectsContext', () => ({
   // no project here, so the panes that need one derive none.
   useProject: () => ({ project: undefined, isLoading: false }),
 }));
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 let model: ReturnType<typeof useRegionModel> | null = null;
 
@@ -85,10 +92,10 @@ afterEach(() => {
  *
  * 1. the occupant's content mounts INSIDE `.dock-slot__body` INSIDE the
  *    `.chat-dock` shell root (the element whose height DockShell drives);
- * 2. the `.dock-slot__body` stylesheet rule actually declares the
- *    height-bearing scroll mode (`flex`, `min-height: 0`, `overflow: auto`)
- *    — jsdom applies no layout, so the class alone proves nothing without
- *    the declarations it binds.
+ * 2. in Chromium, with the real cascade-resolved `index.css`, that body is
+ *    bounded by the shell and scrolls a list taller than the dock instead of
+ *    growing past it — jsdom applies no layout, so the class alone proves
+ *    nothing about the geometry it binds.
  *
  * Driven through the real host (`RegionShells`) and the real reveal
  * (`showSurface`), so the shell under test is the one production mounts.
@@ -99,7 +106,11 @@ test('a non-chat dock occupant renders inside the height-bearing scroll containe
       <NavigationProvider>
         <RegionModelProvider>
           <Probe />
-          <RegionShells />
+          <div className="app app--with-sidebar">
+            <div className="app__main">
+              <RegionShells />
+            </div>
+          </div>
         </RegionModelProvider>
       </NavigationProvider>
     </KeyboardShortcutsProvider>,
@@ -127,15 +138,55 @@ test('a non-chat dock occupant renders inside the height-bearing scroll containe
   expect(shell?.getAttribute('aria-label')).toBe('Activity');
   expect((shell as HTMLElement | null)?.dataset.region).toBe('right');
 
-  const css = readFileSync(join(__dirname, '../../index.css'), 'utf-8');
-  const [rule] = ruleBodiesFor(css, '.dock-slot__body');
-  expect(
-    rule,
-    'index.css must still declare the `.dock-slot__body` rule',
-  ).toBeDefined();
-  expect(rule).toMatch(/display:\s*flex/);
-  expect(rule).toMatch(/flex-direction:\s*column/);
-  expect(rule).toMatch(/flex:\s*1 1 auto/);
-  expect(rule).toMatch(/min-height:\s*0/);
-  expect(rule).toMatch(/overflow:\s*auto/);
+  // jsdom applies no layout, so the scroll mode is measured in Chromium
+  // against the real stylesheet and the DOM this host just produced.
+  if (!chromiumIsInstalled(resolve(HERE, '../../../../'))) {
+    throw new Error(
+      'Playwright Chromium is not installed in this worktree, so the dock ' +
+        'body could not be measured. Install it with ' +
+        '`npm run install:playwright` and re-run.',
+    );
+  }
+  const markup = document.body.innerHTML;
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({
+      viewport: { width: 1280, height: 800 },
+    });
+    const css = resolveCssImports(resolve(HERE, '../../index.css'));
+    assertNoImportsSurvive(css);
+    await page.setContent(
+      `<!doctype html><html><head><style>${css}</style></head><body style="margin:0">${markup}</body></html>`,
+    );
+    const geometry = await page.evaluate(() => {
+      const occupant = document.querySelector<HTMLElement>(
+        '[data-testid="sessions-view"]',
+      );
+      const body = occupant?.closest<HTMLElement>('.dock-slot__body');
+      const shell = body?.closest<HTMLElement>('.chat-dock');
+      if (!occupant || !body || !shell) throw new Error('dock not serialized');
+      // A list far taller than any dock: the body must scroll it, not grow.
+      const list = document.createElement('div');
+      list.style.height = '4000px';
+      occupant.append(list);
+      body.scrollTop = 200;
+      return {
+        shellBottom: shell.getBoundingClientRect().bottom,
+        bodyBottom: body.getBoundingClientRect().bottom,
+        bodyHeight: body.clientHeight,
+        scrollHeight: body.scrollHeight,
+        scrollTop: body.scrollTop,
+        // `hidden` also accepts a programmatic scrollTop but gives the user
+        // no way to scroll, so the resolved mode is read too.
+        overflowY: getComputedStyle(body).overflowY,
+      };
+    });
+    expect(geometry.bodyHeight).toBeGreaterThan(0);
+    expect(geometry.scrollHeight).toBeGreaterThan(geometry.bodyHeight);
+    expect(geometry.bodyBottom).toBeLessThanOrEqual(geometry.shellBottom);
+    expect(geometry.scrollTop).toBe(200);
+    expect(['auto', 'scroll']).toContain(geometry.overflowY);
+  } finally {
+    await browser.close();
+  }
 });
