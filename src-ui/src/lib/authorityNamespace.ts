@@ -36,18 +36,16 @@
 
 import type { AuthorityObservation } from '@kontourai/station-contracts/authority-observation';
 
-/** Storage-key prefix shared with the legacy singleton (see below). */
-export const AUTHORITY_CACHE_KEY_PREFIX = 'station-query-cache-v1';
-
 /**
- * The legacy singleton key (`queryPersistence.ts`'s
- * `QUERY_PERSISTENCE_STORAGE_KEY`). It is QUARANTINED, not adopted: no
- * active namespace ever reads it, and this slice never deletes it either —
- * deleting an unverified blob would be silent loss of data the operator may
- * still be entitled to. First boot after this slice leaves it untouched on
- * disk; a future migration with explicit operator consent may reclaim it.
+ * Storage-key prefix, equal to the legacy singleton key
+ * (`queryPersistence.ts`'s `QUERY_PERSISTENCE_STORAGE_KEY`). That singleton
+ * is QUARANTINED, not adopted: no active namespace ever reads it, and this
+ * slice never deletes it either — deleting an unverified blob would be
+ * silent loss of data the operator may still be entitled to. First boot
+ * after this slice leaves it untouched on disk; a future migration with
+ * explicit operator consent may reclaim it.
  */
-export const LEGACY_AUTHORITY_CACHE_KEY = AUTHORITY_CACHE_KEY_PREFIX;
+export const AUTHORITY_CACHE_KEY_PREFIX = 'station-query-cache-v1';
 
 function encodeField(value: string): string {
   return encodeURIComponent(value);
@@ -83,7 +81,7 @@ export function buildAuthorityNamespace(
  * IndexedDB storage key for one authority namespace. Namespaces are
  * disjoint by construction: preserving (or restoring) the blob under B
  * never touches the blob under A, and the legacy singleton is never
- * produced here — only `LEGACY_AUTHORITY_CACHE_KEY` names it.
+ * produced here.
  */
 export function authorityPersistenceKey(namespace: string): string {
   return `${AUTHORITY_CACHE_KEY_PREFIX}::${namespace}`;
