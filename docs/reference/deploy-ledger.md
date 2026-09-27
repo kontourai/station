@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-27T12:43:28Z | nightly-desktop | 0.1.11-nightly.2461.1 | `b61a6d5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36317054434) |
 | 2026-09-27T12:43:25Z | nightly-android | 0.1.11-nightly.2461.1 | `b61a6d5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36317054434) |
 | 2026-09-27T12:39:12Z | nightly-npm | 0.6.0-nightly.2461.36317054434 | `b61a6d5` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36317054434) |
 | 2026-09-27T06:24:37Z | nightly-desktop | 0.1.11-nightly.2461 | `bda38d3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36295895609) |
@@ -169,6 +170,47 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-27T12:43:28Z · nightly-desktop · 0.1.11-nightly.2461.1
+
+- Ship SHA: `b61a6d5e75c0482ed61bd62e9f73045843968832`
+- Artifact built at: `2026-09-27T11:59:57.888Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36317054434)
+
+### Changelog
+
+Commits since `bda38d3` ([full sha](https://github.com/kontourai/station/commit/bda38d3bcb680fddcba6f2e35a43c05d2caefb8a)):
+
+**Features**
+
+- [#2797](https://github.com/kontourai/station/pull/2797) feat(ci): shard fast-checks behind a fail-closed aggregator (#2709)
+- [#2798](https://github.com/kontourai/station/pull/2798) feat(sdk,station-control): conversation and orchestration refusals keep status and code; delegation tools relay only local codes (#2708 A-1b)
+- [#2792](https://github.com/kontourai/station/pull/2792) feat(sdk): station-control family fetchers keep status, code and details (#2708 A-1a)
+- [#2762](https://github.com/kontourai/station/pull/2762) feat(cli): keep prebuilt archive lifecycle state outside the archive (#2675 B1)
+- [#2778](https://github.com/kontourai/station/pull/2778) feat(relay): verify native client signaling in local echo lab
+
+**Fixes**
+
+- [#2800](https://github.com/kontourai/station/pull/2800) fix(station-control): every tool failure is an MCP error, so raw invocation never reads a refusal as success (#2795)
+- [#2796](https://github.com/kontourai/station/pull/2796) fix(verification): write the final changed-test diagnostic before binding it
+- [#2791](https://github.com/kontourai/station/pull/2791) fix(test-changed): refine an SDK import change that cannot alter a barrel load (#2782)
+- [#2786](https://github.com/kontourai/station/pull/2786) fix(plugins): confine plugin dependency sources
+- [#2724](https://github.com/kontourai/station/pull/2724) fix(cli): stop registry browse crashing on server alias records; prune dead package code and weak tests
+
+**CI / workflow**
+
+- [#2802](https://github.com/kontourai/station/pull/2802) ci: back out sharded fast-checks until PR-event shards run (#2709)
+
+**Other**
+
+- [#2794](https://github.com/kontourai/station/pull/2794) test(scripts): test-audit batch 15 — verification tooling tests at their real boundaries
+- [#2788](https://github.com/kontourai/station/pull/2788) test(connect): prune dead connect code and move helper tests to rendered boundaries (test-audit batch 10)
+- [#2793](https://github.com/kontourai/station/pull/2793) test(server): test-audit batch 11 — providers part 1
+- [#2779](https://github.com/kontourai/station/pull/2779) style(desktop): apply rustfmt and check it in CI
+- [#2777](https://github.com/kontourai/station/pull/2777) test(ui): test-audit batch 09 — contexts, lib, utils, platform and regions
+- [#2770](https://github.com/kontourai/station/pull/2770) test(ui): prove sessions, Home and notification contracts at their owners
+- [#2775](https://github.com/kontourai/station/pull/2775) test(server): test-audit batch 02 — prune station-control tool tests and dead dispatch helpers
 
 ## 2026-09-27T12:43:25Z · nightly-android · 0.1.11-nightly.2461.1
 
