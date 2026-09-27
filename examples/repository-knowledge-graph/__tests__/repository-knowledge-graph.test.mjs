@@ -71,6 +71,7 @@ function repository() {
           summary: 'Recorded purpose',
           modules: ['Alpha', 'Beta'],
           docs: ['docs/adr/alpha.md'],
+          questions: ['Where is Alpha explained?'],
         },
       ],
     }),
@@ -230,9 +231,7 @@ test('refuses missing module owners, symlinked references and altered exported p
   snapshot.records[0].body = 'invented rationale';
   expect(() => validateKnowledgeSnapshot(snapshot)).toThrow('payload digest');
   put('docs/architecture/module-map.md', '# Modules\n');
-  expect(() => exportRepositoryKnowledge({ root })).toThrow(
-    'no canonical section',
-  );
+  expect(() => exportRepositoryKnowledge({ root })).toThrow('Unknown module');
   put(
     'docs/architecture/module-map.md',
     '# Modules\n\n## Alpha\n\n[Owner](../../src-server/alpha.js)\n\n## Beta\n\nPurpose.\n',
@@ -240,6 +239,96 @@ test('refuses missing module owners, symlinked references and altered exported p
   rmSync(join(root, 'src-server/alpha.js'));
   symlinkSync(join(directory, 'outside'), join(root, 'src-server/alpha.js'));
   expect(() => exportRepositoryKnowledge({ root })).toThrow(/symlink/);
+});
+
+test.each([
+  [
+    'inputs',
+    (value) => {
+      value.inputs[0].digest = '0'.repeat(64);
+    },
+  ],
+  [
+    'missing inputs',
+    (value) => {
+      delete value.inputs;
+    },
+  ],
+  [
+    'record count',
+    (value) => {
+      value.counts.records += 1;
+    },
+  ],
+  [
+    'edge count',
+    (value) => {
+      value.counts.edges += 1;
+    },
+  ],
+  [
+    'module count',
+    (value) => {
+      value.counts.modules += 1;
+    },
+  ],
+  [
+    'omission count',
+    (value) => {
+      value.counts.omittedReferences = -1;
+    },
+  ],
+])('rejects altered %s before importing', async (_name, alter) => {
+  const { root } = repository();
+  const snapshot = exportRepositoryKnowledge({ root });
+  alter(snapshot);
+  await expect(
+    ingestKnowledgeSnapshot({
+      snapshot,
+      apiBase: 'http://127.0.0.1:43521',
+      rootId: 'root:project-repository-graph',
+      credential: token,
+      apply: true,
+    }),
+  ).rejects.toThrow(/Snapshot (input digest|counts)/);
+});
+
+test('refuses duplicate atlas groups through the canonical catalog contract', () => {
+  const { root, put } = repository();
+  const group = {
+    id: 'work',
+    title: 'Work',
+    summary: 'Purpose',
+    questions: ['Why?'],
+    docs: ['docs/adr/alpha.md'],
+  };
+  put(
+    'docs/learn/atlas.json',
+    JSON.stringify({
+      version: 1,
+      groups: [
+        { ...group, modules: ['Alpha'] },
+        { ...group, modules: ['Beta'] },
+      ],
+    }),
+  );
+  expect(() => exportRepositoryKnowledge({ root })).toThrow(
+    'duplicate learning group',
+  );
+});
+
+test('refuses pacing faster than four writes per second before connecting', async () => {
+  const { root } = repository();
+  await expect(
+    ingestKnowledgeSnapshot({
+      snapshot: exportRepositoryKnowledge({ root }),
+      apiBase: 'http://127.0.0.1:43521',
+      rootId: 'root:project-repository-graph',
+      credential: token,
+      paceMilliseconds: 0,
+      apply: true,
+    }),
+  ).rejects.toThrow('Invalid ingestion pacing');
 });
 
 test('uses real SDK/HTTP routes and file adapters for dry-run, partial-write recovery, idempotence, update history and recall', async () => {
@@ -260,7 +349,6 @@ test('uses real SDK/HTTP routes and file adapters for dry-run, partial-write rec
     apiBase: host.apiBase,
     rootId: root.id,
     credential: token,
-    paceMilliseconds: 0,
   };
   expect(await ingestKnowledgeSnapshot(input)).toMatchObject({
     outcome: 'dry-run',
@@ -276,6 +364,11 @@ test('uses real SDK/HTTP routes and file adapters for dry-run, partial-write rec
     outcome: 'verified',
     existing: 2,
     created: snapshot.records.length - 2,
+    recordsVerified: snapshot.records.length,
+    edgesVerified: snapshot.records.reduce(
+      (count, record) => count + record.links.length,
+      0,
+    ),
   });
   expect(
     await ingestKnowledgeSnapshot({ ...input, apply: true }),
@@ -388,7 +481,6 @@ test('honors HTTP Retry-After and reconciles the exact record before retrying a 
     rootId: root.id,
     credential: token,
     apply: true,
-    paceMilliseconds: 0,
   });
   expect(result).toMatchObject({
     outcome: 'verified',

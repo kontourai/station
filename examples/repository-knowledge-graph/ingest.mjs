@@ -51,7 +51,7 @@ function comparable(record, includeLinks = true) {
   };
 }
 
-/** A dedicated single-writer root is required; the public API has no bulk transaction or create CAS. */
+/** A dedicated single-writer root is required; the public API has no bulk transaction. */
 export async function ingestKnowledgeSnapshot({
   snapshot,
   apiBase,
@@ -67,7 +67,7 @@ export async function ingestKnowledgeSnapshot({
     throw new Error('An explicit isolated root and credential are required.');
   if (
     !Number.isInteger(paceMilliseconds) ||
-    paceMilliseconds < 0 ||
+    paceMilliseconds < 250 ||
     paceMilliseconds > 1000
   )
     throw new Error('Invalid ingestion pacing.');
@@ -328,7 +328,10 @@ export async function ingestKnowledgeSnapshot({
       unchanged,
       retainedOtherSnapshots: existing.size - present,
       recordsVerified: snapshot.records.length,
-      edgesVerified: snapshot.counts.edges,
+      edgesVerified: snapshot.records.reduce(
+        (count, record) => count + record.links.length,
+        0,
+      ),
       admission,
       snapshot: snapshot.inputDigest,
     };

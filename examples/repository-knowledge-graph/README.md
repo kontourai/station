@@ -36,6 +36,10 @@ arbitrary ledger command descriptions are copied.
 
 Records use snapshot-qualified IDs and immutable provenance notes. The exported
 payload digest detects accidental alteration, not authorship or semantic truth.
+Import validates the input digest against the recorded revision and observations,
+checks module/record/edge counts against the payload, and derives verified counts
+from the records it reads back. Omitted-reference counts are export observations;
+they do not prove complete coverage of the repository.
 Matching review hashes mean only that the recorded bytes match. Changed or
 missing source dependencies remain labelled; test references never become PASS.
 

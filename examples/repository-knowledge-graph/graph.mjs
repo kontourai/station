@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import Markdown from 'react-markdown';
+import { validateCatalog } from '../../scripts/lib/documentation-model.mjs';
 import { renderLearningDocument } from '../../scripts/lib/learning-markdown.mjs';
 import { createLearningSourceReader } from '../../scripts/lib/learning-source-reader.mjs';
 
@@ -156,6 +157,11 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
   )
     throw new Error('Atlas module identities must be unique.');
   const sections = moduleSections(moduleText);
+  validateCatalog(
+    atlas,
+    [...sections.keys()].map((title) => ({ title })),
+    tracked,
+  );
   const nodes = new Map();
   const edges = new Map();
   const documents = new Set();
@@ -431,6 +437,29 @@ export function validateKnowledgeSnapshot(value) {
     value.records.length > GRAPH_LIMITS.records
   )
     throw new Error('Invalid repository knowledge snapshot.');
+  if (
+    !Array.isArray(value.inputs) ||
+    value.inputDigest !==
+      hash(JSON.stringify({ revision: value.revision, inputs: value.inputs }))
+  )
+    throw new Error('Snapshot input digest mismatch.');
+  const paths = new Set();
+  for (const input of value.inputs) {
+    if (
+      typeof input.path !== 'string' ||
+      !allowed(input.path) ||
+      paths.has(input.path) ||
+      !['missing', 'present'].includes(input.availability) ||
+      (input.availability === 'present' &&
+        (!/^[a-f0-9]{64}$/.test(input.digest) ||
+          typeof input.existsAtRevision !== 'boolean' ||
+          typeof input.matchesRevision !== 'boolean'))
+    )
+      throw new Error('Invalid snapshot input observation.');
+    paths.add(input.path);
+  }
+  if (INPUTS.some((path) => !paths.has(path)))
+    throw new Error('Snapshot required input missing.');
   if (value.payloadDigest !== hash(JSON.stringify(value.records)))
     throw new Error('Snapshot payload digest mismatch.');
   const ids = new Set();
@@ -468,6 +497,16 @@ export function validateKnowledgeSnapshot(value) {
     Buffer.byteLength(JSON.stringify(value)) > GRAPH_LIMITS.outputBytes
   )
     throw new Error('Snapshot limit exceeded.');
+  if (
+    value.counts?.records !== value.records.length ||
+    value.counts?.edges !== edges ||
+    value.counts?.modules !==
+      value.records.filter((record) => record.category === 'repository.module')
+        .length ||
+    !Number.isSafeInteger(value.counts?.omittedReferences) ||
+    value.counts.omittedReferences < 0
+  )
+    throw new Error('Snapshot counts do not match its records.');
   for (const record of value.records)
     for (const link of record.links)
       if (
