@@ -7,7 +7,7 @@ import type {
 } from '../runtime-events.js';
 
 // Type assertions, checked by `typecheck:contracts`.
-describe('runtime-events contract: plan update + extension (#147, AC1)', () => {
+describe('runtime-events contract: plan update + extension (archive#147, AC1)', () => {
   test('AC1: plan.updated and extension.notification narrow to their own event types', () => {
     expectTypeOf<
       Extract<CanonicalRuntimeEvent, { method: 'plan.updated' }>
