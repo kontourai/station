@@ -5,7 +5,6 @@ import {
 import { createElement, isValidElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test, vi } from 'vitest';
-import { agentReadinessState } from '../components/AgentReadinessCell';
 import type { AgentData } from '../contexts/AgentsContext';
 import {
   agentFixRoute,
@@ -35,14 +34,7 @@ describe('agents view helpers', () => {
       },
     ] satisfies AgentData[];
 
-    const items = buildAgentsViewItems(agents, [
-      {
-        id: 'conn-1',
-        name: 'ACP One',
-        icon: '/acp.svg',
-        modes: [{}, {}, {}],
-      },
-    ]);
+    const items = buildAgentsViewItems(agents);
 
     expect(items.map((item) => item.id)).toEqual([
       'alpha',
@@ -77,7 +69,7 @@ describe('agents view helpers', () => {
         unavailableFix: { kind: 'model-connection' },
       },
     ] satisfies AgentData[];
-    const items = buildAgentsViewItems(agents, [], undefined, {
+    const items = buildAgentsViewItems(agents, {
       onChat,
       onFix,
     });
@@ -140,35 +132,6 @@ describe('agents view helpers', () => {
       agentFixRoute({ ...agent, unavailableReason: 'Anything else.' }),
     ).toBe('engines');
     expect(agentFixRoute({ unavailableFix: { kind: 'none' } })).toBeUndefined();
-  });
-
-  test('list rows expose only the one server-derived readiness state', () => {
-    const agents = [
-      {
-        slug: agentId('owned-agent'),
-        name: 'Owned Agent',
-        updatedAt: '2026-01-01T00:00:00Z',
-        project: 'demo-project',
-      },
-      {
-        slug: agentId('orphaned-agent'),
-        name: 'Orphaned Agent',
-        updatedAt: '2026-01-01T00:00:00Z',
-        project: 'ghost-project',
-      },
-      {
-        slug: agentId('global-agent'),
-        name: 'Global Agent',
-        updatedAt: '2026-01-01T00:00:00Z',
-      },
-    ] satisfies AgentData[];
-
-    const items = buildAgentsViewItems(agents, [], new Set(['demo-project']));
-
-    expect(items.map((item) => item.subtitle)).toEqual(['', '', '']);
-    expect(
-      agents.map((agent) => agentReadinessState(agent as AgentData).label),
-    ).toEqual(['Ready', 'Ready', 'Ready']);
   });
 
   test('buildAgentsViewEmptyContent renders onboarding and empty-state copy', () => {

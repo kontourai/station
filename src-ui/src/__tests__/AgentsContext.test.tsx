@@ -22,71 +22,69 @@ vi.mock('@kontourai/station-sdk', () => ({
  * catalog).
  */
 describe('useAgentsLoaded', () => {
-  it('is false while the query is still loading (no data yet)', () => {
-    useAgentsQuery.mockReturnValue({
-      data: undefined,
-      error: null,
-      isLoading: true,
-      isSuccess: false,
-      isError: false,
-    });
+  // react-query keeps isLoading false during a background retry of a
+  // still-errored query, so only isSuccess may license a decision.
+  it.each([
+    {
+      state: 'still loading (no data yet)',
+      query: {
+        data: undefined,
+        error: null,
+        isLoading: true,
+        isSuccess: false,
+        isError: false,
+      },
+      loaded: false,
+    },
+    {
+      state: 'errored, even though isLoading has cleared',
+      query: {
+        data: undefined,
+        error: new Error('network unreachable'),
+        isLoading: false,
+        isSuccess: false,
+        isError: true,
+      },
+      loaded: false,
+    },
+    {
+      state: 'refetching in the background after a prior error',
+      query: {
+        data: undefined,
+        error: new Error('network unreachable'),
+        isLoading: false,
+        isSuccess: false,
+        isError: true,
+        isFetching: true,
+      },
+      loaded: false,
+    },
+    {
+      state: 'resolved successfully to an empty catalog',
+      query: {
+        data: [],
+        error: null,
+        isLoading: false,
+        isSuccess: true,
+        isError: false,
+      },
+      loaded: true,
+    },
+    {
+      state: 'resolved successfully with agents',
+      query: {
+        data: [{ slug: 'claude', name: 'Claude Runtime' }],
+        error: null,
+        isLoading: false,
+        isSuccess: true,
+        isError: false,
+      },
+      loaded: true,
+    },
+  ])('is $loaded when the query is $state', ({ query, loaded }) => {
+    useAgentsQuery.mockReturnValue(query);
 
     const { result } = renderHook(() => useAgentsLoaded());
-    expect(result.current).toBe(false);
-  });
-
-  it('is false when the query has errored, even though isLoading has cleared', () => {
-    useAgentsQuery.mockReturnValue({
-      data: undefined,
-      error: new Error('network unreachable'),
-      isLoading: false,
-      isSuccess: false,
-      isError: true,
-    });
-
-    const { result } = renderHook(() => useAgentsLoaded());
-    expect(result.current).toBe(false);
-  });
-
-  it('is false while a background refetch is in flight after a prior error', () => {
-    // react-query keeps isLoading false and isSuccess false during a
-    // background retry of a still-errored query.
-    useAgentsQuery.mockReturnValue({
-      data: undefined,
-      error: new Error('network unreachable'),
-      isLoading: false,
-      isSuccess: false,
-      isError: true,
-      isFetching: true,
-    });
-
-    const { result } = renderHook(() => useAgentsLoaded());
-    expect(result.current).toBe(false);
-  });
-
-  it('is true once the query resolves successfully, even to an empty catalog', () => {
-    useAgentsQuery.mockReturnValue({
-      data: [],
-      error: null,
-      isLoading: false,
-      isSuccess: true,
-      isError: false,
-    });
-
-    const { result } = renderHook(() => useAgentsLoaded());
-    expect(result.current).toBe(true);
-  });
-
-  it('is true once the query resolves successfully with agents', () => {
-    useAgentsQuery.mockReturnValue({
-      data: [{ slug: 'claude', name: 'Claude Runtime' }],
-      error: null,
-      isLoading: false,
-      isSuccess: true,
-      isError: false,
-    });
-
-    const { result } = renderHook(() => useAgentsLoaded());
-    expect(result.current).toBe(true);
+    expect(result.current).toBe(loaded);
   });
 });

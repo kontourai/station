@@ -582,6 +582,8 @@ describe('ConnectedServerUpdates', () => {
     expect(
       screen.queryByText('Built-in server — updated with this desktop app.'),
     ).toBeNull();
+    // Incomplete identity is not ready: wait out a late automatic check.
+    await new Promise((resolve) => setTimeout(resolve, 25));
     expect(
       transportCalls.filter((url) => url.includes('/api/system/core-update')),
     ).toHaveLength(0);
@@ -760,12 +762,13 @@ describe('ConnectedServerUpdates', () => {
     });
     await waitConnected();
     await waitIdentitySettled();
-    expect(
-      screen.queryByText('Built-in server — updated with this desktop app.'),
-    ).toBeNull();
+    // Settle on the presentation first so the absence is not read mid-probe.
     expect(
       await screen.findByText('Server on station.example.test:8444.'),
     ).toBeTruthy();
+    expect(
+      screen.queryByText('Built-in server — updated with this desktop app.'),
+    ).toBeNull();
   });
 
   it('never renders the built-in copy on a mobile shell', async () => {
@@ -789,12 +792,13 @@ describe('ConnectedServerUpdates', () => {
     });
     await waitConnected();
     await waitIdentitySettled();
-    expect(
-      screen.queryByText('Built-in server — updated with this desktop app.'),
-    ).toBeNull();
+    // Settle on the presentation first so the absence is not read mid-probe.
     expect(
       await screen.findByText('Server on station.example.test:8444.'),
     ).toBeTruthy();
+    expect(
+      screen.queryByText('Built-in server — updated with this desktop app.'),
+    ).toBeNull();
   });
 
   it('isolates selection A→B→A: a late A response cannot label B nor repopulate any cache', async () => {

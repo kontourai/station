@@ -29,15 +29,7 @@ describe('selectGlobalContextAgents (station#3027)', () => {
     name: 'Global Agent',
   } as AgentData;
 
-  test('excludes a project-owned agent — §3.3 A1', () => {
-    expect(selectGlobalContextAgents([ownedAgent])).toEqual([]);
-  });
-
-  test('includes a global agent', () => {
-    expect(selectGlobalContextAgents([globalAgent])).toEqual([globalAgent]);
-  });
-
-  test('keeps only the global agents from a mixed catalog', () => {
+  test('keeps only the global agents from a mixed catalog — §3.3 A1', () => {
     expect(selectGlobalContextAgents([ownedAgent, globalAgent])).toEqual([
       globalAgent,
     ]);

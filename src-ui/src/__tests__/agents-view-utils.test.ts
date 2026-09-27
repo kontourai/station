@@ -5,7 +5,6 @@ import {
 } from '@kontourai/station-sdk/client';
 import { describe, expect, test, vi } from 'vitest';
 import {
-  AGENT_SPEC_COPY_CLASSIFICATION,
   agentSaveErrorMessage,
   buildAgentPayload,
   cloneableAgentFields,
@@ -20,28 +19,6 @@ import {
 import { toggleIntegrationToolAutoApprove } from '../views/agent-editor/utils';
 
 describe('agents view utils', () => {
-  test('copy allowlist classifies every AgentSpec field', () => {
-    expect(AGENT_SPEC_COPY_CLASSIFICATION).toEqual({
-      name: 'clone',
-      prompt: 'clone',
-      description: 'clone',
-      icon: 'clone',
-      model: 'clone',
-      execution: 'clone',
-      region: 'clone',
-      maxSteps: 'clone',
-      guardrails: 'clone',
-      tools: 'clone',
-      skills: 'clone',
-      project: 'exclude',
-      delegation: 'exclude',
-      streaming: 'exclude',
-      commands: 'exclude',
-      ui: 'exclude',
-      provenance: 'exclude',
-    });
-  });
-
   test('cloneableAgentFields excludes credentials, tool env, the unattended opt-in, and ownership', () => {
     expect(
       cloneableAgentFields({

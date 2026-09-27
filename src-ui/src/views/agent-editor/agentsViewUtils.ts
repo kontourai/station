@@ -65,11 +65,11 @@ type AgentLike = {
 };
 
 /**
- * Every persisted Agent field is deliberately classified before copying.
- * `satisfies Record<keyof AgentSpec,...>` turns a new contract field into a
- * compile failure until its copy policy is explicitly chosen.
+ * Every persisted Agent field is deliberately classified before copying: a
+ * new contract field fails to compile until its copy policy is chosen. It is
+ * a compile-time check only; `cloneableAgentFields` below is the copy.
  */
-export const AGENT_SPEC_COPY_CLASSIFICATION = {
+({
   name: 'clone',
   prompt: 'clone',
   description: 'clone',
@@ -87,7 +87,7 @@ export const AGENT_SPEC_COPY_CLASSIFICATION = {
   commands: 'exclude',
   ui: 'exclude',
   provenance: 'exclude',
-} as const satisfies Record<keyof AgentSpec, 'clone' | 'exclude'>;
+}) satisfies Record<keyof AgentSpec, 'clone' | 'exclude'>;
 
 export function createEmptyAgentForm(
   defaultRuntimeConnectionId = '',

@@ -163,7 +163,7 @@ describe('resolveRuntimeCorsOrigin', () => {
     ).toBeUndefined();
   });
 
-  test('station#169: the preflight allowlist admits Last-Event-ID so cross-origin SSE reconnects survive', async () => {
+  test('station#169: the preflight allowlist admits Last-Event-ID and the stream liveness header so cross-origin SSE reconnects survive', async () => {
     const logger: Logger = {
       info: vi.fn(),
       warn: vi.fn(),
@@ -197,7 +197,8 @@ describe('resolveRuntimeCorsOrigin', () => {
         headers: {
           Origin: 'http://localhost:5173',
           'Access-Control-Request-Method': 'GET',
-          'Access-Control-Request-Headers': 'last-event-id',
+          'Access-Control-Request-Headers':
+            'last-event-id, x-station-client-session',
         },
       },
       { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
@@ -211,6 +212,7 @@ describe('resolveRuntimeCorsOrigin', () => {
     // normalized list is the property the SSE reconnect depends on.
     expect(allowed).toContain('last-event-id');
     expect(allowed).toContain('authorization');
+    expect(allowed).toContain('x-station-client-session');
   });
 
   test('station#1848: the access log never reports a stream-open time as a request duration', async () => {
