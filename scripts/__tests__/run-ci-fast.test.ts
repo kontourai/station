@@ -11,7 +11,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { checkChangesets } from '../check-changesets.mjs';
+import { CHANGED_DEADLINE_ENV as SELECTOR_DEADLINE_ENV } from '../run-changed-verification.mjs';
 import {
+  CHANGED_DEADLINE_ENV,
   CHANGESET_STATUS_FAST_COMMAND,
   CI_FAST_INFRASTRUCTURE_EXIT_CODE,
   CI_FAST_NESTED_INFRASTRUCTURE_CAUSE,
@@ -133,6 +135,28 @@ describe('bounded ci:fast runner', () => {
         timeout: FAST_FEEDBACK_TIMEOUT_MS,
       })),
     ]);
+  });
+
+  it('hands only the selector the end of its allowance (#2855)', () => {
+    const calls: Array<{ args: string[]; env?: Record<string, string> }> = [];
+    runCiFast({
+      cwd: '/fixture',
+      env: { STATION_CI_FAST_BASE: 'base-sha' },
+      now: () => 1_000,
+      execute(_command, args, { env }) {
+        calls.push({ args, env });
+        return 0;
+      },
+    });
+    // 900s lane - 220s static reserve = the selector's 680s allowance.
+    expect(calls[0].env).toEqual({
+      STATION_CI_FAST_BASE: 'base-sha',
+      [CHANGED_DEADLINE_ENV]: String(1_000 + 680_000),
+    });
+    expect(FAST_FEEDBACK_TIMEOUT_MS - FAST_STATIC_RESERVE_MS).toBe(680_000);
+    for (const call of calls.slice(1)) expect(call.env).toBeUndefined();
+    // The runner restates the name it cannot import; pin the two equal.
+    expect(CHANGED_DEADLINE_ENV).toBe(SELECTOR_DEADLINE_ENV);
   });
 
   it('drops only the selector when scoped to statics (#2709), and refuses any other scope', () => {

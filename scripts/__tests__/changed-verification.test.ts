@@ -15,11 +15,16 @@ import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { attachCiFastDiagnostics } from '../lib/verification-ci-fast-diagnostics.mjs';
 import {
+  changedDeadlineFromEnv,
   changedPaths,
   discoverRelatedTestFiles,
   escalateUnavailableExplicitTests,
   parseRelatedTestDiscovery,
+  planChangedVerificationShards,
   planChangedVitestExecutions,
+  RELATED_DISCOVERY_FLOOR_MS,
+  RELATED_DISCOVERY_RESERVE_MS,
+  relatedDiscoveryTimeoutMs,
   renderChangedVerificationSummary,
   runChangedVerification,
   runOwnedChangedCommand,
@@ -2773,5 +2778,221 @@ describe('release metadata and code-health baselines are known paths (#2781)', (
     expect(result.executed.flatMap((execution) => execution.command)).toContain(
       `./${CHANGESET_SUITE}`,
     );
+  });
+});
+
+describe('related discovery takes its timeout from the caller budget (#2855)', () => {
+  // Literals beside the derived constants: a change to either is deliberate.
+  test('pins the floor and the reserve', () => {
+    expect(RELATED_DISCOVERY_FLOOR_MS).toBe(60_000);
+    expect(RELATED_DISCOVERY_RESERVE_MS).toBe(30_000);
+  });
+
+  test('max(floor, deadline - now - reserve), and the floor alone with no deadline', () => {
+    const now = () => 1_000;
+    expect(relatedDiscoveryTimeoutMs()).toBe(60_000);
+    expect(
+      relatedDiscoveryTimeoutMs({ deadlineAt: 1_000 + 300_000, now }),
+    ).toBe(270_000);
+    // Too little budget left: the floor holds; the caller's own deadline
+    // still bounds the run.
+    expect(relatedDiscoveryTimeoutMs({ deadlineAt: 1_000 + 40_000, now })).toBe(
+      60_000,
+    );
+    expect(relatedDiscoveryTimeoutMs({ deadlineAt: 0, now })).toBe(60_000);
+  });
+
+  test('refuses a deadline that is not an integer or allows more than the ci:fast lane', () => {
+    const now = () => 1_000;
+    expect(() => relatedDiscoveryTimeoutMs({ deadlineAt: 1.5, now })).toThrow(
+      'Related Vitest discovery deadline is invalid',
+    );
+    // 15 minutes + reserve + 1ms of budget: one past the maximum.
+    expect(() =>
+      relatedDiscoveryTimeoutMs({
+        deadlineAt: 1_000 + 15 * 60_000 + 30_000 + 1,
+        now,
+      }),
+    ).toThrow('Related Vitest discovery timeout is invalid');
+    expect(
+      relatedDiscoveryTimeoutMs({
+        deadlineAt: 1_000 + 15 * 60_000 + 30_000,
+        now,
+      }),
+    ).toBe(15 * 60_000);
+  });
+
+  test('parses the selector deadline strictly from its environment', () => {
+    expect(changedDeadlineFromEnv({})).toBeUndefined();
+    expect(
+      changedDeadlineFromEnv({
+        STATION_TEST_CHANGED_DEADLINE_AT: '1700000000000',
+      }),
+    ).toBe(1_700_000_000_000);
+    for (const value of ['-1', '1e12', '12.5', ' 12', 'soon'])
+      expect(
+        () =>
+          changedDeadlineFromEnv({ STATION_TEST_CHANGED_DEADLINE_AT: value }),
+        value,
+      ).toThrow('STATION_TEST_CHANGED_DEADLINE_AT must be');
+  });
+
+  /**
+   * A discovery child that needs `durationMs`. It answers only when the
+   * timeout it was given covers that, and otherwise returns what the owned
+   * runner returns on a timeout -- simulated time, no real sleep.
+   */
+  function timedDiscovery(durationMs: number) {
+    const timeouts: number[] = [];
+    const run = vi.fn(
+      async (
+        _command: string,
+        args: string[],
+        options: { timeoutMs?: number },
+      ) => {
+        if (!args.includes('--eval'))
+          throw new Error('only discovery runs here');
+        timeouts.push(options.timeoutMs as number);
+        if ((options.timeoutMs as number) >= durationMs)
+          return {
+            status: 0,
+            signal: null,
+            stdout: JSON.stringify([
+              'scripts/__tests__/changed-verification.test.ts',
+            ]),
+            stderr: '',
+            launch: { attempted: true, started: true },
+            cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+          };
+        return {
+          status: null,
+          signal: null,
+          stdout: '',
+          stderr: '',
+          error: new Error(
+            `Related Vitest discovery timed out after ${options.timeoutMs}ms`,
+          ),
+          launch: { attempted: true, started: true },
+          cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+        };
+      },
+    );
+    return { run, timeouts };
+  }
+  const refineNothing = (_root: string, paths: string[]) => ({
+    paths,
+    decisions: [],
+  });
+
+  test('a discovery slower than 60s but inside the caller budget completes', async () => {
+    const { run, timeouts } = timedDiscovery(90_000);
+    await expect(
+      discoverRelatedTestFiles(
+        process.cwd(),
+        ['scripts/lib/module-entry.mjs'],
+        {
+          run,
+          refine: refineNothing,
+          deadlineAt: 1_000 + 300_000,
+          now: () => 1_000,
+        },
+      ),
+    ).resolves.toEqual(['scripts/__tests__/changed-verification.test.ts']);
+    expect(timeouts).toEqual([270_000]);
+  });
+
+  test('a discovery that outlasts the remaining budget fails closed', async () => {
+    const { run, timeouts } = timedDiscovery(90_000);
+    await expect(
+      discoverRelatedTestFiles(
+        process.cwd(),
+        ['scripts/lib/module-entry.mjs'],
+        {
+          run,
+          refine: refineNothing,
+          deadlineAt: 1_000 + 100_000,
+          now: () => 1_000,
+        },
+      ),
+    ).rejects.toMatchObject({
+      phase: 'related-discovery',
+      message: expect.stringContaining('timed out after 70000ms'),
+    });
+    expect(timeouts).toEqual([70_000]);
+  });
+
+  test('with no budget a caller keeps the 60s floor, and a slower discovery fails closed', async () => {
+    const { run, timeouts } = timedDiscovery(61_000);
+    await expect(
+      discoverRelatedTestFiles(
+        process.cwd(),
+        ['scripts/lib/module-entry.mjs'],
+        {
+          run,
+          refine: refineNothing,
+        },
+      ),
+    ).rejects.toMatchObject({ phase: 'related-discovery' });
+    expect(timeouts).toEqual([60_000]);
+  });
+
+  test('the unsharded selector hands its deadline to discovery and fails closed past it', async () => {
+    // Real clock through the selector, so the derived timeout is pinned
+    // within the time this test itself takes.
+    const deadline = Date.now() + 300_000;
+    const slow = timedDiscovery(600_000);
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: slow.run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: ['scripts/lib/module-entry.mjs'],
+      }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+      discoveryDeadlineAt: deadline,
+    });
+    expect(slow.timeouts).toHaveLength(1);
+    expect(slow.timeouts[0]).toBeLessThanOrEqual(270_000);
+    expect(slow.timeouts[0]).toBeGreaterThan(260_000);
+    expect(result.receipt.terminal.status).toBe('infrastructure_error');
+    expect(result.exitCode).toBe(1);
+
+    const unbudgeted = timedDiscovery(600_000);
+    await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: unbudgeted.run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: ['scripts/lib/module-entry.mjs'],
+      }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    expect(unbudgeted.timeouts).toEqual([60_000]);
+  });
+
+  test('the fast-checks plan hands its deadline to discovery', async () => {
+    const deadline = Date.now() + 300_000;
+    const { run, timeouts } = timedDiscovery(90_000);
+    const plan = await planChangedVerificationShards('HEAD', {
+      root: process.cwd(),
+      run,
+      headSha: 'c'.repeat(40),
+      assertDependencyProvenance: () => ({
+        repositoryRoot: process.cwd(),
+        packages: [],
+      }),
+      changedPathsFn: () => ({
+        mergeBase: 'HEAD',
+        paths: ['scripts/lib/module-entry.mjs'],
+      }),
+      discoveryDeadlineAt: deadline,
+    });
+    expect(timeouts).toHaveLength(1);
+    expect(timeouts[0]).toBeLessThanOrEqual(270_000);
+    expect(timeouts[0]).toBeGreaterThan(260_000);
+    // Slower than the old 60s cap, inside the budget: the plan completes.
+    expect(plan.fileCount).toBeGreaterThan(0);
   });
 });

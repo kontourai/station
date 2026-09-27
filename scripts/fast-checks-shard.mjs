@@ -24,6 +24,7 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import {
   digestText,
+  FAST_CHECKS_PLAN_BUDGET_MS,
   FAST_CHECKS_PLAN_FILE,
   FAST_CHECKS_RECEIPT_FILE,
   FAST_CHECKS_RECEIPT_KIND,
@@ -118,13 +119,20 @@ function runIdentity(env) {
   return { runId, runAttempt };
 }
 
-async function planCommand({ out }, { cwd, env, report, planShards }) {
+async function planCommand({ out }, { cwd, env, report, planShards, now }) {
+  // The plan step's fence starts before this process; the discovery reserve
+  // (RELATED_DISCOVERY_RESERVE_MS) covers npm's start-up and the plan write.
+  const discoveryDeadlineAt = now() + FAST_CHECKS_PLAN_BUDGET_MS;
   const { fastBase } = await import('./run-ci-fast.mjs');
   const plan = await (
     planShards ??
     (await import('./run-changed-verification.mjs'))
       .planChangedVerificationShards
-  )(fastBase(env), { root: cwd, shardCount: FAST_CHECKS_SHARD_COUNT });
+  )(fastBase(env), {
+    root: cwd,
+    shardCount: FAST_CHECKS_SHARD_COUNT,
+    discoveryDeadlineAt,
+  });
   const errors = validateFastChecksPlan(plan);
   if (errors.length)
     throw new Error(
@@ -316,9 +324,10 @@ function aggregateCommand(
  *   env?: Record<string, string | undefined>;
  *   report?: (message: string) => unknown;
  *   error?: (message: string) => unknown;
- *   planShards?: (base: string, options: { root: string; shardCount: number }) => Promise<any>;
+ *   planShards?: (base: string, options: { root: string; shardCount: number; discoveryDeadlineAt: number }) => Promise<any>;
  *   runShard?: (plan: any, slice: any, options: { root: string; signal: AbortSignal }) => Promise<any>;
  *   deadlineMs?: number;
+ *   now?: () => number;
  * }} [options]
  */
 export async function runFastChecksShardCli(
@@ -331,6 +340,7 @@ export async function runFastChecksShardCli(
     planShards,
     runShard,
     deadlineMs,
+    now = Date.now,
   } = {},
 ) {
   try {
@@ -343,6 +353,7 @@ export async function runFastChecksShardCli(
       planShards,
       runShard,
       deadlineMs,
+      now,
     };
     if (command === 'plan') return await planCommand(options, context);
     if (command === 'slice') return sliceCommand(options, context);

@@ -16,6 +16,7 @@ import { runFastChecksShardCli } from '../fast-checks-shard.mjs';
 import {
   digestText,
   FAST_CHECKS_PART_JOBS,
+  FAST_CHECKS_PLAN_BUDGET_MS,
   FAST_CHECKS_PLAN_KIND,
   FAST_CHECKS_RECEIPT_KIND,
   FAST_CHECKS_SHARD_COUNT,
@@ -771,7 +772,9 @@ describe('transitional legacy path: the base-controlled shell in ci.yml (child p
 
 describe('plan-level empty-discovery escalation (#2709 review F2)', () => {
   test('a committed file nothing imports defers the plan to test-full, as the unsharded lane exits 3', {
-    timeout: 240_000,
+    // The plan step's budget, which discovery may now use, plus the
+    // unsharded run and the fixture worktree.
+    timeout: FAST_CHECKS_PLAN_BUDGET_MS + 60_000,
   }, async () => {
     // A disposable worktree at HEAD with one committed orphan module, so
     // the diff is a real `git diff` and discovery is the real Vitest graph.
@@ -821,20 +824,23 @@ describe('plan-level empty-discovery escalation (#2709 review F2)', () => {
       });
       let discovered: string[] | undefined;
 
+      // #2855: discovery gets the plan step's own budget, as the plan command
+      // gives it, not the old fixed 60s that a loaded host outlasts.
+      const discoveryDeadlineAt = Date.now() + FAST_CHECKS_PLAN_BUDGET_MS;
       const plan = await planChangedVerificationShards('HEAD~1', {
         root: worktree,
         headSha,
         assertDependencyProvenance,
+        discoveryDeadlineAt,
         discoverRelatedFiles: async (
           discoveryRoot: string,
           paths: string[],
           options?: { base?: string },
         ) => {
-          discovered = await discoverRelatedTestFiles(
-            discoveryRoot,
-            paths,
-            options,
-          );
+          discovered = await discoverRelatedTestFiles(discoveryRoot, paths, {
+            ...options,
+            deadlineAt: discoveryDeadlineAt,
+          });
           return discovered;
         },
       });
@@ -965,5 +971,26 @@ describe("a real shard run inherits the lane coordinator's bindings (review H1)"
     } finally {
       rmSync(probeDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('the plan command gives discovery the plan step budget (#2855)', () => {
+  test('the deadline is the command start plus the plan step fence', async () => {
+    const { directory, head } = repository();
+    const seen: number[] = [];
+    const status = await runFastChecksShardCli(['plan', '--out=plan.json'], {
+      cwd: directory,
+      env: { STATION_CI_FAST_BASE: 'HEAD' },
+      report: () => {},
+      error: () => {},
+      now: () => 5_000,
+      planShards: async (_base, options) => {
+        seen.push(options.discoveryDeadlineAt);
+        return planFor(head, ['a/a.test.ts']);
+      },
+    });
+    expect(status).toBe(0);
+    expect(FAST_CHECKS_PLAN_BUDGET_MS).toBe(300_000);
+    expect(seen).toEqual([5_000 + 300_000]);
   });
 });
