@@ -17,6 +17,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
 const installScript = join(repoRoot, 'install.sh');
@@ -382,6 +383,7 @@ function privateDownloadFixture(
 describe('one-line Station installer', {
   timeout: MAX_INSTALLER_RUNS_PER_TEST * INSTALLER_RUN_TIMEOUT_MS,
 }, () => {
+  const tempDir = trackTempDirs();
   it.each([
     {
       name: 'missing pnpm lock with an npm fallback',
@@ -824,8 +826,7 @@ describe('one-line Station installer', {
   });
 
   it('builds the release under the lifecycle identity its start uses (#2703)', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
-    roots.push(root);
+    const root = tempDir('station-installer-');
     const fixture = makeFixtureArchive(root);
     const identityLog = join(root, 'identity.log');
     const installed = runInstaller(root, fixture, [], {
@@ -859,8 +860,7 @@ describe('one-line Station installer', {
   });
 
   it('discards a release whose build fails instead of leaving it half-built', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
-    roots.push(root);
+    const root = tempDir('station-installer-');
     const fixture = makeFixtureArchive(root);
     const installed = runInstaller(root, fixture, [], {
       STATION_TEST_BUILD_FAIL: '1',
