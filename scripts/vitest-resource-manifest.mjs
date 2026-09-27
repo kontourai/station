@@ -445,6 +445,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/gate-for.test.ts',
   // Bounded Git fixtures and CLI children exercise documentation catch-up.
   'scripts/__tests__/documentation-impact.test.ts',
+  'scripts/__tests__/learning-media.test.ts',
+  // Disposable Git history and isolated HTTP adapter fixtures for the public example.
+  'examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
   'scripts/__tests__/e2e-manifest.test.ts',
