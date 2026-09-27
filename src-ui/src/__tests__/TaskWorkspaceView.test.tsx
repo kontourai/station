@@ -109,7 +109,11 @@ vi.mock('@kontourai/station-sdk', () => ({
 vi.mock('@kontourai/station-sdk/task-user-input-references', () => ({
   useTaskUserInputReferencesQuery: () => userInputReferencesResult,
 }));
-vi.mock('@kontourai/station-sdk/client', () => ({
+// The real module stays underneath: the outputs section reads a refusal
+// through `userFacingErrorMessage`, which needs the real `StationHttpError`
+// and `envelopeReasons` (#2708).
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   downloadTaskOutputContent: (...args: unknown[]) =>
     downloadOutputContent(...args),
 }));
