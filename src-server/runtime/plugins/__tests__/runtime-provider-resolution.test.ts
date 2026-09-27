@@ -3,10 +3,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../../../providers/connection-factories.js', () => ({
   createLLMProvider: vi.fn(),
-  createEmbeddingProvider: vi.fn(() => null),
-  createVectorDbProvider: vi.fn((connection: any) =>
-    connection.type === 'lancedb' ? { id: 'lancedb' } : null,
-  ),
+  // Echo the connection so a resolver test can tell WHICH one was built.
+  createEmbeddingProvider: vi.fn((connection: any) => ({ id: connection.id })),
+  createVectorDbProvider: vi.fn((connection: any) => ({ id: connection.id })),
 }));
 
 // HIGH-4 (review fix round): stub the concrete BedrockModelCatalog so a
@@ -38,7 +37,6 @@ const { createLLMProvider } = await import(
 const {
   createRuntimeFrameworkModel,
   createRuntimeModelSelection,
-  resolveConfiguredModelId,
   resolveDefaultManagedModelHint,
   resolveManagedAvailabilityReason,
   resolveManagedChatBinding,
@@ -57,40 +55,18 @@ describe('runtime-provider-resolution', () => {
     perConnectionDispose.mockClear();
   });
 
-  test('createRuntimeFrameworkModel delegates to the active framework', async () => {
-    const framework = {
-      createModel: vi.fn(async () => ({ kind: 'model' })),
-    };
-    const spec = { slug: 'agent-1' } as any;
-
-    const model = await createRuntimeFrameworkModel(spec, {
-      framework: framework as any,
-      appConfig: { defaultModel: 'foo' } as any,
-      projectHomeDir: '/tmp/project',
-      modelCatalog: { kind: 'catalog' } as any,
-      listProviderConnections: () => [],
-    });
-
-    expect(framework.createModel).toHaveBeenCalledWith(spec, {
-      appConfig: { defaultModel: 'foo' },
-      projectHomeDir: '/tmp/project',
-      modelCatalog: { kind: 'catalog' },
-      listProviderConnections: expect.any(Function),
-    });
-    expect(model).toEqual({ kind: 'model' });
-  });
-
   // archive#1426 fix round (MB-2): the one-shot model-selection paths
   // (chat-model-override.ts, invoke.ts, invoke-agent.ts) route through this
   // function to reach `framework.createModel`. If it silently dropped
   // `dispatchEvidenceSource`/`logger`, every candidate on those paths would
-  // grade as `unavailable` with no way to trace why — pin the forwarding at
-  // its single choke point.
-  test('createRuntimeFrameworkModel forwards dispatchEvidenceSource and logger to the active framework', async () => {
+  // grade as `unavailable` with no way to trace why — pin the forwarding of
+  // every option at its single choke point.
+  test('createRuntimeFrameworkModel forwards every option to the active framework', async () => {
     const framework = {
       createModel: vi.fn(async () => ({ kind: 'model' })),
     };
     const spec = { slug: 'agent-1' } as any;
+    const listProviderConnections = () => [];
     const dispatchEvidenceSource = {
       getConnectionReadinessEvidence: vi.fn(async () => new Map()),
     };
@@ -106,18 +82,25 @@ describe('runtime-provider-resolution', () => {
       getLevel: vi.fn(() => 'info' as const),
     };
 
-    await createRuntimeFrameworkModel(spec, {
+    const model = await createRuntimeFrameworkModel(spec, {
       framework: framework as any,
       appConfig: { defaultModel: 'foo' } as any,
       projectHomeDir: '/tmp/project',
+      modelCatalog: { kind: 'catalog' } as any,
+      listProviderConnections,
       dispatchEvidenceSource,
       logger,
     });
 
-    expect(framework.createModel).toHaveBeenCalledWith(
-      spec,
-      expect.objectContaining({ dispatchEvidenceSource, logger }),
-    );
+    expect(framework.createModel).toHaveBeenCalledWith(spec, {
+      appConfig: { defaultModel: 'foo' },
+      projectHomeDir: '/tmp/project',
+      modelCatalog: { kind: 'catalog' },
+      listProviderConnections,
+      dispatchEvidenceSource,
+      logger,
+    });
+    expect(model).toEqual({ kind: 'model' });
   });
 
   test('prefers explicit managed model connections and provider-specific model defaults', async () => {
@@ -796,69 +779,88 @@ describe('runtime-provider-resolution', () => {
     ).toBeNull();
   });
 
-  test('resolveRuntimeVectorDbProvider returns the enabled vectordb provider', () => {
-    const provider = resolveRuntimeVectorDbProvider({
-      listProviderConnections: () =>
-        [
-          { enabled: true, capabilities: ['llm'] },
-          {
-            enabled: true,
-            capabilities: ['vectordb'],
-            type: 'lancedb',
-            config: {},
-          },
-        ] as any,
-    } as any);
+  test.each([
+    [
+      'resolveRuntimeVectorDbProvider',
+      'vectordb',
+      resolveRuntimeVectorDbProvider,
+    ],
+    [
+      'resolveRuntimeEmbeddingProvider',
+      'embedding',
+      resolveRuntimeEmbeddingProvider,
+    ],
+  ] as const)(
+    '%s skips a disabled %s connection and builds the enabled one',
+    (_name, capability, resolve) => {
+      const connection = (id: string, enabled: boolean) => ({
+        id,
+        type: 'lancedb',
+        enabled,
+        capabilities: [capability],
+        config: {},
+      });
 
-    expect(provider).toBeTruthy();
-  });
+      expect(
+        resolve({
+          listProviderConnections: () =>
+            [
+              { id: 'llm', enabled: true, capabilities: ['llm'] },
+              connection('disabled', false),
+              connection('enabled', true),
+            ] as any,
+        } as any),
+      ).toEqual({ id: 'enabled' });
+      expect(
+        resolve({
+          listProviderConnections: () => [connection('disabled', false)] as any,
+        } as any),
+      ).toBeNull();
+    },
+  );
 
-  test('resolveRuntimeEmbeddingProvider skips disabled or missing providers', () => {
-    const provider = resolveRuntimeEmbeddingProvider({
-      listProviderConnections: () =>
-        [{ enabled: false, capabilities: ['embedding'] }] as any,
-    } as any);
-
-    expect(provider).toBeNull();
-  });
-
-  test('resolveConfiguredModelId rejects when no model is configured', async () => {
-    const modelCatalog = {
-      resolveModelId: vi.fn(async (modelId: string) => `resolved:${modelId}`),
-    };
-
-    await expect(
-      resolveConfiguredModelId({ model: '' } as any, {
-        appConfig: { defaultModel: '' } as any,
+  // Every managed Bedrock launch resolves its selector through the catalog;
+  // with nothing to resolve, or nothing to resolve it against, it refuses as
+  // unavailable rather than launching an unchecked model.
+  test.each([
+    {
+      name: 'no model is configured anywhere',
+      spec: {},
+      modelCatalog: { resolveModelId: vi.fn() },
+      message: 'A model selector is required.',
+    },
+    {
+      name: 'no Bedrock catalog is available',
+      spec: { model: 'unknown-model' },
+      modelCatalog: undefined,
+      message: 'Bedrock model catalog is required',
+    },
+  ])(
+    'a chain-mode Bedrock binding fails closed when $name',
+    async ({ spec, modelCatalog, message }) => {
+      const binding = resolveManagedModelBinding(spec as any, {
+        appConfig: {} as any,
+        listProviderConnections: () =>
+          [
+            {
+              id: 'bedrock-default',
+              type: 'bedrock',
+              enabled: true,
+              capabilities: ['llm'],
+              config: {},
+            },
+          ] as any,
         modelCatalog: modelCatalog as any,
-      }),
-    ).rejects.toThrow('Bedrock model selector is required');
+      });
 
-    expect(modelCatalog.resolveModelId).not.toHaveBeenCalled();
-  });
-
-  test('resolveConfiguredModelId uses the catalog when a model is configured', async () => {
-    const modelCatalog = {
-      resolveModelId: vi.fn(async (modelId: string) => `resolved:${modelId}`),
-    };
-
-    await expect(
-      resolveConfiguredModelId({ model: '' } as any, {
-        appConfig: { defaultModel: 'anthropic.test' } as any,
-        modelCatalog: modelCatalog as any,
-      }),
-    ).resolves.toBe('resolved:anthropic.test');
-
-    expect(modelCatalog.resolveModelId).toHaveBeenCalledWith('anthropic.test');
-  });
-
-  test('resolveConfiguredModelId fails closed without Bedrock catalog evidence', async () => {
-    await expect(
-      resolveConfiguredModelId({ model: 'unknown-model' } as any, {
-        appConfig: { defaultModel: '' } as any,
-      }),
-    ).rejects.toThrow('Bedrock model catalog is required');
-  });
+      await expect(binding).rejects.toThrow(message);
+      await expect(binding).rejects.toBeInstanceOf(
+        ManagedModelUnavailableError,
+      );
+      if (modelCatalog)
+        expect(modelCatalog.resolveModelId).not.toHaveBeenCalled();
+    },
+  );
 
   // HIGH-4 (review fix round): a profile/api-key Bedrock connection must
   // resolve launchability against ITS OWN auth, never the injected
