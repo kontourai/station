@@ -13,6 +13,14 @@ pass. Follow the repository's worktree, pre-edit routing, and verification rules
 
 ## Feature change
 
+Start with `npm run docs:impact -- <changed-paths...>` (also included in
+`gate:for`) to find recorded downstream documentation owners. For accumulated
+work, run `npm run docs:impact -- --catch-up --json`: review the changed inputs
+against each page's recorded source revision, not just its last edit date.
+Account for unmapped changes and preserve the coverage baseline until they are
+resolved. The report is advisory and cannot establish semantic correctness.
+
+
 Trace the changed behavior from its user entry point through contract,
 authorization, implementation, persistence, event projection, and visible
 outcome. Follow real callers; a symbol with a promising name is not proof.

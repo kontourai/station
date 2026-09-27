@@ -23,6 +23,14 @@ Do not require a Markdown diff for every change. After reviewing affected
 claims, retaining unchanged prose can be correct. Replacing source hashes
 without that review is not maintenance.
 
+The pre-edit route now also supplies `docs:impact` guidance from the same
+review ledger. Its catch-up mode compares each recorded claim's document/source
+bytes, reports the review revision separately from the page's edit commit,
+and searches new or unmapped changes from the recorded coverage baseline.
+This guidance helps agents find the work; the required truth check detects
+stale recorded evidence. Neither one approves a semantic claim or proves that
+unmapped code has no documentation impact.
+
 ## Why this is needed
 
 The required merge-queue regression already reaches `docsTruth` through static
@@ -35,6 +43,11 @@ Default selection alone is insufficient. The first trial selected and ran the
 check, but Veritas treated its failure as an optional diagnostic warning. The
 revised proposal adds it to `requiredEvidenceCheckIds`; the actual CLI then
 reports an independent required-evidence failure.
+
+The frozen upstream CI graph now splits fast checks into plan, test shards and
+statics. The statics job still invokes Veritas readiness; the required
+`fast-checks` job aggregates those results. This proposal therefore applies
+through that existing call, without adding a parallel CI gate.
 
 ## Executed controls
 
@@ -61,6 +74,15 @@ An initial target, `runtime-path-resolver.ts`, was not recorded in that trial's
 ledger. Its passing result is retained as an unrecorded-dependency control and
 target-selection error, not a claimed catch. Both files were restored exactly;
 the final tree was clean.
+
+A later check executed the installed Veritas selection planner for a server
+path that selects `connected-agents`. With the documentation ID only in
+defaults, that route omitted it. With the ID required, the plan included both
+checks, plus the existing required evidence. An explicit command selection
+also retained required documentation evidence. Readiness consumes this plan;
+required checks are unioned with routed, default or explicit selections.
+This was a local planner test and source review, not a hosted run or policy
+activation.
 
 Every candidate readiness command exited 1 because the override configurations
 had unapproved protected hashes. That expected authority refusal is separate

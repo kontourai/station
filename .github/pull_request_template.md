@@ -10,6 +10,8 @@ Describe the user-visible outcome this change delivers.
 
 ## Documentation impact
 
+- Impact/catch-up report: affected recorded owners and disposition of unmapped changes (update, reviewed unchanged, or concrete no-impact reason):
+
 - Affected public docs and generated sources (exact repository-relative paths):
 - Architecture or behavior changes: canonical explanation, learning-tree branch, source/evidence references, and regenerated shipped MCP topics where affected:
 - For a documented limitation being fixed: issue link, current explanations corrected in this PR, and affected review-ledger claims re-reviewed against the new behavior:

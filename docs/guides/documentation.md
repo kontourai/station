@@ -45,6 +45,50 @@ themselves. Revisit the affected claims before refreshing a stale record. Never
 mark a file reviewed merely because it appears in the inventory or has valid
 links. Historical evidence and policy goals keep their own classifications.
 
+## Find affected documentation and catch up
+
+The pre-edit `npm run gate:for -- <paths...>` route includes a documentation
+impact report. It follows the source dependencies recorded by previous claim
+reviews, including document-to-document dependencies, and names related shipped
+MCP topics. This is a list of places to inspect, not an instruction to rewrite
+every selected page.
+
+Use the same report directly:
+
+```sh
+npm run docs:impact -- src-server/path/to/changed-file.ts
+npm run docs:impact -- --base=origin/main --json
+npm run docs:impact -- --catch-up --json
+```
+
+With no explicit paths, it includes branch commits, staged and unstaged changes,
+untracked files, and both sides of renames. It reads dependency records from
+both the comparison baseline and the working tree, so removing a source link
+does not silently erase the old review lead. An unreadable base or malformed
+input fails the report rather than returning an empty impact list.
+
+Catch-up compares the recorded document and source hashes with current bytes.
+For each stale review it lists the changed inputs, the source revision reviewed,
+and the last commit that edited the page. A page's edit commit is not proof
+that someone reviewed its supporting code. Use the recorded revision and changed
+paths to inspect the relevant Git diff; the hashes identify the exact bytes
+previously reviewed, including changes that were uncommitted at that time.
+Unchanged records do not need another whole-application review.
+
+The ledger's `coverageBaseline` is the starting revision for searching new or
+unmapped changes during catch-up; `--base=<ref>` overrides that search. It is
+separate from each page's review revision. Advance it only after accounting for
+its outstanding coverage, never just to shorten a report. A missing baseline
+requires an explicit ref. Both modes report files with no known documentation
+dependency. Trace those through actual callers, add missing source relationships,
+or give a concrete no-documentation-impact reason in the PR.
+
+The map records reviewed relationships. It does not discover every code import,
+runtime call, dependency default or business requirement. Broad owners such as
+the module map can select many topics. Periodic audits still need to look for
+missing relationships. Run `docs:truth:gate` after reviewing and updating the
+ledger; the impact report does not change evidence or grant approval.
+
 ## Make the application learnable
 
 The reading path is product purpose → system overview → subsystem or user

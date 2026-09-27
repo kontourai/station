@@ -14,6 +14,13 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outputPath = 'src-server/tools/station-docs-content.ts';
 
+export const STATION_DOCS_INPUT_PATHS = Object.freeze([
+  'docs/reference/station-docs.md',
+  'docs/learn/mcp-topics.json',
+  'docs/architecture/module-map.md',
+  'docs/learn/atlas.json',
+]);
+
 export function compileStationDocs(manual, catalog, moduleSource, atlas) {
   if (
     catalog?.version !== 1 ||
@@ -105,12 +112,9 @@ export function compileStationDocs(manual, catalog, moduleSource, atlas) {
 
 export async function readStationDocsInputs() {
   const read = (file) => readFile(path.join(root, file), 'utf8');
-  const [manual, catalog, modules, atlas] = await Promise.all([
-    read('docs/reference/station-docs.md'),
-    read('docs/learn/mcp-topics.json'),
-    read('docs/architecture/module-map.md'),
-    read('docs/learn/atlas.json'),
-  ]);
+  const [manual, catalog, modules, atlas] = await Promise.all(
+    STATION_DOCS_INPUT_PATHS.map(read),
+  );
   return compileStationDocs(
     manual,
     JSON.parse(catalog),

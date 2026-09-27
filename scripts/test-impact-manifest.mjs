@@ -1145,6 +1145,23 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'generated contributor command Interface',
   },
   {
+    pattern: 'scripts/documentation-impact.mjs',
+    tests: [
+      'scripts/__tests__/documentation-impact.test.ts',
+      'scripts/__tests__/gate-for.test.ts',
+    ],
+    reason: 'source-to-document guidance and incremental catch-up',
+  },
+  {
+    pattern: 'scripts/gate-for.mjs',
+    tests: [
+      'scripts/__tests__/gate-for.test.ts',
+      'scripts/__tests__/documentation-impact.test.ts',
+    ],
+    reason:
+      'pre-edit guidance includes current and recorded documentation dependencies',
+  },
+  {
     pattern: 'scripts/just-interface.mjs',
     tests: [
       'scripts/__tests__/just-interface.test.ts',
