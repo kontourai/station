@@ -11,7 +11,8 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
-import { pnpmInvocation, resolveNpmCli } from '../dependency-lifecycle.mjs';
+import { pnpmInvocation } from '../dependency-lifecycle.mjs';
+import { resolveNpmCli } from '../lib/npm-cli.mjs';
 
 const dirs: string[] = [];
 afterEach(() =>

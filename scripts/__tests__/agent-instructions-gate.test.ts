@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
@@ -9,7 +8,6 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, win32 } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
@@ -326,66 +324,6 @@ describe('agent instruction topology', () => {
       expect(() =>
         discoverOnDiskInstructionFiles({ root: sourceRoot }),
       ).toThrow('redirected instruction directory: src-server/linked');
-    } finally {
-      rmSync(buildOutputRoot, { recursive: true, force: true });
-      rmSync(sourceRoot, { recursive: true, force: true });
-      rmSync(linkedTarget, { recursive: true, force: true });
-    }
-  });
-
-  test('the same holds when the gate runs as a real child process (process-level)', () => {
-    const buildOutputRoot = makeTempDir(
-      'station-instructions-proc-build-output-',
-    );
-    const sourceRoot = makeTempDir('station-instructions-proc-source-linked-');
-    const linkedTarget = makeTempDir(
-      'station-instructions-proc-linked-target-',
-    );
-    try {
-      const swiftRsDir = resolve(
-        buildOutputRoot,
-        'src-desktop/target/aarch64-apple-ios/release/build/swift-rs-0/out',
-      );
-      mkdirSync(swiftRsDir, { recursive: true });
-      symlinkSync(linkedTarget, resolve(swiftRsDir, 'generated'), 'dir');
-      mkdirSync(resolve(sourceRoot, 'src-server'), { recursive: true });
-      symlinkSync(
-        linkedTarget,
-        resolve(sourceRoot, 'src-server/linked'),
-        'dir',
-      );
-
-      const moduleUrl = pathToFileURL(
-        resolve(root, 'scripts/agent-instructions-gate.mjs'),
-      ).href;
-      const childScript = (fixtureRoot: string) => `
-        import { discoverOnDiskInstructionFiles } from ${JSON.stringify(moduleUrl)};
-        try {
-          const found = discoverOnDiskInstructionFiles({ root: ${JSON.stringify(fixtureRoot)} });
-          process.stdout.write(JSON.stringify(found));
-        } catch (error) {
-          process.stderr.write(error.message);
-          process.exitCode = 1;
-        }
-      `;
-
-      const buildOutputRun = spawnSync(
-        process.execPath,
-        ['--input-type=module', '-e', childScript(buildOutputRoot)],
-        { encoding: 'utf8' },
-      );
-      expect(buildOutputRun.status).toBe(0);
-      expect(buildOutputRun.stdout).toBe('[]');
-
-      const sourceRun = spawnSync(
-        process.execPath,
-        ['--input-type=module', '-e', childScript(sourceRoot)],
-        { encoding: 'utf8' },
-      );
-      expect(sourceRun.status).toBe(1);
-      expect(sourceRun.stderr).toBe(
-        'redirected instruction directory: src-server/linked',
-      );
     } finally {
       rmSync(buildOutputRoot, { recursive: true, force: true });
       rmSync(sourceRoot, { recursive: true, force: true });

@@ -170,7 +170,7 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
   ],
   [
     'lazy-boundary-ratchet.mjs',
-    'scripts/__tests__/prepush-static-gates.test.ts',
+    'scripts/__tests__/lazy-boundary-ratchet.test.ts',
   ],
   ['lockfile-sync-gate.mjs', 'scripts/__tests__/version-packages-lock.test.ts'],
   ['random-uuid-guard.mjs', 'scripts/__tests__/random-uuid-guard.test.ts'],

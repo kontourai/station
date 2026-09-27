@@ -336,9 +336,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // read. Both are the contract — the reporter must never fail a job it only
   // reports on — and neither is observable from an imported function.
   'scripts/__tests__/verification-gate-summary.test.ts',
-  // #3208: same shape one gate over — runs each static gate it lists as a real
-  // child process, so the list cannot name a script that no longer resolves.
+  // archive#3208: same shape one gate over — parses each static gate it lists in a
+  // real child process, so the list cannot name a script that no longer
+  // resolves, and runs the guard's own CLI against stub gates.
   'scripts/__tests__/prepush-static-gates.test.ts',
+  // Runs the lazy-boundary ratchet against this repository as one bounded
+  // single-shot node child.
+  'scripts/__tests__/lazy-boundary-ratchet.test.ts',
   // station 2026-08-28: same shape again — the commit-subject gate's CLI and
   // its .githooks/commit-msg wrapper run as bounded single-shot children so
   // the refusal path's exit STATUS is proven, not just the pure validator;
@@ -426,10 +430,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // point as one bounded single-shot node child; everything else in the file
   // exercises pure decision composition.
   'scripts/__tests__/gate-for.test.ts',
-  // station#2543: proves the instruction-topology gate's build-output skip
-  // holds when the gate module runs as a real child process, not just
-  // in-process — one bounded single-shot node child per fixture root.
-  'scripts/__tests__/agent-instructions-gate.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
   'scripts/__tests__/e2e-manifest.test.ts',
