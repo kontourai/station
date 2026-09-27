@@ -1095,16 +1095,26 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
         let meta: Record<string, unknown>;
         let body: string;
         try {
+          const frontmatterEnd = text.indexOf('\n---\n', 3);
           if (
             /^(?:\uFEFF)?---(?:\r?\n|$)/.test(text) &&
-            (!text.startsWith('---\n') || text.indexOf('\n---\n', 4) === -1)
+            (!text.startsWith('---\n') || frontmatterEnd === -1)
           )
             throw new Error('Unsupported or unterminated frontmatter');
-          ({ meta, body } = parseMarkdown(text, {
-            maxDepth: 32,
-            maxAliases: 50,
-            maxTotalMergeKeys: 1000,
-          }));
+          // Empty envelopes are ordinary notes; js-yaml rejects empty documents.
+          if (
+            text.startsWith('---\n') &&
+            text.slice(4, frontmatterEnd).trim() === ''
+          ) {
+            meta = {};
+            body = text.slice(frontmatterEnd + 5);
+          } else {
+            ({ meta, body } = parseMarkdown(text, {
+              maxDepth: 32,
+              maxAliases: 50,
+              maxTotalMergeKeys: 1000,
+            }));
+          }
         } catch (error) {
           throw new KnowledgeStoreCorruptionError(
             'Obsidian identity inspection encountered invalid frontmatter',

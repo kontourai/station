@@ -324,6 +324,21 @@ test('Obsidian create refuses an unindexed destination and still admits a distin
 });
 
 test.each([
+  'ordinary note without frontmatter',
+  '---\n---\nordinary note with empty frontmatter',
+  '---\n\n---\nordinary note with blank frontmatter',
+])('Obsidian create preserves an unrelated ordinary note: %j', async (text) => {
+  const { create, base, storeRoot } = await obsidianFixture();
+  const note = join(storeRoot, 'ordinary.md');
+  writeFileSync(note, text);
+  expect(
+    (await create({ ...base, id: 'new-record', title: 'New', aliases: [] }))
+      .status,
+  ).toBe(201);
+  expect(readFileSync(note, 'utf8')).toBe(text);
+});
+
+test.each([
   '---\nid: possible-owner\n',
   '---\r\nid: possible-owner\r\n---\r\nOriginal body',
   '\uFEFF---\nid: possible-owner\n---\nOriginal body',
