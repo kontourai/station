@@ -1,9 +1,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { CHANNEL_VERSION } from '../../packages/shared/src/release-manifest.mjs';
 import {
   CHANNEL_PORTS,
   checkGeneratedChannelPorts,
+  RELEASE_RINGS,
   syncGeneratedChannelPorts,
 } from '../channel-ports.mjs';
 
@@ -73,6 +75,61 @@ describe('channel port generation', () => {
     syncGeneratedChannelPorts();
     expect(() => checkGeneratedChannelPorts()).not.toThrow();
     restoreGenerated = undefined;
+  });
+
+  test('detects generated release-ring module drift and sync restores it', () => {
+    const generated = resolve(
+      root,
+      'packages/shared/src/release-rings.generated.mjs',
+    );
+    const original = readFileSync(generated, 'utf8');
+    restoreGenerated = () => writeFileSync(generated, original);
+    writeFileSync(
+      generated,
+      original.replace('prerelease: true', 'prerelease: false'),
+    );
+    expect(() => checkGeneratedChannelPorts()).toThrow(/stale/);
+    syncGeneratedChannelPorts();
+    expect(() => checkGeneratedChannelPorts()).not.toThrow();
+    restoreGenerated = undefined;
+  });
+
+  test('the manifest verifier takes its ring grammar from the generated ring table', async () => {
+    // A ring that exists only in the mocked projection proves the verifier
+    // reads the table rather than a copy of today's rings.
+    vi.resetModules();
+    vi.doMock('../../packages/shared/src/release-rings.generated.mjs', () => ({
+      STATION_RELEASE_RINGS: {
+        stable: {
+          runtimeChannel: 'stable',
+          prerelease: false,
+          launcher: 'station',
+        },
+        canary: {
+          runtimeChannel: 'canary',
+          prerelease: true,
+          launcher: 'station-canary',
+        },
+      },
+    }));
+    try {
+      const mocked = await import(
+        '../../packages/shared/src/release-manifest.mjs'
+      );
+      expect(Object.keys(mocked.CHANNEL_VERSION)).toEqual(['stable', 'canary']);
+      expect(mocked.CHANNEL_VERSION.canary.test('1.2.3-canary.4')).toBe(true);
+      expect(mocked.CHANNEL_VERSION.canary.test('1.2.3')).toBe(false);
+    } finally {
+      vi.doUnmock('../../packages/shared/src/release-rings.generated.mjs');
+      vi.resetModules();
+    }
+
+    const rings = RELEASE_RINGS as Record<string, { prerelease: boolean }>;
+    expect(Object.keys(CHANNEL_VERSION)).toEqual(Object.keys(rings));
+    for (const [ring, { prerelease }] of Object.entries(rings)) {
+      expect(CHANNEL_VERSION[ring].test('1.2.3')).toBe(!prerelease);
+      expect(CHANNEL_VERSION[ring].test(`1.2.3-${ring}.4`)).toBe(prerelease);
+    }
   });
 
   test('projects every release channel port block into Station-owned installer consumers', () => {

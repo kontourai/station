@@ -364,6 +364,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2176: its real-tree half, split out for the repo-scans job; same
   // `git ls-files`/child-process shape as the file above.
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // Runs the type-laundering gate as a real child process from a checkout
+  // path containing a space (known-bad and clean control) so the entry check
+  // that made it a silent no-op is proven, not just the scanner. Two bounded
+  // single-shot children.
+  'scripts/__tests__/type-laundering-gate.process.test.ts',
   // #2176: spawns the repo-scans runner through a symlink (`--list`, no
   // Vitest child) to prove its entrypoint guard reaches the runner.
   'scripts/__tests__/run-repo-scan-suites.test.ts',
@@ -514,6 +519,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2822: shells out to the packaging dry-run and the publish
   // boundary script, so it spawns children like its install-script sibling.
   'scripts/__tests__/ecosystem-manifest.test.ts',
+  // #2675: runs the manifest signer CLI (sign, verify, assemble) as bounded
+  // single-shot children for each golden vector.
+  'scripts/__tests__/release-manifest-vectors.test.ts',
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',

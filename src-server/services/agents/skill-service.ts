@@ -22,7 +22,6 @@ import {
 } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import type {
-  GuidanceAsset,
   SkillCommand,
   SkillOrigin,
   SkillOutcome,
@@ -31,7 +30,6 @@ import type {
   SkillVariable,
   SkillWriteRefusal,
 } from '@kontourai/station-contracts/catalog';
-import { skillToGuidanceAsset } from '@kontourai/station-contracts/guidance-assets';
 import {
   type ResolvedSkillCommand,
   resolveSkillCommands,
@@ -795,9 +793,6 @@ export class SkillService {
   // ── Prompt Generation (Tier 1) ─────────────────────────
 
   getSkillCatalogPrompt(skillNames?: string[]): string {
-    if (this.registry.size === 0) return '';
-    if (skillNames !== undefined && skillNames.length === 0) return '';
-
     const allSkills = Array.from(this.registry.values()).filter(
       (skill) => skill.sourceCurrent?.() !== false,
     );
@@ -1336,47 +1331,6 @@ export class SkillService {
   /** Whether a skill of this exact name has been discovered. */
   hasSkill(name: string): boolean {
     return this.registry.has(name);
-  }
-
-  listGuidanceAssets(): GuidanceAsset[] {
-    return Array.from(this.registry.values())
-      .filter((skill) => skill.sourceCurrent?.() !== false)
-      .map((skill) =>
-        skillToGuidanceAsset({
-          id: skill.name,
-          name: skill.name,
-          description: skill.description,
-          installed: true,
-          installedVersion: (() => {
-            if (!skill.location) return undefined;
-            const metaPath = join(
-              dirname(skill.location),
-              '.station-meta.json',
-            );
-            if (!existsSync(metaPath)) return undefined;
-            try {
-              return JSON.parse(readFileSync(metaPath, 'utf-8')).version;
-            } catch {
-              return undefined;
-            }
-          })(),
-          body: skill.body,
-          path: skill.location ? dirname(skill.location) : undefined,
-          resources: skill.resources.map((resource) => ({
-            name: resource.name,
-            path: resource.path,
-          })),
-          scripts: skill.resources
-            .filter((resource) => {
-              const ext = extname(resource.path);
-              return SCRIPT_EXTS.has(ext);
-            })
-            .map((resource) => ({
-              name: resource.name,
-              path: resource.path,
-            })),
-        }),
-      );
   }
 
   /**
@@ -2516,10 +2470,6 @@ export class SkillService {
       );
       return { removed: result.success, conflict: !result.success };
     });
-  }
-
-  getSkillCount(): number {
-    return this.registry.size;
   }
 
   // ── Private helpers ────────────────────────────────────

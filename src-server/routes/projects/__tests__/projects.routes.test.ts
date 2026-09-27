@@ -407,14 +407,85 @@ describe('Project Routes', () => {
     );
   }
 
-  test('GET / returns project list', async () => {
+  test('GET / answers the operator every project, unprojected and without no-store', async () => {
+    // No `memberProjectAdmissions`: the operator path. The member projection
+    // (above) filters, projects and marks the response no-store; this one
+    // must do none of that. Real storage, so the list carries the owner's
+    // full public metadata (working directory, layout count, knowledge,
+    // provider, position) that a projection would drop.
+    const projectHomeDir = createTempProjectHome();
+    const storage = new FileStorageAdapter(projectHomeDir);
     const app = createProjectRoutes(
-      createMockProjectService() as any,
-      createMockStorageAdapter() as any,
-      '/tmp',
+      new ProjectService(storage) as any,
+      storage as any,
+      projectHomeDir,
+      { listAgents: async () => [] },
     );
-    const body = await json(await app.request('/'));
-    expect(body.success).toBe(true);
+    const workingDirectory = createTempProjectHome();
+    await putProject(storage, {
+      id: 'project-shared',
+      slug: 'shared',
+      name: 'Shared',
+      icon: '🧭',
+      description: 'Shared workspace',
+      workingDirectory,
+      defaultProviderId: 'provider-a',
+      position: 0,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    });
+    await putProject(storage, {
+      id: 'project-private',
+      slug: 'private',
+      name: 'Private',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    });
+    const layout = await app.request('/shared/layouts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: 'main', name: 'Main', type: 'chat' }),
+    });
+    expect(layout.status).toBe(201);
+    // The owner reads knowledge presence from this legacy flat file.
+    mkdirSync(join(projectHomeDir, 'projects', 'shared', 'documents'), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(projectHomeDir, 'projects', 'shared', 'documents', 'metadata.json'),
+      '[]\n',
+    );
+
+    const response = await app.request('/');
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBeNull();
+    expect(await json(response)).toEqual({
+      success: true,
+      data: [
+        {
+          id: 'project-shared',
+          slug: 'shared',
+          name: 'Shared',
+          icon: '🧭',
+          description: 'Shared workspace',
+          hasWorkingDirectory: true,
+          workingDirectory,
+          layoutCount: 1,
+          hasKnowledge: true,
+          defaultProviderId: 'provider-a',
+          position: 0,
+        },
+        {
+          id: 'project-private',
+          slug: 'private',
+          name: 'Private',
+          hasWorkingDirectory: false,
+          layoutCount: 0,
+          hasKnowledge: false,
+        },
+      ],
+    });
   });
 
   test('GET /icon-candidates returns only bounded artwork from the selected workspace', async () => {
@@ -509,20 +580,6 @@ describe('Project Routes', () => {
 
     expect(response.status).toBe(400);
     expect(body.error).toBe('That path is a file, not a directory');
-  });
-
-  test('POST / creates project', async () => {
-    const app = createProjectRoutes(
-      createMockProjectService() as any,
-      createMockStorageAdapter() as any,
-      '/tmp',
-    );
-    const res = await app.request('/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Test', slug: 'test' }),
-    });
-    expect(res.status).toBe(201);
   });
 
   describe('PUT /:slug settings overrides (#2144 slice 2)', () => {
@@ -1148,27 +1205,6 @@ describe('Project Routes', () => {
     expect(body.data.config.tabs[0].skills).toEqual([
       { type: 'prompt', label: 'Summarise', data: 'x' },
     ]);
-  });
-
-  test('DELETE /:slug deletes project', async () => {
-    const svc = createMockProjectService();
-    const app = createProjectRoutes(
-      svc as any,
-      createMockStorageAdapter() as any,
-      '/tmp',
-    );
-    const body = await json(await app.request('/test', { method: 'DELETE' }));
-    expect(body.success).toBe(true);
-  });
-
-  test('GET /:slug/layouts returns layout list', async () => {
-    const app = createProjectRoutes(
-      createMockProjectService() as any,
-      createMockStorageAdapter() as any,
-      '/tmp',
-    );
-    const body = await json(await app.request('/test/layouts'));
-    expect(body.success).toBe(true);
   });
 
   test('GET /:slug/panes derives Browser pane availability from the server deployment fact (#90)', async () => {
@@ -2034,20 +2070,6 @@ describe('Project Routes', () => {
     expect(storage.createLayout).not.toHaveBeenCalled();
   });
 
-  test('POST /:slug/layouts creates layout', async () => {
-    const app = createProjectRoutes(
-      createMockProjectService() as any,
-      createMockStorageAdapter() as any,
-      '/tmp',
-    );
-    const res = await app.request('/test/layouts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slug: 'new-layout', name: 'New', type: 'chat' }),
-    });
-    expect(res.status).toBe(201);
-  });
-
   test('POST /:slug/layouts strips a client-supplied catalog contribution', async () => {
     const storage = createMockStorageAdapter();
     const app = createProjectRoutes(
@@ -2577,15 +2599,39 @@ describe('Project Routes', () => {
   });
 
   test('DELETE /:slug/layouts/:layoutSlug deletes layout', async () => {
+    // The positive control for the traversal refusal in 'layout GET and
+    // DELETE reject decoded and double-encoded traversal', over real
+    // storage: the named layout is gone and its sibling is not.
+    const projectHomeDir = createTempProjectHome();
+    const storage = new FileStorageAdapter(projectHomeDir);
     const app = createProjectRoutes(
-      createMockProjectService() as any,
-      createMockStorageAdapter() as any,
-      '/tmp',
+      new ProjectService(storage) as any,
+      storage as any,
+      projectHomeDir,
+      { listAgents: async () => [] },
     );
-    const body = await json(
-      await app.request('/test/layouts/old', { method: 'DELETE' }),
-    );
-    expect(body.success).toBe(true);
+    await putProject(storage, {
+      id: 'project-1',
+      slug: 'demo',
+      name: 'Demo',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    } as any);
+    for (const slug of ['old', 'kept']) {
+      const created = await app.request('/demo/layouts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, name: slug, type: 'chat' }),
+      });
+      expect(created.status).toBe(201);
+    }
+
+    const res = await app.request('/demo/layouts/old', { method: 'DELETE' });
+
+    expect(res.status).toBe(200);
+    expect(storage.listLayouts('demo').map(({ slug }) => slug)).toEqual([
+      'kept',
+    ]);
   });
 
   // archive#597 — projectCreateSchema allows an omitted slug, but the real
@@ -2815,6 +2861,8 @@ describe('Project Routes', () => {
         method: 'DELETE',
       });
       expect(deleteRes.status).toBe(200);
+      // The project itself is gone.
+      expect((await app.request('/doomed-project')).status).toBe(404);
 
       // Never silently deleted: the agent record survives with its
       // ownership untouched.

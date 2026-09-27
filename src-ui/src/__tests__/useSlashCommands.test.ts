@@ -105,16 +105,6 @@ describe('useSlashCommands — ACP command source (#149 orchestration cutover)',
     );
   });
 
-  it('resolves per-keystroke ACP argument autocomplete to an empty list (accepted gap post-#149 — no getCommandOptions on ProviderAdapterShape)', async () => {
-    useProviderCommandsQueryMock.mockReturnValue({ data: [] });
-
-    const { result } = renderHook(() => useSlashCommands('kiro'));
-
-    await expect(result.current.fetchCommandOptions('/pl')).resolves.toEqual(
-      [],
-    );
-  });
-
   // CAT-: the derivation this replaces read the authored record's own
   // `agent` field and never the agent's own binding list, so attaching a
   // record to an agent saved a setting that changed nothing. The binding the

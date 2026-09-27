@@ -43,7 +43,6 @@ regexTarget = "secret"
 regexes = ['''^sk-live-SECRET$''']
 paths = [
   '''(^|/)src-ui/src/__tests__/blockingAlert\.test\.ts$''',
-  '''(^|/)src-ui/src/__tests__/useApprovalOsAlerts\.test\.tsx$''',
 ]
 
 [[allowlists]]
