@@ -260,6 +260,8 @@ completion remains `NOT_VERIFIED`.
 is a separate build/smoke matrix for platform-specific server archives. The
 [builder](../../scripts/lib/portable-server-archive.mjs) stages the selected
 Node runtime, native dependencies, compiled server/UI/CLI, and platform launcher.
+It refuses a target that differs from the build host's platform and architecture,
+because native dependencies come from that host's install.
 It marks the tree as prebuilt so the CLI does not try to rebuild it at startup.
 The workflow's smoke checks that archive through an isolated long-path home,
 without relying on a host Node executable. A declared matrix is not a current
@@ -347,7 +349,7 @@ belongs in the maintained post-init helper/template and its regeneration tests.
 ## Linux AppImage runtime layout
 
 The Linux desktop overlay normally puts the bundled Station server, seed data,
-schemas, and offline Node runtime under `usr/lib/Station`. That layout remains
+schemas, and Node dependencies under `usr/lib/Station`. That layout remains
 the `.deb` and `.rpm` contract. AppImage is deliberately different: linuxdeploy
 walks `usr/lib` and invokes `ldd` while constructing its AppDir, which is not
 safe for the staged vendor executables in the Node dependency tree.

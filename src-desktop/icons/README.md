@@ -26,8 +26,10 @@ Tauri's template with Tauri's own default PNGs, so it calls
 `node scripts/ios-channel-icons.mjs apply <channel>` after each init to copy the
 committed `icons/<channel>/ios/AppIcon-*.png` set (stable, beta, nightly; from
 the square master, because iOS rejects alpha and the generator refuses any
-translucent pixel) over it, and `ios-channel-icons.mjs verify` proves the built
-catalog and the IPA's icon are that set, amending the channel-icon receipt the
+translucent pixel) over it. `ios-channel-icons.mjs verify` compares every PNG
+referenced by the source catalog with that set, then compares the shipped
+`AppIcon60x60@2x.png` pixels with the corresponding input. It does not inspect
+every rendition in the compiled asset catalog. It amends the channel-icon receipt the
 overlay step created (its `desktopBundleIcon*` fields name the desktop master
 from `bundle.icon`, not the shipped icon). The ordinary `build-ios.yml` and release simulator jobs run init with
 `gen/apple` present and have no corresponding channel-icon apply/verify step.

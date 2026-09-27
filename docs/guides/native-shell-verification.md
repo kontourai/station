@@ -52,6 +52,24 @@ No such run is claimed by this documentation review. It does not prove a Pion
 application route, account/Device continuation, a second person or machine,
 release packaging, or hosted deployment.
 
+Desktop also starts a saved-route grant-renewal supervisor from
+[`ApiBaseProvider`](../../src-ui/src/contexts/ApiBaseContext.tsx). It checks
+host-owned grant status, renews existing grants while the app is visible, and
+rechecks on focus, visibility and online events. It does not approve a new
+route or make that route available for application work. More than 64 saved
+routes pauses renewal for all routes; removing routes lets supervision resume.
+The host persists the renewal intent before the broker request so a lost reply
+can be recovered with the same renewal ID, and checks the saved profile revision
+again before accepting the result.
+
+The explicit `native-relay-diagnostic-echo` shell lane exercises that desktop
+supervisor through a lost renewal reply, then checks stale-revision rejection
+and the diagnostic transport. It uses a real main WebView and fixture-owned
+Keychain accounts, plus loopback broker, coturn and Pion fixtures. The adapter
+and supervisor unit tests use injected boundaries. Neither their passing result
+nor the existence of the shell lane establishes a completed native run here.
+Mobile background renewal and packaged-platform acceptance remain separate.
+
 The separate hostile-plugin lane also runs in a real Tauri WebView:
 
 ```sh
