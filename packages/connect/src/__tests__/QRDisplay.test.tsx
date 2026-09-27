@@ -1,12 +1,10 @@
 // @vitest-environment jsdom
 /**
- * station#3423 review MEDIUM-2/MEDIUM-3: `qr-round-trip.test.ts` asserts
- * properties of the `qrcode` package's own default (its "same
- * error-correction level" test derives nothing about `QRDisplay` — it
- * would pass unchanged even if `QRDisplay` started passing an explicit
- * `errorCorrectionLevel`), and nothing enforced that `QRDisplay` actually
- * imports `QR_MARGIN`/`QR_COLOR` from `qr-render-options.ts` rather than
- * its own literals — the extraction's stated purpose ("so the two cannot
+ * archive#3423 review MEDIUM-2/MEDIUM-3: `qr-round-trip.test.ts` takes the
+ * `qrcode` package's default error-correction level, which says nothing
+ * about whether `QRDisplay` passes an explicit `errorCorrectionLevel`, and
+ * nothing enforced that `QRDisplay` actually imports `QR_MARGIN`/`QR_COLOR`
+ * from `qr-render-options.ts` rather than its own literals — the extraction's stated purpose ("so the two cannot
  * silently drift") was unenforced convention, not derivation. This file
  * renders the real `QRDisplay` component with `qrcode` mocked and asserts
  * on the actual `QRCode.toCanvas` call it makes, converting both claims

@@ -16,6 +16,13 @@
  */
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
+import {
+  getOrchestrationSession,
+  interruptTurn,
+  listOrchestrationSessions,
+  respondToRequest,
+  StationHttpError,
+} from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import {
   afterAll,
@@ -489,7 +496,7 @@ async function callTool(
   sessionId: string,
   name: string,
   args: Record<string, unknown>,
-): Promise<{ result: any; hits: string[] }> {
+): Promise<{ result: any; hits: string[]; isError?: unknown }> {
   hits.length = 0;
   const engine = await engineFor(channel, sessionId);
   try {
@@ -511,6 +518,9 @@ async function callTool(
     return {
       result: parsed as any,
       hits: [...hits],
+      // #2795: the MCP flag as the engine received it over the real
+      // transport (HTTP MCP, or in-process for the bound channel).
+      isError: response.result?.isError,
     };
   } finally {
     await engine.close();
@@ -665,10 +675,9 @@ const ROWS: readonly Row[] = [
     tool: 'update_job',
     args: { name: 'granted', prompt: 'run something else' },
     job: 'granted',
-    // Decided by the server only; the scheduler SDK error does not keep the
-    // envelope code until the SDK follow-up, so this row is driven through
-    // the REST boundary, not the tool envelope.
-    restOnly: true,
+    // Decided by the server only: the tool-side check passes, and the typed
+    // code reaches the agent because the scheduler SDK error keeps the
+    // envelope's code (#2708 A-1).
     route: 'PUT /scheduler/jobs/:target',
     expect: {
       'bound op-': 'station_control_person_only',
@@ -757,19 +766,20 @@ describe('each policy class through the real tools, per delivery channel', () =>
     for (const { channel, prefix, outcome } of cases(row))
       test(`${row.tool}${row.args.trustAllTools ? ' (trustAllTools)' : ''}${row.job ? ` (${row.job} job)` : ''} via ${channel} (${prefix}) → ${outcome}`, async () => {
         const sessionId = nextSession(prefix);
-        const { result, hits: reached } = await callTool(
-          channel,
-          sessionId,
-          row.tool,
-          row.args,
-        );
+        const {
+          result,
+          hits: reached,
+          isError,
+        } = await callTool(channel, sessionId, row.tool, row.args);
         if (outcome === 'allowed') {
           expect(reached).toEqual([row.route]);
           expect(result?.code).toBeUndefined();
         } else {
           expect(reached).toEqual([]);
+          // The engine still reads the typed body, flagged as an MCP error.
           expect(result).toMatchObject({ success: false, code: outcome });
           expect(typeof result.error).toBe('string');
+          expect(isError).toBe(true);
         }
       });
 });
@@ -1056,11 +1066,21 @@ describe('the server guard alone gives agents a typed refusal (F2)', () => {
       }
     )._registeredTools;
 
-  // Scheduler tools gain the same once the SDK's scheduler error keeps the
-  // envelope code (separate SDK follow-up); here: an SDK-client tool
-  // (board_pin), an agent CRUD tool (delete_agent) and a raw `api()` tool
-  // (update_config).
+  // An SDK-client tool (board_pin), an agent CRUD tool (delete_agent), a raw
+  // `api()` tool (update_config), and (#2708 A-1) one SDK-client tool per
+  // station-control family whose fetcher reads the envelope through the
+  // SDK's envelope helper: scheduler, knowledge, integrations, reviews,
+  // plugins and conversations. Skills is below: `install_skill` answers
+  // `message`, not `error`. Orchestration's tools wrap their fetcher errors,
+  // so its fetchers are driven directly below.
   test.each([
+    ['disable_job', { name: 'nightly' }],
+    ['list_conversations', { agent: 'station' }],
+    ['get_conversation_messages', { agent: 'station', conversationId: 'c1' }],
+    ['reindex_knowledge', {}],
+    ['delete_integration', { id: 'x' }],
+    ['list_review_receipts', { projectSlug: 'project-a' }],
+    ['list_plugins', {}],
     ['delete_agent', { slug: 'a' }],
     ['update_config', { updates: { theme: 'dark' } }],
     [
@@ -1078,6 +1098,96 @@ describe('the server guard alone gives agents a typed refusal (F2)', () => {
       success: false,
       code: 'station_control_caller_required',
       error: expect.stringContaining('verified calling session'),
+    });
+    expect(hits).toEqual([]);
+    expect(refusals).toEqual(['station_control_caller_required']);
+  });
+
+  // #2708 A-1b review: the delegation tools wrap Station's answer in their
+  // own sentence and used to throw it, so the agent got text only. Against
+  // THIS Station (the current target) they now relay its guard's typed code,
+  // keeping their sentence. A peer's code is never relayed (see
+  // orchestration-portable-delegation.test.ts).
+  test.each([
+    ['list_delegated_tasks', {}],
+    // #2795: the dispatch tools used to throw the guard's refusal, losing
+    // its code for the agent and the invoke telemetry.
+    ['send_message', { agent: 'writer', message: 'hi' }],
+    ['delegate_task', { agent: 'writer', prompt: 'do it' }],
+    ['continue_task', { taskId: 'task:1', message: 'One more thing' }],
+    ['get_task', { taskId: 'task:1' }],
+    ['get_task_events', { taskId: 'task:1' }],
+    ['interrupt_task', { taskId: 'task:1' }],
+    [
+      'respond_to_task_request',
+      { taskId: 'task:1', requestId: 'r1', decision: 'accept' },
+    ],
+  ] as const)('%s relays the server’s typed code', async (name, args) => {
+    const handler = handlers()[name]?.handler;
+    const result = await toolSideOff(() => handler!(args, {}));
+    // `toToolEnvelope`'s failure shape; the code is this Station's guard's.
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      success: false,
+      code: 'station_control_caller_required',
+      error: expect.any(String),
+    });
+    expect(hits).toEqual([]);
+    expect(refusals).toEqual(['station_control_caller_required']);
+  });
+
+  test('install_skill keeps the server’s code beside its message', async () => {
+    const handler = handlers().install_skill?.handler;
+    const result = await toolSideOff(() => handler!({ id: 'x' }, {}));
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      success: false,
+      code: 'station_control_caller_required',
+      message: expect.stringContaining('verified calling session'),
+    });
+    expect(hits).toEqual([]);
+    expect(refusals).toEqual(['station_control_caller_required']);
+  });
+});
+
+/**
+ * #2708 A-1b: the orchestration fetchers against the real guard. The
+ * delegation tools that call them wrap a failure in their own sentence
+ * (`listDelegatedTasks`, `loadDelegatedTask`), so the tool envelope is not
+ * where their code surfaces; the fetcher's error is. Each is called the way a
+ * caller-less station-control request reaches Station (the raw internal
+ * token, no caller credential), and the guard's typed refusal must arrive on
+ * the SDK error as status and code.
+ */
+describe('orchestration fetchers keep the guard’s typed refusal', () => {
+  const asRawToken = { headers: internalHeaders() };
+  test.each([
+    [
+      'getOrchestrationSession',
+      () => getOrchestrationSession(baseUrl, 't1', asRawToken),
+    ],
+    [
+      'listOrchestrationSessions',
+      () => listOrchestrationSessions(baseUrl, asRawToken),
+    ],
+    [
+      'interruptTurn',
+      () => interruptTurn(baseUrl, { threadId: 't1' }, asRawToken),
+    ],
+    [
+      'respondToRequest',
+      () =>
+        respondToRequest(
+          baseUrl,
+          { threadId: 't1', requestId: 'r1', decision: 'accept' },
+          asRawToken,
+        ),
+    ],
+  ] as const)('%s', async (_name, call) => {
+    const failure = await call().catch((caught: unknown) => caught);
+    expect(failure).toBeInstanceOf(StationHttpError);
+    expect(failure).toMatchObject({
+      status: 403,
+      code: 'station_control_caller_required',
+      message: expect.stringContaining('verified calling session'),
     });
     expect(hits).toEqual([]);
     expect(refusals).toEqual(['station_control_caller_required']);

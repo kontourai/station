@@ -24,7 +24,6 @@ import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   openChatIdentitiesSnapshot,
   openChatsStore,
-  resetOpenChatIdentitiesCacheForTests,
 } from '../contexts/open-chats-store';
 import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
 
@@ -183,7 +182,6 @@ import { CommandPalette } from '../components/CommandPalette';
 
 afterEach(() => {
   indexRebuilds.count = 0;
-  resetOpenChatIdentitiesCacheForTests();
   navigateMock.mockReset();
   showSurfaceMock.mockReset();
   setProjectMock.mockReset();

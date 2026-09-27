@@ -1,8 +1,7 @@
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { registerRealtimeVoiceProvider } from '../voice/realtime-provider-registration.js';
 import type {
+  VoiceRealtimeEvent,
   VoiceRealtimeLease,
   VoiceRealtimeProvider,
   VoiceRealtimeReadiness,
@@ -70,12 +69,15 @@ describe('Voice realtime contracts', () => {
     expect(registry.get('same')).toBeUndefined();
   });
 
-  it('does not make upstream error text part of the public event contract', async () => {
-    const source = await readFile(
-      fileURLToPath(new URL('../voice/realtime-types.ts', import.meta.url)),
-      'utf8',
-    );
-    expect(source).not.toContain('readonly message?: string');
+  it('does not make upstream error text part of the public event contract', () => {
+    // Enforced by `npm run typecheck:sdk`: any added field (a `message`, a
+    // provider payload) changes the variant and fails to compile.
+    expectTypeOf<
+      Extract<VoiceRealtimeEvent, { type: 'error' }>
+    >().toEqualTypeOf<{
+      readonly type: 'error';
+      readonly code?: Exclude<VoiceRealtimeReadiness['status'], 'ready'>;
+    }>();
   });
 });
 

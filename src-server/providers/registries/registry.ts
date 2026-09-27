@@ -469,27 +469,6 @@ export function clearAll(): void {
   if (hadProviderAdapters) commitProviderAdapterLaunchabilityRevision();
 }
 
-/**
- * Clear plugin-provided entries only, preserving built-in registrations
- * (e.g. provider adapters registered during core initialization).
- */
-export function clearPluginProviders(): void {
-  const pluginAdapterCount =
-    pluginAdditiveStore.get('providerAdapter')?.length ?? 0;
-  const sources = new Set([
-    ...[...pluginStore.values()].flatMap((entries) =>
-      [...entries.values()].map((entry) => entry.source),
-    ),
-    ...[...pluginAdditiveStore.values()].flatMap((entries) =>
-      entries.map((entry) => entry.source),
-    ),
-  ]);
-  pluginStore.clear();
-  pluginAdditiveStore.clear();
-  for (const source of sources) advancePluginProviderSourceGeneration(source);
-  if (pluginAdapterCount > 0) commitProviderAdapterLaunchabilityRevision();
-}
-
 function registerPreparedInto(
   targetStore: Map<string, Map<string, ProviderEntry>>,
   targetAdditiveStore: Map<string, ProviderEntry[]>,

@@ -183,6 +183,71 @@ describe('packaged iOS capability audit', () => {
       }),
     ).toThrow(/Mach-O PlugIns\/StationAgentActivity.appex\/Helper/);
   });
+  test('reviews the Notification Service Extension and its executable (#2590)', () => {
+    const nse = {
+      ...base,
+      signedBundles: [
+        ...base.signedBundles,
+        {
+          path: 'PlugIns/StationNotificationService.appex',
+          entitlements:
+            '<key>application-identifier</key><key>com.apple.developer.team-identifier</key><key>keychain-access-groups</key>',
+        },
+      ],
+      dependencies: [
+        ...base.dependencies,
+        {
+          binary:
+            'PlugIns/StationNotificationService.appex/StationNotificationService',
+          output:
+            'StationNotificationService:\n/System/Library/Frameworks/UserNotifications.framework/UserNotifications\n/usr/lib/swift/libswiftCore.dylib',
+        },
+      ],
+    };
+    expect(auditIosInventory(nse)).toEqual({
+      privacyCount: 2,
+      signedBundleCount: 2,
+      binaryCount: 2,
+    });
+    // Another binary inside the extension is still refused.
+    expect(() =>
+      auditIosInventory({
+        ...nse,
+        dependencies: [
+          ...base.dependencies,
+          {
+            binary: 'PlugIns/StationNotificationService.appex/Helper',
+            output: 'Helper:\n/usr/lib/libobjc.A.dylib',
+          },
+        ],
+      }),
+    ).toThrow(/Mach-O PlugIns\/StationNotificationService.appex\/Helper/);
+  });
+  test('reviews an app carrying both extensions (#2513, #2590)', () =>
+    expect(
+      auditIosInventory({
+        ...base,
+        signedBundles: [
+          ...base.signedBundles,
+          ...['StationAgentActivity', 'StationNotificationService'].map(
+            (name) => ({
+              path: `PlugIns/${name}.appex`,
+              entitlements:
+                '<key>application-identifier</key><key>com.apple.developer.team-identifier</key><key>keychain-access-groups</key>',
+            }),
+          ),
+        ],
+        dependencies: [
+          ...base.dependencies,
+          ...['StationAgentActivity', 'StationNotificationService'].map(
+            (name) => ({
+              binary: `PlugIns/${name}.appex/${name}`,
+              output: `${name}:\n/usr/lib/swift/libswiftCore.dylib`,
+            }),
+          ),
+        ],
+      }),
+    ).toEqual({ privacyCount: 2, signedBundleCount: 3, binaryCount: 3 }));
   test('fails an unreviewed extension entitlement', () =>
     expect(() =>
       auditIosInventory({

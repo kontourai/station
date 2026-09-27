@@ -297,11 +297,6 @@ export function registerFloatHost(): () => void {
   };
 }
 
-/** Whether any chat's floater could take a request right now. */
-export function isFloatHostAvailable(): boolean {
-  return mountedHosts > 0;
-}
-
 /**
  * Ask a mounted chat to float `source`; false when no chat can. `onTaken`
  * runs once a chat has taken it (and is floating it).
@@ -362,7 +357,7 @@ export function clearFloatNotice(conversation: string): void {
   if (notices.delete(conversation)) emit();
 }
 
-/** {@link isFloatHostAvailable}, re-rendered as chats mount and unmount. */
+/** Whether any chat's floater could take a request, re-rendered as chats mount and unmount. */
 export function useFloatHostAvailable(): boolean {
   return useSyncExternalStore(
     subscribe,

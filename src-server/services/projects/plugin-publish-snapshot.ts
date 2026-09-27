@@ -41,6 +41,7 @@
 import { constants } from 'node:fs';
 import { lstat, open, readdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
+import { isGitMetadataName } from '../../utils/git-metadata-name.js';
 
 /** Why an entry was left out, not refused. The UI words each. */
 export type SnapshotSkipReason =
@@ -107,20 +108,6 @@ export interface SnapshotHooks {
   afterRead?: (path: string) => Promise<void> | void;
 }
 
-// Code points that render as nothing: HFS+ ignores them when comparing
-// names, so ".g" + U+200C + "it" IS ".git" on a Mac checkout.
-const IGNORABLE_RANGES: ReadonlyArray<readonly [number, number]> = [
-  [0x200b, 0x200f],
-  [0x202a, 0x202e],
-  [0x2060, 0x2064],
-  [0x206a, 0x206f],
-  [0xfeff, 0xfeff],
-];
-
-function isIgnorable(code: number): boolean {
-  return IGNORABLE_RANGES.some(([low, high]) => code >= low && code <= high);
-}
-
 /** Control characters, and U+FFFD, which is what a name that is not valid
  * UTF-8 reads as: git would receive a different name than the one on disk. */
 function isUnsafeCharacter(code: number): boolean {
@@ -129,20 +116,6 @@ function isUnsafeCharacter(code: number): boolean {
 
 function codePoints(text: string): number[] {
   return Array.from(text, (character) => character.codePointAt(0) ?? 0);
-}
-
-/**
- * True for a name git treats as its own directory on some filesystem: `.git`
- * in any case, with ignorable characters or trailing dots and spaces
- * (Windows drops those), and its 8.3 short name.
- */
-function isGitMetadataName(name: string): boolean {
-  const folded = String.fromCodePoint(
-    ...codePoints(name).filter((code) => !isIgnorable(code)),
-  )
-    .replace(/[. ]+$/, '')
-    .toLowerCase();
-  return folded === '.git' || folded === 'git~1';
 }
 
 /**

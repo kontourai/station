@@ -112,12 +112,6 @@ describe('DelegatedTaskCoordinator answerability', () => {
     expect(screen.queryByLabelText('Direct worker follow-up')).toBeNull();
   });
 
-  test('AC5 (control): a retriable `failed` task is NOT treated as unanswerable', () => {
-    renderCard(task({ lifecycleState: 'failed', pendingReview: false }));
-    expect(screen.queryByTestId('coordinator-answerability')).toBeNull();
-    expect(screen.getByLabelText('Direct worker follow-up')).toBeTruthy();
-  });
-
   test('failed and canceled stay follow-up capable while completed stays closed', () => {
     for (const lifecycleState of ['failed', 'canceled'] as const) {
       const view = renderCard(task({ lifecycleState, pendingReview: false }));
@@ -134,8 +128,8 @@ describe('DelegatedTaskCoordinator answerability', () => {
    * restart EVERY cleanly-finished delegated task reads `answerable: false`.
    * The notice was not gated on `isTerminal`, so every one of them was
    * annotated "the session cannot resume": true, and about nothing the user
-   * asked for. The `failed` control above could not catch it, because `failed`
-   * is the one terminal state that stays answerable.
+   * asked for. An answerable `failed` fixture could not catch it, because
+   * `failed` is the one terminal state that stays answerable.
    */
   test('a cleanly COMPLETED task is not annotated', () => {
     renderCard(

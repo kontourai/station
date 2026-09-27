@@ -318,9 +318,10 @@ export async function bundleStationCli(
 }
 
 /**
- * Tells the CLI (lifecycle.ts `isPrebuiltArchiveRoot`, which pins the same
- * name and content) that this tree ships prebuilt, so `station build` and a
- * missing instance build refuse instead of running npm.
+ * Tells the CLI (packages/cli/src/commands/lifecycle-code-root.ts, which pins
+ * the same name and content) that this tree ships prebuilt, so `station build`
+ * and a missing instance build refuse instead of running npm, and lifecycle
+ * state lives outside the (read-only) tree.
  */
 export const PREBUILT_ARCHIVE_MARKER = Object.freeze({
   name: '.station-prebuilt-archive',

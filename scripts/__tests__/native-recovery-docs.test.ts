@@ -190,8 +190,6 @@ describe('native recovery documentation', () => {
       'src-desktop/tauri.conf.json',
       'src-desktop/tauri.beta.conf.json',
       'src-desktop/tauri.nightly.conf.json',
-      'src-ui/src/platform/native/startupReadiness.ts',
-      'src-ui/src/platform/native/__tests__/startupReadiness.test.ts',
       'scripts/__tests__/startup-readiness-static.test.ts',
       'packages/cli/src/cli.ts',
       'packages/cli/src/help.ts',

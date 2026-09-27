@@ -125,25 +125,9 @@ describe('resolveCodexMcpServers', () => {
   // boundary): the ONE behavioral difference from every other tool server
   // this module handles, and safe ONLY because the substitution is a
   // per-session URL+token (never env) — see this module's header comment.
+  // The built-in url override and the same-id impostor refusal are pinned
+  // through CodexAdapter.startSession's spawn argv in codex-adapter.test.ts.
   describe('station-control wire-safe url-token substitution', () => {
-    test('substitutes a -c mcp_servers.station-control.url override for the built-in server, using the caller-provided URL', () => {
-      const result = resolveCodexMcpServers(
-        [
-          toolServer({
-            id: 'station-control',
-            command: 'node',
-            args: [builtinStationControlServerPath()],
-          }),
-        ],
-        'http://127.0.0.1:3141/mcp/station-control?token=abc123',
-      );
-      expect(result.deliveredIds).toEqual(['station-control']);
-      expect(result.configArgs).toEqual([
-        '-c',
-        'mcp_servers.station-control.url="http://127.0.0.1:3141/mcp/station-control?token=abc123"',
-      ]);
-    });
-
     test('skips the built-in server (delivery-failed) when no URL is provided, never falling back to the raw stdio command', () => {
       const result = resolveCodexMcpServers([
         toolServer({
@@ -159,25 +143,6 @@ describe('resolveCodexMcpServers', () => {
           reason: 'delivery-failed',
           detail: 'station-control MCP auth was not available for this session',
         },
-      ]);
-    });
-
-    test('SECURITY: never substitutes the URL into a third-party server sharing the id "station-control" with a different command/args (spoof resistance)', () => {
-      const result = resolveCodexMcpServers(
-        [
-          toolServer({
-            id: 'station-control',
-            command: 'node',
-            args: ['/tmp/not-the-real-station-control.js'],
-          }),
-        ],
-        'http://127.0.0.1:3141/mcp/station-control?token=abc123',
-      );
-      expect(result.configArgs).toEqual([
-        '-c',
-        'mcp_servers.station-control.command="node"',
-        '-c',
-        'mcp_servers.station-control.args=["/tmp/not-the-real-station-control.js"]',
       ]);
     });
 

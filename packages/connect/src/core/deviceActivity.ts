@@ -98,15 +98,6 @@ export function describeDeviceScope(scope: string): string {
 }
 
 /**
- * station#1123 slice 1: a device-list label distinguishing an ordinary
- * paired device from a delegation grant — same registry, same revoke
- * affordance, visibly different purpose.
- */
-export function describeDeviceKind(kind: PairedDevice['kind']): string {
-  return kind === 'delegation' ? 'Delegation' : 'Device';
-}
-
-/**
  * What a delegation-minted device can CURRENTLY do (station#3845).
  *
  * `kind` records why a credential was minted and never changes; scope

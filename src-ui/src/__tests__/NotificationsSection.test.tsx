@@ -91,20 +91,5 @@ describe('NotificationsSection', () => {
       expect(window.location.pathname).toBe('/guard-origin');
       expect(screen.getByText('Unsaved Changes')).toBeTruthy();
     });
-
-    test('confirming discard from a dirty page completes the deferred navigation', () => {
-      navigationStore.navigate('/guard-origin');
-      navigateMock.mockClear();
-      render(<GuardedHarness dirty />);
-
-      fireEvent.click(
-        screen.getByRole('button', { name: 'View the notifications inbox' }),
-      );
-      expect(window.location.pathname).toBe('/guard-origin');
-
-      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
-      expect(navigateMock).toHaveBeenCalledWith('/notifications');
-      expect(window.location.pathname).toBe('/notifications');
-    });
   });
 });

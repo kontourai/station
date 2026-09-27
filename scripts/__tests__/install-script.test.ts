@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   realpathSync,
@@ -16,6 +17,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
 const installScript = join(repoRoot, 'install.sh');
@@ -107,6 +109,12 @@ if [ -n "\${STATION_TEST_AUTH_CONFIG_PATH:-}" ] &&
 if [ -n "\${STATION_TEST_ENV_LOG:-}" ]; then
   printf '%s|%s|%s\\n' "\${STATION_ROOT:-}" "\${STATION_HOME:-}" "\${STATION_INSTALL_ROOT:-}" > "$STATION_TEST_ENV_LOG"
 fi
+if [ -n "\${STATION_TEST_IDENTITY_LOG:-}" ]; then
+  # The real launcher runs the CLI from its physical directory (cd -P), and
+  # that directory is part of the lifecycle instance id.
+  printf '%s|%s\\n' "$(cd -P "$(dirname "$0")" && pwd)" "$*" >> "$STATION_TEST_IDENTITY_LOG"
+fi
+if [ "$1" = build ] && [ "\${STATION_TEST_BUILD_FAIL:-0}" = 1 ]; then exit 1; fi
 if [ "$1" = start ] && [ -f "$STATION_TEST_RUNNING" ]; then exit 0; fi
 printf "%s\\n" "$*" >> "$STATION_TEST_LOG"
 ${failStart ? 'if [ "$1" = start ]; then exit 1; fi' : ''}
@@ -375,6 +383,7 @@ function privateDownloadFixture(
 describe('one-line Station installer', {
   timeout: MAX_INSTALLER_RUNS_PER_TEST * INSTALLER_RUN_TIMEOUT_MS,
 }, () => {
+  const tempDir = trackTempDirs();
   it.each([
     {
       name: 'missing pnpm lock with an npm fallback',
@@ -814,6 +823,53 @@ describe('one-line Station installer', {
     expect(existsSync(`${fixture.log}.running`)).toBe(false);
     expect(readFileSync(fixture.log, 'utf8')).toContain('--port=28141');
     expect(readFileSync(fixture.log, 'utf8')).toContain('--ui-port=28000');
+  });
+
+  it('builds the release under the lifecycle identity its start uses (#2703)', () => {
+    const root = tempDir('station-installer-');
+    const fixture = makeFixtureArchive(root);
+    const identityLog = join(root, 'identity.log');
+    const installed = runInstaller(root, fixture, [], {
+      STATION_TEST_IDENTITY_LOG: identityLog,
+    });
+    expect(installed.result.status, installed.result.stderr).toBe(0);
+    // Without --instance, the lifecycle id hashes the CLI's code root with
+    // the home and ports; a build under any other id is rebuilt at start.
+    const identity = (verb: string) => {
+      const lines = readFileSync(identityLog, 'utf8')
+        .trim()
+        .split('\n')
+        .filter((line) => line.split('|')[1]?.startsWith(`${verb} `));
+      expect(lines, verb).toHaveLength(1);
+      const [codeRoot, argv] = lines[0].split('|');
+      const flag = (name: string) =>
+        argv.split(' ').find((arg) => arg.startsWith(`--${name}=`));
+      return {
+        codeRoot,
+        instance: flag('instance'),
+        home: flag('base'),
+        port: flag('port'),
+        uiPort: flag('ui-port'),
+      };
+    };
+    const build = identity('build');
+    expect(build).toEqual(identity('start'));
+    expect(build.codeRoot).toBe(
+      realpathSync(join(installed.installRoot, 'current')),
+    );
+  });
+
+  it('discards a release whose build fails instead of leaving it half-built', () => {
+    const root = tempDir('station-installer-');
+    const fixture = makeFixtureArchive(root);
+    const installed = runInstaller(root, fixture, [], {
+      STATION_TEST_BUILD_FAIL: '1',
+    });
+    expect(installed.result.status).not.toBe(0);
+    expect(installed.result.stderr).toContain('the release build failed');
+    expect(existsSync(join(installed.installRoot, 'current'))).toBe(false);
+    const releases = join(installed.installRoot, 'releases');
+    expect(existsSync(releases) ? readdirSync(releases) : []).toEqual([]);
   });
 
   it('uses installer overrides ahead of lifecycle environment values for build and start', () => {

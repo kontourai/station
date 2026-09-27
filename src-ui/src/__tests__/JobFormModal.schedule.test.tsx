@@ -283,6 +283,42 @@ describe('JobFormModal schedule compatibility', () => {
     expect(screen.getByRole('dialog', { name: 'Add Job' })).toBeTruthy();
   });
 
+  // #2708: the scheduler fetcher's refusal carries `details`; the form shows
+  // the server's reason, not "Validation failed: prompt …".
+  test('a validation refusal shows the server reason, not the field key', async () => {
+    const { createJob } = await import('@kontourai/station-sdk/client');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Validation failed',
+            details: {
+              formErrors: [],
+              fieldErrors: { prompt: ['A job needs a prompt.'] },
+            },
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    mutationState.addError = await createJob('http://localhost', {
+      name: 'daily-report',
+      prompt: '',
+    } as never).catch((caught: unknown) => caught);
+    vi.unstubAllGlobals();
+
+    render(
+      <JobFormModal
+        prefill={{ name: 'daily-report', prompt: '' }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('alert').textContent).toBe('A job needs a prompt.');
+  });
+
   test('defaults a new job to weekdays 8:00 AM local, not every minute', () => {
     render(<JobFormModal onClose={vi.fn()} />);
 

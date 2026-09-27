@@ -7,6 +7,12 @@ import {
   requireStableRuntimeConfigurationAcross,
 } from '../../runtime/plugins/runtime-configuration-lease.js';
 import { createRuntimeModelSelection } from '../../runtime/plugins/runtime-provider-resolution.js';
+import {
+  CONTROL_TOOL_FAILED_REASON,
+  CONTROL_TOOL_THREW_REASON,
+  ControlToolFailureError,
+  readControlToolFailure,
+} from '../../runtime/tools/control-tool-failure.js';
 import { executeRuntimeGenerationToolWithinLease } from '../../runtime/tools/runtime-generation-tools.js';
 import { isTrustedNativeStationControlTool } from '../../runtime/tools/tool-provenance.js';
 import type { RuntimeContext } from '../../runtime/types.js';
@@ -207,13 +213,8 @@ async function invokeAgentToolWithStableConfiguration(
         ctx.logger,
       );
     } else {
-      const result = toolResult as ToolResult;
-      if (result?.isError === true) {
-        const text = result.content?.find(
-          (entry) => typeof entry.text === 'string' && entry.text.trim(),
-        )?.text;
-        throw new Error(text?.trim() || 'Tool call failed');
-      }
+      const failure = readControlToolFailure(toolResult);
+      if (failure) throw new ControlToolFailureError(failure);
     }
     if (isControlTool) {
       controlActions.add(1, {
@@ -224,10 +225,15 @@ async function invokeAgentToolWithStableConfiguration(
     }
   } catch (error) {
     if (isControlTool) {
+      // #2795: a metric attribute takes a bounded machine code or a fixed
+      // reason — never free text or an id. The HTTP error keeps the sentence.
       controlActions.add(1, {
         tool: invokedToolName,
         outcome: 'failure',
-        reason: errorMessage(error).slice(0, 120) || 'tool_error',
+        reason:
+          error instanceof ControlToolFailureError
+            ? (error.failure.code ?? CONTROL_TOOL_FAILED_REASON)
+            : CONTROL_TOOL_THREW_REASON,
       });
     }
     throw error;

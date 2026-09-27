@@ -42,11 +42,6 @@ export function displayedExternalLink(url: string): string {
   return `${points.slice(0, 60).join('')}…${points.slice(-15).join('')}`;
 }
 
-/** How many refusal notices this module still tracks — for the tests. */
-export function trackedRefusalNoticeCount(): number {
-  return liveRefusalNotices.size;
-}
-
 /**
  * Tell the reader a link could not be opened, and hand them the link. A
  * refused open must never be a click that does nothing: the app host's

@@ -192,12 +192,7 @@ fn decide_start(remote_ready: bool) -> StartDecision {
 /// server's master argv: an operator's configured `UserKnownHostsFile` is
 /// their trust store, and replacing it would reject hosts they legitimately
 /// confirmed.
-const HOST_KEY_POLICY: [&str; 4] = [
-    "-o",
-    "StrictHostKeyChecking=yes",
-    "-o",
-    "UpdateHostKeys=no",
-];
+const HOST_KEY_POLICY: [&str; 4] = ["-o", "StrictHostKeyChecking=yes", "-o", "UpdateHostKeys=no"];
 
 fn ssh_args(target: &str, remote: &[&str]) -> Vec<String> {
     let mut args = vec!["-o".into(), "BatchMode=yes".into()];

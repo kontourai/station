@@ -63,3 +63,14 @@ export type ConnectionRetryClassification = 'transient' | 'terminal';
 export function isTerminalConnectionStatus(status: number): boolean {
   return status === 401 || status === 403;
 }
+
+/**
+ * The code a Station answers with while it throttles one peer's repeated
+ * authentication failures, distinct from the mutation budget's
+ * `rate_limited` (archive#3903). It is reached only after a peer's
+ * credentials were refused repeatedly, so a client reads it as the same
+ * authentication outcome as the 401s that fed it, not as "something else is
+ * answering". The runtime's HTTP and WebSocket boundaries emit it and
+ * `@kontourai/station-connect` classifies it, so both import it from here.
+ */
+export const AUTH_RATE_LIMITED_ERROR_CODE = 'authentication_rate_limited';
