@@ -444,7 +444,7 @@ describe('the dry run cannot turn Nightly red until publication is enabled', () 
     ).toBe(expr('inputs.non_blocking == true'));
     expect(
       (
-        archivesWorkflow.on?.workflow_call as {
+        (archivesWorkflow.on ?? {}).workflow_call as {
           inputs: Record<string, unknown>;
         }
       ).inputs.non_blocking,
