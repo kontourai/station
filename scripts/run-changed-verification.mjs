@@ -1557,8 +1557,12 @@ export async function runChangedVerification(
       `invalid changed verification receipt: ${errors.join('; ')}`,
     );
   writeReceipt(artifact.path, contents, root);
-  if (result.executed.length === 0)
-    writeReceipt(diagnostics.artifact.path, diagnostics.contents, root);
+  // Always rewrite the diagnostic the receipt binds. The early write in
+  // `beforeCleanup` is only a breadcrumb for a run that dies before this
+  // point: an empty related discovery can still escalate the selection after
+  // Vitest returns, and a breadcrumb left in place would no longer match the
+  // digest bound below, so ci:fast would refuse the attachment.
+  writeReceipt(diagnostics.artifact.path, diagnostics.contents, root);
   writeReceipt(
     '.kontourai/test-impact/changed-verification.json',
     `${JSON.stringify(receipt, null, 2)}\n`,
