@@ -1187,7 +1187,8 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
           body,
         ),
       ]).toEqual([path, 'passed']);
-    // A portable Project workspace runs on the Station that offers it.
+    // A portable Project workspace runs on the Station that offers it. (A
+    // global caller, so only the remote verdict can refuse it.)
     for (const route of ['POST /chat', 'POST /delegations'] as const) {
       const portable = ROUTES[route]!({
         kind: 'new',
@@ -1202,7 +1203,7 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         await outcome(
           base,
           portable.path,
-          as('bearer-exposed', 'op-caller-a')(),
+          as('bearer-exposed', 'op-caller-global')(),
           portable.body,
         ),
       ]).toEqual([route, ASSURANCE]);
