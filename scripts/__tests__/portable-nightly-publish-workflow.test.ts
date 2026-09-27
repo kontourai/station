@@ -102,6 +102,7 @@ type Context = {
   reserved: string;
   assemble: string;
   verified: string;
+  releaseTag: string;
 };
 
 /**
@@ -123,6 +124,7 @@ function gateAllows(expression: string, context: Context): boolean {
       'needs.plan.outputs.reserved': context.reserved,
       'needs.assemble.result': context.assemble,
       'needs.assemble.outputs.verified': context.verified,
+      'needs.plan.outputs.release_tag': context.releaseTag,
     };
     if (operand in known) return known[operand];
     throw new Error(`unrecognised gate operand: ${operand}`);
@@ -148,6 +150,7 @@ const enabledNightly: Context = {
   reserved: 'true',
   assemble: 'success',
   verified: 'true',
+  releaseTag: 'v0.1.11-nightly.245600',
 };
 
 /** Every step that changes what is published or signs with the real key. */
@@ -211,6 +214,8 @@ describe('portable Nightly publication workflow: the owner gate', () => {
       // continue-on-error can report a failed dry run as a success; only
       // assemble's last step sets `verified`.
       { ...enabledNightly, verified: '' },
+      // A plan that failed before naming the release never publishes.
+      { ...enabledNightly, releaseTag: '' },
     ])
       expect(gateAllows(gate, context), JSON.stringify(context)).toBe(false);
   });
@@ -455,6 +460,32 @@ describe('the dry run cannot turn Nightly red until publication is enabled', () 
     expect(
       Object.hasOwn(nightly.jobs['portable-nightly'], 'continue-on-error'),
     ).toBe(false);
+  });
+
+  it('lets no plan or assemble step be skipped or tolerated before the outputs publish trusts', () => {
+    // A step-level continue-on-error or if would let a failed or skipped
+    // check still reach the step that sets `reserved` or `verified`.
+    for (const id of ['plan', 'assemble']) {
+      for (const step of publication.jobs[id].steps ?? []) {
+        const label = `${id}: ${step.name ?? step.uses}`;
+        expect(Object.hasOwn(step, 'continue-on-error'), label).toBe(false);
+        expect(Object.hasOwn(step, 'if'), label).toBe(false);
+      }
+    }
+    const plan = publication.jobs.plan as {
+      outputs?: Record<string, string>;
+      steps?: Array<Step & { id?: string }>;
+    };
+    expect(plan.outputs?.reserved).toBe(
+      expr('steps.reserved.outputs.reserved'),
+    );
+    expect(plan.steps?.at(-1)?.id).toBe('reserved');
+    // Only the last step writes `reserved`.
+    for (const step of plan.steps?.slice(0, -1) ?? [])
+      expect(step.run ?? '', step.name).not.toMatch(/reserved=(true|false)/);
+    expect(conjuncts(publication.jobs.publish.if ?? '')).toContain(
+      "needs.plan.outputs.release_tag != ''",
+    );
   });
 
   it('gates publication on the output only a finished dry run sets', () => {

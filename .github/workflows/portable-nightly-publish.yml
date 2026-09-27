@@ -63,7 +63,7 @@ jobs:
     outputs:
       source_sha: ${{ steps.identity.outputs.source_sha }}
       version: ${{ steps.identity.outputs.version }}
-      reserved: ${{ steps.identity.outputs.reserved }}
+      reserved: ${{ steps.reserved.outputs.reserved }}
       release_tag: ${{ steps.locations.outputs.release_tag }}
       base_url: ${{ steps.locations.outputs.base_url }}
       rolling_tag: ${{ steps.locations.outputs.rolling_tag }}
@@ -96,13 +96,11 @@ jobs:
             version=$(node scripts/portable-nightly-publication.mjs version --marketing-version "$MARKETING_VERSION" --version-code "$VERSION_CODE")
             reserved=$(git ls-remote --refs "https://github.com/$GITHUB_REPOSITORY" "refs/tags/nightly-version-code/$VERSION_CODE" | awk '{ print $1 }')
             test "$reserved" = "$SOURCE_SHA" || { echo "refs/tags/nightly-version-code/$VERSION_CODE names '$reserved', not $SOURCE_SHA" >&2; exit 1; }
-            echo 'reserved=true' >> "$GITHUB_OUTPUT"
           else
             # Direct dispatch: a dry run under a synthetic version that no
             # reservation backs, so it can never satisfy the publish gate.
             marketing=$(node -p 'require("./package.json").version')
             version=$(node scripts/portable-nightly-publication.mjs version --marketing-version "$marketing" --version-code "$GITHUB_RUN_ID")
-            echo 'reserved=false' >> "$GITHUB_OUTPUT"
           fi
           { echo "source_sha=$head_sha"; echo "version=$version"; } >> "$GITHUB_OUTPUT"
       - id: locations
@@ -110,6 +108,15 @@ jobs:
         env:
           VERSION: ${{ steps.identity.outputs.version }}
         run: node scripts/portable-nightly-publication.mjs locations --repository "$GITHUB_REPOSITORY" --version "$VERSION" >> "$GITHUB_OUTPUT"
+      # Last output write: under continue-on-error a plan that failed earlier
+      # must not hand publish `reserved=true` with missing locations. The
+      # identity step above already refused an unbound reservation.
+      - id: reserved
+        name: Record whether the version is a bound reservation
+        env:
+          VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          if [ -n "$VERSION_CODE" ]; then echo 'reserved=true'; else echo 'reserved=false'; fi >> "$GITHUB_OUTPUT"
 
   archives:
     name: Build
@@ -206,7 +213,7 @@ jobs:
   publish:
     name: Sign and publish (owner-gated)
     needs: [plan, assemble]
-    if: ${{ vars.STATION_PORTABLE_NIGHTLY_PUBLISH == 'enabled' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/nightly.yml@refs/heads/main', github.repository) && needs.plan.outputs.reserved == 'true' && needs.assemble.result == 'success' && needs.assemble.outputs.verified == 'true' }}
+    if: ${{ vars.STATION_PORTABLE_NIGHTLY_PUBLISH == 'enabled' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/nightly.yml@refs/heads/main', github.repository) && needs.plan.outputs.reserved == 'true' && needs.plan.outputs.release_tag != '' && needs.assemble.result == 'success' && needs.assemble.outputs.verified == 'true' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     environment: portable-nightly-signing
