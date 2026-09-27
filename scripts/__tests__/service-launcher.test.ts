@@ -1,5 +1,7 @@
 import {
+  chmodSync,
   existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   readlinkSync,
@@ -171,6 +173,32 @@ describe('the fixed service launcher (#2675 D)', { timeout: 90_000 }, () => {
     launcher.process.kill('SIGTERM');
     expect(await launcher.exited).toEqual({ code: 0, signal: null });
     expect(fixtureLog(install)).toContain('1.1.0 term');
+  });
+
+  it('after a commit keeps only the new version and its rollback target, and never an installer stage', async () => {
+    const install = makeLauncherInstall(makeTempDir('station-launcher-'));
+    addVersion(install, cli, '0.9.0');
+    addVersion(install, cli, '1.0.0');
+    addVersion(install, cli, '1.1.0', { trial: 'prepare' });
+    // Sealed, as install.sh leaves every version.
+    chmodSync(join(install.installRoot, 'versions', '0.9.0', 'bin'), 0o555);
+    chmodSync(join(install.installRoot, 'versions', '0.9.0'), 0o555);
+    mkdirSync(join(install.installRoot, 'versions', '.stage.123'));
+    pointCurrent(install, '1.0.0');
+    const launcher = launch(install);
+    await waitFor('v1 ready', () =>
+      fixtureLog(install).includes('1.0.0 ready'),
+    );
+    writeServiceUpdateRequest(install.installRoot, '1.1.0');
+    await waitFor(
+      'the prune after the commit',
+      () =>
+        readdirSync(join(install.installRoot, 'versions')).sort().join(',') ===
+        '.stage.123,1.0.0,1.1.0',
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(finished(install)?.status).toBe('committed');
   });
 
   it('rolls back a trial that migrates the home schema and then crashes', async () => {
