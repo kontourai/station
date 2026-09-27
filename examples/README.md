@@ -31,6 +31,7 @@ prove.
 | --- | --- |
 | [Knowledge Docs Starter](knowledge-docs-starter/README.md) | Knowledge namespace starter |
 | [Knowledge Library](knowledge-library/README.md) | Knowledge browsing, freshness, and root selection |
+| [Repository Knowledge Graph](repository-knowledge-graph/README.md) | Derived code/documentation provenance exported and checked through Knowledge Kit record APIs |
 | [Meeting Notes](meeting-notes/README.md) | Capture, compile, graph, and provenance views |
 
 ## Providers And Server Extensions

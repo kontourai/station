@@ -123,6 +123,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/learning-atlas.browser.test.ts',
+  // Disposable Git history and isolated HTTP adapter fixtures for the public example.
+  'examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs',
   // Copies the tracked tree and runs the repo-governance lane CLI twice (clean and violating).
   'scripts/__tests__/proof-family-route-error-egress.test.ts',
   // Real CLI prerequisite probes, a loopback listener, and the SQLite runtime owner.
