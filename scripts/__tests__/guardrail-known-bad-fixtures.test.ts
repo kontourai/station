@@ -1452,7 +1452,7 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
     );
     // Membership, not order: the aggregate runs every lane to completion. A
     // lane silently dropped from the catalog is the regression this exists
-    // for, and lane ids are too heterogeneous to derive from script names.
+    // for, and the lanes share no script-name prefix to derive the set from.
     expect(DOCS_TRUTH_GATE_LANES.map((lane) => lane.id).sort()).toEqual(
       [
         'contribution:gate',
