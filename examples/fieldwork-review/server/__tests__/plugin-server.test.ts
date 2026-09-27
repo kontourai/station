@@ -371,7 +371,13 @@ describe('fieldwork-review server module', () => {
       input(`fieldwork-reviewed-source:v1:${'0'.repeat(64)}`),
       { projectHomeDir: harness.projectHomeDir },
     );
-    expect(retained.status).toBe('missing');
+    // At capacity an absent ref is 'unavailable' (asserted below), so
+    // 'missing' here proves the retained ref was found in the full index and
+    // reached Fieldwork, which reports this opaque test ref as not a source.
+    expect(retained).toEqual({
+      version: 'station.reviewed-sources/v1',
+      status: 'missing',
+    });
     const refused = await reviewedSources.readReviewedSource(
       input(`fieldwork-reviewed-source:v1:${'f'.repeat(64)}`),
       { projectHomeDir: harness.projectHomeDir },
