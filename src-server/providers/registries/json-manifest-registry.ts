@@ -4,8 +4,24 @@
  * by fetching a remote JSON manifest.
  */
 
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
@@ -16,7 +32,7 @@ import {
 import { readUntrustedPluginManifestSyncWithFormat } from '../../services/plugins/plugin-manifest-bounded-read.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { errorMessage } from '../../utils/error-message.js';
-import { execGitSync, isLocalGitSource } from '../../utils/git-exec.js';
+import { execGitSync } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
 import type { InstallResult, RegistryItem } from '../provider-contracts.js';
 import type {
@@ -92,6 +108,199 @@ function assertContainedPluginTarget(
   }
 }
 
+/**
+ * A manifest `source` that Station refuses to resolve because it names a
+ * location the registry does not own: a local path outside the registry root,
+ * any local path from a manifest fetched over the network, or a URL scheme
+ * other than the remote transports below. Thrown by
+ * {@link JsonManifestRegistryProvider}'s source resolution, which every
+ * consumer (install, package resolution, integration reads) goes through.
+ */
+export class RegistrySourceConfinementError extends Error {
+  readonly code = 'REGISTRY_SOURCE_NOT_CONFINED';
+  constructor(
+    readonly source: string,
+    reason: string,
+  ) {
+    super(`Registry source '${source}' refused: ${reason}`);
+    this.name = 'RegistrySourceConfinementError';
+  }
+}
+
+/**
+ * Where a manifest source resolved. For `local`, `location` is the path as
+ * the manifest spells it (resolved, symlinks NOT followed) — the source
+ * identity that install receipts and registry trust continuity compare — and
+ * `physical` is the symlink-free path proven to be inside `root`, the physical
+ * registry root. The provider's own reads and copies use `physical`. `remote`
+ * is a network address (an allowed URL scheme or scp-style `git@host:path`)
+ * that never reads local files.
+ */
+type ResolvedManifestSource =
+  | { kind: 'local'; location: string; physical: string; root: string }
+  | { kind: 'remote'; location: string };
+
+/** Schemes a manifest source may name. `file:` and everything else refuse. */
+const REMOTE_SOURCE_PROTOCOLS = new Set(['https:', 'http:', 'ssh:']);
+
+function isScpGitSource(source: string): boolean {
+  return /^git@[^/:\s]+:\S/.test(source);
+}
+
+/** `C:\x` / `C:/x`: a filesystem path, not a URL with scheme `c:`. */
+function isDriveLetterPath(source: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(source);
+}
+
+function hasUrlScheme(source: string): boolean {
+  return !isDriveLetterPath(source) && /^[A-Za-z][A-Za-z0-9+.-]*:/.test(source);
+}
+
+function parseRemoteSource(source: string, base?: string): URL {
+  let url: URL;
+  try {
+    url = base === undefined ? new URL(source) : new URL(source, base);
+  } catch {
+    throw new RegistrySourceConfinementError(source, 'not a valid URL');
+  }
+  if (!REMOTE_SOURCE_PROTOCOLS.has(url.protocol)) {
+    throw new RegistrySourceConfinementError(
+      source,
+      `unsupported source protocol ${url.protocol}`,
+    );
+  }
+  return url;
+}
+
+/** Containment by `path.relative`, so a root of `/` works too. */
+function isInsideOrEqual(root: string, candidate: string): boolean {
+  const rel = relative(root, candidate);
+  return (
+    rel === '' ||
+    (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`))
+  );
+}
+
+/**
+ * The physical path of `path`: the realpath of its nearest existing ancestor
+ * with the missing tail appended, so a symlinked directory anywhere on the way
+ * is followed even when the leaf does not exist (a `./repo.git#branch` source,
+ * say). A dangling symlink makes `realpathSync` throw, which callers treat as a
+ * refusal.
+ */
+function physicalPath(path: string): string {
+  let current = path;
+  const tail: string[] = [];
+  for (;;) {
+    let present = true;
+    try {
+      lstatSync(current);
+    } catch {
+      present = false;
+    }
+    if (present) return join(realpathSync(current), ...tail);
+    const parent = dirname(current);
+    if (parent === current) return join(current, ...tail);
+    tail.unshift(basename(current));
+    current = parent;
+  }
+}
+
+/**
+ * Refuses `candidate` unless it is inside `root` both lexically and
+ * physically, and returns the physical path and root that were checked. A git
+ * source's `#branch` suffix is split off by the installer, so the path before
+ * it must be contained as well.
+ */
+function confineLocalSource(
+  source: string,
+  root: string,
+  candidate: string,
+): { physical: string; physicalRoot: string } {
+  const lexicalRoot = resolve(root);
+  let physicalRoot: string;
+  try {
+    physicalRoot = realpathSync(lexicalRoot);
+  } catch {
+    throw new RegistrySourceConfinementError(
+      source,
+      'the registry root does not exist',
+    );
+  }
+  let physical = '';
+  const paths = [candidate, candidate.split('#')[0] ?? candidate];
+  for (const path of paths) {
+    if (!isInsideOrEqual(lexicalRoot, resolve(path))) {
+      throw new RegistrySourceConfinementError(
+        source,
+        'resolves outside the registry root',
+      );
+    }
+    const checked = assertPhysicallyInside(source, physicalRoot, path);
+    if (!physical) physical = checked;
+  }
+  return { physical, physicalRoot };
+}
+
+/** Physical path of `path`, refused unless inside `physicalRoot`. */
+function assertPhysicallyInside(
+  source: string,
+  physicalRoot: string,
+  path: string,
+): string {
+  let physical: string;
+  try {
+    physical = physicalPath(resolve(path));
+  } catch {
+    throw new RegistrySourceConfinementError(
+      source,
+      'cannot be resolved to a physical path',
+    );
+  }
+  if (!isInsideOrEqual(physicalRoot, physical)) {
+    throw new RegistrySourceConfinementError(
+      source,
+      'resolves outside the registry root through a symlink',
+    );
+  }
+  return physical;
+}
+
+/**
+ * A local registry source is a plain directory, copied. Anything git could
+ * treat as a repository is refused rather than inspected: a path git-shaped
+ * by either its manifest spelling or its physical path (both installers pick
+ * git by an `.git` suffix and split `#branch` off the string), and a top-level
+ * `.git` entry, which the plugin update route would later `git pull` through.
+ * Git sources must be remote URLs.
+ */
+function assertPlainLocalDirectorySource(
+  source: string,
+  location: string,
+  physical: string,
+): void {
+  for (const path of [source, location, physical]) {
+    if (path.includes('#') || /\.git$/i.test(path)) {
+      throw new RegistrySourceConfinementError(
+        source,
+        'a local registry source must be a plain directory; name a git repository by its remote URL',
+      );
+    }
+  }
+  let hasGitEntry = true;
+  try {
+    lstatSync(join(physical, '.git'));
+  } catch {
+    hasGitEntry = false;
+  }
+  if (hasGitEntry) {
+    throw new RegistrySourceConfinementError(
+      source,
+      'a local registry source must not contain git metadata (.git)',
+    );
+  }
+}
+
 function isGitSource(source: string): boolean {
   return (
     source.startsWith('git@') ||
@@ -159,7 +368,7 @@ export class JsonManifestRegistryProvider
     // substitute its catalog between this source and claim observation.
     let manifest: Manifest;
     // Support both URLs and local file paths
-    if (this.manifestUrl.startsWith('/') || this.manifestUrl.startsWith('.')) {
+    if (this.isLocalManifest()) {
       const raw = readFileSync(this.manifestUrl, 'utf-8');
       manifest = JSON.parse(raw) as Manifest;
     } else {
@@ -190,7 +399,7 @@ export class JsonManifestRegistryProvider
     const plugin = matches[0];
     if (!plugin) return null;
     return {
-      source: this.resolveManifestSource(plugin.source),
+      source: this.resolveManifestSource(plugin.source).location,
       ...(plugin.claim === undefined
         ? {}
         : { claim: structuredClone(plugin.claim) }),
@@ -201,34 +410,112 @@ export class JsonManifestRegistryProvider
     return join(this.projectHomeDir, 'plugins');
   }
 
+  private isLocalManifest(): boolean {
+    return this.manifestUrl.startsWith('/') || this.manifestUrl.startsWith('.');
+  }
+
   private getRegistryKey(): string {
-    if (this.manifestUrl.startsWith('/') || this.manifestUrl.startsWith('.')) {
+    if (this.isLocalManifest()) {
       return resolve(this.manifestUrl);
     }
     return this.manifestUrl;
   }
 
-  private resolveManifestSource(source: string): string {
-    if (
-      source.startsWith('git@') ||
-      source.startsWith('https://') ||
-      source.startsWith('http://')
-    ) {
-      return source;
+  /**
+   * The root a local manifest's sources must stay inside: the parent of the
+   * manifest's directory. That is the root the CLI registry resolver enforced
+   * and what the shipped catalogs rely on — `examples/registry/*.json` name
+   * their plugins as `../<example>` siblings of the `registry/` directory.
+   */
+  private getLocalRegistryRoot(): string {
+    return resolve(dirname(resolve(this.manifestUrl)), '..');
+  }
+
+  /**
+   * The single owner of manifest source resolution; every consumer goes
+   * through here, so containment cannot be skipped by one of them.
+   *
+   * - Remote transports (`https:`, `http:`, `ssh:` URLs and scp-style
+   *   `git@host:path`) pass through from either kind of manifest. `http:` is
+   *   refused later for code installs, by name (#2363).
+   * - A local manifest's other sources are filesystem paths, absolute or
+   *   relative to the manifest, and must resolve inside
+   *   {@link getLocalRegistryRoot} lexically and after following symlinks.
+   * - A network manifest never names a local path: an absolute path is
+   *   refused and a relative one resolves as a URL against the manifest URL.
+   *
+   * Any other scheme, `file:` included, is refused.
+   */
+  private resolveManifestSource(source: string): ResolvedManifestSource {
+    if (typeof source !== 'string' || source.length === 0) {
+      throw new RegistrySourceConfinementError(
+        String(source),
+        'source must be a non-empty string',
+      );
+    }
+    if (isScpGitSource(source)) {
+      return { kind: 'remote', location: source };
+    }
+    if (hasUrlScheme(source)) {
+      parseRemoteSource(source);
+      return { kind: 'remote', location: source };
     }
 
-    if (isAbsolute(source)) {
-      return source;
+    if (this.isLocalManifest()) {
+      const location = resolve(dirname(this.manifestUrl), source);
+      const { physical, physicalRoot } = confineLocalSource(
+        source,
+        this.getLocalRegistryRoot(),
+        location,
+      );
+      // Checked here, not at install: resolvePackage's callers stage the
+      // source with their own installer and never reach this provider's.
+      assertPlainLocalDirectorySource(source, location, physical);
+      return { kind: 'local', location, physical, root: physicalRoot };
     }
 
-    if (this.manifestUrl.startsWith('/') || this.manifestUrl.startsWith('.')) {
-      return resolve(dirname(this.manifestUrl), source);
+    if (isAbsolute(source) || isDriveLetterPath(source)) {
+      throw new RegistrySourceConfinementError(
+        source,
+        'a network registry manifest cannot name a local path',
+      );
     }
+    // A relative reference stays on the registry host. A backslash makes the
+    // URL parser read `\\host` as an authority and switch hosts, so it is
+    // refused rather than resolved (`//host` was refused above as absolute).
+    // The origin is checked after resolution too, because the parser also
+    // strips leading whitespace and tabs anywhere (`\t//host`).
+    if (source.includes('\\')) {
+      throw new RegistrySourceConfinementError(
+        source,
+        'a relative source cannot contain a backslash',
+      );
+    }
+    const url = parseRemoteSource(source, this.manifestUrl);
+    if (url.origin !== new URL(this.manifestUrl).origin) {
+      throw new RegistrySourceConfinementError(
+        source,
+        'a relative source resolved to another host',
+      );
+    }
+    return { kind: 'remote', location: url.toString() };
+  }
 
+  /**
+   * Source shown in a catalog listing. A refused entry stays listed without a
+   * source — installing it reports the refusal — so one bad entry does not
+   * take the whole catalog down.
+   */
+  private listedSource(id: string, source: string): string | undefined {
     try {
-      return new URL(source, this.manifestUrl).toString();
-    } catch {
-      return source;
+      return this.resolveManifestSource(source).location;
+    } catch (error) {
+      if (!(error instanceof RegistrySourceConfinementError)) throw error;
+      this.logger?.warn('Registry manifest source refused', {
+        entryId: id,
+        error: error.message,
+      });
+      return undefined;
     }
   }
 
@@ -261,11 +548,24 @@ export class JsonManifestRegistryProvider
   }
 
   private async materializeSource(source: string): Promise<string> {
-    const resolvedSource = this.resolveManifestSource(source);
+    const resolved = this.resolveManifestSource(source);
+    // Copy or clone from the path the containment check validated, so a
+    // symlink swapped into the manifest's spelling of it after the check is
+    // not followed.
+    const resolvedSource =
+      resolved.kind === 'local' ? resolved.physical : resolved.location;
+    if (resolved.kind === 'remote' && !isGitSource(resolvedSource)) {
+      throw new Error(
+        `Plugin source ${resolvedSource} is neither a git repository nor a local path inside the registry root`,
+      );
+    }
     const tempDir = createStationTempDirSync('registry-plugin');
 
     try {
-      if (isGitSource(resolvedSource)) {
+      // One classification decides both the checks and the transport: a
+      // remote source is cloned, a local one (already proven a plain
+      // directory) is copied. A local path is never handed to git.
+      if (resolved.kind === 'remote') {
         const [url, branch] = resolvedSource.split('#');
         // #2363: Station's git allows only https and ssh. Refused here, by
         // name, rather than as a transport error deep inside git: code
@@ -279,12 +579,8 @@ export class JsonManifestRegistryProvider
         if (branch) cloneArgs.push('--branch', branch);
         cloneArgs.push(url, tempDir);
 
-        // A registry may name a local git path; git clones one over its
-        // `file` transport, allowed for exactly that case (#2363).
-        execGitSync(cloneArgs, {
-          timeout: 30000,
-          hardening: { allowFileProtocol: isLocalGitSource(url) },
-        });
+        // Remote only: git keeps its `file` transport disabled (#2363).
+        execGitSync(cloneArgs, { timeout: 30000 });
       } else {
         if (!existsSync(resolvedSource)) {
           throw new Error(`Source not found: ${resolvedSource}`);
@@ -337,7 +633,7 @@ export class JsonManifestRegistryProvider
       displayName: plugin.displayName,
       description: plugin.description,
       version: plugin.version,
-      source: this.resolveManifestSource(plugin.source),
+      source: this.listedSource(plugin.id, plugin.source),
       installed: false,
     }));
   }
@@ -366,7 +662,7 @@ export class JsonManifestRegistryProvider
         displayName: plugin.displayName,
         description: plugin.description,
         version: installedPlugin?.version,
-        source: this.resolveManifestSource(plugin.source),
+        source: this.listedSource(plugin.id, plugin.source),
         installed: true,
         installedPluginName,
       };
@@ -568,7 +864,7 @@ export class JsonManifestRegistryProvider
   async resolveSource(id: string): Promise<string | null> {
     const manifest = await this.fetchManifest();
     const plugin = manifest.plugins.find((entry) => entry.id === id);
-    return plugin ? this.resolveManifestSource(plugin.source) : null;
+    return plugin ? this.resolveManifestSource(plugin.source).location : null;
   }
 
   // IIntegrationRegistryProvider implementation
@@ -597,20 +893,29 @@ export class JsonManifestRegistryProvider
     const tool = await this.findManifestTool(id);
     if (!tool) return null;
 
-    const resolvedSource = this.resolveManifestSource(tool.source);
     try {
+      const resolved = this.resolveManifestSource(tool.source);
       let raw: string;
-      if (
-        resolvedSource.startsWith('https://') ||
-        resolvedSource.startsWith('http://')
-      ) {
-        const response = await fetch(
-          new URL('integration.json', `${resolvedSource}/`).toString(),
+      if (resolved.kind === 'local') {
+        // The file itself must be inside the root, not only its directory.
+        raw = readFileSync(
+          assertPhysicallyInside(
+            tool.source,
+            resolved.root,
+            join(resolved.physical, 'integration.json'),
+          ),
+          'utf-8',
         );
+      } else {
+        const base = new URL(`${resolved.location}/`);
+        if (base.protocol !== 'https:' && base.protocol !== 'http:') {
+          throw new Error(
+            `Integration source protocol ${base.protocol} cannot be read`,
+          );
+        }
+        const response = await fetch(new URL('integration.json', base));
         if (!response.ok) return null;
         raw = await response.text();
-      } else {
-        raw = readFileSync(join(resolvedSource, 'integration.json'), 'utf-8');
       }
       const def = JSON.parse(raw) as ToolDef;
       return { ...def, id: def.id || tool.id };
@@ -638,12 +943,22 @@ export class JsonManifestRegistryProvider
           displayName: tool.displayName,
           description: tool.description,
           version: tool.version,
-          source: this.resolveManifestSource(tool.source),
+          source: this.listedSource(tool.id, tool.source),
           installed: false,
         }));
       },
       listInstalled: async (): Promise<RegistryItem[]> => [],
       install: async (id: string): Promise<InstallResult> => {
+        // Refuse a non-confined source by name rather than as "not found".
+        const tool = await this.findManifestTool(id);
+        if (tool) {
+          try {
+            this.resolveManifestSource(tool.source);
+          } catch (error) {
+            if (!(error instanceof RegistrySourceConfinementError)) throw error;
+            return { success: false, message: error.message };
+          }
+        }
         const def = await this.readManifestToolDef(id);
         if (!def) {
           return {

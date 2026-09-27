@@ -31,8 +31,9 @@
  * Error-correction level is the one QR option this file does not import
  * from a shared constant: neither `QRDisplay`'s `QRCode.toCanvas` call nor
  * this file's `QRCode.create` call passes `errorCorrectionLevel`, so both
- * get the SAME `qrcode` package default ('M', asserted below) rather than
- * two copies of a chosen value that could drift independently.
+ * get the SAME `qrcode` package default rather than two copies of a chosen
+ * value that could drift independently. `QRDisplay.test.tsx` pins that
+ * `QRDisplay` passes none.
  */
 import jsQR from 'jsqr';
 import QRCode from 'qrcode';
@@ -128,13 +129,5 @@ describe('QR encode → decode round-trip', () => {
   it('smaller rendered size (120px) still produces a scannable QR', () => {
     const result = encodeAndDecode(TEST_URL, 120, 1);
     expect(result?.data).toBe(TEST_URL);
-  });
-
-  it('uses the same error-correction level as QRDisplay (neither passes errorCorrectionLevel, so both take the qrcode package default: M)', () => {
-    const defaultLevel = QRCode.create(TEST_URL).errorCorrectionLevel;
-    const explicitM = QRCode.create(TEST_URL, {
-      errorCorrectionLevel: 'M',
-    }).errorCorrectionLevel;
-    expect(defaultLevel).toEqual(explicitM);
   });
 });

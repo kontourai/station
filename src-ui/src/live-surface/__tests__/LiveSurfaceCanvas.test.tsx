@@ -11,9 +11,6 @@
  * emits.
  */
 
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   encodeLiveSurfaceRecord,
   type LiveSurfaceControlLease,
@@ -27,6 +24,7 @@ import {
   screen,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { sharedActionsTouchFloor } from '../../__tests__/helpers/shared-touch-floor';
 import { LiveSurfaceCanvas } from '../LiveSurfaceCanvas';
 
 const SURFACE = 'browser:session-1';
@@ -871,30 +869,10 @@ describe('LiveSurfaceCanvas', () => {
     for (const button of Array.from(row.querySelectorAll('button')))
       expect(button.parentElement).toBe(row);
 
-    const indexCss = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), '../../index.css'),
-      'utf8',
-    );
-    const mobileBlock = indexCss.slice(
-      indexCss.indexOf(
-        '@media (max-width: 768px), (max-height: 540px) and (pointer: coarse)',
-      ),
-    );
-    const COMBINATOR = '> :is(button, a, .button, [role="button"])';
-    const floors: { selectors: string; body: string }[] = [];
-    for (let at = mobileBlock.indexOf(COMBINATOR); at > -1; ) {
-      floors.push({
-        selectors: mobileBlock.slice(Math.max(0, at - 400), at),
-        body: mobileBlock.slice(at, mobileBlock.indexOf('\n  }', at)),
-      });
-      at = mobileBlock.indexOf(COMBINATOR, at + 1);
-    }
-    const shared = floors.find((rule) =>
-      rule.selectors.includes('[class*="__actions"]'),
-    );
+    const shared = sharedActionsTouchFloor();
     expect(shared, 'no shared __actions touch-floor rule').toBeDefined();
-    expect(shared?.body).toContain('min-height: 44px');
-    expect(shared?.body).toContain('min-width: 44px');
+    expect(shared?.['min-height']).toBe('44px');
+    expect(shared?.['min-width']).toBe('44px');
   });
 
   test('a 404 is a terminal "not available" state with no reconnect', async () => {

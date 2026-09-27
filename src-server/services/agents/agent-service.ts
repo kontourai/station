@@ -248,7 +248,7 @@ export class AgentService {
   constructor(
     private configLoader: ConfigLoader,
     private storageAdapter: IStorageAdapter,
-    private activeAgents: Map<string, Agent>,
+    _activeAgents: Map<string, Agent>,
     private agentMetadataMap: Map<string, AgentMetadata>,
     _agentSpecs: Map<string, AgentSpec>,
     private logger: any,
@@ -749,18 +749,5 @@ export class AgentService {
     await this.configLoader.deleteAgent(slug);
     agentOps.add(1, { operation: 'delete', agent: slug });
     return { success: true };
-  }
-
-  /** Alias kept for existing callers; `getAgent` is the name of the seam. */
-  async loadAgentSpec(slug: string): Promise<AgentSpec> {
-    return this.getAgent(slug);
-  }
-
-  getActiveAgent(slug: string): Agent | undefined {
-    return this.activeAgents.get(slug);
-  }
-
-  isAgentActive(slug: string): boolean {
-    return this.activeAgents.has(slug);
   }
 }

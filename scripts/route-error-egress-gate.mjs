@@ -889,16 +889,6 @@ export function collectTransportErrorEgressFindings({ rootDir }) {
   return findings;
 }
 
-export function collectTransportErrorEgressFindingsForSources(sources) {
-  const findings = [];
-  for (const [file, source] of Object.entries(sources)) {
-    for (const identity of findUnsafeTransportErrorEgress(source, file)) {
-      findings.push(`Raw outward or durable error coercion: ${identity}.`);
-    }
-  }
-  return findings;
-}
-
 export function findDirectRouteMessageEgress(source, file, options = {}) {
   const sourceFile = ts.createSourceFile(
     file,
@@ -1023,32 +1013,5 @@ export function collectRouteErrorEgressFindings({
     }
   }
   findings.push(...collectTransportErrorEgressFindings({ rootDir }));
-  return findings;
-}
-
-export function collectRouteErrorEgressFindingsForSources(
-  sources,
-  { reviewed = REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS } = {},
-) {
-  const actual = new Set();
-  for (const [file, source] of Object.entries(sources)) {
-    for (const identity of findDirectRouteMessageEgress(source, file))
-      actual.add(identity);
-  }
-  const findings = [];
-  for (const identity of actual) {
-    if (!reviewed.has(identity)) {
-      findings.push(
-        `Unreviewed direct outward .message serialization: ${identity}.`,
-      );
-    }
-  }
-  for (const identity of reviewed) {
-    if (!actual.has(identity)) {
-      findings.push(
-        `Stale reviewed direct outward .message serialization: ${identity}.`,
-      );
-    }
-  }
   return findings;
 }

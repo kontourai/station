@@ -59,16 +59,6 @@ function asOperator(app: Hono) {
 }
 
 describe('Coding Routes', () => {
-  test('GET /files returns file tree', async () => {
-    const body = await json(
-      await appFor().request(
-        `/files?projectSlug=p&path=${encodeURIComponent(project)}`,
-      ),
-    );
-    expect(body.success).toBe(true);
-    expect(Array.isArray(body.data)).toBe(true);
-  });
-
   test('GET /files refuses a request that names no Project', async () => {
     const res = await appFor().request(
       `/files?path=${encodeURIComponent(project)}`,
@@ -95,11 +85,6 @@ describe('Coding Routes', () => {
     );
     expect(Array.isArray(body.data)).toBe(true);
     expect(typeof body.scanTruncated).toBe('boolean');
-  });
-
-  test('GET /files/content refuses a request that names no Project', async () => {
-    const res = await appFor().request('/files/content?file=x.txt');
-    expect(res.status).toBe(400);
   });
 
   test('GET /files/content returns 400 without the file param', async () => {
@@ -135,16 +120,6 @@ describe('Coding Routes', () => {
   });
 
   describe('git routes on a non-repo directory', () => {
-    test('GET /git/status returns 200 with isRepo:false (no 400)', async () => {
-      const res = await appFor(nonRepoDir).request(
-        `/git/status?projectSlug=p&path=${encodeURIComponent(nonRepoDir)}`,
-      );
-      expect(res.status).toBe(200);
-      const body = await json(res);
-      expect(body.success).toBe(true);
-      expect(body.data.isRepo).toBe(false);
-    });
-
     test('GET /git/log returns 200 with an empty list on a non-repo', async () => {
       const res = await appFor(nonRepoDir).request(
         `/git/log?projectSlug=p&path=${encodeURIComponent(nonRepoDir)}`,

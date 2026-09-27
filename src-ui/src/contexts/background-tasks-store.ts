@@ -130,9 +130,9 @@ const CHILD_WORK_CARD_STATE: Record<ChildWorkStatus, BackgroundTaskState> = {
 /**
  * #2456: the ONE renderer from provider-neutral child work to a card. Every
  * delegate card and every provider-subagent card is built here; the per-
- * producer branches keep each card's members (and their order) exactly what
- * the pre-contract builders produced, which
- * `background-tasks-child-work-parity.test.ts` pins byte for byte.
+ * producer branches keep each card's members exactly what the pre-contract
+ * builders produced, which `background-tasks-child-work-parity.test.ts` pins
+ * member for member.
  *
  * `placement` carries what a child-work item does not know about the card:
  * which chat shows it, the card's start time on this client's clock basis,

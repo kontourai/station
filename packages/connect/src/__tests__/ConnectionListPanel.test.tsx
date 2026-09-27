@@ -447,6 +447,41 @@ describe('ConnectionListPanel', () => {
     expect(onSelect).toHaveBeenCalledOnce();
   });
 
+  it('drives a starting local server dot from its lifecycle, not the health probe', () => {
+    // `renderPanel` reports every row as connected, so only the lifecycle
+    // mapping can put a connecting dot here.
+    renderPanel(vi.fn(), {
+      connections: [
+        { ...downLocalServer, injectedStatus: 'starting' as const },
+      ],
+    });
+    expect(screen.getByText('Starting…')).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'connecting' })).toBeTruthy();
+  });
+
+  it('renders a CLI base like a reachable Station: URL, probe-driven dot, no status line', () => {
+    // Injected with no lifecycle status. Even a mismatch or missing
+    // credential on it never becomes a pairing prompt: the store cannot
+    // re-pair an injected connection.
+    const cliBase: SavedConnection = {
+      ...connection,
+      id: 'cli-base',
+      name: 'CLI Station',
+      url: 'http://127.0.0.1:3141',
+      injected: true,
+      injectedSource: 'cli-base',
+      credentialState: 'required',
+      lastError: { reason: 'identity-mismatch', at: Date.now() },
+    };
+    renderPanel(vi.fn(), { connections: [cliBase] });
+
+    expect(screen.getByText('http://127.0.0.1:3141')).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'connected' })).toBeTruthy();
+    expect(
+      document.querySelector('.station-connect-row__meta--warning'),
+    ).toBeNull();
+  });
+
   it('offers an explicit CLI-default action only for a shared saved Station', () => {
     const onMakeDefaultProfile = vi.fn();
     const sharedProfile = { ...connection, id: 'station-profile:kontour' };
@@ -488,6 +523,8 @@ describe('ConnectionListPanel', () => {
     expect(failureRow?.textContent).toContain(
       'https://station-one.example.ts.net',
     );
+    // A failure with nothing for this device to do offers no action.
+    expect(failureRow?.querySelector('button')).toBeNull();
   });
 
   /**
@@ -567,9 +604,6 @@ describe('ConnectionListPanel', () => {
       // same connection also carries in `lastError`.
       expect(document.body.textContent).not.toContain('Credential required');
       expect(document.body.textContent).not.toContain(
-        'This Station is shared with the CLI',
-      );
-      expect(document.body.textContent).not.toContain(
         "isn't the one this device paired with",
       );
       // No action for a pending row — waiting is the only thing to do.
@@ -607,13 +641,20 @@ describe('ConnectionListPanel', () => {
       ).toBeTruthy();
     });
 
-    it('never renders the CLI-sharing note on the sheet', () => {
+    it('ranks a missing credential above a generic failure on the same card', () => {
       renderPanel(vi.fn(), {
-        connections: [{ ...connection, id: 'station-profile:kontour' }],
+        connections: [
+          {
+            ...connection,
+            credentialState: 'required' as const,
+            lastError: { reason: 'unreachable', at: Date.now() },
+          },
+        ],
       });
-      expect(document.body.textContent).not.toContain(
-        'This Station is shared with the CLI',
-      );
+
+      const rows = warningRows();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.textContent).toBe('Credential requiredRequest access');
     });
 
     it('renders no status line at all for a healthy connection', () => {

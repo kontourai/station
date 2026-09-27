@@ -122,6 +122,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Copies the tracked tree and runs the repo-governance lane CLI twice (clean and violating).
+  'scripts/__tests__/proof-family-route-error-egress.test.ts',
   // Real CLI prerequisite probes, a loopback listener, and the SQLite runtime owner.
   'src-server/tools/__tests__/station-control-delegation.provider-quota-connected.test.ts',
   // Creates FIFOs with mkfifo to prove plugin validation refuses them without blocking.
@@ -193,6 +195,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Type-only child_process import; the macro's spawn boundary is simulated
   // with streams, so this adds no real child launches or timing assertion.
   'scripts/__tests__/run-connected-agent-tests.test.ts',
+  // Owns a real detached process group with a delayed sidecar-like descendant
+  // to prove shell cleanup waits for descendants before removing its root.
+  'scripts/__tests__/tauri-shell-fixture-cleanup.test.ts',
   // Real peer EventStores share one disposable SQLite home and survive owner death.
   'src-server/services/plugins/__tests__/package-mcp-admission.test.ts',
   'src-server/services/plugins/__tests__/plugin-tree-v2-compatibility.test.ts',
@@ -331,9 +336,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // read. Both are the contract — the reporter must never fail a job it only
   // reports on — and neither is observable from an imported function.
   'scripts/__tests__/verification-gate-summary.test.ts',
-  // #3208: same shape one gate over — runs each static gate it lists as a real
-  // child process, so the list cannot name a script that no longer resolves.
+  // archive#3208: same shape one gate over — parses each static gate it lists in a
+  // real child process, so the list cannot name a script that no longer
+  // resolves, and runs the guard's own CLI against stub gates.
   'scripts/__tests__/prepush-static-gates.test.ts',
+  // Runs the lazy-boundary ratchet against this repository as one bounded
+  // single-shot node child.
+  'scripts/__tests__/lazy-boundary-ratchet.test.ts',
   // station 2026-08-28: same shape again — the commit-subject gate's CLI and
   // its .githooks/commit-msg wrapper run as bounded single-shot children so
   // the refusal path's exit STATUS is proven, not just the pure validator;
@@ -362,6 +371,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2176: its real-tree half, split out for the repo-scans job; same
   // `git ls-files`/child-process shape as the file above.
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // Runs the type-laundering gate as a real child process from a checkout
+  // path containing a space (known-bad and clean control) so the entry check
+  // that made it a silent no-op is proven, not just the scanner. Two bounded
+  // single-shot children.
+  'scripts/__tests__/type-laundering-gate.process.test.ts',
   // #2176: spawns the repo-scans runner through a symlink (`--list`, no
   // Vitest child) to prove its entrypoint guard reaches the runner.
   'scripts/__tests__/run-repo-scan-suites.test.ts',
@@ -416,10 +430,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // point as one bounded single-shot node child; everything else in the file
   // exercises pure decision composition.
   'scripts/__tests__/gate-for.test.ts',
-  // station#2543: proves the instruction-topology gate's build-output skip
-  // holds when the gate module runs as a real child process, not just
-  // in-process — one bounded single-shot node child per fixture root.
-  'scripts/__tests__/agent-instructions-gate.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
   'scripts/__tests__/e2e-manifest.test.ts',
@@ -496,12 +506,20 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2513: runs the ensure script once as a child process to prove a
   // refusal is a non-zero exit that leaves the spec untouched.
   'scripts/__tests__/ensure-ios-agent-activity-extension.test.ts',
+  // #2590: runs the exported-entitlements check once as a child process to
+  // prove the Notification Service Extension's refusal is a non-zero exit.
+  'scripts/__tests__/ios-exported-entitlements.test.ts',
   // station#3549: drives a single `git grep -l` through `execFileSync` to
   // discover every file that calls `adapter.startSession(` — the same "real
   // git, not a fixture" shape as gate-scope.test.ts above. Fix-forward: this
   // file landed via #3609 without a resource classification, which the
   // manifest gate itself requires for any direct child_process importer.
   'src-server/services/orchestration/__tests__/engine-start-seam.test.ts',
+  // #2707: builds the SDK barrel import graph from the real repository through
+  // `git ls-files` and `git grep -l` (via scripts/lib/sdk-barrel-selection.mjs)
+  // — the same enumeration the changed lane uses, so the oracle is what git
+  // reports, not a fixture. Three bounded single-shot children, once per file.
+  'scripts/__tests__/sdk-barrel-selection.repo.test.ts',
   // station#3615: deliberately mock-free — points the REAL claude/codex CLIs
   // at an empty config home to prove the signed-out exit-1 mapping, because
   // the mocked suite is exactly what let that conflation ship. Bounded
@@ -512,6 +530,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2822: shells out to the packaging dry-run and the publish
   // boundary script, so it spawns children like its install-script sibling.
   'scripts/__tests__/ecosystem-manifest.test.ts',
+  // #2675: runs the manifest signer CLI (sign, verify, assemble) as bounded
+  // single-shot children for each golden vector.
+  'scripts/__tests__/release-manifest-vectors.test.ts',
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',
@@ -925,6 +946,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/chatFeedback.geometry.test.tsx',
   // #2260: owns Chromium for actual mobile close-target geometry and hit testing.
   'src-ui/src/__tests__/ProjectSidebarHeader.mobileCloseGeometry.test.tsx',
+  // #90 D9: owns Chromium to measure the float pill's cascade-resolved
+  // control sizes at rest, hovered, focused and pressed.
+  'src-ui/src/float-over-chat/__tests__/FloatOverChat.touch-target.test.tsx',
   'src-ui/src/__tests__/ImportedConversationPane.test.tsx',
   // station#4474 H1 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to measure real cascade-resolved

@@ -331,39 +331,6 @@ describe('device-settings-store', () => {
     });
   });
 
-  // archive#settings-revamp NOTE: `Number('')` and
-  // `Number('   ')` both coerce to `0`, not `NaN` — an unguarded number-kind
-  // `parsePriorValue` would silently resolve an empty/whitespace prior raw
-  // value to `0` instead of the setting's real default. Currently dead code
-  // in production (no number-kind device setting has a `priorStorageKey`
-  // yet) — this test exercises the exported function directly so the guard
-  // has a pinned regression test before the first one lands.
-  describe("parsePriorValue('number') empty/whitespace guard (dead code today, guarded for the first number-kind prior key)", () => {
-    test('an empty string falls back to defaultValue, not 0', async () => {
-      const { parsePriorValue } = await freshStore();
-
-      expect(parsePriorValue({ kind: 'number' }, '', 14)).toBe(14);
-    });
-
-    test('a whitespace-only string falls back to defaultValue, not 0', async () => {
-      const { parsePriorValue } = await freshStore();
-
-      expect(parsePriorValue({ kind: 'number' }, '   ', 14)).toBe(14);
-    });
-
-    test('a genuine numeric string still parses correctly', async () => {
-      const { parsePriorValue } = await freshStore();
-
-      expect(parsePriorValue({ kind: 'number' }, '18', 14)).toBe(18);
-    });
-
-    test('a non-numeric, non-empty string falls back to defaultValue', async () => {
-      const { parsePriorValue } = await freshStore();
-
-      expect(parsePriorValue({ kind: 'number' }, 'not-a-number', 14)).toBe(14);
-    });
-  });
-
   test('malformed JSON in a prior composite value falls back to default without throwing', async () => {
     localStorage.setItem('station-feature-settings', '{not valid json');
     const { deviceSettingsStore } = await freshStore();

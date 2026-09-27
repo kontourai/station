@@ -121,6 +121,7 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   selectionState.selectedId = null;
   selectionState.select.mockReset();
   selectionState.deselect.mockReset();
@@ -248,6 +249,41 @@ describe('SkillsView', () => {
     expect((await screen.findByRole('alert')).textContent).toContain(
       'Import route unavailable',
     );
+  });
+
+  // #2708: the import fetcher's refusal carries `details`; the dialog shows
+  // the server's reason, not "Validation failed: files …".
+  test('an import validation refusal shows the reason, not the field key', async () => {
+    const { importSkills } = await import('@kontourai/station-sdk/client');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Validation failed',
+            details: {
+              formErrors: [],
+              fieldErrors: { files: ['Add at least one markdown file.'] },
+            },
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    importSkillsMock.mockImplementationOnce((files: never) =>
+      importSkills('http://localhost', files),
+    );
+    render(<SkillsView />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Import .md' }));
+    chooseImportFile('release-check.md', '# Release check');
+    await screen.findByText('1 file to import');
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Add at least one markdown file.');
+    expect(alert.textContent).not.toContain('Validation failed');
   });
 
   test('renders the create form when the URL selection is /skills/new', () => {
@@ -450,6 +486,68 @@ describe('SkillsView', () => {
         enabled: true,
         global: true,
       });
+    });
+
+    // #2708: the thrown message is field-qualified for CLI and agent readers
+    // ("Validation failed: command …"); the editor shows the server's reason.
+    // Driven through the REAL fetcher the update hook calls
+    // (`updateLocalSkill`), answering the shared validation middleware's body,
+    // so this proves the fetcher keeps `details` — not only that the view
+    // reads them off an error built by hand.
+    test('a refused save toasts the server reason, not the field key', async () => {
+      const { StationHttpError, updateLocalSkill } = await import(
+        '@kontourai/station-sdk/client'
+      );
+      let thrown: Promise<unknown> = Promise.resolve();
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Validation failed',
+            details: {
+              formErrors: [],
+              fieldErrors: {
+                command: [
+                  'A command word is lowercase letters, digits and dashes.',
+                ],
+              },
+            },
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      updateLocalSkillMock.mockImplementationOnce(
+        ({ name, ...updates }: { name: string }) => {
+          const saved = updateLocalSkill('http://localhost', name, updates);
+          thrown = saved.catch((caught: unknown) => caught);
+          return saved;
+        },
+      );
+      selectSkill(
+        { name: 'release-check', source: 'local' },
+        { name: 'release-check', source: 'local', body: 'Ship {{ticket}}' },
+      );
+
+      render(<SkillsView />);
+      fireEvent.click(
+        screen.getByRole('switch', { name: 'Runnable as a slash command' }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() =>
+        expect(showToastMock).toHaveBeenCalledWith(
+          'A command word is lowercase letters, digits and dashes.',
+        ),
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://localhost/api/skills/release-check',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+      // The same sentence would render from a plain Error carrying only the
+      // reasons; what the fetcher now keeps is the status and the details.
+      expect(await thrown).toBeInstanceOf(StationHttpError);
+      expect(await thrown).toMatchObject({ status: 400 });
     });
 
     // Turning a command OFF has to be a WRITE. Omitting `command` from the

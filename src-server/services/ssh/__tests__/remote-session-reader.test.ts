@@ -480,6 +480,56 @@ describe('federated message search', () => {
     });
   });
 
+  // #2708: an envelope `code` now rides on the SDK error. A peer that ANSWERS
+  // with `code: 'ECONNREFUSED'` answered, so it is not a refused connection.
+  test('a peer answer labelled ECONNREFUSED is not a refused connection', async () => {
+    const { searchConversationMessages } = await import(
+      '@kontourai/station-sdk/client'
+    );
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            success: false,
+            code: 'ECONNREFUSED',
+            error: 'labelled refusal',
+          }),
+          { status: 500, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const result = await searchConnectedRemoteMessages(
+        {
+          list: vi.fn(() => [
+            connectedView(
+              'env-labelled',
+              'Labelled Station',
+              'http://127.0.0.1:7',
+              'peer-labelled',
+            ),
+          ]),
+        } as never,
+        'cobalt',
+        undefined,
+        (apiBase, query, options) =>
+          searchConversationMessages(apiBase, query, options),
+        peerCredentials as never,
+      );
+
+      expect(fetchMock).toHaveBeenCalled();
+      expect(result.instances).toEqual([
+        {
+          instanceId: 'env-labelled',
+          instanceName: 'Labelled Station',
+          status: 'unreachable',
+        },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('reports a timed-out remote distinctly from a refused remote', async () => {
     const result = await searchConnectedRemoteMessages(
       {

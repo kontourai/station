@@ -1,4 +1,5 @@
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
+import { AUTH_RATE_LIMITED_ERROR_CODE } from '@kontourai/station-contracts/http';
 import type {
   ProjectInvitationPreview,
   ProjectMembershipScope,
@@ -49,7 +50,7 @@ export function createDeploymentAuthenticationRoutes(
     const retryAfter = attempts.retryAfterSeconds(peer);
     if (retryAfter !== undefined) {
       c.header('Retry-After', String(retryAfter));
-      return c.json({ error: { code: 'authentication_rate_limited' } }, 429);
+      return c.json({ error: { code: AUTH_RATE_LIMITED_ERROR_CODE } }, 429);
     }
     // Reserve before the asynchronous adapter so concurrent attempts are bounded.
     attempts.recordFailure(peer);

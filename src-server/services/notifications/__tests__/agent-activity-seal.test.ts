@@ -1,6 +1,8 @@
 import { createDecipheriv } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import {
+  NATIVE_PUSH_ALERT_SEALED_TEST_VECTOR as ALERT_VECTOR,
+  NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX,
   NATIVE_PUSH_NOTIFICATION_AAD_PREFIX,
   NATIVE_PUSH_SEALED_AAD_PREFIX,
   NATIVE_PUSH_NOTIFICATION_TEST_VECTOR as NOTIFICATION_VECTOR,
@@ -9,8 +11,10 @@ import {
 import { describe, expect, test } from 'vitest';
 import {
   sealAgentActivityCard,
+  sealApnsAlert,
   sealStationNotification,
 } from '../agent-activity-seal.js';
+import { composeApnsAlertPlaintext } from '../delivery/apns-alert-channel.js';
 
 /** An independent opener, as the phone implements it. */
 function open(
@@ -213,5 +217,77 @@ describe('sealStationNotification (#2588)', () => {
         ),
       )?.[1],
     ).toBe(NATIVE_PUSH_NOTIFICATION_AAD_PREFIX);
+  });
+});
+
+describe('the sealed iOS alert (#2590)', () => {
+  test('produces exactly the published alert known-answer vector', () => {
+    expect(
+      sealApnsAlert({
+        plaintext: ALERT_VECTOR.plaintext,
+        payloadKey: ALERT_VECTOR.payloadKey,
+        registrationId: ALERT_VECTOR.registrationId,
+        nonce: Buffer.from(ALERT_VECTOR.nonce, 'base64url'),
+      }),
+    ).toBe(ALERT_VECTOR.sealed);
+    expect(
+      open(
+        ALERT_VECTOR.sealed,
+        ALERT_VECTOR.payloadKey,
+        ALERT_VECTOR.registrationId,
+        NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX,
+      ),
+    ).toBe(ALERT_VECTOR.plaintext);
+    // The alert domain is what separates it from a card under the same key.
+    expect(() =>
+      open(
+        ALERT_VECTOR.sealed,
+        ALERT_VECTOR.payloadKey,
+        ALERT_VECTOR.registrationId,
+      ),
+    ).toThrow();
+  });
+
+  test("the vector's plaintext is exactly what the alert composer writes", () => {
+    expect(
+      composeApnsAlertPlaintext({
+        stationId: '11111111-1111-4111-8111-111111111111',
+        notification: {
+          id: 'notif-0001',
+          title: 'Approval needed',
+          body: 'Fix the flaky login test · Login App',
+        },
+        urgency: 'attention',
+        hideContent: false,
+        now: 1_800_000_000_000,
+      }),
+    ).toBe(ALERT_VECTOR.plaintext);
+  });
+
+  // The Swift host tests do not run in CI, and cannot import TypeScript, so
+  // the extension's opener test carries its own copy of the vector; this
+  // pins that copy to the contract's.
+  test("is the vector the Notification Service Extension's Swift test opens", () => {
+    const swift = readFileSync(
+      new URL(
+        '../../../../src-desktop/plugins/agent-activity/ios/Tests/StationNotificationServiceCoreTests/SealedAlertTests.swift',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const literal = (name: string) => {
+      const match = new RegExp(
+        `static let ${name} =\\s*(?:"([^"]*)"|#"(.*)"#)`,
+      ).exec(swift);
+      const value = match?.[1] ?? match?.[2];
+      if (value === undefined)
+        throw new Error(`SealedAlertTests.swift: no ${name}`);
+      return value;
+    };
+    expect(literal('payloadKey')).toBe(ALERT_VECTOR.payloadKey);
+    expect(literal('registrationId')).toBe(ALERT_VECTOR.registrationId);
+    expect(literal('nonce')).toBe(ALERT_VECTOR.nonce);
+    expect(literal('plaintext')).toBe(ALERT_VECTOR.plaintext);
+    expect(literal('sealed')).toBe(ALERT_VECTOR.sealed);
   });
 });

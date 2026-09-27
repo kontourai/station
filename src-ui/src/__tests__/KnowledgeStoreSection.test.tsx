@@ -145,6 +145,43 @@ describe('KnowledgeStoreSection', () => {
     expect(refetch).toHaveBeenCalled();
   });
 
+  // #2708: a refused create shows the error the REAL knowledge fetcher throws
+  // for the route's own failure body. `POST /api/knowledge/roots` answers a
+  // plain string `error` and no validation `details`
+  // (`knowledge-store-routes.ts`), so the view shows that sentence; the
+  // fetcher's error keeps the status.
+  test('a refused store create shows the route reason', async () => {
+    const { createKnowledgeRoot, StationHttpError } = await import(
+      '@kontourai/station-sdk/client'
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Unknown adapterId: kit-missing-store',
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    createRootError = await createKnowledgeRoot('http://localhost', {
+      scope: { kind: 'personal' },
+      adapterId: 'kit-missing-store',
+    }).catch((caught: unknown) => caught);
+    vi.unstubAllGlobals();
+    expect(createRootError).toBeInstanceOf(StationHttpError);
+    expect(createRootError).toMatchObject({ status: 400 });
+    createRootIsError = true;
+
+    render(<KnowledgeStoreSection />);
+
+    expect(
+      screen.getAllByText('Unknown adapterId: kit-missing-store').length,
+    ).toBeGreaterThan(0);
+  });
+
   test('empty state: creates the default personal knowledge store on click', () => {
     render(<KnowledgeStoreSection />);
 

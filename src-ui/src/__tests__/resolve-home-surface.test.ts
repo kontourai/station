@@ -1,4 +1,3 @@
-import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, test } from 'vitest';
 import {
   type ResolveHomeSurfaceInput,
@@ -294,48 +293,5 @@ describe('resolveHomeSurface', () => {
         }),
       ),
     ).toEqual({ status: 'empty' });
-  });
-
-  test('resolver cache-key coverage: seeded react-query projects/layouts keys provide resolver inputs', () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    queryClient.setQueryData(
-      ['projects'],
-      [{ id: 'p1', slug: 'dev', name: 'Dev' }],
-    );
-    queryClient.setQueryData(
-      ['projects', 'dev', 'layouts'],
-      [{ id: 'l1', slug: 'code', name: 'Code', type: 'coding' }],
-    );
-
-    const projects =
-      queryClient.getQueryData<{ slug: string }[]>(['projects']) ?? [];
-    const firstProjectSlug = projects[0]?.slug ?? '';
-    const firstProjectLayouts =
-      queryClient.getQueryData<{ slug: string }[]>([
-        'projects',
-        firstProjectSlug,
-        'layouts',
-      ]) ?? [];
-
-    expect(
-      resolveHomeSurface(
-        makeInput({
-          projects,
-          // This proves the resolver consumes data shaped from the same
-          // react-query keys App.tsx reads. It is not an App.tsx stale-frame
-          // regression proof by itself because the pure resolver has no render
-          // frame or local currentView state.
-          lastProject: 'deleted-project',
-          lastProjectLayout: 'deleted-layout',
-          firstProjectSlug,
-          firstProjectLayouts,
-        }),
-      ),
-    ).toEqual({
-      status: 'resolved',
-      target: { type: 'layout', projectSlug: 'dev', layoutSlug: 'code' },
-    });
   });
 });

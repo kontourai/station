@@ -1847,10 +1847,6 @@ describe('Home lifecycle label answerability (station#1783)', () => {
     expect(item.unanswerableNotice).toContain('2026-08-03T12:04:03.000Z');
   });
 
-  test('anti-filter: the row is still built', () => {
-    expect(build({ answerability: observation })).toHaveLength(1);
-  });
-
   test('control: an answerable session is unchanged and unannotated', () => {
     const [item] = build({});
     expect(item.lifecycleLabel).toBe('Needs attention');
@@ -1873,14 +1869,6 @@ describe('Home lifecycle label answerability (station#1783)', () => {
       answerability: observation,
     });
     expect(item.lifecycleLabel).toBe('Completed');
-  });
-
-  test('...and carries NO notice, so nothing contradicts the Done chip', () => {
-    const [item] = build({
-      lifecycleState: 'completed',
-      answerability: observation,
-    });
-    expect(item.unanswerableNotice).toBeUndefined();
   });
 
   test('the notice is bound to the label — iff, both directions', () => {

@@ -360,20 +360,30 @@ fn same_or_descendant(path: &Path, parent: &Path) -> bool {
 /// Existing ancestors are canonicalized before comparison so symlink aliases
 /// cannot bypass the same boundary.
 pub fn admit_station_runtime_home_for_root(home: &Path, root: &Path) -> Result<PathBuf, String> {
-    let explicit_root = env::var_os("STATION_ROOT").filter(|value| !value.to_string_lossy().trim().is_empty());
-    let explicit_home = env::var_os("STATION_HOME").filter(|value| !value.to_string_lossy().trim().is_empty());
+    let explicit_root =
+        env::var_os("STATION_ROOT").filter(|value| !value.to_string_lossy().trim().is_empty());
+    let explicit_home =
+        env::var_os("STATION_HOME").filter(|value| !value.to_string_lossy().trim().is_empty());
     // Match the TypeScript admission contract: equality is legitimate only
     // when the root was derived from this explicitly selected runtime home.
-    let derived = explicit_root.is_none() && explicit_home.as_ref().is_some_and(|value| {
-        match (canonical_path_through_existing_ancestor(Path::new(value)), canonical_path_through_existing_ancestor(home)) {
-            (Ok(configured), Ok(selected)) => configured == selected,
-            _ => false,
-        }
-    });
+    let derived = explicit_root.is_none()
+        && explicit_home.as_ref().is_some_and(|value| {
+            match (
+                canonical_path_through_existing_ancestor(Path::new(value)),
+                canonical_path_through_existing_ancestor(home),
+            ) {
+                (Ok(configured), Ok(selected)) => configured == selected,
+                _ => false,
+            }
+        });
     admit_station_runtime_home_with_root(home, root, derived)
 }
 
-fn admit_station_runtime_home_with_root(home: &Path, root: &Path, root_derived_from_home: bool) -> Result<PathBuf, String> {
+fn admit_station_runtime_home_with_root(
+    home: &Path,
+    root: &Path,
+    root_derived_from_home: bool,
+) -> Result<PathBuf, String> {
     let lexical_home = lexical_absolute(home)?;
     let lexical_root = lexical_absolute(root)?;
     match fs::symlink_metadata(&lexical_home) {
@@ -396,6 +406,7 @@ fn admit_station_runtime_home_with_root(home: &Path, root: &Path, root_derived_f
         Path::new("config"),
         Path::new("cache"),
         Path::new("installs"),
+        Path::new("state"),
         Path::new("instances"),
         Path::new("instances/dev"),
     ] {
@@ -421,7 +432,9 @@ fn admit_station_runtime_home_with_root(home: &Path, root: &Path, root_derived_f
     if same_or_descendant(&root, &home) && !(root_derived_from_home && home == root) {
         return Err("runtime home is the shared Station root or an ancestor of it".into());
     }
-    for name in ["config", "cache", "installs"] {
+    // `state` holds CLI lifecycle state for prebuilt archives (#2675), the
+    // same protected set as packages/shared/src/runtime-path-resolver.ts.
+    for name in ["config", "cache", "installs", "state"] {
         let canonical_protected =
             canonical_path_through_existing_ancestor(&lexical_root.join(name))?;
         if same_or_descendant(&home, &canonical_protected)
@@ -895,10 +908,22 @@ pub fn probe_identity(host: &str, port: u16, path: &str) -> IdentityProbe {
         Err(_) => return IdentityProbe::unknown(),
     };
     let status = response.status().as_u16();
-    let body = response.body_mut().with_config().limit(8192).read_to_string().ok()
+    let body = response
+        .body_mut()
+        .with_config()
+        .limit(8192)
+        .read_to_string()
+        .ok()
         .and_then(|body| serde_json::from_str::<Value>(&body).ok());
-    let instance_id = body.as_ref().and_then(|body| body.get("instanceId")?.as_str().map(str::to_owned));
-    let boot_id = body.as_ref().and_then(|body| body.get("bootId")?.as_str().filter(|value| !value.is_empty() && value.len() <= 512).map(str::to_owned));
+    let instance_id = body
+        .as_ref()
+        .and_then(|body| body.get("instanceId")?.as_str().map(str::to_owned));
+    let boot_id = body.as_ref().and_then(|body| {
+        body.get("bootId")?
+            .as_str()
+            .filter(|value| !value.is_empty() && value.len() <= 512)
+            .map(str::to_owned)
+    });
     IdentityProbe {
         instance_id,
         boot_id,
@@ -911,13 +936,26 @@ pub fn probe_service(manifest: Option<&ServiceManifest>) -> ServiceHealth {
     probe_service_with_local_proof(manifest, &|_| false)
 }
 
-fn health_with_local_proof(manifest: &ServiceManifest, server: &IdentityProbe, ui: &IdentityProbe, prove: &dyn Fn(&str) -> bool) -> ServiceHealth {
-    if matches!(server.status, Some(401 | 403)) && ui.status == Some(200) && ui.instance_id.as_deref() == Some(&manifest.instance_id) {
+fn health_with_local_proof(
+    manifest: &ServiceManifest,
+    server: &IdentityProbe,
+    ui: &IdentityProbe,
+    prove: &dyn Fn(&str) -> bool,
+) -> ServiceHealth {
+    if matches!(server.status, Some(401 | 403))
+        && ui.status == Some(200)
+        && ui.instance_id.as_deref() == Some(&manifest.instance_id)
+    {
         if let Some(boot_id) = &ui.boot_id {
             if prove(boot_id) {
                 // The existing local-grant proof bound the API to this home,
                 // environment, instance and UI boot; no bearer was minted.
-                let proven = IdentityProbe { instance_id: Some(manifest.instance_id.clone()), boot_id: Some(boot_id.clone()), status: Some(200), outcome: ProbeOutcome::Responded };
+                let proven = IdentityProbe {
+                    instance_id: Some(manifest.instance_id.clone()),
+                    boot_id: Some(boot_id.clone()),
+                    status: Some(200),
+                    outcome: ProbeOutcome::Responded,
+                };
                 return derive_health(Some(manifest), &proven, ui);
             }
         }
@@ -925,7 +963,10 @@ fn health_with_local_proof(manifest: &ServiceManifest, server: &IdentityProbe, u
     derive_health(Some(manifest), server, ui)
 }
 
-pub fn probe_service_with_local_proof(manifest: Option<&ServiceManifest>, prove: &dyn Fn(&str) -> bool) -> ServiceHealth {
+pub fn probe_service_with_local_proof(
+    manifest: Option<&ServiceManifest>,
+    prove: &dyn Fn(&str) -> bool,
+) -> ServiceHealth {
     let Some(manifest) = manifest else {
         return ServiceHealth::NotInstalled;
     };
@@ -1046,7 +1087,11 @@ mod tests {
         let cwd = env::current_dir().expect("a current directory");
         let relative = Path::new("station-data");
         let absolute = cwd.join(relative);
-        assert_ne!(absolute.as_path(), relative, "precondition: spellings differ");
+        assert_ne!(
+            absolute.as_path(),
+            relative,
+            "precondition: spellings differ"
+        );
         assert_eq!(
             spawned_station_root(&absolute, relative, None),
             None,
@@ -1076,7 +1121,11 @@ mod tests {
             None
         );
         assert_eq!(
-            spawned_station_root(&same, &same, Some(std::ffi::OsString::from("/data/station"))),
+            spawned_station_root(
+                &same,
+                &same,
+                Some(std::ffi::OsString::from("/data/station"))
+            ),
             Some(same)
         );
     }
@@ -1117,12 +1166,29 @@ mod tests {
         let server = probe(Some(401), None);
         let mut ui = probe(Some(200), Some("default"));
         ui.boot_id = Some("owned-boot".into());
-        assert_eq!(health_with_local_proof(&manifest, &server, &ui, &|boot| boot == "owned-boot"), ServiceHealth::Running);
-        assert_eq!(health_with_local_proof(&manifest, &server, &ui, &|_| false), ServiceHealth::Unhealthy);
+        assert_eq!(
+            health_with_local_proof(&manifest, &server, &ui, &|boot| boot == "owned-boot"),
+            ServiceHealth::Running
+        );
+        assert_eq!(
+            health_with_local_proof(&manifest, &server, &ui, &|_| false),
+            ServiceHealth::Unhealthy
+        );
         ui.instance_id = Some("another-instance".into());
-        assert_eq!(health_with_local_proof(&manifest, &server, &ui, &|_| panic!("foreign UI must not request proof")), ServiceHealth::Unhealthy);
-        ui.instance_id = Some("default".into()); ui.boot_id = None;
-        assert_eq!(health_with_local_proof(&manifest, &server, &ui, &|_| panic!("missing boot must not request proof")), ServiceHealth::Unhealthy);
+        assert_eq!(
+            health_with_local_proof(&manifest, &server, &ui, &|_| panic!(
+                "foreign UI must not request proof"
+            )),
+            ServiceHealth::Unhealthy
+        );
+        ui.instance_id = Some("default".into());
+        ui.boot_id = None;
+        assert_eq!(
+            health_with_local_proof(&manifest, &server, &ui, &|_| panic!(
+                "missing boot must not request proof"
+            )),
+            ServiceHealth::Unhealthy
+        );
     }
 
     struct TempHome(tempfile::TempDir);
@@ -1181,6 +1247,8 @@ mod tests {
             root.join("config"),
             root.join("cache"),
             root.join("installs"),
+            root.join("state"),
+            root.join("state/stable"),
             root.join("instances"),
             root.join("instances/dev"),
             root.join("instances/stable/nested"),
@@ -1235,7 +1303,7 @@ mod tests {
         let outside = parent.join("outside");
         fs::create_dir(&root).unwrap();
         fs::create_dir(&outside).unwrap();
-        for name in ["config", "cache", "installs"] {
+        for name in ["config", "cache", "installs", "state"] {
             let target = outside.join(name);
             fs::create_dir(&target).unwrap();
             symlink(&target, root.join(name)).unwrap();
@@ -1254,7 +1322,14 @@ mod tests {
     #[test]
     fn unsafe_shared_containers_block_unrelated_runtime_homes() {
         use std::os::unix::fs::symlink;
-        for container in ["config", "cache", "installs", "instances", "instances/dev"] {
+        for container in [
+            "config",
+            "cache",
+            "installs",
+            "state",
+            "instances",
+            "instances/dev",
+        ] {
             let parent = temp_home();
             let root = parent.join("root");
             let outside = parent.join("outside");
@@ -1943,9 +2018,11 @@ mod tests {
     }
 }
 
-#[cfg(test)] mod standalone_home_tests {
+#[cfg(test)]
+mod standalone_home_tests {
     use super::*;
-    #[test] fn only_explicitly_self_rooted_homes_can_equal_the_root() {
+    #[test]
+    fn only_explicitly_self_rooted_homes_can_equal_the_root() {
         let directory = tempfile::tempdir().unwrap();
         let home = directory.path().join("standalone");
         assert!(admit_station_runtime_home_with_root(&home, &home, true).is_ok());
@@ -1955,9 +2032,11 @@ mod tests {
     }
 }
 
-#[cfg(all(test, unix))] mod spawned_root_alias_tests {
+#[cfg(all(test, unix))]
+mod spawned_root_alias_tests {
     use super::*;
-    #[test] fn a_parent_alias_does_not_turn_a_derived_root_into_an_explicit_root() {
+    #[test]
+    fn a_parent_alias_does_not_turn_a_derived_root_into_an_explicit_root() {
         let directory = tempfile::tempdir().unwrap();
         let real = directory.path().join("real");
         std::fs::create_dir_all(real.join("home")).unwrap();
@@ -1965,6 +2044,11 @@ mod tests {
         std::os::unix::fs::symlink(&real, &alias).unwrap();
         let home = real.join("home").canonicalize().unwrap();
         assert_eq!(spawned_station_root(&alias.join("home"), &home, None), None);
-        assert!(spawned_station_root(&alias.join("home"), &home, Some(alias.join("home").into_os_string())).is_some());
+        assert!(spawned_station_root(
+            &alias.join("home"),
+            &home,
+            Some(alias.join("home").into_os_string())
+        )
+        .is_some());
     }
 }

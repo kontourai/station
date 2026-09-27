@@ -26,7 +26,6 @@ import { installPluginFromSource } from '../../../services/plugins/plugin-instal
 import {
   PLUGIN_MANIFEST_MAX_BYTES,
   PluginManifestReadRefusedError,
-  readPluginManifestBytesBounded,
 } from '../../../services/plugins/plugin-manifest-bounded-read.js';
 import { installPluginDependency } from '../../../services/plugins/plugin-source.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
@@ -424,29 +423,5 @@ describe('install refuses what preview refuses (#2342)', () => {
     );
     expect(existsSync(join(root, 'plugins', 'leaked-name'))).toBe(false);
     expect(stagingLeftovers(root)).toEqual([]);
-  });
-});
-
-describe('readPluginManifestBytesBounded', () => {
-  test('refuses a FIFO in place without blocking', () => {
-    const root = makeRoot();
-    const path = join(root, 'plugin.json');
-    execFileSync('mkfifo', [path]);
-    // A blocking open would hang this synchronous call, and the test with it.
-    expect(readPluginManifestBytesBounded(path)).toEqual({
-      ok: false,
-      code: 'manifest-not-regular-file',
-      message: 'plugin.json is not a regular file.',
-    });
-  });
-
-  test('accepts a manifest exactly at the cap', () => {
-    const root = makeRoot();
-    const path = join(root, 'plugin.json');
-    writeFileSync(path, '');
-    truncateSync(path, PLUGIN_MANIFEST_MAX_BYTES);
-    const read = readPluginManifestBytesBounded(path);
-    expect(read.ok).toBe(true);
-    expect(read.ok && read.raw.length).toBe(PLUGIN_MANIFEST_MAX_BYTES);
   });
 });

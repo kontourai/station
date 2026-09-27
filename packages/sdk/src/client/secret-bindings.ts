@@ -1,5 +1,5 @@
 import type { SecretBindingView } from '@kontourai/station-contracts/secret-binding';
-import { apiErrorMessage } from './api-error-message';
+import { envelopeError } from './api-error-message';
 import { authenticatedFetch } from './http';
 
 export interface SecretBindingConsumerInput {
@@ -51,9 +51,24 @@ async function request<T>(
     `${apiBase}/api/secret-bindings${path}`,
     init,
   );
-  const result = (await response.json()) as Envelope<T>;
+  let result: Envelope<T>;
+  try {
+    result = (await response.json()) as Envelope<T>;
+  } catch (error) {
+    // A non-JSON failure (a proxy's HTML 502) keeps its status (#2708); an
+    // unreadable 2xx is a protocol failure and rethrows the parse error.
+    if (!response.ok)
+      throw envelopeError(
+        response,
+        undefined,
+        'Secret binding request failed.',
+      );
+    throw error;
+  }
+  // #2708: a refusal keeps its status, `code` and validation `details`, so the
+  // UI can show the server's reason rather than the schema's field names.
   if (!response.ok || !result.success || result.data === undefined)
-    throw new Error(apiErrorMessage(result, 'Secret binding request failed.'));
+    throw envelopeError(response, result, 'Secret binding request failed.');
   return result.data;
 }
 

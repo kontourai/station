@@ -17,6 +17,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
@@ -25,6 +26,7 @@ import * as pluginBundles from '../../../routes/plugins/plugin-bundles.js';
 import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
 import { loadPluginProviders } from '../../../routes/plugins/plugin-loader.js';
 import { createRegistryRoutes } from '../../../routes/plugins/registry.js';
+import { execGitSync } from '../../../utils/git-exec.js';
 import type { Logger } from '../../../utils/logger.js';
 import {
   corruptFile,
@@ -173,6 +175,9 @@ function registrySourceFixture(
   ]);
 }
 
+// Removed in an after-hook even when a test fails part-way (#2421).
+const trackedTempDir = trackTempDirs();
+
 function writePlugin(
   sourceDir: string,
   manifest: Record<string, unknown>,
@@ -232,10 +237,13 @@ async function dependencyApproval(
   contentDigest: string;
   dependencies: string[];
 }> {
+  // Staged the way the preview route stages a dependency (dependency mode),
+  // which is where a real client's dependency approval comes from.
   const staged = await fetchPluginSource(
     source,
     join(root, 'plugins'),
     logger(),
+    { dependency: true },
   );
   if ('error' in staged) throw new Error(staged.error);
   try {
@@ -608,6 +616,47 @@ describe('dependency approval from the real preview route', () => {
       expect(existsSync(join(root, 'plugins', 'parent'))).toBe(false);
     },
   );
+
+  test('never clones a local git repository a registry supplies for a dependency', async () => {
+    const root = trackedTempDir('station-registry-local-git-');
+    const work = join(root, 'middle-work');
+    writePlugin(work, { name: 'middle', version: '1.0.0' });
+    execGitSync(['init', '-b', 'main'], { cwd: work });
+    execGitSync(['config', 'user.email', 'station@example.com'], { cwd: work });
+    execGitSync(['config', 'user.name', 'Station Test'], { cwd: work });
+    execGitSync(['add', '-A'], { cwd: work });
+    execGitSync(['commit', '-m', 'middle'], { cwd: work });
+    const bare = join(root, 'middle.git');
+    execGitSync(['clone', '--bare', work, bare], {
+      hardening: { allowFileProtocol: true },
+    });
+    const parent = join(root, 'parent');
+    writePlugin(parent, {
+      name: 'parent',
+      version: '1.0.0',
+      dependencies: [{ id: 'middle' }],
+    });
+    registryApp(root, [
+      { id: 'parent', source: parent },
+      { id: 'middle', source: bare },
+    ]);
+    const app = new Hono();
+    registerPluginInstallRoutes(app, {
+      ...deps(root),
+      projectVisiblePlugins: () => (installed) => installed,
+    });
+    const response = await app.request('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ registryId: 'parent' }),
+    });
+    const preview = (await response.json()) as any;
+    // The dependency is listed but was never staged: no reviewed bytes.
+    const middle = (preview.dependencies ?? []).find(
+      (entry: any) => entry.id === 'middle',
+    );
+    expect(middle?.consent, JSON.stringify(preview)).toBeUndefined();
+  });
 
   test('registry preview uses the real local source for relative transitive approvals and install', async () => {
     const root = mkdtempSync(
@@ -6059,6 +6108,118 @@ describe('plugin install consent gate (station#4288)', () => {
           consent: await approvedParent(parentSource, dependencySource, root),
         }),
       ).rejects.toThrow(/relative source must be a physical directory/);
+    });
+
+    test('refuses an absolute dependency source outside the parent package root', async () => {
+      const root = trackedTempDir('station-plugin-dependency-');
+      const dependencySource = writeProviderDependency(join(root, 'outside'));
+      const parentSource = join(root, 'packages', 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+
+      await expect(
+        installPluginFromSource(parentSource, [], deps(root), {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        }),
+      ).rejects.toThrow(/absolute source escapes its allowed package root/);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+    });
+
+    test.each([
+      ['a .git-suffixed path', 'shared-providers.git'],
+      ['an upper-case .GIT-suffixed path', 'shared-providers.GIT'],
+      ['a .git. path (Windows trailing dot)', 'shared-providers.git.'],
+      ['a #branch', 'shared-providers#main'],
+    ])('refuses %s as a local dependency source', async (_label, name) => {
+      const root = trackedTempDir('station-plugin-dependency-');
+      const packages = join(root, 'packages');
+      const dependencySource = writeProviderDependency(
+        packages,
+        'shared-providers',
+      );
+      cpSync(dependencySource, join(packages, name), { recursive: true });
+      const parentSource = join(packages, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: `../${name}` }],
+      });
+
+      await expect(
+        installPluginFromSource(parentSource, [], deps(root), {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        }),
+      ).rejects.toThrow(/local source must be a plain directory/);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+    });
+
+    test.each([['.GIT'], ['.Git'], ['.git.']])(
+      'installs a checkout dependency without its %s metadata entry',
+      async (name) => {
+        const root = trackedTempDir('station-plugin-dependency-');
+        const packages = join(root, 'packages');
+        const dependencySource = writeProviderDependency(
+          packages,
+          'shared-providers',
+        );
+        mkdirSync(join(dependencySource, name), { recursive: true });
+        writeFileSync(join(dependencySource, name, 'HEAD'), 'ref: x\n');
+        mkdirSync(join(dependencySource, 'vendor', name), { recursive: true });
+        const parentSource = join(packages, 'enterprise-layout');
+        writePlugin(parentSource, {
+          name: 'enterprise-layout',
+          version: '1.0.0',
+          dependencies: [
+            { id: 'shared-providers', source: '../shared-providers' },
+          ],
+        });
+
+        await installPluginFromSource(parentSource, [], deps(root), {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        });
+        const installed = join(root, 'plugins', 'shared-providers');
+        expect(existsSync(join(installed, 'plugin.json'))).toBe(true);
+        const gitLike = (dir: string) =>
+          readdirSync(dir).filter((entry) => /^\.git[. ]*$/i.test(entry));
+        expect(gitLike(installed)).toEqual([]);
+        expect(gitLike(join(installed, 'vendor'))).toEqual([]);
+      },
+    );
+
+    test('installs a working checkout dependency as a plain tree with every .git entry left out', async () => {
+      const root = trackedTempDir('station-plugin-dependency-');
+      const packages = join(root, 'packages');
+      const dependencySource = writeProviderDependency(
+        packages,
+        'shared-providers',
+      );
+      writeFileSync(
+        join(dependencySource, '.git'),
+        'gitdir: ../../outside/.git\n',
+      );
+      mkdirSync(join(dependencySource, 'vendor', '.git'), { recursive: true });
+      writeFileSync(join(dependencySource, 'vendor', '.git', 'HEAD'), 'x\n');
+      writeFileSync(join(dependencySource, 'vendor', 'kept.txt'), 'kept\n');
+      const parentSource = join(packages, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [
+          { id: 'shared-providers', source: '../shared-providers' },
+        ],
+      });
+
+      await installPluginFromSource(parentSource, [], deps(root), {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      const installed = join(root, 'plugins', 'shared-providers');
+      expect(existsSync(join(installed, 'plugin.json'))).toBe(true);
+      expect(existsSync(join(installed, 'vendor', 'kept.txt'))).toBe(true);
+      expect(existsSync(join(installed, '.git'))).toBe(false);
+      expect(existsSync(join(installed, 'vendor', '.git'))).toBe(false);
     });
 
     test('rejects a dependency provider collision before grants or bytes land', async () => {

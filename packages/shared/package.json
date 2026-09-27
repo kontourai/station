@@ -92,7 +92,9 @@
     "./cloud-move": "./src/cloud-move.ts",
     "./workspace-package": "./src/workspace-package.ts",
     "./environment-security-record": "./src/environment-security-record.ts",
-    "./plugin-registry-signature": "./src/plugin-registry-signature.ts"
+    "./plugin-registry-signature": "./src/plugin-registry-signature.ts",
+    "./portable-server-targets": "./src/portable-server-targets.mjs",
+    "./release-manifest": "./src/release-manifest.mjs"
   },
   "publishConfig": {
     "access": "public"

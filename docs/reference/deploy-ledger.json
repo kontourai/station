@@ -1,5 +1,344 @@
 [
   {
+    "timestampUtc": "2026-09-27T12:43:28Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2461.1",
+    "sha": "b61a6d5e75c0482ed61bd62e9f73045843968832",
+    "artifactBuiltAt": "2026-09-27T11:59:57.888Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36317054434",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36317054434)"
+    ],
+    "changelog": {
+      "previousSha": "bda38d3bcb680fddcba6f2e35a43c05d2caefb8a",
+      "groups": {
+        "feat": [
+          "[#2797](https://github.com/kontourai/station/pull/2797) feat(ci): shard fast-checks behind a fail-closed aggregator (#2709)",
+          "[#2798](https://github.com/kontourai/station/pull/2798) feat(sdk,station-control): conversation and orchestration refusals keep status and code; delegation tools relay only local codes (#2708 A-1b)",
+          "[#2792](https://github.com/kontourai/station/pull/2792) feat(sdk): station-control family fetchers keep status, code and details (#2708 A-1a)",
+          "[#2762](https://github.com/kontourai/station/pull/2762) feat(cli): keep prebuilt archive lifecycle state outside the archive (#2675 B1)",
+          "[#2778](https://github.com/kontourai/station/pull/2778) feat(relay): verify native client signaling in local echo lab"
+        ],
+        "fix": [
+          "[#2800](https://github.com/kontourai/station/pull/2800) fix(station-control): every tool failure is an MCP error, so raw invocation never reads a refusal as success (#2795)",
+          "[#2796](https://github.com/kontourai/station/pull/2796) fix(verification): write the final changed-test diagnostic before binding it",
+          "[#2791](https://github.com/kontourai/station/pull/2791) fix(test-changed): refine an SDK import change that cannot alter a barrel load (#2782)",
+          "[#2786](https://github.com/kontourai/station/pull/2786) fix(plugins): confine plugin dependency sources",
+          "[#2724](https://github.com/kontourai/station/pull/2724) fix(cli): stop registry browse crashing on server alias records; prune dead package code and weak tests"
+        ],
+        "ci": [
+          "[#2802](https://github.com/kontourai/station/pull/2802) ci: back out sharded fast-checks until PR-event shards run (#2709)"
+        ],
+        "docs": [],
+        "other": [
+          "[#2794](https://github.com/kontourai/station/pull/2794) test(scripts): test-audit batch 15 — verification tooling tests at their real boundaries",
+          "[#2788](https://github.com/kontourai/station/pull/2788) test(connect): prune dead connect code and move helper tests to rendered boundaries (test-audit batch 10)",
+          "[#2793](https://github.com/kontourai/station/pull/2793) test(server): test-audit batch 11 — providers part 1",
+          "[#2779](https://github.com/kontourai/station/pull/2779) style(desktop): apply rustfmt and check it in CI",
+          "[#2777](https://github.com/kontourai/station/pull/2777) test(ui): test-audit batch 09 — contexts, lib, utils, platform and regions",
+          "[#2770](https://github.com/kontourai/station/pull/2770) test(ui): prove sessions, Home and notification contracts at their owners",
+          "[#2775](https://github.com/kontourai/station/pull/2775) test(server): test-audit batch 02 — prune station-control tool tests and dead dispatch helpers"
+        ]
+      },
+      "note": null,
+      "commitCount": 18
+    }
+  },
+  {
+    "timestampUtc": "2026-09-27T12:43:25Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2461.1",
+    "sha": "b61a6d5e75c0482ed61bd62e9f73045843968832",
+    "artifactBuiltAt": "2026-09-27T11:59:25.201Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36317054434",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36317054434)"
+    ],
+    "changelog": {
+      "previousSha": "bda38d3bcb680fddcba6f2e35a43c05d2caefb8a",
+      "groups": {
+        "feat": [
+          "[#2797](https://github.com/kontourai/station/pull/2797) feat(ci): shard fast-checks behind a fail-closed aggregator (#2709)",
+          "[#2798](https://github.com/kontourai/station/pull/2798) feat(sdk,station-control): conversation and orchestration refusals keep status and code; delegation tools relay only local codes (#2708 A-1b)",
+          "[#2792](https://github.com/kontourai/station/pull/2792) feat(sdk): station-control family fetchers keep status, code and details (#2708 A-1a)",
+          "[#2762](https://github.com/kontourai/station/pull/2762) feat(cli): keep prebuilt archive lifecycle state outside the archive (#2675 B1)",
+          "[#2778](https://github.com/kontourai/station/pull/2778) feat(relay): verify native client signaling in local echo lab"
+        ],
+        "fix": [
+          "[#2800](https://github.com/kontourai/station/pull/2800) fix(station-control): every tool failure is an MCP error, so raw invocation never reads a refusal as success (#2795)",
+          "[#2796](https://github.com/kontourai/station/pull/2796) fix(verification): write the final changed-test diagnostic before binding it",
+          "[#2791](https://github.com/kontourai/station/pull/2791) fix(test-changed): refine an SDK import change that cannot alter a barrel load (#2782)",
+          "[#2786](https://github.com/kontourai/station/pull/2786) fix(plugins): confine plugin dependency sources",
+          "[#2724](https://github.com/kontourai/station/pull/2724) fix(cli): stop registry browse crashing on server alias records; prune dead package code and weak tests"
+        ],
+        "ci": [
+          "[#2802](https://github.com/kontourai/station/pull/2802) ci: back out sharded fast-checks until PR-event shards run (#2709)"
+        ],
+        "docs": [],
+        "other": [
+          "[#2794](https://github.com/kontourai/station/pull/2794) test(scripts): test-audit batch 15 — verification tooling tests at their real boundaries",
+          "[#2788](https://github.com/kontourai/station/pull/2788) test(connect): prune dead connect code and move helper tests to rendered boundaries (test-audit batch 10)",
+          "[#2793](https://github.com/kontourai/station/pull/2793) test(server): test-audit batch 11 — providers part 1",
+          "[#2779](https://github.com/kontourai/station/pull/2779) style(desktop): apply rustfmt and check it in CI",
+          "[#2777](https://github.com/kontourai/station/pull/2777) test(ui): test-audit batch 09 — contexts, lib, utils, platform and regions",
+          "[#2770](https://github.com/kontourai/station/pull/2770) test(ui): prove sessions, Home and notification contracts at their owners",
+          "[#2775](https://github.com/kontourai/station/pull/2775) test(server): test-audit batch 02 — prune station-control tool tests and dead dispatch helpers"
+        ]
+      },
+      "note": null,
+      "commitCount": 18
+    }
+  },
+  {
+    "timestampUtc": "2026-09-27T12:39:12Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2461.36317054434",
+    "sha": "b61a6d5e75c0482ed61bd62e9f73045843968832",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36317054434",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2461.36317054434 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "bda38d3bcb680fddcba6f2e35a43c05d2caefb8a",
+      "groups": {
+        "feat": [
+          "[#2797](https://github.com/kontourai/station/pull/2797) feat(ci): shard fast-checks behind a fail-closed aggregator (#2709)",
+          "[#2798](https://github.com/kontourai/station/pull/2798) feat(sdk,station-control): conversation and orchestration refusals keep status and code; delegation tools relay only local codes (#2708 A-1b)",
+          "[#2792](https://github.com/kontourai/station/pull/2792) feat(sdk): station-control family fetchers keep status, code and details (#2708 A-1a)",
+          "[#2762](https://github.com/kontourai/station/pull/2762) feat(cli): keep prebuilt archive lifecycle state outside the archive (#2675 B1)",
+          "[#2778](https://github.com/kontourai/station/pull/2778) feat(relay): verify native client signaling in local echo lab"
+        ],
+        "fix": [
+          "[#2800](https://github.com/kontourai/station/pull/2800) fix(station-control): every tool failure is an MCP error, so raw invocation never reads a refusal as success (#2795)",
+          "[#2796](https://github.com/kontourai/station/pull/2796) fix(verification): write the final changed-test diagnostic before binding it",
+          "[#2791](https://github.com/kontourai/station/pull/2791) fix(test-changed): refine an SDK import change that cannot alter a barrel load (#2782)",
+          "[#2786](https://github.com/kontourai/station/pull/2786) fix(plugins): confine plugin dependency sources",
+          "[#2724](https://github.com/kontourai/station/pull/2724) fix(cli): stop registry browse crashing on server alias records; prune dead package code and weak tests"
+        ],
+        "ci": [
+          "[#2802](https://github.com/kontourai/station/pull/2802) ci: back out sharded fast-checks until PR-event shards run (#2709)"
+        ],
+        "docs": [],
+        "other": [
+          "[#2794](https://github.com/kontourai/station/pull/2794) test(scripts): test-audit batch 15 — verification tooling tests at their real boundaries",
+          "[#2788](https://github.com/kontourai/station/pull/2788) test(connect): prune dead connect code and move helper tests to rendered boundaries (test-audit batch 10)",
+          "[#2793](https://github.com/kontourai/station/pull/2793) test(server): test-audit batch 11 — providers part 1",
+          "[#2779](https://github.com/kontourai/station/pull/2779) style(desktop): apply rustfmt and check it in CI",
+          "[#2777](https://github.com/kontourai/station/pull/2777) test(ui): test-audit batch 09 — contexts, lib, utils, platform and regions",
+          "[#2770](https://github.com/kontourai/station/pull/2770) test(ui): prove sessions, Home and notification contracts at their owners",
+          "[#2775](https://github.com/kontourai/station/pull/2775) test(server): test-audit batch 02 — prune station-control tool tests and dead dispatch helpers"
+        ]
+      },
+      "note": null,
+      "commitCount": 18
+    }
+  },
+  {
+    "timestampUtc": "2026-09-27T06:24:37Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2461",
+    "sha": "bda38d3bcb680fddcba6f2e35a43c05d2caefb8a",
+    "artifactBuiltAt": "2026-09-27T05:17:46.392Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36295895609",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36295895609)"
+    ],
+    "changelog": {
+      "previousSha": "719e0042f6f2941fbc47b402c1df60de2bfc4915",
+      "groups": {
+        "feat": [
+          "[#2740](https://github.com/kontourai/station/pull/2740) feat(ios): open sealed alerts in a Notification Service Extension (#2590)",
+          "[#2743](https://github.com/kontourai/station/pull/2743) feat(sdk): one envelope-to-error helper keeping status, code and details (#2708 A-0)",
+          "[#2723](https://github.com/kontourai/station/pull/2723) feat(release): per-platform manifest v2 with one shared verifier (#2675 slice A)",
+          "[#2711](https://github.com/kontourai/station/pull/2711) feat(desktop): native consumer for the notification delivery feed (#2608)",
+          "[#2726](https://github.com/kontourai/station/pull/2726) feat(relay): add native signal host and opt-in echo lab",
+          "[#2725](https://github.com/kontourai/station/pull/2725) feat(relay): add native grant custody and diagnostic signaling",
+          "[#2705](https://github.com/kontourai/station/pull/2705) feat(packaging): build and smoke prebuilt per-platform server archives (#2675 PR3a)",
+          "[#2688](https://github.com/kontourai/station/pull/2688) feat(install): nightly release ring for the portable installer (plumbing, nothing published)",
+          "[#2555](https://github.com/kontourai/station/pull/2555) feat(relay): approve Station keys in native desktop",
+          "[#2677](https://github.com/kontourai/station/pull/2677) feat(notifications): iOS alert push through APNs, fixed-text interim (#2589)",
+          "[#2699](https://github.com/kontourai/station/pull/2699) feat(station-control): agent reads act for the session's owner (#2377 slice B)"
+        ],
+        "fix": [
+          "[#2768](https://github.com/kontourai/station/pull/2768) fix(registry): confine manifest plugin sources to the registry root",
+          "[#2765](https://github.com/kontourai/station/pull/2765) fix(test-changed): refine SDK barrel fan-out in related test selection (#2707)",
+          "[#2744](https://github.com/kontourai/station/pull/2744) fix(ci): provision JS pnpm on Intel macOS legs (#2675)",
+          "[#2710](https://github.com/kontourai/station/pull/2710) fix(dogfood): keep the installed health helper import-free",
+          "[#2712](https://github.com/kontourai/station/pull/2712) fix(chat-dock): check-again way out of a stale busy wait; copy IDs on the phone sheet",
+          "[#2706](https://github.com/kontourai/station/pull/2706) fix(chat): follow projected streaming turns and honor any scroll device",
+          "[#2704](https://github.com/kontourai/station/pull/2704) fix(release): run publish-time release policy from the default branch",
+          "[#2702](https://github.com/kontourai/station/pull/2702) fix(engines): adopt native CLIs with the spawn's lookup, and spawn them with its PATH",
+          "[#2698](https://github.com/kontourai/station/pull/2698) fix(scripts): decide the entry point by realpath through one helper",
+          "[#2697](https://github.com/kontourai/station/pull/2697) fix(service): rebuild or refuse an unstamped source install; name checkout services after their dev home"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2774](https://github.com/kontourai/station/pull/2774) test(server): test-audit batch 03 — prune capability and intent-binding replays",
+          "[#2773](https://github.com/kontourai/station/pull/2773) test(server): test-audit batch 07 — plugin routes and the mounted plugin-event gate",
+          "[#2761](https://github.com/kontourai/station/pull/2761) test(android): drop vacuous mobile specs and fold split-pane checks into the sweep",
+          "[#2748](https://github.com/kontourai/station/pull/2748) test(server): replace source greps and test-only seams with behavioural proofs",
+          "[#2757](https://github.com/kontourai/station/pull/2757) test(scripts): give the whole-tree a11y ratchet test its spawn's budget",
+          "[#2749](https://github.com/kontourai/station/pull/2749) test(server): prove project route contracts at real boundaries (audit batch 05)",
+          "[#2739](https://github.com/kontourai/station/pull/2739) test(ui): consolidate UI hook tests through their owners and drop test-only seams",
+          "[#2754](https://github.com/kontourai/station/pull/2754) test(server): prune agent/skill service tautologies and dead methods",
+          "[#2714](https://github.com/kontourai/station/pull/2714) test(scripts): prove the type-laundering gate runs from spaced paths; cover the policy-gate chain",
+          "[#2738](https://github.com/kontourai/station/pull/2738) refactor(notifications): Android alerts use the shared card-alerted mark (#2588, #2589)",
+          "[#2742](https://github.com/kontourai/station/pull/2742) test(scripts): move audit-flagged gate tests onto their production boundaries",
+          "[#2715](https://github.com/kontourai/station/pull/2715) test(ui): replace source-text tests with rendered proofs and delete dead UI code",
+          "[#2690](https://github.com/kontourai/station/pull/2690) chore(skills): add a test-audit skill adapted from OpenClaw"
+        ]
+      },
+      "note": null,
+      "commitCount": 34
+    }
+  },
+  {
+    "timestampUtc": "2026-09-27T06:24:34Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2461",
+    "sha": "bda38d3bcb680fddcba6f2e35a43c05d2caefb8a",
+    "artifactBuiltAt": "2026-09-27T05:16:34.844Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36295895609",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 36295895609)"
+    ],
+    "changelog": {
+      "previousSha": "719e0042f6f2941fbc47b402c1df60de2bfc4915",
+      "groups": {
+        "feat": [
+          "[#2740](https://github.com/kontourai/station/pull/2740) feat(ios): open sealed alerts in a Notification Service Extension (#2590)",
+          "[#2743](https://github.com/kontourai/station/pull/2743) feat(sdk): one envelope-to-error helper keeping status, code and details (#2708 A-0)",
+          "[#2723](https://github.com/kontourai/station/pull/2723) feat(release): per-platform manifest v2 with one shared verifier (#2675 slice A)",
+          "[#2711](https://github.com/kontourai/station/pull/2711) feat(desktop): native consumer for the notification delivery feed (#2608)",
+          "[#2726](https://github.com/kontourai/station/pull/2726) feat(relay): add native signal host and opt-in echo lab",
+          "[#2725](https://github.com/kontourai/station/pull/2725) feat(relay): add native grant custody and diagnostic signaling",
+          "[#2705](https://github.com/kontourai/station/pull/2705) feat(packaging): build and smoke prebuilt per-platform server archives (#2675 PR3a)",
+          "[#2688](https://github.com/kontourai/station/pull/2688) feat(install): nightly release ring for the portable installer (plumbing, nothing published)",
+          "[#2555](https://github.com/kontourai/station/pull/2555) feat(relay): approve Station keys in native desktop",
+          "[#2677](https://github.com/kontourai/station/pull/2677) feat(notifications): iOS alert push through APNs, fixed-text interim (#2589)",
+          "[#2699](https://github.com/kontourai/station/pull/2699) feat(station-control): agent reads act for the session's owner (#2377 slice B)"
+        ],
+        "fix": [
+          "[#2768](https://github.com/kontourai/station/pull/2768) fix(registry): confine manifest plugin sources to the registry root",
+          "[#2765](https://github.com/kontourai/station/pull/2765) fix(test-changed): refine SDK barrel fan-out in related test selection (#2707)",
+          "[#2744](https://github.com/kontourai/station/pull/2744) fix(ci): provision JS pnpm on Intel macOS legs (#2675)",
+          "[#2710](https://github.com/kontourai/station/pull/2710) fix(dogfood): keep the installed health helper import-free",
+          "[#2712](https://github.com/kontourai/station/pull/2712) fix(chat-dock): check-again way out of a stale busy wait; copy IDs on the phone sheet",
+          "[#2706](https://github.com/kontourai/station/pull/2706) fix(chat): follow projected streaming turns and honor any scroll device",
+          "[#2704](https://github.com/kontourai/station/pull/2704) fix(release): run publish-time release policy from the default branch",
+          "[#2702](https://github.com/kontourai/station/pull/2702) fix(engines): adopt native CLIs with the spawn's lookup, and spawn them with its PATH",
+          "[#2698](https://github.com/kontourai/station/pull/2698) fix(scripts): decide the entry point by realpath through one helper",
+          "[#2697](https://github.com/kontourai/station/pull/2697) fix(service): rebuild or refuse an unstamped source install; name checkout services after their dev home"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2774](https://github.com/kontourai/station/pull/2774) test(server): test-audit batch 03 — prune capability and intent-binding replays",
+          "[#2773](https://github.com/kontourai/station/pull/2773) test(server): test-audit batch 07 — plugin routes and the mounted plugin-event gate",
+          "[#2761](https://github.com/kontourai/station/pull/2761) test(android): drop vacuous mobile specs and fold split-pane checks into the sweep",
+          "[#2748](https://github.com/kontourai/station/pull/2748) test(server): replace source greps and test-only seams with behavioural proofs",
+          "[#2757](https://github.com/kontourai/station/pull/2757) test(scripts): give the whole-tree a11y ratchet test its spawn's budget",
+          "[#2749](https://github.com/kontourai/station/pull/2749) test(server): prove project route contracts at real boundaries (audit batch 05)",
+          "[#2739](https://github.com/kontourai/station/pull/2739) test(ui): consolidate UI hook tests through their owners and drop test-only seams",
+          "[#2754](https://github.com/kontourai/station/pull/2754) test(server): prune agent/skill service tautologies and dead methods",
+          "[#2714](https://github.com/kontourai/station/pull/2714) test(scripts): prove the type-laundering gate runs from spaced paths; cover the policy-gate chain",
+          "[#2738](https://github.com/kontourai/station/pull/2738) refactor(notifications): Android alerts use the shared card-alerted mark (#2588, #2589)",
+          "[#2742](https://github.com/kontourai/station/pull/2742) test(scripts): move audit-flagged gate tests onto their production boundaries",
+          "[#2715](https://github.com/kontourai/station/pull/2715) test(ui): replace source-text tests with rendered proofs and delete dead UI code",
+          "[#2690](https://github.com/kontourai/station/pull/2690) chore(skills): add a test-audit skill adapted from OpenClaw"
+        ]
+      },
+      "note": null,
+      "commitCount": 34
+    }
+  },
+  {
+    "timestampUtc": "2026-09-27T06:04:02Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2461.36295895609",
+    "sha": "bda38d3bcb680fddcba6f2e35a43c05d2caefb8a",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36295895609",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2461.36295895609 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "719e0042f6f2941fbc47b402c1df60de2bfc4915",
+      "groups": {
+        "feat": [
+          "[#2740](https://github.com/kontourai/station/pull/2740) feat(ios): open sealed alerts in a Notification Service Extension (#2590)",
+          "[#2743](https://github.com/kontourai/station/pull/2743) feat(sdk): one envelope-to-error helper keeping status, code and details (#2708 A-0)",
+          "[#2723](https://github.com/kontourai/station/pull/2723) feat(release): per-platform manifest v2 with one shared verifier (#2675 slice A)",
+          "[#2711](https://github.com/kontourai/station/pull/2711) feat(desktop): native consumer for the notification delivery feed (#2608)",
+          "[#2726](https://github.com/kontourai/station/pull/2726) feat(relay): add native signal host and opt-in echo lab",
+          "[#2725](https://github.com/kontourai/station/pull/2725) feat(relay): add native grant custody and diagnostic signaling",
+          "[#2705](https://github.com/kontourai/station/pull/2705) feat(packaging): build and smoke prebuilt per-platform server archives (#2675 PR3a)",
+          "[#2688](https://github.com/kontourai/station/pull/2688) feat(install): nightly release ring for the portable installer (plumbing, nothing published)",
+          "[#2555](https://github.com/kontourai/station/pull/2555) feat(relay): approve Station keys in native desktop",
+          "[#2677](https://github.com/kontourai/station/pull/2677) feat(notifications): iOS alert push through APNs, fixed-text interim (#2589)",
+          "[#2699](https://github.com/kontourai/station/pull/2699) feat(station-control): agent reads act for the session's owner (#2377 slice B)"
+        ],
+        "fix": [
+          "[#2768](https://github.com/kontourai/station/pull/2768) fix(registry): confine manifest plugin sources to the registry root",
+          "[#2765](https://github.com/kontourai/station/pull/2765) fix(test-changed): refine SDK barrel fan-out in related test selection (#2707)",
+          "[#2744](https://github.com/kontourai/station/pull/2744) fix(ci): provision JS pnpm on Intel macOS legs (#2675)",
+          "[#2710](https://github.com/kontourai/station/pull/2710) fix(dogfood): keep the installed health helper import-free",
+          "[#2712](https://github.com/kontourai/station/pull/2712) fix(chat-dock): check-again way out of a stale busy wait; copy IDs on the phone sheet",
+          "[#2706](https://github.com/kontourai/station/pull/2706) fix(chat): follow projected streaming turns and honor any scroll device",
+          "[#2704](https://github.com/kontourai/station/pull/2704) fix(release): run publish-time release policy from the default branch",
+          "[#2702](https://github.com/kontourai/station/pull/2702) fix(engines): adopt native CLIs with the spawn's lookup, and spawn them with its PATH",
+          "[#2698](https://github.com/kontourai/station/pull/2698) fix(scripts): decide the entry point by realpath through one helper",
+          "[#2697](https://github.com/kontourai/station/pull/2697) fix(service): rebuild or refuse an unstamped source install; name checkout services after their dev home"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2774](https://github.com/kontourai/station/pull/2774) test(server): test-audit batch 03 — prune capability and intent-binding replays",
+          "[#2773](https://github.com/kontourai/station/pull/2773) test(server): test-audit batch 07 — plugin routes and the mounted plugin-event gate",
+          "[#2761](https://github.com/kontourai/station/pull/2761) test(android): drop vacuous mobile specs and fold split-pane checks into the sweep",
+          "[#2748](https://github.com/kontourai/station/pull/2748) test(server): replace source greps and test-only seams with behavioural proofs",
+          "[#2757](https://github.com/kontourai/station/pull/2757) test(scripts): give the whole-tree a11y ratchet test its spawn's budget",
+          "[#2749](https://github.com/kontourai/station/pull/2749) test(server): prove project route contracts at real boundaries (audit batch 05)",
+          "[#2739](https://github.com/kontourai/station/pull/2739) test(ui): consolidate UI hook tests through their owners and drop test-only seams",
+          "[#2754](https://github.com/kontourai/station/pull/2754) test(server): prune agent/skill service tautologies and dead methods",
+          "[#2714](https://github.com/kontourai/station/pull/2714) test(scripts): prove the type-laundering gate runs from spaced paths; cover the policy-gate chain",
+          "[#2738](https://github.com/kontourai/station/pull/2738) refactor(notifications): Android alerts use the shared card-alerted mark (#2588, #2589)",
+          "[#2742](https://github.com/kontourai/station/pull/2742) test(scripts): move audit-flagged gate tests onto their production boundaries",
+          "[#2715](https://github.com/kontourai/station/pull/2715) test(ui): replace source-text tests with rendered proofs and delete dead UI code",
+          "[#2690](https://github.com/kontourai/station/pull/2690) chore(skills): add a test-audit skill adapted from OpenClaw"
+        ]
+      },
+      "note": null,
+      "commitCount": 34
+    }
+  },
+  {
     "timestampUtc": "2026-09-26T17:34:01Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2460.4",

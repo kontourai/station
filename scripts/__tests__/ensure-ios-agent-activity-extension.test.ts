@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import YAML from 'yaml';
@@ -8,6 +8,7 @@ import {
   EXTENSION_TARGET,
   ensureIosAgentActivity,
   ensureIosAgentActivityExtension,
+  NOTIFICATION_SERVICE_TARGET,
 } from '../ensure-ios-agent-activity-extension.mjs';
 
 const appInfoPlist = readFileSync(
@@ -46,7 +47,10 @@ const committedXcodeProject =
 const committedAppEntitlements =
   'src-desktop/gen/apple/station_iOS/station_iOS.entitlements';
 
-function ensure(project: string, options: Record<string, string> = {}) {
+function ensure(
+  project: string,
+  options: Record<string, string | boolean> = {},
+) {
   return YAML.parse(
     ensureIosAgentActivityExtension(project, {
       appBundleId: 'io.kontourai.station.beta',
@@ -322,6 +326,137 @@ describe('iOS agent-activity extension project spec', () => {
     expect(readFileSync(path, 'utf8')).toBe(project);
   });
 
+  test('adds the Notification Service Extension only when asked, with the shared sources it opens alerts with', () => {
+    expect(
+      ensure(renderedProject).targets[NOTIFICATION_SERVICE_TARGET],
+    ).toBeUndefined();
+    const project = ensure(renderedProject, { notificationService: true });
+    const extension = project.targets[NOTIFICATION_SERVICE_TARGET];
+    expect(NOTIFICATION_SERVICE_TARGET).toBe('StationNotificationService');
+    expect(extension.type).toBe('app-extension');
+    expect(extension.platform).toBe('iOS');
+    // Where the app deploys, so an alert opens on every iOS the app runs on.
+    expect(extension.deploymentTarget).toBe('14.0');
+    expect(extension.settings.base.STATION_APP_BUNDLE_IDENTIFIER).toBe(
+      'io.kontourai.station.beta',
+    );
+    expect(extension.settings.base.PRODUCT_BUNDLE_IDENTIFIER).toBe(
+      '$(STATION_APP_BUNDLE_IDENTIFIER).NotificationService',
+    );
+    expect(extension.settings.base.PRODUCT_NAME).toBe(
+      'StationNotificationService',
+    );
+    expect(extension.settings.base.CODE_SIGN_ENTITLEMENTS).toBe(
+      '../../ios/StationNotificationService/StationNotificationService.entitlements',
+    );
+    const shared =
+      '../../plugins/agent-activity/ios/Sources/StationAgentActivityShared';
+    expect(
+      extension.sources.map((source: { path: string }) => source.path),
+    ).toEqual([
+      '../../ios/StationNotificationService',
+      `${shared}/Base64URL.swift`,
+      `${shared}/CardOpener.swift`,
+      `${shared}/RegistrationKeychain.swift`,
+      '../../plugins/agent-activity/ios/Sources/StationNotificationServiceCore',
+    ]);
+    // Every source path names a real file or directory, relative to gen/apple.
+    for (const { path } of extension.sources)
+      expect(existsSync(join('src-desktop/gen/apple', path)), path).toBe(true);
+    expect(extension.postBuildScripts[0].script).toContain('CFBundleVersion');
+    const dependencies = project.targets.station_iOS.dependencies;
+    expect(dependencies).toContainEqual({
+      target: NOTIFICATION_SERVICE_TARGET,
+      embed: true,
+    });
+    expect(dependencies).toContainEqual({
+      target: EXTENSION_TARGET,
+      embed: true,
+    });
+    // The app's keychain groups are the Live Activity's: the extension reads
+    // registrations from the group the app already shares with the widget.
+    expect(
+      project.targets.station_iOS.entitlements.properties[
+        'keychain-access-groups'
+      ],
+    ).toEqual([
+      '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)',
+      '$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).agentactivity',
+    ]);
+  });
+
+  test("the extension's entitlements hold only the shared keychain group", () => {
+    const entitlements = readFileSync(
+      'src-desktop/ios/StationNotificationService/StationNotificationService.entitlements',
+      'utf8',
+    );
+    expect(
+      [...entitlements.matchAll(/<key>([^<]+)<\/key>/g)].map((m) => m[1]),
+    ).toEqual(['keychain-access-groups']);
+    expect(
+      [...entitlements.matchAll(/<string>([^<]+)<\/string>/g)].map((m) => m[1]),
+    ).toEqual([
+      '$(AppIdentifierPrefix)$(STATION_APP_BUNDLE_IDENTIFIER).agentactivity',
+    ]);
+    const info = readFileSync(
+      'src-desktop/ios/StationNotificationService/Info.plist',
+      'utf8',
+    );
+    expect(info).toContain(
+      '<string>com.apple.usernotifications.service</string>',
+    );
+    expect(info).toContain(
+      '<string>$(PRODUCT_MODULE_NAME).NotificationService</string>',
+    );
+  });
+
+  test('is idempotent with the Notification Service Extension, and refuses a run that would drop it', () => {
+    const options = {
+      appBundleId: 'io.kontourai.station',
+      notificationService: true,
+    };
+    const once = ensureIosAgentActivityExtension(renderedProject, options);
+    expect(ensureIosAgentActivityExtension(once, options)).toBe(once);
+    expect(
+      YAML.parse(once).targets.station_iOS.dependencies.filter(
+        (dependency: { target?: string }) =>
+          dependency.target === NOTIFICATION_SERVICE_TARGET,
+      ),
+    ).toHaveLength(1);
+    expect(() =>
+      ensureIosAgentActivityExtension(once, {
+        appBundleId: 'io.kontourai.station',
+      }),
+    ).toThrow('pass --notification-service again');
+  });
+
+  test('the command adds the Notification Service Extension with --notification-service', () => {
+    const dir = makeTempDir('station-ios-ensure-nse-');
+    const path = join(dir, 'project.yml');
+    writeFileSync(path, renderedProject);
+    const run = (...flags: string[]) =>
+      spawnSync(
+        process.execPath,
+        [
+          'scripts/ensure-ios-agent-activity-extension.mjs',
+          path,
+          '--app-bundle-id',
+          'io.kontourai.station',
+          ...flags,
+        ],
+        { encoding: 'utf8', windowsHide: true },
+      );
+    expect(run('--notification-service').status).toBe(0);
+    const written = readFileSync(path, 'utf8');
+    expect(YAML.parse(written).targets[NOTIFICATION_SERVICE_TARGET].type).toBe(
+      'app-extension',
+    );
+    const refused = run();
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('--notification-service');
+    expect(readFileSync(path, 'utf8')).toBe(written);
+  });
+
   test('the committed project does not carry the extension until a build enables it', () => {
     // Every build path that uses the committed gen/apple (CI simulator
     // builds, build:ios:simulator, tauri ios dev, a local App Store export)
@@ -336,8 +471,9 @@ describe('iOS agent-activity extension project spec', () => {
     expect(JSON.stringify(parsed.targets.station_iOS.dependencies)).not.toMatch(
       /StationAgentActivity|ActivityKit/,
     );
+    expect(parsed.targets[NOTIFICATION_SERVICE_TARGET]).toBeUndefined();
     expect(readFileSync(committedXcodeProject, 'utf8')).not.toMatch(
-      /StationAgentActivity|ActivityKit/,
+      /StationAgentActivity|ActivityKit|StationNotificationService/,
     );
     expect(readFileSync(committedAppEntitlements, 'utf8')).not.toContain(
       'keychain-access-groups',

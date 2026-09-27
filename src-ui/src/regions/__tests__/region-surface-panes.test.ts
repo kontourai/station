@@ -13,6 +13,8 @@ import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contr
 import {
   parseWorkspacePaneInstance,
   type WorkspacePaneDescriptor,
+  type WorkspacePaneSuppliableContexts,
+  workspacePaneModesSatisfiableBy,
 } from '@kontourai/station-contracts/workspace-pane';
 import {
   WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR,
@@ -21,8 +23,6 @@ import {
 import { describe, expect, test } from 'vitest';
 import { DOCK_REGION_IDS, REGION_SURFACE_REGISTRY } from '../region-model';
 import {
-  DOCK_HOST_SUPPLIABLE_CONTEXTS,
-  dockCanSupply,
   REGION_SURFACE_PANES,
   regionSurfaceOfDescriptor,
   regionSurfaceOfPane,
@@ -136,17 +136,23 @@ describe('region surface panes (#2045, #2047)', () => {
   });
 
   /**
-   * The dock's suppliable set is both the catalog filter and what every
-   * entry's descriptor must satisfy — one constant, so the two cannot
-   * disagree. Adding `task` to the set makes the task-room assertions fail;
-   * removing `source` or `workspace` makes every coding entry fail.
+   * What a dock region can bind for a pane (#2047): the dock's own project
+   * (`chatDockProjectSlug`, else the active project), and the `sourceId` and
+   * `workspaceId = projectId` the coding instances bind from it. No `task`,
+   * no `session`, no `run` — no docked pane reads one. The contract's
+   * `workspacePaneHostSuppliableContexts({ kind: 'ambient' })` is empty, so
+   * the dock's set is stated here, where the inventory is admitted against
+   * it. Adding `task` makes the task-room assertions fail; removing `source`
+   * or `workspace` makes every coding entry fail.
    */
   test('the dock supplies project, source and workspace, which every entry needs and the task-room panes exceed', () => {
-    expect([...DOCK_HOST_SUPPLIABLE_CONTEXTS].sort()).toEqual([
+    const dockSupplies: WorkspacePaneSuppliableContexts = new Set([
       'project',
       'source',
       'workspace',
-    ]);
+    ] as const);
+    const dockCanSupply = (descriptor: WorkspacePaneDescriptor) =>
+      workspacePaneModesSatisfiableBy(descriptor, dockSupplies).length > 0;
     for (const [surfaceId, pane] of REGION_SURFACE_PANES) {
       const descriptor = ENTRY_DESCRIPTORS[surfaceId];
       expect(descriptor, surfaceId).toBeDefined();

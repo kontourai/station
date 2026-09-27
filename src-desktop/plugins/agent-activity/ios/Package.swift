@@ -35,6 +35,19 @@ var targets: [Target] = [
     name: "StationAgentActivityAlertsTests",
     dependencies: ["StationAgentActivityAlerts", "StationAgentActivityShared"],
     path: "Tests/StationAgentActivityAlertsTests"),
+  // What the Notification Service Extension (#2590) does with an alert push:
+  // open the sealed notification and hand iOS it or the fixed text, once.
+  // Foundation and UserNotifications only, so it is tested on macOS too. The
+  // extension target compiles these sources with the shared ones it needs;
+  // neither the app nor the widget compiles them.
+  .target(
+    name: "StationNotificationServiceCore",
+    dependencies: ["StationAgentActivityShared"],
+    path: "Sources/StationNotificationServiceCore"),
+  .testTarget(
+    name: "StationNotificationServiceCoreTests",
+    dependencies: ["StationNotificationServiceCore", "StationAgentActivityShared"],
+    path: "Tests/StationNotificationServiceCoreTests"),
 ]
 
 if !hostTestsOnly {
