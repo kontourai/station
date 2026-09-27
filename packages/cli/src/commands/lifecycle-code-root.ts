@@ -174,23 +174,24 @@ export interface InstallerOwnedArchiveFs {
 }
 
 /**
- * The install root when `root` (a prebuilt archive's physical path) is the
- * version install.sh made active: `<installRoot>/versions/<version>`, in a
- * root carrying the installer's marker, whose `current` link resolves to
- * `root`. Null for any other archive copy (#2675 slice C).
+ * Where `root` (a prebuilt archive's physical path) sits in an install.sh
+ * install (#2675 slice C): `<installRoot>/versions/<version>` in a root
+ * carrying the installer's marker. `active` says whether the root's
+ * `current` link resolves to `root`. Null for any other archive copy.
  *
- * A service unit for such a version runs `<installRoot>/current`, so an
+ * A service unit for the active version runs `<installRoot>/current`, so an
  * upgrade flips `current` without rewriting the unit and a pruned version
- * directory never breaks it.
+ * directory never breaks it. An inactive version is one install.sh may prune
+ * at its next upgrade.
  */
-export function resolveInstallerOwnedArchiveInstallRoot(
+export function resolveInstallerOwnedArchiveVersion(
   root: string,
   fs: InstallerOwnedArchiveFs = {
     lstatSync,
     readFileSync: (path, encoding) => readFileSync(path, encoding),
     realpathSync: (path) => realpathSync(path),
   },
-): string | null {
+): { installRoot: string; active: boolean } | null {
   const versions = dirname(root);
   if (basename(versions) !== 'versions') return null;
   const installRoot = dirname(versions);
@@ -203,13 +204,19 @@ export function resolveInstallerOwnedArchiveInstallRoot(
     ) {
       return null;
     }
-    const current = join(installRoot, 'current');
-    if (!fs.lstatSync(current).isSymbolicLink()) return null;
-    return fs.realpathSync(current) === fs.realpathSync(root)
-      ? installRoot
-      : null;
   } catch {
     return null;
+  }
+  try {
+    const current = join(installRoot, 'current');
+    return {
+      installRoot,
+      active:
+        fs.lstatSync(current).isSymbolicLink() &&
+        fs.realpathSync(current) === fs.realpathSync(root),
+    };
+  } catch {
+    return { installRoot, active: false };
   }
 }
 

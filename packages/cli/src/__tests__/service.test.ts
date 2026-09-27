@@ -3217,6 +3217,33 @@ describe('what an installed service runs (#2675 slice C)', () => {
     expect(input.servicePath).not.toContain(version);
   });
 
+  test('refuses to install from an inactive installer version, before touching the backend', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { resolveLifecycleCodeRoot } = await import(
+      '../commands/lifecycle-code-root.js'
+    );
+    const { installRoot, version } = installerArchive();
+    const next = join(installRoot, 'versions', '1.2.4');
+    mkdirSync(next);
+    nodeFs.rmSync(join(installRoot, 'current'));
+    nodeFs.symlinkSync(next, join(installRoot, 'current'));
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
+
+    await expect(
+      runServiceCommand(['install'], lifecycle(baseDir), {
+        codeRoot: resolveLifecycleCodeRoot(version),
+        fs: serviceFs,
+        platform: 'linux',
+        run,
+      }),
+    ).rejects.toThrow(
+      `Cannot install a Station service from ${version}: it is not the version ${join(installRoot, 'current')} names`,
+    );
+    expect(installSystemd).not.toHaveBeenCalled();
+  });
+
   test('a source checkout installs from its physical path with the resolved Node.js, as before', async () => {
     const { runServiceCommand } = await import('../commands/service.js');
     const { resolveLifecycleCodeRoot } = await import(

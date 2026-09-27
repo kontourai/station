@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
-  resolveInstallerOwnedArchiveInstallRoot,
+  resolveInstallerOwnedArchiveVersion,
   resolveLifecycleCodeRoot,
 } from '../commands/lifecycle-code-root.js';
 import type { ServiceFs } from '../commands/service.js';
@@ -305,6 +305,20 @@ describe('where a service installed from a code root runs', () => {
           'station-portable-install-root-v2\n',
         ),
     },
+  ])('any other archive copy runs from its own path: $name', ({ damage }) => {
+    const { installRoot, versionDir } = archiveInstall(
+      makeTempDir('station-service-location-'),
+    );
+    damage(installRoot);
+    expect(resolveInstallerOwnedArchiveVersion(versionDir)).toBeNull();
+    expect(locate(versionDir)).toEqual({
+      kind: 'archive',
+      nodePath: join(versionDir, 'runtime', 'bin', 'node'),
+      repoPath: versionDir,
+    });
+  });
+
+  test.each([
     {
       name: 'current naming another version',
       damage: (installRoot: string) => {
@@ -321,25 +335,33 @@ describe('where a service installed from a code root runs', () => {
         mkdirSync(join(installRoot, 'current'));
       },
     },
-  ])('any other archive copy runs from its own path: $name', ({ damage }) => {
-    const { installRoot, versionDir } = archiveInstall(
-      makeTempDir('station-service-location-'),
-    );
-    damage(installRoot);
-    expect(resolveInstallerOwnedArchiveInstallRoot(versionDir)).toBeNull();
-    expect(locate(versionDir)).toEqual({
-      kind: 'archive',
-      nodePath: join(versionDir, 'runtime', 'bin', 'node'),
-      repoPath: versionDir,
-    });
-  });
+    {
+      name: 'no current at all',
+      damage: (installRoot: string) => rmSync(join(installRoot, 'current')),
+    },
+  ])(
+    'refuses an inactive version of an install.sh install, which the installer may prune: $name',
+    ({ damage }) => {
+      const { installRoot, versionDir } = archiveInstall(
+        makeTempDir('station-service-location-'),
+      );
+      damage(installRoot);
+      expect(resolveInstallerOwnedArchiveVersion(versionDir)).toEqual({
+        installRoot,
+        active: false,
+      });
+      expect(() => locate(versionDir)).toThrow(
+        `Cannot install a Station service from ${versionDir}: it is not the version ${join(installRoot, 'current')} names, and the installer may remove it.`,
+      );
+    },
+  );
 
   test('an archive outside a versions directory is not installer-owned', () => {
     const root = makeTempDir('station-service-location-');
     const { versionDir } = archiveInstall(root);
     const loose = join(root, 'extracted');
     nodeFs.cpSync(versionDir, loose, { recursive: true });
-    expect(resolveInstallerOwnedArchiveInstallRoot(loose)).toBeNull();
+    expect(resolveInstallerOwnedArchiveVersion(loose)).toBeNull();
     expect(locate(loose).repoPath).toBe(realpathSync(loose));
   });
 

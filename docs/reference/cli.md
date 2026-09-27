@@ -1691,11 +1691,17 @@ version `install.sh` made active, it runs them through
 upgrade switches `current` and restarts the unit without rewriting it. The
 service manifest records which (`kind`: `source` or `archive`) and, for such
 an archive, its `installRoot`; the installer and `station upgrade` recognize
-the service by that root. The unit keeps the ports it was installed with: an
-installer run that names other ports explicitly refuses rather than ignoring
-them. Every unit sets `STATION_SERVICE_MANAGED=1`, and systemd waits 75
-seconds (`TimeoutStopSec`) for `service run`'s 60-second shutdown before it
-kills the unit.
+the service by that root. Installing a service from another version under
+`<install root>/versions/` is refused, because the installer may remove it.
+The unit keeps the ports it was installed with: an installer run that names
+another port explicitly refuses rather than ignoring it. A registered unit
+that is not running (stopped, or waiting to be restarted after a crash) is
+stopped for the switch and left stopped, and the installer starts no separate
+Station beside it; `service start` starts it on the new version. Every unit
+sets `STATION_SERVICE_MANAGED=1`, and systemd waits 75 seconds
+(`TimeoutStopSec`) for `service run`'s 60-second shutdown before it kills the
+unit. A unit installed by an earlier version keeps `TimeoutStopSec=30` until
+`station service install` is run again.
 
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse

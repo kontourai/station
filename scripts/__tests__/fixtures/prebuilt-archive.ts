@@ -46,7 +46,8 @@ export function hostTarget(): { os: string; arch: string; id: string } {
  * once installed, so nothing is written inside it.
  *
  * `service <status|stop|start> --instance=<id>` model one installed user
- * service per id in `<log>.service-<id>`: `{"active": true|false|null, "sha"}`
+ * service per id in `<log>.service-<id>`: `{"active": true|false|null,
+ * "present"?: false (the unit is gone), "sha"}`
  * (#2675 slice C). status prints the CLI's `service status --json` fields
  * install.sh reads (unit.active, instance.healthy, instance.sha); start marks
  * the unit active serving this archive's sha (or lib/service-sha's), and
@@ -72,10 +73,10 @@ if (log) {
     const state = existsSync(unit) ? JSON.parse(readFileSync(unit, 'utf8')) : { active: false };
     if (args[1] === 'status') {
       const healthy = state.active === true && state.sha !== undefined;
-      process.stdout.write(JSON.stringify({ healthy, unit: { active: state.active }, instance: { healthy, sha: state.sha } }) + '\\n');
+      process.stdout.write(JSON.stringify({ healthy, unit: { active: state.active, present: state.present ?? true }, instance: { healthy, sha: state.sha } }) + '\\n');
       process.exit(healthy ? 0 : 1);
     }
-    if (args[1] === 'stop') writeFileSync(unit, JSON.stringify({ active: false }));
+    if (args[1] === 'stop') writeFileSync(unit, JSON.stringify({ active: false, present: state.present }));
     if (args[1] === 'start') {
       if (existsSync(join(root, 'lib', 'fail-start'))) {
         writeFileSync(unit, JSON.stringify({ active: true }));
