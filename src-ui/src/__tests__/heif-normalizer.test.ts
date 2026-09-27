@@ -226,6 +226,17 @@ describe('HEIF intake inspector', () => {
     ).resolves.toBeNull();
   });
 
+  // The metadata budget alone would also reject the file above, so this pins
+  // the top-level walk itself: it must stop reading at the 1,025th header
+  // instead of awaiting one read per box across the whole file.
+  test('stops the top-level box walk at the cap instead of reading every header', async () => {
+    const file = heif({ trailingFreeBoxes: 5000 });
+    const slice = vi.spyOn(file, 'slice');
+    await expect(inspectHeifFile(file)).resolves.toBeNull();
+    expect(slice.mock.calls.length).toBeGreaterThan(0);
+    expect(slice.mock.calls.length).toBeLessThanOrEqual(1025);
+  });
+
   test('does not claim a decoder when the host supplies none', async () => {
     await expect(normalizeHeifFile(heif())).resolves.toEqual({
       ok: false,
