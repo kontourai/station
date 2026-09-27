@@ -9,10 +9,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const trust = vi.hoisted(() => ({ directories: vi.fn(), files: vi.fn() }));
+const trust = vi.hoisted(() => ({
+  directories: vi.fn(),
+  files: vi.fn(),
+  sharedRunner: vi.fn(),
+}));
 vi.mock('@kontourai/station-shared/windows-path-trust', () => ({
   ensureWindowsDirectoriesTrusted: trust.directories,
   hardenWindowsPathsTrusted: trust.files,
+  runWindowsTrustCommand: trust.sharedRunner,
 }));
 
 import { writeLocalGrantSecretFile } from '../local-grant-file';
@@ -29,11 +34,15 @@ describe('local grant secret publication', () => {
   it('establishes the directory and empty-file trust boundaries before publishing secret bytes', () => {
     const file = join(home, 'runtime', 'local-grant.secret');
     const steps: string[] = [];
-    trust.directories.mockImplementation((_run, paths) => {
+    // Both run through the shared runner and its cold-host budget (#2805),
+    // not a private spawnSync with its own shorter timeout.
+    trust.directories.mockImplementation((run, paths) => {
+      expect(run).toBe(trust.sharedRunner);
       expect(paths).toEqual([join(home, 'runtime')]);
       steps.push('directory');
     });
-    trust.files.mockImplementation((_run, targets) => {
+    trust.files.mockImplementation((run, targets) => {
+      expect(run).toBe(trust.sharedRunner);
       expect(targets).toHaveLength(1);
       expect(targets[0].kind).toBe('file');
       expect(readFileSync(targets[0].path, 'utf8')).toBe('');

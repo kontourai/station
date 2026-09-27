@@ -5,13 +5,17 @@ import { join } from 'node:path';
 
 const targetPort = Number(process.argv[2]);
 const directory = process.argv[3];
+const lifetimeMs = Number(process.argv[5] ?? 120_000);
 if (
   !Number.isInteger(targetPort) ||
   targetPort < 1 ||
   targetPort > 65535 ||
   [3000, 3141].includes(targetPort) ||
   !directory ||
-  process.argv[4] !== 'forward'
+  process.argv[4] !== 'forward' ||
+  !Number.isSafeInteger(lifetimeMs) ||
+  lifetimeMs < 1_000 ||
+  lifetimeMs > 600_000
 )
   throw new Error('Invalid local UDP relay configuration');
 const path = join(directory, 'traffic.bin');
@@ -68,7 +72,7 @@ server.on('message', (bytes, source) => {
   socket.send(bytes, targetPort, '127.0.0.1');
 });
 server.on('error', () => fail('listener_error'));
-const lifetime = setTimeout(() => fail('lifetime_exceeded'), 120000);
+const lifetime = setTimeout(() => fail('lifetime_exceeded'), lifetimeMs);
 process.once('SIGINT', close);
 process.once('SIGTERM', close);
 server.bind(0, '127.0.0.1', () => {

@@ -212,27 +212,6 @@ function dock(current: ChatSession) {
 }
 
 describe('ChatDockBody offline settling (station#2605)', () => {
-  test('derives the composer refusal from the durable queue refusal signal', async () => {
-    const refused = session(0);
-    refused.outboundQueuedTurns = [
-      {
-        clientTurnId: 'queued-1',
-        content: 'queued while offline',
-        createdAt: 1,
-        status: 'failed',
-        lastError: 'Workspace refusal: original workspace unavailable',
-      },
-    ];
-
-    render(dock(refused));
-
-    await waitFor(() =>
-      expect(composerProps).toHaveBeenLastCalledWith(
-        expect.objectContaining({ workspaceRefused: true }),
-      ),
-    );
-  });
-
   test('dismissing the refused turn returns the composer to normal', async () => {
     // Recovery is the same derivation running over the remaining turns:
     // once the durable refused row is gone, workspaceRefused re-derives

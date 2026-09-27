@@ -122,6 +122,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Runs the real portable-archive smoke against a fake archive whose start fails.
+  'scripts/__tests__/portable-smoke-diagnostics.test.ts',
   // Copies the tracked tree and runs the repo-governance lane CLI twice (clean and violating).
   'scripts/__tests__/proof-family-route-error-egress.test.ts',
   // Real CLI prerequisite probes, a loopback listener, and the SQLite runtime owner.
@@ -1064,6 +1066,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // declares. jsdom computes no layout and would report the pre-fix
   // edge-to-edge frame and the fixed one identically.
   'src-ui/src/workspace-panes/__tests__/WorkspacePaneRouteView.frame.test.tsx',
+  // #917: launches a real Chromium to measure whether the region fieldset
+  // holds its toggles' width in an over-full phone toolbar. jsdom computes no
+  // layout, and a rule-text check cannot see a cascade override.
+  'src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx',
+  // Same shape: launches a real Chromium to measure the setup-import
+  // stepper's heading action at the 640px breakpoint.
+  'src-ui/src/components/setup/__tests__/ExistingSetupImportStepper.test.tsx',
   // #765 C1 and the collapsed bottom dock: both render the real region host in
   // jsdom, then launch a real Chromium to lay that DOM out against index.css —
   // whether the dock body scrolls inside the shell, and whether a collapsed

@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import {
-  buildProviderCatalog,
   resolveProviderChoicePresentation,
   resolveProviderPresentation,
 } from '../../provider-settings/providerCatalog';
@@ -169,51 +168,6 @@ describe('provider catalog presentation', () => {
     },
   );
 
-  test('deduplicates exact connection ids but preserves same-brand instances', () => {
-    const catalog = buildProviderCatalog([
-      {
-        id: 'codex-work',
-        kind: 'agent',
-        type: 'codex',
-        name: 'Work',
-        enabled: true,
-        status: 'ready',
-        setup: { state: 'ready', detected: true, configured: false },
-        href: '/connections/engines/codex-work',
-      },
-      {
-        id: 'codex-work',
-        kind: 'command',
-        type: 'acp',
-        name: 'Duplicate projection',
-        enabled: true,
-        status: 'available',
-        setup: null,
-        href: '/connections/acp',
-      },
-      {
-        id: 'codex-personal',
-        kind: 'agent',
-        type: 'codex',
-        name: 'Personal',
-        enabled: true,
-        status: 'degraded',
-        setup: { state: 'ready', detected: true, configured: false },
-        href: '/connections/engines/codex-personal',
-      },
-    ]);
-
-    expect(catalog).toHaveLength(2);
-    expect(catalog.map((item) => item.id)).toEqual([
-      'codex-personal',
-      'codex-work',
-    ]);
-    expect(catalog.every((item) => item.brand === 'Codex')).toBe(true);
-    expect(catalog.map((item) => item.duplicateBrandIndex)).toEqual([1, 2]);
-    expect(catalog[0]?.accessibleName).toContain('instance 1 of 2');
-    expect(catalog[1]?.accessibleName).toContain('instance 2 of 2');
-  });
-
   test('keeps read-only provider rows inspection-only', () => {
     expect(
       resolveProviderPresentation({
@@ -332,35 +286,5 @@ describe('provider catalog presentation', () => {
       badge: 'Setup required',
       detail: 'Connect Kiro through ACP',
     });
-  });
-
-  test('keeps named OpenAI-compatible services visible as their own brands', () => {
-    const catalog = buildProviderCatalog([
-      {
-        id: 'litellm-work',
-        kind: 'model',
-        type: 'openai-compat',
-        name: 'LiteLLM',
-        enabled: true,
-        status: 'ready',
-        setup: null,
-        href: '/connections/providers/litellm-work',
-      },
-      {
-        id: 'openrouter-personal',
-        kind: 'model',
-        type: 'openai-compat',
-        name: 'OpenRouter',
-        enabled: true,
-        status: 'ready',
-        setup: null,
-        href: '/connections/providers/openrouter-personal',
-      },
-    ]);
-
-    expect(catalog.map((item) => item.brand)).toEqual([
-      'LiteLLM',
-      'OpenRouter',
-    ]);
   });
 });

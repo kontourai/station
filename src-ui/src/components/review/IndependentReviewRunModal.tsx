@@ -15,11 +15,12 @@ import {
 import './review-detail.css';
 
 /**
- * #2064 (D4): the "Run independent review" form, extracted from
- * `ReviewQueueView` so the project's Coding layout runs a review through the
- * SAME `POST /api/projects/:slug/reviews` request builder and the same
- * validation rules — distinct reviewer Agents, delta reviews requiring a
- * prior receipt — rather than a second form that agrees today.
+ * #2064 (D4): the "Run independent review" form, extracted from the retired
+ * `ReviewQueueView`. The Review layout is its host; any future surface that
+ * runs a review should mount this form rather than a second one, so the
+ * `POST /api/projects/:slug/reviews` request builder and its validation rules
+ * — distinct reviewer Agents, delta reviews requiring a prior receipt — stay
+ * in one place.
  *
  * The "input only" sentence travels with the form deliberately: a receipt is
  * evidence for verification and does not approve, reject, or satisfy a gate,
@@ -35,11 +36,11 @@ export function IndependentReviewRunModal({
   onClose: () => void;
   onCompleted: (receiptId: string, projectSlug: string) => void;
   /**
-   * #2064 (D4): the Coding layout runs a review for the project it is already
-   * showing, so the project picker would be a second, contradictable answer to
-   * a question the host has already answered. When set, the form shows the
-   * project as fixed text and submits exactly it. The global Review page
-   * leaves it unset and keeps the picker.
+   * #2064 (D4): a project-owned host (the Review layout) runs a review for
+   * the project it is already showing, so the project picker would be a
+   * second, contradictable answer to a question the host has already
+   * answered. When set, the form shows the project as fixed text and submits
+   * exactly it. Unset, the form keeps the picker.
    */
   lockedProjectSlug?: string;
 }) {

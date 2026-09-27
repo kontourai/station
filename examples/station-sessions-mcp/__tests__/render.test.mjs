@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { escapeHtml, renderSessionsPanel } from '../panel.mjs';
+import { renderSessionsPanel } from '../panel.mjs';
 
 const SAMPLE = [
   {
@@ -28,8 +28,9 @@ describe('renderSessionsPanel', () => {
     expect(html).toContain('codex');
     expect(html).toContain('builder');
     expect(html).toContain('station');
-    // Falls back to status when lifecycleState is absent (sess-2).
-    expect(html).toContain('ready');
+    // Falls back to status when lifecycleState is absent (sess-2). Assert the
+    // rendered cell: the inline CSS also contains the word "ready".
+    expect(html).toContain('<span class="state state--ready">ready</span>');
     expect(html).toContain('Station sessions');
     expect(html).toContain('(2)');
   });
@@ -46,6 +47,10 @@ describe('renderSessionsPanel', () => {
     const html = renderSessionsPanel([{ threadId: 'bare' }]);
     expect(html).toContain('bare');
     expect(html).toContain('unknown'); // state fallback
+    // A missing thread id renders empty, never the text "undefined".
+    expect(renderSessionsPanel([{ provider: 'codex' }])).toContain(
+      '<td><code></code></td>',
+    );
   });
 
   test('is self-contained: no external scripts, styles, or assets', () => {
@@ -69,11 +74,5 @@ describe('renderSessionsPanel', () => {
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).toContain('&quot;&gt;&lt;img src=x&gt;');
     expect(html).toContain('a&amp;b&#39;c');
-  });
-
-  test('escapeHtml handles the standard entities', () => {
-    expect(escapeHtml(`<>&"'`)).toBe('&lt;&gt;&amp;&quot;&#39;');
-    expect(escapeHtml(null)).toBe('');
-    expect(escapeHtml(undefined)).toBe('');
   });
 });

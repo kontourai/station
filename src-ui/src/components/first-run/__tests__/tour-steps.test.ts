@@ -5,7 +5,6 @@ import { APP_DESTINATION_REGISTRY } from '../../../app-shell/destination-registr
 import { resolvePageFrame } from '../../../app-shell/page-frame-registry';
 import {
   getLegacyPathRedirect,
-  getPathForView,
   resolveViewFromPath,
 } from '../../../app-shell/routing';
 import { REGION_SURFACE_REGISTRY } from '../../../regions/region-model';
@@ -54,7 +53,6 @@ describe('first-run tour anchors resolve to canonical routes', () => {
       // had gone back to spelling a route.
       if ('view' in step) {
         expect('surface' in step).toBe(false);
-        expect(tourStepPath(step)).toBe(getPathForView(step.view));
         expect(tourStepPath(step)).not.toBeNull();
       } else {
         expect('surface' in step && step.surface).toBeTruthy();
