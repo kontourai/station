@@ -95,8 +95,13 @@ const layoutCss = readFileSync(layoutCssPath, 'utf8').replace(
   '',
 );
 
-/** Declarations of the rule whose selector list contains `selector`. */
-function declarationsFor(selector: string): string | null {
+/**
+ * The declared style for `selector` across every layout.css rule whose selector
+ * list names it, later rules overriding earlier ones. This pins the stylesheet's
+ * declarations; it cannot prove rendered geometry or cascade from other sheets.
+ */
+function declaredStyle(selector: string): Map<string, string> | null {
+  let style: Map<string, string> | null = null;
   for (const chunk of layoutCss.split('}')) {
     const brace = chunk.lastIndexOf('{');
     if (brace === -1) continue;
@@ -105,52 +110,65 @@ function declarationsFor(selector: string): string | null {
       .slice(head.lastIndexOf('{') + 1)
       .split(',')
       .map((entry) => entry.trim());
-    if (selectors.includes(selector)) return chunk.slice(brace + 1);
+    if (!selectors.includes(selector)) continue;
+    style ??= new Map();
+    for (const declaration of chunk.slice(brace + 1).split(';')) {
+      const colon = declaration.indexOf(':');
+      if (colon === -1) continue;
+      style.set(
+        declaration.slice(0, colon).trim(),
+        declaration.slice(colon + 1).trim(),
+      );
+    }
   }
-  return null;
+  return style;
 }
 
-describe('row and overlay style contract', () => {
-  test('every native row button carries the explicit unstyled full-width reset', () => {
+describe('row and overlay declared-style contract (layout.css)', () => {
+  test('every native row button declares the unstyled full-width reset', () => {
     for (const selector of [
       '.notes-list-item',
       '.dashboard-account-row',
       '.search-modal-result-item',
     ]) {
-      const declarations = declarationsFor(selector);
-      expect(declarations, `${selector} has no reset rule`).not.toBeNull();
-      expect(declarations).toContain('display: block');
-      expect(declarations).toContain('width: 100%');
-      expect(declarations).toContain('box-sizing: border-box');
-      expect(declarations).toContain('border: none');
-      expect(declarations).toContain('background: none');
-      expect(declarations).toContain('font: inherit');
-      expect(declarations).toContain('color: inherit');
-      expect(declarations).toContain('text-align: left');
-      expect(declarations).toContain('appearance: none');
+      const style = declaredStyle(selector);
+      expect(style, `${selector} has no reset rule`).not.toBeNull();
+      expect(Object.fromEntries(style ?? []), selector).toMatchObject({
+        display: 'block',
+        width: '100%',
+        'box-sizing': 'border-box',
+        border: 'none',
+        background: 'none',
+        font: 'inherit',
+        color: 'inherit',
+        'text-align': 'left',
+        appearance: 'none',
+      });
     }
   });
 
-  test('backdrop fills the overlay and the dialog stacks above it', () => {
-    const backdrop = declarationsFor('.enterprise-modal-backdrop--fill');
-    expect(backdrop).toContain('position: absolute');
-    expect(backdrop).toContain('inset: 0');
-    expect(backdrop).toContain('width: 100%');
-    expect(backdrop).toContain('height: 100%');
-
-    const dialogLayer = declarationsFor('.enterprise-modal-layer');
-    expect(dialogLayer).toContain('position: relative');
-    expect(dialogLayer).toContain('z-index: 1');
+  test('backdrop declares fill geometry and the dialog layer declares stacking above it', () => {
+    expect(
+      Object.fromEntries(declaredStyle('.enterprise-modal-backdrop--fill') ?? []),
+    ).toMatchObject({
+      position: 'absolute',
+      inset: '0',
+      width: '100%',
+      height: '100%',
+    });
+    expect(
+      Object.fromEntries(declaredStyle('.enterprise-modal-layer') ?? []),
+    ).toMatchObject({ position: 'relative', 'z-index': '1' });
   });
 
-  test('row children that became spans keep their block flow', () => {
+  test('row children that became spans declare block display', () => {
     for (const selector of [
       '.notes-list-item-title',
       '.notes-list-item-meta',
       '.search-modal-result-name',
       '.search-modal-result-meta',
     ]) {
-      expect(declarationsFor(selector), selector).toContain('display: block');
+      expect(declaredStyle(selector)?.get('display'), selector).toBe('block');
     }
   });
 });
