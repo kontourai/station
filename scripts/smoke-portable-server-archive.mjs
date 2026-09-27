@@ -132,9 +132,8 @@ const WINDOWS_SYSTEM_VARIABLES = [
 function scrubbedEnvironment(home) {
   if (!WINDOWS) return { HOME: home, PATH: '/usr/bin:/bin' };
   const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
-  // Machine-level variables every Windows session and service has. Without
-  // them Windows PowerShell (which Station runs for process-birth and ACL
-  // checks) starts in a degraded state no real host is in (#2805). PATH stays
+  // Machine-level variables every Windows session and service has, so the
+  // smoke models a real host rather than one missing them. PATH stays
   // minimal, so the archive still proves it needs no Node or PowerShell on
   // PATH.
   const system = Object.fromEntries(
