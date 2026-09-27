@@ -2,16 +2,15 @@ import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   createStationHomeUpdateBackup,
   restoreStationHomeUpdateBackup,
@@ -23,17 +22,11 @@ import {
   STATION_HOME_SCHEMA_FILE,
 } from '../station-home-schema.js';
 
-const roots: string[] = [];
-
-afterEach(() => {
-  for (const value of roots.splice(0))
-    rmSync(value, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 /** A stopped home in the shape a service leaves it: state plus live roots. */
 function serviceHome(): { root: string; home: string; backupDir: string } {
-  const root = mkdtempSync(join(tmpdir(), 'station-update-backup-'));
-  roots.push(root);
+  const root = makeTempDir('station-update-backup-');
   const home = join(root, 'home');
   ensureStationHomeSchemaSync(home);
   mkdirSync(join(home, 'config'), { recursive: true });
