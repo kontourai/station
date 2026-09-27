@@ -1,16 +1,30 @@
 # Public ecosystem manifest
 
-The public installer reads a detached Ed25519-signed manifest from the trust
-origin, for example `https://trust.station.kontour.ai/manifests/v1.2.3.json`.
-The manifest names an artifact on the release origin, for example
-`https://releases.station.kontour.ai/v1.2.3/station-1.2.3-macos-universal.dmg`.
+[install.sh](../../install.sh) uses the ecosystem-manifest path when
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` is set. Otherwise it uses the GitHub
+release/attestation path. The manifest is a JSON envelope containing a payload,
+key ID and detached Ed25519 signature over the canonical payload; the installer
+checks the selected portable archive against the signed hash before promotion.
 
-Those are intentionally different authorities. Release-artifact credentials
-can write only the release origin; they cannot replace a signed manifest on the
-trust origin. A compromise of the artifact origin therefore changes the
-artifact hash and is rejected before installation. The manifest is additionally
-verified against a public key fetched from a third protected trust authority in
-the public bootstrap configuration.
+Normal verification uses the channel-scoped public keys embedded in the
+installer, kept in sync with
+[release-manifest-keys.json](../../config/release-manifest-keys.json). It does
+not fetch its trust key from a third origin or require manifest/artifact hosts
+to be distinct. A key URL is accepted only behind the explicit insecure-test
+override; do not use fixture overrides as a production trust configuration.
 
-The private key is never committed. It is supplied only to the owner-gated
-manifest-publish environment after an owner has enabled public distribution.
+Signature and hash checks establish an authorized signer and named bytes, not
+freshness or safe behavior. Existing-install version checks refuse ordinary
+downgrades and same-version byte replacement, but a new installation can still
+receive an older signed manifest; no maximum manifest age is enforced. The
+public-manifest path is opt-in, not evidence of a live public distribution.
+
+[ecosystem-manifest.mjs](../../scripts/ecosystem-manifest.mjs) owns manifest
+creation/verification and cask rendering. Its `create` command reads an explicit
+private-key file; production key custody is an operator responsibility, not a
+property proved by this directory. Schema v1 includes macOS cask artifacts;
+schema v2 supports portable-only payloads. See
+[ecosystem packaging](../../docs/guides/ecosystem-packaging.md) and the
+[publish boundary](../../scripts/ecosystem-publish-boundary.sh) before any
+separately authorized publication. No workflow execution, published artifact or
+installer run is established by this README.
