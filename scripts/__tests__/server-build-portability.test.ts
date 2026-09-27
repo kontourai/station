@@ -21,6 +21,7 @@ import { promisify } from 'node:util';
 import * as esbuild from 'esbuild';
 import { load } from 'js-yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { EventStore } from '../../src-server/services/orchestration/event-store.js';
 import { withDesktopRuntimeListenerLease } from '../lib/desktop-runtime-port-lease.mjs';
 import {
@@ -37,6 +38,7 @@ import { STATION_SERVER_EXTERNALS } from '../lib/server-build-config.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const temporaryRoots: string[] = [];
+const makeTempDir = trackTempDirs();
 const execFileAsync = promisify(execFile);
 const DESKTOP_SERVER_BUILD_TIMEOUT_MS = 75_000;
 const DESKTOP_SERVER_READINESS_TIMEOUT_MS = 60_000;
@@ -943,8 +945,7 @@ describe('server build package portability', () => {
   });
 
   it('stages only the target platform node-pty prebuild (node-pty-foreign-prebuilds)', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-runtime-pty-'));
-    temporaryRoots.push(root);
+    const root = makeTempDir('station-runtime-pty-');
     const project = join(root, 'project');
     const files: Record<string, string> = {
       'lib/utils.js': 'module.exports = {};',
@@ -1001,8 +1002,7 @@ describe('server build package portability', () => {
   });
 
   it('drops flow-agents harness bundles and their esbuild edge but keeps what Station reads', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-runtime-flow-agents-'));
-    temporaryRoots.push(root);
+    const root = makeTempDir('station-runtime-flow-agents-');
     const project = join(root, 'project');
     const flowAgents = join(project, 'node_modules/@kontourai/flow-agents');
     writeFixturePackage(
@@ -1087,8 +1087,7 @@ describe('server build package portability', () => {
   });
 
   it('prunes Windows debug symbols but keeps the binaries beside them', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-runtime-pdb-'));
-    temporaryRoots.push(root);
+    const root = makeTempDir('station-runtime-pdb-');
     const project = join(root, 'project');
     writeFixturePackage(
       join(project, 'node_modules/native-addon'),
