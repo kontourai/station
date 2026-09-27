@@ -331,8 +331,11 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
   test.each(EVENTS)(
     '%s: a failed plan runs no shard and the aggregator still fails',
     (_name, context, outputs) => {
+      // The detection step writes legacy=false before planning fails, so a
+      // failed plan still carries that output: only its result can stop the
+      // shards.
       const state = simulate(jobs, context, {
-        outputs,
+        outputs: { ...outputs, 'fast-checks-plan': { legacy: 'false' } },
         outcomes: { 'fast-checks-plan': 'failure' },
       });
       expect(state.results.get('fast-checks-shard')).toBe('skipped');
