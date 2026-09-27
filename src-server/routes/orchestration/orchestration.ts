@@ -2810,8 +2810,9 @@ export function createOrchestrationRoutes(
       }
       try {
         // #2377 slice C2a (decision 3): answering a worker's request needs a
-        // bound caller whose owner holds the Project `approve` action (admin
-        // or owner) where the task runs; in the global space, the operator.
+        // bound caller (the guard's table entry) whose owner holds the
+        // Project `approve` action (admin or owner) where the task runs; in
+        // the global space, the operator.
         const scopeRefused = refuseOutOfScopeDispatch(
           c,
           deps.stationControlDispatchScope,
@@ -2822,7 +2823,7 @@ export function createOrchestrationRoutes(
               (getBody(c) as { environmentId?: unknown }).environmentId !==
               undefined,
           }),
-          { action: 'approve', bound: true },
+          'approve',
         );
         if (scopeRefused) return scopeRefused;
         const { principal, userId, ownerAttribution } = resolveDispatchActor(

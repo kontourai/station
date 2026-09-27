@@ -20,7 +20,6 @@ import type {
 } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
-  stationControlRefusal,
   stationControlRefusalBody,
   stationControlScopeRefusal,
 } from '../../tools/station-control-policy.js';
@@ -40,27 +39,16 @@ export function refuseOutOfScopeDispatch(
   c: Context,
   scope: StationControlDispatchScope | undefined,
   targetFor: DispatchTargetFor,
-  options: {
-    /** The Project action the owner needs (default `execute`). */
-    readonly action?: StationControlProjectAction;
-    /** Only a bound caller may take this step at all. */
-    readonly bound?: boolean;
-  } = {},
+  /** The Project action the owner needs. */
+  action: StationControlProjectAction = 'execute',
 ): Response | undefined {
   const authority = stationControlRequestAuthority(c.req.raw);
   if (authority?.kind !== 'caller') return undefined;
   const caller = authority.caller;
-  if (options.bound && caller.assurance !== 'bound')
-    return c.json(
-      stationControlRefusalBody(
-        stationControlRefusal('station_control_assurance_insufficient'),
-      ),
-      403,
-    );
   const ref = targetFor(
     caller.principal?.elevationEligible ? caller.principal.id : undefined,
   );
-  const target = ref ? scope?.target(ref, options.action) : undefined;
+  const target = ref ? scope?.target(ref, action) : undefined;
   const refusal = stationControlScopeRefusal(caller, target);
   return refusal ? c.json(stationControlRefusalBody(refusal), 403) : undefined;
 }
