@@ -1050,7 +1050,9 @@ describe('the selector CLI takes its discovery deadline from run-ci-fast (#2855 
       };
       const result = spawnSync(
         process.execPath,
-        ['scripts/run-changed-verification.mjs', '--base=HEAD'],
+        // This checkout's CLI (the code under test) over the fixture's
+        // repository: the CLI takes its root from cwd.
+        [join(root, 'scripts/run-changed-verification.mjs'), '--base=HEAD'],
         {
           cwd: worktree,
           encoding: 'utf8',
