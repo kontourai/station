@@ -359,17 +359,22 @@ only the inherited server and raw `node_modules` resources, then colocates them
 at `usr/share/Station/dist-server` and `usr/share/Station/node_modules`.
 `usr/lib/Station` remains free of the vendor tree.
 
-At launch, the desktop host detects that contained AppImage entrypoint. Because
-the server and its `node_modules` are package-adjacent, Node uses its ordinary
-module resolution on every supported runtime version. This avoids relying on
-`NODE_PATH` (which is inconsistent for ESM across Node versions) or a
-custom-file symlink (which Tauri's AppImage bundler dereferences and rejects),
-while still keeping linuxdeploy away from the vendor executables. The host
-resolves `node` from the user's PATH rather than choosing among mise, nvm,
-Volta, system, or vendor installations. The build staging helper fails if the
-runtime is missing or over budget. The AppImage path never downloads packages
-or relies on a global package installation; Claude, Codex, Flow Agents, and the
-other staged runtime packages remain part of the offline bundle.
+**Current source mismatch:** the
+[AppImage overlay](../../src-desktop/tauri.linux-appimage.conf.json) places the
+server and dependencies under `usr/share/Station`, but the
+[native host](../../src-desktop/src/lib.rs) currently joins both the registry
+bridge and sidecar entrypoint directly under Tauri's `resource_dir()/dist-server`.
+The pinned `tauri-utils` 2.9.3 resolves the AppImage resource directory under
+`usr/lib/<package>`. No alternate `usr/share/Station` lookup is present in those
+callers. Package-layout checks alone therefore do not establish a working
+AppImage startup; this source mismatch needs repair and an actual Linux launch.
+
+The staged server and `node_modules` are adjacent for ordinary Node module
+resolution once the correct entrypoint is selected. The host resolves `node`
+from its login-shell PATH; the dependency tree is bundled, not the Node
+executable. The [staging helper](../../scripts/lib/desktop-server-runtime.mjs)
+refuses missing or over-budget runtime inputs. That is packaging evidence,
+not proof that the current AppImage can start or execute a staged Agent.
 
 Tauri constructs and signs the final AppImage and then produces the updater
 archive and signature. Station deliberately selects Tauri's `v1Compatible`
@@ -482,9 +487,10 @@ Play build signing and upload both use GitHub OIDC federation rather than a
 downloadable Google service-account key or GitHub-held Android keystore.
 Repository variables `GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER` and
 `GCP_PLAY_SERVICE_ACCOUNT` name the Google provider and keyless service
-account; Google independently restricts the provider to this repository's
-Nightly-on-main and Release-on-version-tag workflow identities. Secret Manager
-access is scoped only to the two Android upload-key secrets. iOS similarly treats
+account. Configure Google to restrict the provider to this repository's
+Nightly-on-main and Release-on-version-tag workflow identities, and scope Secret
+Manager access to the two Android upload-key secrets. Those account policies
+must be checked by the owner; workflow variables alone do not establish them. iOS similarly treats
 `APPLE_API_KEY_ID`/`APPLE_API_ISSUER_ID`/`APPLE_API_PRIVATE_KEY` as the
 required macOS-notary credential and required Stable TestFlight credential. Every signing secret listed above remains required
 and fails closed. See [mobile-release.md](./mobile-release.md) for the trust
@@ -556,8 +562,11 @@ signatures against the release-bound public key before publication. Publish
 uploads the signed updater archives to the rolling release before replacing
 `latest.json`, then redownloads and verifies the complete result. The pointer
 guard refuses to replace a newer manifest with an older version, so a delayed
-draft cannot silently regress the channel. A failed remote verification restores
-the prior `latest.json` (or removes the first bootstrap pointer).
+draft cannot silently regress the channel. On failed remote verification, the
+workflow attempts to restore the prior `latest.json` (or remove the first
+bootstrap pointer). That compensation reports command failure but does not
+perform a second remote readback of the restored pointer. Inspect the channel
+after a failed publish rather than assuming compensation completed.
 
 Rolling release assets require owner-managed retention because every publish
 adds eight versioned archives and signatures. Before a publish, record the

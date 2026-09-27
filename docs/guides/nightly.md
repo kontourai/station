@@ -173,8 +173,14 @@ It builds the full embedded desktop runtime, copies it to a candidate under
 `/Applications`, writes
 `Contents/Resources/station-nightly-source.json` with the exact source SHA,
 signs and verifies the complete candidate, and only then replaces Station
-Nightly. A failed replacement restores the prior nightly app. It never writes
-to `/Applications/Station.app`.
+Nightly. If publishing the candidate fails after the prior app was renamed
+aside, it attempts to restore that backup. This is a staged filesystem swap,
+not a health-checked runtime rollback; retain and inspect any surviving backup
+after failure. It never writes to `/Applications/Station.app`.
+
+The `--relaunch` path asks the old app to quit, waits up to ten seconds, and
+then calls `open`. It does not prove that the old process stopped or that the
+new process reached readiness. Verify the running version separately.
 
 ## Build a local archive without installing
 
@@ -190,8 +196,9 @@ does not quit, install, or launch an app.
 ```
 
 The output directory must not already exist; this refuses accidental archive
-or receipt replacement. The archive is checked for user-home and private-key
-paths before it is retained. Its receipt records the exact source SHA, channel,
+or receipt replacement. Archive entry names are checked for user-home and
+private-key paths before retention; this is not a scan of every file's content.
+Its receipt records the exact source SHA, channel,
 verified signing identity, archive checksum path, and notarization state.
 
 An optional notarization request is available only with an existing named

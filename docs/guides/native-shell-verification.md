@@ -254,7 +254,8 @@ station doctor
 station service status --json
 ```
 
-Doctor reports local tool and runtime prerequisites, not native-window state.
+Checkout Doctor reports local tool and runtime prerequisites; packaged Doctor
+reads the selected Station's diagnostic report. Neither reports native-window state.
 Service status checks a durable installed service, not a Desktop-owned sidecar.
 The shell log can show a timeout warning, a secondary-launch request, or an
 invalid desktop log level; it cannot prove that a dialog was visible, that a

@@ -13,9 +13,10 @@ and [mobile-release.md](./mobile-release.md). Listing copy lives in
 - iOS channel bundle IDs: `io.kontourai.station`,
   `io.kontourai.station.beta`, and `io.kontourai.station.nightly`. They are
   three installable apps, not TestFlight tracks of one app.
-- App Store Connect listing names are **Station by Kontour AI**, **Station Beta
+- Intended App Store Connect listing names are **Station by Kontour AI**, **Station Beta
   by Kontour AI**, and **Station Nightly by Kontour AI**. Installed app names
-  remain Station, Station Beta, and Station Nightly; seller is Kontour AI LLC.
+  remain Station, Station Beta, and Station Nightly. Confirm those records and
+  the proposed seller, Kontour AI LLC, in the owner account before submission.
 - Privacy policy URL: https://kontourai.io/privacy/station/
 - Support URL source: https://kontourai.io/support/ — verify the live response
   before submitting a listing
@@ -85,8 +86,10 @@ accepted preview commit can be promoted to Stable without a source edit.
 1. Create the intended channel application: Stable `io.kontourai.station`,
    Beta `io.kontourai.station.beta`, or Nightly `io.kontourai.station.nightly`.
    Each package needs its own provider setup and tester access.
-2. Paste the privacy URL, support URL, and Data Safety answers. Complete
-   content rating, target audience, and the ads declaration (no ads).
+2. Review the privacy URL, support URL, and Data Safety answers for the exact
+   build and configured services before submitting them. Complete content
+   rating, target audience, and the ads declaration; “no ads” is the proposed
+   answer, not a declaration established by this checklist.
 3. Create a Cloud service account with no project roles, enable the Play
    Developer API, and authorize GitHub through Workload Identity Federation.
    Invite the service account to Play with **Release apps to testing tracks**

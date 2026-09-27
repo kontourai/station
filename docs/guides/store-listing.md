@@ -6,11 +6,16 @@ evidence that the consoles contain the copy or that a store approved it.
 
 Support URL: https://kontourai.io/support/
 Privacy URL: https://kontourai.io/privacy/station/
-Seller: Kontour AI LLC
-Bundle / application ID: `io.kontourai.station`
+Proposed seller: Kontour AI LLC — confirm the legal identity on the provider account
+Stable bundle / application ID: `io.kontourai.station` — use the selected channel's identity from [store entry](store-entry.md)
 Category: select a current Play category from [Google's category list](https://support.google.com/googleplay/android-developer/answer/9859673) (there is no Developer Tools app category there); Developer Tools is the proposed App Store category
-Ads: no
-Age: follow the questionnaires; Station is not directed at children.
+Proposed ads answer: no — verify the submitted build and its integrations
+Age: complete the provider questionnaires for the actual build and audience.
+
+Seller, ads, age, privacy and tracking answers require owner review. Source
+configuration does not establish the provider account's legal identity or a
+complete privacy declaration. Include integrated third-party code in that review;
+see [Apple's privacy and data-use guidance](https://developer.apple.com/app-store/user-privacy-and-data-use/).
 
 ## Name
 
@@ -47,8 +52,8 @@ guarantee that every action has been independently verified.
 The mobile app is a client for a Station you run. Pair it with a host on your
 network, then continue the same work from your phone.
 
-Station does not use data for cross-app or cross-site tracking. See the
-privacy policy for what can leave the device, and only when you configure it.
+See the privacy policy for data handling by the app, your Station host, and
+configured providers.
 
 ## Keywords (Apple)
 
@@ -62,14 +67,17 @@ Do not keep “first public testing build” as a standing release claim.
 ## Screenshot shot list
 
 Capture from a paired real device. Do not invent UI or restyle a desktop
-screenshot. Minimum set:
+screenshot. The content plan below is not a statement of store minimums.
+Choose currently accepted device sizes and file formats from
+[Apple's screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/)
+and [Google's preview-asset requirements](https://support.google.com/googleplay/android-developer/answer/9866151).
 
 | Slot | What to show |
 | --- | --- |
-| iPhone 6.7" #1 | Paired home / project with a visible Task |
-| iPhone 6.7" #2 | Chat or Session with a gate or receipt visible |
-| iPhone 6.7" #3 | Pairing / connection screen |
-| iPad 12.9" #1 | Same paired project on tablet |
+| iPhone #1 | Paired home / project with a visible Task |
+| iPhone #2 | Chat or Session with a gate or receipt visible |
+| iPhone #3 | Pairing / connection screen |
+| iPad #1 | Same paired project on tablet |
 | Android phone #1–3 | Same three beats as iPhone |
 | Play feature graphic 1024×500 | Wordmark + one short line: "Do the work. See the gates. Keep the receipts." |
 
