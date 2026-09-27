@@ -72,8 +72,11 @@ test.skipIf(process.platform === 'win32')(
         windowsHide: true,
       },
     );
-    execution.child.stdout?.pipe(appLog, { end: false });
-    execution.child.stderr?.pipe(appLog, { end: false });
+    const child = execution.child;
+    if (!('once' in child))
+      throw new Error('Tauri shell delayed sidecar fixture failed to launch');
+    child.stdout?.pipe(appLog, { end: false });
+    child.stderr?.pipe(appLog, { end: false });
 
     let receipt: TauriShellFixtureCleanupReceipt | undefined;
     const driver = {
@@ -92,22 +95,19 @@ test.skipIf(process.platform === 'win32')(
     });
 
     try {
-      if (
-        execution.child.exitCode === null &&
-        execution.child.signalCode === null
-      ) {
+      if (child.exitCode === null && child.signalCode === null) {
         await new Promise<void>((resolve, reject) => {
           const timeout = setTimeout(
             () => reject(new Error('owned fixture leader did not exit')),
             5_000,
           );
-          execution.child.once('exit', () => {
+          child.once('exit', () => {
             clearTimeout(timeout);
             resolve();
           });
         });
       }
-      assert.equal(execution.child.exitCode, 0);
+      assert.equal(child.exitCode, 0);
       const readyDeadline = Date.now() + 5_000;
       while (!existsSync(descendantReady) && Date.now() < readyDeadline)
         await new Promise((resolve) => setTimeout(resolve, 25));
@@ -127,7 +127,7 @@ test.skipIf(process.platform === 'win32')(
       await assert.rejects(stop(), /injected WebDriver close failure/);
       assert.equal(driver.close.mock.calls.length, 1);
       assert.equal(appLog.closed, true);
-      assert.equal(receipt?.processGroupId, execution.child.pid);
+      assert.equal(receipt?.processGroupId, child.pid);
       assert.equal(receipt?.processGroupSettled, true);
       assert.equal(receipt?.childExitCodeBeforeTermination, 0);
       assert.equal(receipt?.appConfigRemoved, true);
