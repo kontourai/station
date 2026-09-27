@@ -17,7 +17,10 @@ import {
   pluginContentDigest,
   withPluginContentLock,
 } from '../plugin-content-integrity.js';
-import { installPluginDependency } from '../plugin-source.js';
+import {
+  installPluginDependency,
+  resolvePluginDependencySource,
+} from '../plugin-source.js';
 
 const cleanupDirs: string[] = [];
 
@@ -922,5 +925,36 @@ describe('installPluginDependency reports the trees it created', () => {
     expect([...created]).toEqual(['leaf-dep']);
     expect(existsSync(join(pluginsDir, 'leaf-dep', 'plugin.json'))).toBe(true);
     expect(existsSync(join(pluginsDir, 'parent-dep'))).toBe(false);
+  });
+});
+
+describe('resolvePluginDependencySource', () => {
+  test.each([
+    ['an HFS+-ignorable .git suffix', 'shared.g\u200cit'],
+    ['a trailing-ignorable .git suffix', 'shared.git\ufeff'],
+    ['the NTFS short name of .git', 'git~1'],
+    ['an upper-case .GIT name', '.GIT'],
+  ])('refuses %s as a local dependency', (_label, name) => {
+    const root = createRoot();
+    const parent = join(root, 'parent');
+    mkdirSync(join(root, name), { recursive: true });
+    expect(() =>
+      resolvePluginDependencySource(
+        { id: 'shared-dep', source: `../${name}` },
+        parent,
+      ),
+    ).toThrow(/local source must be a plain directory/);
+  });
+
+  test('accepts a plain sibling directory (positive control)', () => {
+    const root = createRoot();
+    const parent = join(root, 'parent');
+    mkdirSync(join(root, 'shared-dep'), { recursive: true });
+    expect(
+      resolvePluginDependencySource(
+        { id: 'shared-dep', source: '../shared-dep' },
+        parent,
+      ).source,
+    ).toBe(join(root, 'shared-dep'));
   });
 });
