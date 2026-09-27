@@ -61,6 +61,9 @@ const TRUST_SERVICE = 'io.kontourai.station.connection-trust';
 const CLEANUP_OWNER_PREFIX = 'relay-native-client-grant:cleanup-owners:v1:dev:';
 const NATIVE_ECHO_LANE =
   process.env.STATION_TAURI_E2E_NATIVE_DIAGNOSTIC_ECHO === '1';
+const INJECT_ECHO_CLEANUP_FAILURE =
+  NATIVE_ECHO_LANE &&
+  process.env.STATION_TAURI_E2E_INJECT_ECHO_CLEANUP_FAILURE === '1';
 
 type KeychainItem = { service: string; account: string };
 type NativeEchoPollResult = Awaited<
@@ -1110,6 +1113,9 @@ async function main() {
     grantIndexItem(clientInstanceId),
     grantCleanupIndexItem(clientInstanceId),
   ];
+  let journeyFailed = false;
+  let journeyError: unknown;
+  const cleanupErrors: unknown[] = [];
   try {
     fixture = await startTauriShellFixture({
       seedRemoteProfile: false,
@@ -1687,75 +1693,107 @@ async function main() {
           process.exitCode = 1;
         }
       }
+    } catch (error) {
+      journeyFailed = true;
+      journeyError = error;
     } finally {
       try {
         await fixture?.stop();
-      } finally {
-        if (NATIVE_ECHO_LANE && fixture?.cleanupReceipt)
-          console.log(
-            `STATION_TAURI_SHELL_FIXTURE_STOP ${JSON.stringify(fixture.cleanupReceipt)}`,
-          );
-        try {
-          await broker.stop();
-        } finally {
-          for (const item of ownedItems) {
-            const nativeCustodyItem =
-              item.service === PROOF_SERVICE ||
-              item.service === TRUST_SERVICE ||
-              item.account.startsWith('relay-native-client-grant:');
-            const fixtureProfileBearer = item.account.startsWith(
-              'profile:station-bearer:local-grant:',
-            );
-            if (
-              grantCustodyStatusVerified ||
-              !nativeCustodyItem ||
-              fixtureProfileBearer
-            )
-              keychainDelete(item);
-          }
-          if (grantCustodyStatusVerified) keychainDelete(ownerIndex);
-          if (
-            NATIVE_ECHO_LANE &&
-            nativeEchoEvidence &&
-            process.exitCode !== 1
-          ) {
-            assert.equal(grantCustodyStatusVerified, true);
-            assert.deepEqual(broker.echoCleanupReceipt, {
-              pionProcessesExited: true,
-              brokerLeaseWithdrawn: true,
-              turnContainerRemoved: true,
-              brokerListenerClosed: true,
-              candidatePollerStoppedBeforeEcho: true,
-            });
-            for (const item of ownedItems)
-              assert.equal(keychainStatus(item), 44);
-            assert.equal(keychainStatus(ownerIndex), 44);
-            console.log(
-              `STATION_NATIVE_RELAY_TAURI_ECHO ${JSON.stringify({
-                sourceSha:
-                  process.env.STATION_TAURI_E2E_SOURCE_SHA ?? 'unrecorded',
-                appIdentifier: APP_IDENTIFIER,
-                negativeProofRejectedBeforeRemoteSdp:
-                  nativeEchoEvidence.negativeProofRejectedBeforeSdp,
-                validProofAppliedOnce: nativeEchoEvidence.validProofAppliedOnce,
-                candidatePollerStoppedBeforeEcho:
-                  nativeEchoEvidence.candidatePollerStoppedBeforeEcho,
-                lostRedeemResponseRecovered:
-                  nativeEchoEvidence.lostRedeemResponseRecovered,
-                dataChannel: 'station-lab-v1',
-                echoed: true,
-                turnContainerId: nativeEchoEvidence.turnContainerId,
-                cleanup: {
-                  exactKeychainItemsRemoved: true,
-                  ...broker.echoCleanupReceipt,
-                },
-              })}`,
-            );
+        if (INJECT_ECHO_CLEANUP_FAILURE)
+          cleanupErrors.push(new Error('injected native echo cleanup failure'));
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+      if (NATIVE_ECHO_LANE && fixture?.cleanupReceipt)
+        console.log(
+          `STATION_TAURI_SHELL_FIXTURE_STOP ${JSON.stringify(fixture.cleanupReceipt)}`,
+        );
+      try {
+        await broker.stop();
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+      for (const item of ownedItems) {
+        const nativeCustodyItem =
+          item.service === PROOF_SERVICE ||
+          item.service === TRUST_SERVICE ||
+          item.account.startsWith('relay-native-client-grant:');
+        const fixtureProfileBearer = item.account.startsWith(
+          'profile:station-bearer:local-grant:',
+        );
+        if (
+          grantCustodyStatusVerified ||
+          !nativeCustodyItem ||
+          fixtureProfileBearer
+        ) {
+          try {
+            keychainDelete(item);
+          } catch (error) {
+            cleanupErrors.push(error);
           }
         }
       }
+      if (grantCustodyStatusVerified) {
+        try {
+          keychainDelete(ownerIndex);
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+      }
+      if (
+        NATIVE_ECHO_LANE &&
+        nativeEchoEvidence &&
+        !journeyFailed &&
+        cleanupErrors.length === 0 &&
+        process.exitCode !== 1
+      ) {
+        const receipt = fixture?.cleanupReceipt;
+        assert.equal(receipt?.processGroupSettled, true);
+        assert.equal(receipt?.fixtureRootRemoved, true);
+        assert.equal(receipt?.fixtureRootExistsAfterQuietPeriod, false);
+        assert.equal(grantCustodyStatusVerified, true);
+        assert.deepEqual(broker.echoCleanupReceipt, {
+          pionProcessesExited: true,
+          brokerLeaseWithdrawn: true,
+          turnContainerRemoved: true,
+          brokerListenerClosed: true,
+          candidatePollerStoppedBeforeEcho: true,
+        });
+        for (const item of ownedItems) assert.equal(keychainStatus(item), 44);
+        assert.equal(keychainStatus(ownerIndex), 44);
+        console.log(
+          `STATION_NATIVE_RELAY_TAURI_ECHO ${JSON.stringify({
+            sourceSha: process.env.STATION_TAURI_E2E_SOURCE_SHA ?? 'unrecorded',
+            appIdentifier: APP_IDENTIFIER,
+            negativeProofRejectedBeforeRemoteSdp:
+              nativeEchoEvidence.negativeProofRejectedBeforeSdp,
+            validProofAppliedOnce: nativeEchoEvidence.validProofAppliedOnce,
+            candidatePollerStoppedBeforeEcho:
+              nativeEchoEvidence.candidatePollerStoppedBeforeEcho,
+            lostRedeemResponseRecovered:
+              nativeEchoEvidence.lostRedeemResponseRecovered,
+            dataChannel: 'station-lab-v1',
+            echoed: true,
+            turnContainerId: nativeEchoEvidence.turnContainerId,
+            cleanup: {
+              exactKeychainItemsRemoved: true,
+              ...broker.echoCleanupReceipt,
+            },
+          })}`,
+        );
+      }
     }
   }
+  const terminalErrors = [
+    ...(journeyFailed ? [journeyError] : []),
+    ...cleanupErrors,
+  ];
+  if (terminalErrors.length === 1) throw terminalErrors[0];
+  if (terminalErrors.length > 1)
+    throw new AggregateError(
+      terminalErrors,
+      'Native relay shell journey failed',
+    );
 }
 
 main().catch((error) => {
