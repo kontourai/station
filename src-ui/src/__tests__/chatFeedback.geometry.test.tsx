@@ -279,9 +279,17 @@ describe('September 8 visual feedback regressions', () => {
               ),
               name: box(row.querySelector('.chat-dock__project-switcher-name')),
               open,
-              labelClipped: label
-                ? label.scrollWidth > label.clientWidth + 1
-                : null,
+              // Too wide for its box, and whether that box cuts the text off
+              // or lets it paint on over the Open icon.
+              label: !label
+                ? 'missing'
+                : label.scrollWidth <= label.clientWidth + 1
+                  ? 'fits'
+                  : ['hidden', 'clip'].includes(
+                        getComputedStyle(label).overflowX,
+                      )
+                    ? 'clipped'
+                    : 'painted-outside',
               openHit: Boolean(
                 hit?.closest('.chat-dock__project-switcher-open') &&
                   row.contains(hit),
@@ -293,16 +301,19 @@ describe('September 8 visual feedback regressions', () => {
       expect(rows).toHaveLength(2);
       // The long name is genuinely too wide and is cut short in its own box;
       // the short one is the control that fits untouched.
-      expect(rows.map((row) => row.labelClipped)).toEqual([true, false]);
+      expect(rows.map((row) => row.label)).toEqual(['clipped', 'fits']);
       for (const measured of rows) {
         expect(measured.name.right).toBeLessThanOrEqual(
           measured.switchButton.right + 1,
         );
         expect(measured.name.right).toBeLessThanOrEqual(measured.open.left + 1);
         expect(measured.open.right).toBeLessThanOrEqual(measured.row.right + 1);
-        expect(measured.open.width).toBeGreaterThanOrEqual(44);
-        expect(measured.open.height).toBeGreaterThanOrEqual(44);
-        expect(measured.switchButton.height).toBeGreaterThanOrEqual(44);
+        // Rounded: the anchored panel can sit on a subpixel offset.
+        expect(Math.round(measured.open.width)).toBeGreaterThanOrEqual(44);
+        expect(Math.round(measured.open.height)).toBeGreaterThanOrEqual(44);
+        expect(Math.round(measured.switchButton.height)).toBeGreaterThanOrEqual(
+          44,
+        );
         expect(measured.openHit).toBe(true);
       }
     } finally {
