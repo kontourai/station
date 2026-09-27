@@ -665,10 +665,9 @@ const ROWS: readonly Row[] = [
     tool: 'update_job',
     args: { name: 'granted', prompt: 'run something else' },
     job: 'granted',
-    // Decided by the server only; the scheduler SDK error does not keep the
-    // envelope code until the SDK follow-up, so this row is driven through
-    // the REST boundary, not the tool envelope.
-    restOnly: true,
+    // Decided by the server only: the tool-side check passes, and the typed
+    // code reaches the agent because the scheduler SDK error keeps the
+    // envelope's code (#2708 A-1).
     route: 'PUT /scheduler/jobs/:target',
     expect: {
       'bound op-': 'station_control_person_only',
@@ -1056,11 +1055,17 @@ describe('the server guard alone gives agents a typed refusal (F2)', () => {
       }
     )._registeredTools;
 
-  // Scheduler tools gain the same once the SDK's scheduler error keeps the
-  // envelope code (separate SDK follow-up); here: an SDK-client tool
-  // (board_pin), an agent CRUD tool (delete_agent) and a raw `api()` tool
-  // (update_config).
+  // An SDK-client tool (board_pin), an agent CRUD tool (delete_agent), a raw
+  // `api()` tool (update_config), and (#2708 A-1) one SDK-client tool per
+  // station-control family whose fetcher reads the envelope through the
+  // SDK's envelope helper: scheduler, knowledge, integrations, reviews and
+  // plugins. Skills is below: `install_skill` answers `message`, not `error`.
   test.each([
+    ['disable_job', { name: 'nightly' }],
+    ['reindex_knowledge', {}],
+    ['delete_integration', { id: 'x' }],
+    ['list_review_receipts', { projectSlug: 'project-a' }],
+    ['list_plugins', {}],
     ['delete_agent', { slug: 'a' }],
     ['update_config', { updates: { theme: 'dark' } }],
     [
@@ -1078,6 +1083,18 @@ describe('the server guard alone gives agents a typed refusal (F2)', () => {
       success: false,
       code: 'station_control_caller_required',
       error: expect.stringContaining('verified calling session'),
+    });
+    expect(hits).toEqual([]);
+    expect(refusals).toEqual(['station_control_caller_required']);
+  });
+
+  test('install_skill keeps the server’s code beside its message', async () => {
+    const handler = handlers().install_skill?.handler;
+    const result = await toolSideOff(() => handler!({ id: 'x' }, {}));
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      success: false,
+      code: 'station_control_caller_required',
+      message: expect.stringContaining('verified calling session'),
     });
     expect(hits).toEqual([]);
     expect(refusals).toEqual(['station_control_caller_required']);

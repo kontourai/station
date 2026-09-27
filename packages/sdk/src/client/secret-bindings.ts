@@ -1,5 +1,5 @@
 import type { SecretBindingView } from '@kontourai/station-contracts/secret-binding';
-import { apiErrorMessage } from './api-error-message';
+import { envelopeError } from './api-error-message';
 import { authenticatedFetch } from './http';
 
 export interface SecretBindingConsumerInput {
@@ -52,8 +52,10 @@ async function request<T>(
     init,
   );
   const result = (await response.json()) as Envelope<T>;
+  // #2708: a refusal keeps its status, `code` and validation `details`, so the
+  // UI can show the server's reason rather than the schema's field names.
   if (!response.ok || !result.success || result.data === undefined)
-    throw new Error(apiErrorMessage(result, 'Secret binding request failed.'));
+    throw envelopeError(response, result, 'Secret binding request failed.');
   return result.data;
 }
 

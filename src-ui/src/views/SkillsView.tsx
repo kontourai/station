@@ -35,7 +35,7 @@ import {
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useUrlSelection } from '../hooks/useUrlSelection';
-import { errorText, userFacingErrorMessage } from '../utils/errorText';
+import { userFacingErrorMessage } from '../utils/errorText';
 import { SkillCommandSection } from './skills/SkillCommandSection';
 import {
   buildSkillFilename,
@@ -404,7 +404,7 @@ export function SkillsView({
           : `Imported ${result.imported} skill${result.imported === 1 ? '' : 's'}`,
       );
     } catch (error) {
-      setImportError(errorText(error));
+      setImportError(userFacingErrorMessage(error));
     }
   }
 

@@ -121,6 +121,7 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   selectionState.selectedId = null;
   selectionState.select.mockReset();
   selectionState.deselect.mockReset();
@@ -454,15 +455,20 @@ describe('SkillsView', () => {
 
     // #2708: the thrown message is field-qualified for CLI and agent readers
     // ("Validation failed: command …"); the editor shows the server's reason.
+    // Driven through the REAL fetcher the update hook calls
+    // (`updateLocalSkill`), answering the shared validation middleware's body,
+    // so this proves the fetcher keeps `details` — not only that the view
+    // reads them off an error built by hand.
     test('a refused save toasts the server reason, not the field key', async () => {
-      const { StationHttpError } = await import(
+      const { StationHttpError, updateLocalSkill } = await import(
         '@kontourai/station-sdk/client'
       );
-      updateLocalSkillMock.mockRejectedValueOnce(
-        new StationHttpError(
-          400,
-          'Validation failed: command A command word is lowercase letters, digits and dashes.',
-          {
+      let thrown: Promise<unknown> = Promise.resolve();
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Validation failed',
             details: {
               formErrors: [],
               fieldErrors: {
@@ -471,8 +477,17 @@ describe('SkillsView', () => {
                 ],
               },
             },
-          },
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
         ),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      updateLocalSkillMock.mockImplementationOnce(
+        ({ name, ...updates }: { name: string }) => {
+          const saved = updateLocalSkill('http://localhost', name, updates);
+          thrown = saved.catch((caught: unknown) => caught);
+          return saved;
+        },
       );
       selectSkill(
         { name: 'release-check', source: 'local' },
@@ -490,6 +505,14 @@ describe('SkillsView', () => {
           'A command word is lowercase letters, digits and dashes.',
         ),
       );
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://localhost/api/skills/release-check',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+      // The same sentence would render from a plain Error carrying only the
+      // reasons; what the fetcher now keeps is the status and the details.
+      expect(await thrown).toBeInstanceOf(StationHttpError);
+      expect(await thrown).toMatchObject({ status: 400 });
     });
 
     // Turning a command OFF has to be a WRITE. Omitting `command` from the

@@ -2402,14 +2402,23 @@ class StationHttpError extends Error {
 }
 ```
 
-Today every field is carried by a fetcher built on `readEnvelopeOrThrow`: the
-integration, review and workspace pane host action fetchers. `readEnvelopeOrThrow(response)`
+Today every field is carried by the integration, review and workspace pane
+host action fetchers (built on `readEnvelopeOrThrow`), and by the scheduler,
+skills, knowledge and secret-binding fetchers. `readEnvelopeOrThrow(response)`
 throws this error for a non-2xx response or for a body that is not
 `success: true`. A body that is not JSON keeps its status on a non-2xx; on a
 2xx it is a protocol failure and throws a plain `Error`. Other fetchers still
 throw their own errors — some a `StationHttpError` without `details`, some a
 plain `Error` or a family-specific subclass — and move onto the same fields
 in later releases, keeping their subclasses (#2708).
+
+Family subclasses are `StationHttpError`s too. The scheduler's
+`SchedulerResponseError` and its run errors (`SchedulerRunIndeterminateError`,
+`SchedulerRunFailedError`, `SchedulerRunRefusedError`) are built from the
+error the envelope helper made of the response, so they keep its status,
+`details` and `Retry-After`; a run error's `code` stays its own fixed value.
+`PluginCollectionHttpError` keeps the envelope's `code` on the error and on
+its `envelope`.
 
 - `status` is the status the response actually carried. A route that answers
   `200` with `{ success: false }` produces a `StationHttpError` whose status
