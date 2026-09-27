@@ -283,6 +283,22 @@ Two constraints govern what can appear in a manifest, both enforced by tests:
 - **`build` is rejected.** `buildPlugin` refuses any manifest declaring a host
   shell build. Ship a prebuilt bundle or use a Station-supported entrypoint.
 
+Entry `source` values (plugins and `tools`) are confined by
+`JsonManifestRegistryProvider` in
+`src-server/providers/registries/json-manifest-registry.ts`:
+
+- **A local manifest's sources are plain directories inside the registry
+  root**, which is the parent of the manifest's directory. That is why the
+  bundled catalogs can name `../minimal-layout`. Relative and absolute paths
+  are both checked after following symlinks.
+- **Git sources must be remote URLs** (`https://`, `ssh://`, or
+  `git@host:path`). A local source whose path ends in `.git`, contains `#`, or
+  holds a `.git` entry (a working checkout) is refused, as is a `file:` URL.
+- **A hosted manifest never names local paths.** A relative source resolves as
+  a URL on the manifest's host.
+
+A refused entry stays listed without a source, and installing it reports why.
+
 ### Install and use a bundled layout
 
 Registry is the discovery and installation surface; **Plugins** is the

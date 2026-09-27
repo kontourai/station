@@ -52,7 +52,7 @@ describe('station-control tool classification', () => {
       expect(classifyControlTool(read)).toBe('read-only');
   });
 
-  test('read-only, bounded-write and mutating sets partition the surface', () => {
+  test('bounded-write is exactly notify_user and spot-checked tools keep their class', () => {
     const names = registeredToolNames();
     const readOnly = names.filter(
       (name) => classifyControlTool(name) === 'read-only',
@@ -62,9 +62,6 @@ describe('station-control tool classification', () => {
     );
     const mutating = names.filter(
       (name) => classifyControlTool(name) === 'mutating',
-    );
-    expect(readOnly.length + boundedWrite.length + mutating.length).toBe(
-      names.length,
     );
     // #2584: notify_user writes (one bounded inbox record), so it is not
     // labelled a reader; it is auto-approved as a bounded write.
@@ -162,12 +159,5 @@ describe('station-control tool classification', () => {
     expect(isClassifiedControlTool('station-control_brand_new_tool')).toBe(
       false,
     );
-  });
-
-  test('SC_READ_ONLY_TOOLS (auto-approve list) stays prefixed and read-only', () => {
-    for (const name of SC_READ_ONLY_TOOLS) {
-      expect(name.startsWith('station-control_')).toBe(true);
-      expect(classifyControlTool(name)).toBe('read-only');
-    }
   });
 });

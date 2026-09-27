@@ -503,12 +503,20 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2513: runs the ensure script once as a child process to prove a
   // refusal is a non-zero exit that leaves the spec untouched.
   'scripts/__tests__/ensure-ios-agent-activity-extension.test.ts',
+  // #2590: runs the exported-entitlements check once as a child process to
+  // prove the Notification Service Extension's refusal is a non-zero exit.
+  'scripts/__tests__/ios-exported-entitlements.test.ts',
   // station#3549: drives a single `git grep -l` through `execFileSync` to
   // discover every file that calls `adapter.startSession(` — the same "real
   // git, not a fixture" shape as gate-scope.test.ts above. Fix-forward: this
   // file landed via #3609 without a resource classification, which the
   // manifest gate itself requires for any direct child_process importer.
   'src-server/services/orchestration/__tests__/engine-start-seam.test.ts',
+  // #2707: builds the SDK barrel import graph from the real repository through
+  // `git ls-files` and `git grep -l` (via scripts/lib/sdk-barrel-selection.mjs)
+  // — the same enumeration the changed lane uses, so the oracle is what git
+  // reports, not a fixture. Three bounded single-shot children, once per file.
+  'scripts/__tests__/sdk-barrel-selection.repo.test.ts',
   // station#3615: deliberately mock-free — points the REAL claude/codex CLIs
   // at an empty config home to prove the signed-out exit-1 mapping, because
   // the mocked suite is exactly what let that conflation ship. Bounded

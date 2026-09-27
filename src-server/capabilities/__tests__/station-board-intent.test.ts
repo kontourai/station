@@ -52,6 +52,31 @@ describe('resolveAndExecuteStationBoardIntent', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  // Outside hosted mode, POST /intent checks only `id` and `kind` and passes
+  // the untrusted `authority` through; resolution alone rejects an absent or
+  // partial one. Pinned here because a console-core upgrade could relax that.
+  test.each([
+    ['absent', {}],
+    ['empty', { authority: {} }],
+    ['partial', { authority: { product: 'station' } }],
+  ])(
+    'an intent with %s authority never executes, even with consent',
+    async (_label, authorityShape) => {
+      const execute = vi.fn();
+      const result = await resolveAndExecuteStationBoardIntent(
+        { id: 'intent-1', kind: 'task dispatch', ...authorityShape },
+        true,
+        [writeBinding(execute)],
+      );
+      expect(result).toEqual({
+        bound: false,
+        executed: false,
+        reason: 'missing-authority',
+      });
+      expect(execute).not.toHaveBeenCalled();
+    },
+  );
+
   test('confirmation "never" executes unconditionally, exactly once', async () => {
     const execute = vi.fn();
     const result = await resolveAndExecuteStationBoardIntent(

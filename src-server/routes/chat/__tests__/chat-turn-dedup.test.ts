@@ -23,7 +23,6 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import {
   ChatTurnDedupStore,
   getChatTurnDedupStore,
-  resetChatTurnDedupStoresForTest,
 } from '../chat-turn-dedup.js';
 
 // These project homes were the fixed paths `/tmp/station-test-home-{a,b,c}`,
@@ -564,10 +563,6 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
 });
 
 describe('getChatTurnDedupStore', () => {
-  afterEach(() => {
-    resetChatTurnDedupStoresForTest();
-  });
-
   test('returns the SAME instance for the same projectHomeDir', () => {
     const store1 = getChatTurnDedupStore(DEDUP_HOME_A);
     const store2 = getChatTurnDedupStore(DEDUP_HOME_A);

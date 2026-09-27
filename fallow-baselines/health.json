@@ -7900,9 +7900,6 @@
       }
     },
     "tests/android/mobile-layout.spec.ts": {
-      "crap_high": {
-        "count": 1
-      },
       "crap_moderate": {
         "count": 1
       }

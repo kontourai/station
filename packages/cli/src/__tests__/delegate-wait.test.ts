@@ -318,6 +318,50 @@ describe('waitOnDelegatedTask (pure loop)', () => {
     ).toBe('status read refused by the Station');
   });
 
+  /**
+   * #2708 moves the SDK's refusal subclasses onto `StationHttpError` (A-1).
+   * Once `DelegationApiError` IS a `StationHttpError`, checking the generic
+   * class first would turn every refusal into "failed with HTTP 403". This
+   * builds that future shape with a module mock, so the order is proven now
+   * rather than discovered when the class moves.
+   */
+  test('a delegation refusal that is also a StationHttpError still reads as a refusal', async () => {
+    vi.resetModules();
+    vi.doMock('@kontourai/station-sdk/client', async (importOriginal) => {
+      const actual =
+        await importOriginal<typeof import('@kontourai/station-sdk/client')>();
+      class DelegationApiError extends actual.StationHttpError {
+        constructor(message: string, code?: string) {
+          super(403, message, code === undefined ? undefined : { code });
+          this.name = 'DelegationApiError';
+        }
+      }
+      return { ...actual, DelegationApiError };
+    });
+    try {
+      const { describeObservationError } = await import(
+        '../commands/delegate-wait.js'
+      );
+      const sdk = await import('@kontourai/station-sdk/client');
+      const refusal = new sdk.DelegationApiError(
+        'refused: SECRET-BODY-CONTENT',
+        'SECRET-CODE-CONTENT',
+      );
+      // The premise: the mocked refusal is both classes at once.
+      expect(refusal).toBeInstanceOf(sdk.StationHttpError);
+      expect(describeObservationError(refusal)).toBe(
+        'status read refused by the Station',
+      );
+      // A plain HTTP failure is still reported by its status.
+      expect(
+        describeObservationError(new sdk.StationHttpError(502, 'bad gateway')),
+      ).toBe('status read failed with HTTP 502');
+    } finally {
+      vi.doUnmock('@kontourai/station-sdk/client');
+      vi.resetModules();
+    }
+  });
+
   test('an early timer wake does not start a status read before the next poll is due', async () => {
     const clock = fakeClock();
     const observe = vi.fn(async () => snapshot('running'));
