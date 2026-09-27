@@ -2,7 +2,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { createRouteTestApp } from '../../../__test-utils__/route-test-app.js';
 import { ReservedAgentIdentityError } from '../../../domain/agent-registry.js';
 import {
@@ -12,6 +11,7 @@ import {
 } from '../../../domain/agent-workflow-errors.js';
 import {
   createAgentWorkflow,
+  deleteAgentWorkflow,
   listAgentWorkflowMetadata,
   readAgentWorkflow,
   updateAgentWorkflow,
@@ -57,42 +57,6 @@ const UPDATE = {
 } satisfies RequestInit;
 
 describe('Workflow Routes', () => {
-  test('GET /:slug/workflows/files lists workflows', async () => {
-    const app = mount(createMockLayoutService());
-    const body = await json(
-      await app.request('/agents/agent1/workflows/files'),
-    );
-    expect(body.success).toBe(true);
-  });
-
-  test('GET /:slug/workflows/:workflowId returns content', async () => {
-    const app = mount(createMockLayoutService());
-    const body = await json(
-      await app.request('/agents/agent1/workflows/build.ts'),
-    );
-    expect(body).toEqual({ success: true, data: { content: '// code' } });
-  });
-
-  test('POST /:slug/workflows creates workflow', async () => {
-    const app = mount(createMockLayoutService());
-    const res = await app.request('/agents/agent1/workflows', CREATE);
-    expect(res.status).toBe(201);
-  });
-
-  test('PUT /:slug/workflows/:id updates workflow', async () => {
-    const app = mount(createMockLayoutService());
-    const res = await app.request('/agents/agent1/workflows/build.ts', UPDATE);
-    expect(res.status).toBe(200);
-  });
-
-  test('DELETE /:slug/workflows/:id deletes workflow', async () => {
-    const app = mount(createMockLayoutService());
-    const res = await app.request('/agents/agent1/workflows/build.ts', {
-      method: 'DELETE',
-    });
-    expect(res.status).toBe(200);
-  });
-
   // One row per caller-caused refusal the workflow store can produce, with
   // the status and text this file answered BEFORE the migration. Every row
   // keeps both; `code` and `correlationId` are the additions. The domain
@@ -121,6 +85,7 @@ describe('Workflow Routes', () => {
     },
     {
       name: 'delete of a workflow that does not exist',
+      // Status moved 400 -> 404: 400 does not describe a missing workflow.
       previously: { status: 400, message: "Workflow 'build.ts' not found" },
       status: 404,
       code: 'workflow_not_found',
@@ -130,6 +95,7 @@ describe('Workflow Routes', () => {
     },
     {
       name: 'create of a workflow that already exists',
+      // Status moved 400 -> 409: 400 does not describe a conflict.
       previously: {
         status: 400,
         message: "Workflow 'build.ts' already exists",
@@ -203,20 +169,6 @@ describe('Workflow Routes', () => {
     });
   }
 
-  test('a status that changed did so only for a refusal whose old one was wrong', () => {
-    // The two rows above whose status moved, pinned so the change is visible
-    // in the test file and not only in a commit message. Both were 400 for a
-    // condition 400 does not describe.
-    expect(
-      typed
-        .filter((row) => row.previously.status !== row.status)
-        .map((row) => `${row.name}: ${row.previously.status} -> ${row.status}`),
-    ).toEqual([
-      'delete of a workflow that does not exist: 400 -> 404',
-      'create of a workflow that already exists: 400 -> 409',
-    ]);
-  });
-
   test('an untyped failure is answered as a correlated internal error, not as its message', async () => {
     // A disk error is not the caller's fault and carries no reviewed text.
     // This is the case that used to be labelled 400 by the same catch that
@@ -272,7 +224,8 @@ describe('Workflow Routes', () => {
           createAgentWorkflow(home, slug, filename, content),
         updateWorkflow: (slug: string, id: string, content: string) =>
           updateAgentWorkflow(home, slug, id, content),
-        deleteWorkflow: () => Promise.resolve(),
+        deleteWorkflow: (slug: string, id: string) =>
+          deleteAgentWorkflow(home, slug, id),
       } as unknown as Service);
     }
 
@@ -357,6 +310,47 @@ describe('Workflow Routes', () => {
         success: true,
         data: { content: '// real' },
       });
+    });
+
+    test('an update reads back the new content', async () => {
+      const app = mountRealStore();
+      await app.request('/agents/planner/workflows', CREATE);
+
+      const updated = await app.request(
+        '/agents/planner/workflows/build.ts',
+        UPDATE,
+      );
+      expect(updated.status).toBe(200);
+
+      const read = await app.request('/agents/planner/workflows/build.ts');
+      await expect(read.json()).resolves.toEqual({
+        success: true,
+        data: { content: '// updated' },
+      });
+    });
+
+    test('a delete removes it from the list and the read', async () => {
+      const app = mountRealStore();
+      await app.request('/agents/planner/workflows', CREATE);
+      const listed = async () =>
+        (
+          (await (
+            await app.request('/agents/planner/workflows/files')
+          ).json()) as { data: { id: string }[] }
+        ).data.map(({ id }) => id);
+      expect(await listed()).toEqual(['build.ts']);
+
+      const deleted = await app.request('/agents/planner/workflows/build.ts', {
+        method: 'DELETE',
+      });
+      expect(deleted.status).toBe(200);
+
+      expect(await listed()).toEqual([]);
+      const read = await app.request('/agents/planner/workflows/build.ts');
+      expect(read.status).toBe(404);
+      expect(((await read.json()) as { code: string }).code).toBe(
+        'workflow_not_found',
+      );
     });
   });
 
