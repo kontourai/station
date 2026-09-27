@@ -18,9 +18,6 @@
  * as list changes rather than only as calls — and the mutation payloads are
  * recorded, because the payload is what the server acts on.
  */
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -737,16 +734,7 @@ describe('creating a Board from the panel', () => {
  * `:focus-within` cannot rescue it either, because tapping the row navigates
  * and closes the drawer.
  */
-describe('the Boards row menu on touch (#2062)', () => {
-  const boardsCss = () =>
-    readFileSync(
-      join(
-        dirname(fileURLToPath(import.meta.url)),
-        '../components/project-sidebar/ProjectSidebarBoards.css',
-      ),
-      'utf8',
-    );
-
+describe('the Boards row menu trigger (#2062)', () => {
   /**
    * #2062 review F1 — the trigger must not sit on top of the menu it opens.
    *
@@ -756,11 +744,12 @@ describe('the Boards row menu on touch (#2062)', () => {
    * down onto the menu's first item: a tap on Rename hit the trigger and
    * closed the menu (measured in Chromium at 33x27px of overlap).
    *
-   * jsdom computes no layout, so this asserts the CONTAINMENT that makes the
-   * geometry impossible rather than the pixels: the trigger shares a
-   * positioned box with the row's own line, and the menu is outside that box.
-   * Both halves are needed — the trigger being inside the wrapper proves
-   * nothing if the menu is in there with it.
+   * jsdom computes no layout, so this asserts the CONTAINMENT through the
+   * real panel, for all three menu modes: the trigger shares a box with the
+   * row's own line, and the menu is outside that box. Both halves are needed:
+   * the trigger being inside the wrapper proves nothing if the menu is in
+   * there with it. ProjectSidebarBoards.coarseGeometry.test.tsx measures the
+   * resulting geometry (the open menu sits below the trigger) in Chromium.
    */
   test('the open menu is outside the box the trigger is positioned against', async () => {
     boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
@@ -800,64 +789,6 @@ describe('the Boards row menu on touch (#2062)', () => {
     const pickMenu = screen.getByRole('menu');
     expect(main?.contains(pickMenu)).toBe(false);
     expect(row?.contains(pickMenu)).toBe(true);
-
-    // The wrapper is the positioned box, not merely a div: without this the
-    // trigger would resolve against the row again and the overlap returns.
-    const boardsCssText = readFileSync(
-      join(
-        dirname(fileURLToPath(import.meta.url)),
-        '../components/project-sidebar/ProjectSidebarBoards.css',
-      ),
-      'utf8',
-    );
-    const mainRule = boardsCssText.slice(
-      boardsCssText.indexOf('\n.sidebar__board-row-main {'),
-    );
-    expect(mainRule.slice(0, mainRule.indexOf('\n}'))).toContain(
-      'position: relative',
-    );
-  });
-
-  test('the row-menu trigger is always visible at the 44px floor on coarse pointers', () => {
-    const css = boardsCss();
-    /** The declarations of the first rule whose selector line matches. */
-    const ruleBody = (selector: string): string => {
-      const start = css.indexOf(`\n${selector} {`);
-      expect(start).toBeGreaterThan(-1);
-      const from = start + selector.length + 4;
-      return css.slice(from, css.indexOf('\n}', from));
-    };
-
-    // The base rule is hover-revealed, which is correct for a pointer and is
-    // the whole problem on touch. Pinned so the coarse block below is not
-    // asserting against a default that quietly changed.
-    expect(ruleBody('.sidebar__board-menu-trigger')).toContain('opacity: 0');
-
-    const coarseStart = css.indexOf('@media (pointer: coarse)');
-    expect(coarseStart).toBeGreaterThan(-1);
-    const coarse = css.slice(coarseStart);
-    const coarseBlock = coarse.slice(0, coarse.indexOf('}\n}'));
-
-    // Scoped to the RULE inside the block, not to the block (#2062 review
-    // F4). Block-scoped `toContain` was satisfied by any rule in there: a
-    // probe that gutted the trigger's own declarations and added a sibling
-    // rule carrying them passed all five assertions, which is the same
-    // discriminates-nothing failure the base-rule helper above exists to
-    // avoid.
-    const coarseRuleBody = (selector: string): string => {
-      const start = coarseBlock.indexOf(`\n  ${selector} {`);
-      expect(start).toBeGreaterThan(-1);
-      const from = start + selector.length + 6;
-      return coarseBlock.slice(from, coarseBlock.indexOf('\n  }', from));
-    };
-    const trigger = coarseRuleBody('.sidebar__board-menu-trigger');
-    expect(trigger).toContain('opacity: 1');
-    expect(trigger).toContain('min-height: 44px');
-    expect(trigger).toContain('min-width: 44px');
-    // The base rule's 0 must not survive into THIS rule. Asserted here rather
-    // than across the whole block, where it would go red the first time some
-    // unrelated selector legitimately wanted `opacity: 0` on touch.
-    expect(trigger).not.toContain('opacity: 0');
   });
 });
 
@@ -1148,8 +1079,8 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
     projects.push({ id: '1', slug: 'demo', name: 'Demo' });
     await renderSidebar(<ProjectSidebar />);
 
-    // MEASURED HALF: the rows this component actually renders wear the shared
-    // class. This is a DOM observation of the real panel, and it is the half
+    // The rows this component actually renders wear the shared class. This
+    // is a DOM observation of the real panel, and it is the half
     // that used to be false — the rows carried no class at all and took their
     // `padding: 6px 8px` at `--text-sm` from a descendant selector in
     // `ProjectSidebarBoards.css`, about 26px against a 44px requirement.
@@ -1177,72 +1108,9 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
     });
     expect(rowClasses()).toEqual([true]);
 
-    // TEXT-PINNED HALF, and it is text-pinned rather than measured: jsdom
-    // computes no layout, and `menu-primitive.cascade.test.tsx` measures this
-    // family's FINE-pointer 32px floor in a real Chromium, not the coarse
-    // branch — no automated check measures the coarse floor for ANY member of
-    // the family. #2083's review measured these three rows at exactly 44.00px
-    // with `hasTouch`, and #2113 carries giving the cascade fixture a coarse
-    // context so that is a standing claim rather than one observation. What is
-    // asserted here is that the coarse rule exists and says 44px — scoped to
-    // the rule, not to the block, following the trigger's own coarse assertion
-    // above.
-    const chatCss = readFileSync(
-      join(
-        dirname(fileURLToPath(import.meta.url)),
-        '../components/chat/chat.css',
-      ),
-      'utf8',
-    );
-    const coarseStart = chatCss.indexOf(
-      '@media (max-width: 768px), (pointer: coarse) {\n  .menu-row.menu-row {',
-    );
-    expect(coarseStart).toBeGreaterThan(-1);
-    const coarseRule = chatCss.slice(
-      chatCss.indexOf('{', chatCss.indexOf('.menu-row.menu-row', coarseStart)),
-    );
-    expect(coarseRule.slice(0, coarseRule.indexOf('}'))).toContain(
-      'min-height: 44px',
-    );
-
-    // ...and nothing page-local overrides it back down. The descendant rule
-    // that sized these rows is gone, and a new one would win on specificity
-    // over a single-class base rule in another sheet.
-    const boardsCssText = readFileSync(
-      join(
-        dirname(fileURLToPath(import.meta.url)),
-        '../components/project-sidebar/ProjectSidebarBoards.css',
-      ),
-      'utf8',
-    );
-    // The retired descendant rule — the one that sized these rows at about
-    // 26px — is gone and stays gone.
-    expect(boardsCssText).not.toContain('.sidebar__board-menu button');
-    // ...and nothing page-local takes the row's HEIGHT back. Scoped to height
-    // rather than to the selector's existence, because this menu legitimately
-    // owns one row declaration: the `padding-block` its wrapping picker labels
-    // need, which the family's single-line members do not. A blanket "no
-    // page-local row rule" assertion would have forbidden that too, and the
-    // defect it exists to catch is a floor override, not a rule.
-    const rowRuleStart = boardsCssText.indexOf(
-      '\n.sidebar__board-menu .menu-row {',
-    );
-    if (rowRuleStart > -1) {
-      const rowRule = boardsCssText.slice(rowRuleStart);
-      expect(rowRule.slice(0, rowRule.indexOf('\n}'))).not.toContain('height');
-    }
-
-    // The one declaration this menu keeps, pinned because dropping it is
-    // invisible in a diff and near-invisible on screen: `.menu-surface` fills
-    // with `--bg-secondary`, which is the same `--k-panel` the rail itself
-    // uses, so without this the menu reads as an outline drawn on the panel
-    // rather than a surface raised off it.
-    const menuRule = boardsCssText.slice(
-      boardsCssText.indexOf('\n.sidebar__board-menu {'),
-    );
-    expect(menuRule.slice(0, menuRule.indexOf('\n}'))).toContain(
-      'background: var(--bg-tertiary)',
-    );
+    // The rows' 44px coarse floor, and that nothing page-local overrides it,
+    // is measured in Chromium by menu-primitive.cascade.test.tsx, which
+    // composes ProjectSidebarBoards.css into the cascade.
   });
 });
 
