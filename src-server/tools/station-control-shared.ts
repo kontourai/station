@@ -504,6 +504,61 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
   }
 }
 
+/**
+ * #2708: the typed refusal inside a failure a tool is about to throw, as a
+ * tool result. Delegation tools wrap Station's answer in their own sentence
+ * ("Delegated task inventory is unavailable…"), and a thrown error reaches the
+ * agent as text only, so the guard's `code` never arrived. This walks the
+ * error and its `cause` chain for the first error that carries both an HTTP
+ * `status` and a string `code` — an answer Station gave, never a transport
+ * errno such as `ECONNREFUSED`, which carries no status — and keeps the
+ * outer sentence beside it. `undefined` when there is no such answer; the
+ * caller then rethrows as before.
+ */
+export function typedToolFailure(error: unknown):
+  | {
+      success: false;
+      error: string;
+      code: string;
+      status: number;
+      details?: unknown;
+    }
+  | undefined {
+  if (!(error instanceof Error)) return undefined;
+  let current: unknown = error;
+  for (let depth = 0; current instanceof Error && depth < 8; depth += 1) {
+    const { code, status, details } = current as {
+      code?: unknown;
+      status?: unknown;
+      details?: unknown;
+    };
+    if (typeof code === 'string' && code && typeof status === 'number') {
+      return {
+        success: false,
+        error: error.message,
+        code,
+        status,
+        ...(details === undefined ? {} : { details }),
+      };
+    }
+    current = current.cause;
+  }
+  return undefined;
+}
+
+/** A tool result for `run`, or its typed refusal (`typedToolFailure`). */
+export async function jsonToolResultOrTypedFailure(
+  run: () => Promise<unknown>,
+) {
+  try {
+    return jsonToolResult(await run());
+  } catch (error) {
+    const typed = typedToolFailure(error);
+    if (!typed) throw error;
+    return jsonToolResult(typed);
+  }
+}
+
 export async function navigateTo(path: string) {
   return api('/api/ui', {
     method: 'POST',

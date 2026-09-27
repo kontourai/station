@@ -1099,6 +1099,31 @@ describe('the server guard alone gives agents a typed refusal (F2)', () => {
     expect(refusals).toEqual(['station_control_caller_required']);
   });
 
+  // #2708 A-1b review: the delegation tools wrap Station's answer in their
+  // own sentence and used to throw it, so the agent got text only. They now
+  // relay the typed refusal underneath, keeping their sentence.
+  test.each([
+    ['list_delegated_tasks', {}],
+    ['get_task', { taskId: 'task:1' }],
+    ['get_task_events', { taskId: 'task:1' }],
+    ['interrupt_task', { taskId: 'task:1' }],
+    [
+      'respond_to_task_request',
+      { taskId: 'task:1', requestId: 'r1', decision: 'accept' },
+    ],
+  ] as const)('%s relays the server’s typed code', async (name, args) => {
+    const handler = handlers()[name]?.handler;
+    const result = await toolSideOff(() => handler!(args, {}));
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      success: false,
+      code: 'station_control_caller_required',
+      status: 403,
+      error: expect.any(String),
+    });
+    expect(hits).toEqual([]);
+    expect(refusals).toEqual(['station_control_caller_required']);
+  });
+
   test('install_skill keeps the server’s code beside its message', async () => {
     const handler = handlers().install_skill?.handler;
     const result = await toolSideOff(() => handler!({ id: 'x' }, {}));

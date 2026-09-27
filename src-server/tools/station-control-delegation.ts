@@ -61,6 +61,7 @@ import {
   interruptTurn,
   listOrchestrationSessions,
   respondToRequest,
+  StationHttpError,
 } from '@kontourai/station-sdk/client';
 import {
   formatProviderQuotaEventText,
@@ -1449,14 +1450,25 @@ async function readJson<T>(
   } catch {
     throw new Error(unavailableMessage);
   }
-  let payload: T & { error?: string };
+  let payload: T & { error?: string; code?: unknown };
   try {
-    payload = (await response.json()) as T & { error?: string };
+    payload = (await response.json()) as T & {
+      error?: string;
+      code?: unknown;
+    };
   } catch {
     throw new Error(unavailableMessage);
   }
   if (!response.ok) {
-    throw new Error(payload.error || unavailableMessage);
+    // #2708: Station answered, so the error keeps the status and the typed
+    // code (a station-control refusal) for the tool to relay.
+    throw new StationHttpError(
+      response.status,
+      payload.error || unavailableMessage,
+      typeof payload.code === 'string' && payload.code
+        ? { code: payload.code }
+        : undefined,
+    );
   }
   return payload;
 }
@@ -1686,9 +1698,17 @@ function peerPortableFollowUpRefusalFor(
  * fixed-copy, 403 at the route) versus this sentinel (generic, 400).
  */
 class PeerPortableFollowUpError extends Error {
-  constructor(message: string) {
+  /** The answer's status and envelope `code`, when Station answered (#2708). */
+  readonly status?: number;
+  readonly code?: string;
+
+  constructor(message: string, answer?: { status: number; code?: string }) {
     super(message);
     this.name = 'PeerPortableFollowUpError';
+    if (answer) {
+      this.status = answer.status;
+      if (answer.code !== undefined) this.code = answer.code;
+    }
   }
 }
 
@@ -1735,7 +1755,12 @@ async function postPeerPortableFollowUp<T>(
   if (!response.ok) {
     const refusal = peerPortableFollowUpRefusalFor(response.status, payload);
     if (refusal) throw refusal;
-    throw new PeerPortableFollowUpError(unavailableMessage);
+    throw new PeerPortableFollowUpError(unavailableMessage, {
+      status: response.status,
+      ...(typeof payload?.code === 'string' && payload.code
+        ? { code: payload.code }
+        : {}),
+    });
   }
   if (!payload?.success || payload.data === undefined) {
     throw new PeerPortableFollowUpError(unavailableMessage);
@@ -1776,10 +1801,18 @@ async function getCanonical<T>(
     );
   }
   if (!response.ok || !payload.success || payload.data === undefined) {
+    const { code, details } = payload as { code?: unknown; details?: unknown };
     throw new CanonicalDelegationReadError(
       'http',
       payload.error || unavailableMessage,
       response.status,
+      undefined,
+      {
+        // #2708: the answer's typed code (a station-control refusal) and
+        // details ride on the error for the tool to relay.
+        ...(typeof code === 'string' && code ? { code } : {}),
+        ...(details === undefined ? {} : { details }),
+      },
     );
   }
   return payload.data;
@@ -1791,10 +1824,18 @@ export class CanonicalDelegationReadError extends Error {
     message: string,
     readonly status?: number,
     cause?: unknown,
+    answer?: { code?: string; details?: unknown },
   ) {
     super(message, { cause });
     this.name = 'CanonicalDelegationReadError';
+    if (answer?.code !== undefined) this.code = answer.code;
+    if (answer?.details !== undefined) this.details = answer.details;
   }
+
+  /** The answer's envelope `code`, when Station sent one (#2708). */
+  readonly code?: string;
+  /** The answer's envelope `details`, as sent. */
+  readonly details?: unknown;
 }
 
 /** Older Stations predate explicit conversation/current-child fields. */
@@ -3649,9 +3690,12 @@ export async function listDelegatedTasks(
             target.apiBase,
             target.requestOptions,
           );
-  } catch {
+  } catch (cause) {
+    // The sentence stays; the answer underneath (a typed station-control
+    // refusal, #2708) rides as its cause for the tool to relay.
     throw new Error(
       'Delegated task inventory is unavailable on the selected Station',
+      { cause },
     );
   }
   if (!Array.isArray(rawSessions)) {

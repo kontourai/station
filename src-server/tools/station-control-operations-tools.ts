@@ -69,6 +69,7 @@ import {
   api,
   controlRequestOptions,
   jsonToolResult,
+  jsonToolResultOrTypedFailure,
   navigateTo,
   resolveControlApiBase,
   toToolEnvelope as toOperationsEnvelope,
@@ -891,7 +892,9 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResult(await listDelegatedTasks({ ...input, userId: _userId })),
+      jsonToolResultOrTypedFailure(() =>
+        listDelegatedTasks({ ...input, userId: _userId }),
+      ),
   );
 
   server.tool(
@@ -1004,7 +1007,9 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResult(await observeDelegatedTask({ ...input, userId: _userId })),
+      jsonToolResultOrTypedFailure(() =>
+        observeDelegatedTask({ ...input, userId: _userId }),
+      ),
   );
 
   server.tool(
@@ -1026,8 +1031,8 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResult(
-        await observeDelegatedTaskEvents({ ...input, userId: _userId }),
+      jsonToolResultOrTypedFailure(() =>
+        observeDelegatedTaskEvents({ ...input, userId: _userId }),
       ),
   );
 
@@ -1070,8 +1075,8 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResult(
-        await respondToDelegatedTaskRequest({
+      jsonToolResultOrTypedFailure(() =>
+        respondToDelegatedTaskRequest({
           ...input,
           userId: _userId,
           clientOrigin: STATION_CONTROL_MCP_ORIGIN,
@@ -1093,8 +1098,8 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResult(
-        await interruptDelegatedTask({
+      jsonToolResultOrTypedFailure(() =>
+        interruptDelegatedTask({
           ...input,
           userId: _userId,
           clientOrigin: STATION_CONTROL_MCP_ORIGIN,
