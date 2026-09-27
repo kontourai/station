@@ -2347,6 +2347,12 @@ await api.dismiss(notificationId);
 const notifications = await api.list({ status: ['pending'] });
 ```
 
+Known scheduling limit: a `scheduledAt` more than about 24.9 days ahead exceeds
+Node's native timer range. The current service can then retain the notification
+as pending without a live wakeup until it is rescheduled or the service starts
+again. See [#2810](https://github.com/kontourai/station/issues/2810); successful
+creation alone does not establish future delivery.
+
 ---
 
 ## Query Factories
@@ -3046,10 +3052,19 @@ learning lifecycle intents are separate future contracts. Hosts should present
 these limits directly, without treating a source read as candidate approval,
 promotion, or effect evidence.
 
+Follow the [SDK reader](../../packages/sdk/src/client/learning-source.ts),
+[query hook](../../packages/sdk/src/query-domains/knowledgeStores.ts),
+[route](../../src-server/routes/knowledge/knowledge-source-routes.ts),
+[request policy](../../src-server/knowledge-store/knowledge-source-observation-policy.ts),
+and [record reader](../../src-server/knowledge-store/knowledge-store-provider.ts).
+The [source dialog](../../src-ui/src/views/learning-review/LearningSourceDialog.tsx)
+shows how the host withholds data after authorization changes.
+
 ### Exact attention request inspection
 
-`useAttentionRequestInspection(reference, requestScope)` reauthorizes the exact
-Session/request/opened-event tuple on every mount. Its query key includes the
+When enabled, `useAttentionRequestInspection(reference, requestScope)` reads the
+exact Session/request/opened-event tuple again on every mount. The server checks
+current authority. Its query key includes the
 host-captured authority; cached data is withheld until the fresh read finishes.
 The imperative `inspectAttentionRequest` is also exported from the React-free
 client entry. Neither API chooses a replacement request automatically.
@@ -3075,6 +3090,10 @@ request authority is a refusal to act, requiring fresh inspection rather than a
 blind mutation retry. Requests without canonical approval/permission evidence
 keep their ordinary Session or notification fallback.
 
+See the [hook](../../packages/sdk/src/request-inspection.ts),
+[response parser](../../packages/sdk/src/client/request-inspection.ts), and
+[exact-event reader](../../src-server/services/orchestration/request-inspection.ts).
+
 ## Cloud target observation
 
 `verifyCloudMoveTarget(apiBase, options?)` from
@@ -3093,6 +3112,11 @@ The shared GET transport supports opt-in `requireCredential`, `redirect: 'error'
 and `maxResponseBytes` options. The probe requires SDK-owned matching bearer
 attachment or a current authenticated native transport binding. It refuses
 redirects, limits each body to 4 KiB and uses a shared 15-second deadline. Existing callers retain their current defaults.
+
+The [client](../../packages/sdk/src/client/cloud-move.ts) reads identity,
+discovery, then identity again; it rejects a changed instance, boot or build.
+The [CLI caller](../../packages/cli/src/commands/cloud-target.ts) requires one
+explicit enrolled target selector and configures credentials before that read.
 
 ### Restored conversation execution
 
@@ -3185,13 +3209,18 @@ and a SHA-256 text revision. Reads recheck current access and do not load the
 whole Session. Missing and denied answers are indistinguishable; an oversized
 answer is refused. A text revision detects changes, not evidence standing.
 
-The Station composer retains up to three selected excerpts with its existing
-local draft. Sending serializes the user's copied text and source references
+The Station composer retains up to three selected excerpts, each at most 4,096
+characters, with its existing local draft. Sending serializes the user's copied text and source references
 into the ordinary user message; it creates no capability or trust grant.
 Inspecting a saved reference reads its original answer under current access
 on the selected Station. No network request is made to an origin supplied by
 an untrusted quote link. The saved quotation and a changed current source
 remain visibly distinct.
+
+See the [SDK reader](../../packages/sdk/src/client/quote-source.ts),
+[turn-query owner](../../src-server/services/orchestration/session-query-module.ts),
+[quote serializer](../../src-ui/src/utils/answer-quotes.ts), and
+[source-inspection UI](../../src-ui/src/components/chat/QuoteSourceLink.tsx).
 
 ## In-app pull-request review
 
@@ -3239,6 +3268,13 @@ the orchestration owner checks the same open event again before adapter input.
 Opaque `attachmentRefs` use the existing current-host staging path; retries
 retain the same `clientTurnId` and payload after an uncertain response. Pass the
 captured host `requestScope` to each read, staging operation and send.
+
+The [SDK parser](../../packages/sdk/src/client/input-reply.ts),
+[request route](../../src-server/routes/orchestration/orchestration.ts),
+[dispatch owner](../../src-server/services/orchestration/orchestration-service.ts),
+and [input-reply UI](../../src-ui/src/components/attention/NeedsInputReply.tsx)
+show the complete binding. The UI retains an uncertain attempt and locks its
+payload; only a provably unsent failure clears that attempt for editing.
 
 ## Mobile device inspection
 
