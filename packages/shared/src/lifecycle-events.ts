@@ -23,9 +23,11 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { setTimeout as sleepAsync } from 'node:timers/promises';
 import { fsyncDirectorySync } from './fs-windows-compat.js';
 import {
-  lookupProcessBirthFingerprint,
+  describeProcessBirthProbe,
+  describeRecentProcessBirthProbeFailures,
   lookupProcessBirthFingerprintCached,
   lookupProcessBirthFingerprintCachedAsync,
+  ownProcessBirthProbeSchedule,
   PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
 } from './process-identity.mjs';
 
@@ -199,42 +201,6 @@ function readExistingJournal(file: string): string {
   }
 }
 
-/**
- * Resolve a process birth fingerprint with retries. The single-attempt
- * lookup can time out spuriously under host load (`ps` missed a 1s deadline
- * at load-40 and wedged the dogfood lifecycle, #1057), and the own-pid
- * acquisition path fails closed on null — so only return null once the
- * process is provably gone or every attempt failed against a live process.
- *
- * Used ONLY for the upfront own-pid check in the two lock acquisition entry
- * points. The in-loop reclaim/authority lookups keep the single-attempt
- * `processBirthFingerprint`: they run several times per contested
- * acquisition on the main thread, and their null is fail-SAFE (an owner
- * with an unverifiable birth is treated as alive), so retrying there would
- * multiply worst-case event-loop blocking for no correctness gain.
- * Injectable for tests.
- */
-export function resolveProcessBirthFingerprint(
-  pid: number,
-  dependencies: {
-    lookup?: (pid: number) => string | null;
-    alive?: (pid: number) => boolean;
-    attempts?: number;
-  } = {},
-): string | null {
-  const lookup = dependencies.lookup ?? lookupProcessBirthOnce;
-  const alive = dependencies.alive ?? processExists;
-  const attempts = dependencies.attempts ?? 3;
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const birth = lookup(pid);
-    if (birth) return birth;
-    // A dead process legitimately has no fingerprint — that null is the
-    // correct answer for stale-lock reclaim and must not be retried away.
-    if (!alive(pid)) return null;
-  }
-  return null;
-}
-
 function processExists(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -242,10 +208,6 @@ function processExists(pid: number): boolean {
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'EPERM';
   }
-}
-
-function lookupProcessBirthOnce(pid: number): string | null {
-  return lookupProcessBirthFingerprint(pid);
 }
 
 // ---------------------------------------------------------------------------
@@ -276,9 +238,19 @@ function lookupProcessBirthOnce(pid: number): string | null {
 
 type BirthSource = 'lock' | 'default';
 
+// `probe` carries the own-process schedule's per-attempt budget; absent, the
+// lookup uses the short arbitrary-pid default.
+type BirthProbe = { timeoutMs?: number; windowsShell?: string };
+
 type LockEffect =
   | { kind: 'sleep'; ms: number }
-  | { kind: 'birth'; pid: number; source: BirthSource; fresh?: boolean };
+  | {
+      kind: 'birth';
+      pid: number;
+      source: BirthSource;
+      fresh?: boolean;
+      probe?: BirthProbe;
+    };
 
 type LockGen<T> = Generator<LockEffect, T, string | null | undefined>;
 
@@ -286,8 +258,9 @@ function* lookupBirth(
   pid: number,
   source: BirthSource,
   fresh = false,
+  probe?: BirthProbe,
 ): LockGen<string | null> {
-  return (yield { kind: 'birth', pid, source, fresh }) ?? null;
+  return (yield { kind: 'birth', pid, source, fresh, probe }) ?? null;
 }
 
 function* sleep(ms: number): LockGen<void> {
@@ -725,9 +698,11 @@ function* reclaimOrphanGuardGen(
 /**
  * Own-pid birth resolution for lock/guard ownership. An injected
  * `birthFingerprint` (tests) stays single-call; the default path retries a
- * spurious null against a live process (#1057) exactly like
- * `resolveProcessBirthFingerprint`, but through the driver so the async
- * acquisition path probes without blocking the event loop.
+ * spurious null against a live process (#1057) on the same own-process
+ * schedule as `resolveOwnProcessIdentity` — on Windows its long cold-start
+ * budget and pwsh retry (#2675) — but through the driver so the async
+ * acquisition path probes without blocking the event loop. Only this own-pid
+ * lookup gets the long budget; in-loop reclaim lookups stay short.
  */
 function* ownBirthGen(
   options: FileMutationLockOptions,
@@ -735,14 +710,32 @@ function* ownBirthGen(
   if (options.birthFingerprint) {
     return yield* lookupBirth(process.pid, 'lock');
   }
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const birth = yield* lookupBirth(process.pid, 'default');
+  const schedule = ownProcessBirthProbeSchedule();
+  for (const [attempt, probe] of schedule.attempts.entries()) {
+    const birth = yield* lookupBirth(process.pid, 'default', false, probe);
     if (birth) return birth;
     // A dead process legitimately has no fingerprint — that null is the
     // correct answer and must not be retried away.
     if (!processExists(process.pid)) return null;
+    if (attempt < schedule.attempts.length - 1)
+      yield* sleep(schedule.retryDelayMs);
   }
   return null;
+}
+
+function missingOwnBirthError(
+  purpose: 'guard' | 'lock',
+  options: FileMutationLockOptions,
+): Error {
+  const probe = options.birthFingerprint
+    ? 'injected birth fingerprint'
+    : describeProcessBirthProbe();
+  const failures = options.birthFingerprint
+    ? ''
+    : describeRecentProcessBirthProbeFailures(process.pid);
+  return new Error(
+    `process birth fingerprint is required for ${purpose} ownership: ${probe} returned no start time for pid ${process.pid}${failures ? ` (${failures})` : ''}`,
+  );
 }
 
 function* guardedDeleteLockGen(
@@ -754,10 +747,7 @@ function* guardedDeleteLockGen(
   // Own-pid, fail-closed: retry spurious lookup failures (#1057). Injected
   // fingerprints (tests) stay single-call.
   const birth = yield* ownBirthGen(options);
-  if (!birth)
-    throw new Error(
-      'process birth fingerprint is required for guard ownership',
-    );
+  if (!birth) throw missingOwnBirthError('guard', options);
   const guardPath = `${lock}.guard`;
   const guard = publishGuard(lock, observed, birth);
   if (!guard) return false;
@@ -809,8 +799,7 @@ function* acquireGen(
   // fingerprints (tests) stay single-call; the in-loop reclaim lookups stay
   // single-attempt (their null is fail-safe).
   const birth = yield* ownBirthGen(options);
-  if (!birth)
-    throw new Error('process birth fingerprint is required for lock ownership');
+  if (!birth) throw missingOwnBirthError('lock', options);
   const token = randomUUID();
   const temporary = `${lock}.${token}.tmp`;
   const deadline = Date.now() + timeoutMs;
@@ -914,6 +903,7 @@ function resolveBirthEffectSync(
     return options.birthFingerprint(effect.pid);
   return lookupProcessBirthFingerprintCached(effect.pid, {
     fresh: effect.fresh,
+    ...effect.probe,
   });
 }
 
@@ -960,6 +950,7 @@ async function runLockGenAsync<T>(
           ? options.birthFingerprint(effect.pid)
           : await lookupProcessBirthFingerprintCachedAsync(effect.pid, {
               fresh: effect.fresh,
+              ...effect.probe,
             });
     } catch (error) {
       step = generator.throw(error);

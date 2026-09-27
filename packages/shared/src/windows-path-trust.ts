@@ -1,4 +1,4 @@
-import { win32 } from 'node:path';
+import { windowsSystemUtilityPath } from './windows-system-utility.mjs';
 export interface WindowsTrustCommandResult {
   error?: Error;
   status: number | null;
@@ -21,34 +21,8 @@ export interface WindowsTrustTarget {
   policy?: WindowsTrustPolicy;
 }
 
-export type WindowsSystemUtility = 'cmd' | 'powershell' | 'schtasks' | 'whoami';
-
-/**
- * System tools are invoked before Station can use PowerShell to inspect a
- * caller-controlled path. Resolve their protected System32 locations
- * directly; never allow a GUI launcher's inherited PATH to select them.
- */
-export function windowsSystemUtilityPath(
-  utility: WindowsSystemUtility,
-): string {
-  const systemRoot =
-    process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows';
-  if (!win32.isAbsolute(systemRoot) || systemRoot.startsWith('\\\\')) {
-    throw new Error('Windows SystemRoot must be a local absolute path');
-  }
-  const system32 = win32.join(win32.normalize(systemRoot), 'System32');
-  switch (utility) {
-    case 'powershell':
-      return win32.join(
-        system32,
-        'WindowsPowerShell',
-        'v1.0',
-        'powershell.exe',
-      );
-    default:
-      return win32.join(system32, `${utility}.exe`);
-  }
-}
+export type { WindowsSystemUtility } from './windows-system-utility.mjs';
+export { windowsSystemUtilityPath };
 
 interface WindowsTrustResult {
   trusted: true;
