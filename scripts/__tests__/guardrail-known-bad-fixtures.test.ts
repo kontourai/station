@@ -1473,6 +1473,16 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
     for (const lane of DOCS_TRUTH_GATE_LANES) {
       expect(root.scripts).toHaveProperty(lane.script);
     }
+    // Arguments change what these node lanes do: a --write turns a check into
+    // a writer, and a path argument narrows check-markdown-links.mjs to that
+    // file. The only argument any of them may take is --check.
+    const nodeLaneCommands = DOCS_TRUTH_GATE_LANES.map(
+      (lane) => root.scripts[lane.script],
+    ).filter((command) => command.startsWith('node '));
+    expect(nodeLaneCommands).toHaveLength(10);
+    for (const command of nodeLaneCommands) {
+      expect(command).toMatch(/^node scripts\/[\w-]+\.mjs(?: --check)?$/);
+    }
     // These two scripts regenerate their output and exit 0 without --check,
     // which would turn docs:truth:gate from a drift check into a writer.
     expect(root.scripts['docs:index:check']).toBe(
