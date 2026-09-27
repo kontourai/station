@@ -1,14 +1,4 @@
-/**
- * ElevenLabsSTTProvider — STTProvider using ElevenLabs Scribe v2 Realtime.
- *
- * Flow:
- *  1. Fetch single-use WS URL from local server (POST /signed-url)
- *  2. Open WebSocket to ElevenLabs
- *  3. Stream microphone audio via AudioWorklet
- *  4. Receive transcript events; emit onTranscript callbacks
- *
- * Keepalive: send " " (space) every 20s; max session 180s.
- */
+// Legacy protocol; reconcile token, audio framing and transcript events in #2784.
 import type { STTOptions, STTProvider, STTState } from '@kontourai/station-sdk';
 
 export class ElevenLabsSTTProvider implements STTProvider {
@@ -52,7 +42,6 @@ export class ElevenLabsSTTProvider implements STTProvider {
     this._setState('listening');
 
     try {
-      // Get signed URL from local server
       const res = await fetch(
         `${this._apiBase}/api/plugins/elevenlabs-voice/signed-url`,
         {
@@ -67,12 +56,10 @@ export class ElevenLabsSTTProvider implements STTProvider {
       if (!res.ok) throw new Error('Failed to get signed URL');
       const { url } = await res.json();
 
-      // Open WebSocket
       const ws = new WebSocket(url);
       this._ws = ws;
 
       ws.onopen = () => {
-        // Keepalive every 20s
         this._keepaliveTimer = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN)
             ws.send(JSON.stringify({ text: ' ' }));
@@ -86,9 +73,7 @@ export class ElevenLabsSTTProvider implements STTProvider {
             this._transcript = msg.text;
             this._notify();
           }
-        } catch {
-          // ignore
-        }
+        } catch {}
       };
 
       ws.onclose = () => {
@@ -101,7 +86,6 @@ export class ElevenLabsSTTProvider implements STTProvider {
         setTimeout(() => this._setState('idle'), 1500);
       };
 
-      // Open microphone and stream PCM to WebSocket
       this._mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
       });

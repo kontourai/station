@@ -22,9 +22,9 @@ node ../../packages/cli/dist/station.mjs plugin install .
 The build validates the manifest and needs no bundle for this data-only package.
 Installation requires a running, authenticated local Station. Review its preview
 and permission request. The CLI forwards the reviewed content and grant revisions
-to the same installation API used by the UI. A local path works only when the CLI
-and selected host have the supported local filesystem relationship; use a Git
-source for a remote host.
+to the same installation API used by the UI. A local path requires automatic
+active-local discovery or the default loopback fallback. Explicit `--api-base`
+and saved-Station selections require a Git source, even for a localhost URL.
 
 After installation is ready, `portable-author-note` appears in Agents. Configure
 a model connection in Station before starting a conversation with it. The Skill

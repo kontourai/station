@@ -310,6 +310,24 @@ inventory, while nearby tests exercise its library or scan the workflow text.
 and requires a regression through both real assembly and validation commands.
 This is a local caller failure, not an observed hosted release attempt.
 
+### Examples need the same caller contracts as the product
+
+The standalone sessions MCP reader hides failed unauthenticated reads behind
+an empty panel ([#2785](https://github.com/kontourai/station/issues/2785)). The
+ElevenLabs example uses an older token/audio/transcript protocol
+([#2784](https://github.com/kontourai/station/issues/2784)). The registry CLI
+submits an install ID without the preview consent required by the installer
+([#2809](https://github.com/kontourai/station/issues/2809)). A manifest, build or
+render test does not establish these end-to-end journeys.
+
+Two SDK state-retirement findings have separate owners: clearing an active
+Layout tab leaves its stored state behind
+([#2806](https://github.com/kontourai/station/issues/2806)), and server voice
+stubs survive the observation that registered them
+([#2807](https://github.com/kontourai/station/issues/2807)). Their issues retain
+the actual provider/context probes and distinguish them from live app or
+physical audio evidence.
+
 ### Documentation sometimes hides an abstraction that already exists
 
 The architecture overview described knowledge as a fixed sqlite-vec store even

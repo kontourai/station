@@ -1,11 +1,34 @@
 import mermaid from 'mermaid';
 
+const colors = getComputedStyle(document.documentElement);
+const color = (name) => colors.getPropertyValue(name).trim();
 mermaid.initialize({
   startOnLoad: false,
   securityLevel: 'strict',
-  theme: window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'default',
+  theme: 'base',
+  themeVariables: {
+    darkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
+    primaryColor: color('--selected'),
+    primaryTextColor: color('--ink'),
+    primaryBorderColor: color('--accent'),
+    secondaryColor: color('--panel'),
+    tertiaryColor: color('--card'),
+    lineColor: color('--muted'),
+    textColor: color('--ink'),
+    mainBkg: color('--selected'),
+    nodeBorder: color('--accent'),
+    clusterBkg: color('--panel'),
+    clusterBorder: color('--line'),
+    edgeLabelBackground: color('--bg'),
+    actorBkg: color('--selected'),
+    actorTextColor: color('--ink'),
+    actorBorder: color('--accent'),
+    signalColor: color('--ink'),
+    signalTextColor: color('--ink'),
+    noteBkgColor: color('--panel'),
+    noteTextColor: color('--ink'),
+    noteBorderColor: color('--line'),
+  },
   fontFamily: 'system-ui, sans-serif',
   suppressErrorRendering: true,
   flowchart: { htmlLabels: false },
@@ -46,7 +69,7 @@ export async function renderDiagrams(root) {
       canvas.innerHTML = svg;
       const drawing = canvas.querySelector('svg');
       const width = drawing.viewBox.baseVal.width;
-      drawing.style.width = `${width}px`;
+      drawing.style.width = '100%';
       drawing.style.height = 'auto';
       for (const [label, size] of [
         ['Fit width', '100%'],
@@ -55,8 +78,11 @@ export async function renderDiagrams(root) {
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = label;
+        button.setAttribute('aria-pressed', String(size === '100%'));
         button.addEventListener('click', () => {
           drawing.style.width = size;
+          for (const control of controls.children)
+            control.setAttribute('aria-pressed', String(control === button));
         });
         controls.append(button);
       }

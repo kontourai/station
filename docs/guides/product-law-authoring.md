@@ -25,10 +25,9 @@ look complete.
   not a pass and does not authorize completion.
 
 **INFRASTRUCTURE_ERROR** separately identifies a runner/deadline failure; it
-is not a product assertion failure or a pass. The owner is
-[`product-law-gate.mjs`](../../scripts/product-law-gate.mjs), with
-[`product-laws.mjs`](../../scripts/lib/product-laws.mjs) and
-[`product-laws.json`](../../config/product-laws.json) defining the bounded set.
+is not a product assertion failure or a pass. The
+[generated reference](../reference/product-laws.md) names the bounded law set;
+the [testing guide](testing.md) explains evidence selection and execution.
 The structured reporter must contain the exact selector once and passing; a
 file-level exit, skipped test or nearby title is insufficient. These selected
 laws do not prove every product invariant.

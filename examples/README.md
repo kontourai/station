@@ -11,7 +11,7 @@ prove.
 | [Portable Author Kit](portable-author-kit/README.md) | Agent Plugins Skill plus Station Agent; no package dependencies |
 | [Getting Started Starter](getting-started-starter/README.md) | Registry-installed first extension |
 | [Coding Starter](coding-starter/README.md) | Coding-oriented starter layout |
-| [Minimal Layout](minimal-layout/README.md) | Small TypeScript layout and SDK basics |
+| [Minimal Workspace](minimal-layout/README.md) | Small Workspace Pane and SDK basics |
 | [Demo Layout](demo-layout/README.md) | Local layout installation and registry fixture |
 | [Documentation Snippets](docs-snippets/README.md) | Compile-checked copies of guide code blocks; not a plugin |
 
@@ -22,7 +22,7 @@ prove.
 | [Workspace Pane Starter](workspace-pane-starter/README.md) | Portable data-only Pane backed by a sandboxed MCP App |
 | [Enterprise Layout](enterprise-layout/README.md) | Multi-provider layout, dependencies, knowledge, and command skills |
 | [Builder Delivery Viewer](builder-delivery-viewer/README.md) | Builder delivery artifacts through a server module |
-| [Survey Review Workbench](survey-review-workbench/README.md) | Review workflow and isolated server capability |
+| [Survey Review Workbench](survey-review-workbench/README.md) | Review workflow and trusted server module |
 | [Fieldwork Review](fieldwork-review/README.md) | Project-confined Fieldwork review application |
 
 ## Knowledge And Data
@@ -54,9 +54,9 @@ prove.
 
 | Example | Focus |
 | --- | --- |
-| [ElevenLabs Voice](elevenlabs-voice/README.md) | Realtime voice Provider |
+| [ElevenLabs Voice](elevenlabs-voice/README.md) | Legacy voice protocol under repair; injected realtime adapter |
 | [OpenAI-Compatible Realtime Voice](openai-realtime-voice/README.md) | Realtime-compatible voice Provider |
-| [Nova Sonic Voice](nova-sonic-voice/README.md) | Bedrock voice Provider |
+| [Nova Sonic Voice](nova-sonic-voice/README.md) | Preview provider with an unimplemented relay |
 | [Meeting Transcription](meeting-transcription/README.md) | Speech-to-text plugin boundary |
 
 ## Verification
@@ -89,8 +89,8 @@ The next useful examples are not more layout variations:
   and receipt inspection, aligned with [public CLI and docs work](https://github.com/kontourai/station/issues/384).
 - An `operationalEventSubscriptions` server-module example that demonstrates
   bounded retry and projection authority.
-- A portable plugin-skill package example once the
-  [Agent Plugins 1.0 contract](https://github.com/kontourai/station/issues/591)
-  settles the public shape.
+- Cross-client qualification of the existing [Portable Author Kit](portable-author-kit/README.md).
+  Its manifest and Skill are checked locally; a build is not proof of another
+  client's consumption or a published package.
 - Credentialed voice and transcription smoke remain environment-owned evidence,
   not repository-only examples.

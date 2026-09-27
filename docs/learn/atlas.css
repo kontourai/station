@@ -848,10 +848,18 @@ blockquote {
 .diagram-controls button {
   font-size: 12px;
 }
+.diagram-controls button[aria-pressed="true"] {
+  background: var(--selected);
+  border-color: var(--accent);
+}
 .diagram-canvas {
   max-width: 100%;
   max-height: 75vh;
   overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
 }
 .diagram-canvas svg {
   display: block;

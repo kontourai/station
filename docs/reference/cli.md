@@ -2597,6 +2597,12 @@ station registry
 station registry install demo-layout
 ```
 
+The install command currently submits the ID without a preview decision.
+Executable or lifecycle-bearing entries are refused by the canonical installer;
+[#2809](https://github.com/kontourai/station/issues/2809) tracks the missing CLI
+consent flow. Use the Registry UI or `station plugin install <source>` to review
+and submit consent. A successful catalog read does not prove installation.
+
 `examples/registry/manifest.json` is the reproducible local fixture used by
 `npm run proof:registry-manifest`. It is not a hosted registry proof by itself:
 Phase 2 was closed on local-fixture scope, while any hosted registry remains

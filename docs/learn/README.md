@@ -122,6 +122,11 @@ writing generated output. A passing check establishes navigation structure and
 source locations. It does not establish semantic accuracy or execute the
 behavior of the documented feature.
 
+Diagrams initially fit the reading column. Choose **Actual size** to read small
+labels and scroll inside the diagram; **Fit width** restores the overview.
+Both controls work by keyboard. Diagram colors follow the theme at page load;
+reload after changing the system theme to recolor existing diagrams.
+
 ## The same documentation through MCP
 
 The built-in Station Docs MCP compiles the
@@ -134,8 +139,10 @@ such as `architecture-execution` and open one module with
 
 Results carry their canonical source path and section, parent ID, and the
 digest of the compiled documentation. That digest identifies content; it is
-not a runtime, deployment, or test receipt. The MCP remains credential-free
-and reads neither the filesystem nor the network at request time. Live Station
+not a runtime, deployment, or test receipt. Reading this static documentation
+needs no external provider credentials and reads neither the filesystem nor
+the network at request time. Access to a Station endpoint still follows that
+endpoint's authentication and tool-delivery contract. Live Station
 state and operations stay behind their separate authenticated interfaces.
 
 After changing the shipped manual, module map, or topic catalogs, run
