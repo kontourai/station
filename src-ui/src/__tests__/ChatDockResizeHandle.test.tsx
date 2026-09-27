@@ -171,12 +171,15 @@ describe('ChatDockResizeHandle', () => {
   });
 
   test('losing pointer capture without a pointerup (pointer left the window/an iframe) clears dragging without stranding it', () => {
+    // Real frame scheduling, as in the pointercancel case below.
+    const raf = installControllableRaf();
     const { handle, onDragStateChange, onLiveHeight, onSnap } = renderHandle({
       snap: 'half',
     });
 
     fireEvent.pointerDown(handle, { pointerId: 1, clientY: 700 });
     fireEvent.pointerMove(window, { pointerId: 1, clientY: 600 });
+    raf.flush();
 
     // Simulate the browser reclaiming capture without ever delivering a
     // pointerup/pointercancel (e.g. the pointer crossed into the MCP-UI
@@ -190,24 +193,35 @@ describe('ChatDockResizeHandle', () => {
 
     // A stray move after capture is lost must not resurrect the drag.
     fireEvent.pointerMove(window, { pointerId: 1, clientY: 200 });
+    raf.flush();
     expect(onLiveHeight).toHaveBeenCalledTimes(2);
   });
 
   test('pointercancel releases the drag deterministically', () => {
-    const removeSpy = vi.spyOn(window, 'removeEventListener');
-    const { handle, onDragStateChange } = renderHandle({ snap: 'half' });
+    // Real frame scheduling: the default synchronous stub leaves the hook's
+    // frame id set after the first move, which would swallow a stray move
+    // whether or not its listener was removed.
+    const raf = installControllableRaf();
+    const { handle, onDragStateChange, onLiveHeight, onSnap, onCommitHeight } =
+      renderHandle({ snap: 'half' });
 
     fireEvent.pointerDown(handle, { pointerId: 1, clientY: 700 });
-    fireEvent.pointerCancel(window, { pointerId: 1, clientY: 650 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientY: 600 });
+    raf.flush();
+    fireEvent.pointerCancel(window, { pointerId: 1, clientY: 600 });
 
     expect(onDragStateChange).toHaveBeenLastCalledWith(false);
-    expect(removeSpy).toHaveBeenCalledWith('pointermove', expect.any(Function));
-    expect(removeSpy).toHaveBeenCalledWith('pointerup', expect.any(Function));
-    expect(removeSpy).toHaveBeenCalledWith(
-      'pointercancel',
-      expect.any(Function),
-    );
-    removeSpy.mockRestore();
+    expect(onLiveHeight).toHaveBeenLastCalledWith(null);
+
+    // A stray move or release after the cancel must not resurrect the drag or
+    // commit a size the user abandoned.
+    fireEvent.pointerMove(window, { pointerId: 1, clientY: 200 });
+    raf.flush();
+    fireEvent.pointerUp(window, { pointerId: 1, clientY: 200 });
+    expect(onLiveHeight).toHaveBeenCalledTimes(2);
+    expect(onDragStateChange).toHaveBeenLastCalledWith(false);
+    expect(onSnap).not.toHaveBeenCalled();
+    expect(onCommitHeight).not.toHaveBeenCalled();
   });
 
   test('ignores move/up events from a different pointer', () => {

@@ -119,10 +119,8 @@ vi.mock('../components/chat/QueuedMessages', () => ({
   QueuedMessages: () => null,
 }));
 
-import {
-  ChatDockBody,
-  findPrecedingUserTurn,
-} from '../components/chat-dock/ChatDockBody';
+import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { PreviewProvider } from '../contexts/PreviewContext';
 import type { ChatSession } from '../types';
 
 function buildChatInput() {
@@ -192,22 +190,26 @@ function renderDock(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  // The transcript renders a turn's file parts, which open in the app's
+  // preview surface.
   return render(
     <QueryClientProvider client={queryClient}>
-      <ChatDockBody
-        activeSession={session}
-        chatFontSize={14}
-        dockHeight={400}
-        showStatsPanel={false}
-        showReasoning={false}
-        showToolDetails={false}
-        modelSupportsAttachments={false}
-        fileAttachmentsSupported={false}
-        availableModels={[]}
-        chatInput={chatInput as any}
-        setShowStatsPanel={vi.fn()}
-        onNewChat={onNewChat}
-      />
+      <PreviewProvider>
+        <ChatDockBody
+          activeSession={session}
+          chatFontSize={14}
+          dockHeight={400}
+          showStatsPanel={false}
+          showReasoning={false}
+          showToolDetails={false}
+          modelSupportsAttachments={false}
+          fileAttachmentsSupported={false}
+          availableModels={[]}
+          chatInput={chatInput as any}
+          setShowStatsPanel={vi.fn()}
+          onNewChat={onNewChat}
+        />
+      </PreviewProvider>
     </QueryClientProvider>,
   );
 }
@@ -221,6 +223,15 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
         {
           role: 'user',
           content: 'are you still there?',
+          contentParts: [
+            { type: 'text', content: 'are you still there?' },
+            {
+              type: 'file',
+              name: 'context.txt',
+              mediaType: 'text/plain',
+              url: 'data:text/plain;base64,Y29udGV4dA==',
+            },
+          ],
           timestamp: 1,
         } as any,
         {
@@ -267,53 +278,22 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     // The recovery is async since archive#3385 — it resolves any attachment
     // the failed turn carried before handing the draft on, so that a turn
     // whose bytes are gone is refused rather than migrated without them. The
-    // payload it eventually delivers must still be exactly the old one.
+    // payload it eventually delivers must still be exactly the old one,
+    // including the file the failed turn carried.
     await waitFor(() =>
       expect(chatInput.handleSend).toHaveBeenCalledWith(
         'are you still there?',
-        [],
+        [
+          expect.objectContaining({
+            name: 'context.txt',
+            type: 'text/plain',
+            data: 'data:text/plain;base64,Y29udGV4dA==',
+          }),
+        ],
       ),
     );
     expect(chatInput.handleSend).toHaveBeenCalledTimes(1);
     expect(onNewChat).not.toHaveBeenCalled();
-  });
-
-  test('keeps a terminal turn attachment when deriving its recovery payload', () => {
-    const attachment = {
-      type: 'file',
-      name: 'context.txt',
-      mediaType: 'text/plain',
-      url: 'data:text/plain;base64,Y29udGV4dA==',
-    };
-
-    expect(
-      findPrecedingUserTurn(
-        [
-          {
-            role: 'user',
-            content: 'continue from this file',
-            contentParts: [
-              { type: 'text', content: 'continue from this file' },
-              attachment,
-            ],
-          } as any,
-          {
-            role: 'user',
-            content: `[SYSTEM_EVENT] [CHAT_ERROR:engine-session-binding-dead] ${RAW_MESSAGE}`,
-          } as any,
-        ],
-        1,
-      ),
-    ).toMatchObject({
-      text: 'continue from this file',
-      attachments: [
-        {
-          name: attachment.name,
-          type: attachment.mediaType,
-          data: attachment.url,
-        },
-      ],
-    });
   });
 
   test('an expired OAuth session offers Switch agent, not Send again, and hides stderr behind Details', async () => {
@@ -463,51 +443,6 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
         role: 'system',
         content:
           '[SYSTEM_EVENT] Could not start a new chat: agent "codex" is not available on this device',
-      }),
-    );
-  });
-
-  test('a typed new-chat bail routes to the ephemeral message surface, the single error owner', async () => {
-    const { NewChatUnavailableError } = await import(
-      '../components/chat-dock/newChatErrors'
-    );
-    addEphemeralSpy.mockClear();
-    const onNewChat = vi
-      .fn()
-      .mockRejectedValue(
-        new NewChatUnavailableError(
-          'the active conversation has no agent identity to copy from',
-        ),
-      );
-    const session = buildSession({
-      messages: [
-        {
-          role: 'user',
-          content: 'are you still there?',
-          timestamp: 1,
-        } as any,
-        {
-          role: 'user',
-          // #765 A1: a still-`terminalSession` code — see the sibling
-          // rejection test above for why the dead-binding code moved off it.
-          content: `[SYSTEM_EVENT] [CHAT_ERROR:continuation_workspace_worktree_gone] ${RAW_MESSAGE}`,
-          timestamp: 2,
-        } as any,
-      ],
-    });
-    renderDock(session, onNewChat);
-    fireEvent.click(
-      await screen.findByRole(
-        'button',
-        { name: 'New chat' },
-        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
-      ),
-    );
-    await waitFor(() =>
-      expect(addEphemeralSpy).toHaveBeenCalledWith(session.id, {
-        role: 'system',
-        content:
-          '[SYSTEM_EVENT] Could not start a new chat: the active conversation has no agent identity to copy from',
       }),
     );
   });

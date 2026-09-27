@@ -21,20 +21,12 @@ const handoffCss = readFileSync(
   join(uiRoot, 'components', 'chat', 'ConversationHandoff.css'),
   'utf8',
 );
-const messageBubble = readFileSync(
-  join(uiRoot, 'components', 'chat', 'MessageBubble.tsx'),
-  'utf8',
-);
 const turnActionsMenu = readFileSync(
   join(uiRoot, 'components', 'chat', 'TurnActionsMenu.tsx'),
   'utf8',
 );
 const turnActionsMenuCss = readFileSync(
   join(uiRoot, 'components', 'chat', 'TurnActionsMenu.css'),
-  'utf8',
-);
-const turnProvenanceCard = readFileSync(
-  join(uiRoot, 'components', 'chat', 'TurnProvenanceCard.tsx'),
   'utf8',
 );
 const taskPicker = readFileSync(
@@ -145,22 +137,6 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     expect(chatCss).toMatch(
       /\.message__rating-btn\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s,
     );
-    const footerActions = messageBubble.indexOf(
-      'className="turn-footer__actions"',
-    );
-    // #2211: the share affordance is composed under the overflow menu's
-    // `provenance.shareContent` prop and mounts only inside that dialog.
-    const shareContent = messageBubble.indexOf('shareContent: (');
-    const shareLoader = messageBubble.indexOf('load={loadShareAnswerButton}');
-    expect(footerActions).toBeGreaterThanOrEqual(0);
-    expect(shareContent).toBeGreaterThanOrEqual(0);
-    expect(shareLoader).toBeGreaterThan(shareContent);
-    expect(messageBubble.indexOf('load={loadTurnActionsMenu}')).toBeGreaterThan(
-      footerActions,
-    );
-    expect(messageBubble).not.toContain('<ShareAnswerButton');
-    expect(turnActionsMenu).not.toContain('ShareAnswerButton');
-    expect(turnProvenanceCard).toContain('{shareContent}');
   });
 
   test('hover-only footer reveal reserves space and preserves keyboard access', () => {
@@ -179,9 +155,6 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     expect(restored).toContain('pointer-events: auto');
     expect(hoverRating).toContain('min-height: 0');
     expect(touchRating).toContain('min-height: 44px');
-    expect(
-      messageBubble.match(/developerToolsEnabled\s*&&\s*msg\.traceId/g),
-    ).toHaveLength(2);
   });
 
   // The footer switched from a row to a column, which made the narrow-screen

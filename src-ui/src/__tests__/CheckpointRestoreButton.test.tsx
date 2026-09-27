@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 const { preview, confirm, toast, host } = vi.hoisted(() => ({
@@ -147,7 +153,10 @@ test('refreshes only captured workspace query families after confirmed success',
   expect(invalidate).toHaveBeenCalledTimes(4);
 });
 
-test('does not publish a late preview after the owning turn changes', async () => {
+test.each([
+  ['publishes a late preview while the same turn still owns it', false],
+  ['does not publish a late preview after the owning turn changes', true],
+])('%s', async (_name, ownerChanges) => {
   let finish!: (value: typeof result) => void;
   preview.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
   const client = new QueryClient();
@@ -159,14 +168,20 @@ test('does not publish a late preview after the owning turn changes', async () =
   fireEvent.click(
     screen.getByRole('button', { name: 'Restore workspace to here…' }),
   );
-  view.rerender(
-    <QueryClientProvider client={client}>
-      <CheckpointRestoreButton sessionId="session-2" turnId="turn-2" />
-    </QueryClientProvider>,
-  );
-  finish(result);
-  await Promise.resolve();
-  expect(screen.queryByRole('alertdialog')).toBeNull();
+  if (ownerChanges) {
+    view.rerender(
+      <QueryClientProvider client={client}>
+        <CheckpointRestoreButton sessionId="session-2" turnId="turn-2" />
+      </QueryClientProvider>,
+    );
+  }
+  // Settle the preview and flush the render it schedules, so an absent
+  // dialog means the late result was dropped, not that React had not
+  // rendered it yet.
+  await act(async () => {
+    finish(result);
+  });
+  expect(screen.queryByRole('alertdialog') !== null).toBe(!ownerChanges);
 });
 
 test('closes an open preview when its session owner changes', async () => {
