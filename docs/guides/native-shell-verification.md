@@ -263,7 +263,8 @@ did not panic before output flushed.
 For the macOS abort class, record separately whether launch used Finder/Dock
 or a direct executable: [archive#3496](https://github.com/kontourai/station-archive/issues/3496)
 reports the Apple Event path as the observed distinction. There is currently
-no persisted panic hook or reproducible trigger, so preserve the package,
+no established app-owned persisted panic capture or current reproducible trigger,
+so preserve the package,
 system crash report, timestamp, channel, and launch method rather than claiming
 the normal shell log explains it.
 

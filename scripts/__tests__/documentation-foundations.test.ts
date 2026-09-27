@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { renderInline } from '../build-github-pages.mjs';
 
 const read = (file: string) => readFileSync(file, 'utf8');
 
@@ -35,6 +36,17 @@ function manifestFields(contract: string): string[] {
 }
 
 describe('documentation foundations', () => {
+  it('preserves external Markdown targets while routing local Pages documents to HTML', () => {
+    const external =
+      'https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md';
+    const html = renderInline(
+      `[Source](${external}) [Section](${external}#start-a-task) [Local](../guides/testing.md#tests)`,
+    );
+    expect(html).toContain(`href="${external}"`);
+    expect(html).toContain(`href="${external}#start-a-task"`);
+    expect(html).toContain('href="../guides/testing.html#tests"');
+  });
+
   it('binds getting-started channel facts, Starters, and review route to their current source owners', () => {
     const guide = read('docs/user/getting-started.md');
     const starterGuide = read('docs/guides/starter-work.md');

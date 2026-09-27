@@ -5,7 +5,7 @@ starts, shows **Station is not ready**, or opens but then cannot reach its
 local service. It describes the recovery behavior implemented in the desktop
 host; it is not evidence that every platform's packaged app has been exercised.
 Contributor and operator procedures are in the repository's
-[native shell verification guide](https://github.com/kontourai/station/blob/main/docs/guides/native-shell-verification.md?plain=1).
+[native shell verification guide](https://github.com/kontourai/station/blob/main/docs/guides/native-shell-verification.md).
 
 ## What a normal packaged start does
 
@@ -79,7 +79,7 @@ Keep shell and service logs separate:
 | Installed service log | `<STATION_HOME>/logs/<instance>-service.out.log` and `<STATION_HOME>/logs/<instance>-service.err.log` | `journalctl --user -u station-<instance>.service` (no service log file) | `<STATION_HOME>/logs/<instance>-service.log` |
 
 Choose the app identifier for your installed channel (Stable, Beta, or Nightly)
-from the [channel log path table in the repository guide](https://github.com/kontourai/station/blob/main/docs/guides/native-shell-verification.md?plain=1).
+from the [channel log path table in the repository guide](https://github.com/kontourai/station/blob/main/docs/guides/native-shell-verification.md).
 
 The desktop shell honors `STATION_DESKTOP_LOG_LEVEL` set before launch:
 `trace`, `debug`, `info`, `warn`, `error`, or `off`. Its file rotation is

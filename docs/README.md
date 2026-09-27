@@ -71,6 +71,7 @@ clearly mark the stale document.
 - **[Starter Work](guides/starter-work.md)** — how first-use actions bind to real Tasks, Sessions, approvals, and Scheduler receipts, including recovery.
 - **[Mobile device inspection](guides/mobile-device-workspace.md)** — configure an explicit device host and capture native app screens through the authenticated API/SDK.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
+- **[Monitoring](guides/monitoring.md)** — recording paths, retention, dashboard limits, and the generated [metric declarations](reference/metrics.md).
 - **[Settings deep links](reference/settings-deep-links.md)** — the `?view=&highlight=` URL shape, the registry endpoint that enumerates every control, and the rule for answering with one.
 - **[Architecture](architecture/)** — current module boundaries and ownership.
 - **[Cloud move](design/cloud-move.md)** — setup preview, AWS preparation, and

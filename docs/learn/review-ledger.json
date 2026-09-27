@@ -85,7 +85,7 @@
         }
       ],
       "checks": [
-        "npm run changesets:check — 71 retained changesets form a valid release plan."
+        "npm run changesets:check \u2014 71 retained changesets form a valid release plan."
       ]
     },
     {
@@ -882,7 +882,7 @@
     },
     {
       "path": "AGENTS.md",
-      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
       "kind": "policy",
       "state": "classified",
       "summary": "Worktree isolation, managed dependencies, bounded gates, merge-queue procedure, evidence discipline, archival issue interpretation, scope routes, and protected Veritas block. All named npm scripts and local routes resolve. Live main rules match the six named required checks, non-strict updates, ALLGREEN 3/3 SQUASH queue, and unattributed-change approval rule.",
@@ -891,7 +891,7 @@
       "sources": [
         {
           "path": "package.json",
-          "digest": "02c8ed55171424deddbe2dac99fcf6fe7939e4ca0fe45f2959d4ce7b964ae345"
+          "digest": "19f59383cf927f41f2801cc7dde81ebc425cfb97fc2b0b0b76397cb23a18de7a"
         },
         {
           "path": ".githooks/pre-push",
@@ -928,7 +928,8 @@
       ],
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
-        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+        "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope."
       ]
     },
     {
@@ -1076,6 +1077,182 @@
       "checks": []
     },
     {
+      "path": "docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md",
+      "sourceRevision": "a5e06e4df2ab56514b7dbabaaacc56c20ddabcf3",
+      "kind": "design",
+      "state": "classified",
+      "summary": "The 2026-07-05 split and sqlite-vec selection remain decision rationale. A new status note distinguishes historical single-store/single-personal-root descriptions from current registered roots, derived index, and coexisting legacy API, and routes operating instructions to the Knowledge guide.",
+      "limits": "The 2026-07-05 Ollama/sqlite-vec/LanceDB timings, package sizes, rankings, license observations and external ecosystem survey were not rerun or refreshed. No live provider, rebuild equivalence, migration completeness, root authorization, or Neo4j qualification is certified.",
+      "documentDigest": "88fd109b12ec637aae8b81fe9d7a11fac8a250f530b3a4a4804b9c805cc276c3",
+      "sources": [
+        {
+          "path": "docs/guides/knowledge.md",
+          "digest": "8342f95c957a3cc1128edc41066b3cd95892ccb130207043ee58db718ac2a334"
+        },
+        {
+          "path": "src-server/knowledge-store/knowledge-store-provider.ts",
+          "digest": "268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85"
+        },
+        {
+          "path": "src-server/knowledge-index/sqlite-vec-index-provider.ts",
+          "digest": "96507a6178eaf742a3b48ad4b00706f74c824356b864158308612a19687af0a6"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        }
+      ],
+      "checks": [
+        "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+        "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun."
+      ]
+    },
+    {
+      "path": "docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md",
+      "sourceRevision": "a5e06e4df2ab56514b7dbabaaacc56c20ddabcf3",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "A top status note points to ADR0014 and distinguishes the superseded flag/rollback mechanism from the retained orchestration/private-adapter/no-migration decisions. Current interactive route composition supplies the foreground orchestration seam.",
+      "limits": "The old flag-off transcript behavior, historical CLI/UI parity, permanent legacy-conversation claims and original rollout receipts were not requalified. This does not certify all current chat paths or a release cutover.",
+      "documentDigest": "7f3b951e2319d56b29e31488507f5c69c13b31ef589a7a18da3e6e8ef371245c",
+      "sources": [
+        {
+          "path": "docs/adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md",
+          "digest": "fcfab157ba077c62207e694125fbdf2dbfa6731547b1b7f862fa17bf1a75fc30"
+        },
+        {
+          "path": "docs/reference/session-api.md",
+          "digest": "90f4afe3aac1b8133cfd0d25f1f625475a5bb4c11c00fbf2cd207d43a34dba2c"
+        },
+        {
+          "path": "src-server/routes/orchestration/orchestration.ts",
+          "digest": "1f41bd4d49611826023ee263ff5dff73aa65465a8d3369c46fb40320e5ac7ddd"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/station-features.ts",
+          "digest": "55c74fed5caae236c699dfc66ac63bb298b40abe1efd1b59dcf40a95e27842da"
+        },
+        {
+          "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+          "digest": "b6602f6ccaacd181fcaa5fa8916f851d10aff6127c123494440ccb755256a91f"
+        },
+        {
+          "path": "packages/cli/src/commands/session-client.ts",
+          "digest": "0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8"
+        }
+      ],
+      "checks": [
+        "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+        "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun."
+      ]
+    },
+    {
+      "path": "docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
+      "kind": "historical",
+      "state": "classified",
+      "summary": "A top banner surfaces the existing 2026-08-26 supersession. Current FlowRunService.evaluate delegates to Flow evaluateRun; the retired Station probe, veto and switch remain historical rationale, while producerPin is a deprecated historical wire field.",
+      "limits": "No live governed delivery, every upstream producer/authority policy combination, historic 3.x Flow behavior, or retired fault-injection transcript was reproduced. Current focused service tests are narrower than end-to-end governance assurance.",
+      "documentDigest": "31dcc16a60ac8b64122625111ae8c14f82d31dbbe3c9733b2a87f913cd9d1525",
+      "sources": [
+        {
+          "path": "src-server/services/flow/flow-run-service.ts",
+          "digest": "501881355a01c561de9ecdbe2cc99a9f83bb565873615997cba75965e6e29271"
+        },
+        {
+          "path": "src-server/services/flow/__tests__/flow-run-service.test.ts",
+          "digest": "041da4990dedc8e82250ac11557b60f6ba45648fcbb5baf91405dcb24543e512"
+        },
+        {
+          "path": "packages/contracts/src/runtime-events.ts",
+          "digest": "38585f11fbe4f1653a9aff2bdff52df98393cdf15d30ec2cf4aecbb9a41a03a5"
+        },
+        {
+          "path": "package.json",
+          "digest": "19f59383cf927f41f2801cc7dde81ebc425cfb97fc2b0b0b76397cb23a18de7a"
+        },
+        {
+          "path": ".flow/config.json",
+          "digest": "5cb4aedb42cb258e03eb68c3174c5a5da3d45f53864fccd25b865b7585942c03"
+        }
+      ],
+      "checks": [
+        "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+        "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
+        "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope."
+      ]
+    },
+    {
+      "path": "docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md",
+      "sourceRevision": "a5e06e4df2ab56514b7dbabaaacc56c20ddabcf3",
+      "kind": "design",
+      "state": "classified",
+      "summary": "A status note bounds the historical branch/review counts and routes readers to current open-requests and required wire fields. Current code preserves process/observation qualifiers and separates answerability from dispatch authority.",
+      "limits": "The historical 37 folds,30 decisions,21 client sites and12 injected failures are not a current inventory. All notification/CLI/UI consumers, residual slice completion and cross-instance user journeys were not re-audited.",
+      "documentDigest": "b5e894d0a25641321af5303f2e4219e4eed76d03941f8ce5b413822d467e5034",
+      "sources": [
+        {
+          "path": "src-server/services/orchestration/open-requests.ts",
+          "digest": "995cb88c68204f62e285186d8753531af9816f4349a003da8ad572e83bbcf24c"
+        },
+        {
+          "path": "src-server/services/orchestration/orchestration-service.ts",
+          "digest": "a11490103701a1bbe3fd7d2bcb52318ac0e2911977ec15412bb21ba8b1e796a1"
+        },
+        {
+          "path": "packages/contracts/src/orchestration.ts",
+          "digest": "588a3f30ae9d0ed772729ea94500160f09d506916038f4d6be7f98af4084127f"
+        },
+        {
+          "path": "packages/contracts/src/__tests__/orchestration-answerability.test.ts",
+          "digest": "e99338dcd3d28fa85a96b56c8a5d1f1bae01b08b8de45e70760698b005144a59"
+        },
+        {
+          "path": "src-server/services/orchestration/__tests__/session-answerability-decoration.test.ts",
+          "digest": "601e1b6f23e71e4119dc9288c94b34615d4d4fad372b0826c8003e86f48e5d6d"
+        }
+      ],
+      "checks": [
+        "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+        "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun."
+      ]
+    },
+    {
+      "path": "docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md",
+      "sourceRevision": "a5e06e4df2ab56514b7dbabaaacc56c20ddabcf3",
+      "kind": "design",
+      "state": "classified",
+      "summary": "A dated reading-status note separates the 2026-08-03 vendor survey from current support. The current ACP adapter installs the inbound refusal policy instead of fabricated empty success; original layer definitions, authority decision and vendor observations remain untouched.",
+      "limits": "No live Kiro/authentication run or refreshed ACP ecosystem survey was performed. The generic channel, every proposed core/vendor binding, receipt path and upstream filing are not certified complete. Fake-agent wire tests establish the selected refusal boundary only.",
+      "documentDigest": "ba7f55a20d1129dba57d2781ee6ca7e297602d34d9cb06519127f54e5db6c741",
+      "sources": [
+        {
+          "path": "src-server/providers/adapters/acp-adapter.ts",
+          "digest": "d7c6a65ba2a2874e7aabb850da93c493ea060a79874c6777721a0950ff860b4a"
+        },
+        {
+          "path": "src-server/services/acp/acp-inbound-extension-policy.ts",
+          "digest": "6c413ed244ebe55e4a3ede4b091f40278038d4173593e5de44a9d9cd488974c3"
+        },
+        {
+          "path": "src-server/services/acp/__tests__/acp-inbound-extension-policy.test.ts",
+          "digest": "75d9e788dd399671e3b40fb6bf4d5e0396d38caa48db2abf636644af8c417be5"
+        },
+        {
+          "path": "src-server/providers/__tests__/acp-adapter-inbound-extension.test.ts",
+          "digest": "94a5f5c8bc9164484c4bc27d4273b2fc25cd7e58a8ce582190f8ac2a38860902"
+        },
+        {
+          "path": "src-shared/extension-notification-bindings.ts",
+          "digest": "323f6a777874a9725cb5a077759cb79b429c62b8c0401bf373acb68e88db569f"
+        }
+      ],
+      "checks": [
+        "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+        "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun."
+      ]
+    },
+    {
       "path": "docs/adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md",
       "documentDigest": "fcfab157ba077c62207e694125fbdf2dbfa6731547b1b7f862fa17bf1a75fc30",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -1087,6 +1264,77 @@
       "checks": []
     },
     {
+      "path": "docs/adr/0015-restore-desktop-owned-command-station-sidecar.md",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
+      "kind": "design",
+      "state": "classified",
+      "summary": "Read in full and left unchanged. Current source resolves the packaged command-station entry, uses the registry bridge, reports a service owner without setting api_base or auto-attaching, keeps service actions tsx/manifest-bound, and retains15-second/20-second watchdog constants. The ADR already explicitly separates NOT_VERIFIED packaged and teardown evidence.",
+      "limits": "No signed package, Tauri AppHandle path, real desktop startup/teardown, physical host, service install/handoff, tray delivery, Windows task/process proof or resource-resolution test was run. Historic review counts and behavioral receipts are retained, not re-proven.",
+      "documentDigest": "d088c73563837f29d5e1c39e122785b0f45afccb5323396df40f0d1524f0b9c0",
+      "sources": [
+        {
+          "path": "src-desktop/src/lib.rs",
+          "digest": "f3f76d133e45b201d64a39df1e9ec0229da0496efb7fc4947aa7e906d45c4bc1"
+        },
+        {
+          "path": "src-desktop/src/service_state.rs",
+          "digest": "fb5ce7c87fafa81ef9daaf69cb8ddd434a8d85bb69abf891ba8b3aeaecdf2cf6"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/supervised-parent-watchdog.ts",
+          "digest": "cb6f055599bc28ae8b09d4f7c9f4190a03ec61af49892bab59f4f621b9c4a500"
+        },
+        {
+          "path": "docs/design/instance-registry.md",
+          "digest": "b65fc5aa71b2a597a44933bb306eccc84d48fbd77ee4dde7b09901b7035b7f84"
+        },
+        {
+          "path": "docs/guides/native-shell-verification.md",
+          "digest": "88e7b0cb1b7f7bd716f65a62965f74140a33601c693f721fe9f0a61cd7e9dc5f"
+        }
+      ],
+      "checks": [
+        "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+        "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
+        "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope."
+      ]
+    },
+    {
+      "path": "docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md",
+      "sourceRevision": "a5e06e4df2ab56514b7dbabaaacc56c20ddabcf3",
+      "kind": "design",
+      "state": "classified",
+      "summary": "The existing owner-decision supersession remains intact. A small current-route note explains that the one-shot migration helper requires the repository ./station launcher; the standalone CLI refuses without its injected server migration dependency. Lower flag/alias sections remain dated design history.",
+      "limits": "No user-home migration or rollback was executed. The historical vocabulary-count claim, all legacy fixtures, upgrade paths and every skill consumer were not exhaustively verified. This is not evidence of a current published package or live migration.",
+      "documentDigest": "5188225d3fee15a72caa4c4f87046baa744cc3e4f214b56090c2cb3e54840556",
+      "sources": [
+        {
+          "path": "packages/cli/src/cli.ts",
+          "digest": "1930473e672a2649db2f6532258ed1db2a173c442a62f0823410ec657aea1208"
+        },
+        {
+          "path": "packages/cli/src/help.ts",
+          "digest": "3164b377334a123ab051a7fc449ce05305e44e6180155707a5391365c0c102a2"
+        },
+        {
+          "path": "src-server/services/agents/playbook-skill-migration-cli.ts",
+          "digest": "f38a44411adc324b5ebd95e77df03e9bef4491a6adb7bc0d724e0a94cc452c2e"
+        },
+        {
+          "path": "src-server/services/agents/playbook-skill-migration.ts",
+          "digest": "6a8bc32ae785aefbd21356a58c75d37fedd75da2c52236bec9c49037e50c30bd"
+        },
+        {
+          "path": "src-server/routes/schemas/schema-definitions/content.ts",
+          "digest": "ed5b32e05c610a8446e131fbddd2fd7b6cda0f8501da04737ca36e4300c92337"
+        }
+      ],
+      "checks": [
+        "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+        "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun."
+      ]
+    },
+    {
       "path": "docs/adr/0017-browser-preview-host.md",
       "documentDigest": "103727f9fa56a0ab6db46c12b5faf2cd1a922c0883589331f486ad74ab944eb8",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -1096,6 +1344,53 @@
       "limits": "Original platform observations and NOT_VERIFIED findings retain their original date. They do not establish current behavior or close the current browser audit.",
       "sources": [],
       "checks": []
+    },
+    {
+      "path": "docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md",
+      "sourceRevision": "a5e06e4df2ab56514b7dbabaaacc56c20ddabcf3",
+      "kind": "design",
+      "state": "classified",
+      "summary": "A current reading note distinguishes authenticated fetch-SSE explicit Last-Event-ID handling from EventSource automatic behavior. It scopes durable replay to orchestration, identifies existing binary live-surface routes/viewer, and preserves one-multiplexed-stream-per-client and saturated-pool input handling as unqualified design constraints rather than completed work.",
+      "limits": "No current all-surface connection census, saturated HTTP/1.1 pool, live reconnect/browser/native transport, or proxy deployment was measured. Per-visible-viewer implementation is not proof of the planned per-client multiplexing or its latency guarantee.",
+      "documentDigest": "0663ec8460f3271254bdeeba20df7518812da5b49781c0eb07c12a8f4a9d9bd8",
+      "sources": [
+        {
+          "path": "packages/sdk/src/client/http.ts",
+          "digest": "8febfd4707f529b432ee1d15d9dbc51c8b225059cc212eb65d3d360a07ebe242"
+        },
+        {
+          "path": "packages/sdk/src/__tests__/fetch-sse.test.ts",
+          "digest": "e4cdf570064a3099a4e15e5103638c08e1e2bcd3df8b0b25837ff227fb8b9ee5"
+        },
+        {
+          "path": "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
+          "digest": "1ad63d680fb04d56f0a73cda9870eb1d62425d23f9056744ecc20fe28e2218a2"
+        },
+        {
+          "path": "src-server/routes/orchestration/orchestration.ts",
+          "digest": "1f41bd4d49611826023ee263ff5dff73aa65465a8d3369c46fb40320e5ac7ddd"
+        },
+        {
+          "path": "src-server/routes/live-surface.ts",
+          "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
+        },
+        {
+          "path": "src-ui/src/live-surface/useLiveSurface.ts",
+          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-server/services/browser/chromium-screencast-producer.ts",
+          "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
+        },
+        {
+          "path": "docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md",
+          "digest": "e2c26ed636abec13ade37890506ff0650f60b977288c8cfa04347ea06ef67197"
+        }
+      ],
+      "checks": [
+        "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
+        "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun."
+      ]
     },
     {
       "path": "docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md",
@@ -1331,7 +1626,7 @@
     {
       "path": "docs/guides/deployment-authentication.md",
       "documentDigest": "002b93b162e73e290d671c6e00fd1ce15e7939606f7f531a55f4d098c01112cb",
-      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
       "kind": "current",
       "state": "partial",
       "summary": "Reviewed account/module composition, origins/endpoints, continuation boundaries, pinned-library OIDC verification/storage, and held-discovery startup behavior; corrected those claims.",
@@ -1371,7 +1666,7 @@
         },
         {
           "path": "package.json",
-          "digest": "02c8ed55171424deddbe2dac99fcf6fe7939e4ca0fe45f2959d4ce7b964ae345"
+          "digest": "19f59383cf927f41f2801cc7dde81ebc425cfb97fc2b0b0b76397cb23a18de7a"
         },
         {
           "path": "pnpm-lock.yaml",
@@ -1381,20 +1676,22 @@
       "checks": [
         "Independent source and correction review accepted.",
         "OIDC fixtures: 17 tests passed.",
-        "Local issuer probe: startup remained pending while discovery was held, then local login became available after a 503 response."
+        "Local issuer probe: startup remained pending while discovery was held, then local login became available after a 503 response.",
+        "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope."
       ]
     },
     {
       "path": "docs/guides/documentation.md",
-      "documentDigest": "7b8a2ee305c775b5103c570a0af7b439a38bb99adbe9dc5545fd0e258c7ed656",
-      "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
+      "documentDigest": "33130337a9458a797ebed0e0eac1a4dcb25cf60eeb3d791bcb3c8c649f8d3cb1",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
       "kind": "policy",
       "state": "classified",
       "summary": "Reviewed the audit, source-evidence, comment, editorial, and GitHub follow-through workflow.",
       "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
       "sources": [],
       "checks": [
-        "Independently reviewed anchor-check guidance, including local/current-revision scope, historical external links, parser behavior, and semantic-review limits."
+        "Independently reviewed anchor-check guidance, including local/current-revision scope, historical external links, parser behavior, and semantic-review limits.",
+        "Reviewed added guidance to inspect pinned dependency defaults; factory mocks do not establish persisted or emitted fields."
       ]
     },
     {
@@ -1467,6 +1764,156 @@
       ]
     },
     {
+      "path": "docs/guides/monitoring.md",
+      "documentDigest": "5b225dd4842009417c702a0552af67974e38eaa1b9e8d726a3a7a3389e1c1595",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Full guide reviewed: local versus OTLP/usage paths, pinned resource defaults, async startup, retention, historical shadow evidence, recording populations/attributes, tokens/costs, dashboard queries, spans, schema/history and Insights. All 28 prior rendered anchors preserved.",
+      "limits": "Source and bounded fixtures/in-memory exporter probes do not establish real collector export, historical timing reproduction, complete billing or production reliability. Named recording families are reviewed; the generated catalog lists declarations only.",
+      "sources": [
+        {
+          "path": "pnpm-lock.yaml",
+          "digest": "994fda4a2de5809e250b4c624ee64f4881fde3e6730c1ca904fd63ee87cc522d"
+        },
+        {
+          "path": "scripts/generate-metric-reference.mjs",
+          "digest": "75fb40e614bee3d8f64de9bcdb1ee3dee333f2aca482cfcdd243c657bdb0aff4"
+        },
+        {
+          "path": "src-server/index.ts",
+          "digest": "53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27"
+        },
+        {
+          "path": "src-server/monitoring/emitter.ts",
+          "digest": "18a46c3c352fa9f5305e5bf2b03c20eb39cb2fe934d53e51900d908cd15fecf4"
+        },
+        {
+          "path": "src-server/monitoring/schema.ts",
+          "digest": "81b50a785e36009c3929cb6b9718944f293225ac1d6d015eb916c34a7a01f406"
+        },
+        {
+          "path": "src-server/routes/chat/chat-lifecycle.ts",
+          "digest": "afca720b097f5326b1b8a393136fe0924876f4847ab577d08eaf26fd966dd86a"
+        },
+        {
+          "path": "src-server/routes/operations/insights.ts",
+          "digest": "7f93f03f6b4ddc2e0d334d1ebfaca07fd7a9b28de8a86ac521d1ad4087b518d2"
+        },
+        {
+          "path": "src-server/routes/operations/monitoring.ts",
+          "digest": "18de408f94cfbe0d5a572a7dcb5b5cc95e8f05d14c700869bb83179f464f96b9"
+        },
+        {
+          "path": "src-server/runtime/conversation/runtime-event-log.ts",
+          "digest": "c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26"
+        },
+        {
+          "path": "src-server/runtime/streaming/handlers/MetadataHandler.ts",
+          "digest": "16281db938574925b4c08f9eebdb7bbdfbbba8d84f0ccc5efab23d4c31ff572c"
+        },
+        {
+          "path": "src-server/services/orchestration/orchestration-monitoring-bridge.ts",
+          "digest": "865a4b3de74196bf72b911b7c1a7a43e3054a7f3231c2e538f677e6f08f7d773"
+        },
+        {
+          "path": "src-server/services/projects/project-resource-shadow-record.ts",
+          "digest": "da25aefc61c93781943b900ead963aeaee86376b0b3cbff5dbb16dfc6f5d0a20"
+        },
+        {
+          "path": "src-server/services/usage-telemetry-service.ts",
+          "digest": "477dd0b6487762648a027efc928cf3fc087fc5e406792728805996109148eb38"
+        },
+        {
+          "path": "src-server/telemetry.ts",
+          "digest": "9ff37a9db00e896eddc6ac18bde74c70e3c894550f90c32dea45ea18fb9f9274"
+        },
+        {
+          "path": "src-server/telemetry/metrics.ts",
+          "digest": "2d34c80f94cd64389017805a8372f59854bd2943670a4e498eb6367f4436ff1b"
+        },
+        {
+          "path": "src-server/utils/pricing.ts",
+          "digest": "436b28f35539587ffb1f7a798ad1da092ef145e7fe457d9d9488d9d4eb738406"
+        },
+        {
+          "path": "src-shared/monitoring-keys.ts",
+          "digest": "1c2939ae04a2df7205ff75d2e16531e200199b7b785c672b1820a06a0a736f25"
+        }
+      ],
+      "checks": [
+        "Independent source/content review; 108 existing tests across six files passed.",
+        "Primary-chat failure span and pre-provider counter probes caught bounded defects (#2752, #2755).",
+        "All 28 prior rendered anchors preserved.",
+        "Three telemetry/monitoring/Insights comment cleanups transpile to identical JavaScript.",
+        "Verified eight historical issue identities against current/archive GitHub records; retained prior heading anchor and corrected retired ACP terminology."
+      ]
+    },
+    {
+      "path": "docs/guides/native-shell-verification.md",
+      "documentDigest": "88e7b0cb1b7f7bd716f65a62965f74140a33601c693f721fe9f0a61cd7e9dc5f",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Reviewed readiness ownership, retry/backoff, activation/tray routing, pinned log retention, EPIPE and hostile-plugin harness availability, simulator command ownership and archive identities. Corrected absence and hard-cap claims.",
+      "limits": "No packaged shell, real device, Rust compilation, tray/window pixels, renderer-death recovery, actual closed-parent EPIPE, signing/store or update/rollback execution. Bounded source review, not full platform acceptance.",
+      "sources": [
+        {
+          "path": "scripts/ios-simulator-build.mjs",
+          "digest": "41875375247fac6c6b6b2713eebaf1f5386742e6afebb07535ee3bd3553d0330"
+        },
+        {
+          "path": "scripts/run-tauri-shell-e2e.mjs",
+          "digest": "3752eeb8214457cfb5b06716f192109f296096ec5d0e4acf2d0d6d99e10475e3"
+        },
+        {
+          "path": "src-desktop/Cargo.lock",
+          "digest": "38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b"
+        },
+        {
+          "path": "src-desktop/Info.ios.plist",
+          "digest": "d2c1f1e17b523101bbc9b2e64ec5fa1e7a173ad0229f37f6a796bd3a2b549f4b"
+        },
+        {
+          "path": "src-desktop/src/bundled_server_state.rs",
+          "digest": "022a3739b923a0272a0093b64762bab76498e0254aa3052816b5f66ef2a04759"
+        },
+        {
+          "path": "src-desktop/src/lib.rs",
+          "digest": "f3f76d133e45b201d64a39df1e9ec0229da0496efb7fc4947aa7e906d45c4bc1"
+        },
+        {
+          "path": "src-desktop/src/startup_readiness.rs",
+          "digest": "1c19adc445701dd25f823668c1e1dfc2f17cd85a49270f72f1a0eef3fac561ab"
+        },
+        {
+          "path": "src-server/index.ts",
+          "digest": "53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/__tests__/readiness-handshake.test.ts",
+          "digest": "67070339535915f58ddadfa55c9ff7682683e1c72fae09b1ad7b0ad271eea9a9"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/readiness-handshake.ts",
+          "digest": "649449f2cd88709ebeb7ae336ece72b5c8e18c9d12a57f33752bce8bf5579557"
+        },
+        {
+          "path": "src-ui/src/platform/native/startupReadiness.ts",
+          "digest": "d124175c4a83049fdc2e2d45f4743d36e3d8599c8f86b3526ea2f7b80018b05e"
+        },
+        {
+          "path": "tests/tauri-shell/plugin-host-security.e2e.ts",
+          "digest": "963d8b6cd74e474a5fd2c7891e564e51ddc16dc0562a2aef6a04ef07c76618bd"
+        }
+      ],
+      "checks": [
+        "27 tests across four structural/renderer-mock/Node/doc files passed.",
+        "macOS native context: 10 checks, no failures or skips; availability is not execution.",
+        "Current/archive GitHub identities checked; native logging correction changes only comments."
+      ]
+    },
+    {
       "path": "docs/guides/plugins.md",
       "documentDigest": "468f39704c84d08a7b055077000b925263bae648dcf6908681fa1a111c77b2d0",
       "sourceRevision": "2f41eb5c1dd96a16bab9bf0a6de9ed745ec337dd",
@@ -1519,6 +1966,214 @@
       "checks": [
         "Independent plugin source/caller and correction review accepted.",
         "Plugin implementation lane: 92 documentation-foundation and 151 contract tests passed before later source-neutral wording corrections."
+      ]
+    },
+    {
+      "path": "docs/guides/web-push-notifications.md",
+      "documentDigest": "7da253fb7cf4ee9e1be192223d28c94b3f8d279421c4a2c3f0671c7eb56184f1",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Full guide and diagram reviewed against registration, device audience, persistence, focus/escalation, payload/TTL, revocation, worker navigation, SDK and Settings callers. Independent delta accepted all thirteen correction groups.",
+      "limits": "Source and mocked fixtures; no real browser push service, phone display, Windows key-file ACL, native push or hosted enablement qualification.",
+      "sources": [
+        {
+          "path": "packages/connect/src/react/ConnectionManagerModalContent.tsx",
+          "digest": "7630d2fb80f1b276380fe77d10fde800259aad3a67c0412293dc50547dd2a43c"
+        },
+        {
+          "path": "packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx",
+          "digest": "5c113e440ff60d70cf1904f8e53c681d465c39211de98f948c3d9996c42a2a61"
+        },
+        {
+          "path": "packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx",
+          "digest": "3adaf1dfa41a52777defdc05f6e58953dcf7adb61aaf0d0aa8bfb6cf07033147"
+        },
+        {
+          "path": "packages/contracts/src/notification-preferences.ts",
+          "digest": "94cf883d2a83d793ea2a73571e1e77dc1ddb7c899f4ba963cfdb9ed8f3b6cd17"
+        },
+        {
+          "path": "packages/sdk/src/query-domains/chatRuntimeDevice.ts",
+          "digest": "34a3268686e3bf10791063b7d082da1bb6c150badbec232193645a2a77f63dfd"
+        },
+        {
+          "path": "packages/shared/src/notification-priority.ts",
+          "digest": "3347ba48698197a85dc9ba3b2aa5be3017c70bb9c3355ddeb6498d3cf432084d"
+        },
+        {
+          "path": "src-server/routes/operations/push-routes.ts",
+          "digest": "1b96c2a1b23e7e62f76128d76c34fcae082164607c3c467e8c3a9473dc3a6d97"
+        },
+        {
+          "path": "src-server/runtime/__tests__/push-routes.test.ts",
+          "digest": "f3a419e205a1e7cd09171a567f2140339fa8e9450418e87befe43fc284a3e6a1"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/runtime-http.ts",
+          "digest": "5ed41b4afb2f3f83d80cd8a0957d72427ffd76e6136a6d0feb7fab23e85acca9"
+        },
+        {
+          "path": "src-server/runtime/routes/client-stream-presence.ts",
+          "digest": "31fc6913762780cb0b8659c3868e38a8099a3ad15c706e12ca4d0c024e8c256d"
+        },
+        {
+          "path": "src-server/runtime/routes/notification-delivery-wiring.ts",
+          "digest": "0a8ff32b11d5ee01d0045dfa0e9bbfae54e23989cd5844f95e0109c28cc92c53"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-route-support.ts",
+          "digest": "6a4c97a6eb7f6bbce23da80e037ffb76ca1da14f53e54b2a934a4e64e60f2052"
+        },
+        {
+          "path": "src-server/runtime/routes/runtime-routes.ts",
+          "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
+        },
+        {
+          "path": "src-server/services/notifications/agent-activity-eligibility.ts",
+          "digest": "a5685997c8eabaf0530be90935a564235cef1abf2c18c5ef5abb5fe264863727"
+        },
+        {
+          "path": "src-server/services/notifications/delivery/__tests__/router.test.ts",
+          "digest": "d22c5584b553342aa355d86396bfa4f256bfecf59f141dfa4ffd9e5c6f3d4b05"
+        },
+        {
+          "path": "src-server/services/notifications/delivery/audience-resolver.ts",
+          "digest": "c0b19965d541c8711daf9d48d9236d620ebabe70ab81ffb788d90b7159424de5"
+        },
+        {
+          "path": "src-server/services/notifications/delivery/policy.ts",
+          "digest": "ced54afb47bacdfee38b5cf964d5dc8a971ee1d0500072fa20925dd07daa1c90"
+        },
+        {
+          "path": "src-server/services/notifications/delivery/router.ts",
+          "digest": "01db4ba364cacbeee699f055b69d3f73744ab00e235be0c7d8e27f24c3154d84"
+        },
+        {
+          "path": "src-server/services/notifications/notification-deep-link.ts",
+          "digest": "312e64717d27730ac201e38cca173fa2fe8f0f319067f26b5dfa249831a2b74b"
+        },
+        {
+          "path": "src-server/services/notifications/notification-service.ts",
+          "digest": "dc0df39c89f0e28181353f544f15467c528fb9685622077cca74b672d2857c19"
+        },
+        {
+          "path": "src-server/services/notifications/push-payload-composer.ts",
+          "digest": "2fd22bb51fcaf58c223a0c0799d51742787e406d125e021ef06adb22405c80ad"
+        },
+        {
+          "path": "src-server/services/notifications/vapid-key-service.ts",
+          "digest": "f53821b148a8c93b0fe34559cc6429431648c2e049f9fae5d3edd941a4255091"
+        },
+        {
+          "path": "src-server/services/notifications/web-push-channel.ts",
+          "digest": "693602d66e0bbea68b0122f97be012ca34f9456051c19e47a9bb13a335219054"
+        },
+        {
+          "path": "src-server/services/notifications/web-push-service.ts",
+          "digest": "8029e96b806624cdbbb2a3d12bcbd285dee94b8e4cfbdd9ecc06a77138c10e05"
+        },
+        {
+          "path": "src-server/services/projects/attention-projection.ts",
+          "digest": "b1ae045cdbe0b8cf3a73ce5f126f6e9a11f54074ec7aaed8e04284ea3a057625"
+        },
+        {
+          "path": "src-server/services/ssh/client-connection-presence.ts",
+          "digest": "e9b416405129eba8f5e10b609a2463a0d27a622528225f8ccc5970822924717f"
+        },
+        {
+          "path": "src-server/services/ssh/device-pairing-service.ts",
+          "digest": "917e1454f5b9276bdffc662c7c5f27c9ea431ee4c9d1b4e2d39ca6d402af9959"
+        },
+        {
+          "path": "src-server/telemetry/metrics.ts",
+          "digest": "2d34c80f94cd64389017805a8372f59854bd2943670a4e498eb6367f4436ff1b"
+        },
+        {
+          "path": "src-ui/public/sw.js",
+          "digest": "411d96698a8c13cd73c04887dfbcababc5de8b82a3ed0909ab3d3cdcae0cc263"
+        },
+        {
+          "path": "src-ui/src/hooks/__tests__/usePushNotifications.test.tsx",
+          "digest": "f02dc51bf465c713e76ca921057246f923f8c20798e78079a44d286d322d41fc"
+        },
+        {
+          "path": "src-ui/src/hooks/useFeatureSettings.ts",
+          "digest": "97b65c542aadec23d2ec6dc926e4912adfc96852fed1694a0dd5f59134d7b56d"
+        },
+        {
+          "path": "src-ui/src/hooks/usePushNotifications.ts",
+          "digest": "836ba76645a4c7f6637c76596993409d01b8ed1342d8783956de5418e4ea2be0"
+        },
+        {
+          "path": "src-ui/src/hooks/useServerEvents.ts",
+          "digest": "6288bb72ce5a3f87626a5966cf6917dbe9ae46ac5c504a9bdd2cc14054dbcb07"
+        },
+        {
+          "path": "src-ui/src/views/settings/PairingSection.tsx",
+          "digest": "e1a62de74a2dfc8b032b358b1ca6b7f29322c182b8619507bf3a5e0882d7324c"
+        },
+        {
+          "path": "src-ui/src/views/settings/VoiceFeaturesSection.tsx",
+          "digest": "a1f688fa7b6256ecdeb6b28c9f0d25324ce815fdbcd0697ac60925a16b2e48cf"
+        }
+      ],
+      "checks": [
+        "55 tests across three focused notification files passed on unchanged implementation bytes.",
+        "Actual-channel synthetic replacement/gone-response probe caught stale cleanup (#2753).",
+        "Independent full-guide delta accepted, including browser/native channel distinction."
+      ]
+    },
+    {
+      "path": "docs/privacy-policy.md",
+      "documentDigest": "fb5be7ad7342be17509e79e40a6e2dbbe7046ea7dbbe8db4ba637fcdbb21d403",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
+      "kind": "generated",
+      "state": "partial",
+      "summary": "Reviewed declared-versus-verified and generated-versus-published boundaries; corrected OTel scope and documented account/OIDC and browser-push flows requiring inventory reconciliation. Seven existing classification tuples remain unchanged.",
+      "limits": "Whole-policy completeness and legal/store classification remain incomplete. No classifications approved, policy published, real login, export or device delivery performed.",
+      "sources": [
+        {
+          "path": "pnpm-lock.yaml",
+          "digest": "994fda4a2de5809e250b4c624ee64f4881fde3e6730c1ca904fd63ee87cc522d"
+        },
+        {
+          "path": "src-server/services/__tests__/privacy-inventory.test.ts",
+          "digest": "527aeaf444cac13fb76b448a78a26bca2c231c418af539c0c0baf24578a7d46d"
+        },
+        {
+          "path": "src-server/services/identity/local-account-provider.ts",
+          "digest": "adcca23a978ad7c38ca7cbcbf1d14b1241a12ab2991723a11cd1e1319668a2de"
+        },
+        {
+          "path": "src-server/services/identity/local-account-runtime.ts",
+          "digest": "fe5b823f91b15a868e183a98f18639531c1ada051ac490268102a26c1f261124"
+        },
+        {
+          "path": "src-server/services/notifications/web-push-channel.ts",
+          "digest": "693602d66e0bbea68b0122f97be012ca34f9456051c19e47a9bb13a335219054"
+        },
+        {
+          "path": "src-server/services/privacy-inventory.ts",
+          "digest": "c09da77a44620062c17041bc3c8ec71e430f61e1fde614505410d6fdfa17c08b"
+        },
+        {
+          "path": "src-server/services/usage-telemetry-service.ts",
+          "digest": "477dd0b6487762648a027efc928cf3fc087fc5e406792728805996109148eb38"
+        },
+        {
+          "path": "src-server/telemetry.ts",
+          "digest": "9ff37a9db00e896eddc6ac18bde74c70e3c894550f90c32dea45ea18fb9f9274"
+        },
+        {
+          "path": "src-ui/src/hooks/usePushNotifications.ts",
+          "digest": "836ba76645a4c7f6637c76596993409d01b8ed1342d8783956de5418e4ea2be0"
+        }
+      ],
+      "checks": [
+        "Independent synthetic review caught flag loss and supplied-input inconsistency.",
+        "Repair: 30 tests passed; old renderer produced 19 expected failures, exact restoration returned 30 passes.",
+        "Final prose accepted independently; classifications/native artifact unchanged and all generated artifacts match."
       ]
     },
     {
@@ -1642,6 +2297,97 @@
       ]
     },
     {
+      "path": "docs/reference/metrics.md",
+      "documentDigest": "dc8a4cdd964980bc2b352178a6233ee2a5c2d68c2a8d5fdb32d2ead81e1307d8",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
+      "kind": "generated",
+      "state": "classified",
+      "summary": "Generated catalog of 309 instrument declarations, literal metadata and source identity. Source is parsed without executing telemetry.",
+      "limits": "Declarations do not prove caller recording, SDK binding or collector receipt. Unsupported owner syntax refuses generation.",
+      "sources": [
+        {
+          "path": "scripts/__tests__/metric-reference.test.ts",
+          "digest": "9c432501ef9d37322a972c2f54b52fd38552731b9b3bc59a5894a70bc557fb81"
+        },
+        {
+          "path": "scripts/generate-metric-reference.mjs",
+          "digest": "75fb40e614bee3d8f64de9bcdb1ee3dee333f2aca482cfcdd243c657bdb0aff4"
+        },
+        {
+          "path": "scripts/lib/learning-markdown.mjs",
+          "digest": "d9a0d801664635bf8aae661ebaf857923b0620f6c2c82b5def4d23631cef5feb"
+        },
+        {
+          "path": "scripts/lib/learning-source-reader.mjs",
+          "digest": "3ed56b00565eb004ecd245ec7b21a3e7969378278332c05b6c9960106a6a036a"
+        },
+        {
+          "path": "scripts/lib/metric-reference-output.mjs",
+          "digest": "1ab2f8c050105b4ddc265f4d16b5c4c5fad6bfe268f198884dfc6e1690259804"
+        },
+        {
+          "path": "src-server/telemetry/metrics.ts",
+          "digest": "2d34c80f94cd64389017805a8372f59854bd2943670a4e498eb6367f4436ff1b"
+        }
+      ],
+      "checks": [
+        "47 generator tests passed.",
+        "Independent actual CLI refused input/output symlinks, invalid UTF-8, API escapes and runtime re-exports; valid/restored checks passed. Literal metadata round-tripped through the reader DOM."
+      ]
+    },
+    {
+      "path": "docs/reference/play-data-safety.md",
+      "documentDigest": "321e5413ac7f10b375d938d34542cd3a47a6d9452a0726cd34e8f67d8d745a19",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
+      "kind": "generated",
+      "state": "partial",
+      "summary": "Reviewed declared-versus-verified and generated-versus-published boundaries; corrected OTel scope and documented account/OIDC and browser-push flows requiring inventory reconciliation. Seven existing classification tuples remain unchanged.",
+      "limits": "Whole-policy completeness and legal/store classification remain incomplete. No classifications approved, policy published, real login, export or device delivery performed.",
+      "sources": [
+        {
+          "path": "pnpm-lock.yaml",
+          "digest": "994fda4a2de5809e250b4c624ee64f4881fde3e6730c1ca904fd63ee87cc522d"
+        },
+        {
+          "path": "src-server/services/__tests__/privacy-inventory.test.ts",
+          "digest": "527aeaf444cac13fb76b448a78a26bca2c231c418af539c0c0baf24578a7d46d"
+        },
+        {
+          "path": "src-server/services/identity/local-account-provider.ts",
+          "digest": "adcca23a978ad7c38ca7cbcbf1d14b1241a12ab2991723a11cd1e1319668a2de"
+        },
+        {
+          "path": "src-server/services/identity/local-account-runtime.ts",
+          "digest": "fe5b823f91b15a868e183a98f18639531c1ada051ac490268102a26c1f261124"
+        },
+        {
+          "path": "src-server/services/notifications/web-push-channel.ts",
+          "digest": "693602d66e0bbea68b0122f97be012ca34f9456051c19e47a9bb13a335219054"
+        },
+        {
+          "path": "src-server/services/privacy-inventory.ts",
+          "digest": "c09da77a44620062c17041bc3c8ec71e430f61e1fde614505410d6fdfa17c08b"
+        },
+        {
+          "path": "src-server/services/usage-telemetry-service.ts",
+          "digest": "477dd0b6487762648a027efc928cf3fc087fc5e406792728805996109148eb38"
+        },
+        {
+          "path": "src-server/telemetry.ts",
+          "digest": "9ff37a9db00e896eddc6ac18bde74c70e3c894550f90c32dea45ea18fb9f9274"
+        },
+        {
+          "path": "src-ui/src/hooks/usePushNotifications.ts",
+          "digest": "836ba76645a4c7f6637c76596993409d01b8ed1342d8783956de5418e4ea2be0"
+        }
+      ],
+      "checks": [
+        "Independent synthetic review caught flag loss and supplied-input inconsistency.",
+        "Repair: 30 tests passed; old renderer produced 19 expected failures, exact restoration returned 30 passes.",
+        "Final prose accepted independently; classifications/native artifact unchanged and all generated artifacts match."
+      ]
+    },
+    {
       "path": "docs/reference/session-api.md",
       "documentDigest": "90f4afe3aac1b8133cfd0d25f1f625475a5bb4c11c00fbf2cd207d43a34dba2c",
       "sourceRevision": "2a2a00097ea82e33179c2f62d364ac1d9ad99209",
@@ -1712,7 +2458,7 @@
     {
       "path": "docs/security/remote-access-threat-model.md",
       "documentDigest": "57e52e4dfaabb7eea33e7926e9afd9bc27599ad3372b3c4849f6f2bc96b0f766",
-      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
       "kind": "current",
       "state": "partial",
       "summary": "Reviewed socket/scope/SSH and account-auth route boundaries; corrected universal-route and credential-rotation assumptions while retaining historical qualifications.",
@@ -1752,7 +2498,7 @@
         },
         {
           "path": "package.json",
-          "digest": "02c8ed55171424deddbe2dac99fcf6fe7939e4ca0fe45f2959d4ce7b964ae345"
+          "digest": "19f59383cf927f41f2801cc7dde81ebc425cfb97fc2b0b0b76397cb23a18de7a"
         },
         {
           "path": "pnpm-lock.yaml",
@@ -1764,7 +2510,8 @@
         }
       ],
       "checks": [
-        "Independent access and dependency-level authentication reviews accepted scoped corrections."
+        "Independent access and dependency-level authentication reviews accepted scoped corrections.",
+        "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope."
       ]
     },
     {
@@ -2045,6 +2792,58 @@
       "limits": "Instructions are not a receipt that the described workflow, hosted enforcement, physical-device journey, or store action was executed.",
       "sources": [],
       "checks": []
+    },
+    {
+      "path": "docs/user/native-recovery.md",
+      "documentDigest": "121355095abb642b10af236eae57344fd0c3ee6d35460e969ebc7a3e9fae0ef3",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Reviewed readiness ownership, retry/backoff, activation/tray routing, pinned log retention, EPIPE and hostile-plugin harness availability, simulator command ownership and archive identities. Corrected absence and hard-cap claims.",
+      "limits": "No packaged shell, real device, Rust compilation, tray/window pixels, renderer-death recovery, actual closed-parent EPIPE, signing/store or update/rollback execution. Bounded source review, not full platform acceptance.",
+      "sources": [
+        {
+          "path": "scripts/ios-simulator-build.mjs",
+          "digest": "41875375247fac6c6b6b2713eebaf1f5386742e6afebb07535ee3bd3553d0330"
+        },
+        {
+          "path": "scripts/run-tauri-shell-e2e.mjs",
+          "digest": "3752eeb8214457cfb5b06716f192109f296096ec5d0e4acf2d0d6d99e10475e3"
+        },
+        {
+          "path": "src-desktop/Cargo.lock",
+          "digest": "38624df3105a4d464e085d4034e32a78e7fe867334cfac2006d6d8b73a31fc4b"
+        },
+        {
+          "path": "src-desktop/src/lib.rs",
+          "digest": "f3f76d133e45b201d64a39df1e9ec0229da0496efb7fc4947aa7e906d45c4bc1"
+        },
+        {
+          "path": "src-desktop/src/startup_readiness.rs",
+          "digest": "1c19adc445701dd25f823668c1e1dfc2f17cd85a49270f72f1a0eef3fac561ab"
+        },
+        {
+          "path": "src-server/index.ts",
+          "digest": "53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/readiness-handshake.ts",
+          "digest": "649449f2cd88709ebeb7ae336ece72b5c8e18c9d12a57f33752bce8bf5579557"
+        },
+        {
+          "path": "src-ui/src/platform/native/startupReadiness.ts",
+          "digest": "d124175c4a83049fdc2e2d45f4743d36e3d8599c8f86b3526ea2f7b80018b05e"
+        },
+        {
+          "path": "tests/tauri-shell/plugin-host-security.e2e.ts",
+          "digest": "963d8b6cd74e474a5fd2c7891e564e51ddc16dc0562a2aef6a04ef07c76618bd"
+        }
+      ],
+      "checks": [
+        "27 tests across four structural/renderer-mock/Node/doc files passed.",
+        "macOS native context: 10 checks, no failures or skips; availability is not execution.",
+        "Current/archive GitHub identities checked; native logging correction changes only comments."
+      ]
     },
     {
       "path": "docs/user/work-board.md",
@@ -2566,7 +3365,7 @@
     },
     {
       "path": "scripts/AGENTS.md",
-      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
       "kind": "policy",
       "state": "classified",
       "summary": "Names deterministic fail-closed gates, resource classification, owned processes, introduced code-health findings, focused mutation evidence, exit-status collection, and read-only lint after formatting. All routed paths and npm scripts resolve.",
@@ -2575,7 +3374,7 @@
       "sources": [
         {
           "path": "scripts/vitest-resource-manifest.mjs",
-          "digest": "44bf40b1a71b485a1f52e9389ff90e2a0ad9f5cc28a414aa2bc8869e723f02d6"
+          "digest": "dfff4697ba8b0bc86b4c3c265a237183cede5a339630978abd0001423743fd39"
         },
         {
           "path": "scripts/code-health-gate.mjs",
@@ -2600,7 +3399,8 @@
       ],
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
-        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+        "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope."
       ]
     },
     {
@@ -2694,7 +3494,7 @@
     },
     {
       "path": "scripts/__tests__/fixtures/sbom/README.md",
-      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
       "kind": "fixture",
       "state": "classified",
       "summary": "The parsed SPDX schema is identical to pinned upstream JSON despite repository formatting differences. SPDX-LICENSE is byte-identical to upstream LICENSE. Offline schema consumption is present in the SBOM tests; no license text was changed.",
@@ -2715,12 +3515,13 @@
         },
         {
           "path": "package.json",
-          "digest": "02c8ed55171424deddbe2dac99fcf6fe7939e4ca0fe45f2959d4ce7b964ae345"
+          "digest": "19f59383cf927f41f2801cc7dde81ebc425cfb97fc2b0b0b76397cb23a18de7a"
         }
       ],
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
-        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+        "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope."
       ]
     },
     {
@@ -2752,7 +3553,7 @@
     },
     {
       "path": "src-desktop/AGENTS.md",
-      "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
+      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes native changes to native-shell verification and platform guides; separates unit checks from physical device/runtime evidence and retains Windows process requirements.",
@@ -2761,7 +3562,7 @@
       "sources": [
         {
           "path": "docs/guides/native-shell-verification.md",
-          "digest": "d8ba051e2e233e36c97ee803a5cce7b4e347624f33b007c0df5a8fa91e0027d3"
+          "digest": "88e7b0cb1b7f7bd716f65a62965f74140a33601c693f721fe9f0a61cd7e9dc5f"
         },
         {
           "path": "scripts/gate-for.mjs",
@@ -2770,7 +3571,8 @@
       ],
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
-        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+        "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
+        "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope."
       ]
     },
     {

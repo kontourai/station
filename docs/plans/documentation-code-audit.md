@@ -194,15 +194,18 @@ The reviewer accepted the corrected delta separately from the original pass.
 The reader verifier executed a source-digest guard mutation: removing the
 comparison made the intended freshness assertion fail, and byte-identical
 restoration passed. It also reproduced an old-reader/new-build mismatch.
-Immutable source URLs and dependency-bound lazy payloads fix that scenario;
-an independent follow-up found a separate truncated-existing-asset case, which
-must be resolved before the reader's evidence contract is closed.
+Immutable source URLs and dependency-bound lazy payloads fix that scenario.
+Follow-up review found truncated-existing assets; publication now writes a
+complete temporary file, links it without overwriting an existing object, and
+checks exact bytes on collisions. Independent refusal/restoration probes passed.
+This does not claim a whole-build transaction or power-loss durability.
 
 The plugin guide and portable-format reference now distinguish actual secret
 storage from declarative secret slots, settings persistence from activation,
 legacy installation from retained portable materializations, and real consumer
-interfaces from generic provider registration. The remaining approval versus
-reconciliation wording is tracked in the fix round.
+interfaces from generic provider registration. The subsequent fix round
+separates explicit approval from reconciliation and withholds content until
+activation; independent review accepted the corrected wording.
 
 Session/ACP documentation now follows canonical foreground execution, returned
 Session/Conversation identities, optional receipt durability, cursor-based ACP
@@ -240,11 +243,39 @@ comments removed. A separate
 run passed all 32 tests, including the refusal to reset or migrate a
 future-version home. Neither run changes application behavior.
 
-The module map still lacks a dedicated explanation of browser-session
-ownership and the shared live-surface boundary. The glossary correction is a
-starting point, not a complete Browser subsystem review. Trace acquisition,
-profiles, target admission, agent grants, process cleanup, and Device producer
-composition before closing that review unit.
+Browser-session ownership and the shared live-surface boundary are undergoing
+a dedicated source review. The glossary correction alone does not close it:
+acquisition, profiles, target admission, agent grants, cleanup, Device producer
+composition, and their current guides need to agree.
+
+### Monitoring, notifications, native recovery, and disclosure review
+
+The full monitoring and browser Web Push guides were rewritten against their
+callers and independently reviewed. The monitoring guide retains all 28 old
+section anchors and distinguishes declared metrics, actual recording paths,
+and unverified collector delivery. Its generated declaration catalog contains
+309 creation calls; its checker rejects unsupported syntax rather than silently
+omitting declarations. Native recovery guides now distinguish existing source
+and harnesses from physical-platform results that this audit did not obtain.
+
+The [abstraction review](../architecture/abstraction-review.md) links the
+monitoring, notification, and live-surface findings to GitHub. Issue acceptance
+requires the implementation and affected documentation to change together.
+The live-surface transport recommendation is source-grounded but has no
+saturated-browser latency measurement; it is not a reproduced freeze.
+
+Privacy renderers now preserve affirmative flags across duplicate entries and
+use one supplied inventory throughout the output. Thirty tests pass; restoring
+the old renderer caused 19 expected failures, and exact restoration returned
+30 passes. The prose distinguishes declared classifications from verified
+data flows and publication. Existing classification values were retained;
+inventory completeness, legal/store review, and publication remain separate
+unfinished work, explicitly visible in the generated policy.
+
+Source snapshot review also caught symlink escapes, encoded Windows path
+separators, and conflicting footnote IDs. Confined reads and corrected IDs
+passed independent refusal and restoration probes. These were defects in the
+new, unpublished reader, not evidence of a released Station vulnerability.
 
 ## Foundation implemented in this tranche
 
@@ -288,6 +319,23 @@ Splitting the validation conditions solely to lower a function score would
 relocate the same obligations. Revisit the boundaries when another consumer or
 new catalog shape adds a separate responsibility. These findings do not certify
 the prose's semantic accuracy; that remains the program's open review work.
+
+Later reader changes add three advisory findings: the local-link resolver,
+rendered-link checker, and explicit-anchor visitor. Their branches distinguish
+local evidence from external links, validate rendered IDs, and admit only the
+restricted anchor syntax. Refusal probes cover source escapes and malformed
+links; renderer tests cover headings, anchors, and footnotes. Keep these
+responsibilities together while their inputs remain small and explicit.
+
+The metric generator adds three advisories: declaration parsing, meter-owner
+discovery, and confined output publication. They enforce a deliberately narrow
+syntax and one write lifecycle. Forty-seven tests plus independent real-CLI
+probes cover omitted/unsupported declarations, input/output symlinks, encoding,
+and literal rendered metadata. The completed code-health delta gate found no
+introduced dead code, duplicate blocks, or blocking finding. An earlier audit
+timed out and was not counted as passing; the later materially changed delta
+has its own completed result. No full branch-coverage claim follows from an
+estimated complexity score.
 
 ## Veritas adoption
 

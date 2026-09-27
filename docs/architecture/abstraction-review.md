@@ -186,6 +186,47 @@ choice between a stronger execution-boundary guarantee and an explicitly
 best-effort observation. Any stronger capture policy must measure its cost and
 define refusal/failure behavior at the real engine caller.
 
+### Observation paths need clear definitions and completeness
+
+The [monitoring review](../guides/monitoring.md) found several independent
+problems. [#2750](https://github.com/kontourai/station/issues/2750) separates
+Scheduler management requests from job executions;
+[#2751](https://github.com/kontourai/station/issues/2751) reconciles dashboard
+queries with actual names, labels, and recording populations;
+[#2752](https://github.com/kontourai/station/issues/2752) addresses failed chat
+spans finalized as successful; and
+[#2755](https://github.com/kontourai/station/issues/2755) addresses instruments
+created before asynchronous provider registration. The last two have bounded
+in-memory exporter/reader probes, not production collector measurements.
+
+Insights also logs and skips unreadable rows/files before returning successful
+totals. [#2758](https://github.com/kontourai/station/issues/2758) proposes an
+explicit completeness result through the route, SDK, and visible view. A
+generated [metric catalog](../reference/metrics.md) prevents declaration drift;
+it cannot establish that observations were recorded, exported, or complete.
+
+### Browser subscription state has two owners
+
+The browser owns a PushManager subscription; Station owns its paired-device
+registration. The current UI initializes its state from the browser alone.
+[#2759](https://github.com/kontourai/station/issues/2759) tracks reconciliation
+with the selected Station, actionable authentication errors, and clear toggle
+semantics. Separately, an old send's gone-response can clear a replacement
+subscription: [#2753](https://github.com/kontourai/station/issues/2753).
+The channel race was exercised with synthetic state; physical browser delivery
+was not. See the current [Web Push guide](../guides/web-push-notifications.md).
+
+### Live frames and human input share a transport budget
+
+The current live-surface hook opens a frame request per visible viewer.
+Visibility and duplicate-display suppression reduce requests, but there is no
+shared cross-surface frame transport or admission policy reserving room for
+input. [#2760](https://github.com/kontourai/station/issues/2760) tracks that unmet
+[ADR0018 constraint](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md), with acceptance at
+the actual browser input path. Finite browser connection pools make contention
+a plausible concern; this audit did not reproduce saturation or measure latency.
+Native and relay transports need separate qualification.
+
 ### Composition owners are difficult to learn as a single page
 
 At the baseline, `station-runtime.ts` has 4,947 lines, `runtime-routes.ts` has

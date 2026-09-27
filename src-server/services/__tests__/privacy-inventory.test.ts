@@ -135,10 +135,10 @@ describe('privacy inventory', () => {
     );
   });
 
-  test('renders the published policy as a public projection without private-repository framing', () => {
+  test('distinguishes the generated policy from approved and published disclosures', () => {
     const policy = renderPrivacyPolicy();
     expect(policy).toContain(
-      'The published page is a public projection of this inventory: it states the same facts without the contributor-oriented code-evidence paths.',
+      'Regeneration does not publish the page or update a store listing.',
     );
     expect(policy).not.toContain('this repository is private');
   });

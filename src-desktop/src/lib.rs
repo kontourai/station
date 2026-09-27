@@ -10899,14 +10899,10 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(mobile)]
     let log_dir_writable = true;
 
-    // Every target, mobile included: `tauri-plugin-log` lists android/ios as
-    // "full" support in its own platform metadata, and a double-clicked .app
-    // (no terminal attached to inherit stderr) is exactly the case a bare
-    // `eprintln!` never reached (#1899). Stdout is kept for terminal/dev
-    // launches; `LogDir` writes under Tauri's platform `app_log_dir()`
-    // convention so the file survives across runs. Bounded to 5 files of 5MB
-    // each (25MB ceiling) — `KeepSome` renames the previous file with a date
-    // suffix on rotation rather than deleting silently.
+    // Keep file logs for GUI launches without an attached terminal (archive#1899).
+    // LogDir uses app_log_dir(); stdout remains for terminal/dev launches.
+    // KeepSome(5) retains five archives plus the active file. The 5 MiB
+    // rotation threshold is not a strict byte cap: one entry can exceed it.
     let mut log_targets = vec![tauri_plugin_log::Target::new(
         tauri_plugin_log::TargetKind::Stdout,
     )];

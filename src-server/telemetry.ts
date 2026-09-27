@@ -1,6 +1,6 @@
 /**
- * OpenTelemetry SDK bootstrap — must be imported before all other modules.
- * Graceful no-op when OTEL_EXPORTER_OTLP_ENDPOINT is not set.
+ * Optional OpenTelemetry bootstrap. Await provider registration before creating
+ * instruments; importing this module first is insufficient (#2755).
  */
 
 import { platform } from 'node:os';
@@ -81,7 +81,7 @@ function createSdk(
   });
 }
 
-/** Resolves the exact non-identifying attributes attached to every OTel signal. */
+/** Station's explicit resource fields; SDK detectors can add other attributes. */
 export async function resolveOtelResourceAttributes(
   homeDir: string,
   createInstallationIdHash = persistedRandomIdentifierHash,
@@ -95,7 +95,7 @@ export async function resolveOtelResourceAttributes(
   };
 }
 
-/** Starts configured OTel after its non-identifying installation id is ready. */
+/** Starts configured OTel after its random installation hash is ready. */
 export async function initializeTelemetry(
   options: InitializeTelemetryOptions = {},
 ): Promise<void> {

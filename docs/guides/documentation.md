@@ -34,6 +34,9 @@ source inspection, an executed test, a real provider/device journey, or an
 observed release. A link to an existing source file proves location, not the
 claim beside it. Mark missing evidence explicitly.
 
+Inspect pinned dependency defaults when they affect a claim. A mocked factory
+call does not prove what that dependency ultimately emits or persists.
+
 The learning reader's [review ledger](../learn/review-ledger.json) records
 document purpose separately from source review. A source-reviewed record needs
 the checked claims, code owners, executed checks, and limits. Its document and
