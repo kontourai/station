@@ -65,6 +65,9 @@ that the default Station host supplies its optional context.
 The [default SDK adapter](../../src-ui/src/core/SDKAdapter.tsx) is delivered
 through [the plugin Pane boundary](../../src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx).
 `SDKProvider` forwards the supplied value without filling missing slots.
+It also does not initialize the module-global API base used by legacy helpers;
+Station's adapter does that. A custom host must configure that base separately
+or use client functions that take an explicit API base and request options.
 
 | Surface | Current default Station binding |
 | --- | --- |
@@ -91,11 +94,11 @@ does not require every custom host to provide every optional slot.
 
 `@kontourai/station-sdk/coding-file-mentions-query` exports
 `useCodingFileMentionCandidatesQuery`, `fetchCodingFileMentionCandidates`,
-`CodingFileEntry`, and `CodingFileMentionCandidates`. This opt-in subpath is the
-public metadata lookup used by Station's chat composer; it does not read file
-contents.
+`CodingLocation`, `CodingFileEntry`, and `CodingFileMentionCandidates`. This
+subpath is the metadata lookup used by Station's chat composer; it returns file
+metadata rather than file contents.
 
-The hook accepts a workspace path, a search string, and an `ApiRequestScope`
+The hook accepts `{ projectSlug, workingDir }`, a search string, and an `ApiRequestScope`
 extended with `isCurrent()`. Its cache identity includes the exact API origin
 and opaque authority key. The request is cancelled or its result withheld when
 that captured authority is no longer current, so a reconnect cannot rebind an
@@ -108,13 +111,14 @@ import { useCodingFileMentionCandidatesQuery } from
   '@kontourai/station-sdk/coding-file-mentions-query';
 
 const candidates = useCodingFileMentionCandidatesQuery(
-  '/workspace/project',
+  { projectSlug: 'example', workingDir: '/workspace/project' },
   'src/chat',
   requestScope,
 );
 ```
 
-The returned `CodingFileEntry` contains `name`, project-relative `path`, and
+The returned `CodingFileEntry` contains `name`, a `path` relative to the selected
+working directory, and
 `type: 'file' | 'directory'`, with optional size, modification time, and bounded
 children. A selected path is still subject to the server's workspace
 containment and authorization checks; query metadata does not grant file
@@ -333,38 +337,50 @@ Returns model/provider-backed connections from `GET /api/connections/models`.
 
 Use this when you need provider readiness, editable provider config, or provider-scoped `config.modelOptions`.
 
-#### `useRuntimeConnectionsQuery()`
+<a id="useruntimeconnectionsquery"></a>
 
-Returns runtime connection rows from `GET /api/connections/runtimes`.
+#### `useEngineConnectionsQuery()`
 
-Runtime rows can expose runtime-scoped model metadata on `runtimeCatalog`, including:
+Returns engine connection rows from `GET /api/connections/agents`, under
+`['connections', 'engines']`. The previously documented `useRuntimeConnectionsQuery` name is
+not a current export.
+
+Rows can expose model-catalog metadata on `runtimeCatalog`, including:
 
 - `source` — `live`, `cached`, `built-in`, or `none`
 - `models` — live or cached catalog entries
 - `builtInModels` — Station's bounded built-in entries when live enumeration is unavailable
 - `reason`, `fetchedAt`, and `truncated` — catalog status and completeness metadata
 
-This is the query used by runtime/model UI surfaces such as `ConnectionsHub`, `RuntimeConnectionView`, `NewChatModal`, the chat dock model selector, and `AgentEditorRuntimeTab`.
+Current callers include `ConnectionsHub`, `AgentConnectionView`, `EnginePicker`
+and `AgentEditorForm`. Built-in candidates are not proof that an engine currently
+offers a model; preserve the catalog source and availability when presenting them.
 
 ```tsx
-const { data: runtimeConnections = [] } = useRuntimeConnectionsQuery();
+const { data: engineConnections = [] } = useEngineConnectionsQuery();
 
-const codexRuntime = runtimeConnections.find((c) => c.id === 'codex');
-const visibleModels =
-  codexRuntime?.runtimeCatalog?.models.length
-    ? codexRuntime.runtimeCatalog.models
-    : (codexRuntime?.runtimeCatalog?.builtInModels ?? []);
+const codexConnection = engineConnections.find((c) => c.config.engineId === 'codex');
+const catalog = codexConnection?.runtimeCatalog;
+const observedModels = catalog?.models ?? [];
+const catalogSource = catalog?.source ?? 'none';
 ```
 
 #### `useContributedModelManifestQuery()`
 
-Reads `GET /api/connections/model-inventory`, which since station#1398 slice 2 returns the **contributed-subset manifest** (`station.fleet-contribution/v1`) behind the `inference:invoke` pairing scope — not the full `station.model-inventory/v2` launchable inventory it used to return. Renamed from `useLaunchableModelInventoryQuery` deliberately: a silent re-type under the old name would have compiled everywhere while meaning something else. The non-React `fetchContributedModelManifest()` export returns the same body. A client paired with a `read-only`, `standard`, or `delegation` preset now receives 403; re-pair with the `inference` preset. Connection save, delete, health-test, and smoke mutations invalidate the query automatically.
+Reads the contributed model subset (`station.fleet-contribution/v1`) from
+`GET /api/connections/model-inventory`. It is not the complete launchable model
+inventory. The non-React `fetchContributedModelManifest()` returns the same body.
+The route requires `inference:invoke`; the `read-only`, `standard` and
+`delegation` pairing presets do not grant it. Use an explicitly approved
+`inference` grant. Connection save, delete, health-test and smoke mutations
+invalidate the query.
 
 #### `useAgentConnectionQuery(id: EngineConnectionId)`
 
 Returns a single connection from `GET /api/connections/:id`.
 
-Agent detail views use the branded engine namespace. Model detail views can use `useConnectionQuery(id)` where a generic read is genuinely required.
+Agent detail views use the branded engine namespace. Model detail views can use
+`useConnectionQuery(id)` for a generic connection read.
 
 #### Agent connection mutations
 
@@ -404,7 +420,8 @@ Returns a query whose `data` is the project's `KnowledgeNamespaceConfig[]`.
 
 #### `useKnowledgeSearch(projectSlug: string, query: string, namespace?: string)`
 
-Returns semantic search results from a project's knowledge base.
+Returns a query result whose `data` contains semantic search results from the
+selected Project/namespace.
 
 ---
 
@@ -556,7 +573,11 @@ grant. Prefer scoped client operations for protected data.
 
 #### `useUserLookup(alias: string | null): { data: any; loading: boolean; error: string | null }`
 
-Looks up a user by alias via the user directory. Returns `null` data when alias is `null`.
+Looks up a user by alias via the user directory. Returns `null` data when alias
+is `null`. This legacy hook decodes JSON without checking HTTP status, so an
+error response can appear in `data` rather than `error`. It uses the ambient
+API base and direct `fetch`; its effect discards a late result after cleanup
+but does not cancel the request or capture `ApiRequestScope`.
 
 ```tsx
 const { data, loading } = useUserLookup('jsmith');
@@ -564,12 +585,22 @@ const { data, loading } = useUserLookup('jsmith');
 
 #### `useServerFetch(): (url: string, options?) => Promise<{ status, contentType, body }>`
 
-Routes an HTTP request through the backend to avoid CORS. Requires `network.fetch` permission in `plugin.json`.
+This exported helper is not a working proxy through the current Station server.
+Its legacy plugin-name getter is empty, so it calls `/api/plugins/fetch`, which
+returns 403. The named `/:name/fetch` route also refuses after checking grants
+because plugin execution identity is not yet verifiable. Declaring
+`network.fetch` alone does not enable either route.
 
 ```tsx
 const serverFetch = useServerFetch();
-const result = await serverFetch('https://api.example.com/data');
+// This rejects against the current Station server.
+await serverFetch('https://api.example.com/data');
 ```
+
+The CLI preview server has a separate development proxy; that does not establish
+production support. See the [hook](../../packages/sdk/src/hooks/operations.ts),
+[legacy identity getter](../../packages/sdk/src/api-core.ts), and
+[server refusal](../../src-server/routes/plugins/plugin-public-routes.ts).
 
 ---
 
@@ -666,6 +697,8 @@ unavailable enumeration matters. The list-only hook below cannot express
 
 List-only view over `useModelCapabilitiesEnvelopeQuery`, sharing its cache
 entry. Cannot express "not queryable".
+
+<a id="useprojectlayoutsqueryprojectslug-string-config-1"></a>
 
 ### `useProjectLayoutsQuery(projectSlug: string, config?)`
 
@@ -839,13 +872,12 @@ The [SDK Project queries](../../packages/sdk/src/query-domains/workspaceProjects
 [query-client owner](../../src-ui/src/contexts/AuthorityQueryContext.tsx)
 separate live request admission from persisted data identity.
 
-### `useProjectLayoutsQuery(projectSlug: string, config?)`
-
-Fetches layouts for a project.
-
 ### `useProjectConversationsQuery(projectSlug: string, limit?, config?)`
 
-Fetches recent conversations for a project. Default limit: 10.
+Fetches recent conversations for a project. Default limit: 10. This legacy
+reader can turn a non-OK response or invalid/failed envelope into `[]`; an empty
+result does not distinguish no conversations from those failures. Transport or
+JSON-decoding failures can still reject. See `fetchProjectConversations` below.
 
 ### `useRenameConversationMutation()`
 
@@ -969,7 +1001,9 @@ query lifecycle/refetch policy can invoke it again. Prefer an explicit mutation
 for a user action rather than treating this helper as an exactly-once command.
 
 ```tsx
-const { data, isLoading } = useInvokeAgent('my-agent', 'Summarize this', { schema: MySchema });
+const { data, isLoading } = useInvokeAgent('my-agent', 'Summarize this', {
+  schema: { type: 'object', properties: { summary: { type: 'string' } } },
+});
 ```
 
 ### `conversationQueries.list(agentSlug)`
@@ -1009,9 +1043,13 @@ const mutation = useApiMutation(
 mutation.mutate({ name: 'new-agent' });
 ```
 
-### `useInvalidateQuery(): (queryKey) => void`
+<a id="useinvalidatequery-querykey--void"></a>
 
-Returns a function to manually invalidate a query cache entry.
+### `useInvalidateQuery(): (queryKey) => Promise<void>`
+
+Returns a stable function that invalidates matching query-key prefixes. Its
+promise comes from React Query's invalidation; callers can await that operation
+instead of assuming the request completes when invalidation is scheduled.
 
 ### `useQueryClient`
 
@@ -1022,6 +1060,12 @@ Re-exported from `@tanstack/react-query` for direct cache access.
 ## API Functions
 
 Imperative API calls — use in event handlers, slash commands, or anywhere hooks aren't available.
+
+`sendMessage`, `streamMessage`, `invokeAgent`, `invoke`, `callTool` and
+`fetchConfig` are legacy ambient-base helpers using direct `fetch`. They do not
+automatically use the host's native or encrypted broker transport. For those
+hosts, choose client/Session operations that cover the required workflow and
+accept an explicit API base and current request options.
 
 ### `resolveConversationOpen(conversationId, apiBase?): Promise<ConversationOpenResolution>`
 
@@ -1087,18 +1131,28 @@ format. For Station's user-facing chat, prefer its canonical Session stream.
 
 ### `invokeAgent(agentSlug, content, options?): Promise<any>`
 
-Invokes an Agent without creating a Dock entry. Supports structured output via
-`schema`; runtime permissions and provider/approval behavior still apply. An
+Invokes an Agent without creating a Dock entry. Supply a JSON Schema object,
+not a Zod instance, in `schema`. The named-Agent route adds it to the prompt and
+attempts to parse JSON from the response; it does not validate the result against
+that schema, and parsing failure leaves the response as text. Runtime
+permissions and provider/approval behavior still apply. An
 indeterminate invocation error means work may have started and is not a safe
 automatic-retry signal.
 
 ```ts
-const result = await invokeAgent('my-agent', 'Extract data', { schema: MyZodSchema });
+const result = await invokeAgent('my-agent', 'Extract the title', {
+  schema: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] },
+});
 ```
 
 ### `invoke(options: InvokeOptions): Promise<any>`
 
-Lightweight multi-turn invocation without a named agent. Supports tool calling and structured output.
+Runs an invocation without a named Agent or Dock entry, with optional tool steps.
+It selects `model`, then app `invokeModel`, then app `defaultModel`. A supplied
+JSON Schema triggers a separate structured-output pass; `structureModel` falls
+back through the app setting to the invocation model. This can involve more than
+one provider call. `invoke` returns only the response; `invokeWithRunReceipt`
+also returns available `runId`/`relatedRunIds` for the native-invocation ledger.
 
 ```ts
 interface InvokeOptions {
@@ -1113,8 +1167,16 @@ interface InvokeOptions {
 ```
 
 ```ts
-const result = await invoke({ prompt: 'What is 2+2?', schema: NumberSchema });
+const result = await invoke({
+  prompt: 'What is 2+2?',
+  schema: { type: 'object', properties: { answer: { type: 'number' } }, required: ['answer'] },
+});
 ```
+
+The [SDK calls](../../packages/sdk/src/api-agent-runtime.ts),
+[named-Agent handler](../../src-server/routes/agents/invoke-agent.ts), and
+[global handler](../../src-server/routes/agents/invoke-global.ts) have different
+structured-output paths. An invocation receipt is not a chat Session.
 
 ### `callTool(agentSlug, toolName, toolArgs?): Promise<any>`
 
@@ -1128,7 +1190,9 @@ const data = await callTool('my-agent', 'get_account', { id: '123' });
 
 ### `fetchConfig(): Promise<any>`
 
-Fetches app configuration imperatively.
+Reads `/config/app` and returns the JSON envelope, including its `success` and
+`data` fields. Unlike `useConfigQuery`, it does not unwrap `data`. This legacy
+helper uses direct `fetch` with plugin headers, not the scoped client transport.
 
 ### `createChatSession(agentSlug: string, sessionId: string, title?: string): Promise<void>`
 
@@ -1140,11 +1204,17 @@ Session-creation API.
 
 ### `fetchAvailableLayouts(): Promise<any[]>`
 
-Fetches available layout sources (for adding layouts to projects).
+Reads and validates the layout-source catalog used when adding layouts to
+Projects. Entries retain their lifecycle/availability fields; catalog presence
+does not mean a layout is installed and ready to load.
 
 ### `fetchProjectConversations(projectSlug: string, limit?: number): Promise<any[]>`
 
-Fetches recent conversations for a project.
+Fetches recent conversations for a project, with a default limit of 10. The
+underlying [legacy helper](../../packages/sdk/src/api-knowledge-utils.ts) uses
+`allowFailure`, returning `[]` for HTTP refusals, false or malformed envelopes,
+or missing `data`. Network and JSON-decoding errors still reject. Consumers
+must not use this helper's empty array as proof that the Project has no history.
 
 ### `addProjectLayoutFromPlugin(projectSlug: string, plugin: string): Promise<any>`
 
@@ -1198,14 +1268,14 @@ Bulk-deletes knowledge documents.
 
 #### `fetchAcpCommands(agentSlug: string): Promise<AcpSlashCommandDescriptor[]>`
 
-This former API is not a current SDK export. Use
+This previously documented API is not a current SDK export. Use
 [`useProviderCommandsQuery`](#useprovidercommandsqueryprovider-config) for the
 current provider-level command list; Station's caller selects the ACP provider
 after checking the Agent's engine connection.
 
 #### `fetchAcpCommandOptions(agentSlug: string, partial: string): Promise<AcpSlashCommandDescriptor[]>`
 
-This former API is not a current SDK export. The current external-engine
+This previously documented API is not a current SDK export. The current external-engine
 interface has no per-keystroke command-option channel, and Station's slash
 command hook supplies only the command catalog. See
 [the caller](../../src-ui/src/hooks/useSlashCommands.ts) and
