@@ -1040,6 +1040,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // is right that nothing here can see a `playwright-core` spawn, so an
   // omission is silent until the run is slow or flaky.
   'src-ui/src/__tests__/SplitPaneLayout.railName.overflow.test.tsx',
+  // Chromium hit-testing of the framed mobile detail sheet between a fixed
+  // toolbar and dock.
+  'src-ui/src/__tests__/SplitPaneLayout.mobileSheet-geometry.test.tsx',
   // #1536 F (round 3): same shape again — launches a real Chromium to read the
   // Layout menu's RESOLVED row/group borders. A text scan could not: the first
   // fix tied on specificity with a rule 90 lines below it and lost on source
