@@ -30,8 +30,16 @@
 // the station_iOS target's configurations, so `--app-bundle-id` (and the
 // simulator preparation in ios-simulator-build.mjs) sets it explicitly.
 //
+// `--notification-service` also adds the Notification Service Extension
+// (#2590), which opens the sealed alert push with the registrations the app
+// shares through the same keychain group. It is its own switch, layered on
+// this one, because it needs a third App ID and profile
+// (`<app bundle id>.NotificationService`): a build that has the widget's
+// profile but not yet this one keeps working without it, and an alert then
+// shows its fixed text.
+//
 //   node scripts/ensure-ios-agent-activity-extension.mjs <project.yml> \
-//     --app-bundle-id <id> \
+//     --app-bundle-id <id> [--notification-service] \
 //     [--aps-environment development|production --info-plist <Info.plist>]
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -40,6 +48,7 @@ import YAML from 'yaml';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const EXTENSION_TARGET = 'StationAgentActivity';
+export const NOTIFICATION_SERVICE_TARGET = 'StationNotificationService';
 const APP_TARGET = 'station_iOS';
 const APP_BUNDLE_ID = /^io\.kontourai\.station(\.[a-z0-9-]+)*$/;
 const APS_ENVIRONMENTS = new Set(['development', 'production']);
@@ -90,6 +99,59 @@ function agentActivityExtensionTarget(appBundleId) {
       { sdk: 'SwiftUI.framework' },
       { sdk: 'WidgetKit.framework' },
     ],
+  };
+}
+
+/**
+ * The Notification Service Extension: its own sources, the three shared
+ * files it opens alerts with, and the core the host tests cover. It links
+ * nothing beyond UserNotifications, which every extension of this kind uses,
+ * and deploys where the app does, so alerts open on every supported iOS.
+ */
+function notificationServiceExtensionTarget(appBundleId) {
+  const shared =
+    '../../plugins/agent-activity/ios/Sources/StationAgentActivityShared';
+  return {
+    type: 'app-extension',
+    platform: 'iOS',
+    deploymentTarget: '14.0',
+    sources: [
+      {
+        path: '../../ios/StationNotificationService',
+        excludes: ['Info.plist', '*.entitlements'],
+      },
+      { path: `${shared}/Base64URL.swift` },
+      { path: `${shared}/CardOpener.swift` },
+      { path: `${shared}/RegistrationKeychain.swift` },
+      {
+        path: '../../plugins/agent-activity/ios/Sources/StationNotificationServiceCore',
+      },
+    ],
+    settings: {
+      base: {
+        STATION_APP_BUNDLE_IDENTIFIER: appBundleId,
+        PRODUCT_BUNDLE_IDENTIFIER:
+          '$(STATION_APP_BUNDLE_IDENTIFIER).NotificationService',
+        PRODUCT_NAME: NOTIFICATION_SERVICE_TARGET,
+        INFOPLIST_FILE: '../../ios/StationNotificationService/Info.plist',
+        CODE_SIGN_ENTITLEMENTS:
+          '../../ios/StationNotificationService/StationNotificationService.entitlements',
+        TARGETED_DEVICE_FAMILY: '1,2',
+        SWIFT_VERSION: '5.0',
+        ENABLE_BITCODE: false,
+        ARCHS: ['arm64'],
+        SKIP_INSTALL: true,
+      },
+    },
+    postBuildScripts: [
+      {
+        name: 'Use the app version',
+        basedOnDependencyAnalysis: false,
+        inputFiles: ['$(PROJECT_DIR)/station_iOS/Info.plist'],
+        script: VERSION_SCRIPT,
+      },
+    ],
+    dependencies: [{ sdk: 'UserNotifications.framework' }],
   };
 }
 
@@ -203,9 +265,13 @@ function ensureDependency(document, dependencies, key, entry) {
   else dependencies.items[index] = node;
 }
 
+/**
+ * @param {string} project
+ * @param {{ appBundleId?: string, apsEnvironment?: string, notificationService?: boolean }} [options]
+ */
 export function ensureIosAgentActivityExtension(
   project,
-  { appBundleId, apsEnvironment } = {},
+  { appBundleId, apsEnvironment, notificationService = false } = {},
 ) {
   if (typeof appBundleId !== 'string' || !APP_BUNDLE_ID.test(appBundleId))
     throw new Error('Expected a Station iOS app bundle identifier');
@@ -252,6 +318,22 @@ export function ensureIosAgentActivityExtension(
     sdk: 'ActivityKit.framework',
     weak: true,
   });
+  if (notificationService) {
+    document.setIn(
+      ['targets', NOTIFICATION_SERVICE_TARGET],
+      document.createNode(notificationServiceExtensionTarget(appBundleId)),
+    );
+    ensureDependency(document, dependencies, 'target', {
+      target: NOTIFICATION_SERVICE_TARGET,
+      embed: true,
+    });
+  } else if (document.hasIn(['targets', NOTIFICATION_SERVICE_TARGET])) {
+    // Dropping it silently would ship a build without it that its caller
+    // believes has it, or the reverse; the switch is named on every run.
+    throw new Error(
+      'The spec already carries the Notification Service Extension; pass --notification-service again',
+    );
+  }
   return document.toString({ lineWidth: 0, flowCollectionPadding: false });
 }
 
@@ -268,11 +350,11 @@ function valueAfter(argv, flag) {
  * beside a spec re-rendered from scratch.
  *
  * @param {{ project: string, infoPlist?: string }} files
- * @param {{ appBundleId?: string, apsEnvironment?: string }} [options]
+ * @param {{ appBundleId?: string, apsEnvironment?: string, notificationService?: boolean }} [options]
  */
 export function ensureIosAgentActivity(
   { project, infoPlist },
-  { appBundleId, apsEnvironment } = {},
+  { appBundleId, apsEnvironment, notificationService = false } = {},
 ) {
   if ((apsEnvironment === undefined) !== (infoPlist === undefined))
     throw new Error(
@@ -282,6 +364,7 @@ export function ensureIosAgentActivity(
     project: ensureIosAgentActivityExtension(project, {
       appBundleId,
       apsEnvironment,
+      notificationService,
     }),
     infoPlist:
       infoPlist === undefined
@@ -309,6 +392,7 @@ function main(argv) {
     {
       appBundleId: valueAfter(argv, '--app-bundle-id'),
       apsEnvironment: valueAfter(argv, '--aps-environment'),
+      notificationService: argv.includes('--notification-service'),
     },
   );
   rewrite(project, next.project);

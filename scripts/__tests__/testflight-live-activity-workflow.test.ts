@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
@@ -73,11 +73,14 @@ const SECRETS = 'Fail closed on channel-owned secrets and exact iOS identity';
 const IMPORT = 'Import protected signing material bound to this channel';
 const IMPORT_EXTENSION =
   'Import the Live Activity extension profile bound to this channel';
+const IMPORT_NOTIFICATION =
+  'Import the Notification Service extension profile bound to this channel';
 const REGENERATE =
   'Regenerate the Xcode project with the manual signing template';
 const BUILD = 'Build signed and channel-audited iOS package';
 const VERIFY = 'Verify IPA identity, profile and package contents';
 const LIVE = "steps.live_activity.outputs.enabled == 'true'";
+const NOTIFICATION = 'if [ "$NOTIFICATION_SERVICE" = true ]; then';
 
 describe('TestFlight delivery builds the Live Activity where the channel names one', () => {
   it('derives the switch from the channel table before anything checks or signs', () => {
@@ -223,6 +226,11 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
     expect(step.run).toContain(
       `grep -Fq '<key>\${{ steps.live_activity.outputs.extension_bundle_id }}</key>' gen/apple/ExportOptions.plist`,
     );
+    expectGuarded(
+      run(BUILD),
+      `grep -Fq '<key>\${{ steps.live_activity.outputs.notification_bundle_id }}</key>' gen/apple/ExportOptions.plist`,
+      `if [ '\${{ steps.live_activity.outputs.notification_enabled }}' = true ]; then`,
+    );
   });
 
   it('audits the embedded widget, its profile and both entitlement sets in the IPA', () => {
@@ -235,7 +243,6 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
     const text = step.run as string;
     for (const needle of [
       'appex="$app/PlugIns/StationAgentActivity.appex"',
-      'test "$(find "$app/PlugIns" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d \' \')" = 1',
       'test "$(/usr/libexec/PlistBuddy -c \'Print :CFBundleIdentifier\' "$appex/Info.plist")" = "$EXTENSION_BUNDLE_ID"',
       'test "$(/usr/libexec/PlistBuddy -c \'Print :StationApsEnvironment\' "$app/Info.plist")" = "$APS_ENVIRONMENT"',
       `--expected-bundle-id '\${{ steps.app_store.outputs.bundle_id }}' --expected-aps-environment "$APS_ENVIRONMENT"`,
@@ -261,6 +268,185 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
 
   it('keeps the live-activity answer inside the job that resolved it', () => {
     expect(JSON.stringify(upload)).not.toContain('live_activity');
+  });
+
+  it('imports the NSE profile on the widget channels before signing and XcodeGen', () => {
+    const widget = deliver.steps[stepIndex(IMPORT_EXTENSION)];
+    const notification = deliver.steps[stepIndex(IMPORT_NOTIFICATION)];
+    expect(notification.if).toBe(widget.if);
+    expect(notification.if).toBe(LIVE);
+    expect(stepIndex(IMPORT_NOTIFICATION)).toBeGreaterThan(
+      stepIndex(IMPORT_EXTENSION),
+    );
+    expect(stepIndex(IMPORT_NOTIFICATION)).toBeLessThan(stepIndex(REGENERATE));
+    const text = run(IMPORT_NOTIFICATION);
+    for (const needle of [
+      'base64 --decode > "$notification_profile"',
+      `test "$notification_bundle_id" = '\${{ steps.app_store.outputs.bundle_id }}.NotificationService'`,
+      '--expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id "$notification_bundle_id" --expected-certificate-sha1 "$signing_certificate_sha1"',
+      '[[ "$notification_uuid" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]]',
+      'cp "$notification_profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$notification_uuid.mobileprovision"',
+    ])
+      expect(guardOf(text, indexOf(text, needle))).toBeUndefined();
+  });
+
+  it('passes NSE generation and signing arguments only in the enabled branch', () => {
+    const step = deliver.steps[stepIndex(REGENERATE)];
+    expect(step.env?.NOTIFICATION_SERVICE).toBe(
+      `\${{ steps.live_activity.outputs.notification_enabled }}`,
+    );
+    const text = run(REGENERATE);
+    for (const needle of [
+      'notification_args=(--notification-service)',
+      'signing_args=(--notification-service-profile "$RUNNER_TEMP/station-ios-notification-service.mobileprovision")',
+    ])
+      expectGuarded(text, needle, NOTIFICATION);
+    for (const needle of [
+      `"\${notification_args[@]}"`,
+      `"\${signing_args[@]}"`,
+    ])
+      expectGuarded(text, needle, LIVE_GUARD);
+    expectGuarded(
+      text,
+      "grep -Fq 'StationNotificationService.appex' gen/apple/station.xcodeproj/project.pbxproj",
+      NOTIFICATION,
+    );
+    const lines = text.split('\n').map((line) => line.trim());
+    const refusal = lines.indexOf(
+      "elif grep -Fq 'StationNotificationService' gen/apple/station.xcodeproj/project.pbxproj; then",
+    );
+    expect(refusal).toBeGreaterThanOrEqual(0);
+    expect(lines.slice(refusal, refusal + 4)).toEqual([
+      "elif grep -Fq 'StationNotificationService' gen/apple/station.xcodeproj/project.pbxproj; then",
+      "echo 'A channel without a Notification Service extension generated one' >&2",
+      'exit 1',
+      'fi',
+    ]);
+  });
+
+  it('requires the NSE secret on the same enabled channels', () => {
+    expect(
+      deliver.env?.APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64,
+    ).toBe(
+      `\${{ secrets.APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64 }}`,
+    );
+    expect(upload.env).not.toHaveProperty(
+      'APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64',
+    );
+    const secrets = run(SECRETS);
+    const check =
+      'test -n "$APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64" || { echo "Missing required protected channel value: APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64" >&2; exit 1; }';
+    expectGuarded(
+      secrets,
+      check,
+      `if [ '\${{ steps.live_activity.outputs.notification_enabled }}' = true ]; then`,
+    );
+    const requiredNames = secrets.match(/for name in ([^;]+); do/)?.[1];
+    expect(requiredNames).toBeDefined();
+    const requiredEnv = Object.fromEntries(
+      (requiredNames as string).split(' ').map((name) => [name, 'present']),
+    );
+    for (const [channel, enabled] of [
+      ['beta', 'true'],
+      ['nightly', 'true'],
+      ['stable', 'false'],
+    ]) {
+      const script = secrets
+        .replaceAll(`\${{ steps.live_activity.outputs.enabled }}`, enabled)
+        .replaceAll(
+          `\${{ steps.live_activity.outputs.notification_enabled }}`,
+          enabled,
+        );
+      expect(script, channel).not.toContain(`\${{`);
+      for (const secret of ['', 'present']) {
+        const result = spawnSync('bash', ['-c', script], {
+          cwd: root,
+          env: {
+            ...process.env,
+            ...requiredEnv,
+            APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64: 'present',
+            APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64: secret,
+          },
+          encoding: 'utf8',
+          windowsHide: true,
+        });
+        expect(
+          result.error,
+          `${channel}: bash failed to start`,
+        ).toBeUndefined();
+        if (enabled === 'true' && !secret) {
+          expect(result.status, `${channel}: empty NSE secret`).not.toBe(0);
+          expect(result.stderr).toContain(
+            'Missing required protected channel value: APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64',
+          );
+        } else {
+          expect(
+            result.status,
+            `${channel}: NSE secret ${secret || 'empty'}`,
+          ).toBe(0);
+        }
+      }
+    }
+  });
+
+  it('audits exactly the two named extensions on Beta/Nightly and none on Stable', () => {
+    const step = deliver.steps[stepIndex(VERIFY)];
+    expect(step.env).toMatchObject({
+      NOTIFICATION_SERVICE: `\${{ steps.live_activity.outputs.notification_enabled }}`,
+      NOTIFICATION_BUNDLE_ID: `\${{ steps.live_activity.outputs.notification_bundle_id }}`,
+    });
+    const text = run(VERIFY);
+    const countLines = text
+      .split('\n')
+      .filter((line) => line.includes('expected_extension_count='));
+    expect(countLines).toHaveLength(1);
+    const countSwitch = countLines[0].trim();
+    expect(countSwitch).toBe(
+      'if [ "$NOTIFICATION_SERVICE" = true ]; then expected_extension_count=2; else expected_extension_count=1; fi',
+    );
+    expect(guardOf(text, indexOf(text, countLines[0]))).toBe(LIVE_GUARD);
+    for (const [enabled, expected] of [
+      ['true', '2'],
+      ['false', '1'],
+    ]) {
+      const result = spawnSync(
+        'bash',
+        ['-c', `${countSwitch}\nprintf '%s' "$expected_extension_count"`],
+        {
+          env: { ...process.env, NOTIFICATION_SERVICE: enabled },
+          encoding: 'utf8',
+          windowsHide: true,
+        },
+      );
+      expect(result.error, `count switch with ${enabled}`).toBeUndefined();
+      expect(result.status, `count switch with ${enabled}`).toBe(0);
+      expect(result.stdout, `count switch with ${enabled}`).toBe(expected);
+    }
+    expectGuarded(
+      text,
+      'test "$(find "$app/PlugIns" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d \' \')" = "$expected_extension_count"',
+      LIVE_GUARD,
+    );
+    for (const needle of [
+      'test -d "$notification_appex"',
+      '"$notification_appex/Info.plist")" = "$NOTIFICATION_BUNDLE_ID"',
+      `"$notification_appex/Info.plist")" = '\${{ inputs.marketing_version }}'`,
+      `"$notification_appex/Info.plist")" = '\${{ inputs.bundle_version }}'`,
+      'node scripts/check-ios-store-profile.mjs --station "$notification_appex/embedded.mobileprovision"',
+      '"$notification_embedded" "$RUNNER_TEMP/station-ios-notification-service-profile.json"',
+      'codesign -d --entitlements :- "$notification_appex"',
+      '--notification-service-extension > provider-receipts/exported-ios-notification-service-entitlements.json',
+    ])
+      expectGuarded(text, needle, NOTIFICATION);
+    expectGuarded(text, 'test ! -e "$appex"', 'else');
+    const stableNotification = text.lastIndexOf(
+      'test ! -e "$notification_appex"',
+    );
+    expect(stableNotification).toBeGreaterThan(
+      indexOf(text, 'test ! -e "$appex"'),
+    );
+    expect(guardOf(text, stableNotification)).toBe('else');
+    expectGuarded(text, '" = 0', 'if [ -d "$app/PlugIns" ]; then');
   });
 });
 
@@ -291,12 +477,22 @@ function expectGuarded(text: string, needle: string, guard: string) {
 
 describe('Live Activity delivery review round (#2513 slice D)', () => {
   it.each([
-    ['stable', 'false', ''],
-    ['beta', 'true', 'io.kontourai.station.beta.AgentActivity'],
-    ['nightly', 'true', 'io.kontourai.station.nightly.AgentActivity'],
+    ['stable', 'false', '', ''],
+    [
+      'beta',
+      'true',
+      'io.kontourai.station.beta.AgentActivity',
+      'io.kontourai.station.beta.NotificationService',
+    ],
+    [
+      'nightly',
+      'true',
+      'io.kontourai.station.nightly.AgentActivity',
+      'io.kontourai.station.nightly.NotificationService',
+    ],
   ])(
     'the Resolve step, run as written, answers %s with enabled=%s',
-    (channel, enabled, extensionBundleId) => {
+    (channel, enabled, extensionBundleId, notificationBundleId) => {
       const script = run(RESOLVE).replaceAll(`\${{ inputs.channel }}`, channel);
       expect(script).not.toContain(`\${{`);
       const output = join(makeTempDir('station-live-activity-resolve-'), 'out');
@@ -307,7 +503,7 @@ describe('Live Activity delivery review round (#2513 slice D)', () => {
         windowsHide: true,
       });
       expect(readFileSync(output, 'utf8')).toBe(
-        `enabled=${enabled}\nextension_bundle_id=${extensionBundleId}\naps_environment=production\n`,
+        `enabled=${enabled}\nextension_bundle_id=${extensionBundleId}\naps_environment=production\nnotification_enabled=${enabled}\nnotification_bundle_id=${notificationBundleId}\n`,
       );
     },
   );
