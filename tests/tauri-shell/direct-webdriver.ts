@@ -482,6 +482,10 @@ export async function stopTauriShellFixtureResources(input: {
   }
 
   const allowedPrefix = join(tmpdir(), 'station-tauri-shell-e2e-');
+  let appConfigRemoved = false;
+  let fixtureRootExistsImmediatelyAfterRemoval: boolean | undefined;
+  let fixtureRootExistsAfterQuietPeriod: boolean | undefined;
+  let fixtureRootRemoved = false;
   if (!input.stationRoot.startsWith(allowedPrefix)) {
     errors.push(
       new Error(`Refusing to remove unexpected fixture: ${input.stationRoot}`),
@@ -503,13 +507,25 @@ export async function stopTauriShellFixtureResources(input: {
           if (!info.isFile() || info.isSymbolicLink())
             throw new Error('Refusing to remove a non-file fixture app config');
           unlinkSync(appConfig);
+          appConfigRemoved = true;
         }
         rmSync(input.stationRoot, { recursive: true, force: true });
-        if (!existsSync(input.stationRoot)) {
-          removed = true;
-          break;
+        fixtureRootExistsImmediatelyAfterRemoval = existsSync(
+          input.stationRoot,
+        );
+        if (!fixtureRootExistsImmediatelyAfterRemoval) {
+          await sleep(250);
+          fixtureRootExistsAfterQuietPeriod = existsSync(input.stationRoot);
+          if (!fixtureRootExistsAfterQuietPeriod) {
+            removed = true;
+            fixtureRootRemoved = true;
+            break;
+          }
+          lastError = new Error('Fixture root reappeared after removal');
+        } else {
+          fixtureRootExistsAfterQuietPeriod = true;
+          lastError = new Error('Fixture root remained after removal');
         }
-        lastError = new Error('Fixture root reappeared during cleanup');
       } catch (error) {
         lastError = error;
       }
