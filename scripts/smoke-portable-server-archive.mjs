@@ -30,7 +30,6 @@ import {
   readSync,
   realpathSync,
   rmSync,
-  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
@@ -653,18 +652,11 @@ async function main() {
       `extracted ${members.length} entries to ${extractRoot} (${extractRoot.length} chars; deepest path ${extractRoot.length + 1 + longestMember} chars)`,
     );
     // The next version of the same channel, in its own directory, as an
-    // upgrade would install it beside the running one: the same bytes under
-    // a different release sha, so nothing can match the two by provenance.
+    // upgrade would install it beside the running one. Its bytes are this
+    // archive's: an instance's identity never depends on the release sha
+    // (packages/cli/src/__tests__/prebuilt-archive.test.ts pins that).
     const nextRoot = join(work, 'next');
     extract(archive, nextRoot);
-    const nextRelease = join(
-      nextRoot,
-      PORTABLE_ARCHIVE_ROOT,
-      '.station-release.json',
-    );
-    const nextProvenance = JSON.parse(readFileSync(nextRelease, 'utf8'));
-    nextProvenance.sha = [...nextProvenance.sha].reverse().join('');
-    writeFileSync(nextRelease, `${JSON.stringify(nextProvenance, null, 2)}\n`);
     const release = JSON.parse(
       readFileSync(join(root, '.station-release.json'), 'utf8'),
     );
