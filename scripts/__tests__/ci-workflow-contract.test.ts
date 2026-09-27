@@ -1645,7 +1645,7 @@ describe('CI verification workflow contracts', () => {
       );
     expect(jobs['fast-checks-shard'].if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      "${{ needs.fast-checks-plan.outputs.legacy == 'false' }}",
+      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' }}",
     );
 
     // Downstream consumers still name the required check's id.

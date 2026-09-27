@@ -14,6 +14,8 @@
 import { describe, expect, test } from 'vitest';
 import {
   birthProvesReuse,
+  describeProcessBirthProbe,
+  describeRecentProcessBirthProbeFailures,
   lookupProcessBirthFingerprint,
   lookupProcessBirthFingerprintAsync,
   probeExactProcessIdentity,
@@ -24,6 +26,16 @@ import {
   WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS,
   WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS,
 } from '../process-identity.mjs';
+
+// The portable-archive smoke's launcher environment (#2675): only System32
+// and the Windows directory on PATH, so a bare `powershell.exe` cannot be
+// found — Windows PowerShell lives under System32\WindowsPowerShell\v1.0.
+const MINIMAL_WINDOWS_ENV = {
+  SystemRoot: 'D:\\WinRoot',
+  PATH: 'D:\\WinRoot\\System32;D:\\WinRoot',
+};
+const MINIMAL_ENV_POWERSHELL =
+  'D:\\WinRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
 
 describe('birthProvesReuse (station#2904)', () => {
   test('only ESRCH makes the exact-identity liveness probe dead', () => {
@@ -117,11 +129,15 @@ describe('birthProvesReuse (station#2904)', () => {
         options?: Record<string, unknown>,
       ) => string
     >(() => `${canonical}\n`);
-    expect(lookupProcessBirthFingerprint(42, { platform: 'win32', exec })).toBe(
-      canonical,
-    );
+    expect(
+      lookupProcessBirthFingerprint(42, {
+        platform: 'win32',
+        exec,
+        env: MINIMAL_WINDOWS_ENV,
+      }),
+    ).toBe(canonical);
     expect(exec).toHaveBeenCalledWith(
-      'powershell.exe',
+      MINIMAL_ENV_POWERSHELL,
       expect.arrayContaining([
         '-Command',
         expect.stringMatching(
@@ -163,10 +179,14 @@ describe('birthProvesReuse (station#2904)', () => {
     const canonical = '2026-08-29T16:16:27.1234567Z';
     const exec = vi.fn(async () => `${canonical}\n`);
     await expect(
-      lookupProcessBirthFingerprintAsync(42, { platform: 'win32', exec }),
+      lookupProcessBirthFingerprintAsync(42, {
+        platform: 'win32',
+        exec,
+        env: MINIMAL_WINDOWS_ENV,
+      }),
     ).resolves.toBe(canonical);
     expect(exec).toHaveBeenCalledWith(
-      'powershell.exe',
+      MINIMAL_ENV_POWERSHELL,
       expect.arrayContaining([
         '-Command',
         expect.stringContaining('yyyy-MM-ddTHH:mm:ss.fffffffZ'),
@@ -207,6 +227,7 @@ describe('birthProvesReuse (station#2904)', () => {
         exec,
         alive,
         wait,
+        env: MINIMAL_WINDOWS_ENV,
       }),
     ).toEqual({
       state: 'exact',
@@ -214,7 +235,7 @@ describe('birthProvesReuse (station#2904)', () => {
     });
     expect(exec).toHaveBeenCalledTimes(2);
     expect(exec.mock.calls.map((call) => call[0])).toEqual([
-      'powershell.exe',
+      MINIMAL_ENV_POWERSHELL,
       'pwsh.exe',
     ]);
     expect(exec.mock.calls[1]?.[1]).toEqual(exec.mock.calls[0]?.[1]);
@@ -359,5 +380,141 @@ describe('birthProvesReuse (station#2904)', () => {
     expect(exec.mock.calls[1]?.[2]).toEqual(
       expect.objectContaining({ timeout: 1_500 }),
     );
+  });
+
+  test('resolves Windows PowerShell by its System32 path, not PATH, for every birth lookup (#2675)', async () => {
+    const canonical = '2026-08-29T16:16:27.1234567Z';
+    const spawned: string[] = [];
+    // A PATH-searching spawn: it finds only what is literally on PATH, like
+    // libuv does for a bare command name.
+    const pathOnly = (file: string) => {
+      spawned.push(file);
+      if (!file.includes('\\')) {
+        const error = new Error(
+          `spawnSync ${file} ENOENT`,
+        ) as NodeJS.ErrnoException;
+        error.code = 'ENOENT';
+        throw error;
+      }
+      return `${canonical}\n`;
+    };
+    const dependencies = {
+      platform: 'win32' as const,
+      env: MINIMAL_WINDOWS_ENV,
+      alive: () => 'alive' as const,
+      wait: () => {},
+    };
+
+    // The lifecycle lock's own-birth lookup (lookupProcessBirthFingerprintCached
+    // -> lookupProcessBirthFingerprint with no windowsShell).
+    expect(
+      lookupProcessBirthFingerprint(42, { ...dependencies, exec: pathOnly }),
+    ).toBe(canonical);
+    await expect(
+      lookupProcessBirthFingerprintAsync(42, {
+        ...dependencies,
+        exec: async (file: string) => pathOnly(file),
+      }),
+    ).resolves.toBe(canonical);
+    // Coordinator publication: the first attempt must succeed, not burn its
+    // budget on an unresolvable bare name and fall through to pwsh.
+    expect(
+      resolveOwnProcessIdentity(42, { ...dependencies, exec: pathOnly }),
+    ).toEqual({ state: 'exact', identity: { pid: 42, start: canonical } });
+    expect(spawned).toEqual([
+      MINIMAL_ENV_POWERSHELL,
+      MINIMAL_ENV_POWERSHELL,
+      MINIMAL_ENV_POWERSHELL,
+    ]);
+
+    // WINDIR stands in when SystemRoot is absent.
+    const windirExec = vi.fn((_file: string) => canonical);
+    lookupProcessBirthFingerprint(42, {
+      platform: 'win32',
+      env: { WINDIR: 'E:\\Windows' },
+      exec: windirExec,
+    });
+    expect(windirExec.mock.calls[0]?.[0]).toBe(
+      'E:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    );
+
+    // A relative or UNC SystemRoot is refused (fail closed to null), never
+    // turned into a PATH or network lookup.
+    const refused = vi.fn(() => canonical);
+    for (const SystemRoot of ['Windows', '\\\\server\\share\\Windows']) {
+      expect(
+        lookupProcessBirthFingerprint(42, {
+          platform: 'win32',
+          env: { SystemRoot },
+          exec: refused,
+        }),
+      ).toBeNull();
+    }
+    expect(refused).not.toHaveBeenCalled();
+  });
+
+  test('names the default birth probe so a fail-closed lock can say which lookup failed (#2675)', () => {
+    expect(describeProcessBirthProbe('win32', MINIMAL_WINDOWS_ENV)).toBe(
+      `Windows PowerShell probe (${MINIMAL_ENV_POWERSHELL})`,
+    );
+    expect(describeProcessBirthProbe('win32', { SystemRoot: 'Windows' })).toBe(
+      'Windows PowerShell probe (Windows SystemRoot must be a local absolute path)',
+    );
+    expect(describeProcessBirthProbe('linux')).toBe('/proc/<pid>/stat probe');
+    expect(describeProcessBirthProbe('darwin')).toBe('`ps -o lstart=` probe');
+  });
+
+  test('records why a Windows birth probe returned nothing, bounded, until the next success (#2675)', async () => {
+    const pid = 7331;
+    const windows = { platform: 'win32' as const, env: MINIMAL_WINDOWS_ENV };
+    const failWith = (fields: Record<string, unknown>) => () => {
+      throw Object.assign(new Error('probe failed'), fields);
+    };
+    // Sync execFileSync timeout, with a stderr snippet clipped to a bound.
+    expect(
+      lookupProcessBirthFingerprint(pid, {
+        ...windows,
+        timeoutMs: 10_000,
+        exec: failWith({ code: 'ETIMEDOUT', stderr: `x${' y'.repeat(400)}` }),
+      }),
+    ).toBeNull();
+    // Async execFile: a timeout kill, then a non-zero exit (numeric code).
+    await expect(
+      lookupProcessBirthFingerprintAsync(pid, {
+        ...windows,
+        timeoutMs: 1_500,
+        exec: async () =>
+          failWith({ killed: true, signal: 'SIGKILL', code: null })(),
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      lookupProcessBirthFingerprintAsync(pid, {
+        ...windows,
+        windowsShell: 'pwsh.exe',
+        exec: async () => failWith({ code: 1, stderr: 'Access denied' })(),
+      }),
+    ).resolves.toBeNull();
+    const described = describeRecentProcessBirthProbeFailures(pid);
+    expect(described).toMatch(
+      /^powershell\.exe timed out after 10000ms; stderr: x y y .*\.\.\.; powershell\.exe timed out after 1500ms; pwsh\.exe exited 1; stderr: Access denied$/,
+    );
+    expect(described.length).toBeLessThan(400);
+
+    // Bounded history: a fourth failure evicts the oldest.
+    lookupProcessBirthFingerprint(pid, {
+      ...windows,
+      exec: () => 'not a timestamp\n',
+    });
+    expect(describeRecentProcessBirthProbeFailures(pid)).toBe(
+      'powershell.exe timed out after 1500ms; pwsh.exe exited 1; stderr: Access denied; powershell.exe printed no canonical start time: not a timestamp',
+    );
+    expect(describeRecentProcessBirthProbeFailures(pid + 1)).toBe('');
+
+    // A success clears the pid's history: only failures since it explain a null.
+    lookupProcessBirthFingerprint(pid, {
+      ...windows,
+      exec: () => '2026-08-29T16:16:27.1234567Z\n',
+    });
+    expect(describeRecentProcessBirthProbeFailures(pid)).toBe('');
   });
 });

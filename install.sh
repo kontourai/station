@@ -1127,22 +1127,31 @@ if [ "$release_complete" = false ]; then
   fi
   printf 'Installing Station dependencies...\n'
   (cd "$candidate" && HOME="$build_home" GH_CONFIG_DIR="$gh_config_dir" npm run dependencies:ci)
-  printf 'Building Station...\n'
-  (cd "$candidate" && \
-    HOME="$build_home" GH_CONFIG_DIR="$gh_config_dir" \
-    STATION_CHANNEL="$runtime_channel" STATION_ROOT="$station_root" STATION_HOME="$station_home" \
-    ./station build --base="$station_home" \
-      "--port=$resolved_server_port" "--ui-port=$resolved_ui_port")
   release_stage="$install_root/releases/.stage.$$"
   if [ -e "$release_stage" ] || [ -L "$release_stage" ]; then
     safe_remove_tree "$release_stage"
   fi
   mv "$candidate" "$release_stage"
-  printf '%s\n' "$actual_checksum" >"$release_stage/.station-install-complete"
   node -e '
     const fs = require("node:fs");
     fs.renameSync(process.argv[1], process.argv[2]);
   ' "$release_stage" "$release_dir"
+  # Build in the directory the release runs from (#2703). Without --instance,
+  # the lifecycle names a build after its code root, home, and ports, so a
+  # build made in the extraction candidate was named after a directory that no
+  # longer exists and the first start rebuilt with the user's real HOME.
+  # Until the completion marker below is written this release is incomplete,
+  # and the next install replaces it.
+  printf 'Building Station...\n'
+  if ! (cd "$release_dir" && \
+    HOME="$build_home" GH_CONFIG_DIR="$gh_config_dir" \
+    STATION_CHANNEL="$runtime_channel" STATION_ROOT="$station_root" STATION_HOME="$station_home" \
+    ./station build --base="$station_home" \
+      "--port=$resolved_server_port" "--ui-port=$resolved_ui_port"); then
+    safe_remove_tree "$release_dir"
+    fail 'the release build failed'
+  fi
+  printf '%s\n' "$actual_checksum" >"$release_dir/.station-install-complete"
 else
   printf 'Station release already installed; reusing verified files.\n'
 fi

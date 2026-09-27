@@ -318,6 +318,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // discovery, which is itself a Vitest child. Single-shot spawns, no
   // wall-clock assertion.
   'scripts/__tests__/fast-checks-shard-cli.test.ts',
+  // #2709 re-land: runs the aggregator's real base-controlled bash/jq step
+  // from ci.yml against simulated job results. Single-shot spawns, no
+  // wall-clock assertion.
+  'scripts/__tests__/ci-fast-checks-job-graph.test.ts',
   // Builds a disposable diverged Git graph and runs real Git commands to
   // distinguish candidate-only changes from base-only and direct-push ranges.
   'scripts/__tests__/classify-ci-change.test.ts',
