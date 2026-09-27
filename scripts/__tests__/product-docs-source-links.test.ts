@@ -32,7 +32,7 @@ describe('public product documentation source links', () => {
   it('admits every allowlisted public doc through the build loader', async () => {
     // The real manifest through the real admission: schema, allowed roots,
     // git tracking, and regular-file checks all run against the checked-in
-    // allowlist, so an internal doc added to it fails here.
+    // allowlist, so an entry outside the admitted roots fails here.
     const sources = (await loadPublicDocs()).map(({ source }) => source);
     expect(sources.length).toBeGreaterThan(0);
     // Admissible by path, but contributor-internal.
