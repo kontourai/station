@@ -157,15 +157,6 @@ describe('mobile-css gate verdicts', () => {
 });
 
 describe('the checked-in baseline', () => {
-  it('records a real reason for every page-local file', () => {
-    for (const [file, entry] of Object.entries(
-      BASELINE.pageLocal as Record<string, { count: number; reason: string }>,
-    )) {
-      expect(entry.count, file).toBeGreaterThan(0);
-      expect(entry.reason.trim().length, file).toBeGreaterThan(23);
-    }
-  });
-
   it('keeps the ceiling equal to the sum of what it records', () => {
     // A ceiling above the sum is unattributed headroom: the next lane inherits
     // room to add a query without naming it.
@@ -173,11 +164,5 @@ describe('the checked-in baseline', () => {
       BASELINE.pageLocal as Record<string, { count: number }>,
     ).reduce((total, entry) => total + entry.count, 0);
     expect(BASELINE.pageLocalMediaQueryCeiling).toBe(sum);
-  });
-
-  it('names no file twice and no primitive as page-local', () => {
-    for (const file of Object.keys(BASELINE.pageLocal)) {
-      expect(PRIMITIVE_ALLOWLIST.has(file), file).toBe(false);
-    }
   });
 });

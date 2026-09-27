@@ -148,6 +148,60 @@ describe('ProjectTaskSharingControl', () => {
     );
   });
 
+  // #2708 A-2: the revoke's refusal as the REAL shared-task fetcher throws it
+  // for the route's validation body (`validate()` on DELETE
+  // /:slug/shared-work/:taskId): the notice shows the server's reason, not
+  // "Validation failed: shareId …".
+  test('a refused revoke shows the server reason, not the field key', async () => {
+    const actual = await vi.importActual<
+      typeof import('@kontourai/station-sdk/project-shared-tasks')
+    >('@kontourai/station-sdk/project-shared-tasks');
+    const publication = {
+      version: 'station.shared-project-task/v1' as const,
+      project,
+      task: { ...task, title: 'Task', status: 'ready' as const },
+      shareId: '11111111-1111-4111-8111-111111111111',
+      sharedAt: '2026-09-20T01:00:00.000Z',
+    };
+    getPublication.mockResolvedValue({ kind: 'shared', publication });
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Validation failed',
+          details: {
+            formErrors: [],
+            fieldErrors: { shareId: ['Invalid uuid'] },
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+    unshare.mockImplementationOnce(
+      (apiBase: string, slug: string, shareId: string, expected: never) =>
+        actual.unshareProjectTask(apiBase, slug, shareId, expected),
+    );
+    try {
+      render(
+        <ProjectTaskSharingControl
+          slug="example"
+          projectId="project-1"
+          task={task}
+        />,
+        { wrapper: wrapper() },
+      );
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Revoke sharing' }),
+      );
+      await waitFor(() =>
+        expect(screen.getByText(/Invalid uuid/)).toBeTruthy(),
+      );
+      expect(screen.queryByText(/Validation failed/)).toBeNull();
+    } finally {
+      globalThis.fetch = previous;
+    }
+  });
+
   test('a stale revoke refusal refreshes publication state', async () => {
     const publication = {
       version: 'station.shared-project-task/v1' as const,

@@ -102,6 +102,40 @@ test('requires a fresh preview and explicit consent, passes exact revisions, and
   );
   expect(screen.queryByRole('button', { name: 'Recover plugin' })).toBeNull();
 });
+// #2708 A-2: a recovery refused by the route's validation (POST
+// /:name/recover), as the REAL `recoverPlugin` throws it: the notice shows the
+// server's reason, not "Validation failed: consent …".
+test('a refused recovery shows the server reason, not the field key', async () => {
+  const { recoverPlugin } = await import('@kontourai/station-sdk/client');
+  const previous = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        success: false,
+        error: 'Validation failed',
+        details: {
+          formErrors: [],
+          fieldErrors: { recoveryRevision: ['Required'] },
+        },
+      }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    )) as typeof fetch;
+  state.recover.mockImplementationOnce(
+    ({ name, ...input }: { name: string } & Record<string, unknown>) =>
+      recoverPlugin('http://station.test', name, input as never),
+  );
+  try {
+    render(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Recover plugin' }),
+    );
+    expect((await screen.findByRole('status')).textContent).toBe('Required');
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
+
 test('cancelled permission review performs no recovery mutation', async () => {
   state.approve.mockResolvedValue(false);
   render(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);

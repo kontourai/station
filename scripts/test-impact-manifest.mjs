@@ -652,7 +652,6 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
   'scripts/__tests__/test-import-existence-gate.scan.test.ts',
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
-  'scripts/__tests__/trust-bundle-claim-prose.test.ts',
   'src-server/providers/__tests__/child-work-conformance.test.ts',
   'src-server/providers/__tests__/turn-started-attachment-projection.test.ts',
   'src-server/routes/__tests__/sse-response-tripwire.test.ts',

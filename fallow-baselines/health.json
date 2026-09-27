@@ -1391,14 +1391,6 @@
         "count": 1
       }
     },
-    "scripts/__tests__/trust-bundle-claim-prose.test.ts": {
-      "complexity_moderate": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "scripts/__tests__/verification-coordinator.test.ts": {
       "crap_moderate": {
         "count": 1
