@@ -10,8 +10,14 @@ on:
       - 'scripts/lib/portable-server-archive.mjs'
       - 'scripts/smoke-install-prebuilt-archive.sh'
       - 'packaging/portable-server/**'
-      - 'packages/cli/src/commands/lifecycle.ts'
-      - 'packages/cli/src/commands/lifecycle-code-root.ts'
+      - 'config/portable-server-node-runtime.json'
+      - 'config/release-manifest-keys.json'
+      - 'scripts/ecosystem-manifest.mjs'
+      - 'packages/shared/src/portable-server-targets.mjs'
+      - 'packages/shared/src/release-manifest.mjs'
+      # The CLI the archive bundles and packaged `station upgrade` runs.
+      - 'packages/cli/src/**'
+      - 'scripts/station-cli.ts'
       - '.github/workflows/install-smoke.yml'
       - '.github/workflows/release.yml'
   workflow_dispatch:

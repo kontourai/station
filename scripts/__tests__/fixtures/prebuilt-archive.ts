@@ -62,6 +62,32 @@ if (log) {
 }
 `;
 
+/**
+ * A `node` that runs the Node.js executing the test, except that it refuses,
+ * as some filesystems do (a macOS CI runner did, #2675 B2), to rename a
+ * directory whose own write bit is clear. install.sh renames through
+ * `node -e '...renameSync(process.argv[1], process.argv[2])' <from> <to>`,
+ * so a rename of a sealed archive version fails here as it would there. A
+ * symbolic link (the `current` swap) is not a directory being renamed.
+ */
+export function renameGuardedNode(): string {
+  return [
+    '#!/bin/sh',
+    'if [ "$1" = -e ]; then',
+    '  case "$2" in',
+    '    *renameSync*)',
+    '      if [ -d "$3" ] && [ ! -L "$3" ] && [ ! -w "$3" ]; then',
+    '        echo "EACCES: permission denied, rename \'$3\' (test guard: read-only directory)" >&2',
+    '        exit 1',
+    '      fi',
+    '      ;;',
+    '  esac',
+    'fi',
+    `exec '${process.execPath}' "$@"`,
+    '',
+  ].join('\n');
+}
+
 export type PrebuiltArchive = {
   archive: string;
   name: string;
@@ -140,10 +166,7 @@ export function buildPrebuiltArchive(
   );
   writeFileSync(join(root, 'lib', 'station-cli.mjs'), FAKE_CLI);
   if (options.failStart) writeFileSync(join(root, 'lib', 'fail-start'), '');
-  writeFileSync(
-    join(root, 'runtime', 'bin', 'node'),
-    `#!/bin/sh\nexec '${process.execPath}' "$@"\n`,
-  );
+  writeFileSync(join(root, 'runtime', 'bin', 'node'), renameGuardedNode());
   chmodSync(join(root, 'runtime', 'bin', 'node'), 0o755);
   copyFileSync(
     options.installScript ?? join(repoRoot, 'install.sh'),

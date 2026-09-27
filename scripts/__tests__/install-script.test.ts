@@ -24,6 +24,7 @@ import {
   buildPrebuiltArchive,
   hostTarget,
   type PrebuiltArchive,
+  renameGuardedNode,
   signArchiveManifest,
 } from './fixtures/prebuilt-archive.js';
 
@@ -576,14 +577,14 @@ describe('one-line Station installer', {
     expect(readlinkSync(current)).toMatch(/\/releases\/[0-9a-f]{64}$/);
     const statePath = join(first.installRoot, '.station-release-state.json');
     expect(JSON.parse(readFileSync(statePath, 'utf8'))).toEqual({
-      schemaVersion: 4,
+      // The authenticated GitHub-release path has no public manifest, so it
+      // keeps the schema released installers and CLIs read.
+      schemaVersion: 3,
       channel: 'stable',
       releaseChannel: 'stable',
       installRoot: realpathSync(first.installRoot),
       stationRoot: realpathSync(join(first.home, '.station')),
       stationHome: realpathSync(first.stationHome),
-      // The authenticated GitHub-release path has no public manifest.
-      manifestUrl: null,
     });
     expect(statSync(statePath).mode & 0o777).toBe(0o600);
   });
@@ -682,7 +683,7 @@ describe('one-line Station installer', {
         ),
       ),
     ).toMatchObject({
-      schemaVersion: 4,
+      schemaVersion: 3,
       channel: 'beta',
       releaseChannel: 'preview',
     });
@@ -712,7 +713,7 @@ describe('one-line Station installer', {
         ),
       ),
     ).toMatchObject({
-      schemaVersion: 4,
+      schemaVersion: 3,
       channel: 'beta',
       releaseChannel: 'preview',
     });
@@ -744,7 +745,7 @@ describe('one-line Station installer', {
         ),
       ),
     ).toMatchObject({
-      schemaVersion: 4,
+      schemaVersion: 3,
       channel: 'stable',
       releaseChannel: 'stable',
       stationHome: realpathSync(installed.stationHome),
@@ -1594,6 +1595,8 @@ type ArchiveHarness = {
   cliLog: string;
   privateKey: KeyObject;
   publicKeyPath: string;
+  /** A PATH whose `node` refuses to rename a read-only directory. */
+  guardedPath: string;
 };
 
 function archiveHarness(root: string): ArchiveHarness {
@@ -1606,7 +1609,10 @@ function archiveHarness(root: string): ArchiveHarness {
     publicKeyPath,
     publicKey.export({ format: 'pem', type: 'spki' }),
   );
+  const guard = join(root, 'rename-guard');
+  executable(join(guard, 'node'), renameGuardedNode());
   return {
+    guardedPath: `${guard}:${process.env.PATH ?? ''}`,
     root,
     home,
     stationRoot,
@@ -1635,6 +1641,7 @@ function runArchiveInstaller(
     windowsHide: true,
     env: {
       ...inherited,
+      PATH: harness.guardedPath,
       HOME: harness.home,
       GH_TOKEN: '',
       GITHUB_TOKEN: '',
@@ -1863,6 +1870,14 @@ describe('prebuilt archive installs (#2675 B2)', {
       error: 'bytes; the signed manifest says',
     },
     {
+      // curl stops at the signed size instead of downloading the rest.
+      name: 'an archive larger than the signed size',
+      manifest: (archive: PrebuiltArchive) => ({
+        artifact: { size: archive.size - 1 },
+      }),
+      error: 'is larger than the',
+    },
+    {
       name: 'a digest the manifest does not sign',
       manifest: () => ({ artifact: { sha256: '0'.repeat(64) } }),
       error: 'release checksum did not match',
@@ -2066,6 +2081,125 @@ describe('prebuilt archive installs (#2675 B2)', {
     const calls = cliCalls(harness);
     expect(calls.at(-1)).toMatch(new RegExp(`^${version}\\|start `));
     expect(calls.filter((call) => call.includes('|stop '))).toHaveLength(1);
+  });
+
+  it('replaces the active version with no host Node.js, and restores it when the replacement does not start', () => {
+    const harness = archiveHarness(tempDir('station-archive-replace-no-node-'));
+    const original = buildPrebuiltArchive(harness.root, '1.2.3', {
+      variant: 'A',
+    });
+    expect(
+      runArchiveInstaller(harness, archiveManifest(harness, original)).status,
+    ).toBe(0);
+    const version = join(
+      realpathSync(harness.installRoot),
+      'versions',
+      '1.2.3',
+    );
+    // `station upgrade` on a host without Node.js: the installed archive's
+    // Node.js verifies, while the version it lives in is moved aside.
+    const noNode = {
+      PATH: pathWithoutNode(harness.root),
+      STATION_VERSION: 'v1.2.3',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+    };
+    const failing = buildPrebuiltArchive(harness.root, '1.2.3', {
+      variant: 'B',
+      failStart: true,
+    });
+    const failed = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, failing),
+      [],
+      noNode,
+    );
+    expect(failed.stdout).not.toContain('Downloading Node.js');
+    expect(failed.stderr).toContain(
+      'the new release did not start; the previous release was restored',
+    );
+    expect(failed.status).toBe(1);
+    expect(readlinkSync(join(harness.installRoot, 'current'))).toBe(version);
+    expect(existsSync(join(version, 'variant-A'))).toBe(true);
+    expect(writableEntries(version)).toEqual([]);
+    expect(cliCalls(harness).at(-1)).toMatch(
+      new RegExp(`^${version}\\|start `),
+    );
+
+    const replacement = buildPrebuiltArchive(harness.root, '1.2.3', {
+      variant: 'C',
+    });
+    const replaced = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, replacement),
+      [],
+      noNode,
+    );
+    expect(replaced.status, replaced.stderr).toBe(0);
+    expect(readlinkSync(join(harness.installRoot, 'current'))).toBe(version);
+    expect(existsSync(join(version, 'variant-C'))).toBe(true);
+    expect(writableEntries(version)).toEqual([]);
+    // The moved-aside original is the rollback target, and is sealed too.
+    const aside = readdirSync(dirname(version)).filter((name) =>
+      name.startsWith('1.2.3.replaced.'),
+    );
+    expect(aside).toHaveLength(1);
+    expect(existsSync(join(dirname(version), aside[0], 'variant-A'))).toBe(
+      true,
+    );
+    expect(writableEntries(join(dirname(version), aside[0]))).toEqual([]);
+  });
+
+  it('moves a source release to the archive of the same version without a replacement flag', () => {
+    const root = tempDir('station-archive-same-version-');
+    const fixture = makeFixtureArchive(root);
+    const source = runInstaller(root, fixture);
+    expect(source.result.status, source.result.stderr).toBe(0);
+    const harness = archiveHarness(root);
+    // The source fixture is v0.1.0 of commit a*40, as is this archive.
+    const archive = buildPrebuiltArchive(root, '0.1.0');
+    const moved = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, archive),
+    );
+    expect(moved.status, moved.stderr).toBe(0);
+    expect(moved.stdout).toContain(
+      'Moving Station v0.1.0 from its source release to the prebuilt archive of the same version.',
+    );
+    expect(readlinkSync(join(harness.installRoot, 'current'))).toBe(
+      join(realpathSync(harness.installRoot), 'versions', '0.1.0'),
+    );
+    // Reinstalling the same archive is then a no-op.
+    const again = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, archive),
+    );
+    expect(again.status, again.stderr).toBe(0);
+    expect(again.stdout).toContain(
+      'Station v0.1.0 is already installed; nothing to do.',
+    );
+  });
+
+  it('stops downloading a manifest past 1 MiB', () => {
+    const harness = archiveHarness(tempDir('station-archive-big-manifest-'));
+    const archive = buildPrebuiltArchive(harness.root, '1.2.3');
+    const manifest = archiveManifest(harness, archive);
+    const control = runArchiveInstaller(harness, manifest, [], {
+      STATION_INSTALL_NO_START: '1',
+    });
+    expect(control.status, control.stderr).toBe(0);
+    // The same valid envelope, padded with whitespace past the cap.
+    const padded = join(harness.root, 'padded.json');
+    writeFileSync(
+      padded,
+      `${readFileSync(manifest, 'utf8')}${' '.repeat(1024 * 1024)}`,
+    );
+    const refused = runArchiveInstaller(harness, padded, [], {
+      STATION_INSTALL_NO_START: '1',
+    });
+    expect(refused.stderr).toContain(
+      'could not download public ecosystem manifest',
+    );
+    expect(refused.status).toBe(1);
   });
 
   it('uninstalls a read-only archive install and preserves data', () => {

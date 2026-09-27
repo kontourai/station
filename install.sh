@@ -188,8 +188,8 @@ trap cleanup EXIT HUP INT TERM
 #            download;
 #   pinned   the official Node.js distribution pinned above by sha256,
 #            downloaded into the private temporary directory and used only to
-#            verify and extract. Only the public-manifest path, which can
-#            install a prebuilt archive, downloads it.
+#            verify and extract. Only uninstall and the public-manifest path
+#            (which can install a prebuilt archive) download it.
 # A source release is different: it is built on this host and later run by
 # the host Node.js, so that path requires the host Node.js 24 (checked below).
 node_is_adequate() {
@@ -225,9 +225,16 @@ verifier_node_source=host
 if ! command -v node >/dev/null 2>&1 || ! node_is_adequate node; then
   installed_node="${STATION_INSTALL_ROOT:-${STATION_ROOT:-$HOME/.station}/installs/$requested_runtime_channel}/current/runtime/bin/node"
   if [ -f "$installed_node" ] && [ -x "$installed_node" ] && node_is_adequate "$installed_node"; then
-    installed_node_dir="$(CDPATH='' cd -P -- "$(dirname -- "$installed_node")" && pwd -P)"
-    PATH="$installed_node_dir:$PATH"
+    # Run a private copy: the version directory it lives in can be renamed
+    # (an explicit same-version replacement moves it aside) or pruned while
+    # this script still needs `node`.
+    mkdir -m 700 "$tmp_root/installed-node"
+    cp "$installed_node" "$tmp_root/installed-node/node" || \
+      fail 'could not copy the installed Station Node.js'
+    chmod 700 "$tmp_root/installed-node/node"
+    PATH="$tmp_root/installed-node:$PATH"
     export PATH
+    node_is_adequate node || fail 'the installed Station Node.js does not run from its copy'
     verifier_node_source=installed
   elif [ "${1:-install}" = uninstall ] || \
     { [ "${1:-install}" = install ] && [ -n "${STATION_INSTALL_PUBLIC_MANIFEST_URL:-}" ]; }; then
@@ -628,14 +635,31 @@ restore_previous_launcher() {
   fi
 }
 
+# Renames a directory that may be a sealed (read-only) archive version.
+# Some filesystems refuse to rename a directory whose own write bit is clear
+# (it would update the directory's `..`), so the top directory is made
+# writable for the rename and sealed again at its new name. Nothing inside it
+# changes.
+move_version_dir() {
+  move_sealed=false
+  if [ ! -w "$1" ]; then
+    move_sealed=true
+    chmod u+w "$1" || return 1
+  fi
+  if ! node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$1" "$2"; then
+    [ "$move_sealed" = false ] || chmod a-w "$1" 2>/dev/null || true
+    return 1
+  fi
+  [ "$move_sealed" = false ] || chmod a-w "$2"
+}
+
 restore_previous_release() {
   if [ -n "${displaced_release:-}" ]; then
     # Put the moved-aside version back under its own name.
     if [ -e "$release_dir" ] || [ -L "$release_dir" ]; then
       safe_remove_tree "$release_dir" || return 1
     fi
-    node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' \
-      "$displaced_release" "$release_dir" || return 1
+    move_version_dir "$displaced_release" "$release_dir" || return 1
     previous_release="$release_dir"
     displaced_release=""
   fi
@@ -860,7 +884,9 @@ if [ -n "$public_manifest_url" ]; then
     fail 'the public manifest URL must use HTTPS'
   manifest_file="$tmp_root/station-ecosystem-manifest.json"
   test_key_file=""
-  curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 -o "$manifest_file" -- "$public_manifest_url" || \
+  # A signed manifest is a few kilobytes; a host cannot stream more than
+  # 1 MiB of anything else into the temporary directory.
+  curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize 1048576 -o "$manifest_file" -- "$public_manifest_url" || \
     fail 'could not download public ecosystem manifest'
   if [ -n "$test_key_url" ]; then
     test_key_file="$tmp_root/station-ecosystem-manifest-test-key.pem"
@@ -1024,7 +1050,18 @@ if [ -n "$public_manifest_url" ]; then
   fi
   archive="$tmp_root/$archive_name"
   checksum_file="$tmp_root/$archive_name.sha256"
-  curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 -o "$archive" -- "$asset_url" || fail "could not download $archive_name"
+  if [ "$release_kind" = archive ]; then
+    # The signed size bounds the download itself, not only the check after
+    # it: curl stops (exit 63) at one byte past it.
+    curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize "$archive_size" -o "$archive" -- "$asset_url" || {
+      download_status=$?
+      [ "$download_status" != 63 ] || \
+        fail "$archive_name is larger than the $archive_size bytes the signed manifest says"
+      fail "could not download $archive_name"
+    }
+  else
+    curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 -o "$archive" -- "$asset_url" || fail "could not download $archive_name"
+  fi
   if [ "$release_kind" = archive ]; then
     downloaded_size="$(wc -c <"$archive" | tr -d ' ')"
     [ "$downloaded_size" = "$archive_size" ] || \
@@ -1357,7 +1394,17 @@ check_public_manifest_version() {
         printf 'Station %s is already installed; nothing to do.\n' "$release_tag"
         exit 0
       fi
-      if explicit_replacement_requested; then
+      # The same version in the other layout (a source release built on
+      # this host, or a prebuilt archive) is a change of packaging, not a
+      # republish of the same artifact: no bytes of it are installed to be
+      # replaced.
+      if [ "$(dirname -- "$(readlink "$current_link")")" != "$releases_dir" ]; then
+        if [ "$release_kind" = archive ]; then
+          printf 'Moving Station %s from its source release to the prebuilt archive of the same version.\n' "$release_tag"
+        else
+          printf 'Moving Station %s from its prebuilt archive to the source release of the same version.\n' "$release_tag"
+        fi
+      elif explicit_replacement_requested; then
         printf 'Replacing the installed Station %s with different bytes published as the same version (STATION_INSTALL_ALLOW_ROLLBACK=1).\n' "$release_tag"
       else
         fail "refusing to replace the installed Station $installed_tag with different bytes published as the same version; to replace it deliberately, set STATION_VERSION=$release_tag and STATION_INSTALL_ALLOW_ROLLBACK=1"
@@ -1416,11 +1463,11 @@ fi
 displaced_release=""
 replace_active_version=false
 
-# Verifies an extracted prebuilt archive where it will run: the archive's own
-# launcher reports the release identity and the Node.js that actually runs it,
-# which must be the signed manifest's. Then the completion sentinel, then the
-# tree is made read-only: an archive version is immutable, and lifecycle state
-# lives outside it (#2675 B1).
+# Verifies an extracted prebuilt archive: the archive's own launcher reports
+# the release identity and the Node.js that actually runs it, which must be
+# the signed manifest's. Then the completion sentinel. The tree is sealed
+# read-only (seal_archive_version) only once it has its final name, because
+# some filesystems refuse to rename a read-only directory.
 finish_archive_version() {
   version_dir="$1"
   version_report="$tmp_root/version-report.json"
@@ -1436,8 +1483,13 @@ finish_archive_version() {
         value.releaseChannel !== releaseChannel || value.node !== `v${nodeVersion}`) process.exit(1);
   ' "$version_report" "$release_tag" "$release_sha" "$runtime_channel" "$release_channel" "$archive_node_version" || \
     return 1
-  printf '%s\n' "$actual_checksum" >"$version_dir/.station-install-complete" || return 1
-  chmod -R a-w "$version_dir"
+  printf '%s\n' "$actual_checksum" >"$version_dir/.station-install-complete"
+}
+
+# An installed archive version is immutable, and lifecycle state lives
+# outside it (#2675 B1).
+seal_archive_version() {
+  chmod -R a-w "$1"
 }
 
 if [ "$release_complete" = false ] && [ "$release_kind" = archive ]; then
@@ -1480,8 +1532,12 @@ if [ "$release_complete" = false ] && [ "$release_kind" = archive ]; then
     fail "the extracted release did not report itself as Station $release_tag on Node.js $archive_node_version"
   fi
   if [ "$replace_active_version" = false ]; then
-    node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' \
-      "$incoming_release" "$release_dir" || fail 'could not place the verified release'
+    if ! node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' \
+      "$incoming_release" "$release_dir" || ! seal_archive_version "$release_dir"; then
+      safe_remove_tree "$incoming_release"
+      safe_remove_tree "$release_dir"
+      fail 'could not place the verified release'
+    fi
   fi
 elif [ "$release_complete" = false ]; then
   if [ -e "$release_dir" ] || [ -L "$release_dir" ]; then
@@ -1541,13 +1597,18 @@ fi
 write_staged_launcher
 state_stage="$install_root/.station-release-state.$$"
 umask 077
-# Schema 4 records the public manifest URL this install came from (null on
-# the authenticated GitHub-release path), so a packaged `station upgrade`
-# re-runs the same verified path without the caller's environment (#2675).
+# Schema 4 records the public manifest URL this install came from, so a
+# packaged `station upgrade` re-runs the same verified path without the
+# caller's environment (#2675). The authenticated GitHub-release path has no
+# manifest URL and keeps writing schema 3, which released CLIs and installers
+# (they accept schema 3 only) can still read.
 node -e '
   const fs = require("node:fs");
   const [path, channel, releaseChannel, installRoot, stationRoot, stationHome, manifestUrl] = process.argv.slice(1);
-  fs.writeFileSync(path, `${JSON.stringify({ schemaVersion: 4, channel, releaseChannel, installRoot, stationRoot, stationHome, manifestUrl: manifestUrl || null })}\n`, { mode: 0o600, flag: "wx" });
+  const state = manifestUrl
+    ? { schemaVersion: 4, channel, releaseChannel, installRoot, stationRoot, stationHome, manifestUrl }
+    : { schemaVersion: 3, channel, releaseChannel, installRoot, stationRoot, stationHome };
+  fs.writeFileSync(path, `${JSON.stringify(state)}\n`, { mode: 0o600, flag: "wx" });
   const fd = fs.openSync(path, "r");
   try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 ' "$state_stage" "$runtime_channel" "$release_channel" "$canonical_install_root" "$canonical_station_root" "$canonical_station_home" "$public_manifest_url" || fail 'could not stage install channel state'
@@ -1557,11 +1618,14 @@ if [ "$replace_active_version" = true ]; then
   # moved aside (it stays the rollback target) and the verified one takes its
   # name. current already names that path.
   stop_installed_station
-  displaced_release="$releases_dir/$release_version.replaced.$$"
-  node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$release_dir" "$displaced_release" || \
-    fail 'could not move the running release aside; nothing was changed'
+  moving_aside="$releases_dir/$release_version.replaced.$$"
+  # Station is stopped: a failure here restarts the untouched version.
+  move_version_dir "$release_dir" "$moving_aside" || \
+    fail_with_rollback 'could not move the running release aside'
+  displaced_release="$moving_aside"
   previous_release="$displaced_release"
   if ! node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$incoming_release" "$release_dir" || \
+    ! seal_archive_version "$release_dir" || \
     ! replace_link_atomically "$release_dir" "$current_link" || \
     ! node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$staged_launcher" "$launcher"; then
     fail_with_rollback 'could not publish the new release'

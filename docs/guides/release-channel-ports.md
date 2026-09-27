@@ -72,20 +72,23 @@ version's own `bin/station --version`, which must report the signed version
 on the manifest's Node.js, writes the `.station-install-complete` sentinel,
 and makes the directory read-only. `current` points at the active version,
 and the launcher (`station-owned-launcher-v2`) runs `current/bin/station`.
-Nothing is built, and the archive's bundled Node.js runs Station. After a
-successful start, the installer keeps the active version and the one it
-replaced, and removes the rest.
+Nothing is built, and the archive's bundled Node.js runs Station. Pruning
+happens only after the installer itself starts Station: it keeps the active
+version and the one it replaced, and removes the rest. With
+`STATION_INSTALL_NO_START=1` nothing is pruned.
 
 Verifying the manifest still needs a Node.js at install time. `install.sh`
 uses a Node.js 20 or newer from `PATH`. If there is none, it uses the Node.js
 inside the channel's installed archive, so `station upgrade` and uninstall
-need no host Node.js. Otherwise, only on the public-manifest path, it
-downloads the official Node.js distribution pinned by sha256 in
+need no host Node.js. Otherwise, for uninstall and on the public-manifest
+path, it downloads the official Node.js distribution pinned by sha256 in
 `config/portable-server-node-runtime.json` (a generated block in
 `install.sh`), and uses it only to verify and extract.
 
-The install state (`.station-release-state.json`, schema 4) records the
-manifest URL. A packaged `station upgrade` re-runs the installed version's
+The install state (`.station-release-state.json`) is schema 4 and records
+the manifest URL when the install came from a public manifest. The
+authenticated GitHub-release path records no URL and keeps writing schema 3,
+which released installers and CLIs read. A packaged `station upgrade` re-runs the installed version's
 `install.sh` with that URL, so it needs no environment variable. An explicit
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` still wins. Under an installed service,
 `station upgrade` refuses, as it does for every packaged install.
@@ -99,6 +102,19 @@ and npm on the host, and uses the v1 launcher. An install can move from a
 source release to an archive: the installer recognises either launcher as its
 own and keeps the source release as the rollback target. Uninstall removes
 both layouts.
+
+The installer checks a schema 1 manifest with the signer's rules, so its
+source SHA and sha256 must be lowercase hex, as the signer writes them. (It
+accepted uppercase before.) Downloads are bounded: the manifest at 1 MiB,
+an archive at its signed size.
+
+Known limits until later #2675 slices:
+
+- An `install.sh` from before prebuilt archives (for example the copy inside
+  an old source release) cannot remove a read-only version directory left in
+  the install root. Uninstall with a current `install.sh`.
+- Installed services (`station service install`) still run the source-release
+  layout. Service units that run an archive arrive with slice C.
 
 ## Platform identity matrix
 
