@@ -468,6 +468,9 @@ function realTreeWalks(raw: string): string[] {
 const HELPER_BASED_SCANS = Object.freeze([
   // Lists its scope through the gate module's `scopedFiles()`.
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+  // Builds the SDK import graph through `loadSdkImportGraph()`, which lists
+  // every SDK-referencing file with `git grep` (#2707).
+  'scripts/__tests__/sdk-barrel-selection.repo.test.ts',
 ]);
 
 const TEMP_VIA_FIXTURE =

@@ -509,6 +509,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // file landed via #3609 without a resource classification, which the
   // manifest gate itself requires for any direct child_process importer.
   'src-server/services/orchestration/__tests__/engine-start-seam.test.ts',
+  // #2707: builds the SDK barrel import graph from the real repository through
+  // `git ls-files` and `git grep -l` (via scripts/lib/sdk-barrel-selection.mjs)
+  // — the same enumeration the changed lane uses, so the oracle is what git
+  // reports, not a fixture. Three bounded single-shot children, once per file.
+  'scripts/__tests__/sdk-barrel-selection.repo.test.ts',
   // station#3615: deliberately mock-free — points the REAL claude/codex CLIs
   // at an empty config home to prove the signed-out exit-1 mapping, because
   // the mocked suite is exactly what let that conflation ship. Bounded
