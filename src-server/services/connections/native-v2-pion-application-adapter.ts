@@ -257,6 +257,7 @@ export function createNativeV2PionApplicationAdapter(
         throw new Error('native_pion_application_trust_unavailable');
 
       const clientFingerprint = fingerprint(offer.offerSdp);
+      const routingGeneration = offer.scope.routingGeneration;
       const controller = new AbortController();
       let finishStartup!: () => void;
       const startupComplete = new Promise<void>((resolve) => {
@@ -383,7 +384,7 @@ export function createNativeV2PionApplicationAdapter(
               Object.freeze({
                 stationId: captured.stationId,
                 connectionEnrollmentId: captured.enrollmentId,
-                routingGeneration: captured.generation,
+                routingGeneration,
                 connectionId: offer.clientId,
                 stationOrigin: origin,
                 surface,
@@ -448,10 +449,30 @@ export function createNativeV2PionApplicationAdapter(
         operation.peer = entry;
         peers.add(entry);
         finishStartup();
-        void started.cleanupComplete.then(() => {
-          peers.delete(entry);
+        const settlePeer = (confirmed: boolean) => {
+          admitted = false;
+          if (!controller.signal.aborted)
+            controller.abort(new Error('native_pion_application_peer_ended'));
+          for (const closeServer of [...entry.closeServers]) {
+            entry.closeServers.delete(closeServer);
+            try {
+              closeServer();
+            } catch {
+              // The cleanup receipt remains the resource owner.
+            }
+          }
           removeCallerListener();
-        }, removeCallerListener);
+          application.signal.removeEventListener('abort', abortFromApplication);
+          if (confirmed) {
+            peers.delete(entry);
+            retiredPeers.add(entry);
+          }
+          // An unconfirmed cleanup stays in peers so close() reports its error.
+        };
+        void started.cleanupComplete.then(
+          () => settlePeer(true),
+          () => settlePeer(false),
+        );
         assertCurrent();
 
         const offerSha256 = await connectionDescriptionDigest(offer.offerSdp);

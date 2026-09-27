@@ -94,7 +94,9 @@ async function fixture(
       current = null;
     },
   };
+  let lastRequest: Request | undefined;
   const handler = vi.fn((request: Request) => {
+    lastRequest = request;
     const native = readVerifiedNativeVirtualApplicationRequest(request);
     expect(request.headers.get('authorization')).toBe(
       'station-session-continuation opaque-proof',
@@ -102,7 +104,8 @@ async function fixture(
     expect(native?.surface).toEqual(surface);
     expect(native?.stationId).toBe(trust.stationId);
     expect(native?.connectionEnrollmentId).toBe(trust.enrollmentId);
-    expect(native?.routingGeneration).toBe(trust.generation);
+    expect(native?.routingGeneration).toBe(offer.scope.routingGeneration);
+    expect(native?.routingGeneration).not.toBe(trust.generation);
     expect(native?.connectionId).toBe(surface.clientInstanceId);
     expect(native?.requestOrigin).toBe(ORIGIN);
     expect(readVerifiedVirtualApplicationRequest(request)).toBeUndefined();
@@ -121,8 +124,10 @@ async function fixture(
   let accept: ((channel: FakeChannel) => void) | undefined;
   let earlyChannel: FakeChannel | undefined;
   let resolveCleanup!: () => void;
-  const cleanupComplete = new Promise<void>((resolve) => {
+  let rejectCleanup!: (reason: unknown) => void;
+  const cleanupComplete = new Promise<void>((resolve, reject) => {
     resolveCleanup = resolve;
+    rejectCleanup = reject;
   });
   const startAdapter = vi.fn(async (input: PionApplicationAdapterInput) => {
     expect(input.profile).toBe('application');
@@ -178,6 +183,9 @@ async function fixture(
     application,
     accept: () => accept,
     earlyChannel: () => earlyChannel,
+    lastRequest: () => lastRequest,
+    resolveCleanup,
+    rejectCleanup,
   };
 }
 
@@ -326,5 +334,49 @@ describe('native v2 Pion application adapter', () => {
     await h.adapter.close();
     channel.receive(APPLICATION_REQUEST);
     expect(h.handler).not.toHaveBeenCalled();
+  });
+
+  test('natural peer cleanup invalidates retained request facts and closes channels', async () => {
+    const h = await fixture();
+    await h.adapter.adapter.answer(
+      h.offer,
+      h.trustOwner.current()!,
+      new AbortController().signal,
+    );
+    const channel = new FakeChannel();
+    h.accept()!(channel);
+    channel.receive(APPLICATION_REQUEST);
+    await vi.waitFor(() => expect(h.lastRequest()).toBeDefined());
+    const observed = h.lastRequest()!;
+    expect(readVerifiedNativeVirtualApplicationRequest(observed)).toBeDefined();
+    h.resolveCleanup();
+    await vi.waitFor(() => expect(h.adapter.activePeerCount).toBe(0));
+    expect(channel.closeCalls).toBeGreaterThan(0);
+    expect(
+      readVerifiedNativeVirtualApplicationRequest(observed),
+    ).toBeUndefined();
+    await h.adapter.close();
+  });
+
+  test('failed natural cleanup invalidates facts and remains reportable', async () => {
+    const h = await fixture();
+    await h.adapter.adapter.answer(
+      h.offer,
+      h.trustOwner.current()!,
+      new AbortController().signal,
+    );
+    const channel = new FakeChannel();
+    h.accept()!(channel);
+    channel.receive(APPLICATION_REQUEST);
+    await vi.waitFor(() => expect(h.lastRequest()).toBeDefined());
+    const observed = h.lastRequest()!;
+    h.rejectCleanup(new Error('native_cleanup_failed'));
+    await vi.waitFor(() => expect(channel.closeCalls).toBeGreaterThan(0));
+    expect(
+      readVerifiedNativeVirtualApplicationRequest(observed),
+    ).toBeUndefined();
+    await expect(h.adapter.close()).rejects.toThrow(
+      'native_pion_application_close_failed',
+    );
   });
 });
