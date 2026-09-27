@@ -999,8 +999,9 @@ describe('Plugin Routes', () => {
   // Also proves the scanner mock is bound to the seam the routes actually
   // call: a mock pointed at a module nothing imports is indistinguishable
   // from a working one until you make it misbehave and nothing changes
-  // (review M3). Unreached, this update succeeds exactly as the registry
-  // update above does.
+  // (review M3). Unreached, this update succeeds exactly as the non-Git
+  // registry update does ('updates non-Git plugins through the plugin
+  // registry ...'), which uses the same setup.
   test('a scanner refusal fails the update instead of being scanned around', async () => {
     vi.mocked(existsSync).mockImplementation((p: any) => {
       if (typeof p !== 'string') return false;
