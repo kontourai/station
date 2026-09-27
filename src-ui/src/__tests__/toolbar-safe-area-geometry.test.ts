@@ -1,6 +1,9 @@
+// @vitest-environment jsdom
+
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { readToolbarHeight } from '../lib/toolbarGeometry';
 
 /**
  * The toolbar pads itself down by the top safe-area inset
@@ -74,11 +77,47 @@ describe('toolbar geometry accounts for the top safe-area inset', () => {
     expect(source).not.toMatch(/getPropertyValue\(\s*['"`]--app-toolbar/);
   });
 
-  it('measures the rendered toolbar rather than summing tokens when it can', () => {
-    const helper = read('lib/toolbarGeometry.ts');
-    expect(helper).toContain('getBoundingClientRect');
-    // The token fallback must still account for the inset.
-    expect(helper).toContain('--safe-top');
+  describe('readToolbarHeight', () => {
+    afterEach(() => {
+      document.body.replaceChildren();
+      document.documentElement.removeAttribute('style');
+    });
+
+    function setTokens() {
+      document.documentElement.style.setProperty('--safe-top', '24px');
+      document.documentElement.style.setProperty(
+        '--app-toolbar-height',
+        '52px',
+      );
+    }
+
+    function mountToolbar(height: number, display?: string) {
+      const toolbar = document.createElement('header');
+      toolbar.className = 'app-toolbar';
+      if (display) toolbar.style.display = display;
+      toolbar.getBoundingClientRect = () => ({ height }) as DOMRect;
+      document.body.append(toolbar);
+    }
+
+    it('measures the rendered toolbar rather than summing tokens when it can', () => {
+      setTokens();
+      mountToolbar(90);
+      expect(readToolbarHeight()).toBe(90);
+    });
+
+    it('counts only the inset while a full-screen chat hides the toolbar', () => {
+      setTokens();
+      mountToolbar(0, 'none');
+      expect(readToolbarHeight()).toBe(24);
+    });
+
+    it('sums the inset and the nominal height before the toolbar lays out', () => {
+      setTokens();
+      mountToolbar(0);
+      expect(readToolbarHeight()).toBe(76);
+      document.body.replaceChildren();
+      expect(readToolbarHeight()).toBe(76);
+    });
   });
 
   it('keeps region-bar snap actions delegated to the measured dock owner', () => {
