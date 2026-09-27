@@ -12,6 +12,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { attachCiFastDiagnostics } from '../lib/verification-ci-fast-diagnostics.mjs';
 import {
   changedPaths,
   discoverRelatedTestFiles,
@@ -37,6 +39,8 @@ import {
   validateTestImpactManifest,
 } from '../test-impact-manifest.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
+
+const makeTempDir = trackTempDirs();
 
 const scenarios = JSON.parse(
   readFileSync(
@@ -1051,7 +1055,14 @@ describe('changed verification selection', () => {
       failed: 0,
       infrastructureErrors: 0,
     });
-    expect(writeReceipt).toHaveBeenCalledTimes(3);
+    // Breadcrumb before cleanup, then selection, the bound diagnostic, and
+    // the receipt last.
+    expect(writeReceipt.mock.calls.map(([path]) => path)).toEqual([
+      '.kontourai/test-impact/changed-diagnostics.json',
+      '.kontourai/test-impact/changed-selection.json',
+      '.kontourai/test-impact/changed-diagnostics.json',
+      '.kontourai/test-impact/changed-verification.json',
+    ]);
     expect(result.receipt.artifacts.map(({ path }) => path)).toEqual([
       '.kontourai/test-impact/changed-selection.json',
       '.kontourai/test-impact/changed-diagnostics.json',
@@ -1264,6 +1275,48 @@ describe('changed verification selection', () => {
       },
     ]);
     expect(result.emptyRelatedSelection?.relatedPaths).toEqual([GLOB_ONLY]);
+  });
+  test('ci:fast accepts the diagnostic a post-run escalation leaves behind', async () => {
+    // The selection escalates only after Vitest has run and the early
+    // diagnostic breadcrumb is on disk. The diagnostic ci:fast attaches must
+    // still be the one the receipt digest-binds, or fast-checks turns a green
+    // provisional run into infrastructure_error.
+    const worktree = makeTempDir('station-changed-binding-');
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: emptyDiscoveryRun(),
+      changedPathsFn: () => ({ mergeBase: 'base-sha', paths: [GLOB_ONLY] }),
+      collectProvenance: provenance,
+      writeReceipt(path: string, contents: string) {
+        mkdirSync(dirname(join(worktree, path)), { recursive: true });
+        writeFileSync(join(worktree, path), contents);
+      },
+    });
+    // Reached the seam: suites ran, then the selection escalated.
+    expect(result.executed.length).toBeGreaterThan(0);
+    expect(result.selection.lanes.map(({ id }) => id)).toEqual(['test-full']);
+    const attached = attachCiFastDiagnostics(
+      { lane: { id: 'ci-fast' }, before: { ...provenance(), worktree } },
+      {},
+    );
+    expect(attached.unavailableAttachments).toBeUndefined();
+    expect(attached.attachments).toEqual([
+      {
+        name: 'changed-test-diagnostics',
+        path: join(worktree, '.kontourai/test-impact/changed-diagnostics.json'),
+        contentType: 'application/json',
+      },
+    ]);
+    const diagnostic = JSON.parse(
+      readFileSync(
+        join(worktree, '.kontourai/test-impact/changed-diagnostics.json'),
+        'utf8',
+      ),
+    );
+    expect(diagnostic.selection).toMatchObject({
+      deferredLanes: ['test-full'],
+      escalated: true,
+    });
   });
   test('an exact path-read pin covers its file when discovery is empty (#2176)', async () => {
     // A ratchet-baseline bump has no importer by construction; the pin test
@@ -1719,7 +1772,7 @@ setInterval(() => {}, 1000);`,
   });
   test('persists stable diagnostics before removing the temporary Vitest report', async () => {
     let temporaryReport = '';
-    let existedAtStableWrite = false;
+    let existedAtStableWrite: boolean | undefined;
     const run = vi.fn((_command, args) => {
       if (args.includes('--eval'))
         return {
@@ -1743,7 +1796,12 @@ setInterval(() => {}, 1000);`,
       }),
       collectProvenance: provenance,
       writeReceipt(path) {
-        if (path === '.kontourai/test-impact/changed-diagnostics.json')
+        // The first diagnostic write is the breadcrumb taken before cleanup;
+        // the final rewrite beside the receipt comes after the report is gone.
+        if (
+          path === '.kontourai/test-impact/changed-diagnostics.json' &&
+          existedAtStableWrite === undefined
+        )
           existedAtStableWrite = existsSync(temporaryReport);
       },
     });
