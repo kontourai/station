@@ -178,6 +178,18 @@ describe('RelayRouteProfiles', () => {
     expect(screen.queryByText('Saved broker routes')).toBeNull();
   });
 
+  test('explains when the saved-route limit pauses automatic renewal', () => {
+    const template = mocks.profiles[0];
+    mocks.profiles = Array.from({ length: 65 }, (_, index) => ({
+      ...template,
+      name: `Saved route ${index}`,
+    }));
+    renderRoutes();
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /renewal is paused for all saved routes/i,
+    );
+  });
+
   test('hides cached approved trust and disables revocation after a native status refetch fails', async () => {
     mocks.keyStatus.mockResolvedValue({
       status: 'approved',
