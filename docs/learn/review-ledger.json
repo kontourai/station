@@ -22264,14 +22264,14 @@
       "path": "docs/reference/deploy-ledger.md",
       "kind": "generated",
       "state": "source-reviewed",
-      "documentDigest": "6b424a1ecbd9d60f38e980fd9359a8cec25755e72af6260930c850694007df30",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "documentDigest": "9903eb1aa5e5e763e030e4dc5daa1237e9fea032f37db16bb069f431f65b0fbf",
+      "sourceRevision": "18967de8502e8cbfcc328201e1889359358e4380",
       "summary": "Validated the 142-entry ledger and deterministic Markdown projection, with publication separated from its independently fallible commit-back step.",
       "limits": "Generated contract or retained release evidence; no new hosted release, live label mutation or platform result is claimed.",
       "sources": [
         {
           "path": "docs/reference/deploy-ledger.json",
-          "digest": "940855ad46c243f8d368d0f7350580bda9de0bca58ab8e7030a5994949858da6"
+          "digest": "dbc5df17bb23f4506ec0976a869d7e19ccb76bac95cefd2d9d328b5a24719bd4"
         },
         {
           "path": "scripts/deploy-ledger.mjs",
@@ -22281,7 +22281,8 @@
       "checks": [
         "Actual entry validation and deterministic rendering passed; public raw JSON returned HTTP 200 without authentication.",
         "Reviewed integration deltas: Reviewed added upstream release record and deterministic projection separately from actual release execution; historical publication claims are not renewed by this audit. docs/reference/deploy-ledger.json: Reviewed added frozen upstream nightly-npm receipt as historical input; no new registry or hosted release execution claimed.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+        "Reviewed the generated nightly-npm entry from upstream 39dfe2680: dated workflow/registry attribution and explicitly unknown artifactBuiltAt remain historical publication metadata, not new audit execution or qualification. No product/runtime source changed."
       ]
     },
     {
