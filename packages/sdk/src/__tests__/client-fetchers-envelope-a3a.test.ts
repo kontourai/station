@@ -414,22 +414,22 @@ describe('#2708 A-3a fetchers keep what Station answered', () => {
   // #2708 A-3a review: a chat refusal says whether Station answered it, so
   // a caller never treats a proxy's page as a definitive refusal.
   it.each([
-    ['a Station refusal', () => jsonResponse(GUARD, 403), true],
-    ['a Station validation refusal', () => jsonResponse(VALIDATION, 400), true],
+    ['a Station refusal', true, () => jsonResponse(GUARD, 403)],
+    ['a Station validation refusal', true, () => jsonResponse(VALIDATION, 400)],
     [
       "the runtime's auth refusal",
-      () => jsonResponse({ error: { code: 'insufficient_scope' } }, 403),
       true,
+      () => jsonResponse({ error: { code: 'insufficient_scope' } }, 403),
     ],
-    ['a proxy HTML page', () => htmlResponse(403), false],
+    ['a proxy HTML page', false, () => htmlResponse(403)],
     [
       'JSON that is not an envelope',
-      () => jsonResponse({ message: 'Forbidden' }, 403),
       false,
+      () => jsonResponse({ message: 'Forbidden' }, 403),
     ],
   ] as const)(
     'execution: %s is marked stationEnvelope=%s',
-    async (_name, answer, expected) => {
+    async (_name, expected, answer) => {
       for (const call of [
         () => sendExecutionMessage(API, message),
         () => getConversationHandoffStatus(API, 'c1', 'k1'),

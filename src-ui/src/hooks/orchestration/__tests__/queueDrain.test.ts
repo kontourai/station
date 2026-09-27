@@ -394,31 +394,31 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
       headers: { 'content-type': 'application/json' },
     });
   test.each([
-    ['a proxy HTML 403', () => html(403), 'requeued'],
-    ['a proxy HTML 404', () => html(404), 'requeued'],
+    ['a proxy HTML 403', 'requeued', () => html(403)],
+    ['a proxy HTML 404', 'requeued', () => html(404)],
     [
       'a gateway JSON 403 that is not an envelope',
-      () => envelope(403, { message: 'Forbidden' }),
       'requeued',
+      () => envelope(403, { message: 'Forbidden' }),
     ],
-    ['a proxy HTML 502', () => html(502), 'requeued'],
+    ['a proxy HTML 502', 'requeued', () => html(502)],
     [
       'a Station 500 refusal',
-      () => envelope(500, { success: false, error: 'Station failed.' }),
       'requeued',
+      () => envelope(500, { success: false, error: 'Station failed.' }),
     ],
     [
       'a Station 400 refusal',
+      'dropped',
       () =>
         envelope(400, {
           success: false,
           error: 'Agent has no authored Agent definition.',
         }),
-      'dropped',
     ],
   ] as const)(
     '%s from the real fetcher is %s',
-    async (_name, answer, verdict) => {
+    async (_name, verdict, answer) => {
       const actual = await vi.importActual<
         typeof import('@kontourai/station-sdk/client')
       >('@kontourai/station-sdk/client');
