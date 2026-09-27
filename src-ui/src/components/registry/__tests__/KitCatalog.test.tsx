@@ -3,10 +3,11 @@
  */
 
 import type { KitRegistryEntry } from '@kontourai/station-sdk';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const sdk = vi.hoisted(() => ({
+  onError: undefined as ((error: Error) => void) | undefined,
   mutate: vi.fn(),
 }));
 
@@ -45,10 +46,12 @@ vi.mock('@kontourai/station-sdk', () => ({
     type: 'kit-observability',
     config: { tabs: [] },
   }),
-  useCreateProjectLayoutMutation: () => ({
-    isPending: false,
-    mutate: sdk.mutate,
-  }),
+  useCreateProjectLayoutMutation: (options?: {
+    onError?: (error: Error) => void;
+  }) => {
+    sdk.onError = options?.onError;
+    return { isPending: false, mutate: sdk.mutate };
+  },
   useKitLayoutQuery: () => ({
     data: {
       component: {
@@ -117,6 +120,46 @@ describe('KitCatalog', () => {
       type: 'kit-observability',
       config: { tabs: [] },
     });
+  });
+
+  // #2708 A-2: the error the REAL layout-create fetcher throws for the
+  // route's validation body (POST /:slug/layouts): the catalog shows the
+  // server's reason, not "Validation failed: slug …".
+  test('a refused layout create shows the server reason, not the field key', async () => {
+    const { createProjectLayout } = await import(
+      '@kontourai/station-sdk/client'
+    );
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Validation failed',
+          details: {
+            formErrors: [],
+            fieldErrors: {
+              slug: ['String must contain at least 1 character(s)'],
+            },
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+    let refusal: unknown;
+    try {
+      refusal = await createProjectLayout('http://station.test', 'demo', {
+        slug: '',
+      }).catch((caught: unknown) => caught);
+    } finally {
+      globalThis.fetch = previous;
+    }
+    render(<KitCatalog />);
+
+    act(() => sdk.onError?.(refusal as Error));
+
+    expect(
+      screen.getByText('String must contain at least 1 character(s)'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Validation failed/)).toBeNull();
   });
 
   test('fails closed while the duplicate check is loading or unavailable', () => {

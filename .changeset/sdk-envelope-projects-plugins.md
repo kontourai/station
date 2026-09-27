@@ -16,5 +16,7 @@ status on a non-2xx and is still a plain `Error` on a 2xx.
 takes the `StationHttpError` the client built from the response, and an
 optional `{ grantsUnavailable }`, in place of `(status, envelope, options)`:
 `new PluginCollectionHttpError(new StationHttpError(status, message, { code }))`.
-Its `envelope` is derived from that error. A `429` collection read now carries
-`retryAfterMs`. Code that only catches the error is unaffected.
+Its `envelope` is derived from that error. A refused collection read now
+carries `retryAfterMs` whenever the response sent a delta-seconds
+`Retry-After` (Station's runtime sends one with every `429`). Code that only
+catches the error is unaffected.

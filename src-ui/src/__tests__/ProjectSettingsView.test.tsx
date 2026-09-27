@@ -890,7 +890,9 @@ describe('ProjectSettingsView (#250 shell port)', () => {
           error: 'Validation failed',
           details: {
             formErrors: [],
-            fieldErrors: { name: ['Name must be 200 characters or fewer.'] },
+            fieldErrors: {
+              name: ['String must contain at least 1 character(s)'],
+            },
           },
         }),
         { status: 400, headers: { 'content-type': 'application/json' } },
@@ -911,13 +913,15 @@ describe('ProjectSettingsView (#250 shell port)', () => {
 
     fireEvent.change(
       container.querySelector('.project-settings__name-input') as Element,
-      { target: { value: 'Too long' } },
+      // Any edit enables Save; the refusal is the server's
+      // (projectUpdateSchema: `name` is `z.string().min(1)`).
+      { target: { value: 'Renamed' } },
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await screen.findByRole('alert');
     expect(
-      screen.getByText('Name must be 200 characters or fewer.'),
+      screen.getByText('String must contain at least 1 character(s)'),
     ).toBeTruthy();
     expect(screen.queryByText(/Validation failed/)).toBeNull();
   });
