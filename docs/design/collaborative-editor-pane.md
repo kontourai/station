@@ -1,5 +1,15 @@
 # Collaborative editor pane
 
+> **Reading status: current pure-controller contract with historical renderer scope.**
+> The [controller](../../src-shared/collaborative-editor-pane.ts) and
+> [editing capability](../../src-server/domain/shared-working-state-editing.ts)
+> own the boundaries below. The original React projection was removed in
+> `2775e92eb` after remaining unmounted. Current Task editing instead mounts
+> [TaskRoomEditorPane](../../src-ui/src/workspace-panes/TaskRoomEditorPane.tsx)
+> through [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx).
+> These are distinct compositions; this note does not certify a live controller
+> renderer or re-run the protocol, authority, or performance evidence.
+
 Issue #2890 is the Workspace Pane projection for shared text/code work. It is
 not the durable Project Chat discussion surface and it is not a new event or
 message store.
@@ -122,7 +132,11 @@ authority masks room state as stale; old authenticated packets remain inert.
 
 ## Scope
 
-This slice exposes the server-owned editing capability, pure controller, and a
-focused accessible React surface.
-Workspace Pane catalog/host composition, authenticated browser transport,
-durable snapshots, and reference performance proof remain integration work.
+The server-owned editing capability and pure controller remain the module
+scope. The former host-neutral React projection is no longer a mounted or
+retained component. The current Task-room UI uses the server-owned room runtime
+and its closed browser DTOs instead of exposing this controller's operation
+adapters to the browser. See the [composition map](../architecture/module-map.md#collaborativeeditorpane)
+for those owners. Current integration and performance evidence must be assessed
+at that composition; the original slice's integration-work list is not a
+present-day absence claim.

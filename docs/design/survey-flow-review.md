@@ -1,5 +1,13 @@
 # Survey-backed Flow review
 
+> **Reading status: current composition note.** The
+> [Station service](../../src-server/services/flow/survey-flow-review-service.ts)
+> calls the public Flow Agents and Survey adapters; the
+> [project Flow routes](../../src-server/routes/evidence/flow-runs.ts) expose
+> the operations below and return 503 when the review provider is absent.
+> Source wiring is separate from a successfully resumed review or cross-harness
+> compatibility test.
+
 Station composes canonical Survey review sessions with existing Flow gates through
 the public Flow Agents adapter. It does not construct Survey input, derive trust
 bundles, interpret decisions, or implement continuation rules.
@@ -10,6 +18,10 @@ Station routing fields (`projectSlug` and the opaque `reviewSessionRef`) plus th
 public Flow Agents binding fields (`projectionSource` and
 `workflowSubjectRef`). `record`, `events`, `currentSnapshot`, and
 `currentEventCount` retain their published Survey shapes.
+
+The following illustrates the envelope only. The empty `record` and
+`currentSnapshot` objects stand in for canonical Survey values; they are not
+a runnable review session or evidence that a gate is ready to continue.
 
 ```json
 {
@@ -44,6 +56,6 @@ therefore be resumed from Station or any local harness using the same Flow Agent
 adapter. Domain integrations, including a synthetic tax-document harvest adapter,
 produce ReviewItems; Station remains domain-neutral.
 
-Telemetry records only operation outcomes and counts under
-`station.survey_flow_review.*`; it never records subjects, session references, or
-review content.
+The `station.survey_flow_review.*` metrics record counts with bounded outcome
+or unavailable-reason labels, without subject, session-reference, or review-content
+labels. This describes those instruments, not every diagnostic log.

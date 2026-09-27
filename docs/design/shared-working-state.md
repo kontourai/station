@@ -1,16 +1,23 @@
 # Shared working-state protocol
 
+> **Reading status: current domain protocol and recorded harness scope.**
+> [SharedWorkingState](../../src-server/domain/shared-working-state.ts) owns
+> convergence and revision facts; persistence is composed through the
+> [room working-state adapter](../../src-server/services/orchestration/project-task-room-working-state.ts)
+> and its worker. The harness descriptions below are not newly executed
+> convergence, authorization, performance, or recovery results.
+
 Issue #2889 defines the pre-UI contract for a shared **text document**. This
-is not the channel conversation log: `docs/design/conversation-state.md`
-remains the authority for conversation messages, moderation, and their
-single-home sequencing.
+is not the conversation log. [Project/Task room history](project-task-room-history.md)
+describes the current durable room owner; [conversation state](conversation-state.md)
+retains the broader channel-home design and its historical survey.
 
 ## Contract boundary
 
 `SharedWorkingState` is a Station-owned, provider-neutral domain Module. Its
 Interface accepts and returns versioned Station operations, snapshots, bounded
 deltas, typed outcomes, and a provable revision. It has no transport, database,
-editor, identity-directory, or permission-store dependency. A later Adapter
+editor, identity-directory, or permission-store dependency. Composition Adapters
 may persist snapshots, send operations, resolve human/agent principals, and
 obtain the current Project/Task grant; none of those choices change the
 convergence Interface.

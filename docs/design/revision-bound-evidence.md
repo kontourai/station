@@ -1,5 +1,14 @@
 # Design: revision-bound evidence
 
+> **Reading status: current module contract with recorded implementation claims.**
+> [RevisionEvidenceModule](../../src-server/domain/revision-bound-evidence.ts)
+> owns receipt identity and resolution; [EventStore](../../src-server/services/orchestration/event-store.ts)
+> supplies SQLite persistence, and the
+> [room bridge](../../src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts)
+> consumes its scoped reader. This does not establish current Flow, Survey, or
+> Veritas approval semantics, or revalidate every import, attribution, capacity,
+> and restart invariant below.
+
 > Status: implemented contract for [#2891](https://github.com/kontourai/station/issues/2891).
 
 ## Purpose

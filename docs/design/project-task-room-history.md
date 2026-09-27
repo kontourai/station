@@ -1,5 +1,14 @@
 # Project/Task room history
 
+> **Reading status: current persistence-module note.**
+> [EventStore](../../src-server/services/orchestration/event-store.ts) composes
+> the [history module](../../src-server/services/orchestration/project-task-room-history.ts)
+> and its [SQLite worker](../../src-server/services/orchestration/project-task-room-history-worker.ts).
+> [Room runtime](../../src-server/services/orchestration/project-task-room-runtime.ts)
+> and [routes](../../src-server/routes/orchestration/project-task-rooms.ts) add
+> caller authority and transport. The core's `L0` assurance below does not
+> become a membership or signature guarantee merely through that composition.
+
 `ProjectTaskRoomHistory` is Station's durable, asynchronous Project/Task
 rendezvous. It is deliberately distinct from an active live-work session: a
 session can start, end presence, or deliberately finish work in history, but liveness, presence, transport,

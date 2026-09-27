@@ -1,5 +1,14 @@
 # Live-work session contract
 
+> **Reading status: current domain-contract note.**
+> [LiveWorkSession](../../src-server/domain/live-work-session.ts) owns the pure
+> lifecycle; [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
+> composes it with the
+> [material-history adapter](../../src-server/services/orchestration/project-task-live-work-history-adapter.ts).
+> The module's recovery and identity rules below are distinct from transport or
+> device liveness. This owner map is not a fresh proof of every bounded input,
+> transition, durable outcome, or two-device journey.
+
 `LiveWorkSession` is #2914's deep, pure Station module for one exact Project,
 Task, surface, session, and configured channel identity. It owns no API, route,
 database, UI, transport, message log, or revision store. #2972 composes its
