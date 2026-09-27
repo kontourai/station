@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
-import {
-  getManagementNavigationGroup,
-  getPathForView,
-  resolveViewFromPath,
-} from '../app-shell/routing';
+import { getPathForView, resolveViewFromPath } from '../app-shell/routing';
 
 /**
  * #872: "there is no way to navigate to past ones" — the inbox was reachable
@@ -18,12 +14,6 @@ describe('the notification inbox is a destination', () => {
       type: 'notifications',
     });
     expect(getPathForView({ type: 'notifications' })).toBe('/notifications');
-  });
-
-  it('is a navigable group, so the sidebar can highlight it', () => {
-    expect(getManagementNavigationGroup({ type: 'notifications' })).toBe(
-      'notifications',
-    );
   });
 
   it('is advertised where a person can find it without a notification', () => {

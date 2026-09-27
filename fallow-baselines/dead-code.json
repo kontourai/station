@@ -314,7 +314,6 @@
     "src-shared/foreground-work-journal.ts:FOREGROUND_WORK_JOURNAL_VERSION",
     "src-shared/foreground-work-journal.ts:FOREGROUND_WORK_STALL_THRESHOLD_MS",
     "src-ui/src/app-shell/routing.ts:DEVELOPER_TABS",
-    "src-ui/src/app-shell/routing.ts:getPathForManagementNavigationGroup",
     "src-ui/src/components/AgentReadinessCell.tsx:agentFixLabel",
     "src-ui/src/components/CoreUpdateLaunchCheck.tsx:desktopUpdateMessage",
     "src-ui/src/components/DeferredAppOverlays.tsx:default",
