@@ -1,5 +1,48 @@
 [
   {
+    "timestampUtc": "2026-09-27T17:55:24Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2461.36334655311",
+    "sha": "73e3cdac817704360eded65049732a26e9658962",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/36334655311",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2461.36334655311 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "b61a6d5e75c0482ed61bd62e9f73045843968832",
+      "groups": {
+        "feat": [
+          "[#2828](https://github.com/kontourai/station/pull/2828) feat(relay): supervise approved native grants on desktop",
+          "[#2811](https://github.com/kontourai/station/pull/2811) feat(relay): renew native routing grants with durable host proof",
+          "[#2801](https://github.com/kontourai/station/pull/2801) feat(sdk,ui): Project and plugin refusals keep status, code, details and Retry-After (#2708 A-2)",
+          "[#2804](https://github.com/kontourai/station/pull/2804) feat(ci): re-land sharded fast-checks, with shards gated on the plan's result (#2709)"
+        ],
+        "fix": [
+          "[#2830](https://github.com/kontourai/station/pull/2830) fix(windows): survive a cold host at archive start: pwsh path, one trust runner, fail fast, platform stop hint",
+          "[#2814](https://github.com/kontourai/station/pull/2814) fix(test-changed): classify changesets and fallow baselines as known paths (#2781)",
+          "[#2816](https://github.com/kontourai/station/pull/2816) fix(station-control,approvals): steer and adopt stay in scope; Default picks and Agent defaults can't reach unconfined full access without the grant (#2377 C1)",
+          "[#2746](https://github.com/kontourai/station/pull/2746) fix(shared): resolve Windows PowerShell by its System32 path for process-birth probes",
+          "[#2747](https://github.com/kontourai/station/pull/2747) fix(install): build the release where it runs so start reuses the install-time build"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#2821](https://github.com/kontourai/station/pull/2821) perf(packaging): prune unused runtime subtrees from the shared server stager",
+          "[#2789](https://github.com/kontourai/station/pull/2789) test: retire duplicate and unfalsifiable tests in audit batch 06",
+          "[#2772](https://github.com/kontourai/station/pull/2772) test(ui): test-audit batch 13 — app-shell and component tests at rendered and Chromium boundaries",
+          "[#2790](https://github.com/kontourai/station/pull/2790) test(shared): test-audit batch 04 — drop duplicate station-shared tests and pin tier and refusal reasons"
+        ]
+      },
+      "note": null,
+      "commitCount": 13
+    }
+  },
+  {
     "timestampUtc": "2026-09-27T12:43:28Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2461.1",
