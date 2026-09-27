@@ -435,9 +435,52 @@ export const REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION =
   "${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
 
 /** The aggregator's base-controlled half: every part job must have succeeded. */
+/**
+ * The aggregator's base-controlled half: every part job must have succeeded.
+ * Its `true)` arm is the TRANSITIONAL legacy branch (#2709): a candidate
+ * without scripts/fast-checks-shard.mjs ran its whole unsharded ci:fast in
+ * fast-checks-plan, so that job and fast-checks-statics must succeed and the
+ * shards must have skipped. Only the exact outputs 'true'/'false' choose a
+ * branch. Remove the arm, and the LEGACY constants below, with ci.yml's
+ * detection step once open pull requests have merged main.
+ */
 export const FAST_CHECKS_PART_RESULTS_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
-echo "$NEEDS" | jq -e '[to_entries[] | select(.key != "classify")] | length == ${FAST_CHECKS_PART_JOBS.length} and all(.value.result == "success")' > /dev/null
+LEGACY="$(echo "$NEEDS" | jq -r '.["fast-checks-plan"].outputs.legacy // ""')"
+case "$LEGACY" in
+  false)
+    echo "$NEEDS" | jq -e '[to_entries[] | select(.key != "classify")] | length == ${FAST_CHECKS_PART_JOBS.length} and all(.value.result == "success")' > /dev/null
+    ;;
+  true)
+    echo "::warning::legacy candidate: fast-checks ran unsharded in fast-checks-plan"
+    echo "$NEEDS" | jq -e '.["fast-checks-plan"].result == "success" and .["fast-checks-statics"].result == "success" and .["fast-checks-shard"].result == "skipped"' > /dev/null
+    ;;
+  *)
+    echo "::error::fast-checks-plan reported no valid legacy mode"
+    exit 1
+    ;;
+esac
 `;
+export const FAST_CHECKS_LEGACY_DETECT_RUN = `if [ -f scripts/fast-checks-shard.mjs ]; then
+  echo "legacy=false" >> "$GITHUB_OUTPUT"
+else
+  echo "::warning::candidate predates the sharded fast-checks lane; running its unsharded ci:fast (merge main to shard)"
+  echo "legacy=true" >> "$GITHUB_OUTPUT"
+fi
+`;
+// biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+export const FAST_CHECKS_LEGACY_OUTPUT = '${{ steps.mode.outputs.legacy }}';
+export const FAST_CHECKS_LEGACY_STEP_IF =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  "${{ steps.mode.outputs.legacy == 'true' }}";
+export const FAST_CHECKS_PLANNED_STEP_IF =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  "${{ steps.mode.outputs.legacy == 'false' }}";
+export const FAST_CHECKS_SHARD_IF =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  "${{ needs.fast-checks-plan.outputs.legacy == 'false' }}";
+export const FAST_CHECKS_AGGREGATE_STEP_IF =
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  "${{ needs.fast-checks-plan.outputs.legacy != 'true' }}";
 export const FAST_CHECKS_AGGREGATE_RUN =
   'node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"';
 export const FAST_CHECKS_PLAN_RUN =
@@ -527,7 +570,7 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
     partResults?.run !== FAST_CHECKS_PART_RESULTS_RUN ||
     partResults.if !== undefined ||
     aggregate.length !== 1 ||
-    aggregate[0].if !== undefined
+    aggregate[0].if !== FAST_CHECKS_AGGREGATE_STEP_IF
   )
     findings.push(
       'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
@@ -546,17 +589,48 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
       );
   }
   const plan = jobs['fast-checks-plan'];
+  const planSteps = steps(plan);
+  const planned = planSteps.filter(
+    (step) => step?.run === FAST_CHECKS_PLAN_RUN,
+  );
+  const planUpload = planSteps.find(
+    (step) => step?.name === 'Upload fast-checks plan',
+  );
   if (
-    steps(plan).filter((step) => step?.run === FAST_CHECKS_PLAN_RUN).length !==
-    1
+    planned.length !== 1 ||
+    planned[0].if !== FAST_CHECKS_PLANNED_STEP_IF ||
+    planUpload?.if !== FAST_CHECKS_PLANNED_STEP_IF
   )
     findings.push('fast-checks-plan must compute the plan exactly once.');
+  // TRANSITIONAL (#2709): the legacy path must run the candidate's WHOLE
+  // lane, never less, and only when the detection says so.
+  const detect = planSteps.findIndex(
+    (step) => step?.run === FAST_CHECKS_LEGACY_DETECT_RUN,
+  );
+  const legacyLane = planSteps.filter(
+    (step) => step?.run === 'npm run ci:fast',
+  );
+  if (
+    detect < 0 ||
+    planSteps[detect].id !== 'mode' ||
+    planSteps[detect].if !== undefined ||
+    detect >
+      planSteps.findIndex((step) => step?.run === 'npm run dependencies:ci') ||
+    JSON.stringify(plan?.outputs) !==
+      JSON.stringify({ legacy: FAST_CHECKS_LEGACY_OUTPUT }) ||
+    legacyLane.length !== 1 ||
+    legacyLane[0].if !== FAST_CHECKS_LEGACY_STEP_IF ||
+    legacyLane[0].env?.STATION_CI_FAST_SCOPE !== undefined
+  )
+    findings.push(
+      'fast-checks-plan must run the whole unsharded ci:fast lane exactly when the candidate lacks the sharded lane.',
+    );
 
   const shard = jobs['fast-checks-shard'];
   const matrix = shard?.strategy?.matrix?.shard;
   if (
     !shard ||
-    shard.if !== undefined ||
+    shard.if !== FAST_CHECKS_SHARD_IF ||
     swallowsFailure(shard) ||
     !sameList(needsList(shard), ['fast-checks-plan']) ||
     shard.strategy?.['fail-fast'] !== false ||

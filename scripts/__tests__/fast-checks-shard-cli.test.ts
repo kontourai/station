@@ -7,6 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { load } from 'js-yaml';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { runFastChecksShardCli } from '../fast-checks-shard.mjs';
@@ -570,5 +571,111 @@ describe('sharding a real selection', () => {
       ).toEqual(
         sliceFastChecksPlan(plan, { index, count: FAST_CHECKS_SHARD_COUNT }),
       );
+  });
+});
+
+describe('transitional legacy path: the base-controlled shell in ci.yml (child process, #2709)', () => {
+  type Step = { id?: string; name?: string; run?: string };
+  const jobs = (
+    load(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8')) as {
+      jobs: Record<string, { steps: Step[] }>;
+    }
+  ).jobs;
+  const detectRun = jobs['fast-checks-plan'].steps.find(
+    (step) => step.id === 'mode',
+  )?.run;
+  const partResultsRun = jobs['fast-checks'].steps.find(
+    (step) => step.name === 'Require every fast-checks part job to succeed',
+  )?.run;
+
+  /** GitHub's default `run` shell: bash --noprofile --norc -eo pipefail. */
+  function bash(
+    script: string | undefined,
+    cwd: string,
+    env: Record<string, string>,
+  ) {
+    if (!script) throw new Error('ci.yml step not found');
+    return spawnSync(
+      'bash',
+      ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script],
+      {
+        cwd,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH ?? '', ...env },
+        timeout: 30_000,
+        windowsHide: true,
+      },
+    );
+  }
+
+  function detect(withScript: boolean) {
+    const { directory } = repository();
+    if (!withScript) rmSync(join(directory, 'scripts/fast-checks-shard.mjs'));
+    const output = join(directory, 'github-output');
+    writeFileSync(output, '');
+    const result = bash(detectRun, directory, { GITHUB_OUTPUT: output });
+    expect(result.status, result.stderr).toBe(0);
+    return readFileSync(output, 'utf8');
+  }
+
+  const needs = (
+    legacy: string | undefined,
+    results: Partial<Record<string, string>> = {},
+  ) => ({
+    classify: { result: 'skipped', outputs: {} },
+    'fast-checks-plan': {
+      result: results.plan ?? 'success',
+      outputs: legacy === undefined ? {} : { legacy },
+    },
+    'fast-checks-shard': { result: results.shard ?? 'success', outputs: {} },
+    'fast-checks-statics': {
+      result: results.statics ?? 'success',
+      outputs: {},
+    },
+  });
+  const partResults = (value: unknown) =>
+    bash(partResultsRun, root, { NEEDS: JSON.stringify(value) }).status;
+
+  test('a candidate with the sharded lane is never legacy', () => {
+    expect(detect(true)).toBe('legacy=false\n');
+  });
+
+  test('a candidate without the sharded lane is legacy', () => {
+    expect(detect(false)).toBe('legacy=true\n');
+  });
+
+  test('the sharded branch requires every part, shards included', () => {
+    expect(partResults(needs('false'))).toBe(0);
+    for (const shard of ['skipped', 'cancelled', 'failure'])
+      expect(partResults(needs('false', { shard })), shard).toBe(1);
+  });
+
+  test('a legacy candidate passes only when its unsharded ci:fast and the statics passed', () => {
+    expect(partResults(needs('true', { shard: 'skipped' }))).toBe(0);
+    // A failing legacy ci:fast fails fast-checks-plan, and so the check.
+    for (const plan of ['failure', 'cancelled'])
+      expect(partResults(needs('true', { plan, shard: 'skipped' })), plan).toBe(
+        1,
+      );
+    expect(
+      partResults(needs('true', { statics: 'failure', shard: 'skipped' })),
+    ).toBe(1);
+    // Shards that ran on a legacy candidate mean the gating broke.
+    expect(partResults(needs('true'))).toBe(1);
+  });
+
+  test.each([
+    ['missing', undefined],
+    ['empty', ''],
+    ['garbled', 'yes'],
+    ['padded', 'true '],
+  ])('a %s legacy output is not legacy and fails', (_name, legacy) => {
+    expect(partResults(needs(legacy, { shard: 'skipped' }))).toBe(1);
+    expect(partResults(needs(legacy))).toBe(1);
+  });
+
+  test('a sharded candidate whose shards were skipped fails, end to end from detection', () => {
+    const legacy = detect(true).trim().split('=')[1];
+    expect(partResults(needs(legacy, { shard: 'skipped' }))).toBe(1);
   });
 });

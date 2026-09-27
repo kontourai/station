@@ -1871,7 +1871,7 @@ describe('persistent runner policy', () => {
       (job: Record<string, unknown>) => {
         job.if = 'always()';
       },
-      'ci.yml fast-checks-shard must be admitted only by a successful fast-checks-plan (needs: fast-checks-plan, no if)',
+      'ci.yml fast-checks-shard must be admitted only by a successful, non-legacy fast-checks-plan',
     ],
     [
       'a shard that needs a different job',
@@ -1879,7 +1879,7 @@ describe('persistent runner policy', () => {
       (job: Record<string, unknown>) => {
         job.needs = 'classify';
       },
-      'ci.yml fast-checks-shard must be admitted only by a successful fast-checks-plan (needs: fast-checks-plan, no if)',
+      'ci.yml fast-checks-shard must be admitted only by a successful, non-legacy fast-checks-plan',
     ],
     [
       'an aggregator with a fork-admitting guard',

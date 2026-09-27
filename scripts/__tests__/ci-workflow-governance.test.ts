@@ -7,8 +7,14 @@ import {
   collectPrimaryCiWorkflowTriggerFindings,
   collectRequiredBrowserSmokeFindings,
   FAST_CHECKS_AGGREGATE_RUN,
+  FAST_CHECKS_AGGREGATE_STEP_IF,
+  FAST_CHECKS_LEGACY_DETECT_RUN,
+  FAST_CHECKS_LEGACY_OUTPUT,
+  FAST_CHECKS_LEGACY_STEP_IF,
   FAST_CHECKS_PART_RESULTS_RUN,
   FAST_CHECKS_PLAN_RUN,
+  FAST_CHECKS_PLANNED_STEP_IF,
+  FAST_CHECKS_SHARD_IF,
   FAST_CHECKS_SHARD_RUN,
   FAST_CHECKS_SLICE_RUN,
   findNamedWorkflowStep,
@@ -38,13 +44,25 @@ jobs:
   fast-checks-plan:
     needs: classify
     if: ${REQUIRED_FAST_CHECKS_CONDITION}
+    outputs:
+      legacy: ${FAST_CHECKS_LEGACY_OUTPUT}
     steps:
+      - name: Detect a candidate without the sharded lane
+        id: mode
+        run: ${block(FAST_CHECKS_LEGACY_DETECT_RUN, 10)}
+      - run: npm run dependencies:ci
+      - name: Run legacy unsharded ci:fast
+        if: ${FAST_CHECKS_LEGACY_STEP_IF}
+        run: npm run ci:fast
       - name: Plan the affected-test selection
+        if: ${FAST_CHECKS_PLANNED_STEP_IF}
         run: '${FAST_CHECKS_PLAN_RUN}'
       - name: Upload fast-checks plan
+        if: ${FAST_CHECKS_PLANNED_STEP_IF}
         uses: actions/upload-artifact@v7
   fast-checks-shard:
     needs: fast-checks-plan
+    if: ${FAST_CHECKS_SHARD_IF}
     strategy:
       fail-fast: false
       matrix:
@@ -79,6 +97,7 @@ jobs:
       - name: Require every fast-checks part job to succeed
         run: ${block(FAST_CHECKS_PART_RESULTS_RUN, 10)}
       - name: Verify fast-checks shard receipts
+        if: ${FAST_CHECKS_AGGREGATE_STEP_IF}
         run: '${FAST_CHECKS_AGGREGATE_RUN}'
   completion:
     steps:
@@ -218,9 +237,11 @@ describe('primary CI workflow governance', () => {
     const target = _name.includes('fast')
       ? 'npm run ci:fast'
       : 'node scripts/veritas-readiness-evidence.mjs --check evidence';
+    // Every executable ci:fast: the statics lane and the transitional legacy
+    // lane in fast-checks-plan (#2709) both run it.
     const workflow =
       _name === 'unreachable fast command'
-        ? cleanWorkflow.replace(
+        ? cleanWorkflow.replaceAll(
             'run: npm run ci:fast',
             'run: |\n          exit 0\n          npm run ci:fast',
           )
@@ -229,7 +250,7 @@ describe('primary CI workflow governance', () => {
               `if ${target}`,
               `${replacement}\n          if ${target}`,
             )
-          : cleanWorkflow.replace(target, replacement);
+          : cleanWorkflow.replaceAll(target, replacement);
     expect(findingsFor(workflow)).toContain(expected);
   });
 
@@ -272,9 +293,9 @@ describe('primary CI workflow governance', () => {
       'Veritas readiness evidence must report a missing diff range as NOT_VERIFIED.',
     ],
   ])('rejects %s', (_name, target, replacement, expected) => {
-    expect(findingsFor(cleanWorkflow.replace(target, replacement))).toContain(
-      expected,
-    );
+    expect(
+      findingsFor(cleanWorkflow.replaceAll(target, replacement)),
+    ).toContain(expected);
   });
 
   test('rejects a no-diff path that would report success without evidence', () => {
@@ -678,9 +699,9 @@ describe('the required fast-checks aggregator cannot pass over a missing part (#
       'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
     ],
     [
-      'a conditional receipt verification',
-      `        run: '${FAST_CHECKS_AGGREGATE_RUN}'`,
-      `        if: success()\n        run: '${FAST_CHECKS_AGGREGATE_RUN}'`,
+      'a receipt verification skipped whenever legacy is not exactly false',
+      `        if: ${FAST_CHECKS_AGGREGATE_STEP_IF}\n        run: '${FAST_CHECKS_AGGREGATE_RUN}'`,
+      `        if: \${{ needs.fast-checks-plan.outputs.legacy != 'false' }}\n        run: '${FAST_CHECKS_AGGREGATE_RUN}'`,
       'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
     ],
     [
@@ -697,8 +718,8 @@ describe('the required fast-checks aggregator cannot pass over a missing part (#
     ],
     [
       'a shard admitted without a successful plan',
-      '  fast-checks-shard:\n    needs: fast-checks-plan\n',
-      '  fast-checks-shard:\n    needs: fast-checks-plan\n    if: always()\n',
+      `    if: ${FAST_CHECKS_SHARD_IF}\n`,
+      '    if: always()\n',
       'fast-checks-shard must run all 4 shards after the plan without swallowing failures.',
     ],
     [
@@ -715,8 +736,8 @@ describe('the required fast-checks aggregator cannot pass over a missing part (#
     ],
     [
       'a statics job that also swallows its lane',
-      '        run: npm run ci:fast\n',
-      '        continue-on-error: true\n        run: npm run ci:fast\n',
+      '          STATION_CI_FAST_SCOPE: statics\n        run: npm run ci:fast\n',
+      '          STATION_CI_FAST_SCOPE: statics\n        continue-on-error: true\n        run: npm run ci:fast\n',
       'Required fast-checks-statics must admit PR and merge candidates without swallowing failures.',
     ],
     [
@@ -724,6 +745,36 @@ describe('the required fast-checks aggregator cannot pass over a missing part (#
       'STATION_CI_FAST_SCOPE: statics',
       'STATION_CI_FAST_SCOPE: all',
       'fast-checks-statics must run the statics-only ci:fast lane once, unconditionally.',
+    ],
+    [
+      'a legacy branch that skips the plan and statics results',
+      '.["fast-checks-plan"].result == "success" and .["fast-checks-statics"].result == "success" and ',
+      '',
+      'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
+    ],
+    [
+      'a legacy lane scoped to statics only',
+      `        if: ${FAST_CHECKS_LEGACY_STEP_IF}\n        run: npm run ci:fast\n`,
+      `        if: ${FAST_CHECKS_LEGACY_STEP_IF}\n        env:\n          STATION_CI_FAST_SCOPE: statics\n        run: npm run ci:fast\n`,
+      'fast-checks-plan must run the whole unsharded ci:fast lane exactly when the candidate lacks the sharded lane.',
+    ],
+    [
+      'a legacy lane that also runs on sharded candidates',
+      `        if: ${FAST_CHECKS_LEGACY_STEP_IF}\n        run: npm run ci:fast\n`,
+      '        run: npm run ci:fast\n',
+      'fast-checks-plan must run the whole unsharded ci:fast lane exactly when the candidate lacks the sharded lane.',
+    ],
+    [
+      'a detection that always reports legacy',
+      'if [ -f scripts/fast-checks-shard.mjs ]; then',
+      'if false; then',
+      'fast-checks-plan must run the whole unsharded ci:fast lane exactly when the candidate lacks the sharded lane.',
+    ],
+    [
+      'a plan uploaded even on the legacy path',
+      `        if: ${FAST_CHECKS_PLANNED_STEP_IF}\n        uses: actions/upload-artifact@v7`,
+      '        uses: actions/upload-artifact@v7',
+      'fast-checks-plan must compute the plan exactly once.',
     ],
     [
       'a plan that is never computed',

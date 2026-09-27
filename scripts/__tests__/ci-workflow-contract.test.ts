@@ -1550,7 +1550,10 @@ describe('CI verification workflow contracts', () => {
         .filter(([, job]) => (job.steps ?? []).some(runsCiFast))
         .map(([jobId, job]) => ({ id: `${file}#${jobId}`, job })),
     );
+    // fast-checks-plan runs the whole lane only on the transitional legacy
+    // path (#2709), and its fence covers that too.
     expect(callers.map(({ id }) => id).sort()).toEqual([
+      '.github/workflows/ci.yml#fast-checks-plan',
       '.github/workflows/ci.yml#fast-checks-statics',
       '.github/workflows/ci.yml#fork-smoke',
     ]);
@@ -1605,6 +1608,46 @@ describe('CI verification workflow contracts', () => {
       'fast-checks-shard',
       'fast-checks-statics',
     ]);
+    // TRANSITIONAL legacy path (#2709): detection comes before any candidate
+    // command, exposes its answer as the job output the shards and the
+    // aggregator read, and gates the legacy lane against the plan steps.
+    const plan = jobs['fast-checks-plan'] as Job & {
+      outputs?: Record<string, string>;
+    };
+    const planSteps = (plan.steps ?? []) as Array<Step & { id?: string }>;
+    const detect = planSteps.findIndex((step) => step.id === 'mode');
+    expect(detect).toBeGreaterThan(-1);
+    expect(detect).toBeLessThan(
+      planSteps.findIndex((step) => step.run === 'npm run dependencies:ci'),
+    );
+    expect(plan.outputs).toEqual({
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      legacy: '${{ steps.mode.outputs.legacy }}',
+    });
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    const legacyIf = "${{ steps.mode.outputs.legacy == 'true' }}";
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    const plannedIf = "${{ steps.mode.outputs.legacy == 'false' }}";
+    for (const name of [
+      'Install pinned actionlint',
+      'Install Chromium for changed-set touch-target checks',
+      'Run legacy unsharded ci:fast',
+    ])
+      expect(planSteps.find((step) => step.name === name)?.if, name).toBe(
+        legacyIf,
+      );
+    for (const name of [
+      'Plan the affected-test selection',
+      'Upload fast-checks plan',
+    ])
+      expect(planSteps.find((step) => step.name === name)?.if, name).toBe(
+        plannedIf,
+      );
+    expect(jobs['fast-checks-shard'].if).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ needs.fast-checks-plan.outputs.legacy == 'false' }}",
+    );
+
     // Downstream consumers still name the required check's id.
     expect(jobs['full-regression'].needs).toEqual(['classify', 'fast-checks']);
 

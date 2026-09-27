@@ -1554,6 +1554,11 @@ slice of that plan; a skipped or cancelled part, a missing receipt, or a
 receipt for another plan or head fails it. A deferred selection (the
 selector's exit 3) is reported and passes, as it does in unsharded `ci:fast`.
 Local `npm run ci:fast` and fork-smoke still run the whole lane unsharded.
+Transitionally, a pull request branched before the sharded lane (no
+`scripts/fast-checks-shard.mjs`) runs its whole unsharded `ci:fast` in
+`fast-checks-plan` instead, its shards skip, and `fast-checks` requires that
+job and `fast-checks-statics`; its statics therefore run twice. That path is
+removed once open pull requests have merged `main`.
 
 The required `fast-checks` check covers critical browser smoke before merge,
 through `fast-checks-statics`.

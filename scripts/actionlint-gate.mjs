@@ -40,8 +40,10 @@ import { load } from 'js-yaml';
 import {
   collectRequiredBrowserSmokeFindings,
   FAST_CHECKS_AGGREGATE_RUN,
+  FAST_CHECKS_LEGACY_DETECT_RUN,
   FAST_CHECKS_PART_RESULTS_RUN,
   FAST_CHECKS_PLAN_RUN,
+  FAST_CHECKS_SHARD_IF,
   FAST_CHECKS_SHARD_RUN,
   FAST_CHECKS_SLICE_RUN,
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
@@ -2249,23 +2251,40 @@ function fastChecksShardingFindings(file, jobs) {
       plan,
       ['actions/checkout@', 'actions/setup-node@', 'actions/upload-artifact@'],
       [
+        // TRANSITIONAL (#2709): detection plus the legacy candidate's own
+        // unsharded lane, the same commands fast-checks-statics runs.
+        {
+          name: 'Detect a candidate without the sharded lane',
+          run: FAST_CHECKS_LEGACY_DETECT_RUN,
+        },
+        {
+          name: 'Install pinned actionlint',
+          run: PINNED_ACTIONLINT_PROVISION_RUN,
+        },
         { name: undefined, run: 'npm run dependencies:ci' },
+        CHANGED_SET_CHROMIUM_STEP,
+        { name: 'Run legacy unsharded ci:fast', run: 'npm run ci:fast' },
         { name: 'Plan the affected-test selection', run: FAST_CHECKS_PLAN_RUN },
       ],
     );
+    if (!hasPinnedActionlintProvision(plan, 'Run legacy unsharded ci:fast'))
+      finding(
+        FAST_CHECKS_PLAN_JOB,
+        'fast-checks-plan must provision pinned and checksummed actionlint before its legacy ci:fast',
+      );
   }
   const shard = jobs[FAST_CHECKS_SHARD_JOB];
   if (shard) {
     const needs = typeof shard.needs === 'string' ? [shard.needs] : shard.needs;
     if (
-      shard.if !== undefined ||
+      shard.if !== FAST_CHECKS_SHARD_IF ||
       !Array.isArray(needs) ||
       needs.length !== 1 ||
       needs[0] !== FAST_CHECKS_PLAN_JOB
     )
       finding(
         FAST_CHECKS_SHARD_JOB,
-        'ci.yml fast-checks-shard must be admitted only by a successful fast-checks-plan (needs: fast-checks-plan, no if)',
+        'ci.yml fast-checks-shard must be admitted only by a successful, non-legacy fast-checks-plan',
       );
     isolated(
       FAST_CHECKS_SHARD_JOB,
