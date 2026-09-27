@@ -138,10 +138,13 @@ permissions and dependencies, and submit the resulting approval:
 station plugin install "$PWD"
 ```
 
-The CLI permits a local path only for an active local or loopback target. A
-remote target requires a Git URL; a shared filesystem path does not bypass that
-rule. Configure the selected Station and its credential through the CLI's
-normal connection flow.
+The CLI permits a local path only when its resolver selects `active-local`
+(the automatically discovered local instance) or the default `loopback`
+fallback. This tests resolution provenance, not the URL's hostname: even an
+explicit `--api-base` loopback URL or a saved localhost Station has a different
+source and is refused for local directories. Other target sources require a
+Git URL; a shared filesystem path does not bypass the rule. Configure the
+selected Station and its credential through the CLI's normal connection flow.
 
 The HTTP flow uses authenticated `POST /api/plugins/preview`, followed by
 `POST /api/plugins/install` carrying the reviewed permissions, content digest,
@@ -235,7 +238,10 @@ station plugin install .
 
 Local paths are resolved from the directory where Station was invoked. Use
 `./hello-pane` from its parent or bare `.` from inside the plugin directory,
-with an active-local or loopback target. Use a Git URL for a remote target.
+with automatically resolved `active-local` or default `loopback` provenance.
+An explicit API-base flag or saved Station selection requires a Git URL even
+when its URL is local. This is the CLI's source-selection rule, separate from
+the authenticated server API's source and filesystem admission.
 
 If you are working from a Station checkout and want to test the repository's
 registry fixture too, point its source launcher at the bundled local manifest:

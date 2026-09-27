@@ -623,11 +623,17 @@ searched; hosted Task reads are restricted until a tenant-owned Task store is
 composed. Files, receipts, external projections and arbitrary plugin sources
 are not supported by this initial runtime composition.
 
-React Query wrappers. Use these instead of raw `useQuery` — they handle cache keys, stale times, and API base resolution automatically.
+These React Query wrappers define operation-specific keys and freshness policy.
+Many legacy readers resolve an ambient API base; protected readers require an
+explicit captured scope. The generic wrapper does not add authority, validate a
+response, or partition an arbitrary caller-supplied key. Follow each operation's
+scope contract rather than assuming every SDK query is interchangeable.
 
 ### `useAgentsQuery(config?)`
 
-Fetches all agents. Cache key: `['agents']`.
+Reads the Agent catalog under `['agents']`. `data` projects its Agent array;
+`catalogState` and `catalogAsOf` retain whether it is a current or older
+observation. A displayed cached row is not by itself current launch admission.
 
 ### `useAgentToolsQuery(agentSlug: string | undefined, config?)`
 
@@ -889,7 +895,10 @@ Fetches the namespace's `KnowledgeDocumentMeta[]` matching `filters`, such as
 
 ### `useKnowledgeScanMutation(projectSlug)`
 
-Triggers a directory scan to ingest documents into the knowledge base.
+Requests the directory scan with optional extensions/include/exclude patterns
+and invalidates document/status queries. A completed file-store scan is not
+proof that every root is indexed for semantic search; indexing has separate
+owners described in the [Knowledge guide](../guides/knowledge.md).
 
 ### `useKnowledgeSaveMutation(projectSlug, namespace?)`
 
@@ -903,17 +912,26 @@ Deletes a single knowledge document.
 
 Bulk-deletes knowledge documents.
 
-### `useGitStatusQuery(workingDirectory, config?)`
+### `useGitStatusQuery(location, config?)`
 
-Fetches git status for a working directory. Disabled when `workingDirectory` is null/undefined.
+Accepts `{ projectSlug, workingDir }`, not a bare path. Disabled unless both
+fields are nonempty. The request carries both to `/api/coding/git/status`;
+the server owns Project/path admission. A response with `success: false`
+currently becomes `null`, so that value is not proof of a clean repository.
 
-### `useGitLogQuery(workingDirectory, count?, config?)`
+### `useGitLogQuery(location, count?, config?)`
 
-Fetches git log for a working directory. Default count: 5. Disabled when `workingDirectory` is null/undefined.
+Accepts the same `{ projectSlug, workingDir }` location. Default count: 5;
+disabled unless both fields are nonempty. A `success: false` envelope currently
+becomes `[]`, which does not establish an empty repository history.
 
-### `useAcpCommandsQuery(agentSlug, config?)`
+### `useProviderCommandsQuery(provider, config?)`
 
-Fetches ACP slash commands for an ACP-backed agent. Disabled when `agentSlug` is null/undefined.
+Reads `/api/orchestration/providers/:provider/commands`; disabled for a missing
+provider. Station's slash-command caller selects `'acp'` after checking the
+Agent catalog's `engineConnectionType`. This is provider-level command data,
+not an Agent-specific durable catalog. The previously documented
+`useAcpCommandsQuery` is not a current SDK export.
 
 ### `useAgentInvokeMutation(agentSlug: string)`
 
@@ -943,22 +961,32 @@ Shared query-factory entry for agent conversation lists. Use this when a feature
 
 ### `useApiQuery<T>(queryKey, queryFn, config?)`
 
-Generic query hook for custom API calls.
+Generic query hook for a caller-owned async function. It passes an AbortSignal;
+the function must use it and handle HTTP status, response validation and
+authority. The following host-supplied reader must already implement those
+checks for the captured `requestScope`:
 
 ```tsx
-const { data } = useApiQuery(['my-key'], () => fetch('/api/custom').then(r => r.json()));
+const { data } = useApiQuery(
+  ['my-data', requestScope.apiBase, requestScope.authorityKey],
+  (signal) => readCustomData(requestScope, signal),
+);
 ```
 
 ### `useApiMutation<TData, TVariables>(mutationFn, options?)`
 
 Mutation hook with optional cache invalidation on success.
 
+It does not turn a raw `fetch` callback into an authenticated, validated or
+exactly-once operation. Here `saveCustomData` is a host-owned writer that
+captures its destination and validates the response; it is not an SDK export.
+
 If the success callback throws after the request completes, the caller receives
 that error and the configured caches are still invalidated.
 
 ```tsx
 const mutation = useApiMutation(
-  (vars) => fetch('/api/save', { method: 'POST', body: JSON.stringify(vars) }).then(r => r.json()),
+  (vars: { name: string }) => saveCustomData(requestScope, vars),
   { invalidateKeys: [['agents']] }
 );
 mutation.mutate({ name: 'new-agent' });
@@ -1638,11 +1666,13 @@ mutate({ pluginName: 'my-plugin', disabled: ['auth'] });
 
 ### `usePluginRegistryInstallMutation()`
 
-Installs or uninstalls a plugin from the registry.
+Requests installation or removal of a registry plugin. Installation of
+lifecycle-bearing code requires the reviewed preview consent and any conflict
+skip decisions; the mutation does not create approval on the caller's behalf.
 
 ```tsx
 const { mutate } = usePluginRegistryInstallMutation();
-mutate({ id: 'my-plugin', action: 'install' });
+mutate({ id: 'my-plugin', action: 'install', consent: reviewedConsent, skip: reviewedSkips });
 ```
 
 ### `useReloadPluginsMutation()`
@@ -1651,7 +1681,11 @@ Triggers `/api/plugins/reload` and invalidates plugin, layout, agent, and projec
 
 ### `waitForAgentHealth(slug, options?)`
 
-Imperative helper for polling agent readiness during post-install bootstrap flows.
+Polls the Agent health read, defaulting to 15 attempts separated by 2,000ms.
+Returns the first `healthy` response or `null` after exhausted attempts,
+swallowing individual request errors. There is no enclosing deadline or abort
+option, so the spacing alone does not establish a 30-second completion bound.
+This is a runtime health observation, not proof of a provider-backed turn.
 
 ---
 
@@ -1723,10 +1757,15 @@ Full-viewport loading screen with rotating phrases.
 <FullScreenLoader
   message="Loading..."       // static message; overrides phrases if set
   phrases={['Loading...']}   // rotating phrases (default: built-in list)
-  interval={3000}            // ms between phrase changes, default: 3000
+  interval={2500}            // ms between phrase changes, default: 2500
   showLogo={true}            // show /favicon.png, default: true
 />
 ```
+
+Additional props include `tipMessages`, `label`, `action` and optional
+`progress` (a measured fraction from 0 to 1). Without `progress`, the bar is
+indeterminate. `action` is host-supplied UI, such as a recovery button; the
+component does not perform recovery itself.
 
 ### `AutoSelectModal`
 
@@ -1773,19 +1812,34 @@ Keyboard: `↑`/`↓` to navigate, `Enter` to select, `Escape` to close.
 
 ### `ActionButton`
 
-Button with icon and label for layout action bars.
+Button/link for a layout action. It reads the SDK navigation context: `external`
+opens the supplied URL, `internal` calls `navigate`, and `prompt` or
+`inline-prompt` calls the supplied `onLaunch`. Rendering it does not dispatch
+an Agent turn without that host callback.
 
 ### `AuthStatusBadge`
 
-Displays the current authentication status as a colored badge.
+Reads `useAuth()` and displays that provider's status, with a confirmation UI
+for its `renew` callback. It renders nothing while loading or when the provider
+is missing/`none`. This is the configured provider's auth status, not a Device
+grant, account session or Project-membership verdict.
 
 ### `FullScreenError`
 
-Full-viewport error display with message and optional retry action.
+Full-viewport error display with optional `description`, diagnostic `detail`
+and retry action. An explicit `actions` array replaces the `onRetry` and
+`secondaryAction` pair. The host owns those effects and must supply safe display
+text; the component does not redact diagnostics or retry on its own.
 
 ### `LayoutHeader`
 
-Standard header component for layout plugins with title, tabs, and actions.
+Header for legacy layout tabs and actions. Supply `title` and `description`,
+the relevant tab/action callbacks and the SDK navigation/auth contexts. Set
+`canLaunchPrompts={false}` when the host cannot launch prompts; it hides prompt
+actions while retaining internal/external links. Omitting that flag preserves
+the older behavior and can leave prompt controls without a useful callback.
+The retained `layoutPrompts` prop is a header input, not the current layout
+manifest's field name (`skills`).
 
 ---
 
@@ -1793,7 +1847,9 @@ Standard header component for layout plugins with title, tabs, and actions.
 
 ### `SDKProvider`
 
-Injects the SDK context into a plugin tree. Used by the runtime — plugins don't call this directly.
+Injects an explicitly supplied SDK context into a plugin tree. Station supplies
+it through its plugin boundary; custom hosts and isolated tests can mount it
+themselves. It forwards the value without populating missing optional slots.
 
 ```tsx
 <SDKProvider value={sdkContextValue}>
@@ -1814,7 +1870,11 @@ publish ambient plugin identity or infer Agent identity from a Layout slug.
 
 ### `LayoutNavigationProvider`
 
-Manages per-tab URL hash state for layout plugins with multiple tabs. Persists state to `sessionStorage` and restores it on tab switch.
+Stores per-tab strings in browser `sessionStorage` under
+`layout-<layoutSlug>-tab-<tabId>` and updates the page hash for the active tab.
+Use a stable, distinct layout identity. Stored state may be restored on mount
+when the hash is empty, and on tab switches. This is browser UI state, not
+durable Project state; storage failures are not caught here.
 
 ```tsx
 <LayoutNavigationProvider layoutSlug="my-layout" activeTabId={activeTab}>
@@ -1833,6 +1893,10 @@ type LayoutNavigationExcerpt = {
   clearTabState: (tabId: string) => void;
 }
 ```
+
+`clearTabState` currently removes storage for an inactive tab, but clears only
+the URL hash for the active tab. It is not a reliable way to erase that active
+tab's saved string; a later restoration can read it again.
 
 ---
 
@@ -1860,13 +1924,17 @@ arbitrary ID is not evidence of plugin ownership.
 
 ## Voice
 
-Registries and interfaces for STT/TTS providers. Providers register themselves on import; the app subscribes to registry changes.
+Registries and interfaces for client-side STT/TTS provider objects. Registration
+is explicit; Station's built-in provider module calls it during import and
+`VoiceProviderContext` subscribes to registry changes. Registering a browser
+object is not server-side provider registration, credential configuration or
+proof that microphone/playback works.
 
 ### `voiceRegistry`
 
 ```text
-voiceRegistry.registerSTT(provider: STTProvider): void
-voiceRegistry.registerTTS(provider: TTSProvider): void
+voiceRegistry.registerSTT(provider: STTProvider): () => void
+voiceRegistry.registerTTS(provider: TTSProvider): () => void
 voiceRegistry.unregisterSTT(id: string): void
 voiceRegistry.unregisterTTS(id: string): void
 voiceRegistry.getAvailableSTT(): STTProvider[]
@@ -1875,6 +1943,13 @@ voiceRegistry.getSTT(id: string): STTProvider | undefined
 voiceRegistry.getTTS(id: string): TTSProvider | undefined
 voiceRegistry.subscribe(fn: () => void): () => void  // useSyncExternalStore-compatible
 ```
+
+Retain the returned disposer: it is idempotent and removes the entry only while
+that exact provider object still owns the ID. Direct `unregisterSTT/TTS(id)`
+removes the current entry by ID. Duplicate IDs replace the old provider; this
+older registry does not restore a previous provider when the replacement is
+removed. `getAvailableSTT/TTS` returns registered entries without filtering
+`isSupported`.
 
 ### `STTProvider` interface
 
@@ -1937,7 +2012,11 @@ interface ConversationalOptions {
 
 ### `ProviderCapability`
 
-Shape returned by `GET /api/system/capabilities` for each provider.
+Shape used in the voice lists returned by `GET /api/system/capabilities`.
+`configured` is the server's capability observation, not a successful live
+provider probe. Station can register configured server entries as display
+stubs whose methods warn that a plugin bundle is still needed; presence in the
+registry alone does not establish a working provider.
 
 ```ts
 interface ProviderCapability {
@@ -2031,8 +2110,10 @@ remove the current winner. `getAll()` returns the visible adapters and
 Construct a manager with a registry, select an adapter ID, then drive its
 lifecycle with `start`, `stop`, `toggle`, `interrupt`, `reconnect`,
 `updateContext`, `sendText`, and `sendAudio`. `sendAudio` accepts
-`{ audio: Uint8Array }`; the adapter serializes it against lifecycle work and
-never projects audio bytes into snapshots, results, events, or telemetry.
+`{ audio: Uint8Array }`; the manager serializes optional operations with its
+lifecycle work. The adapter contract forbids projecting those bytes into
+snapshots/results. Custom adapters must honor that contract: the manager is
+not a sanitizer for arbitrary extra fields or telemetry emitted by adapters.
 
 ```ts
 const manager = new VoiceSessionManager(voiceSessionAdapterRegistry);
@@ -2060,8 +2141,11 @@ selection independently.
 Every lifecycle call returns `VoiceSessionOperationResult`. Successful results
 contain a snapshot. Failure results contain `VoiceSessionError` with one of
 `unavailable`, `unsupported`, `unconfigured`, `rate-limited`, or
-`operation-failed`. Provider causes are not part of the public contract. No selected live adapter
-returns `unavailable`; requesting an optional operation that the active adapter
+`operation-failed`. `VoiceSessionError` also declares an optional `cause`;
+the manager replaces thrown failures with a generic error, but it does not
+sanitize an adapter's returned error object. Adapters must keep sensitive
+provider details out of public errors. With no selected live adapter, an
+operation returns `unavailable`; requesting an optional operation that the active adapter
 did not declare and implement returns `unsupported`.
 
 `dispose()` is terminal and asynchronous. It coalesces concurrent disposal,
@@ -2125,27 +2209,40 @@ const report = await runVoiceSessionAdapterConformance({
 if (!report.ok) throw new Error(report.violations[0]?.message);
 ```
 
-The report includes the immutable snapshots observed and typed violations for
+The report includes the snapshots observed and typed violations for
 capability-method mismatches, identity preservation, required lifecycle
 states, snapshot immutability, and monotonic revisions. These helpers have no
-UI or server requirement.
+UI or server requirement when used with synthetic adapters. They invoke the
+adapter's enabled operations; passing a real adapter can therefore have real
+effects. Passing conformance establishes only the exercised contract checks,
+not microphone permission, audio quality, provider health or safe data handling.
 
 ---
 
 ## Context Registry
 
-For plugins that contribute ambient message context (e.g. timezone, location).
+For providers that contribute ambient message context, such as timezone or
+location. Station's `MessageContextContext` subscribes to registry membership
+and toggle changes; the chat send/drain callers explicitly request composed
+context. Importing the SDK does not attach context to every API call.
 
 ### `contextRegistry`
 
 ```text
 contextRegistry.register(provider: MessageContextProvider): void
 contextRegistry.unregister(id: string): void
+contextRegistry.toggle(id: string): void
 contextRegistry.getAll(): MessageContextProvider[]
 contextRegistry.get(id: string): MessageContextProvider | undefined
 contextRegistry.getComposedContext(): string | null  // all enabled providers joined by \n
 contextRegistry.subscribe(fn: () => void): () => void
 ```
+
+Registration replaces the entry for an existing ID; unregister removes the
+current entry by ID. Composition calls each enabled provider's `getContext`
+and joins nonempty strings. It does not catch a provider exception or subscribe
+to each provider's own change stream. Providers should return bounded,
+appropriate context and avoid secrets that should not enter an Agent prompt.
 
 ### `MessageContextProvider` interface
 
@@ -2173,31 +2270,46 @@ interface ContextCapability {
 
 ## Layout Providers
 
-Plugin-defined data providers scoped to a layout (e.g. a CRM data source).
+Browser data-provider factories scoped to a layout, for example a CRM data
+source. These SDK functions delegate to host-injected functions. The default
+`SDKAdapter` installs the core registry functions in an effect; a custom host
+must arrange that binding before registration/access. They do not register a
+server provider, grant permissions, or persist configuration.
 
 ### `registerProvider(id, metadata, factory)`
 
-Registers a provider. Called by layout plugins on load.
+Registers a factory under its layout/type/ID. `layout: '*'` is a global
+fallback. Registration alone does not select or instantiate it.
 
 ```ts
 registerProvider('my-crm', { layout: 'sales', type: 'crm' }, () => new MyCRMProvider());
+configureProvider('sales', 'crm', 'my-crm');
+const crm = getProvider<MyCRMProvider>('sales', 'crm');
 ```
 
 ### `getProvider<T>(layout, type): T`
 
-Returns the active provider instance for a layout/type pair.
+Resolves the configured ID, checking the named layout before `'*'`, invokes
+its factory once and caches the instance. Throws when the host binding,
+configuration or registered factory is missing.
 
 ### `hasProvider(layout, type): boolean`
 
-Returns `true` if a provider is configured for the layout/type.
+Returns `true` when a configured ID has a registered factory. It does not call
+the factory or check external service health; it returns `false` before host
+function injection.
 
 ### `getActiveProviderId(layout, type): string | null`
 
-Returns the ID of the active provider.
+Returns the instantiated cached provider's ID. It remains `null` after mere
+configuration until `getProvider` successfully creates the instance.
 
 ### `configureProvider(layout, type, providerId)`
 
-Sets the active provider for a layout/type (used by plugins to set defaults).
+Sets the in-memory configured ID and drops the cached instance for this pair.
+It neither invokes disposal on that instance nor validates the new ID eagerly.
+The registry has no persistence or ownership-scoped unregister API; host/plugin
+lifecycle code must account for those limits.
 
 ### `ProviderMetadata`
 
@@ -2214,15 +2326,20 @@ interface ProviderMetadata {
 
 ### `NotificationsAPI`
 
-Full REST client for programmatic notification access (outside React components).
+Imperative REST wrapper with `schedule`, `list`, `dismiss`, `action`, `snooze`,
+`clearAll` and `clearActivity`. There is no `create` method. It uses the supplied
+base URL and optional constructor bearer token with `fetch`; it does not
+capture Station's selected-connection/native transport authority for the caller.
+Use it only with a host-owned transport/authentication arrangement appropriate
+to that endpoint. Request admission and delivery remain server responsibilities.
 
 ```ts
 import { NotificationsAPI } from '@kontourai/station-sdk';
 
 const api = new NotificationsAPI(apiBase);
-await api.create({ category: 'build', title: 'Build complete', priority: 'normal' });
+await api.schedule({ category: 'build', title: 'Build complete', priority: 'normal' });
 await api.dismiss(notificationId);
-const notifications = await api.list({ status: 'pending' });
+const notifications = await api.list({ status: ['pending'] });
 ```
 
 ---
@@ -2340,11 +2457,15 @@ agentQueries.stats(agentSlug, conversationId)        // GET /agents/:slug/conver
 
 ### `knowledgeQueries`
 
-Query factory for knowledge operations.
+Query factory for file-store Knowledge operations. The namespace selects a
+route segment; it is not merely a client-side filter. The underlying API helper
+uses `/knowledge/ns/:namespace` when supplied and the unqualified `/knowledge`
+base otherwise. Search results remain dependent on current indexing/adapter
+availability; these factories do not perform indexing.
 
 ```text
-knowledgeQueries.list(projectSlug, namespace?)       // GET /api/projects/:slug/knowledge
-knowledgeQueries.search(projectSlug, query, ns?)     // POST /api/projects/:slug/knowledge/search
+knowledgeQueries.list(projectSlug, namespace?)       // GET /api/projects/:slug/knowledge[/ns/:namespace]
+knowledgeQueries.search(projectSlug, query, ns?, topK?) // POST to the selected base + /search
 knowledgeQueries.namespaces(projectSlug)             // GET /api/projects/:slug/knowledge/namespaces
 ```
 
