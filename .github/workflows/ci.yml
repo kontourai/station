@@ -190,12 +190,17 @@ jobs:
   fast-checks-shard:
     name: fast-checks shard ${{ matrix.shard }}
     needs: fast-checks-plan
-    # An `if` without a status function keeps the implicit success(): a
-    # shard runs only when the plan job succeeded (which it can only do under
-    # that job's admission guard) AND planned. A legacy candidate (#2709,
-    # transitional) skips the shards; anywhere else a skipped shard fails the
-    # aggregator.
-    if: ${{ needs.fast-checks-plan.outputs.legacy == 'false' }}
+    # The status function is load-bearing (#2709 re-land). Without one,
+    # GitHub prefixes success(), which is false when ANY ancestor did not
+    # succeed -- and `classify` is skipped on every pull_request_target, so
+    # #2797's shards were skipped on every same-repository pull request while
+    # the plan succeeded (run 36308041839). The condition therefore names the
+    # plan's own result: a shard runs only when the plan succeeded (which it
+    # can only do under that job's admission guard) AND planned. A legacy
+    # candidate (transitional) skips the shards; anywhere else a skipped shard
+    # fails the aggregator. ci-fast-checks-job-graph.test.ts evaluates this
+    # under GitHub's job-status semantics for every event.
+    if: ${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' }}
     permissions:
       contents: read
     concurrency:

@@ -2413,6 +2413,24 @@ function primaryCiRouterFindings(file, document) {
   }
 
   findings.push(...ciCredentialFindings(file, jobs));
+  // #2709 re-land: a job with `needs` and no status function in its `if`
+  // gets an implicit success(), which ANY skipped ancestor makes false.
+  // `classify` is skipped on every pull_request_target, so such a job is
+  // silently skipped on every pull request (#2797's shards were).
+  for (const [jobId, job] of Object.entries(jobs)) {
+    const needs = typeof job?.needs === 'string' ? [job.needs] : job?.needs;
+    if (
+      Array.isArray(needs) &&
+      needs.length > 0 &&
+      !/\b(?:success|always|failure|cancelled)\s*\(/.test(String(job?.if ?? ''))
+    )
+      findings.push({
+        file,
+        jobId,
+        message:
+          'ci.yml jobs with needs must name a status function in their if, or a skipped ancestor silently skips them',
+      });
+  }
 
   // #2709: the old single fast-checks job is now fast-checks-statics; the
   // required `fast-checks` id belongs to the aggregator checked below.

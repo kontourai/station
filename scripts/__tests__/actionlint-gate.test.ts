@@ -1874,6 +1874,23 @@ describe('persistent runner policy', () => {
       'ci.yml fast-checks-shard must be admitted only by a successful, non-legacy fast-checks-plan',
     ],
     [
+      "#2797's shard condition, which a skipped classify silently skips",
+      'fast-checks-shard',
+      (job: Record<string, unknown>) => {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        job.if = "${{ needs.fast-checks-plan.outputs.legacy == 'false' }}";
+      },
+      'ci.yml jobs with needs must name a status function in their if, or a skipped ancestor silently skips them',
+    ],
+    [
+      'a downstream job with needs and no if',
+      'full-regression',
+      (job: Record<string, unknown>) => {
+        delete job.if;
+      },
+      'ci.yml jobs with needs must name a status function in their if, or a skipped ancestor silently skips them',
+    ],
+    [
       'a shard that needs a different job',
       'fast-checks-shard',
       (job: Record<string, unknown>) => {

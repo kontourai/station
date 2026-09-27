@@ -475,9 +475,16 @@ export const FAST_CHECKS_LEGACY_STEP_IF =
 export const FAST_CHECKS_PLANNED_STEP_IF =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
   "${{ steps.mode.outputs.legacy == 'false' }}";
+/**
+ * The shard admission. It must carry a status function: without one GitHub
+ * prefixes success(), which a skipped `classify` (every pull_request_target)
+ * makes false even when the plan succeeded -- #2797's shards were skipped on
+ * every same-repository pull request that way. So it names the plan's own
+ * result instead of inheriting success() over every ancestor.
+ */
 export const FAST_CHECKS_SHARD_IF =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-  "${{ needs.fast-checks-plan.outputs.legacy == 'false' }}";
+  "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' }}";
 export const FAST_CHECKS_AGGREGATE_STEP_IF =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
   "${{ needs.fast-checks-plan.outputs.legacy != 'true' }}";
