@@ -70,7 +70,7 @@ describe('station-control tool classification', () => {
       ...SC_READ_ONLY_TOOLS,
       'station-control_notify_user',
     ]);
-    // Skill listing is a read, so it never raises an approval prompt.
+    // Skill listing is a read, so it stays on the auto-approved list.
     expect(SC_AUTO_APPROVED_TOOLS).toContain('station-control_list_skills');
     // Spot-check the contract: CRUD/install/dispatch are mutating. Most
     // list/get/navigate/status tools are read-only; delegation discovery is

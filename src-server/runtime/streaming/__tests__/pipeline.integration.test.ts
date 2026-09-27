@@ -110,7 +110,7 @@ describe('StreamPipeline Integration', () => {
     const joined = (type: string) =>
       result
         .filter((chunk) => chunk.type === type)
-        .map((chunk) => (chunk as unknown as { text: string }).text)
+        .map((chunk) => chunk.text)
         .join('');
     expect(joined('text-delta')).toBe('Start middle end');
     expect(joined('reasoning-delta')).toBe('plan');

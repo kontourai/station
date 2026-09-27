@@ -49,14 +49,15 @@ export function createStationFrameworkConduitAdapter(
     framework === 'strands'
       ? createStrandsAdapter(bridge)
       : createVoltAgentAdapter(bridge);
-  const capabilities = stationFrameworkCapabilities;
 
   return Object.freeze({
     id: `station-${framework}`,
-    capabilities: () => capabilities,
+    capabilities: () => stationFrameworkCapabilities,
     install: (assets: readonly PortableAsset[]) => host.install(assets),
     project: async (event: LifecycleEvent, outcome: LifecycleOutcome) => {
-      if (capabilities.lifecycle[event.phase] === 'unavailable') {
+      if (
+        stationFrameworkCapabilities.lifecycle[event.phase] === 'unavailable'
+      ) {
         return Object.freeze({
           decision: 'observe',
           reason: `Station IAgentHooks does not expose ${event.phase}`,

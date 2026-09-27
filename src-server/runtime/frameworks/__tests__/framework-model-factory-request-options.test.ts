@@ -70,7 +70,7 @@ describe('the fetch buildAiSdkLanguageModel hands the provider', () => {
   function providerFetch(
     requestBodyDefaults: Record<string, unknown> | undefined,
     type: keyof typeof providers = 'openai-compat',
-  ): typeof fetch {
+  ): typeof fetch | undefined {
     buildAiSdkLanguageModel({
       type,
       modelId: 'm',
@@ -80,7 +80,7 @@ describe('the fetch buildAiSdkLanguageModel hands the provider', () => {
     const [options] = providers[type].mock.calls.at(-1) as unknown as [
       { fetch?: typeof fetch },
     ];
-    return options.fetch as typeof fetch;
+    return options.fetch;
   }
 
   beforeEach(() => {
@@ -109,7 +109,7 @@ describe('the fetch buildAiSdkLanguageModel hands the provider', () => {
   );
 
   test('injects an absent key into an OpenAI-wire completion body', async () => {
-    const wrapped = providerFetch({ reasoning_effort: 'low' });
+    const wrapped = providerFetch({ reasoning_effort: 'low' })!;
     await wrapped('http://127.0.0.1:8317/v1/chat/completions', {
       method: 'POST',
       body: JSON.stringify({ model: 'claude-haiku', messages: [] }),
@@ -125,7 +125,7 @@ describe('the fetch buildAiSdkLanguageModel hands the provider', () => {
   // prototype-member-named defaults stay injectable — pin it, or a revert
   // to `key in merged` silently loses this property.
   test('injects a default named after a prototype member', async () => {
-    const wrapped = providerFetch({ toString: 'x-marker' });
+    const wrapped = providerFetch({ toString: 'x-marker' })!;
     await wrapped('http://host/v1/chat/completions', {
       method: 'POST',
       body: JSON.stringify({ model: 'm' }),
@@ -134,7 +134,7 @@ describe('the fetch buildAiSdkLanguageModel hands the provider', () => {
   });
 
   test('never overrides a key the request already carries', async () => {
-    const wrapped = providerFetch({ reasoning_effort: 'low' });
+    const wrapped = providerFetch({ reasoning_effort: 'low' })!;
     const body = JSON.stringify({ model: 'm', reasoning_effort: 'high' });
     await wrapped('http://host/v1/chat/completions', {
       method: 'POST',
@@ -150,7 +150,7 @@ describe('the fetch buildAiSdkLanguageModel hands the provider', () => {
 
   test('applies to the Anthropic and Google completion wires', async () => {
     const thinking = { thinking: { type: 'enabled', budget_tokens: 2000 } };
-    await providerFetch(thinking, 'anthropic')(
+    await providerFetch(thinking, 'anthropic')!(
       'https://api.anthropic.com/v1/messages',
       {
         method: 'POST',
@@ -160,7 +160,7 @@ describe('the fetch buildAiSdkLanguageModel hands the provider', () => {
     expect(sentBody()).toMatchObject({
       thinking: { type: 'enabled', budget_tokens: 2000 },
     });
-    await providerFetch(thinking, 'google')(
+    await providerFetch(thinking, 'google')!(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini:streamGenerateContent?alt=sse',
       { method: 'POST', body: JSON.stringify({}) },
     );
@@ -174,7 +174,7 @@ describe('the fetch buildAiSdkLanguageModel hands the provider', () => {
   // the wrapper doesn't own). If an SDK bump makes this fail, extend the
   // wrapper for Request inputs instead of loosening the test.
   test('Request-object inputs pass through unmodified (calling-convention pin)', async () => {
-    const wrapped = providerFetch({ reasoning_effort: 'low' });
+    const wrapped = providerFetch({ reasoning_effort: 'low' })!;
     const request = new Request('http://host/v1/chat/completions', {
       method: 'POST',
       body: JSON.stringify({ model: 'm' }),
@@ -202,7 +202,7 @@ describe('the fetch buildAiSdkLanguageModel hands the provider', () => {
       'not-json',
     ],
   ])('passes %s through unmodified', async (_label, url, method, body) => {
-    const wrapped = providerFetch({ reasoning_effort: 'low' });
+    const wrapped = providerFetch({ reasoning_effort: 'low' })!;
     const init: RequestInit = { method, ...(body ? { body } : {}) };
     await wrapped(url, init);
     const [, forwardedInit] = upstream.mock.calls.at(-1) as unknown as [

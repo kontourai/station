@@ -11,8 +11,7 @@ async function runTextBlock(deltas: string[]) {
       toStream([
         { type: 'text-start', id: '0' } as StreamChunk,
         ...deltas.map(
-          (text) =>
-            ({ type: 'text-delta', id: '0', text }) as unknown as StreamChunk,
+          (text) => ({ type: 'text-delta', id: '0', text }) as StreamChunk,
         ),
         { type: 'text-end', id: '0' } as StreamChunk,
       ]),
@@ -21,7 +20,7 @@ async function runTextBlock(deltas: string[]) {
   const joined = (type: string) =>
     result
       .filter((chunk) => chunk.type === type)
-      .map((chunk) => (chunk as unknown as { text: string }).text)
+      .map((chunk) => chunk.text)
       .join('');
   return {
     result,
