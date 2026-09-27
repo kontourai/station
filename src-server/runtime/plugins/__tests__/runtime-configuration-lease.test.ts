@@ -1,6 +1,7 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   captureRuntimeConfigurationLease,
+  RuntimeConfigurationConflictError,
   requireStableRuntimeConfigurationAcross,
 } from '../runtime-configuration-lease.js';
 
@@ -8,18 +9,20 @@ function createRevisionSource() {
   let agentRevision = 2;
   let providerRevision = 3;
   let appRevision = 4;
+  const commitAgentConfigurationRead = vi.fn(
+    async <T>(expectedRevision: number, operation: () => Promise<T>) => {
+      // Distinct from the lease's own conflict error, so a rejection that
+      // reaches the commit cannot pass for one the lease raised itself.
+      if (agentRevision !== expectedRevision) {
+        throw new Error('fixture commit refused a stale revision');
+      }
+      return operation();
+    },
+  );
   return {
     source: {
       getAgentConfigurationRevision: () => agentRevision,
-      commitAgentConfigurationRead: async <T>(
-        expectedRevision: number,
-        operation: () => Promise<T>,
-      ) => {
-        if (agentRevision !== expectedRevision) {
-          throw new Error('configuration changed during the request');
-        }
-        return operation();
-      },
+      commitAgentConfigurationRead,
       providerService: { getLaunchabilityRevision: () => providerRevision },
       configLoader: { getLaunchabilityRevision: () => appRevision },
     },
@@ -49,10 +52,13 @@ describe('runtime configuration lease', () => {
     const { source, setAgentRevision } = createRevisionSource();
     const lease = captureRuntimeConfigurationLease(source);
     setAgentRevision(6);
+    const operation = vi.fn(async () => {});
 
     await expect(
-      requireStableRuntimeConfigurationAcross(source, lease, async () => {}),
-    ).rejects.toThrow('configuration changed during the request');
+      requireStableRuntimeConfigurationAcross(source, lease, operation),
+    ).rejects.toBeInstanceOf(RuntimeConfigurationConflictError);
+    expect(source.commitAgentConfigurationRead).not.toHaveBeenCalled();
+    expect(operation).not.toHaveBeenCalled();
   });
 
   test('rejects a result when a launchability source changes during the operation', async () => {
@@ -64,6 +70,6 @@ describe('runtime configuration lease', () => {
         setProviderRevision(9);
         return 'stale-success';
       }),
-    ).rejects.toThrow('configuration changed during the request');
+    ).rejects.toBeInstanceOf(RuntimeConfigurationConflictError);
   });
 });
