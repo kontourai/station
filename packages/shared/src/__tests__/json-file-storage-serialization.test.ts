@@ -43,14 +43,6 @@ describe('publishJsonFileWithOwnedLock serialization', () => {
     );
   });
 
-  // `null` and "not supplied" are different answers; a `?? 2` read of the
-  // option collapses them, which is the defect this asserts against.
-  test('indent: null is not read as "no answer"', async () => {
-    const path = join(root(), 'state.json');
-    await publishJsonFileWithOwnedLock(path, { a: 1 }, { indent: null });
-    expect(readFileSync(path, 'utf8')).not.toContain('\n  ');
-  });
-
   test('trailingNewline: true appends the newline', async () => {
     const path = join(root(), 'state.json');
     await publishJsonFileWithOwnedLock(

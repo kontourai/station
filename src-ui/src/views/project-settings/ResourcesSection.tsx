@@ -11,7 +11,7 @@ import {
 import { useState } from 'react';
 import { PageSection } from '../../components/PageSection';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
-import { errorText } from '../../utils/errorText';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 /**
  * archive#1502 — the resolution states, rendered
@@ -111,7 +111,7 @@ function PointAtCheckoutForm({
     },
     onError: (error: Error) => {
       setGap(null);
-      setRefusal(errorText(error));
+      setRefusal(userFacingErrorMessage(error));
     },
   });
   // Unique per resource: a multi-repo project renders several of these at once,
@@ -610,7 +610,7 @@ export function ResourcesSection({ slug }: { slug: string }) {
       ) : isError ? (
         <ErrorState
           title="Could not read this project's resources"
-          description={errorText(error)}
+          description={userFacingErrorMessage(error)}
           action={
             <button
               type="button"

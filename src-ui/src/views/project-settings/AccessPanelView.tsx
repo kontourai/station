@@ -15,7 +15,7 @@ import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
-import { errorText } from '../../utils/errorText';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 const roles = ['viewer', 'contributor', 'admin'] as const;
 const roleNames: Record<ProjectMemberRole, string> = {
@@ -117,7 +117,7 @@ export function AccessPanelView({
       } else setNotice('Access updated.');
       setConfirmation(undefined);
     } catch (cause) {
-      setError(errorText(cause));
+      setError(userFacingErrorMessage(cause));
     }
   }
 

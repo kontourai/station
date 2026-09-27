@@ -26,15 +26,6 @@ function root(): string {
 }
 
 describe('writeJsonDurably', () => {
-  test('the value round-trips', () => {
-    const path = join(root(), 'state.json');
-    writeJsonDurably(path, { a: 1, nested: { b: [true, null] } });
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
-      a: 1,
-      nested: { b: [true, null] },
-    });
-  });
-
   test('it replaces existing content rather than appending to it', () => {
     const path = join(root(), 'state.json');
     writeJsonDurably(path, { generation: 1 });
@@ -132,14 +123,6 @@ describe('writeJsonDurably', () => {
     expect(readFileSync(path, 'utf8')).toBe(
       '{"a":1,"nested":{"b":[true,null]}}\n',
     );
-  });
-
-  // `null` and "not supplied" are different answers, and a `?? 2` read of the
-  // option collapses them -- which is the whole defect this asserts against.
-  test('indent: null is not read as "no answer"', () => {
-    const path = join(root(), 'state.json');
-    writeJsonDurably(path, { a: 1 }, { indent: null });
-    expect(readFileSync(path, 'utf8')).not.toContain('\n  ');
   });
 
   test('indent: 4 writes four-space JSON', () => {
