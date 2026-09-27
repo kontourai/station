@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getAgent } from '../client/agents';
-import { parseRetryAfterMs } from '../client/api-error-message';
 import { confirmCheckpointRestore } from '../client/checkpoint-restore';
 import {
   listAgentConversationPage,
@@ -834,7 +833,7 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
     expect(protocol).toBeInstanceOf(SyntaxError);
   });
 
-  it('plugins: a refused collection read keeps Retry-After and details', async () => {
+  it('plugins: a refused collection read keeps its details', async () => {
     const details = { formErrors: ['Slow down.'], fieldErrors: {} };
     vi.mocked(fetch).mockResolvedValue(
       new Response(
@@ -848,39 +847,9 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
 
     await expect(listPlugins(API)).rejects.toMatchObject({
       status: 429,
-      retryAfterMs: 7000,
       details,
     });
   });
-
-  // plugins.ts keeps a temporary copy of the Retry-After rule until it can
-  // import the helper (#2782). Held to the helper's answers, so the copy
-  // cannot drift.
-  it.each([
-    ['7'],
-    [' 7 '],
-    ['0'],
-    [''],
-    ['0x10'],
-    ['1e3'],
-    ['-1'],
-    ['Wed, 21 Oct 2026 07:28:00 GMT'],
-  ])(
-    'plugins: Retry-After %j reads as parseRetryAfterMs does',
-    async (header) => {
-      vi.mocked(fetch).mockResolvedValue(
-        new Response(JSON.stringify({ success: false, error: 'no' }), {
-          status: 429,
-          headers: { 'retry-after': header },
-        }),
-      );
-
-      const error = (await listPlugins(API).catch(
-        (caught: unknown) => caught,
-      )) as { retryAfterMs?: number };
-      expect(error.retryAfterMs).toBe(parseRetryAfterMs(header));
-    },
-  );
 
   // `list_plugins` relays `PluginCollectionHttpError.envelope` whole, so the
   // code has to be ON the envelope, not only on the error.

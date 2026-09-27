@@ -137,13 +137,10 @@ export class PluginCollectionHttpError extends StationHttpError {
   constructor(
     status: number,
     envelope: PluginCollectionFailure,
-    options?: { retryAfterMs?: number; details?: unknown },
+    options?: { details?: unknown },
   ) {
     super(status, envelope.error, {
       ...(envelope.code === undefined ? {} : { code: envelope.code }),
-      ...(options?.retryAfterMs === undefined
-        ? {}
-        : { retryAfterMs: options.retryAfterMs }),
       ...(options?.details === undefined || options.details === null
         ? {}
         : { details: options.details }),
@@ -151,27 +148,6 @@ export class PluginCollectionHttpError extends StationHttpError {
     this.name = 'PluginCollectionHttpError';
     this.envelope = envelope;
   }
-}
-
-/**
- * `Retry-After` in milliseconds, delta-seconds only — the rule
- * `parseRetryAfterMs` in `api-error-message.ts` states (a digit string; the
- * HTTP-date form depends on clock agreement and is ignored).
- *
- * A second copy on purpose, and temporary: this module cannot import the
- * helper yet, because adding an import to it sends every SDK barrel importer
- * into test selection (#2782). When #2782 lands, this module moves onto
- * `envelopeError` (#2708 A-2) and this copy goes.
- */
-function retryAfterMs(response: Response): number | undefined {
-  const header =
-    typeof response.headers?.get === 'function'
-      ? response.headers.get('retry-after')
-      : null;
-  const trimmed = header?.trim();
-  return trimmed !== undefined && /^\d+$/.test(trimmed)
-    ? Number(trimmed) * 1000
-    : undefined;
 }
 
 /** Canonical `GET /api/plugins` collection read shared by SDK, UI, CLI, and MCP. */
@@ -188,10 +164,9 @@ export async function listPlugins(
     details?: unknown;
   };
   const code = envelopeErrorCode(result);
-  const failureOptions = {
-    retryAfterMs: retryAfterMs(response),
-    details: result.details,
-  };
+  // `Retry-After` joins in #2708 A-2, through the shared parser, once this
+  // module can import it (#2782).
+  const failureOptions = { details: result.details };
   if (!response.ok) {
     throw new PluginCollectionHttpError(
       response.status,

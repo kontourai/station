@@ -2418,7 +2418,7 @@ Family subclasses are `StationHttpError`s too. The scheduler's
 error the envelope helper made of the response, so they keep its status,
 `details` and `Retry-After`; a run error's `code` stays its own fixed value.
 `PluginCollectionHttpError` keeps the envelope's `code` on the error and on
-its `envelope`, and keeps the refusal's `Retry-After` and `details`.
+its `envelope`, and keeps the refusal's `details`.
 
 - `status` is the status the response actually carried. A route that answers
   `200` with `{ success: false }` produces a `StationHttpError` whose status

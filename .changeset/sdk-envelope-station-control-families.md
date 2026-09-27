@@ -27,8 +27,8 @@ Station constructs them outside the SDK.
 
 `PluginCollectionHttpError` now extends `StationHttpError`. Its constructor
 keeps `(status, envelope)` and gains an optional third argument,
-`{ retryAfterMs, details }`. It carries the envelope's `code` on the error and
-on `envelope.code`, and keeps a refusal's `Retry-After` and `details`.
+`{ details }`. It carries the envelope's `code` on the error and on
+`envelope.code`, and keeps a refusal's `details`.
 
 The skills and secret-binding fetchers keep the status of a failure whose body
 is not JSON (a proxy's HTML 502) instead of throwing a bare `SyntaxError`.
