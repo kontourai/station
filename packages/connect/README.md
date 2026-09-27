@@ -9,8 +9,9 @@ not grant any of those permissions.
 `@kontourai/station-connect` is currently a **private workspace package** in
 [package.json](./package.json), not an advertised standalone npm installation.
 Its root and `/health-probe` entries select compiled `dist/` output; other named
-entries, including `/connection-trust`, `/device-pairing`, `/node-storage`,
-`/application-channel` and `/self-hosted-browser`, select TypeScript source.
+entries, including `/connection-trust`, `/device-pairing`,
+`/application-channel`, `/self-hosted-browser` and `/native-diagnostic-echo`,
+select TypeScript source. The former `/node-storage` entry is no longer exported.
 
 From a managed Station checkout, `npm run build --prefix packages/connect`
 runs TypeScript, copies React CSS and writes the distribution freshness stamp.
@@ -31,9 +32,9 @@ package does not make a reachable server trusted or authorize a Project.
 browser credentials to sessionStorage. An explicit `storage` adapter is also
 the credential fallback unless `credentialStorage` is supplied, so custom
 hosts must choose both deliberately. Native Station uses its host-owned
-credential broker and secret-free profile projection; the exported
-`HydratedCredentialStorage` compatibility adapter is not proof of that native
-custody boundary or durable completion of its asynchronous writes. See
+credential broker and secret-free profile projection. The former
+`HydratedCredentialStorage` compatibility adapter has been removed; use the
+host's current credential/transport integration. See
 [storage](./src/core/storage.ts), [ConnectionStore](./src/core/ConnectionStore.ts)
 and the [host profile adapter](../../src-ui/src/platform/native/stationProfileStorage.ts).
 

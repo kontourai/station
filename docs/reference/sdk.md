@@ -1181,11 +1181,18 @@ Bulk-deletes knowledge documents.
 
 #### `fetchAcpCommands(agentSlug: string): Promise<AcpSlashCommandDescriptor[]>`
 
-Fetches ACP slash-command definitions for an ACP-backed agent.
+This former API is not a current SDK export. Use
+[`useProviderCommandsQuery`](#useprovidercommandsqueryprovider-config) for the
+current provider-level command list; Station's caller selects the ACP provider
+after checking the Agent's engine connection.
 
 #### `fetchAcpCommandOptions(agentSlug: string, partial: string): Promise<AcpSlashCommandDescriptor[]>`
 
-Fetches live ACP slash-command autocomplete options.
+This former API is not a current SDK export. The current external-engine
+interface has no per-keystroke command-option channel, and Station's slash
+command hook supplies only the command catalog. See
+[the caller](../../src-ui/src/hooks/useSlashCommands.ts) and
+[ACP command support](../guides/acp.md#slash-commands).
 
 ---
 
@@ -2379,8 +2386,9 @@ are also exported from `@kontourai/station-sdk/client`.
   that authority's kept-result and Basis queries; it never implies support.
 - `useAnswerBasisQuery` and `useTaskBasisQuery` accept the same captured scope.
   Whole Task uses collection v4; portable MCP delivery uses page v3 with
-  independent 16-row answer, unassociated, kept-result, and retained Process
-  streams. Retained Flow gate evaluations are not answer associations and do
+  separate streams of up to eight answers and 16 rows each for unassociated
+  items, kept results and retained Process evaluations, within a 128 KiB page.
+  Retained Flow gate evaluations are not answer associations and do
   not establish Task standing. Unknown versions or a missing Process stream
   are unavailable.
 - `refreshAnswerAssessmentQueries(queryClient, payload, requestScope)` is the
@@ -2404,6 +2412,9 @@ An assessment producer uses the existing authenticated orchestration routes;
 the SDK intentionally provides no convenience client for this write protocol.
 All requests address one exact `StationAnswerBinding` (`sessionId`, `turnId`,
 and its answer identity), and route responses are private and non-cacheable.
+The current producer module rejects hosted authority and requires a readable
+answer bound to a Project in personal mode. Authentication alone does not make
+every answer an eligible assessment target.
 
 - `GET /api/orchestration/sessions/:sessionId/turns/:turnId/assessment/target`
   returns `{ expectedAnswer, profile, revision, active }`. The producer must
@@ -2417,13 +2428,19 @@ and its answer identity), and route responses are private and non-cacheable.
 - `DELETE /api/orchestration/sessions/:sessionId/turns/:turnId/assessment`
   sends `{ expectedRevision }` and returns the same receipt.
 
-`expectedRevision` is compare-and-swap: a `409` means the stored assessment
-changed, so read the target again and use its returned revision before deciding
-whether to retry. A `404` does not disclose whether the binding, producer access, or assessment is
+`expectedRevision` is compare-and-swap: a `409` can mean a changed revision or
+a conflicting publication/binding, so read the target again before deciding
+whether to retry. An exact repeat of the current active publication returns
+its existing receipt; reusing its publication ID with different content conflicts.
+A `404` does not disclose whether the binding, producer access, or assessment is
 absent; a `503` means assessment storage is unavailable. The exact wire types
 are `StationAnswerAssessmentReadTarget`, `StationAnswerAssessmentPublishInput`,
 and `StationAnswerAssessmentReceipt` from
-`@kontourai/station-contracts/answer-assessment`.
+`@kontourai/station-contracts/answer-assessment`. The HTTP publish schema also
+accepts an optional `reviewedSource` association, whose exact claim, revision,
+Project and principal must match the publication. See the
+[route schema](../../src-server/routes/orchestration/orchestration.ts) and
+[assessment owner](../../src-server/services/evidence/answer-assessment-module.ts).
 
 `ApiRequestScope` contains only `apiBase` and a non-secret `authorityKey`.
 The host captures it before invocation from Connect's public request-authority
@@ -2432,9 +2449,11 @@ it with the exact native authorization receipt. Never put credentials in keys.
 The host credential resolver must expose matching `requestAuthority` metadata
 and its live `isCurrent` check. Scoped operations reject mismatches before
 dispatch and after asynchronous response/body reads, including cloned bodies;
-they never adopt a replacement connection. Keep also snapshots its invocation
-before asynchronous mutation scheduling. A missing scope disables the native
-result hooks and rejects Keep rather than choosing an ambient destination.
+they never adopt a replacement connection. Keep captures its authority before
+asynchronous mutation scheduling. A missing scope disables
+`useSessionToolResultQuery` and the Flow evaluation hooks, and rejects the Keep
+mutations. Legacy answer/Task Basis and kept-tool-result list hooks still allow
+unscoped use; Station's connected Basis host supplies scope explicitly.
 
 ```ts
 import { getSessionToolResult } from '@kontourai/station-sdk/client';
@@ -2447,6 +2466,13 @@ const result = await getSessionToolResult(
 
 Ordinary unscoped SDK calls retain their existing behavior. These protections
 are an explicit host contract, not a global replacement for authentication.
+
+Follow the [connected host](../../src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx),
+[Basis pane](../../packages/basis-pane/src/StationBasisPane.tsx),
+[tool-result hooks](../../packages/sdk/src/task-tool-results.ts),
+[Flow hooks](../../packages/sdk/src/flow-gate-evaluations.ts),
+[authority guard](../../packages/sdk/src/client/http.ts), and
+[MCP page contract](../../packages/contracts/src/task-basis-mcp.ts).
 
 ### `agentQueries`
 
@@ -2647,8 +2673,8 @@ This factory is independent of the SDK's `LayoutProvider`. See the
 ## Refused requests
 
 `StationHttpError` (exported from `@kontourai/station-sdk` and
-`@kontourai/station-sdk/client`) is the error a refused Station request
-throws. Branch on its fields, never on the message text:
+`@kontourai/station-sdk/client`) carries HTTP/envelope refusal details for the
+fetcher families listed below. Branch on its fields, never on the message text:
 
 ```ts
 class StationHttpError extends Error {
@@ -2659,15 +2685,17 @@ class StationHttpError extends Error {
 }
 ```
 
-Today every field is carried by the integration, review and workspace pane
-host action fetchers (built on `readEnvelopeOrThrow`), and by the scheduler,
-skills, knowledge, secret-binding, conversation and orchestration fetchers.
+The integration, review and workspace pane host-action fetchers (built on
+`readEnvelopeOrThrow`), plus the scheduler, skills, knowledge, secret-binding,
+conversation and orchestration fetchers preserve supplied refusal fields.
 The conversation and orchestration fetchers used to throw a plain `Error` for
 a `200` carrying `{ success: false }`; that is now a `StationHttpError` with
 status `200` too. `respondToRequest`'s error still carries the failure
 `receipt`. `readEnvelopeOrThrow(response)`
-throws this error for a non-2xx response or for a body that is not
-`success: true`. A body that is not JSON keeps its status on a non-2xx; on a
+throws this error for a non-2xx response or a missing/false `success` value.
+It checks truthiness, not a literal-boolean schema, and does not validate the
+returned `data`; individual fetchers own any stronger success-payload checks.
+A body that is not JSON keeps its status on a non-2xx; on a
 2xx it is a protocol failure and throws a plain `Error`. Other fetchers still
 throw their own errors — some a `StationHttpError` without `details`, some a
 plain `Error` or a family-specific subclass — and move onto the same fields
@@ -2679,7 +2707,8 @@ Family subclasses are `StationHttpError`s too. The scheduler's
 error the envelope helper made of the response, so they keep its status,
 `details` and `Retry-After`; a run error's `code` stays its own fixed value.
 `PluginCollectionHttpError` keeps the envelope's `code` on the error and on
-its `envelope`, and keeps the refusal's `details`.
+its `envelope`, and keeps the refusal's `details`; it does not yet preserve
+`Retry-After`.
 
 - `status` is the status the response actually carried. A route that answers
   `200` with `{ success: false }` produces a `StationHttpError` whose status
@@ -2687,7 +2716,7 @@ its `envelope`, and keeps the refusal's `details`.
 - `code` is the top-level `code`, else the object `error`'s own `code`
   (the runtime's `{"error":{"code":"authentication_required"}}`). A blank or
   non-string code is absent.
-- `details` is present when the body carried one. For a validation refusal it
+- `details` is present when the body carried a non-null value. For a validation refusal it
   is `{ formErrors, fieldErrors }`.
 - The message is a summary — a string `error`, the object `error`'s
   `message`, then its `code`, the top-level `message`, then the fetcher's
@@ -2705,6 +2734,14 @@ its `envelope`, and keeps the refusal's `details`.
   fallback)` return the shown form for a body a caller has already parsed:
   the reasons when there are any, else the summary. Their callers throw a
   plain `Error` that keeps only this text.
+
+The [envelope helper](../../packages/sdk/src/client/api-error-message.ts) and
+[transport](../../packages/sdk/src/client/http.ts) own these rules. A typed
+failure does not imply that every successful payload was validated or that a
+mutation is safe to retry. Read the operation's receipt and retry contract.
+On the server, Station-control failures marked as MCP `isError` are read by the
+[raw invoke route](../../src-server/routes/agents/invoke-agent.ts); the shared
+MCP `callTool` helper still returns the protocol result for its caller to interpret.
 
 ## Utilities
 
