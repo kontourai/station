@@ -115,7 +115,8 @@ describe('HostAction — three branches, no fourth', () => {
 
   it('does not branch on viewport: the same presentation renders the same way at 390 and 1440', () => {
     // The UI's viewport seam is `matchMedia` (`useIsMobile`), which jsdom
-    // lacks, so each width answers every media query as a phone or a desktop.
+    // lacks, so this stub answers every query as a phone at 768px and below
+    // and as a desktop above it.
     const at = (width: number) => {
       window.innerWidth = width;
       window.matchMedia = ((query: string) => ({

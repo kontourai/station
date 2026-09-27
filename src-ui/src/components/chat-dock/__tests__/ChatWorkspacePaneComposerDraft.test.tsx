@@ -110,7 +110,7 @@ vi.mock('../../../contexts/AgentsContext', async (importOriginal) => ({
   useAgentsLoaded: () => true,
 }));
 
-// The active chat's transcript and composer are display here: the file-drop
+// The active chat's transcript and composer are stood in for: the file-drop
 // test asks only which pane owns attachments, and the marker shows a chat is
 // active.
 vi.mock('../ChatDockBody', () => ({
