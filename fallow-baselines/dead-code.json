@@ -225,8 +225,6 @@
     "src-server/runtime/bootstrap/runtime-http.ts:configureRuntimeRouteClassificationGate",
     "src-server/runtime/bootstrap/runtime-tenant-context.ts:internalTenantHeaderForExecutionContext",
     "src-server/runtime/bootstrap/station-control-runtime-env.ts:BUILTIN_STATION_CONTROL_TOOL_SERVER_ID",
-    "src-server/runtime/conversation/dispatch-model-policy.ts:fetchModelToolSurfaceList",
-    "src-server/runtime/conversation/dispatch-model-policy.ts:FLEET_ROUTING_OBSERVER_TIMEOUT_MS",
     "src-server/runtime/conversation/fleet-routing-envelope.ts:deriveFleetRoutingFailure",
     "src-server/runtime/conversation/fleet-routing-receipt-log.ts:canonicalize",
     "src-server/runtime/conversation/fleet-routing-receipt-log.ts:FLEET_ROUTING_RECEIPT_FILE",

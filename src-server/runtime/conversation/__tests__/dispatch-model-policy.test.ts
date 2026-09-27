@@ -47,15 +47,8 @@ vi.mock('../../../utils/logger.js', async () => {
   };
 });
 
-const {
-  createConfiguredDispatchModel,
-  candidateEvidenceFromReadiness,
-  deriveDispatchCapabilities,
-  deriveStructuredToolsFidelity,
-  fetchReadinessEvidenceMap,
-  mapConnectionEvidenceToDispatchLevel,
-  DISPATCH_EVIDENCE_TTL_MS,
-} = await import('../dispatch-model-policy.js');
+const { createConfiguredDispatchModel, DISPATCH_EVIDENCE_TTL_MS } =
+  await import('../dispatch-model-policy.js');
 
 const EVIDENCE_SOURCE_ID = 'station:connection-readiness/v1';
 
@@ -137,81 +130,123 @@ function evidenceSourceFromMap(
   };
 }
 
-describe('mapConnectionEvidenceToDispatchLevel', () => {
-  it('maps discovered to unavailable', () => {
-    expect(
-      mapConnectionEvidenceToDispatchLevel({
-        level: 'discovered',
-        freshness: 'fresh',
-      }),
-    ).toBe('unavailable');
+const GRADING_SPEC = {
+  name: 'grader',
+  execution: { modelOptions: { dispatch: { enabled: true } } },
+} as any;
+
+const GRADING_PRIMARY = {
+  providerConnection: { id: 'primary-connection', type: 'anthropic' },
+  providerType: 'anthropic',
+  modelId: 'primary-model',
+} as any;
+
+/**
+ * Grades one primary candidate through `createConfiguredDispatchModel` and
+ * returns the evidence its resolved plan carries. `readiness: undefined`
+ * means the source knows nothing about the connection; `toolSurface:
+ * undefined` means the source has no tool-surface method at all.
+ */
+async function gradeAtBoundary(
+  readiness: ConnectionReadinessEvidence | undefined,
+  toolSurface?: readonly string[] | null,
+): Promise<any> {
+  const source: Partial<ReturnType<typeof evidenceSourceFromMap>> =
+    evidenceSourceFromMap(
+      readiness ? { 'primary-connection': readiness } : {},
+      toolSurface === undefined
+        ? {}
+        : { 'primary-connection primary-model': toolSurface },
+    );
+  if (toolSurface === undefined) delete source.getModelToolSurface;
+  capturedPlan = undefined;
+  await createConfiguredDispatchModel(
+    GRADING_SPEC,
+    {
+      appConfig: {},
+      projectHomeDir: '/tmp/station-test-home',
+      dispatchEvidenceSource: source,
+    } as any,
+    GRADING_PRIMARY,
+  );
+  const plan = await resolveCapturedPlan();
+  expect(plan.candidates).toHaveLength(1);
+  return plan.candidates[0].evidence;
+}
+
+describe('candidate evidence graded from connection readiness', () => {
+  it.each([
+    ['discovered', 'fresh', 'unavailable'],
+    ['prerequisite-ready', 'fresh', 'declared'],
+    ['catalog-ready', 'fresh', 'declared'],
+    ['smoke-passed', 'fresh', 'confirmed'],
+    // Stale evidence downgrades one rank rather than reporting its level.
+    ['smoke-passed', 'stale', 'declared'],
+    ['catalog-ready', 'stale', 'unavailable'],
+    ['prerequisite-ready', 'unknown', 'unavailable'],
+    ['discovered', 'stale', 'unavailable'],
+    // A level outside the known union fails closed.
+    ['not-a-real-level', 'fresh', 'unavailable'],
+  ] as const)(
+    '%s evidence at %s freshness grades %s',
+    async (level, freshness, expected) => {
+      const evidence = await gradeAtBoundary(
+        readinessEvidence(level as any, freshness),
+      );
+      expect(evidence.level).toBe(expected);
+    },
+  );
+
+  it('returns the honest unavailable floor, tagged with the evidence source id (SF-4), when the source has no readiness for the connection', async () => {
+    expect(await gradeAtBoundary(undefined, ['tool-calls'])).toEqual({
+      level: 'unavailable',
+      capabilities: [],
+      // archive#1398: dispatch 0.5.0's `eligible()` refuses
+      // evidence whose fidelity disagrees with its capability list, and an
+      // ABSENT fidelity reads as 'unavailable'. Stating it is what keeps
+      // "no capabilities" and "no structured-tool support" one consistent
+      // record rather than two independently-drifting ones.
+      structuredToolsFidelity: 'unavailable',
+      source: EVIDENCE_SOURCE_ID,
+    });
   });
 
-  it('maps prerequisite-ready and catalog-ready to declared', () => {
-    expect(
-      mapConnectionEvidenceToDispatchLevel({
-        level: 'prerequisite-ready',
-        freshness: 'fresh',
-      }),
-    ).toBe('declared');
-    expect(
-      mapConnectionEvidenceToDispatchLevel({
-        level: 'catalog-ready',
-        freshness: 'fresh',
-      }),
-    ).toBe('declared');
-  });
-
-  it('maps smoke-passed to confirmed', () => {
-    expect(
-      mapConnectionEvidenceToDispatchLevel({
-        level: 'smoke-passed',
-        freshness: 'fresh',
-      }),
-    ).toBe('confirmed');
-  });
-
-  it('honestly downgrades a stale smoke-passed level rather than reporting confirmed', () => {
-    expect(
-      mapConnectionEvidenceToDispatchLevel({
-        level: 'smoke-passed',
-        freshness: 'stale',
-      }),
-    ).toBe('declared');
-  });
-
-  it('honestly downgrades a stale declared-rank level to unavailable', () => {
-    expect(
-      mapConnectionEvidenceToDispatchLevel({
-        level: 'catalog-ready',
-        freshness: 'stale',
-      }),
-    ).toBe('unavailable');
-    expect(
-      mapConnectionEvidenceToDispatchLevel({
-        level: 'prerequisite-ready',
-        freshness: 'unknown',
-      }),
-    ).toBe('unavailable');
-  });
-
-  it('stale discovered evidence stays at the unavailable floor', () => {
-    expect(
-      mapConnectionEvidenceToDispatchLevel({
-        level: 'discovered',
-        freshness: 'stale',
-      }),
-    ).toBe('unavailable');
-  });
-
-  it('fails closed to unavailable for a level outside the known union (nit)', () => {
-    expect(
-      mapConnectionEvidenceToDispatchLevel({
-        level: 'not-a-real-level' as any,
-        freshness: 'fresh',
-      }),
-    ).toBe('unavailable');
-  });
+  // archive#1430: 'structured-tools' derives only from an affirmative
+  // 'tool-calls' tool surface at a live evidence level. A known negative
+  // ([]), an explicit unknown (null), and a source with no tool-surface
+  // method (undefined) never derive it, and no live evidence asserts
+  // nothing at all. archive#1398: the fidelity is derived from the
+  // capability list, so 'native' appears exactly when the list claims
+  // structured tools.
+  it.each([
+    ['discovered', undefined, []],
+    ['discovered', ['tool-calls'], []],
+    ['catalog-ready', undefined, ['abort', 'usage']],
+    ['smoke-passed', undefined, ['abort', 'usage']],
+    ['catalog-ready', ['tool-calls'], ['abort', 'usage', 'structured-tools']],
+    ['smoke-passed', ['tool-calls'], ['abort', 'usage', 'structured-tools']],
+    ['smoke-passed', [], ['abort', 'usage']],
+    ['smoke-passed', null, ['abort', 'usage']],
+    ['smoke-passed', ['other'], ['abort', 'usage']],
+  ] as const)(
+    '%s evidence with tool surface %j claims %j',
+    async (level, toolSurface, capabilities) => {
+      const evidence = await gradeAtBoundary(
+        readinessEvidence(level),
+        toolSurface as readonly string[] | null | undefined,
+      );
+      expect(evidence).toEqual({
+        level: expect.any(String),
+        capabilities,
+        structuredToolsFidelity: capabilities.includes(
+          'structured-tools' as never,
+        )
+          ? 'native'
+          : 'unavailable',
+        source: EVIDENCE_SOURCE_ID,
+      });
+    },
+  );
 });
 
 describe('SF-1: the freshness downgrade is a defensive floor, empirically checked against the real producer', () => {
@@ -272,66 +307,6 @@ describe('SF-1: the freshness downgrade is a defensive floor, empirically checke
   });
 });
 
-describe('deriveDispatchCapabilities', () => {
-  it('asserts no capabilities when the candidate has no live evidence', () => {
-    expect(deriveDispatchCapabilities('unavailable')).toEqual([]);
-    // archive#1430: even a genuinely tool-capable model asserts nothing
-    // once evidence itself is unavailable — an unearned capability claim on
-    // top of an unearned evidence level would be the same defect twice over.
-    expect(deriveDispatchCapabilities('unavailable', ['tool-calls'])).toEqual(
-      [],
-    );
-  });
-
-  it('grants abort/usage once any live evidence exists', () => {
-    expect(deriveDispatchCapabilities('declared')).toEqual(['abort', 'usage']);
-    expect(deriveDispatchCapabilities('confirmed')).toEqual(['abort', 'usage']);
-  });
-
-  it("without a wired tool-surface source, never derives 'structured-tools' (unchanged pre-#1430 behavior)", () => {
-    // The `toolSurface` argument is optional precisely so a call site that
-    // hasn't been updated to pass one keeps behaving exactly as it did
-    // before archive#1430 closed the producer gap.
-    for (const level of ['unavailable', 'declared', 'confirmed'] as const) {
-      expect(deriveDispatchCapabilities(level)).not.toContain(
-        'structured-tools',
-      );
-    }
-  });
-
-  // archive#1430 (evolved from the archive#1426 pin this replaces): the producer
-  // gap is closed, so this now proves the FULL round trip — a provider that
-  // genuinely reports tool support derives the capability; one that
-  // doesn't (or reports an explicit negative, or is simply unknown) never
-  // does. This is the fault-injection-shaped pin: if the derivation ever
-  // started asserting 'structured-tools' without a truthful `'tool-calls'`
-  // entry in `toolSurface`, every case below except the first would fail.
-  it("MB-1 evolved: derives 'structured-tools' only from an affirmative toolSurface, at any live evidence level", () => {
-    expect(deriveDispatchCapabilities('declared', ['tool-calls'])).toEqual([
-      'abort',
-      'usage',
-      'structured-tools',
-    ]);
-    expect(deriveDispatchCapabilities('confirmed', ['tool-calls'])).toEqual([
-      'abort',
-      'usage',
-      'structured-tools',
-    ]);
-    // A known negative (the inventory affirmatively knows this model does
-    // NOT support tools) must not derive the capability.
-    expect(deriveDispatchCapabilities('confirmed', [])).toEqual([
-      'abort',
-      'usage',
-    ]);
-    // An explicit unknown (`null`, the inventory's `unanimous()` fold for
-    // "no producer said either way") must not derive the capability.
-    expect(deriveDispatchCapabilities('confirmed', null)).toEqual([
-      'abort',
-      'usage',
-    ]);
-  });
-});
-
 describe('station#1430: structured-tools derivation from a real provider-honesty round trip (production-shape pin)', () => {
   it('a provider that genuinely populates supportsTools (Ollama /api/show reporting "tools") flows through to a derived structured-tools capability', async () => {
     const { buildLaunchableModelInventory } = await import(
@@ -376,9 +351,12 @@ describe('station#1430: structured-tools derivation from a real provider-honesty
 
     // The full round trip: this record's toolSurface, handed to the
     // capability derivation, produces 'structured-tools'.
-    expect(
-      deriveDispatchCapabilities('confirmed', inventory.models[0]!.toolSurface),
-    ).toEqual(['abort', 'usage', 'structured-tools']);
+    const graded = await gradeAtBoundary(
+      readinessEvidence('smoke-passed'),
+      inventory.models[0]!.toolSurface,
+    );
+    expect(graded.capabilities).toEqual(['abort', 'usage', 'structured-tools']);
+    expect(graded.structuredToolsFidelity).toBe('native');
   });
 
   it('a provider that leaves supportsTools undefined (e.g. Anthropic, which reports no such field) yields exactly abort/usage — never a guess', async () => {
@@ -420,186 +398,21 @@ describe('station#1430: structured-tools derivation from a real provider-honesty
     });
 
     expect(inventory.models[0]!.toolSurface).toBeNull();
-    expect(
-      deriveDispatchCapabilities('confirmed', inventory.models[0]!.toolSurface),
-    ).toEqual(['abort', 'usage']);
-  });
-});
-
-describe('deriveStructuredToolsFidelity (station#1398 slice 5.5)', () => {
-  it("names 'native' for a capability list that claims structured tools", () => {
-    expect(
-      deriveStructuredToolsFidelity(['abort', 'usage', 'structured-tools']),
-    ).toBe('native');
-  });
-
-  it("names 'unavailable' when the list makes no structured-tools claim", () => {
-    expect(deriveStructuredToolsFidelity(['abort', 'usage'])).toBe(
-      'unavailable',
-    );
-    expect(deriveStructuredToolsFidelity([])).toBe('unavailable');
-  });
-
-  it('is a pure function OF the capability list, so the two can never disagree', () => {
-    // The property that matters, stated as a property rather than as three
-    // more examples: dispatch 0.5.0 refuses evidence whose fidelity and
-    // capability list disagree, so the only durable guarantee is that one is
-    // derived from the other. Re-deriving from `(level, toolSurface)` would
-    // have re-opened exactly the drift this replaces.
-    for (const level of ['unavailable', 'declared', 'confirmed'] as const) {
-      for (const toolSurface of [null, [], ['tool-calls'], ['other']]) {
-        const capabilities = deriveDispatchCapabilities(level, toolSurface);
-        const fidelity = deriveStructuredToolsFidelity(capabilities);
-        expect(capabilities.includes('structured-tools')).toBe(
-          fidelity !== 'unavailable',
-        );
-      }
-    }
-  });
-});
-
-describe('candidateEvidenceFromReadiness', () => {
-  it('returns the honest unavailable floor, tagged with the evidence source id (SF-4), when there is no readiness evidence', () => {
-    expect(candidateEvidenceFromReadiness(undefined)).toEqual({
-      level: 'unavailable',
-      capabilities: [],
-      // archive#1398: dispatch 0.5.0's `eligible()` refuses
-      // evidence whose fidelity disagrees with its capability list, and an
-      // ABSENT fidelity reads as 'unavailable'. Stating it is what keeps
-      // "no capabilities" and "no structured-tool support" one consistent
-      // record rather than two independently-drifting ones.
-      structuredToolsFidelity: 'unavailable',
-      source: EVIDENCE_SOURCE_ID,
-    });
-  });
-
-  it('a smoke-passed connection and a merely discovered connection produce different candidate evidence (AC a)', () => {
-    const smokeEvidence = candidateEvidenceFromReadiness(
+    const graded = await gradeAtBoundary(
       readinessEvidence('smoke-passed'),
+      inventory.models[0]!.toolSurface,
     );
-    const discoveredEvidence = candidateEvidenceFromReadiness(
-      readinessEvidence('discovered'),
-    );
-
-    expect(smokeEvidence.level).toBe('confirmed');
-    expect(discoveredEvidence.level).toBe('unavailable');
-    expect(smokeEvidence).not.toEqual(discoveredEvidence);
-    expect(smokeEvidence.capabilities).toEqual(['abort', 'usage']);
-    expect(discoveredEvidence.capabilities).toEqual([]);
-  });
-
-  it('sets CapabilityEvidence.source on every derived evidence (SF-4)', () => {
-    expect(
-      candidateEvidenceFromReadiness(readinessEvidence('catalog-ready')),
-    ).toMatchObject({ source: EVIDENCE_SOURCE_ID });
-  });
-
-  it('station#1430: threads a real toolSurface through to structured-tools, keeping the same evidence source id', () => {
-    const withTools = candidateEvidenceFromReadiness(
-      readinessEvidence('smoke-passed'),
-      ['tool-calls'],
-    );
-    expect(withTools).toEqual({
-      level: 'confirmed',
-      capabilities: ['abort', 'usage', 'structured-tools'],
-      // archive#1398: the capability string alone is ineligible at
-      // dispatch 0.5.0 — the paired fidelity is what makes the claim
-      // routable, and 'native' is the only honest value for a claim whose
-      // sole source is a provider catalog reporting native tool calling.
-      structuredToolsFidelity: 'native',
-      source: EVIDENCE_SOURCE_ID,
-    });
-  });
-});
-
-describe('fetchReadinessEvidenceMap', () => {
-  it('returns an empty map with no source and never calls it', async () => {
-    const map = await fetchReadinessEvidenceMap(
-      undefined,
-      ['conn-1'],
-      undefined,
-      'agent-a',
-    );
-    expect(map?.size).toBe(0);
-  });
-
-  it('returns an empty map without calling the source when there are no connection ids', async () => {
-    const source = evidenceSourceFromMap({});
-    const map = await fetchReadinessEvidenceMap(
-      source,
-      [],
-      undefined,
-      'agent-a',
-    );
-    expect(map?.size).toBe(0);
-    expect(source.calls).toHaveLength(0);
-  });
-
-  it('MB-1 (station#1431): signals a failed lookup as undefined (not an empty map) and warns, rather than throwing, when the source rejects', async () => {
-    const logger = {
-      warn: vi.fn(),
-      info: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-      trace: vi.fn(),
-      fatal: vi.fn(),
-      child: vi.fn().mockReturnThis(),
-      setLevel: vi.fn(),
-      getLevel: vi.fn(() => 'info' as const),
-    };
-    const throwingSource: DispatchEvidenceSource = {
-      getConnectionReadinessEvidence: async () => {
-        throw new Error('Model inventory generation is obsolete.');
-      },
-    };
-
-    const map = await fetchReadinessEvidenceMap(
-      throwingSource,
-      ['conn-1'],
-      logger,
-      'agent-a',
-    );
-
-    // MB-1: `undefined`, not `new Map()` — a failed lookup must be
-    // distinguishable from a legitimately empty one so the caller
-    // (createTtlCachedCandidateResolver) knows not to cache it.
-    expect(map).toBeUndefined();
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(logger.warn.mock.calls[0]?.[0]).toContain('agent-a');
-  });
-
-  it('MB-1 (station#1431): degrades silently to undefined (no logger) when the source rejects and no logger is wired', async () => {
-    const throwingSource: DispatchEvidenceSource = {
-      getConnectionReadinessEvidence: async () => {
-        throw new Error('boom');
-      },
-    };
-    await expect(
-      fetchReadinessEvidenceMap(throwingSource, ['conn-1'], undefined, 'a'),
-    ).resolves.toBeUndefined();
-  });
-
-  it('SF-5: de-duplicates repeated connection ids into a single call', async () => {
-    const source = evidenceSourceFromMap({
-      'conn-1': readinessEvidence('catalog-ready'),
-    });
-    const map = await fetchReadinessEvidenceMap(
-      source,
-      ['conn-1', 'conn-1', 'conn-1'],
-      undefined,
-      'agent-a',
-    );
-    expect(source.calls).toEqual([['conn-1']]);
-    expect(map?.get('conn-1')?.level).toBe('catalog-ready');
+    expect(graded.capabilities).toEqual(['abort', 'usage']);
+    expect(graded.structuredToolsFidelity).toBe('unavailable');
   });
 });
 
 describe('minimumEvidence filtering actually discriminates (AC b, real @kontourai/dispatch engine)', () => {
   it('admits a confirmed candidate and excludes an unavailable one under minimumEvidence: confirmed', async () => {
-    const confirmedEvidence = candidateEvidenceFromReadiness(
+    const confirmedEvidence = await gradeAtBoundary(
       readinessEvidence('smoke-passed'),
     );
-    const unavailableEvidence = candidateEvidenceFromReadiness(
+    const unavailableEvidence = await gradeAtBoundary(
       readinessEvidence('discovered'),
     );
 
@@ -649,10 +462,10 @@ describe('minimumEvidence filtering actually discriminates (AC b, real @kontoura
   });
 
   it('excludes every candidate when none reach minimumEvidence: confirmed', async () => {
-    const discoveredEvidence = candidateEvidenceFromReadiness(
+    const discoveredEvidence = await gradeAtBoundary(
       readinessEvidence('discovered'),
     );
-    const catalogEvidence = candidateEvidenceFromReadiness(
+    const catalogEvidence = await gradeAtBoundary(
       readinessEvidence('catalog-ready'),
     );
 
@@ -776,6 +589,42 @@ describe('createConfiguredDispatchModel wiring', () => {
     );
   });
 
+  it('SF-5: two candidates on one connection share a single de-duplicated evidence lookup', async () => {
+    const source = evidenceSourceFromMap({
+      'primary-connection': readinessEvidence('catalog-ready'),
+    });
+    resolveManagedModelBinding.mockResolvedValueOnce({
+      providerConnection: { id: 'primary-connection', type: 'anthropic' },
+      providerType: 'anthropic',
+      modelId: 'second-model',
+    });
+
+    await createConfiguredDispatchModel(
+      {
+        ...baseSpec,
+        execution: {
+          modelOptions: {
+            dispatch: {
+              enabled: true,
+              candidates: [{ modelConnectionId: 'primary-connection' }],
+            },
+          },
+        },
+      } as any,
+      { ...baseConfig, dispatchEvidenceSource: source },
+      primaryBinding,
+    );
+    const plan = await resolveCapturedPlan();
+
+    expect(source.calls).toEqual([['primary-connection']]);
+    expect(
+      plan.candidates.map(
+        (candidate: { evidence: { level: string } }) =>
+          candidate.evidence.level,
+      ),
+    ).toEqual(['declared', 'declared']);
+  });
+
   it('SF-2/MB-1: an evidence source that rejects degrades every candidate to unavailable instead of failing model construction, and the failure is NOT cached — a healthy retry in the same window re-grades', async () => {
     const logger = makeLogger();
     let callCount = 0;
@@ -814,7 +663,12 @@ describe('createConfiguredDispatchModel wiring', () => {
     // fail model construction or reject the plan, and warns.
     const firstPlan = await resolveCapturedPlan();
     expect(firstPlan.candidates[0].evidence.level).toBe('unavailable');
-    expect(logger.warn).toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Connection readiness evidence lookup failed for agent 'writer'",
+      ),
+      expect.anything(),
+    );
 
     // Resolution 2: same TTL window (no vi timer involved — real elapsed
     // time here is microseconds), source is now healthy. MB-1: this MUST
