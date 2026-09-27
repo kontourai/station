@@ -288,44 +288,101 @@ describe('a service updates itself across two real archives (#2675 D)', {
     );
   });
 
-  it('install.sh refuses to touch an install whose supervised update is unfinished', async () => {
+  it.each([
+    ['pending', 'a supervised Station update is unfinished'],
+    // #2675 D review F4: the refusal names the recovery.
+    [
+      'needs-operator',
+      'Fix the cause, then retry the restore with: station service stop --instance=<name> && station service start --instance=<name>',
+    ],
+  ])(
+    'install.sh refuses to touch an install whose supervised update is %s',
+    async (status, message) => {
+      const { install, launcher, env, manifestPath } =
+        await twoArchiveInstall('prepare');
+      launcher.process.kill('SIGTERM');
+      await launcher.exited;
+      const state = join(install.installRoot, 'runtime', 'service-state.json');
+      writeFileSync(
+        state,
+        JSON.stringify({
+          protocol: 1,
+          activeVersion: '1.0.0',
+          update: {
+            id: '00000000-0000-4000-8000-000000000000',
+            fromVersion: '1.0.0',
+            targetVersion: '1.1.0',
+            status,
+            ...(status === 'pending'
+              ? { phase: 'restoring' }
+              : { reason: 'candidate-exited:3', restoreAttempts: 3 }),
+            attempts: 1,
+          },
+        }),
+      );
+      const before = readFileSync(state, 'utf8');
+      const upgraded = spawnSync('sh', [installScript], {
+        encoding: 'utf8',
+        timeout: 120_000,
+        windowsHide: true,
+        env: {
+          ...env,
+          STATION_INSTALL_PUBLIC_MANIFEST_URL: pathToFileURL(manifestPath).href,
+        },
+      });
+      expect(upgraded.status).not.toBe(0);
+      expect(upgraded.stderr).toContain(message);
+      expect(readFileSync(state, 'utf8')).toBe(before);
+      expect(realpathSync(join(install.installRoot, 'current'))).toBe(
+        realpathSync(join(install.installRoot, 'versions', '1.0.0')),
+      );
+    },
+  );
+
+  it('install.sh records the version a stopped launcher service runs under the launcher lock (#2675 D review F9)', async () => {
     const { install, launcher, env, manifestPath } =
       await twoArchiveInstall('prepare');
     launcher.process.kill('SIGTERM');
     await launcher.exited;
-    const state = join(install.installRoot, 'runtime', 'service-state.json');
-    writeFileSync(
-      state,
-      JSON.stringify({
-        protocol: 1,
-        activeVersion: '1.0.0',
-        update: {
-          id: '00000000-0000-4000-8000-000000000000',
-          fromVersion: '1.0.0',
-          targetVersion: '1.1.0',
-          status: 'pending',
-          phase: 'restoring',
-          attempts: 1,
+    const upgrade = () =>
+      spawnSync('sh', [installScript], {
+        encoding: 'utf8',
+        timeout: 120_000,
+        windowsHide: true,
+        env: {
+          ...env,
+          STATION_INSTALL_NO_START: '1',
+          STATION_INSTALL_PUBLIC_MANIFEST_URL: pathToFileURL(manifestPath).href,
         },
-      }),
+      });
+    // A launcher that started on its own meanwhile holds the lock: the
+    // install does not write the state under it, and rolls its switch back.
+    const again = startLauncher(install);
+    running.push(again);
+    await waitFor(
+      'the launcher to serve',
+      () =>
+        fixtureLog(install).filter((line) => line === '1.0.0 ready').length ===
+        2,
     );
-    const before = readFileSync(state, 'utf8');
-    const upgraded = spawnSync('sh', [installScript], {
-      encoding: 'utf8',
-      timeout: 120_000,
-      windowsHide: true,
-      env: {
-        ...env,
-        STATION_INSTALL_PUBLIC_MANIFEST_URL: pathToFileURL(manifestPath).href,
-      },
-    });
-    expect(upgraded.status).not.toBe(0);
-    expect(upgraded.stderr).toContain(
-      'a supervised Station update is unfinished',
-    );
-    expect(readFileSync(state, 'utf8')).toBe(before);
+    const refused = upgrade();
+    expect(refused.status, refused.stdout).not.toBe(0);
+    expect(refused.stderr).toContain('another Station launcher');
+    expect(readState(install)?.activeVersion).toBe('1.0.0');
     expect(realpathSync(join(install.installRoot, 'current'))).toBe(
       realpathSync(join(install.installRoot, 'versions', '1.0.0')),
     );
+
+    again.process.kill('SIGTERM');
+    await again.exited;
+    const upgraded = upgrade();
+    expect(upgraded.status, `${upgraded.stdout}\n${upgraded.stderr}`).toBe(0);
+    expect(readState(install)).toEqual({
+      protocol: 1,
+      activeVersion: '1.1.0',
+    });
+    expect(
+      existsSync(join(install.installRoot, 'runtime', 'service-state.lock')),
+    ).toBe(false);
   });
 });

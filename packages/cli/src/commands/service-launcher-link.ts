@@ -141,6 +141,33 @@ function parseRequest(text: string): ServiceUpdateRequest | null {
 }
 
 /**
+ * install.sh's test-only verifier override, which install.sh itself honors
+ * only beside STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1; carried through
+ * only in that combination, which no production service sets.
+ */
+const INSTALL_TEST_OVERRIDES = new Set([
+  'STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL',
+  'STATION_INSTALL_ALLOW_INSECURE_TEST_URLS',
+]);
+
+/**
+ * The service's environment without the installer's switches (#2675 D
+ * review F8): a unit can carry STATION_INSTALL_* from the shell that
+ * installed it (NO_START, ALLOW_ROLLBACK, ASSET_URL, ports...), and each one
+ * changes what an install does. Staging sets the few it needs itself.
+ */
+function stagingInheritedEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const testMode = env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS === '1';
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      ([key]) =>
+        !key.startsWith('STATION_INSTALL_') ||
+        (testMode && INSTALL_TEST_OVERRIDES.has(key)),
+    ),
+  );
+}
+
+/**
  * Stages a version with this version's own install.sh in stage-only mode:
  * the installer downloads, verifies, extracts, self-checks and seals it into
  * `versions/<v>` exactly as an install would, and changes nothing else.
@@ -176,7 +203,7 @@ export function stageServiceUpdate(input: {
     env.STATION_INSTALL_PUBLIC_MANIFEST_URL ||
     (typeof state.manifestUrl === 'string' ? state.manifestUrl : undefined);
   const childEnv: NodeJS.ProcessEnv = {
-    ...env,
+    ...stagingInheritedEnv(env),
     STATION_INSTALL_STAGE_ONLY: '1',
     STATION_INSTALL_ROOT: input.installRoot,
     // The installer verifies with the Node.js this version bundles.
@@ -238,6 +265,54 @@ function stagedVersionIsComplete(
   }
 }
 
+/**
+ * A claimed request (`update-request.processing.json`) that no child is
+ * working on (#2675 D review F5): the child that claimed it was killed
+ * before the launcher accepted it, and the file blocked every later request.
+ * A new child runs this before anything else, when no other child of its
+ * launcher exists. A request the launcher accepted is recorded in its state
+ * and needs nothing more; any other is answered as failed, so whoever asked
+ * (install.sh waits for the answer) is told to ask again.
+ */
+function settleOrphanedClaim(
+  paths: ReturnType<typeof serviceUpdatePaths>,
+  log: (message: string) => void,
+): void {
+  let text: string;
+  try {
+    text = readFileSync(paths.processing, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    text = '';
+  }
+  const request = parseRequest(text);
+  let accepted: unknown;
+  try {
+    accepted = (
+      JSON.parse(readFileSync(paths.state, 'utf8')) as {
+        update?: { requestId?: unknown };
+      }
+    ).update?.requestId;
+  } catch {
+    accepted = undefined;
+  }
+  try {
+    if (request && accepted !== request.id)
+      writeJsonAtomically(paths.result, {
+        requestId: request.id,
+        status: 'failed',
+        reason:
+          'The Station service restarted before it finished this update request; request the update again.',
+        at: new Date().toISOString(),
+      } satisfies ServiceUpdateRequestResult);
+  } catch (error) {
+    log(
+      `Station could not record the interrupted update request: ${(error as Error).message}`,
+    );
+  }
+  rmSync(paths.processing, { force: true });
+}
+
 type LauncherMessage =
   | { type: 'update-accepted'; updateId: string; launcherPid: number }
   | { type: 'update-rejected'; reason: string; requestId?: string }
@@ -274,6 +349,8 @@ export function createServiceLauncherLink(
   let role = context.role;
   let busy = false;
   let pendingRequestId: string | undefined;
+
+  settleOrphanedClaim(paths, log);
 
   const finishRequest = (result: ServiceUpdateRequestResult): void => {
     try {

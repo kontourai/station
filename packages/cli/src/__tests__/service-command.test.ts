@@ -79,7 +79,7 @@ describe('a source checkout service renders what it did before slice C', () => {
         'RestartSec=5',
         // Deliberate: was 30, shorter than `service run`'s 60 s shutdown,
         // and now covers the fixed launcher's whole stop (#2675 D).
-        'TimeoutStopSec=150',
+        'TimeoutStopSec=165',
         'KillMode=mixed',
         'NoNewPrivileges=true',
         'PrivateTmp=true',
@@ -231,12 +231,12 @@ describe('an installer-owned archive service runs the fixed launcher with curren
 
 test('systemd waits out the supervisor and launcher stops before it kills the unit', () => {
   // A literal beside the derived value: the unit text is what systemd reads.
-  expect(SYSTEMD_STOP_TIMEOUT_SECONDS).toBe(150);
+  expect(SYSTEMD_STOP_TIMEOUT_SECONDS).toBe(165);
   expect(SYSTEMD_STOP_TIMEOUT_SECONDS * 1_000).toBeGreaterThanOrEqual(
     SERVICE_SHUTDOWN_DEADLINE_MS + 5_000,
   );
   expect(SYSTEMD_STOP_TIMEOUT_SECONDS * 1_000).toBeGreaterThanOrEqual(
-    LAUNCHER_STOP_BUDGET_MS + 5_000,
+    LAUNCHER_STOP_BUDGET_MS + 30_000,
   );
 });
 

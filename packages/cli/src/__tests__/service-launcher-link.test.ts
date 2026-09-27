@@ -13,6 +13,7 @@ import {
   SERVICE_LAUNCHER_ENV,
   type ServiceLauncherContext,
   serviceUpdatePaths,
+  stageServiceUpdate,
   writeServiceUpdateRequest,
 } from '../commands/service-launcher-link.js';
 import {
@@ -318,5 +319,131 @@ describe('the versioned child of the service launcher (#2675 D)', () => {
         },
       ),
     ).rejects.toThrow('--backup-dir must be an absolute path');
+  });
+});
+
+describe('staging and interrupted requests (#2675 D review F5, F8)', () => {
+  test('staging passes install.sh none of the installer switches the service environment carries', async () => {
+    const installRoot = makeTempDir('station-stage-env-');
+    const versionDir = join(installRoot, 'versions', '1.0.0');
+    mkdirSync(versionDir, { recursive: true });
+    writeFileSync(
+      join(installRoot, '.station-release-state.json'),
+      JSON.stringify({
+        channel: 'stable',
+        stationRoot: '/station',
+        stationHome: '/station/home',
+        manifestUrl: 'https://example.invalid/manifest.json',
+      }),
+    );
+    const dump = join(installRoot, 'env.txt');
+    writeFileSync(
+      join(versionDir, 'install.sh'),
+      `env > '${dump}'\necho STATION_STAGED_VERSION=1.1.0\n`,
+    );
+    const env = {
+      PATH: process.env.PATH,
+      STATION_INSTALL_NO_START: '1',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+      STATION_INSTALL_ASSET_URL: 'https://attacker.invalid/a.tgz',
+      STATION_INSTALL_SERVER_PORT: '9999',
+      STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: 'https://attacker.invalid/key',
+      STATION_VERSION: 'v0.0.1',
+      KEEP_ME: 'yes',
+    };
+    await expect(
+      stageServiceUpdate({ installRoot, version: '1.0.0', env }),
+    ).resolves.toBe('1.1.0');
+    const seen = Object.fromEntries(
+      readFileSync(dump, 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => [
+          line.slice(0, line.indexOf('=')),
+          line.slice(line.indexOf('=') + 1),
+        ]),
+    );
+    expect(
+      Object.keys(seen)
+        .filter((key) => key.startsWith('STATION_INSTALL_'))
+        .sort(),
+    ).toEqual([
+      'STATION_INSTALL_PUBLIC_MANIFEST_URL',
+      'STATION_INSTALL_ROOT',
+      'STATION_INSTALL_STAGE_ONLY',
+    ]);
+    expect(seen.STATION_INSTALL_PUBLIC_MANIFEST_URL).toBe(
+      'https://example.invalid/manifest.json',
+    );
+    expect(seen.STATION_VERSION).toBeUndefined();
+    expect(seen.KEEP_ME).toBe('yes');
+
+    // install.sh's own test mode carries its test-only verifier override.
+    await stageServiceUpdate({
+      installRoot,
+      version: '1.0.0',
+      env: {
+        ...env,
+        STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '1',
+      },
+    });
+    expect(readFileSync(dump, 'utf8')).toContain(
+      'STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL=https://attacker.invalid/key',
+    );
+    expect(readFileSync(dump, 'utf8')).not.toContain(
+      'STATION_INSTALL_NO_START',
+    );
+  });
+
+  test('a claim the launcher accepted is only cleared; any other is answered as failed', () => {
+    const installRoot = makeTempDir('station-link-orphan-');
+    const paths = serviceUpdatePaths(installRoot);
+    mkdirSync(paths.runtime, { recursive: true });
+    const accepted = '66666666-6666-4666-8666-666666666666';
+    writeFileSync(
+      paths.processing,
+      JSON.stringify({ id: accepted, requestedAt: 'now' }),
+    );
+    writeFileSync(
+      paths.state,
+      JSON.stringify({
+        protocol: 1,
+        activeVersion: '1.0.0',
+        update: { requestId: accepted, status: 'pending' },
+      }),
+    );
+    const make = () =>
+      createServiceLauncherLink(
+        {
+          context: {
+            protocol: 1,
+            installRoot,
+            version: '1.0.0',
+            role: 'active',
+          },
+          send: () => undefined,
+          onMessage: () => undefined,
+          onDisconnect: () => undefined,
+          handOffLiveness: () => undefined,
+          log: () => undefined,
+        },
+        () => undefined,
+      );
+    make();
+    expect(existsSync(paths.processing)).toBe(false);
+    expect(existsSync(paths.result)).toBe(false);
+
+    const orphan = '77777777-7777-4777-8777-777777777777';
+    writeFileSync(
+      paths.processing,
+      JSON.stringify({ id: orphan, requestedAt: 'now' }),
+    );
+    make();
+    expect(existsSync(paths.processing)).toBe(false);
+    expect(JSON.parse(readFileSync(paths.result, 'utf8'))).toMatchObject({
+      requestId: orphan,
+      status: 'failed',
+    });
+    expect(() => writeServiceUpdateRequest(installRoot)).not.toThrow();
   });
 });
