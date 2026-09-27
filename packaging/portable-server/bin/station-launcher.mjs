@@ -52,11 +52,11 @@ import {
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const LAUNCHER_PROTOCOL = 1;
-export const LAUNCHER_ENV = 'STATION_SERVICE_LAUNCHER';
-export const SERVICE_STATE_FILE = 'service-state.json';
-export const SERVICE_STATE_LOCK = 'service-state.lock';
-export const VERSION_SENTINEL = '.station-install-complete';
+const LAUNCHER_PROTOCOL = 1;
+const LAUNCHER_ENV = 'STATION_SERVICE_LAUNCHER';
+const SERVICE_STATE_FILE = 'service-state.json';
+const SERVICE_STATE_LOCK = 'service-state.lock';
+const VERSION_SENTINEL = '.station-install-complete';
 
 /**
  * Production timings. `service run` gives its detached server and UI 60 s to
@@ -65,6 +65,8 @@ export const VERSION_SENTINEL = '.station-install-complete';
  * that it is ready. A service manager's stop timeout must cover
  * STOP_GRACE_MS + OWN_STOP_TIMEOUT_MS (service-command.ts).
  */
+// Exported for service-launcher.test.ts, which pins the production values.
+// fallow-ignore-next-line unused-export
 export const DEFAULT_TIMINGS = Object.freeze({
   stopGraceMs: 65_000,
   ownStopTimeoutMs: 60_000,
@@ -72,6 +74,8 @@ export const DEFAULT_TIMINGS = Object.freeze({
   preparedTimeoutMs: 240_000,
   homeSnapshotTimeoutMs: 30 * 60_000,
 });
+// Exported for service-launcher.test.ts, which pins the production values.
+// fallow-ignore-next-line unused-export
 export const MAX_TRIAL_ATTEMPTS = 2;
 
 const VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+-]*$/;
@@ -96,6 +100,8 @@ function timings() {
 // --- versions ---------------------------------------------------------------
 
 /** SemVer precedence for exact versions; build metadata is ignored. */
+// Exported for service-launcher.test.ts, which pins the production values.
+// fallow-ignore-next-line unused-export
 export function compareVersions(left, right) {
   const parse = (version) => {
     const withoutBuild = version.split('+', 1)[0];
@@ -132,7 +138,7 @@ export function compareVersions(left, right) {
   return 0;
 }
 
-export function versionPaths(installRoot, version) {
+function versionPaths(installRoot, version) {
   if (!VERSION_PATTERN.test(version))
     throw new Error(`invalid version: ${version}`);
   const dir = join(installRoot, 'versions', version);
@@ -146,7 +152,7 @@ export function versionPaths(installRoot, version) {
 }
 
 /** A version install.sh finished: its sentinel is the last thing it writes. */
-export function versionIsComplete(installRoot, version) {
+function versionIsComplete(installRoot, version) {
   try {
     const paths = versionPaths(installRoot, version);
     return (
@@ -174,7 +180,7 @@ function fsyncDirectory(directory) {
   }
 }
 
-export function statePaths(installRoot) {
+function statePaths(installRoot) {
   const runtime = join(installRoot, 'runtime');
   return {
     runtime,
@@ -210,7 +216,7 @@ function validUpdate(update, activeVersion) {
   return false;
 }
 
-export function parseServiceState(text) {
+function parseServiceState(text) {
   let value;
   try {
     value = JSON.parse(text);
@@ -230,7 +236,7 @@ export function parseServiceState(text) {
 }
 
 /** Same-directory write, fsync, rename, fsync: every transition's commit. */
-export function writeServiceState(installRoot, state) {
+function writeServiceState(installRoot, state) {
   const paths = statePaths(installRoot);
   mkdirSync(paths.runtime, { recursive: true, mode: 0o700 });
   const temp = join(
@@ -310,7 +316,7 @@ function processAlive(pid) {
  * One launcher per install root. The lock names its holder; a lock whose
  * holder is gone (a killed launcher) is taken over, anything else refuses.
  */
-export function acquireStateLock(installRoot) {
+function acquireStateLock(installRoot) {
   const { runtime, lock } = statePaths(installRoot);
   mkdirSync(runtime, { recursive: true, mode: 0o700 });
   const token = randomUUID();
@@ -373,7 +379,7 @@ function waitForExit(child, timeoutMs) {
   });
 }
 
-export class Launcher {
+class Launcher {
   constructor({ installRoot, childArgs }) {
     this.installRoot = installRoot;
     this.childArgs = childArgs;
@@ -877,7 +883,7 @@ function makeWritable(dir) {
   }
 }
 
-export async function main(argv = process.argv.slice(2)) {
+async function main(argv = process.argv.slice(2)) {
   const launcherPath = fileURLToPath(import.meta.url);
   const installRoot = dirname(dirname(launcherPath));
   const release = acquireStateLock(installRoot);
