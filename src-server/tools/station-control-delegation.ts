@@ -121,6 +121,7 @@ import {
 import {
   controlRequestOptions,
   LocalStationRefusal,
+  readRelayingLocalRefusal,
   resolveControlApiBase,
 } from './station-control-shared.js';
 
@@ -135,45 +136,37 @@ interface ApiEnvelope<T> {
   session?: unknown;
 }
 
-/** A local execution view uses the same binding owner as engine admission. */
 /**
- * The selected Station's Agent. Since #2708 `getAgent` keeps the refusal's
- * `code`, and the delegate route relays a typed code it finds on the error
- * (`delegationRefusal`, the receiver-refusal mapping). So the answer is
- * rethrown as words only: this Station's own refusal rides as a
- * `LocalStationRefusal` cause, never as `code`. Today only the current
- * Station is read here (a peer target forwards before resolution); a peer's
- * code, which could be any string, would get no cause at all.
+ * The selected Station's Agent, its refusal rethrown as words only
+ * (`readRelayingLocalRefusal`, #2708). Today only the current Station is read
+ * here: a peer target forwards before resolution.
  */
-async function readTargetAgent(
+function readTargetAgent(
   access: EnvironmentAccess,
   id: AgentId,
 ): Promise<ExecutionTargetAgentView> {
-  try {
-    return (await getAgent(
-      access.apiBase,
-      id,
-      access.requestOptions,
-    )) as ExecutionTargetAgentView;
-  } catch (error) {
-    if (!(error instanceof StationHttpError)) throw error;
-    const cause =
-      access.kind === 'current' && error.code
-        ? new LocalStationRefusal(error.code, error.message)
-        : undefined;
-    throw new Error(error.message, cause ? { cause } : undefined);
-  }
+  return readRelayingLocalRefusal(
+    access,
+    async () =>
+      (await getAgent(
+        access.apiBase,
+        id,
+        access.requestOptions,
+      )) as ExecutionTargetAgentView,
+  );
 }
 
+/**
+ * A local execution view uses the same binding owner as engine admission.
+ * The Project read's refusal is rethrown as words only, like the Agent's.
+ */
 async function readExecutionProject(
   access: EnvironmentAccess,
   slug: string,
   orchestrationService: OrchestrationService,
 ) {
-  const project = (await getProject(
-    access.apiBase,
-    slug,
-    access.requestOptions,
+  const project = (await readRelayingLocalRefusal(access, () =>
+    getProject(access.apiBase, slug, access.requestOptions),
   )) as
     | {
         workingDirectory?: string;

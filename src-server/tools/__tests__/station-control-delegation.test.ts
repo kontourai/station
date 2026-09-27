@@ -4443,7 +4443,7 @@ describe('#2324 a delegated task event carries a provider-triggered turn’s tri
  * `LocalStationRefusal` cause, which only the station-control tools read,
  * never as the error's `code`.
  */
-describe('delegation Agent reads keep a refusal code off the route', () => {
+describe('delegation Agent and Project reads keep a refusal code off the route', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockReset();
@@ -4484,5 +4484,44 @@ describe('delegation Agent reads keep a refusal code off the route', () => {
     const cause = (error as Error).cause;
     expect(cause).toBeInstanceOf(LocalStationRefusal);
     expect(cause).toMatchObject({ refusalCode: 'delegation_depth_exceeded' });
+  });
+
+  test('this Station’s coded Project refusal rides as a LocalStationRefusal cause', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`)
+        return json({ environmentId: 'environment-current' });
+      if (url === `${CURRENT_API}/api/agents/reviewer`)
+        return json({
+          success: true,
+          data: { slug: 'reviewer', name: 'Reviewer', available: true },
+        });
+      if (url === `${CURRENT_API}/api/projects/workspace`)
+        return json(REFUSAL, 403);
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const { LocalStationRefusal } = await import(
+      '../station-control-shared.js'
+    );
+
+    const error = await delegateTask(
+      {
+        prompt: 'Local work',
+        target: {
+          ...currentTarget(),
+          workspace: { kind: 'project', projectSlug: 'workspace' },
+        },
+      },
+      localService() as never,
+    ).catch((caught: unknown) => caught);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${CURRENT_API}/api/projects/workspace`,
+      expect.anything(),
+    );
+    expect((error as { code?: unknown }).code).toBeUndefined();
+    expect((error as Error).message).toBe('Delegation depth exceeded.');
+    expect((error as Error).cause).toBeInstanceOf(LocalStationRefusal);
   });
 });

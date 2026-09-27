@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import {
   outsideStationServerScope,
@@ -559,6 +560,31 @@ export class LocalStationRefusal extends Error {
   ) {
     super(message);
     this.name = 'LocalStationRefusal';
+  }
+}
+
+/**
+ * #2708: read the selected Station through an SDK fetcher that keeps a
+ * refusal's `code`, and rethrow its words only. A route that finds a typed
+ * `code` on an error relays it as its own (the delegate route's
+ * `delegationRefusal` and receiver-refusal mapping), and a peer can send any
+ * string. So only THIS Station's refusal keeps its code, and only as a
+ * `LocalStationRefusal` cause; a peer's code is dropped. Any other failure
+ * (a transport error, a protocol error) passes through unchanged.
+ */
+export async function readRelayingLocalRefusal<T>(
+  target: { readonly kind: string },
+  read: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    if (!(error instanceof StationHttpError)) throw error;
+    const cause =
+      target.kind === 'current' && error.code
+        ? new LocalStationRefusal(error.code, error.message)
+        : undefined;
+    throw new Error(error.message, cause ? { cause } : undefined);
   }
 }
 

@@ -1,4 +1,5 @@
 import { tenantId } from '@kontourai/station-contracts/tenancy';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { describe, expect, test } from 'vitest';
 import {
   INTERNAL_API_TOKEN_HEADER,
@@ -7,6 +8,8 @@ import {
 import {
   controlRequestOptions,
   INTERNAL_CONTROL_CALLER_BINDING_HEADER,
+  LocalStationRefusal,
+  readRelayingLocalRefusal,
   resolveControlApiBase,
   STATION_CONTROL_ORIGIN_HEADER,
   setRuntimeControlApiBase,
@@ -98,5 +101,63 @@ describe('station-control shared helpers', () => {
     } finally {
       delete process.env.STATION_INTERNAL_TENANT;
     }
+  });
+});
+
+/**
+ * #2708: the one place a delegation read decides whether a refusal's code is
+ * this Station's. Both the Agent and the Project read go through it; only a
+ * `current` target keeps the code, and only as a cause.
+ */
+describe('readRelayingLocalRefusal', () => {
+  const refusal = () =>
+    new StationHttpError(403, 'Delegation depth exceeded.', {
+      code: 'delegation_depth_exceeded',
+    });
+  const failed = (kind: string, error: unknown) =>
+    readRelayingLocalRefusal({ kind }, async () => {
+      throw error;
+    }).catch((caught: unknown) => caught as Error);
+
+  test('this Station’s coded refusal rides as a cause, never as code', async () => {
+    const error = await failed('current', refusal());
+
+    expect(error).not.toBeInstanceOf(StationHttpError);
+    expect((error as { code?: unknown }).code).toBeUndefined();
+    expect(error.message).toBe('Delegation depth exceeded.');
+    expect(error.cause).toBeInstanceOf(LocalStationRefusal);
+    expect(error.cause).toMatchObject({
+      refusalCode: 'delegation_depth_exceeded',
+    });
+  });
+
+  test.each(['peer', 'ssh'])(
+    'a %s Station’s coded refusal keeps its words and loses its code',
+    async (kind) => {
+      const error = await failed(kind, refusal());
+
+      expect((error as { code?: unknown }).code).toBeUndefined();
+      expect(error.message).toBe('Delegation depth exceeded.');
+      expect(error.cause).toBeUndefined();
+    },
+  );
+
+  test('a refusal without a code carries no cause', async () => {
+    const error = await failed('current', new StationHttpError(404, 'gone'));
+
+    expect(error.message).toBe('gone');
+    expect(error.cause).toBeUndefined();
+  });
+
+  test('a failure that is not a refusal passes through unchanged', async () => {
+    const transport = new TypeError('fetch failed');
+
+    expect(await failed('current', transport)).toBe(transport);
+  });
+
+  test('an answer passes through', async () => {
+    await expect(
+      readRelayingLocalRefusal({ kind: 'peer' }, async () => 42),
+    ).resolves.toBe(42);
   });
 });
