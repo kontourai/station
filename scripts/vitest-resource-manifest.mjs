@@ -1026,6 +1026,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // declares. jsdom computes no layout and would report the pre-fix
   // edge-to-edge frame and the fixed one identically.
   'src-ui/src/workspace-panes/__tests__/WorkspacePaneRouteView.frame.test.tsx',
+  // #765 C1 and the collapsed bottom dock: both render the real region host in
+  // jsdom, then launch a real Chromium to lay that DOM out against index.css —
+  // whether the dock body scrolls inside the shell, and whether a collapsed
+  // bottom dock is its bar alone. A rule-text scan could not see an override.
+  'src-ui/src/app-shell/__tests__/ActivityRegionShell.dock-body.test.tsx',
+  'src-ui/src/app-shell/__tests__/CollapsedRegionDockBody.test.tsx',
   // Runs the full-regression phase driver CLI and real npm children, including
   // one it must kill at a deadline.
   'scripts/__tests__/run-full-regression-phases.test.ts',
