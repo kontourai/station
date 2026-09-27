@@ -122,6 +122,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Copies the tracked tree and runs the repo-governance lane CLI twice (clean and violating).
+  'scripts/__tests__/proof-family-route-error-egress.test.ts',
   // Real CLI prerequisite probes, a loopback listener, and the SQLite runtime owner.
   'src-server/tools/__tests__/station-control-delegation.provider-quota-connected.test.ts',
   // Creates FIFOs with mkfifo to prove plugin validation refuses them without blocking.
@@ -362,6 +364,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2176: its real-tree half, split out for the repo-scans job; same
   // `git ls-files`/child-process shape as the file above.
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // Runs the type-laundering gate as a real child process from a checkout
+  // path containing a space (known-bad and clean control) so the entry check
+  // that made it a silent no-op is proven, not just the scanner. Two bounded
+  // single-shot children.
+  'scripts/__tests__/type-laundering-gate.process.test.ts',
   // #2176: spawns the repo-scans runner through a symlink (`--list`, no
   // Vitest child) to prove its entrypoint guard reaches the runner.
   'scripts/__tests__/run-repo-scan-suites.test.ts',
@@ -442,6 +449,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // throwaway git repository to prove its base snapshot lands in the Station
   // temp root rather than the system temp directory.
   'scripts/__tests__/fallow-base-cache.test.ts',
+  // Runs `install-script-generated.mjs --check` as a child against this
+  // checkout and a stale scratch copy, so the gate's exit status is proven.
+  'scripts/__tests__/install-script-generated.test.ts',
   // #90 lane C: launches a REAL installed Chrome/Edge (headless, pipe CDP,
   // its own temporary profile and loopback fixture servers) to prove the
   // server browser host's enforcement end to end: scheme blocking, download

@@ -69,6 +69,24 @@ export function ChatDockMobileOverflowSheet({
         )}
         {branchLabel && <p>{branchLabel}</p>}
         {showConnection && <ChatDockMobileConnection showLabel />}
+        {/* Desktop More-menu parity first, like the desktop menu's own order:
+            identities are occasionally needed for paste, never read
+            continuously, and a coarse device has no tooltip to carry them. */}
+        {(overflow.copyActions ?? []).map((action) => (
+          <button
+            key={action.key}
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            disabled={action.disabled}
+            onClick={(event) => {
+              const trigger = event.currentTarget;
+              run(() => action.onSelect(trigger));
+            }}
+          >
+            {action.label}
+          </button>
+        ))}
         <button
           type="button"
           role="menuitem"

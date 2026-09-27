@@ -11,7 +11,7 @@
     // Every origin the gateway is reachable at. A Station token names one.
     "AUDIENCES": "https://push.kontourai.io",
     "ALLOWED_PACKAGES": "io.kontourai.station,io.kontourai.station.nightly,io.kontourai.station.beta,io.kontourai.station.debug",
-    // iOS bundles for Live Activities. APNs delivery also needs the
+    // iOS bundles for Live Activities and alerts. APNs delivery also needs the
     // APNS_AUTH_KEY and APNS_CHANNEL_AUTH_SECRET secrets; until both are set
     // the /v1/apns routes answer 503.
     "ALLOWED_IOS_BUNDLES": "io.kontourai.station,io.kontourai.station.beta,io.kontourai.station.nightly,io.kontourai.station.dev.instance",
@@ -80,6 +80,16 @@
       "name": "CHANNEL_DELETE_LIMITER",
       "namespace_id": "4109",
       "simple": { "limit": 10, "period": 60 }
+    },
+    {
+      // /v1/apns/alert, per device token, checked before PER_TOKEN_LIMITER.
+      // No key is bound to a device token, so a stranger who learns one can
+      // sign alerts to it with a key of their own: this caps how many
+      // sounding alerts that buys. A person's own notifications rarely come
+      // faster; ones over it stay in the inbox.
+      "name": "ALERT_PER_TOKEN_LIMITER",
+      "namespace_id": "4110",
+      "simple": { "limit": 6, "period": 60 }
     }
   ],
   // The channel sweep (src/apns-sweep.ts): reclaims every broadcast channel
