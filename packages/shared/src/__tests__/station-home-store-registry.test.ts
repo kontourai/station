@@ -3,6 +3,9 @@ import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   classifyStationHomeRoot,
+  containsExternalStationHomePath,
+  isExternalStationHomePath,
+  STATION_HOME_EXTERNAL_PATHS,
   STATION_HOME_ROOTS,
   STATION_HOME_SQLITE_STORES,
 } from '../station-home-store-registry.js';
@@ -144,5 +147,40 @@ describe('Station home store registry (#2675 D)', () => {
     );
     expect(classifyStationHomeRoot('instances.json.previous')).toBe('live');
     expect(classifyStationHomeRoot('never-heard-of-it')).toBeUndefined();
+  });
+
+  it('excludes users repositories and the browser bytes from update rollback, and each path is one Station source writes (#2675 D review F1)', () => {
+    expect(classifyStationHomeRoot('workspaces')).toBe('external');
+    expect(STATION_HOME_EXTERNAL_PATHS.map((path) => path.join('/'))).toEqual([
+      'workspaces',
+      'browser/chromium',
+      'browser/profiles',
+    ]);
+    // browser/ itself is Station's state; only the named parts are not.
+    expect(classifyStationHomeRoot('browser')).toBe('state');
+    expect(isExternalStationHomePath(['browser', 'sessions.json'])).toBe(false);
+    expect(isExternalStationHomePath(['browser', 'profiles', 'a', 'b'])).toBe(
+      true,
+    );
+    expect(isExternalStationHomePath(['workspaces', 'x', '.git'])).toBe(true);
+    expect(containsExternalStationHomePath(['browser'])).toBe(true);
+    expect(containsExternalStationHomePath(['config'])).toBe(false);
+    // Each nested path is spelled by the code that writes it.
+    const sources = productionSources().map((path) =>
+      readFileSync(join(repoRoot, path), 'utf8'),
+    );
+    for (const [parent, child] of [
+      ['browser', 'chromium'],
+      ['browser', 'profiles'],
+    ])
+      expect(
+        sources.some((text) =>
+          new RegExp(`'${parent}',\\s*'${child}'`).test(text),
+        ),
+        `${parent}/${child}`,
+      ).toBe(true);
+    expect(
+      sources.some((text) => /join\(home, 'workspaces', slug\)/.test(text)),
+    ).toBe(true);
   });
 });
