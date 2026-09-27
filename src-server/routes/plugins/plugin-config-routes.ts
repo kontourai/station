@@ -22,6 +22,7 @@ import {
 import { pluginSettingsUpdates } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
+import { ownGitRepositoryArgs } from '../../utils/own-git-repository.js';
 import { nullPrototypeCopy } from '../../utils/reserved-object-keys.js';
 import {
   errorMessage,
@@ -304,14 +305,16 @@ export function registerPluginConfigRoutes(
     }
     const pluginDir = captures.get(c)!.packageRoot;
 
-    const isGit = existsSync(join(pluginDir, '.git'));
-    if (!isGit) {
+    // Only the plugin's own repository: never one enclosing `pluginDir`.
+    const own = ownGitRepositoryArgs(pluginDir);
+    if (!own) {
       return c.json({ entries: [], source: 'local' });
     }
 
     try {
       const { stdout } = await execGit(
         [
+          ...own,
           'log',
           '--oneline',
           '--no-decorate',

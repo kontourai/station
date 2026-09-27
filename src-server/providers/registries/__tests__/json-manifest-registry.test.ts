@@ -1661,7 +1661,7 @@ describe('JsonManifestRegistryProvider source confinement', () => {
       );
       return new JsonManifestRegistryProvider(manifestPath, projectHome);
     };
-    return { base, root, outside, projectHome, provider };
+    return { base, root, outside, projectHome, provider, writePlugin };
   }
 
   async function expectPluginRefused(
@@ -2089,11 +2089,37 @@ describe('JsonManifestRegistryProvider source confinement', () => {
       `gitdir: ${resolve(work, '.git')}\n`,
     );
     commitPluginRepo(resolve(plugins, 'checkout'), 'checkout');
+    // Names a filesystem or git may read as `.git`: plain plugin directories
+    // so named, and plain-named plugin directories holding such an entry.
+    for (const [id, name] of gitNameVariants) {
+      layout.writePlugin(resolve(plugins, name), `named-${id}`);
+      const holder = resolve(plugins, `holds-${id}`);
+      layout.writePlugin(holder, `holds-${id}`);
+      mkdirSync(resolve(holder, entryVariants[id]));
+      writeFileSync(
+        resolve(holder, entryVariants[id], 'HEAD'),
+        'ref: refs/heads/main\n',
+      );
+    }
     return layout;
   }
 
   const plainDirectory = /a local registry source must be a plain directory/;
   const gitMetadata = /must not contain git metadata \(\.git\)$/;
+  // A source's final component ending as `.git` would on some filesystem.
+  const gitNameVariants = [
+    ['hfs-ignorable-suffix', 'repo.g\u200cit'],
+    ['upper-suffix', 'repo.GIT'],
+    ['trailing-dot-suffix', 'repo.git.'],
+    ['short-name', 'git~1'],
+  ] as const;
+  // A top-level entry that IS `.git` on some filesystem.
+  const entryVariants: Record<(typeof gitNameVariants)[number][0], string> = {
+    'hfs-ignorable-suffix': '.g\u200cit',
+    'upper-suffix': '.GIT',
+    'trailing-dot-suffix': '.git.',
+    'short-name': 'git~1',
+  };
   const localGitCases = [
     ['bare', '../plugins/bare.git', plainDirectory],
     ['trailing-slash', '../plugins/bare.git/', plainDirectory],
@@ -2102,6 +2128,10 @@ describe('JsonManifestRegistryProvider source confinement', () => {
     ['hash-plain', '../plugins/x#main', plainDirectory],
     ['gitfile-dir', '../plugins/gitfile-dir', gitMetadata],
     ['checkout', '../plugins/checkout', gitMetadata],
+    ...gitNameVariants.flatMap(([id, name]) => [
+      [`named-${id}`, `../plugins/${name}`, plainDirectory] as const,
+      [`holds-${id}`, `../plugins/holds-${id}`, gitMetadata] as const,
+    ]),
   ] as const;
 
   test.each(localGitCases)(
