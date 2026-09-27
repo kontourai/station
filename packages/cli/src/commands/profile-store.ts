@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
   closeSync,
@@ -40,20 +39,8 @@ import {
   assertWindowsPathsTrusted,
   ensureWindowsDirectoriesTrusted,
   hardenWindowsPathsTrusted,
+  runWindowsTrustCommand as windowsTrustRun,
 } from './windows-path-trust.js';
-
-function windowsTrustRun(command: string, args: string[]) {
-  const result = spawnSync(command, args, {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-  return {
-    error: result.error,
-    status: result.status,
-    stderr: typeof result.stderr === 'string' ? result.stderr : undefined,
-    stdout: typeof result.stdout === 'string' ? result.stdout : undefined,
-  };
-}
 
 function ensureWindowsProfileDirectories(home: string): void {
   ensureWindowsDirectoriesTrusted(windowsTrustRun, [

@@ -14,6 +14,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { childExitedBeforeReadinessMessage } from '../../packages/cli/src/commands/lifecycle.js';
 import {
   appendE2EStartupOutputTail,
   assertSupportedE2EPlatform,
@@ -1645,6 +1646,47 @@ describe('classifyStartFailure (#1177)', () => {
     expect(
       classifyStartFailure(
         'Timed out waiting for http://localhost:3542/api/system/identity (fetch failed)',
+      ),
+    ).toBe('boot-race');
+  });
+
+  test('an identity wait ended early by the child exiting stays retryable (#2805)', () => {
+    expect(
+      classifyStartFailure(
+        'Station process exited before http://localhost:3542/api/system/identity answered (fetch failed)',
+      ),
+    ).toBe('boot-race');
+    // Our child exited and another instance answered: the #1177 lost race.
+    expect(
+      classifyStartFailure(
+        'Failed to start instance e2e-1. Station process exited; http://localhost:3542/api/system/identity answered as a different instance (managed boot identity mismatch): bootId expected "a", got "b"',
+      ),
+    ).toBe('boot-race');
+    expect(
+      classifyStartFailure(
+        'Station process exited; http://localhost:5574/__station/identity answered as a different instance (managed boot identity mismatch): sha expected "a", got "b"',
+      ),
+    ).toBe('boot-race');
+    expect(
+      classifyStartFailure(
+        'Station process exited; http://localhost:3542/api/system/identity answered 500 Internal Server Error',
+      ),
+    ).toBe('fatal');
+    // Bound to the CLI's own wording, so the two cannot drift apart.
+    const url = 'http://localhost:3542/api/system/identity';
+    expect(
+      classifyStartFailure(
+        childExitedBeforeReadinessMessage(url, 'fetch failed', 'no-listener'),
+      ),
+    ).toBe('boot-race');
+    expect(
+      classifyStartFailure(
+        childExitedBeforeReadinessMessage(
+          url,
+          'managed boot identity mismatch',
+          'identity-mismatch',
+          'bootId expected "a", got "b"',
+        ),
       ),
     ).toBe('boot-race');
   });
