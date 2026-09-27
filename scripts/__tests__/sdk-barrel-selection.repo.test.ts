@@ -17,6 +17,7 @@ import { beforeAll, describe, expect, test } from 'vitest';
 import {
   loadSdkImportGraph,
   refinedSeedsFor,
+  refineSdkBarrelRelatedPaths,
 } from '../lib/sdk-barrel-selection.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -55,6 +56,41 @@ describe('SDK barrel selection on the real corpus', () => {
     expect(
       refinedSeedsFor(graph, 'packages/sdk/src/client/agents.ts').seeds,
     ).toContain(AGENTS_ONLY_IMPORTER);
+  });
+
+  test('base contents are read in one batch and decide every candidate', () => {
+    // Several candidates, so a misaligned batch read would hand one path
+    // another's content (an import-set difference, a side effect).
+    const candidates = [
+      SCHEDULER,
+      'packages/sdk/src/client/agents.ts',
+      'packages/sdk/src/client/board.ts',
+      'packages/sdk/src/api-core.ts',
+    ];
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      windowsHide: true,
+    }).trim();
+    const dirty = execFileSync(
+      'git',
+      ['status', '--porcelain', '--', ...candidates],
+      { cwd: ROOT, encoding: 'utf8', windowsHide: true },
+    ).trim();
+    const { decisions } = refineSdkBarrelRelatedPaths(ROOT, candidates, {
+      base: head,
+    });
+    // Unedited against HEAD, each is refined; an edit may legitimately not be.
+    if (dirty === '')
+      expect(decisions.map((decision) => decision.disposition)).toEqual(
+        candidates.map(() => 'refined'),
+      );
+    const broken = refineSdkBarrelRelatedPaths(ROOT, candidates, {
+      base: 'refs/heads/no-such-branch-2707',
+    });
+    expect(broken.paths).toEqual([...candidates].sort());
+    for (const decision of broken.decisions)
+      expect(decision.reason).toMatch(/^base content unavailable/);
   });
 
   test('before/after: resolving named imports narrows a single-client edit', () => {
