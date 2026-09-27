@@ -254,6 +254,25 @@ edit cannot silently demote a required platform, not properties the cohort deriv
 run time. This is only an available configured subset, and fleet/CLI
 completion remains `NOT_VERIFIED`.
 
+## Prebuilt portable server qualification
+
+[`portable-server-archives.yml`](../../.github/workflows/portable-server-archives.yml)
+is a separate build/smoke matrix for platform-specific server archives. The
+[builder](../../scripts/lib/portable-server-archive.mjs) stages the selected
+Node runtime, native dependencies, compiled server/UI/CLI, and platform launcher.
+It marks the tree as prebuilt so the CLI does not try to rebuild it at startup.
+The workflow's smoke checks that archive through an isolated long-path home,
+without relying on a host Node executable. A declared matrix is not a current
+pass or published release.
+
+The new platform release-manifest contract and assembler describe those
+per-platform bytes. They are distinct from the source-archive formats currently
+accepted by `install.sh`: that script still selects `station-portable.tar.gz`,
+runs managed dependencies, and builds the release in its final location before
+activation. Do not advertise a toolchain-free installer merely because the
+archive builder or manifest tests pass. [#2675](https://github.com/kontourai/station/issues/2675)
+owns that delivery integration.
+
 ## Nightly fleet staging
 
 `nightly-fleet-staging.yml` is an independent reusable, portable-only evidence

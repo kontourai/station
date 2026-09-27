@@ -20,6 +20,10 @@ staging slots into upstream with no fork and no vendored package.
 
 ## Trust chain
 
+[#2813](https://github.com/kontourai/station/issues/2813) tracks libc-aware
+admission before Linux artifacts are added to this channel. A manifest digest
+does not establish host compatibility.
+
 1. Artifacts are built by `.github/workflows/node-pty-prebuilds.yml`: the
    approved dependency lifecycle compiles node-pty from the integrity-pinned
    lockfile tarball, `scripts/verify-node-pty-prebuild.mjs` re-proves the

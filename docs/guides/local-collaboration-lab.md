@@ -633,6 +633,30 @@ collaborator enrollment, native clients or real humans.
 
 ## Follow the implementation
 
+### Native-v2 signaling diagnostic
+
+After installing the local transport prerequisites and building the pinned
+Pion peer, the explicitly opted-in diagnostic is:
+
+```sh
+npm run lab:native-relay-diagnostic-echo -- --run-real-local-lab
+```
+
+The [runner](../../scripts/native-relay-diagnostic-echo-lab.ts) composes real
+loopback broker routes, the native-v2 client/connector, Station signing trust,
+Chromium WebRTC, local coturn, and Pion's `diagnosticEcho` profile. It collects
+an echoed fixture message, retires its grant/peer/process owners, and retains
+separate cleanup observations. `--exercise-ice-gather-abort` deliberately
+exercises a failure path; a nonzero exit alone is not proof of cleanup.
+
+Here “native-v2” identifies the signaling contract. This command uses Chromium
+and a Node controller, not an installed native Station app, and opens no
+protected application channel. It proves neither account/Device/Project
+onboarding nor native application-route selection. Running it is separate from
+the browser account/UI profiles above; this documentation review did not run it.
+
+### Source owners
+
 - [Local lab command](../../scripts/local-collaboration-lab.ts) owns stage
   selection, incomplete-scenario reporting, exit status, and retained diagnostics.
 - [Browser transport command](../../scripts/browser-transport-lab.ts) owns

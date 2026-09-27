@@ -1,6 +1,7 @@
 # Signed release rings
 
-Station portable installs use signed GitHub release rings. Stable is the default;
+Station's default portable installer uses GitHub-attested release rings.
+Stable is the default;
 Beta is opt-in with `STATION_CHANNEL=beta`. Its public release protocol remains
 named `preview`, and a preview tag has the form
 `vMAJOR.MINOR.PATCH-preview.N`; a stable tag has the form `vMAJOR.MINOR.PATCH`.
@@ -10,9 +11,16 @@ preview numbering lives only in immutable `vX.Y.Z-preview.N` tags and their
 release overlays. Promotion never edits source, moves a tag, or relabels a
 preview artifact.
 
+Nightly is a separate, opt-in signed-public-manifest path:
+`STATION_CHANNEL=nightly` requires `STATION_INSTALL_PUBLIC_MANIFEST_URL`.
+The authenticated GitHub-release path serves Stable and Beta only. See
+[channel identity and coexistence](release-channel-ports.md) for Nightly's
+home/port admission and the distinction between the public manifest signature
+and a signed Git tag. Publication remains separate from installer support.
+
 ## Release artifacts and trust boundary
 
-Every release contains exactly these installer inputs:
+The Stable/preview source-archive path uses these three installer inputs:
 
 - `station-release-ring-stable.json` or `station-release-ring-preview.json`
 - `station-portable.tar.gz.sha256`

@@ -118,6 +118,13 @@ status check. A normal reader build can mark stale reviews `needs-review`;
 the strict check refuses them. None of these mechanisms proves the semantics
 of a prose claim or covers source dependencies absent from the ledger.
 
+Hosted `fast-checks` now aggregates an affected-test plan, four shards, and
+`fast-checks-statics`. The statics job runs `ci:fast` with the explicit statics
+scope and includes its Veritas readiness call; sharding does not add the full
+documentation gate to that fixed list. A default Veritas documentation check
+would therefore be a new enforcement point and still needs the existing
+governance process below.
+
 New gate proposals remain proposals until implemented, exercised on known-bad
 and benign cases, and admitted through the existing governance process.
 Protected standards/authority changes follow [GOVERNANCE.md](GOVERNANCE.md);

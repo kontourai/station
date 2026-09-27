@@ -134,7 +134,8 @@ local blocker and is not a claim that TestFlight or App Store Connect is ready.
 `ready: true` is local preflight evidence, not a complete archive recipe.
 Channel delivery also needs the matching identity overlay, regenerated icon
 catalog, native build provenance, privacy resources, signing configuration,
-and (for Beta/Nightly) the Live Activity extension and its profile. The owning
+and (for Beta/Nightly) the Live Activity and Notification Service extensions
+and their separate profiles. The owning
 sequence is [testflight-delivery.yml](../../.github/workflows/testflight-delivery.yml);
 a bare `tauri ios init` plus `ios build` does not reproduce it.
 
@@ -269,6 +270,7 @@ Google's keyless upload and Secret Manager path is separate, as described below.
 | `APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64`, `APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`, `APPLE_DEVELOPMENT_TEAM`, `APPLE_IOS_SIGNING_IDENTITY`, `APPLE_PROVISIONING_PROFILE_BASE64` | iOS | Code-signs the release IPA | Required by the iOS build/sign job — see native-releases.md |
 | `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, `APPLE_API_PRIVATE_KEY` | iOS | Authenticates App Store Connect preflight, TestFlight upload, and processed-build receipt | Required; absence fails the Stable iOS release job before signing work |
 | `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64` (`ios-beta` and `ios-nightly` only) | iOS | Signs the Live Activity widget extension | Required by Beta and Nightly TestFlight builds; see [Live Activity in Beta and Nightly](#live-activity-in-beta-and-nightly) |
+| `APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64` (`ios-beta` and `ios-nightly` only) | iOS | Signs the Notification Service extension | Required separately from the app and Live Activity profiles |
 
 Google Play authentication deliberately has no secret row. GitHub's OIDC token
 is exchanged through Google Workload Identity Federation for a short-lived
@@ -316,106 +318,88 @@ not replace the App Store export with it.
 
 ### Live Activity in Beta and Nightly
 
-Beta and Nightly TestFlight builds include the Live Activity (#2513). Stable
-does not. The channel table in
-[`scripts/ios-testflight-channel.mjs`](../../scripts/ios-testflight-channel.mjs)
-decides which channels include it: a channel includes it when its entry names
-an `agentActivityBundleId`. For those channels, `testflight-delivery.yml`
-enables both parts of the feature:
+Beta and Nightly TestFlight builds declare both the Live Activity widget and
+Notification Service extension. Stable declares neither. The source of this
+selection is the `agentActivityBundleId` and `notificationServiceBundleId` in
+[`ios-testflight-channel.mjs`](../../scripts/ios-testflight-channel.mjs).
+This is build configuration; it does not prove provider delivery or a device
+notification in the current release.
 
-- **Plugin:** the build sets `STATION_IOS_LIVE_ACTIVITY=1` as Cargo config,
-  which compiles the Swift Live Activity plugin into the app.
-- **Extension:** after the last `tauri ios init`,
-  `ensure-ios-agent-activity-extension.mjs --aps-environment production` adds
-  the `StationAgentActivity` widget extension target to the rendered spec.
-  `ios-store-signing-config.mjs agent-activity` then signs the extension with
-  its own profile. Both steps run before `xcodegen generate`.
+The [TestFlight workflow](../../.github/workflows/testflight-delivery.yml):
 
-The IPA then contains `PlugIns/StationAgentActivity.appex`, whose bundle ID is
-`<app id>.AgentActivity`. The app's exported entitlements add
-`aps-environment=production` and two keychain groups, in this order: the app's
-default group, then `<team>.<app id>.agentactivity`, which it shares with the
-widget. The app's `Info.plist` carries two keys, written to the shipped
-`Info.plist` only for these channels (never to `src-desktop/Info.ios.plist`,
-which Stable shares):
+- Sets `STATION_IOS_LIVE_ACTIVITY=1` for the app's Swift Live Activity plugin.
+- Adds `StationAgentActivity` and `StationNotificationService` to the generated
+  Xcode project with `ensure-ios-agent-activity-extension.mjs --notification-service`
+  after the final Tauri initialization.
+- Calls `ios-store-signing-config.mjs agent-activity` with the app profile,
+  widget profile, and `--notification-service-profile`, then regenerates the
+  Xcode project. All three profiles must use the imported distribution
+  certificate and their exact channel-owned bundle IDs.
 
-- `StationApsEnvironment=production`, which the plugin reads at runtime;
-- `NSSupportsLiveActivities=true`. Without it, ActivityKit reports Live
-  Activities as disabled, no activity starts, and no push-to-start token is
-  issued, even though everything is signed correctly.
+The IPA is expected to contain these two extensions:
 
-`NSSupportsLiveActivitiesFrequentUpdates` is deliberately left out. It only
-raises the budget for priority-10 updates, and the push gateway sends routine
-updates at priority 5 (`livePriority` in `deploy/push-gateway`); only start,
-end and alerting updates use priority 10. The key would also add a "More
-Frequent Updates" setting that changes nothing Station sends.
+| Extension | Bundle ID | Purpose |
+| --- | --- | --- |
+| `StationAgentActivity.appex` | `<app id>.AgentActivity` | Live Activity presentation |
+| `StationNotificationService.appex` | `<app id>.NotificationService` | Open and verify a sealed alert before replacing its fixed notification text |
 
-Before signing, the job checks both profiles. It refuses either one unless it
-includes the distribution certificate imported for the build. It also refuses
-the extension profile unless it is for `<app id>.AgentActivity`, and the app
-profile unless it grants production push. After the build, the job audits the
-IPA:
+The Notification Service keeps the original fixed text when opening or
+verification fails, or its delivery budget expires. Its
+[Swift entry point](../../src-desktop/ios/StationNotificationService/NotificationService.swift)
+delegates to the shared delivery owner. That fallback is separate from whether
+APNs delivered the push; an extension's presence is not remote-delivery proof.
 
-- the widget is the only extension, and its bundle ID and versions match the
-  app;
-- the app's and the widget's embedded profiles are the two imported for the
-  build (their UUIDs match);
-- the widget holds only the shared keychain group and has no push entitlement;
-- the app's entitlements and both `Info.plist` keys are as described above;
-- the app executable contains the Swift `AgentActivityPlugin` class. The
-  Objective-C class list is read with `otool -oV`, because the App Store build
-  strips the plugin's init symbol.
+The app's exported entitlements include production push and two keychain
+groups, in order: its default group, then `<team>.<app id>.agentactivity`.
+Both extensions share only that second group and do not receive the app's push
+entitlement. The workflow audits the expected extension set, bundle IDs and
+versions, profile UUIDs, and exported entitlements. It also checks the app's
+Swift `AgentActivityPlugin` class with `otool -oV`; the stripped init symbol
+cannot establish that the plugin shipped.
 
-A Stable build fails the audit if it contains the widget, declares
-`NSSupportsLiveActivities`, or contains the plugin class. Local, simulator,
-and development builds are unchanged: the committed `gen/apple` spec includes
-neither the plugin nor the extension.
+For these channels the app's generated `Info.plist` receives
+`StationApsEnvironment=production` and `NSSupportsLiveActivities=true`.
+The workflow preserves and restores the committed plist before applying these
+channel-only additions. It leaves `NSSupportsLiveActivitiesFrequentUpdates`
+unset: routine Live Activity updates use priority 5, while start/end/alerting
+updates use priority 10. Stable must not contain either extension, the Live
+Activity plugin class, or the Live Activity plist declaration. The ordinary
+committed development project does not include these generated extensions.
 
-The widget ships without its own privacy manifest. Neither its sources
-(`src-desktop/ios/StationAgentActivity`) nor the card code it shares with the
-plugin call any required-reason API (user defaults, file timestamps, system
-boot time, disk space, or active keyboards); it uses the keychain, CryptoKit,
-ActivityKit and WidgetKit. Add a `PrivacyInfo.xcprivacy` to the extension if
-that changes.
+The widget has no separate privacy manifest; its current shared sources use
+Keychain, CryptoKit, ActivityKit and WidgetKit. Revisit required-reason API and
+privacy declarations whenever those sources change. This build description is
+not a legal review or physical privacy verification.
 
-These builds leave both `IOS_MOBILE_PROVISION` and `IOS_CERTIFICATE` unset,
-and the build fails if either is set. When Tauri 2.11.4 sees either variable,
-it signs manually and writes export options whose `provisioningProfiles`
-list only the app, and Xcode's manual-signing export then refuses the
-unlisted extension. Instead, the job replaces `gen/apple/ExportOptions.plist`
-with export options that list both profiles. The committed file contains
-only `method`, so the replacement removes nothing else. Tauri merges this file
-into a temporary copy that it deletes and never names, so the job cannot read
-that copy. The UUID check on the widget's embedded profile shows the export
-used the widget's profile.
+The workflow refuses `IOS_MOBILE_PROVISION` and `IOS_CERTIFICATE`: it owns the
+manual signing/export configuration instead. Its temporary export options
+name the app and both extensions. The exported IPA audit checks each embedded
+profile UUID against the imported profile, so preparing export options alone
+cannot count as successful signing.
 
-Each of `ios-beta` and `ios-nightly` holds two provisioning-profile secrets:
+Each of `ios-beta` and `ios-nightly` requires three provisioning-profile secrets:
 
 | Secret | Profile |
 | --- | --- |
-| `APPLE_PROVISIONING_PROFILE_BASE64` | App Store profile for the app (`io.kontourai.station.<channel>`). Its App ID must have Push Notifications enabled, so the profile carries `aps-environment=production` |
-| `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64` | App Store profile for the widget extension (`io.kontourai.station.<channel>.AgentActivity`) |
+| `APPLE_PROVISIONING_PROFILE_BASE64` | App Store profile for `io.kontourai.station.<channel>`, with production push enabled |
+| `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64` | App Store profile for `io.kontourai.station.<channel>.AgentActivity` |
+| `APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64` | App Store profile for `io.kontourai.station.<channel>.NotificationService` |
 
-**Rotating the extension profile.** A profile embeds the distribution
-certificate, so renewing that certificate requires new app and extension
-profiles for both channels. Also replace a profile when it expires or when
-its App ID changes. For each channel:
+When the distribution certificate changes, renew all three profiles for each
+channel. Also renew an expired profile or one whose App ID changed. Inspect
+an owner-held profile before replacing its corresponding secret:
 
-1. In the Apple Developer portal, go to Profiles → +. Create an **App Store
-   Connect** distribution profile for `io.kontourai.station.<channel>.AgentActivity`
-   with the current Apple Distribution certificate, then download it.
-2. Check it locally before depositing it:
-   `node scripts/check-ios-store-profile.mjs --station <file>.mobileprovision --expected-team <team id> --expected-bundle-id io.kontourai.station.<channel>.AgentActivity`.
-3. Replace the secret:
-   `base64 -i <file>.mobileprovision | gh secret set APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env ios-<channel>`.
+```sh
+node scripts/check-ios-store-profile.mjs --station /owner-only/profile.mobileprovision \
+  --expected-team '<team id>' --expected-bundle-id '<exact app or extension bundle id>' \
+  --expected-certificate-sha1 '<distribution certificate SHA-1>'
+```
 
-To rotate the app profile, follow the same steps for
-`io.kontourai.station.<channel>` with `APPLE_PROVISIONING_PROFILE_BASE64`, and
-add `--expected-aps-environment production` to the check in step 2. To also
-check a profile against the current distribution certificate, add
-`--expected-certificate-sha1 <SHA-1>`, using the SHA-1 that
-`security find-identity -v -p codesigning` prints for that certificate. The next
-TestFlight run validates both profiles before building.
+For the app profile, also supply `--expected-aps-environment production`.
+Use the UUID and certificate from the actual profile and signing identity;
+do not infer them from a filename. The next build rechecks these inputs and
+the exported bytes. Current secret provisioning and provider acceptance must
+still be established by the operator.
 
 ## Getting each new credential
 

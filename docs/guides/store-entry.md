@@ -66,12 +66,15 @@ accepted preview commit can be promoted to Stable without a source edit.
 
 ## 1. Apple (one-time)
 
-1. Register each of the three channel bundle IDs above.
+1. Register each of the three channel app bundle IDs above. Beta and Nightly
+   also need their `.AgentActivity` and `.NotificationService` extension App
+   IDs; see [the extension signing contract](mobile-release.md#live-activity-in-beta-and-nightly).
 2. Create one matching app record and one explicit internal TestFlight group
    per channel. Station requires these existing records; Apple exposes a
    [beta-group creation API](https://developer.apple.com/documentation/appstoreconnectapi/post-v1-betagroups),
    so group creation is not universally a manual-only API limitation.
-3. Create an **App Store distribution** provisioning profile per bundle ID. Ad-hoc and
+3. Create an **App Store distribution** provisioning profile for each app and
+   required extension bundle ID. Ad-hoc and
    development profiles fail the release job.
 4. Export the iOS Distribution certificate (`.p12`) and its password.
 5. Generate an App Store Connect Team API key (App Manager). Download the
@@ -121,10 +124,11 @@ for env in native-release ios-beta ios-nightly; do
   gh secret set APPLE_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env "$env"
 done
 
-# The Live Activity widget extension's App Store profile (Beta and Nightly
-# only; see mobile-release.md "Live Activity in Beta and Nightly")
+# Separate App Store profiles for both extensions (Beta and Nightly only;
+# see mobile-release.md "Live Activity in Beta and Nightly")
 for env in ios-beta ios-nightly; do
   gh secret set APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env "$env"
+  gh secret set APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env "$env"
 done
 
 # Internal authority signatures are verified in every delivery environment.

@@ -13,11 +13,12 @@ the exact pnpm version in `package.json`, and Git. The managed dependency runner
 resolves and checks that package-manager pin. On Linux,
 `npm run dependencies:install` additionally needs a C++ toolchain (`g++`,
 `make`, `python3`) when the `node-pty` terminal module must be compiled.
-macOS and Windows normally use the supported prebuild paths. When
-`packaging/node-pty-prebuilds/manifest.json` pins attested Linux artifacts
-(#1245), the dependency lifecycle stages those instead and the Linux
-node-pty toolchain requirement disappears; `npm_config_build_from_source=true`
-opts back into compiling. Other native dependencies retain their own platform
+macOS and Windows normally use the supported prebuild paths. The Linux
+[prebuild manifest](../../packaging/node-pty-prebuilds/manifest.json) is currently
+empty. Its future artifact channel needs the libc compatibility admission in
+[#2813](https://github.com/kontourai/station/issues/2813) before it can replace
+source builds on supported hosts. `npm_config_build_from_source=true` opts out
+of prebuild staging. Other native dependencies retain their own platform
 requirements. Rust and platform SDKs are needed for native builds/checks; a server/UI-only
 loop need not run them.
 
@@ -351,6 +352,12 @@ Use `npm run ci:fast` for bounded per-push feedback: it runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 and verification-policy, lint, governance and typecheck invariants. It is not
 the full static/build chain or full Vitest corpus.
+Hosted CI splits that work: `fast-checks-plan` selects once, four
+`fast-checks-shard` jobs run the affected tests, and `fast-checks-statics` runs
+the fixed invariants plus browser/performance smoke and the UI bundle budget.
+The required `fast-checks` result combines job outcomes with exact-plan shard
+receipts. Local `ci:fast` remains unsharded; see the
+[testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
 Ordinary pull requests use focused evidence plus `npm run ci:fast`.
 GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`

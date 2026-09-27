@@ -90,11 +90,13 @@ expiry, and revocation, withdrawal, or a replaced Station generation makes a
 receipt unusable. Grants not renewed within seven days need operator
 re-issuance.
 Rust has private-key signing and fixed-path HTTP helpers for these request
-proofs, including retained cleanup and renewal state. The ordinary Tauri
-command table exposes key approval and grant-custody commands, but does not
-wire the native redemption service or native application-route selection.
-These helpers and the TypeScript signer seam are implementation foundations,
-not a working native application connection.
+proofs, including retained cleanup and renewal state. The desktop Tauri command
+table now wires native grant redemption, status, revocation, pending-cleanup
+read/retry, and diagnostic signaling binding/open/read. Those main-window
+commands reload the saved profile and approved Station trust in the host;
+the renderer does not supply trusted keyring identity. Profile removal and
+startup also have pending-cleanup hooks. These capabilities still do not select
+a native application route or carry protected application traffic.
 Native invitations and grants are retired with their Station
 routing generation. V1 redemption rejects v2
 invitations, and native-v2 redemption rejects v1 invitations. This foundation
@@ -115,6 +117,12 @@ Native signalling therefore does not enable application ingress, encrypted
 application traffic, or native UI onboarding. Several native installations can
 hold separate grants; connector fan-out across multiple native surfaces remains
 future work.
+
+An explicit native-v2 `diagnosticEcho` composition is available in the
+[local lab](local-collaboration-lab.md#native-v2-signaling-diagnostic).
+Its caller supplies a diagnostic adapter and collects an echo before retiring
+the peer. It does not register the ordinary native application adapter or turn
+a saved Desktop route into a selectable application connection.
 
 Connection offers use a caller-chosen client ID and nonce, expire after 30 seconds, and remain replay tombstones for five minutes. Each Station may hold 32 live offers and the broker 1024. Offer and answer SDP are capped at 128 KiB; the opaque Station proof uses its owning 4 KiB contract limit. A connection accepts one answer. Withdrawal and a newer routing generation invalidate pending work without changing Station signing-key trust. Lease renewal uses an explicit revision CAS.
 

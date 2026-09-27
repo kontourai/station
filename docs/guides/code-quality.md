@@ -75,7 +75,7 @@ neither could merge without carrying it (#3141).
 `build:ui` ran three times per change: at push, in `fast-checks`, and on the
 merge-queue candidate. With headroom ceilings
 ([#1703](https://github.com/kontourai/station/issues/1703)) the CI
-enforcement is sufficient: `fast-checks` builds the candidate and fails over
+enforcement is sufficient: `fast-checks-statics` builds the candidate and fails over
 the ceiling, and the merge queue does the same on latest `main` plus the
 change. A separate, non-required `ui-bundle-delta` job reports each
 same-repository pull request's entry-bundle delta against its merge base,
@@ -184,6 +184,12 @@ Use `npm run gate:for -- <paths>` before editing, run its focused checks, then
 `npm run ci:fast` before pushing. The pre-push hook enforces its scoped gates;
 the merge queue verifies the latest-main composition. The [testing guide](testing.md)
 owns the full schedule and promotion-completion requirements.
+
+In hosted CI, required `fast-checks` aggregates the affected-test plan, four
+shards, and `fast-checks-statics`. It checks both job outcomes and receipts
+bound to the plan and source revision. Local `ci:fast` still runs its whole
+bounded lane; `STATION_CI_FAST_SCOPE=statics` is the hosted split's explicit
+scope, not a substitute for local affected-test evidence.
 
 Documentation coverage is split across those paths. `ci:fast` includes CLI-doc
 parity and content checks, but not the whole `docs:truth:gate`. The separate

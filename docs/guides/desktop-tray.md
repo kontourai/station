@@ -160,6 +160,31 @@ verification](native-shell-verification.md); physical tray/second-launch
 deferral and diagnostic/relaunch behavior remain **NOT_VERIFIED** on packaged
 Stable, Beta, and Nightly builds.
 
+## Desktop alerts while the window is hidden
+
+The [native notification-feed consumer](../../src-desktop/src/notification_feed.rs)
+reads `/api/notifications/deliveries` for the host-authorized active Station,
+using that profile's credential and this installation's surface identity. It
+runs outside the WebView with a 20-second polling interval, so hiding the main
+window does not suspend this reader. The server delivery router has already
+applied notification policy and redacted the content.
+
+The [WebView adapter](../../src-ui/src/platform/native/deliveryFeed.ts) asks which
+consumer owns the feed before reading it. It can offer its older local cursor
+once during upgrade; the native reader persists its own cursor per Station
+origin and returned surface. A focused main window suppresses an OS alert and
+consumes that entry. OS refusal and timed-out calls are also consumed; a call
+that could not be started can be retried. A crash or failed cursor write can
+replay work, so this is not an exactly-once display guarantee.
+
+Linux can close a notification already posted by this process. The current
+macOS and Windows backends cannot retract an already displayed alert; they can
+only suppress one not yet posted. Clicking an alert focuses Station and passes
+a validated in-app path to the main WebView. It does not open an arbitrary
+external URL. Source and test fixtures establish these owners and limits;
+OS permission, visible delivery, click behavior, and background operation still
+need evidence from the packaged app on each platform.
+
 ## Logging (#1899)
 
 The native shell (Rust/Tauri process — the tray, the notification watch, the

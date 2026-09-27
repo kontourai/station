@@ -1,7 +1,9 @@
 # Deterministic PR browser smoke
 
-The required `fast-checks` job runs `npm run test:e2e:pr-smoke` for
-same-repository pull requests and merge-group candidates. Fork pull requests
+The `fast-checks-statics` job runs `npm run test:e2e:pr-smoke` for
+same-repository pull requests and merge-group candidates. The required
+`fast-checks` aggregator requires that job and the affected-test plan/shards to
+succeed; it also validates their exact-plan receipts. Fork pull requests
 use a separate isolated job. The smoke runner creates its own Station instance,
 temporary home, and dynamically allocated loopback API/UI ports, keeping it
 separate from an always-on dogfood environment on the same host.
@@ -31,6 +33,8 @@ excludes ordinary HTTP 4xx console reports, aborted requests, and failed
 `/events` requests. It is not a global fixture: the two connection specs do not
 use it, and the cross-runtime spec uses it for one test. Read each journey's
 own assertions before treating the lane as general browser-health coverage.
+[#2812](https://github.com/kontourai/station/issues/2812) tracks an explicit
+health policy for every admitted journey, including expected connection refusals.
 
 The runner uses one worker and zero Playwright retries. The
 [required CI step](../../.github/workflows/ci.yml) has a ten-minute timeout;
