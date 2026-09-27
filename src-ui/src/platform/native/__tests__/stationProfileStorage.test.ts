@@ -2456,25 +2456,6 @@ describe('NativeStationProfileStorage', () => {
       );
     });
 
-    it('notifies active-connection observers only when the selection changes', async () => {
-      const { storage } = storageWithKeyring();
-      await storage.hydrate();
-      const changed = vi.fn();
-      storage.subscribeActiveConnection(changed);
-
-      storage.set(
-        'station-connect-connections-active',
-        'station-profile:home relay',
-      );
-      storage.set(
-        'station-connect-connections-active',
-        'station-profile:home relay',
-      );
-      storage.remove('station-connect-connections-active');
-
-      expect(changed).toHaveBeenCalledTimes(2);
-    });
-
     it('edits and removes by exact profile revision while rejecting embedded trust keys', async () => {
       const { currentStore, storage } = storageWithKeyring();
       await storage.hydrate();

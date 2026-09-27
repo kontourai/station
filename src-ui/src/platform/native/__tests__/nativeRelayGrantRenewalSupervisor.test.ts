@@ -1,32 +1,51 @@
 import type { StationProfile } from '@kontourai/station-contracts';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE,
   type NativeRelayGrantRenewalAdapter,
+  type NativeRelayGrantRenewalStatus,
   NativeRelayGrantRenewalSupervisor,
   type NativeRelayRouteProfileStorage,
+  type NativeRelayRouteSelection,
 } from '../nativeRelayGrantRenewalSupervisor';
 
-const route = {
-  brokerOrigin: 'https://broker.example',
-  stationId: '11111111-1111-4111-8111-111111111111',
-  enrollmentId: '22222222-2222-4222-8222-222222222222',
+const routeIds = {
+  Alpha: {
+    brokerOrigin: 'https://alpha-broker.example',
+    stationId: '11111111-1111-4111-8111-111111111111',
+    enrollmentId: '22222222-2222-4222-8222-222222222222',
+  },
+  Beta: {
+    brokerOrigin: 'https://beta-broker.example',
+    stationId: '33333333-3333-4333-8333-333333333333',
+    enrollmentId: '44444444-4444-4444-8444-444444444444',
+  },
 };
-const profile = (updatedAt = 1): StationProfile => ({
-  schemaVersion: 1,
-  name: 'Home Station',
-  endpoint: 'https://station.example',
-  relayRoute: route,
-  setupSource: 'manual',
-  configurationState: 'unconfigured',
-  createdAt: 1,
-  updatedAt,
-});
+
+function profile(name: keyof typeof routeIds, updatedAt = 1): StationProfile {
+  return {
+    schemaVersion: 1,
+    name,
+    endpoint: `https://${name.toLowerCase()}.station.example`,
+    relayRoute: routeIds[name],
+    setupSource: 'manual',
+    configurationState: 'unconfigured',
+    createdAt: 1,
+    updatedAt,
+  };
+}
+
+function statusFor(
+  selection: NativeRelayRouteSelection,
+  profileRevision: number,
+  grant: NativeRelayGrantRenewalStatus['grant'],
+): NativeRelayGrantRenewalStatus {
+  return { ...selection, profileRevision, grant };
+}
 
 class ProfileStorage implements NativeRelayRouteProfileStorage {
-  profiles: readonly StationProfile[] = [profile()];
-  active = 'station-profile:home station';
+  profiles: readonly StationProfile[] = [];
   private listeners = new Set<() => void>();
-  private selectionListeners = new Set<() => void>();
 
   getRelayRouteProfiles(): readonly StationProfile[] {
     return this.profiles;
@@ -37,23 +56,9 @@ class ProfileStorage implements NativeRelayRouteProfileStorage {
     return () => this.listeners.delete(listener);
   }
 
-  subscribeActiveConnection(listener: () => void): () => void {
-    this.selectionListeners.add(listener);
-    return () => this.selectionListeners.delete(listener);
-  }
-
-  get(key: string): string | null {
-    return key === 'station-connect-connections-active' ? this.active : null;
-  }
-
-  publish(profiles: readonly StationProfile[], active = this.active): void {
-    const selectionChanged = active !== this.active;
+  publish(profiles: readonly StationProfile[]): void {
     this.profiles = profiles;
-    this.active = active;
     for (const listener of this.listeners) listener();
-    if (selectionChanged) {
-      for (const listener of this.selectionListeners) listener();
-    }
   }
 }
 
@@ -78,16 +83,12 @@ describe('native relay grant renewal supervisor', () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_900_000_000_000);
     storage = new ProfileStorage();
+    storage.publish([profile('Alpha')]);
     events = new EventTarget();
     visible = true;
     status = vi
       .fn<NativeRelayGrantRenewalAdapter['status']>()
-      .mockResolvedValue({
-        profileName: 'Home Station',
-        ...route,
-        profileRevision: 7,
-        grant: { expiresAt: Date.now() + 100_000, lifetimeMs: 100_000 },
-      });
+      .mockImplementation(async (selection) => statusFor(selection, 7, null));
     renew = vi
       .fn<NativeRelayGrantRenewalAdapter['renew']>()
       .mockImplementation(async () => ({
@@ -116,131 +117,168 @@ describe('native relay grant renewal supervisor', () => {
     vi.useRealTimers();
   });
 
-  test('schedules renewal at grant half-life, not at expiry', async () => {
+  test('renews every saved route serially when one due renewal blocks', async () => {
+    storage.publish([profile('Alpha'), profile('Beta')]);
+    status.mockImplementation(async (selection) =>
+      statusFor(selection, selection.profileName === 'Alpha' ? 7 : 8, {
+        expiresAt: Date.now() + 40_000,
+        lifetimeMs: 100_000,
+      }),
+    );
+    const firstRenewal = deferred<{
+      expiresAt: number;
+      lifetimeMs: number;
+    }>();
+    const renewOrder: string[] = [];
+    let activeRenewals = 0;
+    let peakRenewals = 0;
+    renew.mockImplementation(async ({ selection }) => {
+      activeRenewals += 1;
+      peakRenewals = Math.max(peakRenewals, activeRenewals);
+      renewOrder.push(selection.profileName);
+      try {
+        if (selection.profileName === 'Alpha')
+          return await firstRenewal.promise;
+        return { expiresAt: Date.now() + 100_000, lifetimeMs: 100_000 };
+      } finally {
+        activeRenewals -= 1;
+      }
+    });
+
     supervisor.start();
     await vi.advanceTimersByTimeAsync(0);
-    expect(status).toHaveBeenCalledWith({
-      profileName: 'Home Station',
-      ...route,
-    });
-    expect(renew).not.toHaveBeenCalled();
+    expect(status.mock.calls.map(([input]) => input.profileName)).toEqual([
+      'Alpha',
+      'Beta',
+    ]);
+    expect(renewOrder).toEqual(['Alpha']);
+    expect(peakRenewals).toBe(1);
 
-    await vi.advanceTimersByTimeAsync(49_999);
-    expect(renew).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
-    expect(renew).toHaveBeenCalledWith({
-      selection: { profileName: 'Home Station', ...route },
-      expectedProfileRevision: 7,
+    firstRenewal.resolve({
+      expiresAt: Date.now() + 100_000,
+      lifetimeMs: 100_000,
     });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(renewOrder).toEqual(['Alpha', 'Beta']);
+    expect(peakRenewals).toBe(1);
+    expect(
+      renew.mock.calls.map(([input]) => input.expectedProfileRevision),
+    ).toEqual([7, 8]);
   });
 
-  test.each(['online', 'focus', 'pageshow', 'visibilitychange'])(
-    'a visible %s wake rechecks status and renews a route already past half-life',
-    async (eventName) => {
-      visible = false;
-      status.mockResolvedValue({
-        profileName: 'Home Station',
-        ...route,
-        profileRevision: 7,
-        grant: { expiresAt: Date.now() + 40_000, lifetimeMs: 100_000 },
-      });
-      supervisor.start();
-      await vi.advanceTimersByTimeAsync(0);
-      expect(renew).not.toHaveBeenCalled();
-
-      visible = true;
-      events.dispatchEvent(new Event(eventName));
-      await vi.advanceTimersByTimeAsync(0);
-      expect(renew).toHaveBeenCalledTimes(1);
-    },
-  );
-
-  test.each([
-    [
-      'switch',
-      (store: ProfileStorage) =>
-        store.publish([profile()], 'station-profile:other'),
-    ],
-    ['removal', (store: ProfileStorage) => store.publish([], '')],
-    ['revision change', (store: ProfileStorage) => store.publish([profile(2)])],
-  ])(
-    'does not renew after a pending status becomes stale through %s',
-    async (_name, mutate) => {
-      const pending = deferred<Awaited<ReturnType<typeof adapter.status>>>();
-      status.mockReturnValueOnce(pending.promise);
-      supervisor.start();
-      mutate(storage);
-      pending.resolve({
-        profileName: 'Home Station',
-        ...route,
-        profileRevision: 7,
-        grant: { expiresAt: Date.now() + 1_000, lifetimeMs: 1_000 },
-      });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(renew).not.toHaveBeenCalled();
-    },
-  );
-
-  test('bounds retry attempts for a persistently failing renewal', async () => {
-    status.mockResolvedValue({
-      profileName: 'Home Station',
-      ...route,
-      profileRevision: 7,
-      grant: { expiresAt: Date.now() + 10_000, lifetimeMs: 10_000 },
+  test('cancels queued follow-up for a route removed while its renewal is pending', async () => {
+    storage.publish([profile('Alpha'), profile('Beta')]);
+    status.mockImplementation(async (selection) =>
+      statusFor(selection, selection.profileName === 'Alpha' ? 7 : 8, {
+        expiresAt: Date.now() + 40_000,
+        lifetimeMs: 100_000,
+      }),
+    );
+    const pendingAlpha = deferred<{
+      expiresAt: number;
+      lifetimeMs: number;
+    }>();
+    renew.mockImplementation(async ({ selection }) => {
+      if (selection.profileName === 'Alpha') return pendingAlpha.promise;
+      return { expiresAt: Date.now() + 100_000, lifetimeMs: 100_000 };
     });
-    renew.mockRejectedValue(new Error('temporary host failure'));
+
     supervisor.start();
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(0);
     expect(renew).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(1_000);
-    await vi.advanceTimersByTimeAsync(10_000);
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(renew).toHaveBeenCalledTimes(4);
+
+    storage.publish([profile('Beta')]);
+    pendingAlpha.resolve({
+      expiresAt: Date.now() + 100_000,
+      lifetimeMs: 100_000,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(
+      renew.mock.calls.map(([input]) => input.selection.profileName),
+    ).toEqual(['Alpha', 'Beta']);
+    expect(status.mock.calls.map(([input]) => input.profileName)).toEqual([
+      'Alpha',
+      'Beta',
+      'Beta',
+    ]);
   });
 
-  test('refresh observes a newly redeemed grant after an earlier no-grant status', async () => {
+  test('rechecks after a saved-route revision change and renews with the new host revision', async () => {
+    const oldStatus = deferred<NativeRelayGrantRenewalStatus>();
     status
-      .mockResolvedValueOnce({
-        profileName: 'Home Station',
-        ...route,
-        profileRevision: 7,
-        grant: null,
-      })
-      .mockResolvedValueOnce({
-        profileName: 'Home Station',
-        ...route,
-        profileRevision: 7,
-        grant: { expiresAt: Date.now() + 40_000, lifetimeMs: 100_000 },
-      });
-    supervisor.start();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(renew).not.toHaveBeenCalled();
+      .mockReturnValueOnce(oldStatus.promise)
+      .mockImplementationOnce(async (selection) =>
+        statusFor(selection, 8, {
+          expiresAt: Date.now() + 40_000,
+          lifetimeMs: 100_000,
+        }),
+      );
 
-    await supervisor.refresh();
+    supervisor.start();
+    storage.publish([profile('Alpha', 2)]);
+    oldStatus.resolve(
+      statusFor({ profileName: 'Alpha', ...routeIds.Alpha }, 7, {
+        expiresAt: Date.now() + 40_000,
+        lifetimeMs: 100_000,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(status).toHaveBeenCalledTimes(2);
-    expect(renew).toHaveBeenCalledTimes(1);
+    expect(renew).toHaveBeenCalledWith({
+      selection: { profileName: 'Alpha', ...routeIds.Alpha },
+      expectedProfileRevision: 8,
+    });
+  });
+
+  test('refuses a status with an invalid host revision', async () => {
+    status.mockImplementation(async (selection) =>
+      statusFor(selection, 0, {
+        expiresAt: Date.now() + 40_000,
+        lifetimeMs: 100_000,
+      }),
+    );
+    supervisor.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(renew).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  test('leaves a grantless saved route idle until an explicit refresh or wake', async () => {
+    supervisor.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(status).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1_000);
+    expect(status).toHaveBeenCalledTimes(1);
+
+    events.dispatchEvent(new Event('pageshow'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(status).toHaveBeenCalledTimes(2);
   });
 
   test('coalesces refresh during an in-flight no-grant status and observes the redeemed grant afterward', async () => {
-    const pending = deferred<Awaited<ReturnType<typeof adapter.status>>>();
-    status.mockReturnValueOnce(pending.promise).mockResolvedValueOnce({
-      profileName: 'Home Station',
-      ...route,
-      profileRevision: 7,
-      grant: { expiresAt: Date.now() + 100_000, lifetimeMs: 100_000 },
-    });
+    const pending = deferred<NativeRelayGrantRenewalStatus>();
+    status
+      .mockReturnValueOnce(pending.promise)
+      .mockImplementationOnce(async (selection) =>
+        statusFor(selection, 7, {
+          expiresAt: Date.now() + 100_000,
+          lifetimeMs: 100_000,
+        }),
+      );
     supervisor.start();
     const firstRefresh = supervisor.refresh();
     const secondRefresh = supervisor.refresh();
     expect(status).toHaveBeenCalledTimes(1);
 
-    pending.resolve({
-      profileName: 'Home Station',
-      ...route,
-      profileRevision: 7,
-      grant: null,
-    });
+    pending.resolve(
+      statusFor({ profileName: 'Alpha', ...routeIds.Alpha }, 7, null),
+    );
     await Promise.all([firstRefresh, secondRefresh]);
 
     expect(status).toHaveBeenCalledTimes(2);
@@ -249,5 +287,67 @@ describe('native relay grant renewal supervisor', () => {
     expect(renew).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(renew).toHaveBeenCalledTimes(1);
+  });
+
+  test('keeps per-route renewal retries bounded', async () => {
+    const expiry = Date.now() + 40_000;
+    status.mockImplementation(async (selection) =>
+      statusFor(selection, 7, {
+        expiresAt: expiry,
+        lifetimeMs: 100_000,
+      }),
+    );
+    renew.mockRejectedValue(new Error('temporary host failure'));
+    supervisor.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(renew).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(renew).toHaveBeenCalledTimes(4);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test('reports inventory overflow instead of supervising only the first routes', () => {
+    const onIssue = vi.fn();
+    const tooMany = Array.from(
+      { length: MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE + 1 },
+      (_, index) => ({
+        ...profile('Alpha'),
+        name: `Route ${index}`,
+        relayRoute: {
+          ...routeIds.Alpha,
+          stationId: `${index}-station`,
+        },
+      }),
+    );
+    storage.publish(tooMany);
+    supervisor.stop();
+    supervisor = new NativeRelayGrantRenewalSupervisor(
+      storage,
+      adapter,
+      events as unknown as Pick<
+        Window,
+        'addEventListener' | 'removeEventListener'
+      >,
+      Date.now,
+      () => visible,
+      events as unknown as Pick<
+        Document,
+        'addEventListener' | 'removeEventListener'
+      >,
+      onIssue,
+    );
+
+    supervisor.start();
+
+    expect(supervisor.getIssue()).toEqual({
+      kind: 'route-limit',
+      routeCount: MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE + 1,
+      maxRoutes: MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE,
+    });
+    expect(onIssue).toHaveBeenCalledWith(supervisor.getIssue());
+    expect(status).not.toHaveBeenCalled();
   });
 });

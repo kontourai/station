@@ -1,20 +1,17 @@
 import type { StationProfile } from '@kontourai/station-contracts';
 
-/** The renderer's active connection pointer, maintained by ConnectionStore. */
-const ACTIVE_CONNECTION_KEY = 'station-connect-connections-active';
 const HALF_LIFE_FRACTION = 0.5;
 const MAX_RENEWAL_ATTEMPTS = 3;
 const RETRY_BACKOFF_MS = [1_000, 10_000, 60_000] as const;
 const MAX_TIMER_DELAY_MS = 2_147_000_000;
+export const MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE = 64;
 
 export interface NativeRelayGrantRenewalStatus {
   profileName: string;
   brokerOrigin: string;
   stationId: string;
   enrollmentId: string;
-  /** Host-owned revision required by the renewal command. */
   profileRevision: number;
-  /** Null means this route has no currently renewable grant. */
   grant: { expiresAt: number; lifetimeMs: number } | null;
 }
 
@@ -39,67 +36,72 @@ export interface NativeRelayGrantRenewalAdapter {
 export interface NativeRelayRouteProfileStorage {
   getRelayRouteProfiles(): readonly StationProfile[];
   subscribeRelayRouteProfiles(listener: () => void): () => void;
-  subscribeActiveConnection(listener: () => void): () => void;
-  get(key: string): string | null;
+}
+
+export interface NativeRelayGrantRenewalIssue {
+  kind: 'route-limit';
+  routeCount: number;
+  maxRoutes: number;
 }
 
 type Timer = ReturnType<typeof setTimeout>;
+type WorkKind = 'status' | 'renew';
 
-interface SelectedRoute {
-  profile: StationProfile;
-  connectionId: string;
-  updatedAt: number;
-  brokerOrigin: string;
-  stationId: string;
-  enrollmentId: string;
+interface RouteEntry {
+  key: string;
+  fingerprint: string;
+  selection: NativeRelayRouteSelection;
+  generation: number;
+  profileUpdatedAt: number;
+  profileRevision?: number;
+  expiresAt?: number;
+  lifetimeMs?: number;
+  retryKey?: string;
+  retryCount: number;
+  nextAt?: number;
+  nextKind?: WorkKind;
 }
 
-function selectionFrom(
-  storage: NativeRelayRouteProfileStorage,
-): SelectedRoute | null {
-  const connectionId = storage.get(ACTIVE_CONNECTION_KEY);
-  if (!connectionId) return null;
-  const profile = storage
-    .getRelayRouteProfiles()
-    .find(
-      (candidate) =>
-        `station-profile:${candidate.name.toLowerCase()}` === connectionId,
-    );
-  if (!profile?.relayRoute) return null;
+interface RefreshWaiter {
+  promise: Promise<void>;
+  resolve: () => void;
+}
+
+function connectionId(profile: StationProfile): string {
+  return `station-profile:${profile.name.toLowerCase()}`;
+}
+
+function routeFingerprint(profile: StationProfile): string | null {
+  if (!profile.relayRoute) return null;
+  return [
+    profile.name.toLowerCase(),
+    profile.updatedAt,
+    profile.relayRoute.brokerOrigin,
+    profile.relayRoute.stationId,
+    profile.relayRoute.enrollmentId,
+  ].join('\u0000');
+}
+
+function routeSelection(profile: StationProfile): NativeRelayRouteSelection {
+  if (!profile.relayRoute)
+    throw new Error('Native relay route profile is required.');
   return {
-    profile,
-    connectionId,
-    updatedAt: profile.updatedAt,
+    profileName: profile.name,
     brokerOrigin: profile.relayRoute.brokerOrigin,
     stationId: profile.relayRoute.stationId,
     enrollmentId: profile.relayRoute.enrollmentId,
   };
 }
 
-function sameSelection(
-  left: SelectedRoute | null,
-  right: SelectedRoute | null,
-): boolean {
-  return Boolean(
-    left &&
-      right &&
-      left.connectionId === right.connectionId &&
-      left.updatedAt === right.updatedAt &&
-      left.brokerOrigin === right.brokerOrigin &&
-      left.stationId === right.stationId &&
-      left.enrollmentId === right.enrollmentId,
-  );
-}
-
 function validStatus(
   value: NativeRelayGrantRenewalStatus,
-  selected: SelectedRoute,
+  expected: NativeRelayRouteSelection,
 ): boolean {
   return (
-    value.profileName === selected.profile.name &&
-    value.brokerOrigin === selected.brokerOrigin &&
-    value.stationId === selected.stationId &&
-    value.enrollmentId === selected.enrollmentId &&
+    value.profileName === expected.profileName &&
+    value.brokerOrigin === expected.brokerOrigin &&
+    value.stationId === expected.stationId &&
+    value.enrollmentId === expected.enrollmentId &&
     Number.isSafeInteger(value.profileRevision) &&
     value.profileRevision > 0 &&
     (value.grant === null ||
@@ -111,36 +113,26 @@ function validStatus(
 }
 
 /**
- * Renews only the selected saved native relay route. This coordinator owns
- * timers and wake observation; host status and renewal remain injected.
+ * Supervises every saved relay route independently of ConnectionStore. It
+ * renews only routes whose host status already proves a single grant exists;
+ * this coordinator never redeems or approves a route.
  */
 export class NativeRelayGrantRenewalSupervisor {
   private started = false;
   private timer: Timer | undefined;
   private unsubscribeProfiles: (() => void) | undefined;
-  private unsubscribeSelection: (() => void) | undefined;
-  private generation = 0;
-  private selected: SelectedRoute | null = null;
-  private inFlight: Promise<void> | undefined;
-  private inFlightGeneration: number | undefined;
-  private refreshFlight:
-    | { generation: number; promise: Promise<void> }
-    | undefined;
-  private retryKey: string | undefined;
-  private retryCount = 0;
-  private readonly onWake = () => {
-    if (this.isVisible()) void this.observeAndRenew();
-  };
-  private readonly onProfileChange = () => this.selectionChanged();
+  private readonly routes = new Map<string, RouteEntry>();
+  private nextGeneration = 0;
+  private fairCursor: string | undefined;
+  private processing: Promise<void> | undefined;
+  private refreshRequested = false;
+  private refreshWaiter: RefreshWaiter | undefined;
+  private issue: NativeRelayGrantRenewalIssue | undefined;
 
-  private routeSelection(selected: SelectedRoute): NativeRelayRouteSelection {
-    return {
-      profileName: selected.profile.name,
-      brokerOrigin: selected.brokerOrigin,
-      stationId: selected.stationId,
-      enrollmentId: selected.enrollmentId,
-    };
-  }
+  private readonly onWake = () => {
+    if (this.isVisible()) void this.refresh();
+  };
+  private readonly onProfilesChanged = () => this.reconcileProfiles();
 
   constructor(
     private readonly storage: NativeRelayRouteProfileStorage,
@@ -154,154 +146,220 @@ export class NativeRelayGrantRenewalSupervisor {
     private readonly visibilityEvents:
       | Pick<Document, 'addEventListener' | 'removeEventListener'>
       | undefined = typeof document === 'undefined' ? undefined : document,
+    private readonly onIssue: (
+      issue: NativeRelayGrantRenewalIssue | null,
+    ) => void = () => undefined,
   ) {}
 
   start(): void {
     if (this.started) return;
     this.started = true;
     this.unsubscribeProfiles = this.storage.subscribeRelayRouteProfiles(
-      this.onProfileChange,
-    );
-    this.unsubscribeSelection = this.storage.subscribeActiveConnection(
-      this.onProfileChange,
+      this.onProfilesChanged,
     );
     this.events?.addEventListener('online', this.onWake);
     this.events?.addEventListener('focus', this.onWake);
     this.events?.addEventListener('pageshow', this.onWake);
     this.visibilityEvents?.addEventListener('visibilitychange', this.onWake);
-    this.selectionChanged();
+    this.reconcileProfiles();
   }
 
   stop(): void {
     if (!this.started) return;
     this.started = false;
-    this.generation += 1;
     this.clearTimer();
     this.unsubscribeProfiles?.();
     this.unsubscribeProfiles = undefined;
-    this.unsubscribeSelection?.();
-    this.unsubscribeSelection = undefined;
     this.events?.removeEventListener('online', this.onWake);
     this.events?.removeEventListener('focus', this.onWake);
     this.events?.removeEventListener('pageshow', this.onWake);
     this.visibilityEvents?.removeEventListener('visibilitychange', this.onWake);
-    this.selected = null;
+    this.routes.clear();
+    this.refreshRequested = false;
+    this.resolveRefreshWaiter();
   }
 
-  /** Re-observe the selected route, including after successful redemption. */
-  async refresh(): Promise<void> {
-    if (!this.started) return;
-    this.selectionChanged();
-    const selected = this.selected;
-    const generation = this.generation;
-    if (!selected) return;
-    if (this.refreshFlight?.generation === generation)
-      return this.refreshFlight.promise;
+  getIssue(): NativeRelayGrantRenewalIssue | null {
+    return this.issue ?? null;
+  }
 
-    const current =
-      this.inFlightGeneration === generation ? this.inFlight : undefined;
-    if (!current) return this.observeAndRenew();
-
-    const promise = (async () => {
-      await current;
-      if (this.isCurrent(selected, generation)) await this.observeAndRenew();
-    })();
-    this.refreshFlight = { generation, promise };
-    try {
-      await promise;
-    } finally {
-      if (this.refreshFlight?.promise === promise)
-        this.refreshFlight = undefined;
+  /** Recheck every saved route, including after explicit grant redemption. */
+  refresh(): Promise<void> {
+    if (!this.started) return Promise.resolve();
+    this.reconcileProfiles(false);
+    if (this.issue) return Promise.resolve();
+    this.refreshRequested = true;
+    if (!this.refreshWaiter) {
+      let resolve!: () => void;
+      const promise = new Promise<void>((done) => (resolve = done));
+      this.refreshWaiter = { promise, resolve };
     }
+    this.startPumpIfNeeded();
+    return this.refreshWaiter.promise;
   }
 
-  private selectionChanged(): void {
-    const next = selectionFrom(this.storage);
-    if (sameSelection(this.selected, next)) return;
-    this.generation += 1;
-    this.clearTimer();
-    this.selected = next;
-    this.retryKey = undefined;
-    this.retryCount = 0;
-    if (this.started && next) void this.observeAndRenew();
+  private reconcileProfiles(triggerRefresh = true): void {
+    if (!this.started) return;
+    const profiles = this.storage.getRelayRouteProfiles();
+    if (profiles.length > MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE) {
+      const changed =
+        this.issue?.routeCount !== profiles.length ||
+        this.issue?.maxRoutes !== MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE;
+      this.issue = {
+        kind: 'route-limit',
+        routeCount: profiles.length,
+        maxRoutes: MAX_NATIVE_RELAY_ROUTES_TO_SUPERVISE,
+      };
+      this.routes.clear();
+      this.refreshRequested = false;
+      this.clearTimer();
+      if (changed) this.onIssue(this.issue);
+      this.resolveRefreshWaiter();
+      return;
+    }
+
+    if (this.issue) {
+      this.issue = undefined;
+      this.onIssue(null);
+    }
+
+    const next = new Map<
+      string,
+      { profile: StationProfile; fingerprint: string }
+    >();
+    for (const profile of profiles) {
+      const fingerprint = routeFingerprint(profile);
+      if (fingerprint === null) continue;
+      next.set(connectionId(profile), { profile, fingerprint });
+    }
+
+    let changed = false;
+    for (const [key, entry] of this.routes) {
+      if (next.get(key)?.fingerprint !== entry.fingerprint) {
+        this.routes.delete(key);
+        changed = true;
+      }
+    }
+    for (const [key, { profile, fingerprint }] of next) {
+      if (this.routes.has(key)) continue;
+      this.routes.set(key, {
+        key,
+        fingerprint,
+        selection: routeSelection(profile),
+        generation: ++this.nextGeneration,
+        profileUpdatedAt: profile.updatedAt,
+        retryCount: 0,
+        nextAt: this.now(),
+        nextKind: 'status',
+      });
+      changed = true;
+    }
+    if (changed && triggerRefresh && this.started) {
+      this.refreshRequested = true;
+      if (!this.refreshWaiter) {
+        let resolve!: () => void;
+        const promise = new Promise<void>((done) => (resolve = done));
+        this.refreshWaiter = { promise, resolve };
+      }
+    }
+    this.startPumpIfNeeded();
+    this.scheduleTimer();
   }
 
-  private isCurrent(selected: SelectedRoute, generation: number): boolean {
-    return (
-      this.started &&
-      generation === this.generation &&
-      sameSelection(selected, selectionFrom(this.storage))
+  private startPumpIfNeeded(): void {
+    if (
+      this.processing ||
+      !this.started ||
+      !this.isVisible() ||
+      this.issue ||
+      (!this.refreshRequested && !this.hasDueWork())
+    ) {
+      return;
+    }
+    const operation = this.drain();
+    this.processing = operation;
+    void operation.then(
+      () => this.finishPump(operation),
+      () => this.finishPump(operation),
     );
   }
 
-  private async observeAndRenew(): Promise<void> {
-    if (!this.started || !this.isVisible()) return;
-    if (this.inFlight && this.inFlightGeneration === this.generation)
-      return this.inFlight;
-    const selected = this.selected;
-    if (!selected) return;
-    const generation = this.generation;
-    const operation = this.observeSelected(selected, generation);
-    this.inFlight = operation;
-    this.inFlightGeneration = generation;
-    try {
-      await operation;
-    } finally {
-      if (this.inFlight === operation) {
-        this.inFlight = undefined;
-        this.inFlightGeneration = undefined;
+  private async drain(): Promise<void> {
+    while (this.started && this.isVisible() && !this.issue) {
+      if (this.refreshRequested) {
+        this.refreshRequested = false;
+        for (const entry of this.sortedRoutes()) {
+          if (!this.isCurrent(entry)) continue;
+          await this.observeStatus(entry);
+        }
+        continue;
       }
+      const due = this.dueRoutes();
+      const next = this.nextFairRoute(due);
+      if (!next) break;
+      this.fairCursor = next.key;
+      await this.processDueWork(next);
     }
   }
 
-  private async observeSelected(
-    selected: SelectedRoute,
-    generation: number,
-  ): Promise<void> {
+  private async observeStatus(entry: RouteEntry): Promise<void> {
     try {
-      const status = await this.adapter.status(this.routeSelection(selected));
-      if (!this.isCurrent(selected, generation)) return;
-      if (!validStatus(status, selected)) return;
-      const grant = status.grant;
-      if (!grant) {
-        this.clearTimer();
+      const status = await this.adapter.status(entry.selection);
+      if (!this.isCurrent(entry)) return;
+      if (!validStatus(status, entry.selection)) {
+        this.scheduleFailure(entry, 'status');
         return;
       }
-      const dueAt = grant.expiresAt - grant.lifetimeMs * HALF_LIFE_FRACTION;
-      const retryKey = `${selected.connectionId}:${selected.updatedAt}:${status.profileRevision}:${grant.expiresAt}`;
-      if (this.retryKey !== retryKey) {
-        this.retryKey = retryKey;
-        this.retryCount = 0;
-      }
-      if (this.now() >= dueAt) {
-        await this.renewSelected(
-          selected,
-          generation,
-          status.profileRevision,
-          retryKey,
-        );
+      if (!status.grant) {
+        entry.profileRevision = status.profileRevision;
+        entry.expiresAt = undefined;
+        entry.lifetimeMs = undefined;
+        entry.retryKey = undefined;
+        entry.retryCount = 0;
+        entry.nextAt = undefined;
+        entry.nextKind = undefined;
         return;
       }
-      this.scheduleObservation(Math.max(0, dueAt - this.now()));
+      const retryKey = `${entry.fingerprint}:${status.profileRevision}:${status.grant.expiresAt}`;
+      if (entry.retryKey !== retryKey) {
+        entry.retryKey = retryKey;
+        entry.retryCount = 0;
+      }
+      entry.profileRevision = status.profileRevision;
+      entry.expiresAt = status.grant.expiresAt;
+      entry.lifetimeMs = status.grant.lifetimeMs;
+      entry.nextAt = Math.max(
+        0,
+        status.grant.expiresAt - status.grant.lifetimeMs * HALF_LIFE_FRACTION,
+      );
+      entry.nextKind = 'renew';
     } catch {
-      if (this.isCurrent(selected, generation))
-        this.scheduleRetry(selected, generation);
+      if (this.isCurrent(entry)) this.scheduleFailure(entry, 'status');
     }
   }
 
-  private async renewSelected(
-    selected: SelectedRoute,
-    generation: number,
-    profileRevision: number,
-    retryKey: string,
-  ): Promise<void> {
-    if (!this.isCurrent(selected, generation)) return;
+  private async processDueWork(entry: RouteEntry): Promise<void> {
+    if (!this.isCurrent(entry) || !entry.nextKind) return;
+    if (entry.nextKind === 'status') {
+      await this.observeStatus(entry);
+      return;
+    }
+    if (
+      entry.profileRevision === undefined ||
+      entry.expiresAt === undefined ||
+      entry.lifetimeMs === undefined
+    ) {
+      entry.nextKind = 'status';
+      entry.nextAt = this.now();
+      return;
+    }
+    const oldRetryKey = entry.retryKey;
     try {
       const renewed = await this.adapter.renew({
-        selection: this.routeSelection(selected),
-        expectedProfileRevision: profileRevision,
+        selection: entry.selection,
+        expectedProfileRevision: entry.profileRevision,
       });
-      if (!this.isCurrent(selected, generation)) return;
+      if (!this.isCurrent(entry)) return;
       if (
         !Number.isSafeInteger(renewed?.expiresAt) ||
         renewed.expiresAt <= this.now() ||
@@ -310,48 +368,120 @@ export class NativeRelayGrantRenewalSupervisor {
       ) {
         throw new Error('Invalid native relay grant renewal receipt.');
       }
-      this.retryCount = 0;
-      this.retryKey = undefined;
-      this.scheduleObservation(
-        Math.max(
-          0,
-          renewed.expiresAt -
-            renewed.lifetimeMs * HALF_LIFE_FRACTION -
-            this.now(),
-        ),
+      entry.expiresAt = renewed.expiresAt;
+      entry.lifetimeMs = renewed.lifetimeMs;
+      entry.retryKey = `${entry.fingerprint}:${entry.profileRevision}:${renewed.expiresAt}`;
+      entry.retryCount = 0;
+      entry.nextAt = Math.max(
+        0,
+        renewed.expiresAt - renewed.lifetimeMs * HALF_LIFE_FRACTION,
       );
+      entry.nextKind = 'renew';
     } catch {
-      if (!this.isCurrent(selected, generation)) return;
-      this.retryKey = retryKey;
-      this.scheduleRetry(selected, generation);
+      if (!this.isCurrent(entry)) return;
+      entry.retryKey = oldRetryKey;
+      this.scheduleFailure(entry, 'status');
     }
   }
 
-  private scheduleRetry(selected: SelectedRoute, generation: number): void {
-    if (this.retryCount >= MAX_RENEWAL_ATTEMPTS) return;
-    const delay = RETRY_BACKOFF_MS[this.retryCount];
-    this.retryCount += 1;
-    this.scheduleObservation(delay, selected, generation);
+  private scheduleFailure(entry: RouteEntry, retryKind: WorkKind): void {
+    if (entry.retryCount >= MAX_RENEWAL_ATTEMPTS) {
+      entry.nextAt = undefined;
+      entry.nextKind = undefined;
+      return;
+    }
+    const delay = RETRY_BACKOFF_MS[entry.retryCount];
+    entry.retryCount += 1;
+    entry.nextAt = this.now() + delay;
+    entry.nextKind = retryKind;
   }
 
-  private scheduleObservation(
-    delay: number,
-    selected = this.selected,
-    generation = this.generation,
-  ): void {
+  private dueRoutes(): RouteEntry[] {
+    const current = this.now();
+    return [...this.routes.values()].filter(
+      (entry) => entry.nextAt !== undefined && entry.nextAt <= current,
+    );
+  }
+
+  private nextFairRoute(due: RouteEntry[]): RouteEntry | undefined {
+    if (due.length === 0) return undefined;
+    const earliest = Math.min(...due.map((entry) => entry.nextAt!));
+    const candidates = due
+      .filter((entry) => entry.nextAt === earliest)
+      .sort((left, right) => left.key.localeCompare(right.key));
+    if (!this.fairCursor) return candidates[0];
+    return (
+      candidates.find(
+        (entry) => entry.key.localeCompare(this.fairCursor!) > 0,
+      ) ?? candidates[0]
+    );
+  }
+
+  private hasDueWork(): boolean {
+    return this.dueRoutes().length > 0;
+  }
+
+  private sortedRoutes(): RouteEntry[] {
+    return [...this.routes.values()].sort((left, right) =>
+      left.key.localeCompare(right.key),
+    );
+  }
+
+  private isCurrent(entry: RouteEntry): boolean {
+    if (!this.started || this.routes.get(entry.key) !== entry) return false;
+    const profile = this.storage
+      .getRelayRouteProfiles()
+      .find((candidate) => connectionId(candidate) === entry.key);
+    return (
+      profile !== undefined && routeFingerprint(profile) === entry.fingerprint
+    );
+  }
+
+  private finishPump(operation: Promise<void>): void {
+    if (this.processing !== operation) return;
+    this.processing = undefined;
+    if (
+      this.started &&
+      this.isVisible() &&
+      !this.issue &&
+      (this.refreshRequested || this.hasDueWork())
+    ) {
+      this.startPumpIfNeeded();
+      return;
+    }
+    this.scheduleTimer();
+    this.resolveRefreshWaiter();
+  }
+
+  private scheduleTimer(): void {
     this.clearTimer();
-    if (!selected) return;
+    if (!this.started || this.issue) return;
+    const nextAt = [...this.routes.values()]
+      .map((entry) => entry.nextAt)
+      .filter((value): value is number => value !== undefined)
+      .reduce<number | undefined>(
+        (earliest, value) =>
+          earliest === undefined ? value : Math.min(earliest, value),
+        undefined,
+      );
+    if (nextAt === undefined) return;
     this.timer = setTimeout(
       () => {
         this.timer = undefined;
-        if (this.isCurrent(selected, generation)) void this.observeAndRenew();
+        this.startPumpIfNeeded();
       },
-      Math.min(delay, MAX_TIMER_DELAY_MS),
+      Math.min(Math.max(0, nextAt - this.now()), MAX_TIMER_DELAY_MS),
     );
   }
 
   private clearTimer(): void {
     if (this.timer !== undefined) clearTimeout(this.timer);
     this.timer = undefined;
+  }
+
+  private resolveRefreshWaiter(): void {
+    const waiter = this.refreshWaiter;
+    this.refreshWaiter = undefined;
+    waiter?.resolve();
   }
 }
