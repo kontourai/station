@@ -116,6 +116,34 @@ test('a real Discard dialog closes without falsely superseding its own prepared 
   expect(window.location.pathname).toBe('/tasks/guarded');
 });
 
+// The plain route change every cross-link makes: `navigate` asks the
+// registered guard, and Discard resumes that exact navigation. The prepared
+// navigation above goes through `navigateWithPrecommit`, which never reaches
+// this continuation.
+test('Discard on an intercepted route change completes that navigation', () => {
+  navigationStore.navigate('/guard-origin');
+  function DirtyPage() {
+    const { DiscardModal } = useUnsavedGuard(true);
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => navigationStore.navigate('/guard-target')}
+        >
+          Leave
+        </button>
+        <DiscardModal />
+      </>
+    );
+  }
+  render(<DirtyPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
+  expect(window.location.pathname).toBe('/guard-origin');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+  expect(window.location.pathname).toBe('/guard-target');
+});
+
 function CleanTransitionProbe({ observations }: { observations: boolean[] }) {
   const [dirty, setDirty] = useState(true);
   useUnsavedGuard(dirty);
