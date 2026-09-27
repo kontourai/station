@@ -185,6 +185,11 @@ Use `npm run gate:for -- <paths>` before editing, run its focused checks, then
 the merge queue verifies the latest-main composition. The [testing guide](testing.md)
 owns the full schedule and promotion-completion requirements.
 
+The push hook clears repository-local Git routing variables before launching
+checks, while preserving global/system configuration. This lets a check inspect
+its intended subdirectory or temporary repository instead of inheriting the
+pushed repository's index and Git directory. A failed check still rejects the push.
+
 In hosted CI, required `fast-checks` aggregates the affected-test plan, four
 shards, and `fast-checks-statics`. It checks both job outcomes and receipts
 bound to the plan and source revision. Local `ci:fast` still runs its whole

@@ -8,6 +8,15 @@
 # configured globally on a given machine.
 set -euo pipefail
 
+# Git starts this hook in the pushed worktree. Its repository-local exports
+# otherwise redirect checks that inspect subdirectories or temporary checkouts.
+hook_git_keys="$(node --input-type=module -e "import { gitLocationKeys } from './scripts/lib/git-environment.mjs'; process.stdout.write(gitLocationKeys(process.env).join('\n'));")"
+while IFS= read -r hook_git_key; do
+  if [[ -n "$hook_git_key" ]]; then
+    unset "$hook_git_key"
+  fi
+done <<< "$hook_git_keys"
+
 cd "$(git rev-parse --show-toplevel)"
 
 # station#3160: warn when core.hooksPath is an ABSOLUTE path inside this repo.

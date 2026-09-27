@@ -1075,7 +1075,7 @@
     {
       "path": ".veritas/README.md",
       "documentDigest": "edd1930dc10255d28023964b4c749edee17275673d3513afa9c3a7973c63a32e",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "de06d7c32ebf139872f29d7cfaf996aca785f2d0",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current repository Veritas integration and protected-policy/evidence boundaries. Full 87-line baseline read. Actual repository configuration, installed Veritas 1.7.4 public docs/schema, hook wiring and generated-path contracts inspected. Reviewed the approved documentation evidence activation and policy-change attestation; authority settings remain unchanged.",
@@ -1095,7 +1095,7 @@
         },
         {
           "path": ".githooks/pre-push",
-          "digest": "657de439eb9e346bfcf7d6bad518bcca6cba9ce1264560ec17cb3c4fe9e8e24b"
+          "digest": "eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9"
         },
         {
           "path": ".github/workflows/ci.yml",
@@ -1232,6 +1232,14 @@
         {
           "path": "src-server/routes/spatial-board.ts",
           "digest": "461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da"
+        },
+        {
+          "path": "scripts/lib/git-environment.mjs",
+          "digest": "e0557da6e34d1a58ec3d045261e1a7f4655cc1848ec94cc3cb8294fad7b0803f"
+        },
+        {
+          "path": "scripts/__tests__/prepush-typecheck.test.ts",
+          "digest": "c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650"
         }
       ],
       "checks": [
@@ -1250,7 +1258,8 @@
         "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
         "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
         "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution."
       ]
     },
     {
@@ -1288,7 +1297,7 @@
     },
     {
       "path": "AGENTS.md",
-      "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
+      "sourceRevision": "de06d7c32ebf139872f29d7cfaf996aca785f2d0",
       "kind": "policy",
       "state": "classified",
       "summary": "Worktree isolation, managed dependencies, bounded gates, merge-queue procedure, evidence discipline, archival issue interpretation, scope routes, and protected Veritas block. All named npm scripts and local routes resolve. Live main rules match the six named required checks, non-strict updates, ALLGREEN 3/3 SQUASH queue, and unattributed-change approval rule.",
@@ -1301,7 +1310,7 @@
         },
         {
           "path": ".githooks/pre-push",
-          "digest": "657de439eb9e346bfcf7d6bad518bcca6cba9ce1264560ec17cb3c4fe9e8e24b"
+          "digest": "eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9"
         },
         {
           "path": ".veritas/GOVERNANCE.md",
@@ -1337,7 +1346,8 @@
         "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
         "Reviewed dependency delta: metric generator scripts/test classification only; native log comment and verification-guide evidence corrections preserve the recorded owner/policy scope.",
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions. Removed only the unused resolveNpmCli re-export; managed dependency installation and hook arming instructions are unchanged. Pre-edit guidance now includes recorded documentation dependencies. Default scope includes committed, staged, unstaged and untracked changes; explicit paths still avoid Git. Independent actual CLI/collector tests confirmed scope and refusal behavior.",
-        "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged."
+        "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged.",
+        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution."
       ]
     },
     {
@@ -10987,8 +10997,8 @@
     },
     {
       "path": "docs/guides/code-quality.md",
-      "documentDigest": "4a25a0c7b59e67e2e12e2eca32e5438acb97e5862736bffbf33c6a76a4e24e25",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "documentDigest": "530dbc7372704bb4c2d5d858bf238190bbefb4fddcb4bb1db55492c7ea393beb",
+      "sourceRevision": "de06d7c32ebf139872f29d7cfaf996aca785f2d0",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Contributor quality and publication requirements with current hook composition. Full 316-line baseline read. Hook ordering, readiness selection, lane composition, route-helper adoption and actual raw-parameter route inspected. Requirements distinguished from execution proof; historical cost observations not remeasured. Follow-up: Push & Monitor delta only: separates merge-queue arm/confirm/stop from following task-required CI evidence to its outcome.",
@@ -11008,7 +11018,7 @@
         },
         {
           "path": ".githooks/pre-push",
-          "digest": "657de439eb9e346bfcf7d6bad518bcca6cba9ce1264560ec17cb3c4fe9e8e24b"
+          "digest": "eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9"
         },
         {
           "path": ".github/workflows/ci.yml",
@@ -11153,6 +11163,14 @@
         {
           "path": "src-server/routes/spatial-board.ts",
           "digest": "461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da"
+        },
+        {
+          "path": "scripts/lib/git-environment.mjs",
+          "digest": "e0557da6e34d1a58ec3d045261e1a7f4655cc1848ec94cc3cb8294fad7b0803f"
+        },
+        {
+          "path": "scripts/__tests__/prepush-typecheck.test.ts",
+          "digest": "c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650"
         }
       ],
       "checks": [
@@ -11170,7 +11188,8 @@
         "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
         "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
         "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution."
       ]
     },
     {
@@ -12989,7 +13008,7 @@
     {
       "path": "docs/guides/development.md",
       "documentDigest": "2a134b5439fab737a3b67358c34f8ab6de1f9aa66a9336805363fcdfc8847d20",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "de06d7c32ebf139872f29d7cfaf996aca785f2d0",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Checkout setup and contributor workflow, with normative boundaries routed to owners. Full 415-line baseline read. Dependency lifecycle, workspace/package contract, command ownership, verification paths and plugin workflow boundaries checked. No installs outside managed setup, plugin installation, runtime/service control, native build or publication performed.",
@@ -13009,7 +13028,7 @@
         },
         {
           "path": ".githooks/pre-push",
-          "digest": "657de439eb9e346bfcf7d6bad518bcca6cba9ce1264560ec17cb3c4fe9e8e24b"
+          "digest": "eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9"
         },
         {
           "path": ".github/workflows/ci.yml",
@@ -13192,7 +13211,8 @@
         "Reviewed integration deltas: .github/workflows/portable-server-archives.yml: Adds diagnostics and stop-hint helpers to both workflow path filters; build/smoke matrix and publication authority unchanged. Native release guide already distinguishes qualification from publication. docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries. scripts/lib/portable-server-archive.mjs: Passes explicit platform/arch into the shared stager and refuses a build target unlike the host before downloading/writing. Native release guide was corrected in b761343b3 and root now states that limitation.",
         "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
         "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution."
       ]
     },
     {
@@ -18477,7 +18497,7 @@
     {
       "path": "docs/guides/testing.md",
       "documentDigest": "448b9fe89cc9b69b0359f6a024b196bf4f5a1a45b5387d54e8dba4aae9141849",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "de06d7c32ebf139872f29d7cfaf996aca785f2d0",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
@@ -18497,7 +18517,7 @@
         },
         {
           "path": ".githooks/pre-push",
-          "digest": "657de439eb9e346bfcf7d6bad518bcca6cba9ce1264560ec17cb3c4fe9e8e24b"
+          "digest": "eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9"
         },
         {
           "path": ".github/workflows/ci.yml",
@@ -18634,6 +18654,14 @@
         {
           "path": "src-server/routes/spatial-board.ts",
           "digest": "461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da"
+        },
+        {
+          "path": "scripts/lib/git-environment.mjs",
+          "digest": "e0557da6e34d1a58ec3d045261e1a7f4655cc1848ec94cc3cb8294fad7b0803f"
+        },
+        {
+          "path": "scripts/__tests__/prepush-typecheck.test.ts",
+          "digest": "c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650"
         }
       ],
       "checks": [
@@ -18652,7 +18680,8 @@
         "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
         "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
         "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution."
       ]
     },
     {
@@ -20198,7 +20227,7 @@
     },
     {
       "path": "docs/reference/agent-plugins.md",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "de06d7c32ebf139872f29d7cfaf996aca785f2d0",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed every documented portable Agent Plugins claim through shared schema/parser, runtime loader and host normalization, Skill discovery and mutation policy, MCP projection/read-only service, settings persistence and provider factory, managed installation paths, CLI consent/build and validator gates. Corrected unsupported moving-upstream assertion, retired root-field exception, namespace host-normalization failure boundary, workspacePaneHost classification, literal versus expanded MCP fields, and managed-versus-legacy code/data retention scope. Added package tree and direct owner/caller navigation.",
@@ -20207,7 +20236,7 @@
       "sources": [
         {
           "path": ".githooks/pre-push",
-          "digest": "657de439eb9e346bfcf7d6bad518bcca6cba9ce1264560ec17cb3c4fe9e8e24b"
+          "digest": "eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9"
         },
         {
           "path": "package.json",
@@ -20327,7 +20356,8 @@
         "agent-plugin:validators:gate passes byte reproduction, exit 0; 407 Markdown local paths/rendered anchors pass; git diff --check passes.",
         "Veritas readiness veritas-1790521820225: 0 failures, 0 warnings. One Markdown file committed; no runtime or shared-ledger mutation.",
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
-        "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged."
+        "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged.",
+        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution."
       ]
     },
     {
@@ -28292,7 +28322,7 @@
     },
     {
       "path": "scripts/AGENTS.md",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "de06d7c32ebf139872f29d7cfaf996aca785f2d0",
       "kind": "policy",
       "state": "classified",
       "summary": "Names deterministic fail-closed gates, resource classification, owned processes, introduced code-health findings, focused mutation evidence, exit-status collection, and read-only lint after formatting. All routed paths and npm scripts resolve.",
@@ -28301,7 +28331,7 @@
       "sources": [
         {
           "path": "docs/guides/code-quality.md",
-          "digest": "4a25a0c7b59e67e2e12e2eca32e5438acb97e5862736bffbf33c6a76a4e24e25"
+          "digest": "530dbc7372704bb4c2d5d858bf238190bbefb4fddcb4bb1db55492c7ea393beb"
         },
         {
           "path": "docs/guides/testing.md",
@@ -28333,7 +28363,8 @@
         "Reviewed source changes: Added bounded documentation-impact/media and Knowledge graph fixture tests to process-heavy classification; existing execution policy is unchanged. Frozen-main guide was reviewed against plan/shard/statics routing, hosted promotion receipts and current local typecheck rules; instruction files continue to route to this owner. Updated testing/dependency/effectiveness guidance preserves source-owned checks; scoped instruction files still route to this owner rather than copy its implementation.",
         "Reviewed added graph/media test classification and tracked temp-directory fixture ownership; no lane policy bypass.",
         "Reviewed integration deltas: scripts/vitest-resource-manifest.mjs: Registers portable smoke and real-Chromium geometry fixtures as process-heavy. Current root also registers learning browser/media/impact, metric CLI children and repository knowledge graph. Scheduling metadata, not proof those journeys passed.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution."
       ]
     },
     {
