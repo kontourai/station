@@ -21,6 +21,8 @@ export type ProcessIdentityDependencies = {
   now?: () => number;
   retryDelayMs?: number;
   deadlineMs?: number;
+  /** Windows probe shell; absent means the absolute Windows PowerShell. */
+  windowsShell?: string;
   /** Environment used to resolve Windows PowerShell's System32 path. */
   env?: NodeJS.ProcessEnv;
   /** execFileSync-shaped seam; #1669 added it to the impl but not here. */
@@ -34,6 +36,14 @@ export function lookupProcessBirthFingerprint(
   pid: number,
   dependencies?: ProcessIdentityDependencies,
 ): string | null;
+export type OwnProcessBirthProbeSchedule = {
+  retryDelayMs: number;
+  attempts: Array<{ timeoutMs: number; windowsShell: string | undefined }>;
+};
+export function ownProcessBirthProbeSchedule(
+  platform?: NodeJS.Platform,
+): OwnProcessBirthProbeSchedule;
+export function describeRecentProcessBirthProbeFailures(pid: number): string;
 export function describeProcessBirthProbe(
   platform?: NodeJS.Platform,
   env?: NodeJS.ProcessEnv,

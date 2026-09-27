@@ -95,7 +95,9 @@ function windowsCreationDateProbe(
     ],
     options: {
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
+      // stderr is piped (not ignored) only so a failed probe can say why;
+      // success reads stdout alone.
+      stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       timeout: timeoutMs,
       killSignal: 'SIGKILL',
@@ -108,6 +110,94 @@ function canonicalWindowsCreationDate(output) {
   return isWindowsRoundTripUtcIso(value) ? value : null;
 }
 
+// Why recent birth probes returned nothing, so a caller that fails closed on
+// a null birth can report it (#2675). Bounded: the last few failures only,
+// each with a clipped stderr/output snippet. Success paths never read it.
+const PROBE_FAILURE_HISTORY = 3;
+const PROBE_FAILURE_SNIPPET_CHARS = 240;
+const recentProbeFailures = [];
+
+function clipSnippet(value) {
+  const text = String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > PROBE_FAILURE_SNIPPET_CHARS
+    ? `${text.slice(0, PROBE_FAILURE_SNIPPET_CHARS)}...`
+    : text;
+}
+
+function describeProbeError(error, timeoutMs) {
+  const code = error?.code;
+  let reason;
+  if (code === 'ETIMEDOUT' || (error?.killed && error?.signal)) {
+    reason = `timed out after ${timeoutMs}ms`;
+  } else if (typeof error?.status === 'number') {
+    reason = `exited ${error.status}`;
+  } else if (typeof code === 'number') {
+    // callback execFile reports the exit status as a numeric `code`.
+    reason = `exited ${code}`;
+  } else if (typeof code === 'string') {
+    reason = `spawn failed (${code})`;
+  } else if (error?.signal) {
+    reason = `killed by ${error.signal}`;
+  } else {
+    reason = clipSnippet(error?.message ?? error) || 'failed';
+  }
+  const stderr = clipSnippet(
+    Buffer.isBuffer(error?.stderr)
+      ? error.stderr.toString('utf8')
+      : error?.stderr,
+  );
+  return stderr ? `${reason}; stderr: ${stderr}` : reason;
+}
+
+function recordProbeFailure(pid, command, detail) {
+  recentProbeFailures.push({
+    pid,
+    text: `${win32Basename(command)} ${detail}`,
+  });
+  if (recentProbeFailures.length > PROBE_FAILURE_HISTORY) {
+    recentProbeFailures.shift();
+  }
+}
+
+function win32Basename(command) {
+  return String(command).split(/[\\/]/).pop();
+}
+
+/**
+ * Why the most recent Windows birth probes for `pid` produced nothing since
+ * its last successful probe (oldest first), or '' when none is recorded.
+ * Diagnostic text only.
+ */
+export function describeRecentProcessBirthProbeFailures(pid) {
+  return recentProbeFailures
+    .filter((failure) => failure.pid === pid)
+    .map((failure) => failure.text)
+    .join('; ');
+}
+
+function canonicalOrRecord(pid, command, output) {
+  const birth = canonicalWindowsCreationDate(output);
+  if (birth) {
+    // Only failures since this pid's last success explain a null.
+    for (let index = recentProbeFailures.length - 1; index >= 0; index -= 1) {
+      if (recentProbeFailures[index].pid === pid)
+        recentProbeFailures.splice(index, 1);
+    }
+  } else {
+    const snippet = clipSnippet(output);
+    recordProbeFailure(
+      pid,
+      command,
+      snippet
+        ? `printed no canonical start time: ${snippet}`
+        : 'printed nothing',
+    );
+  }
+  return birth;
+}
+
 function windowsCreationDateFingerprint(pid, exec, timeoutMs, shell, env) {
   const { command, args, options } = windowsCreationDateProbe(
     pid,
@@ -115,19 +205,45 @@ function windowsCreationDateFingerprint(pid, exec, timeoutMs, shell, env) {
     shell,
     env,
   );
-  const output = exec(command, args, options);
-  return canonicalWindowsCreationDate(output);
+  let output;
+  try {
+    output = exec(command, args, options);
+  } catch (error) {
+    recordProbeFailure(
+      pid,
+      command,
+      describeProbeError(error, options.timeout),
+    );
+    throw error;
+  }
+  return canonicalOrRecord(pid, command, output);
 }
 
-async function windowsCreationDateFingerprintAsync(pid, exec, timeoutMs, env) {
+async function windowsCreationDateFingerprintAsync(
+  pid,
+  exec,
+  timeoutMs,
+  shell,
+  env,
+) {
   const { command, args, options } = windowsCreationDateProbe(
     pid,
     timeoutMs,
-    undefined,
+    shell,
     env,
   );
-  const output = await exec(command, args, options);
-  return canonicalWindowsCreationDate(output);
+  let output;
+  try {
+    output = await exec(command, args, options);
+  } catch (error) {
+    recordProbeFailure(
+      pid,
+      command,
+      describeProbeError(error, options.timeout),
+    );
+    throw error;
+  }
+  return canonicalOrRecord(pid, command, output);
 }
 
 /**
@@ -259,9 +375,12 @@ export function lookupProcessBirthFingerprint(pid, dependencies = {}) {
 
 function defaultExecFileAsync(command, args, options) {
   return new Promise((resolvePromise, rejectPromise) => {
-    execFile(command, args, options, (error, stdout) => {
-      if (error) rejectPromise(error);
-      else resolvePromise(stdout);
+    execFile(command, args, options, (error, stdout, stderr) => {
+      if (error) {
+        // callback execFile hands stderr separately; keep it for diagnostics.
+        if (stderr && error.stderr === undefined) error.stderr = stderr;
+        rejectPromise(error);
+      } else resolvePromise(stdout);
     });
   });
 }
@@ -290,6 +409,7 @@ export async function lookupProcessBirthFingerprintAsync(
         pid,
         exec,
         timeoutMs,
+        dependencies.windowsShell,
         dependencies.env,
       );
     }
@@ -417,23 +537,54 @@ export function probeExactProcessIdentity(pid, dependencies = {}) {
 }
 
 /**
+ * The own-process birth probe schedule (#2675): one attempt list shared by
+ * `resolveOwnProcessIdentity` and the lifecycle lock's own-pid lookup, so both
+ * give a cold Windows PowerShell start the same long budget. Arbitrary-pid
+ * (claimant/reclaim) probes keep the short default timeout.
+ *
+ * Windows: a legacy PowerShell startup failure should not consume both
+ * attempts on the same host, so the retry uses PowerShell 7, which reads the
+ * identical direct handle and emits the same normalized timestamp. Attempt 0
+ * uses the default absolute Windows PowerShell path. Off Windows, a null for
+ * our own live pid is a `ps` that missed its fixed short timeout under load.
+ */
+export function ownProcessBirthProbeSchedule(platform = process.platform) {
+  if (platform === 'win32') {
+    return {
+      retryDelayMs: WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS,
+      attempts: [
+        {
+          timeoutMs: WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS,
+          windowsShell: undefined,
+        },
+        {
+          timeoutMs: WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS,
+          windowsShell: 'pwsh.exe',
+        },
+      ],
+    };
+  }
+  return {
+    retryDelayMs: POSIX_OWN_PROCESS_BIRTH_RETRY_DELAY_MS,
+    attempts: Array.from({ length: POSIX_OWN_PROCESS_BIRTH_ATTEMPTS }, () => ({
+      timeoutMs: PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+      windowsShell: undefined,
+    })),
+  };
+}
+
+/**
  * Resolve this coordinator's own process identity before it publishes a new
  * lease. The same direct handle authority is used for owner publication and
  * later claimant/reclaim comparison; no PID-only or timing fallback exists.
  */
 export function resolveOwnProcessIdentity(pid, dependencies = {}) {
   const platform = dependencies.platform ?? process.platform;
-  const windows = platform === 'win32';
-  const attempts = windows
-    ? WINDOWS_OWN_PROCESS_BIRTH_ATTEMPTS
-    : POSIX_OWN_PROCESS_BIRTH_ATTEMPTS;
+  const schedule = ownProcessBirthProbeSchedule(platform);
+  const attempts = schedule.attempts.length;
   const deadlineMs =
     dependencies.deadlineMs ?? WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS;
-  const retryDelayMs =
-    dependencies.retryDelayMs ??
-    (windows
-      ? WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS
-      : POSIX_OWN_PROCESS_BIRTH_RETRY_DELAY_MS);
+  const retryDelayMs = dependencies.retryDelayMs ?? schedule.retryDelayMs;
   const now = dependencies.now ?? Date.now;
   const wait =
     dependencies.wait ??
@@ -450,18 +601,11 @@ export function resolveOwnProcessIdentity(pid, dependencies = {}) {
     const remainingMs =
       attempt === 0 ? deadlineMs : deadlineMs - (now() - startedAt);
     if (remainingMs <= 0) break;
-    const scheduledTimeoutMs =
-      dependencies.timeoutMs ??
-      (attempt === 0
-        ? WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS
-        : WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS);
+    const step = schedule.attempts[attempt];
+    const scheduledTimeoutMs = dependencies.timeoutMs ?? step.timeoutMs;
     const probe = probeExactProcessIdentityOnce(pid, {
       ...dependencies,
-      // A legacy PowerShell startup failure should not consume both attempts
-      // on the same host. PowerShell 7 reads the identical direct handle and
-      // emits the same normalized timestamp within the existing deadline.
-      // Attempt 0 uses the default absolute Windows PowerShell path.
-      windowsShell: attempt === 0 ? undefined : 'pwsh.exe',
+      windowsShell: step.windowsShell,
       timeoutMs: Math.min(scheduledTimeoutMs, remainingMs),
     });
     if (probe.state !== 'unavailable' || attempt === attempts - 1) {

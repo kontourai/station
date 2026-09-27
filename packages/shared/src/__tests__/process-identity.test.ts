@@ -15,6 +15,7 @@ import { describe, expect, test } from 'vitest';
 import {
   birthProvesReuse,
   describeProcessBirthProbe,
+  describeRecentProcessBirthProbeFailures,
   lookupProcessBirthFingerprint,
   lookupProcessBirthFingerprintAsync,
   probeExactProcessIdentity,
@@ -461,5 +462,59 @@ describe('birthProvesReuse (station#2904)', () => {
     );
     expect(describeProcessBirthProbe('linux')).toBe('/proc/<pid>/stat probe');
     expect(describeProcessBirthProbe('darwin')).toBe('`ps -o lstart=` probe');
+  });
+
+  test('records why a Windows birth probe returned nothing, bounded, until the next success (#2675)', async () => {
+    const pid = 7331;
+    const windows = { platform: 'win32' as const, env: MINIMAL_WINDOWS_ENV };
+    const failWith = (fields: Record<string, unknown>) => () => {
+      throw Object.assign(new Error('probe failed'), fields);
+    };
+    // Sync execFileSync timeout, with a stderr snippet clipped to a bound.
+    expect(
+      lookupProcessBirthFingerprint(pid, {
+        ...windows,
+        timeoutMs: 10_000,
+        exec: failWith({ code: 'ETIMEDOUT', stderr: `x${' y'.repeat(400)}` }),
+      }),
+    ).toBeNull();
+    // Async execFile: a timeout kill, then a non-zero exit (numeric code).
+    await expect(
+      lookupProcessBirthFingerprintAsync(pid, {
+        ...windows,
+        timeoutMs: 1_500,
+        exec: async () =>
+          failWith({ killed: true, signal: 'SIGKILL', code: null })(),
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      lookupProcessBirthFingerprintAsync(pid, {
+        ...windows,
+        windowsShell: 'pwsh.exe',
+        exec: async () => failWith({ code: 1, stderr: 'Access denied' })(),
+      }),
+    ).resolves.toBeNull();
+    const described = describeRecentProcessBirthProbeFailures(pid);
+    expect(described).toMatch(
+      /^powershell\.exe timed out after 10000ms; stderr: x y y .*\.\.\.; powershell\.exe timed out after 1500ms; pwsh\.exe exited 1; stderr: Access denied$/,
+    );
+    expect(described.length).toBeLessThan(400);
+
+    // Bounded history: a fourth failure evicts the oldest.
+    lookupProcessBirthFingerprint(pid, {
+      ...windows,
+      exec: () => 'not a timestamp\n',
+    });
+    expect(describeRecentProcessBirthProbeFailures(pid)).toBe(
+      'powershell.exe timed out after 1500ms; pwsh.exe exited 1; stderr: Access denied; powershell.exe printed no canonical start time: not a timestamp',
+    );
+    expect(describeRecentProcessBirthProbeFailures(pid + 1)).toBe('');
+
+    // A success clears the pid's history: only failures since it explain a null.
+    lookupProcessBirthFingerprint(pid, {
+      ...windows,
+      exec: () => '2026-08-29T16:16:27.1234567Z\n',
+    });
+    expect(describeRecentProcessBirthProbeFailures(pid)).toBe('');
   });
 });

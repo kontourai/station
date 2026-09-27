@@ -24,9 +24,11 @@ import { setTimeout as sleepAsync } from 'node:timers/promises';
 import { fsyncDirectorySync } from './fs-windows-compat.js';
 import {
   describeProcessBirthProbe,
+  describeRecentProcessBirthProbeFailures,
   lookupProcessBirthFingerprint,
   lookupProcessBirthFingerprintCached,
   lookupProcessBirthFingerprintCachedAsync,
+  ownProcessBirthProbeSchedule,
   PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
 } from './process-identity.mjs';
 
@@ -277,9 +279,19 @@ function lookupProcessBirthOnce(pid: number): string | null {
 
 type BirthSource = 'lock' | 'default';
 
+// `probe` carries the own-process schedule's per-attempt budget; absent, the
+// lookup uses the short arbitrary-pid default.
+type BirthProbe = { timeoutMs?: number; windowsShell?: string };
+
 type LockEffect =
   | { kind: 'sleep'; ms: number }
-  | { kind: 'birth'; pid: number; source: BirthSource; fresh?: boolean };
+  | {
+      kind: 'birth';
+      pid: number;
+      source: BirthSource;
+      fresh?: boolean;
+      probe?: BirthProbe;
+    };
 
 type LockGen<T> = Generator<LockEffect, T, string | null | undefined>;
 
@@ -287,8 +299,9 @@ function* lookupBirth(
   pid: number,
   source: BirthSource,
   fresh = false,
+  probe?: BirthProbe,
 ): LockGen<string | null> {
-  return (yield { kind: 'birth', pid, source, fresh }) ?? null;
+  return (yield { kind: 'birth', pid, source, fresh, probe }) ?? null;
 }
 
 function* sleep(ms: number): LockGen<void> {
@@ -726,9 +739,11 @@ function* reclaimOrphanGuardGen(
 /**
  * Own-pid birth resolution for lock/guard ownership. An injected
  * `birthFingerprint` (tests) stays single-call; the default path retries a
- * spurious null against a live process (#1057) exactly like
- * `resolveProcessBirthFingerprint`, but through the driver so the async
- * acquisition path probes without blocking the event loop.
+ * spurious null against a live process (#1057) on the same own-process
+ * schedule as `resolveOwnProcessIdentity` — on Windows its long cold-start
+ * budget and pwsh retry (#2675) — but through the driver so the async
+ * acquisition path probes without blocking the event loop. Only this own-pid
+ * lookup gets the long budget; in-loop reclaim lookups stay short.
  */
 function* ownBirthGen(
   options: FileMutationLockOptions,
@@ -736,12 +751,15 @@ function* ownBirthGen(
   if (options.birthFingerprint) {
     return yield* lookupBirth(process.pid, 'lock');
   }
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const birth = yield* lookupBirth(process.pid, 'default');
+  const schedule = ownProcessBirthProbeSchedule();
+  for (const [attempt, probe] of schedule.attempts.entries()) {
+    const birth = yield* lookupBirth(process.pid, 'default', false, probe);
     if (birth) return birth;
     // A dead process legitimately has no fingerprint — that null is the
     // correct answer and must not be retried away.
     if (!processExists(process.pid)) return null;
+    if (attempt < schedule.attempts.length - 1)
+      yield* sleep(schedule.retryDelayMs);
   }
   return null;
 }
@@ -753,8 +771,11 @@ function missingOwnBirthError(
   const probe = options.birthFingerprint
     ? 'injected birth fingerprint'
     : describeProcessBirthProbe();
+  const failures = options.birthFingerprint
+    ? ''
+    : describeRecentProcessBirthProbeFailures(process.pid);
   return new Error(
-    `process birth fingerprint is required for ${purpose} ownership: ${probe} returned no start time for pid ${process.pid}`,
+    `process birth fingerprint is required for ${purpose} ownership: ${probe} returned no start time for pid ${process.pid}${failures ? ` (${failures})` : ''}`,
   );
 }
 
@@ -923,6 +944,7 @@ function resolveBirthEffectSync(
     return options.birthFingerprint(effect.pid);
   return lookupProcessBirthFingerprintCached(effect.pid, {
     fresh: effect.fresh,
+    ...effect.probe,
   });
 }
 
@@ -969,6 +991,7 @@ async function runLockGenAsync<T>(
           ? options.birthFingerprint(effect.pid)
           : await lookupProcessBirthFingerprintCachedAsync(effect.pid, {
               fresh: effect.fresh,
+              ...effect.probe,
             });
     } catch (error) {
       step = generator.throw(error);
