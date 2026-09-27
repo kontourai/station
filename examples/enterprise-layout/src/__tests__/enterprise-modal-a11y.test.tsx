@@ -149,7 +149,9 @@ describe('row and overlay declared-style contract (layout.css)', () => {
 
   test('backdrop declares fill geometry and the dialog layer declares stacking above it', () => {
     expect(
-      Object.fromEntries(declaredStyle('.enterprise-modal-backdrop--fill') ?? []),
+      Object.fromEntries(
+        declaredStyle('.enterprise-modal-backdrop--fill') ?? [],
+      ),
     ).toMatchObject({
       position: 'absolute',
       inset: '0',

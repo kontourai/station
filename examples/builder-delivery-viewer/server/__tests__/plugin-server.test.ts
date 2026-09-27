@@ -145,7 +145,9 @@ describe('Builder Delivery Viewer server', () => {
     expect(body.sessions).toHaveLength(1);
     expect(body.sessions[0].slug).toBe('demo');
     expect(body.sessions[0].validation.state.valid).toBe(true);
-    const detail = await instance.request('/projects/demo/builder-sessions/demo');
+    const detail = await instance.request(
+      '/projects/demo/builder-sessions/demo',
+    );
     expect(detail.status).toBe(200);
     expect(treeSnapshot(root)).toEqual(before);
   });
