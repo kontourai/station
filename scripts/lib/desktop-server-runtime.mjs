@@ -73,7 +73,13 @@ function installedRuntimeDependencies(pkg, packageRoot) {
     if (pkg.peerDependenciesMeta?.[name]?.optional) continue;
     dependencies[name] = version;
   }
+  const excluded = new Set(
+    RUNTIME_DEPENDENCY_EXCLUSIONS.filter(
+      (rule) => rule.package === pkg.name,
+    ).map((rule) => rule.dependency),
+  );
   return Object.keys(dependencies).filter((name) => {
+    if (excluded.has(name)) return false;
     try {
       resolvePackageRoot(name, packageRoot);
       return true;
@@ -173,9 +179,69 @@ function planRuntimePackages(packageNames, projectRoot, outputRoot) {
  * unpruned node_modules, stayed correct. `LICENSE.md` is also `.md`, and MIT
  * text must accompany redistribution.
  */
-export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map)$/i;
+export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
+// `.pdb` is Windows debug-symbol data read only by a debugger, never by the
+// loader: node-pty ships one beside every Windows binary (~27 MB per arch).
 
-function packageCopyOptions(sourceRoot) {
+/**
+ * Package-scoped subtrees the packaged server never reads (#2694). Each rule
+ * names one package and the top-level entries of it that are dropped; the
+ * target is the platform/arch the staged tree runs on, which is always the
+ * staging host (desktop and portable builds both stage on their own target).
+ *
+ * - node-pty's loader (lib/utils.js `loadNativeModule`) tries `build/Release`,
+ *   `build/Debug`, then exactly `prebuilds/${process.platform}-${process.arch}`,
+ *   and Station's spawn-helper chmod (src-server/adapters/node-pty-adapter.ts)
+ *   probes only that same directory. Every other platform's prebuild is dead
+ *   weight: on darwin that is the two win32 trees, ~58 MB.
+ * - `@kontourai/flow-agents/dist/<runtime>` are the per-harness install
+ *   bundles its `init`/`kit`/`workflow doctor` CLI verbs copy into a project.
+ *   Station runs none of those verbs; it imports the package's exports, spawns
+ *   `build/src/cli/{assignment-provider,effective-backlog-settings,
+ *   pull-work-provider}.js`, loads `scripts/hooks/*`, and reads `skills/`,
+ *   `kits/`, `schemas/` and `context/`. In the static closure of those
+ *   entries the package's own `dist/` is read only by `workflow doctor`, a
+ *   CLI verb Station never runs (workflow-steering's `dist/` check reads the
+ *   project checkout, not the package). ~102 MB.
+ */
+export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
+  Object.freeze({
+    id: 'node-pty-foreign-prebuilds',
+    package: 'node-pty',
+    excludes: (segments, target) =>
+      segments[0] === 'prebuilds' &&
+      segments.length > 1 &&
+      segments[1] !== `${target.platform}-${target.arch}`,
+  }),
+  Object.freeze({
+    id: 'flow-agents-harness-bundles',
+    package: '@kontourai/flow-agents',
+    excludes: (segments) => segments[0] === 'dist',
+  }),
+]);
+
+/**
+ * Dependency edges the stager does not follow (#2694). flow-agents depends
+ * on esbuild only for `build-universal-bundles`, which regenerates the
+ * `dist/` bundles pruned above; its runtime modules are written to load
+ * without it ("unavailable in a stripped install", lib/local-artifact-root).
+ * The edge pinned a second, nested esbuild (~21 MB) beside the root copy
+ * Station itself externalizes, which stays staged, so a stray import still
+ * resolves by ordinary node_modules lookup.
+ */
+export const RUNTIME_DEPENDENCY_EXCLUSIONS = Object.freeze([
+  Object.freeze({
+    id: 'flow-agents-bundle-builder-esbuild',
+    package: '@kontourai/flow-agents',
+    dependency: 'esbuild',
+  }),
+]);
+
+function packageCopyOptions(sourceRoot, target) {
+  const packageName = readPackage(sourceRoot).name;
+  const rules = RUNTIME_PACKAGE_PRUNE_RULES.filter(
+    (rule) => rule.package === packageName,
+  );
   return {
     recursive: true,
     dereference: true,
@@ -183,6 +249,7 @@ function packageCopyOptions(sourceRoot) {
       const segments = relative(sourceRoot, source).split(sep);
       if (segments.length === 1 && segments[0] === '') return true;
       if (segments.includes('node_modules')) return false;
+      if (rules.some((rule) => rule.excludes(segments, target))) return false;
       // Match files only: a directory whose name ends in one of these
       // extensions would otherwise drop everything beneath it.
       return (
@@ -197,10 +264,11 @@ function stageWindowsWixPackage(
   targetPackageRootPath,
   outputRoot,
   windowsWixResources,
+  target,
 ) {
   const alias = `package-${String(windowsWixResources.entries.length).padStart(4, '0')}`;
   const aliasRoot = join(windowsWixResources.root, alias);
-  cpSync(sourceRoot, aliasRoot, packageCopyOptions(sourceRoot));
+  cpSync(sourceRoot, aliasRoot, packageCopyOptions(sourceRoot, target));
   windowsWixResources.entries.push({
     aliasRoot,
     target: join(
@@ -282,7 +350,10 @@ export function stageDesktopServerRuntime({
   budget = DESKTOP_SERVER_RUNTIME_BUDGET,
   windowsWixResourceRoot,
   windowsTauriConfigRoot = resolve(projectRoot, 'src-desktop'),
+  platform = process.platform,
+  arch = process.arch,
 } = {}) {
+  const runtimeTarget = { platform, arch };
   const windowsWixResources = windowsWixResourceRoot
     ? { root: resolve(windowsWixResourceRoot), entries: [] }
     : undefined;
@@ -300,9 +371,15 @@ export function stageDesktopServerRuntime({
   const planned = planRuntimePackages(packages, projectRoot, outputRoot);
   for (const [target, source] of planned) {
     mkdirSync(dirname(target), { recursive: true });
-    cpSync(source, target, packageCopyOptions(source));
+    cpSync(source, target, packageCopyOptions(source, runtimeTarget));
     if (windowsWixResources) {
-      stageWindowsWixPackage(source, target, outputRoot, windowsWixResources);
+      stageWindowsWixPackage(
+        source,
+        target,
+        outputRoot,
+        windowsWixResources,
+        runtimeTarget,
+      );
     }
   }
   inspectDesktopServerRuntime(outputRoot, budget);
