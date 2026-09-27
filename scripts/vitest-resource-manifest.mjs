@@ -1048,6 +1048,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // declares. jsdom computes no layout and would report the pre-fix
   // edge-to-edge frame and the fixed one identically.
   'src-ui/src/workspace-panes/__tests__/WorkspacePaneRouteView.frame.test.tsx',
+  // #917: launches a real Chromium to measure whether the region fieldset
+  // holds its toggles' width in an over-full phone toolbar. jsdom computes no
+  // layout, and a rule-text check cannot see a cascade override.
+  'src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx',
+  // Same shape: launches a real Chromium to measure the setup-import
+  // stepper's heading action at the 640px breakpoint.
+  'src-ui/src/components/setup/__tests__/ExistingSetupImportStepper.test.tsx',
   // Runs the full-regression phase driver CLI and real npm children, including
   // one it must kill at a deadline.
   'scripts/__tests__/run-full-regression-phases.test.ts',
