@@ -452,7 +452,17 @@ the inspected revision; review-origin merges observe the resulting provider stat
 input request's reply binding and declared file/image transport. `needs_input`
 items may carry `inputReference`; approval/permission references keep their
 separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
- constraint, not a grant, and is removed before the adapter receives input.
+constraint, not a grant, and is removed before the adapter receives input.
+
+The [orchestration routes](../../src-server/routes/orchestration/orchestration.ts)
+and [dispatch owner](../../src-server/services/orchestration/orchestration-service.ts)
+apply the quotation and input-request checks. Source-only learning inspection
+uses the [knowledge route](../../src-server/routes/knowledge/knowledge-source-routes.ts)
+and its host-authorized owner, while
+[forge review](../../src-server/services/pull-requests/pull-request-review.ts)
+and [Conversation links](../../src-server/routes/pull-requests/conversation-pull-request-links.ts)
+have separate owners. Their public types describe observations and request
+constraints; they do not by themselves authorize a read or external write.
 
 ## Mobile device inspection
 

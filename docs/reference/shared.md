@@ -640,7 +640,13 @@ Constants and helpers for plugin bundling.
 
 ### `SHARED_EXTERNALS`
 
-Module names provided by the host app at runtime via `window.__station_ai_shared`.
+Module names resolved by plugin bundles through `window.__station_ai_shared`.
+The [host bridge](../../src-ui/src/core/pluginSharedRuntime.ts) installs React,
+React Query and debug eagerly, and loads the remaining namespaces on demand.
+[PluginRegistry](../../src-ui/src/core/PluginRegistry.ts) awaits that work before
+injecting a bundle. Page-level callers must first await
+`window.__station_ai_shared_ready()`; an immediate SDK namespace read after boot
+is not guaranteed.
 
 ```ts
 const SHARED_EXTERNALS: string[]
@@ -653,7 +659,9 @@ esbuild filter regex matching all shared externals.
 
 ### `RUNTIME_SHIM`
 
-Runtime `require()` shim that maps externals to `window.__station_ai_shared` at runtime. Injected as a banner in plugin bundles.
+Runtime `require()` shim injected as a banner in plugin bundles. It resolves
+known externals through the host map; an unknown module logs a warning and
+returns an empty object. That fallback does not provide the missing API.
 
 ### `registrationFooter(pluginName: string): string`
 
@@ -866,7 +874,9 @@ console.log(manifest.name, manifest.version);
 
 ### `readIntegrationDef(toolsDir: string, id: string): ToolDef`
 
-Reads `<toolsDir>/<id>/integration.json`. Throws if not found.
+Reads `<toolsDir>/<id>/integration.json`. Missing files and invalid JSON throw.
+Like the other simple readers, this is a typed JSON cast, not schema validation
+or a path-containment boundary. Call it only with paths the caller has admitted.
 
 ```ts
 const tool = readIntegrationDef('/project/.station/integrations', 'my-mcp-server');
@@ -874,7 +884,8 @@ const tool = readIntegrationDef('/project/.station/integrations', 'my-mcp-server
 
 ### `readAgentSpec(path: string): AgentSpec`
 
-Reads an agent JSON file at the given path.
+Reads and parses an Agent JSON file at the given path; missing or invalid JSON
+throws. It does not validate the Agent request schema.
 
 ### `readLayoutConfig(path: string): LayoutDefinition`
 
@@ -886,8 +897,11 @@ parses JSON rather than proving the declared type. It is not a project-owned
 
 Walks the legacy/root `agents` declaration, collects `mcpServers` references,
 and reads a map of `toolId → ToolDef`. Missing Agent files are skipped;
-integration read/parse failures are swallowed. An empty result is therefore not
-proof of a complete valid inventory. It does not normalize portable manifests.
+integration read/parse failures are swallowed. Invalid Agent JSON still throws.
+An empty result is therefore not proof of a complete valid inventory. It does
+not normalize portable manifests. The
+[CLI development MCP caller](../../packages/cli/src/dev/mcp.ts) uses this map;
+it returns no manager when the map is empty.
 
 ```ts
 const tools = resolvePluginIntegrations('/path/to/plugin', '/project/.station/integrations');
@@ -907,9 +921,12 @@ const ids = listIntegrationIds('/project/.station/integrations');
 
 ### `copyPluginIntegrations(pluginDir: string, projectIntegrationsDir: string): string[]`
 
-Copies validated integration trees from `<pluginDir>/integrations/` into the
-destination. It rejects symlinks, credential-bearing embedded configuration,
-unsafe executable tokens and an existing target not owned by this plugin.
+Copies checked integration trees from `<pluginDir>/integrations/` into the
+destination. For copied directories it rejects nested symlinks, nonempty `env`,
+`secretEnv` or `storedEnvNames`, invalid executable tokens and an existing target
+not owned by this plugin. These are specific checks, not a complete ToolDef
+schema validator or a scan for every possible secret field. Nondirectory entries
+at the integration root are skipped.
 An existing plugin-owned target is replaced using staged rollback handling;
 it is not silently skipped. The returned IDs describe copied files, not live
 MCP connections or permission grants. Use the host installation path for live
@@ -936,7 +953,7 @@ Throws if not inside a git repository.
 Builds a declared entrypoint with esbuild into `dist/bundle.js`, or
 `dist/bundle-dev.js` with inline sourcemaps in dev mode. A missing entrypoint
 returns `{ built: false }`; there is no fallback to `build.mjs`, `build.sh` or
-arbitrary package scripts. `manifest.build` is refused by the host.
+arbitrary package scripts. `manifest.build` is refused by this helper.
 
 The [builder](../../packages/shared/src/build.ts) owns containment and dependency
 preparation. Managed workspace builds require the managed dependency setup;
@@ -951,6 +968,7 @@ interface BuildResult {
   built: boolean;
   bundlePath?: string;
   cssPath?: string;
+  warnings?: string[];
 }
 ```
 
