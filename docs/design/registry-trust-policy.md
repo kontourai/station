@@ -1,5 +1,14 @@
 # Applied registry trust policy
 
+> **Reading status: current local trust-policy contract.**
+> [Policy application](../../src-server/services/plugins/registry-trust-policy.ts),
+> [registry acquisition](../../src-server/services/plugins/registry-acquisition.ts),
+> and [runtime composition](../../src-server/runtime/bootstrap/station-runtime.ts)
+> own candidate observation, verification, and applied publication. This note
+> does not qualify a hosted trust adapter, publisher identity, or the safety of
+> signed code. Detailed crash, race, and recovery guarantees need their own
+> executed evidence.
+
 The local profile verifies registry source claims through the existing plugin
 installer, records the decision on the selected immutable generation, and fences
 new execution through the existing activation and MCP custody owners. It supports

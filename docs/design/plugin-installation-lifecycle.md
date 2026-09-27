@@ -1,5 +1,13 @@
 # Plugin installation lifecycle
 
+> **Reading status: current managed installation contract with dated qualification records.**
+> [Installation service](../../src-server/services/plugins/plugin-installation-service.ts),
+> [local adapter](../../src-server/services/plugins/plugin-installation-local.ts),
+> and [installer](../../src-server/services/plugins/plugin-install-transaction.ts)
+> own the behavior below. The retained-generation path and legacy directory
+> path are distinct. Historical process and Windows receipts retain their
+> stated scope; they are not fresh whole-application or hosted verification.
+
 Status: working implementation design. Owns the package lifecycle slice of
 #1409 and #344; the [personal and hosted topology](conversation-state.md#36-two-implementations-of-one-contract)
 and existing permission/composition owners remain authoritative.
@@ -215,10 +223,11 @@ The local acquisition owner scopes it to the host, canonical source, and registr
 owner when applicable. A changed or missing historical origin refuses data
 continuity with a migration-needed outcome; it does not reset or copy data.
 This token does not authenticate a publisher. Registry signatures and trusted
-publisher changes must remain governed by the registry claim/pin owner, whose
-production integration is tracked in [#1521](https://github.com/kontourai/station/issues/1521).
-Until that acceptance is met, acquisition-origin continuity does not establish
-signer-bound data ownership or curated registry trust.
+publisher changes belong to the registry claim/pin owner. The current local
+[applied registry trust policy](registry-trust-policy.md) now verifies and binds
+registry claims, while changed claims, signing principals, or applied policy
+epochs require reviewed continuity. Acquisition-origin continuity alone still
+does not establish signer identity or curated registry trust.
 
 The selected generation records pending activation before host effects. The
 existing runtime configuration owner verifies the declared resources and commits

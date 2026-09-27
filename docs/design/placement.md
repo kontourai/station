@@ -1,5 +1,15 @@
 # Placement: regions, surfaces, layouts, panes, pane hosts
 
+> **Reading status: current placement model plus a dated implementation log.**
+> [Region model](../../src-ui/src/regions/region-model.ts),
+> [persistence parser](../../src-ui/src/regions/region-arrangement-record.ts),
+> [provider](../../src-ui/src/contexts/RegionModelContext.tsx), and
+> [region pane host](../../src-ui/src/workspace-panes/RegionPaneHost.tsx) are the
+> current owners. Later dated amendments supersede earlier slice limitations.
+> The measurements, screenshots, and device statements below belong to their
+> recorded work; this review does not re-prove every reader, gesture, history
+> transition, migration, or physical-device journey.
+
 Status: **accepted direction with an implemented core** (owner decisions on
 station#928, 2026-09-01 through 2026-09-04). It describes `main` once the
 2026-09-04 placement batch has landed: the docked-capability pins, #1446 and
@@ -220,9 +230,9 @@ Two facts that follow from the map and are easy to get wrong:
 
 - **Nothing reads `supportedRegions` to decide where a pane renders.** It gates
   whether a pane fits a slot; the user, the registry and the composition
-  builders decide where. The dock catalog (#2047) is a reader of exactly that
-  kind: `docked` decides whether a pane is offered in a region's "+", and the
-  region is the one whose "+" was pressed. Do not add a reader that picks a
+  builders decide where. The retired dock catalog (#2047) was a reader of exactly
+  that kind: `docked` decided whether a pane was offered in a region's "+";
+  the current chooser reads registered surfaces instead. Do not add a reader that picks a
   region from it without a decision on #928.
 - **Compatibility is context supply, not region words.** The "can this pane
   live here" check is `workspacePaneModesSatisfiableBy` against the contexts a
@@ -739,10 +749,10 @@ region set, so two simulators side by side waits for an instance-keyed Device
 family riding the #2049 prefix mechanism. Which device is selected is bounded
 pane STATE, not pane identity — the selected target is what the pane reads,
 not what it is — which is the same distinction that keeps a routed session id
-out of Activity's instance. The "+" stays project-scoped
-(`RegionPaneHost` gates it on `projectSlug !== null`), so a Station with no
-project cannot reach a pane that needs no project; that limitation is #2047's
-and is documented here rather than widened by this slice.
+out of Activity's instance. The original "+" was project-scoped. The later
+#2154 chooser removed that restriction: Device can be offered without a
+Project, while project-dependent coding panes remain disabled until a Project
+is selected.
 
 ## A Board or a Layout as a pane (#2157)
 

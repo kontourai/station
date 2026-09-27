@@ -1,5 +1,14 @@
 # MCP Apps in Station
 
+> **Reading status: current host design with staged custody history.**
+> [MCPService](../../src-server/services/plugins/mcp-service.ts), the
+> [browser frame](../../src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx), and
+> [tool-call route](../../src-server/routes/agents/tools.ts) own the live path.
+> The local custody and package-admission sections describe different layers;
+> neither SDK cleanup nor passing host tests proves remote effects stopped.
+> The verification list names evidence areas; it is not a new browser,
+> native-device, or external-server qualification.
+
 > Status: native host support is on by default behind the `mcpUiHost` setting.
 > Station targets MCP core `2026-07-28` and the independently versioned MCP Apps
 > extension `2026-01-26`.
@@ -77,14 +86,14 @@ state removal before SDK `finishAuth`. A closed SDK handle is not sufficient
 to prune a pending credential operation. Cleanup runs outside the owned scope
 to avoid waiting on itself; local inspection counts these retained operations.
 
-This is only the first local tranche of #1409. SDK close fulfillment does **not**
+This local custody layer originated as the first tranche of #1409. SDK close fulfillment does **not**
 prove that a stdio process, SDK-internal negotiation child, descendant process,
 or remote effect has drained. This owner is neither a shared-home lease nor a
 package/installation-generation retirement authority. External file edits and
-another runtime are not made atomic by its JavaScript fences. Native child
-supervision, shared-home admission, and the exclusive package/data mutation
-lease remain required before #1377 can safely update/remove package data.
-This change does not authorize or wire destructive package retirement.
+another runtime are not made atomic by its JavaScript fences. The
+[installation lifecycle](plugin-installation-lifecycle.md) now composes managed
+package admission and retains old code/data on update or withdrawal. It does
+not turn local cleanup into permission for physical reclamation.
 
 ### Shared package admission evidence (control-plane prerequisite)
 
@@ -114,11 +123,14 @@ current runtime roster stops a legacy binary from joining after a crash.
 The impact read can prove recorded package history, but an absent record is
 `unclassified`, not evidence that a package is unrelated or safe to delete.
 
-This prerequisite is not yet connected to all MCP entry points or package
-mutation owners. The Agent-Plugins package/data owner in #1377 is the planned
-refusal seam before its first backup/copy/delete; unrelated legacy plugin
-lifecycle remains outside this guarantee. No current declaration absence or
-inert test receipt authorizes destructive work. Real two-process SQLite tests
+The [Agent Plugin loader](../../src-server/services/plugins/agent-plugin-loader.ts)
+now binds selected package definitions to journal admission, and
+[local custody](../../packages/shared/src/mcp-local-custody.ts) crosses the
+captured effect boundary before constructing/connecting the SDK handle.
+The installation owner withdraws admission while retaining managed code and
+data. Legacy plugin lifecycle remains a separate path; this is not universal
+physical-retirement coverage. No declaration absence or inert test receipt
+authorizes destructive work. Real two-process SQLite tests
 prove claim/fence serialization, retained crash debt, incarnation ABA and
 unknown-commit refusal, not native containment, remote cancellation or physical
 platform compatibility. No home-schema upgrade or operator recovery is run.
@@ -165,6 +177,13 @@ The layout's approval policy remains an additional gate:
 - `read-only`: deny App tool calls;
 - `require`: route calls through Station's approval inbox;
 - `inherit`: require the current host confirmation until agent policy is wired.
+
+The browser host supplies `approvalPolicy` in its request. The route does not
+independently recover that value from a stored layout: `read-only` refuses,
+`require` waits when the approval registry is wired, and the other path calls
+the tool directly. The `inherit` confirmation is a browser-host step. These
+rules describe that host composition, not proof that an arbitrary authenticated
+API caller obtained an operator decision.
 
 ## Resource loading and policy
 
@@ -248,7 +267,7 @@ transport.
 | Camera, microphone, location, or clipboard access | Allow only validated declared permissions |
 | Cross-server tool calls | Re-resolve the frame reference and pin `serverId` |
 | Model-only tool called by an App | Enforce Apps visibility on the server |
-| Write without approval | Apply the layout approval policy before execution |
+| App requests a write through the host bridge | Apply the configured host approval path; the request policy is not independent proof of consent |
 | Arbitrary resource read | Read only the resolved tool's declared URI |
 | Huge or hanging content | Byte caps, request timeouts, and render bounds |
 

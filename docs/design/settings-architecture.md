@@ -1,5 +1,15 @@
 # Settings Architecture: scope-first settings for Station
 
+> **Reading status: evolving settings design with a historical problem inventory.**
+> The July audit and numbered slices retain their original context. Current
+> [SettingsView](../../src-ui/src/views/SettingsView.tsx),
+> [catalog](../../src-ui/src/views/settings/settings-catalog.ts),
+> [server setting registry](../../packages/contracts/src/settings-registry.ts),
+> and [device store](../../src-ui/src/lib/device-settings-store.ts) own the
+> rendered controls and persistence. A scope label or generated catalog does
+> not prove that every setting's consumer, save failure, or migration was
+> rechecked in this review.
+
 Status: incremental implementation (2026-07-30). Research base: comparative review of four reference
 agent-tooling products' settings systems, plus a full audit of Station's current
 settings surface at `73381430`. The separate attributed research record is not
@@ -283,7 +293,7 @@ today. It is defense in depth against a future narrowing of the project
 family's tier and the place the coupling is written down — not a claim that
 project updates are authorized more narrowly than they were.
 
-Derived from the registry, so they can never drift:
+Registry-derived surfaces and checks intended to detect drift:
 - the typed `PUT /config/app` request schema (replacing `z.record(z.unknown())`),
 - defaults (no parallel defaults object),
 - the Settings UI rows for scalar settings (form-from-schema;
@@ -330,12 +340,12 @@ One rule, everywhere a setting is edited:
   tool-details / font-size / dock-mode controls onto the same rule (§3 S4,
   §6 slice 4) — the one place a single control still reset on reload instead
   of saving immediately.
-- **Batched Save/Discard is reserved for multi-field forms that compose one
-  server-side document written by a single request**, where saving one field
+- **Batched Save/Discard is reserved for related fields in server-side forms**,
+  where saving one field
   mid-edit would leave the document in a state the user did not intend. The
   live instance is `/settings`'s Station (S1) + Defaults (S2) draft
-  (`SettingsView.tsx`'s `config`/`hasChanges`/`useUnsavedGuard`, one `PUT
-  /config/app`); entity editors (agent/project/skill) follow the
+  (`SettingsView.tsx`'s `config`/`hasChanges`/`useUnsavedGuard`); entity editors
+  (agent/project/skill) follow the
   same rule for their own multi-field server documents. This never applies
   to S3 device settings — nothing in that scope round-trips to the server —
   or to a single S1/S2 field edited in isolation.
@@ -343,6 +353,14 @@ One rule, everywhere a setting is edited:
   cross-field validation dependency, save immediately; if committing that one
   field mid-edit could leave a larger document half-intended, batch it behind
   Save/Discard.
+
+The current Settings Save action can issue three independent writes: ordinary
+fields use `PUT /config/app`, log level uses the revisioned
+`/config/app/log-level` endpoint, and project overrides use `PUT /projects/:slug`.
+The [shared log-level client](../../packages/sdk/src/app-config.ts) first reads
+the revision, then sends `If-Match` and an `Idempotency-Key`. Settings settles
+the writes separately and reports failures; this is not one atomic transaction
+across Station and Project documents.
 
 **Audit (slice 4).** Every existing single-control setting across `/settings`
 and the chat dock already followed immediate-save; ChatSettingsPanel's
@@ -454,9 +472,11 @@ slice.
    remains accepted. Effective-value chain work, the peer-credentials UI home,
    and `/providers` alias removal remain separate (the alias is owned by the
    concurrent routing lane).
-6. **Plumbing debt.** `station config set` via live route (#175); wire the config
-   watcher's events to the subscribers that S1 edits need (#983, scoped to what
-   the settings surfaces consume).
+6. **Plumbing debt.** The [CLI config command](../../packages/cli/src/commands/config.ts)
+   now writes through the live route by default and requires explicit `--offline`
+   for direct file writes. The watcher/subscriber question from #983 remains
+   separate from that completed write-path change and needs its own current
+   caller review.
 
 **Save-model and device-store convergence shipped (station#2679).** `/settings`
 now exposes exactly two behaviors by scope: the Station + Defaults server
