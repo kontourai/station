@@ -3,7 +3,8 @@
 Status: source audit complete; documentation maintenance policy activated with
 owner approval. Follow-up product proposals remain separate. Baseline:
 `ff2d743b4e45605d0a8500bd15ca4e1a86185ca6` (2026-09-26); upstream changes
-reviewed through `f3954615e965964aefc9a70a251a714433754f0c`.
+reviewed through `2400482c2` for landing, including the later test-audit and
+documentation-check changes.
 This is the audit record, not a deployment receipt. GitHub owns live delivery
 state; the review ledger records each document's scope and evidence limits.
 

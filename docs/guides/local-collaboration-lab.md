@@ -513,8 +513,9 @@ capture is checked for the account/content markers actually used by the journey.
 
 The second broker is provisioned immediately before its Station starts, so its
 short bootstrap lease does not expire during the first Station's account
-matrix. Cleanup stops the grouped Stations before releasing their shared
-listener lease, then stops both brokers and the owned TURN fixture.
+matrix. Cleanup attempts to stop the grouped Stations before releasing their shared
+listener lease and reports aggregate failures. It then cleans up both brokers
+and the owned TURN fixture; a failed stop is not confirmed process settlement.
 The two-Station mode bounds TURN and blind recorder lifetime at five minutes;
 the existing single-Station modes retain their two-minute fixture defaults.
 

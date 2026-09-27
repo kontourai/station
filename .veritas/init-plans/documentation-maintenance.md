@@ -36,8 +36,8 @@ unmapped code has no documentation impact.
 
 ## Why this is needed
 
-The required merge-queue regression already reaches `docsTruth` through static
-verification. Ordinary `ci:fast` does not universally run it. The separate
+Before this activation, the required merge-queue regression reached `docsTruth`
+through static verification, while ordinary `ci:fast` did not universally run it. The separate
 same-repository PR source-scan job checks freshness, but it is not a required
 check and does not run for every fork or merge-group event. This policy brings
 that feedback into required local/CI readiness without adding another validator.
@@ -127,3 +127,10 @@ documentation check in 35.679 seconds; total readiness took 108.81 seconds and
 retained only the unapproved-policy refusal and its derived warning. Normal
 `ci:fast` passed on macOS, and `verify:static` passed on Linux at that revision.
 Those are local revision-bound receipts, not hosted regression or deployment.
+
+Landing review incorporated upstream `2400482c2`, which adds five direct
+documentation checks to `ci:fast` and removes documentation-only whole-diff
+deferral. Those commands now overlap members of the aggregate. The required
+Veritas check still supplies the full aggregate, including recorded review
+freshness. The earlier cost figures above describe the earlier command graph;
+final landing verification measures the integrated graph without removing checks.

@@ -87,7 +87,7 @@
     {
       "path": ".changeset/README.md",
       "documentDigest": "381524670e36ead2172f0bda86d439055458085dcb6401544c863056efbe2ab7",
-      "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Checked the managed Changesets command, package discovery, retained-note validation, and ci:fast ordering.",
@@ -107,12 +107,13 @@
         },
         {
           "path": "scripts/run-ci-fast.mjs",
-          "digest": "67473fbf27b0e651af3475859ecc495378f3c47e74fbb505ed3db20c1bb44190"
+          "digest": "c5dc9e3896d34589dcf79394c2419094ae573b4bf46cc359d2938cc32b30c8ec"
         }
       ],
       "checks": [
         "npm run changesets:check \u2014 71 retained changesets form a valid release plan.",
-        "Reviewed source changes: Reviewed the hosted statics scope addition: local default still runs selector plus statics; hosted plan/shards own the selection and statics omits only that duplicated selector. Changeset validation remains in the static command list."
+        "Reviewed source changes: Reviewed the hosted statics scope addition: local default still runs selector plus statics; hosted plan/shards own the selection and statics omits only that duplicated selector. Changeset validation remains in the static command list.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope."
       ]
     },
     {
@@ -1074,7 +1075,7 @@
     {
       "path": ".veritas/README.md",
       "documentDigest": "edd1930dc10255d28023964b4c749edee17275673d3513afa9c3a7973c63a32e",
-      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current repository Veritas integration and protected-policy/evidence boundaries. Full 87-line baseline read. Actual repository configuration, installed Veritas 1.7.4 public docs/schema, hook wiring and generated-path contracts inspected. Reviewed the approved documentation evidence activation and policy-change attestation; authority settings remain unchanged.",
@@ -1134,7 +1135,7 @@
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "ea617f5b50620ffa33c700ce3702e7b2f6f38fb01e2aed8c1c6c86b94efe9d5b"
+          "digest": "fdc38068ccac531dd2573cddb929b8d31946920aaa1e4a38baa63e06fbffc627"
         },
         {
           "path": "package.json",
@@ -1150,7 +1151,7 @@
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
-          "digest": "6002b4f7447932bef72f43e528f18dc686cafa153779ce87a2d093a1829289e2"
+          "digest": "91e428a024b5f68b116cea40cc706fae3ccbea4f7dbb6344c6ffe71cd333e026"
         },
         {
           "path": "scripts/cli-agent-e2e.mjs",
@@ -1166,7 +1167,7 @@
         },
         {
           "path": "scripts/fast-checks-shard.mjs",
-          "digest": "36cc3d436a971064e09106246c3e330ebcdb2bfc787fa873dbccda9ded67f57f"
+          "digest": "158029ee97170ea31487f4c6dd452d1571cc3024c8e3c1b50d6f6ba4f29f8ca7"
         },
         {
           "path": "scripts/just-interface.mjs",
@@ -1190,7 +1191,7 @@
         },
         {
           "path": "scripts/run-ci-fast.mjs",
-          "digest": "67473fbf27b0e651af3475859ecc495378f3c47e74fbb505ed3db20c1bb44190"
+          "digest": "c5dc9e3896d34589dcf79394c2419094ae573b4bf46cc359d2938cc32b30c8ec"
         },
         {
           "path": "scripts/run-focused-tests.mjs",
@@ -1214,7 +1215,7 @@
         },
         {
           "path": "scripts/verification-policy-gate.mjs",
-          "digest": "738a575871c24d50456e1080f7d54e1c4c9462ae1fb488b1009c1e57cbb6e611"
+          "digest": "19e62c0aaa718f5a19b4ada40fffed9c4a59f84f770e3805bfb4eee7dca6319c"
         },
         {
           "path": "src-server/__test-utils__/read-json.ts",
@@ -1248,13 +1249,14 @@
         "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
         "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
         "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
-        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
       "path": ".veritas/init-plans/documentation-maintenance.md",
-      "documentDigest": "f478d577f97a71cdbee0b47a392032092b99f8413d1d1ef4bd3ac93b610bb5a1",
-      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
+      "documentDigest": "c82f09bff87cfb208eae1fda8a46c7ed6e0996b89e84f327ebf1114bb4625e7c",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "design",
       "state": "classified",
       "summary": "Owner-approved additive documentation policy activation, catch/restoration results, required-evidence selection and cost. Historical candidate runs retain their separate protected-hash refusals.",
@@ -1280,7 +1282,8 @@
       "checks": [
         "Proposal reviewed against actual override trial receipts: default-only failure warned; required candidate caught recorded drift, exact restoration removed that evidence failure. Protected policy remained unchanged.",
         "Reviewed frozen CI selection and the tested required-check proposal plus impact guidance. It remains explicitly inactive pending protected-policy approval.",
-        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed the linked contributor/governance change; existing scope and evidence limits remain accurate."
       ]
     },
     {
@@ -3693,7 +3696,7 @@
     {
       "path": "docs/architecture/module-map.md",
       "documentDigest": "34202c869b5e0aa9a77eab6d6e259d6994211cce285f483575a666cbda856eef",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed all 74 module sections against their owning implementation and actual callers, including persisted state, authorization, failure, cancellation, recovery, and platform boundaries. Distinguishes shipped composition from retained interfaces, optional integrations, and proposals. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -4333,7 +4336,7 @@
         },
         {
           "path": "src-server/services/__tests__/scheduler.test.ts",
-          "digest": "db9d329738bead6874c74b2ea21e895df9757734a14424202e49e69d3e1daced"
+          "digest": "558b32e4d9eb9a98fda8d21bef660a540c3c0c004df31d141df1e08394e5d91b"
         },
         {
           "path": "src-server/services/__tests__/store-async-lock-cutover.test.ts",
@@ -4341,7 +4344,7 @@
         },
         {
           "path": "src-server/services/agents/agent-service.ts",
-          "digest": "0b76076f82fa43daf66781302325523dc79a45b5dd01483dd67d8af01340d41d"
+          "digest": "b738f120723a21b3f6ed30eff20b48bdf7f66eaab41d8e6ee166fa1d03fdc8c1"
         },
         {
           "path": "src-server/services/agents/skill-local-mutation.ts",
@@ -4993,7 +4996,7 @@
         },
         {
           "path": "src-server/services/scheduling/builtin-scheduler.ts",
-          "digest": "8561224c61da3ad7e7cc55fb98238474ab5b14ba5bd182728162baf1f64ee33e"
+          "digest": "336dcaccdb0e4b0102e383c186cdacad99b7c4603d67631d21f458ef29e82543"
         },
         {
           "path": "src-server/services/scheduling/external-monitor.ts",
@@ -5387,7 +5390,8 @@
         "Reviewed comment-only owner correction; emitted JavaScript is unchanged and the existing behavioral review scope is preserved.",
         "Source-reviewed policy-construction and host callers; synthetic intercepted Chromium probe is not live remote exfiltration or broad containment proof.",
         "Native renewal section: independent source/caller review and prior focused 24-test renewal receipt; renderer supervision is distinct from host credential custody and application access.",
-        "Reviewed integration deltas: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged. src-server/providers/registries/json-manifest-registry.ts: Uses shared endsAsGitName folding for local source admission; registry additionally scans top-level names for Git metadata variants. Plugin source Git metadata reads use explicit own repository arguments. Current plugins guide343/1147 describes this restriction; no generic filesystem sandbox claim. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged. src-desktop/src/lib.rs: Frozen delta registers station_native_relay_grant_renew in the main Tauri command table. Existing reviewed capability, startup, tray, open-browser, push and credential boundaries otherwise unchanged by this delta. packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. packages/shared/src/mcp-ui-csp.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d."
+        "Reviewed integration deltas: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged. src-server/providers/registries/json-manifest-registry.ts: Uses shared endsAsGitName folding for local source admission; registry additionally scans top-level names for Git metadata variants. Plugin source Git metadata reads use explicit own repository arguments. Current plugins guide343/1147 describes this restriction; no generic filesystem sandbox claim. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged. src-desktop/src/lib.rs: Frozen delta registers station_native_relay_grant_renew in the main Tauri command table. Existing reviewed capability, startup, tray, open-browser, push and credential boundaries otherwise unchanged by this delta. packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. packages/shared/src/mcp-ui-csp.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Binding-description helper loses only its export; real private callers remain unchanged. Removed unused provider preview method; HTTP/MCP preview still belongs to SchedulerService with zone validation. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts."
       ]
     },
     {
@@ -6913,7 +6917,7 @@
     {
       "path": "docs/design/collaborative-editor-pane.md",
       "documentDigest": "739f3891308a8a186d43d8fff78fe34ef4eac626e2c4b76559d6698948b5247f",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed controller contract and current Task caller review, preserving bounds, privacy, watch/follow and contradiction handling; distinguished retained pure controller from removed React renderer.",
@@ -6937,7 +6941,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.tsx",
@@ -6951,7 +6955,8 @@
       "checks": [
         "Read the complete document and traced owning implementation, composition and current consumers.",
         "Executed six focused domain/controller/room-adapter files: 174 tests passed on the integrated worktree; no external provider or device.",
-        "Reviewed integration deltas: Completed controller contract and current Task caller review, preserving bounds, privacy, watch/follow and contradiction handling; distinguished retained pure controller from removed React renderer. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures."
+        "Reviewed integration deltas: Completed controller contract and current Task caller review, preserving bounds, privacy, watch/follow and contradiction handling; distinguished retained pure controller from removed React renderer. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
       ]
     },
     {
@@ -7622,7 +7627,7 @@
     {
       "path": "docs/design/knowledge-recall-ui.md",
       "documentDigest": "6d02bb684296fcd35a2705e593fa6e8ac6b028dd1ef3e6c7552178fb2767abd4",
-      "sourceRevision": "a9f5663afcbab53711fe45e5478ea5604d794a7a",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete recall decision against SDK exports, canonical record queries, metadata-key revalidation, selection/link/provenance rendering and caller-owned graph/shell/Neo4j behavior. Updated Library composition to reflect its actual list plus scroll/focus shell; distinguished fixture and installed-browser evidence.",
@@ -7630,7 +7635,7 @@
       "sources": [
         {
           "path": "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-          "digest": "3235d7af3f044df926eee73abf7b2d088ebc38057e637cabaed6508abb53814a"
+          "digest": "54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca"
         },
         {
           "path": "examples/knowledge-library/src/knowledge-library.css",
@@ -7676,7 +7681,8 @@
       "checks": [
         "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
         "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
-        "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings."
+        "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable."
       ]
     },
     {
@@ -8341,7 +8347,7 @@
     {
       "path": "docs/design/placement.md",
       "documentDigest": "f4db53d55c6816b738ad7dfa00ab292849d561ecdc540629d034c68ab4523eea",
-      "sourceRevision": "99d5df242f43d2b5a52db933586ae6be0a431b2d",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -8517,7 +8523,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/layouts/index.tsx",
@@ -8634,7 +8640,8 @@
         "Executed: TypeScript AST printer comparison with comments removed confirms all five edited source/test files are comment-only against221888d35. No behavior or deadline changed; no additional typecheck solely for comment changes.",
         "Executed initial placement focused12files:180PASS,2FAIL,1SKIP in52.15s. RegionToolbarControls geometry failed its explicit missing worktree Chromium prerequisite. RegionPaneHost.project first case timed out after5000ms waiting for initial lazy ambient Chat mount; remaining11cases in that file passed. Cause remains unknown (cold import timing is only a hypothesis).",
         "Executed after root-authorized prerequisite configuration: PLAYWRIGHT_BROWSERS_PATH=/Users/brian/Library/Caches/ms-playwright npm run test:focused -- src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx:34PASS/1SKIP in22.40s. Pinned Chromium1234/151.0.7922.34 ran geometry; skipped item is the intentional missing-prerequisite sentinel. No failed lazy-mount rerun.",
-        "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision."
+        "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
       ]
     },
     {
@@ -9394,8 +9401,8 @@
     },
     {
       "path": "docs/design/shell-ownership-and-boards.md",
-      "documentDigest": "9cc0acdfa3fd47966fd2a8c98afe386da2576232f9260d6700e045c030fdc7b7",
-      "sourceRevision": "4e6af715047509cb4316abe156c51b72d7b7b427",
+      "documentDigest": "d1cb726c803bad2f5ccb50ad104de6c5906f96e03aa749cfd7ab22231d40850d",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "design",
       "state": "classified",
       "summary": "Accepted ownership/Board design with staged implementation history and current personal-Board owner routing.",
@@ -9428,7 +9435,8 @@
       ],
       "checks": [
         "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
-        "Entire original body byte-identical after removing reading banner."
+        "Entire original body byte-identical after removing reading banner.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
@@ -10978,8 +10986,8 @@
     },
     {
       "path": "docs/guides/code-quality.md",
-      "documentDigest": "26dd41e32a4e40337afd4f3dee0d9423aa027cd07f54735b7c591d2e853787e4",
-      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
+      "documentDigest": "4a25a0c7b59e67e2e12e2eca32e5438acb97e5862736bffbf33c6a76a4e24e25",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Contributor quality and publication requirements with current hook composition. Full 316-line baseline read. Hook ordering, readiness selection, lane composition, route-helper adoption and actual raw-parameter route inspected. Requirements distinguished from execution proof; historical cost observations not remeasured. Follow-up: Push & Monitor delta only: separates merge-queue arm/confirm/stop from following task-required CI evidence to its outcome.",
@@ -11043,11 +11051,11 @@
         },
         {
           "path": "docs/guides/testing.md",
-          "digest": "1109abb2dbedb62e3b5f5407e87a0949adbac2ffb04e1cb1292e2b2173259e87"
+          "digest": "448b9fe89cc9b69b0359f6a024b196bf4f5a1a45b5387d54e8dba4aae9141849"
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "ea617f5b50620ffa33c700ce3702e7b2f6f38fb01e2aed8c1c6c86b94efe9d5b"
+          "digest": "fdc38068ccac531dd2573cddb929b8d31946920aaa1e4a38baa63e06fbffc627"
         },
         {
           "path": "package.json",
@@ -11063,7 +11071,7 @@
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
-          "digest": "6002b4f7447932bef72f43e528f18dc686cafa153779ce87a2d093a1829289e2"
+          "digest": "91e428a024b5f68b116cea40cc706fae3ccbea4f7dbb6344c6ffe71cd333e026"
         },
         {
           "path": "scripts/cli-agent-e2e.mjs",
@@ -11079,7 +11087,7 @@
         },
         {
           "path": "scripts/fast-checks-shard.mjs",
-          "digest": "36cc3d436a971064e09106246c3e330ebcdb2bfc787fa873dbccda9ded67f57f"
+          "digest": "158029ee97170ea31487f4c6dd452d1571cc3024c8e3c1b50d6f6ba4f29f8ca7"
         },
         {
           "path": "scripts/just-interface.mjs",
@@ -11103,7 +11111,7 @@
         },
         {
           "path": "scripts/run-ci-fast.mjs",
-          "digest": "67473fbf27b0e651af3475859ecc495378f3c47e74fbb505ed3db20c1bb44190"
+          "digest": "c5dc9e3896d34589dcf79394c2419094ae573b4bf46cc359d2938cc32b30c8ec"
         },
         {
           "path": "scripts/run-focused-tests.mjs",
@@ -11127,7 +11135,7 @@
         },
         {
           "path": "scripts/verification-policy-gate.mjs",
-          "digest": "738a575871c24d50456e1080f7d54e1c4c9462ae1fb488b1009c1e57cbb6e611"
+          "digest": "19e62c0aaa718f5a19b4ada40fffed9c4a59f84f770e3805bfb4eee7dca6319c"
         },
         {
           "path": "src-server/__test-utils__/read-json.ts",
@@ -11160,7 +11168,8 @@
         "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
         "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
         "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
-        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
@@ -11224,7 +11233,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "3a6a4cc4c0d545b102484406bd3a08b53b3bbdbc2e899bf8c927cba8b35ff5bc",
-      "sourceRevision": "45fcdd5230b0b5e5028e469864ab70693e6088b0",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11480,7 +11489,7 @@
         },
         {
           "path": "src-server/security/runtime-request-security.ts",
-          "digest": "c73e5e818a3ebf97c5aaebf27182b80aeb581ab3800b94091bbf6cbf0faf1469"
+          "digest": "71b1d03b1f8a5776ff5c5be07269d91444911cb99982c7e2c72f6e7535007313"
         },
         {
           "path": "src-server/security/station-browser-origins.ts",
@@ -11604,7 +11613,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/lib/browserRelayEnrollmentController.ts",
@@ -11714,7 +11723,8 @@
         "REASONED: reviewed all changed recorded source dependencies through frozen upstream f3954615e / root6fa523e4d. Exact per-path reasons retained in source-delta-notes.json; no runtime receipt renewed.",
         "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
         "Formatter-only change; parsed media metadata is identical.",
-        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused clearBudget and documentary SSE list; active GET/non-mutation and mutating-verb classifier unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
       ]
     },
     {
@@ -12977,8 +12987,8 @@
     },
     {
       "path": "docs/guides/development.md",
-      "documentDigest": "d2fe6a32adfcfba50a1601ef305814949d971ddb31a3527af849db47d15a733a",
-      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
+      "documentDigest": "2a134b5439fab737a3b67358c34f8ab6de1f9aa66a9336805363fcdfc8847d20",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Checkout setup and contributor workflow, with normative boundaries routed to owners. Full 415-line baseline read. Dependency lifecycle, workspace/package contract, command ownership, verification paths and plugin workflow boundaries checked. No installs outside managed setup, plugin installation, runtime/service control, native build or publication performed.",
@@ -13042,7 +13052,7 @@
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "ea617f5b50620ffa33c700ce3702e7b2f6f38fb01e2aed8c1c6c86b94efe9d5b"
+          "digest": "fdc38068ccac531dd2573cddb929b8d31946920aaa1e4a38baa63e06fbffc627"
         },
         {
           "path": "package.json",
@@ -13070,7 +13080,7 @@
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
-          "digest": "6002b4f7447932bef72f43e528f18dc686cafa153779ce87a2d093a1829289e2"
+          "digest": "91e428a024b5f68b116cea40cc706fae3ccbea4f7dbb6344c6ffe71cd333e026"
         },
         {
           "path": "scripts/build-portable-server-archive.mjs",
@@ -13094,7 +13104,7 @@
         },
         {
           "path": "scripts/fast-checks-shard.mjs",
-          "digest": "36cc3d436a971064e09106246c3e330ebcdb2bfc787fa873dbccda9ded67f57f"
+          "digest": "158029ee97170ea31487f4c6dd452d1571cc3024c8e3c1b50d6f6ba4f29f8ca7"
         },
         {
           "path": "scripts/just-interface.mjs",
@@ -13122,7 +13132,7 @@
         },
         {
           "path": "scripts/run-ci-fast.mjs",
-          "digest": "67473fbf27b0e651af3475859ecc495378f3c47e74fbb505ed3db20c1bb44190"
+          "digest": "c5dc9e3896d34589dcf79394c2419094ae573b4bf46cc359d2938cc32b30c8ec"
         },
         {
           "path": "scripts/run-focused-tests.mjs",
@@ -13146,7 +13156,7 @@
         },
         {
           "path": "scripts/verification-policy-gate.mjs",
-          "digest": "738a575871c24d50456e1080f7d54e1c4c9462ae1fb488b1009c1e57cbb6e611"
+          "digest": "19e62c0aaa718f5a19b4ada40fffed9c4a59f84f770e3805bfb4eee7dca6319c"
         },
         {
           "path": "src-server/__test-utils__/read-json.ts",
@@ -13180,7 +13190,8 @@
         "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
         "Reviewed integration deltas: .github/workflows/portable-server-archives.yml: Adds diagnostics and stop-hint helpers to both workflow path filters; build/smoke matrix and publication authority unchanged. Native release guide already distinguishes qualification from publication. docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries. scripts/lib/portable-server-archive.mjs: Passes explicit platform/arch into the shared stager and refuses a build target unlike the host before downloading/writing. Native release guide was corrected in b761343b3 and root now states that limitation.",
         "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
-        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
@@ -13899,7 +13910,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "edfb1166c6f54f0cd013489ba02c5ff663df0b061cd5eaf1adcd3c0f2884bb59",
-      "sourceRevision": "668debd7140960ce1c7f47e4ea14ee34c706f7af",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -13927,7 +13938,7 @@
         },
         {
           "path": "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-          "digest": "3235d7af3f044df926eee73abf7b2d088ebc38057e637cabaed6508abb53814a"
+          "digest": "54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca"
         },
         {
           "path": "examples/knowledge-library/src/RootPicker.tsx",
@@ -14015,7 +14026,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -14048,13 +14059,14 @@
         "Reviewed integration deltas: Documented actual create-admission repair of an earlier interrupted transaction; duplicate-identity refusal does not publish the new create or repair the index. Existing public boundaries retained. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
         "Formatter-only change; parsed media metadata is identical.",
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
-        "Reviewed Flow Agents 6.4.0 package files, catalog, manifest, install/update/status callers and separate Station runtime provider composition. The Kit alias and update passed in an isolated local candidate install; installer/catalog bytes match 6.4.0. Pinned upstream links record the distribution source; this does not claim a new registry release or universal compatibility."
+        "Reviewed Flow Agents 6.4.0 package files, catalog, manifest, install/update/status callers and separate Station runtime provider composition. The Kit alias and update passed in an isolated local candidate install; installer/catalog bytes match 6.4.0. Pinned upstream links record the distribution source; this does not claim a new registry release or universal compatibility.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable."
       ]
     },
     {
       "path": "docs/guides/local-collaboration-lab.md",
-      "documentDigest": "80c0fa0b7274980bfe423c5b0151dc2f02248efa00d9e7a2f3bcaf4ed4e6b8d5",
-      "sourceRevision": "45fcdd5230b0b5e5028e469864ab70693e6088b0",
+      "documentDigest": "6a6c7147778743ae0817457433869633013df63585a4fd3e0fd47d4fdc4e9b59",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented stage selection/exit/retention, TLS and signing trust, persistence/caller currentness, application framing, account/protocol versus UI profiles, cross-machine SSH fixture and native-v2 diagnostic boundaries. Historical receipts stay dated. Corrected the signing-command ownership statement and matching CLI help scope.",
@@ -14110,7 +14122,7 @@
         },
         {
           "path": "scripts/browser-transport-lab.ts",
-          "digest": "2c4d63daaf7cebd2891f29ffa9c48c9612d819e34d7d0656afec9880ff43caee"
+          "digest": "bcb681ee30437f1c49cdb64a99d6a3e19807829fd26df32f44eb33f30d2ff197"
         },
         {
           "path": "scripts/connection-key.ts",
@@ -14347,6 +14359,22 @@
         {
           "path": "tests/tauri-shell/native-relay-diagnostic-echo-webview.ts",
           "digest": "b3dac2a58e4d8186c2c001d4a1ef36cb328eba26b5727c3cfb95cc0b82e2c064"
+        },
+        {
+          "path": "scripts/lib/local-collaboration-relay-account.ts",
+          "digest": "e03e49577d5fdd97eb9eaeed8430c24637cfbb3c966e15ce70da515ddb8e089b"
+        },
+        {
+          "path": "scripts/lib/local-collaboration-process.mjs",
+          "digest": "0fc1aaf62f721e3a44cae207c198946066a17fea2e484ac7dd5343123e952b71"
+        },
+        {
+          "path": "scripts/lib/local-collaboration-relay.mjs",
+          "digest": "cb07996d48a3a4afa8c43b7a0f7871e4cca342ad8f538495d9e3c466edde3ed8"
+        },
+        {
+          "path": "scripts/lib/local-collaboration-udp-relay.mjs",
+          "digest": "3b8afc8d9b439b8b709ba318bdc26227916cb60c220dd7a53c3711966ac7845d"
         }
       ],
       "checks": [
@@ -14363,7 +14391,8 @@
         "EXECUTED: Veritas readiness run veritas-1790532008463: zero failures, one optional verification-policy warning from the retained in-worktree installed-plugin fixture tests. Governance, lint and connected-agent checks passed. Protected standards unchanged.",
         "EXECUTED: current and archive GitHub issue titles checked for 303, 483, 487, 488, 489, 495, 496 and 497. Restored explicit current membership/hosted identity/tenant isolation/acceptance references; retained archive303 reconnect history and archive496 Task history because their titles match. Current488 is closed; its historical implementation link does not prove the independent-human acceptance.",
         "REASONED: reviewed all changed recorded source dependencies through frozen upstream f3954615e / root6fa523e4d. Exact per-path reasons retained in source-delta-notes.json; no runtime receipt renewed.",
-        "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun."
+        "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Two-Station fixture keeps isolated identities/brokers and tests cross-scope refusals through TURN; documented synthetic/local proof boundaries remain. Reviewed cleanup attempts versus settlement distinction. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
@@ -15919,7 +15948,7 @@
     {
       "path": "docs/guides/plugins.md",
       "documentDigest": "156e4e6764c90d780169b11e3a63348848c2fef0e64734427d40f8ca16f5b94f",
-      "sourceRevision": "e176f3a62b139043306d9e434f031d0a87ee1640",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the complete guide against manifest/scaffold, public CLI, build and runtime externals, catalog/provider loading, SDK calls, grants, dependency installation, managed lifecycle, registry policy, MCP frame host, server-module request hooks and operational-event callers. Corrected inactive-MCP and inactive-trust claims, stored Agent IDs versus qualified references, tool-call return shape, dev dependency attempt/readiness, local-catalog/build prerequisites and historical bundle metrics.",
@@ -15991,7 +16020,7 @@
         },
         {
           "path": "src-server/providers/provider-interfaces.ts",
-          "digest": "d9da05e841fbc5b22dd53a9b1882c46ba88319450bdaaa1849de0fcb6eac64dd"
+          "digest": "1c3a3edc4fffe6d3d4c3a15c7647c9f25f380534f6ce804fc3e318c4468e9d7d"
         },
         {
           "path": "src-server/providers/registries/json-manifest-registry.ts",
@@ -16093,7 +16122,8 @@
       "checks": [
         "Source/caller review of all documented claims in this document on 2026-09-27, including explicit history/proposal boundaries; source baseline b79def9ceb04aa645bf565ee7d1b3e8cfba86b9a, prose revision e176f3a62b139043306d9e434f031d0a87ee1640.",
         "EXECUTED: 660 tests passed across 30 focused files: Flow/Conduit 79, installation/trust 86, MCP 188, plugin development/permissions/registry 249, server modules/operational subscriptions 58. One Linux-only filesystem digest case skipped on this macOS host. These local fixtures do not qualify live providers or other platforms.",
-        "EXECUTED: conduit:conformance:check passed; docs:links:check validated 415 Markdown files; shared build comment emits identical JavaScript to its baseline."
+        "EXECUTED: conduit:conformance:check passed; docs:links:check validated 415 Markdown files; shared build comment emits identical JavaScript to its baseline.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused provider preview declaration, retaining the active SchedulerService preview interface."
       ]
     },
     {
@@ -16945,7 +16975,7 @@
     {
       "path": "docs/guides/repository-knowledge-graph.md",
       "documentDigest": "f253c46ef60980c7d700d65a64b87911e763a6af925881c8a9683fdb0a3a7dff",
-      "sourceRevision": "a9f5663afcbab53711fe45e5478ea5604d794a7a",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete graph guide against exporter/importer and public SDK/store callers: attributed purpose, documented-reference edges, input-qualified snapshots, additive history, explicit import/recall boundaries, current source versus recorded evidence and local-candidate release limits. Added actual isolated Station and manifest-entry Kit consumer dogfood findings.",
@@ -16953,7 +16983,7 @@
       "sources": [
         {
           "path": "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-          "digest": "3235d7af3f044df926eee73abf7b2d088ebc38057e637cabaed6508abb53814a"
+          "digest": "54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca"
         },
         {
           "path": "examples/repository-knowledge-graph/README.md",
@@ -16992,7 +17022,8 @@
         "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
         "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
         "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
-        "Clarified that dry run sends no create/link requests while reads can refresh caches; provenance marker is a consistency check, not authenticated writer identity."
+        "Clarified that dry run sends no create/link requests while reads can refresh caches; provenance marker is a consistency check, not authenticated writer identity.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable."
       ]
     },
     {
@@ -17191,7 +17222,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -17199,7 +17230,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "1e389410258736c1f11c83fb430b523b9a7046c1552a356efa0a435260b13f57"
+          "digest": "ca54b4a448fe227db52f3fa0060f33a01eeb15c7079b824929bcacb0f6a4daac"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -17299,7 +17330,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -17337,7 +17368,8 @@
         "Reviewed source deltas: Auth limiter code moved to contracts/http with identical authentication_rate_limited value; request admission behavior unchanged.",
         "Reviewed source changes: One retained independent-review inspector is now an explicit unmounted exception; its surface proof is deferred. General responsive primitives and actual Review layout remain the current path. Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser.",
         "Reviewed source changes: StationHttpError moved with details support; common envelope helper adoption reviewed; captured requestAuthority and mutationAllowed behavior unchanged. Corrected success-shape validation wording. Root reviewed the corresponding diff and the affected current-document claims. Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims. PlatformSessionGate extracted unchanged conditional into platform/PlatformSessionGate.tsx with explicit API base prop; voice/default SDK composition unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
-        "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures."
+        "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
@@ -17608,8 +17640,8 @@
     },
     {
       "path": "docs/guides/self-hosted-broker.md",
-      "documentDigest": "ec89cff3a3767ed7914ec549f00acf0925a3a5def05e718152ecc584a7dce3d5",
-      "sourceRevision": "45fcdd5230b0b5e5028e469864ab70693e6088b0",
+      "documentDigest": "40daab6664a399e6a2ea56b3b9bcbf8ec93d9b366e6916ba9106760d5bccfe63",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed documented broker schema/grant/proof/offer/renewal, connector lifecycle and private configuration claims through routes, service transactions, native signer/host command table and browser consumer. Corrected distinct browser/native header contracts and redemption exceptions, renewal window and conflict receipt wording. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -17798,6 +17830,10 @@
         {
           "path": "tests/tauri-shell/native-relay-diagnostic-echo-webview.ts",
           "digest": "b3dac2a58e4d8186c2c001d4a1ef36cb328eba26b5727c3cfb95cc0b82e2c064"
+        },
+        {
+          "path": "scripts/__tests__/self-hosted-broker-cli.test.ts",
+          "digest": "fc0e77c83d53e1aa2fa7dc56792e3b7d64c56ef096064143a967377ef2c02313"
         }
       ],
       "checks": [
@@ -17816,13 +17852,15 @@
         "EXECUTED: Veritas readiness run veritas-1790532008463: zero failures, one optional verification-policy warning from the retained in-worktree installed-plugin fixture tests. Governance, lint and connected-agent checks passed. Protected standards unchanged.",
         "EXECUTED: current and archive GitHub issue titles checked for 303, 483, 487, 488, 489, 495, 496 and 497. Restored explicit current membership/hosted identity/tenant isolation/acceptance references; retained archive303 reconnect history and archive496 Task history because their titles match. Current488 is closed; its historical implementation link does not prove the independent-human acceptance.",
         "REASONED: reviewed all changed recorded source dependencies through frozen upstream f3954615e / root6fa523e4d. Exact per-path reasons retained in source-delta-notes.json; no runtime receipt renewed.",
-        "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun."
+        "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+        "Reviewed real multiple-Station init/serve test on one database with distinct credentials and scope refusals; preserved corrected preflight headers and current schema history. No new hosted or remote qualification."
       ]
     },
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "e8f527bc60134eb3a1aac55fea37907a33999333",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -17898,7 +17936,7 @@
         },
         {
           "path": "src-server/services/scheduling/builtin-scheduler.ts",
-          "digest": "8561224c61da3ad7e7cc55fb98238474ab5b14ba5bd182728162baf1f64ee33e"
+          "digest": "336dcaccdb0e4b0102e383c186cdacad99b7c4603d67631d21f458ef29e82543"
         },
         {
           "path": "src-server/services/scheduling/scheduler-ledger.ts",
@@ -17978,7 +18016,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/lib/starter-work-operation-store.ts",
@@ -18051,7 +18089,8 @@
         "Reviewed navigation link to the captured application walkthrough; underlying feature statements unchanged.",
         "REASONED: full current133-line guide read; remaining adoption, Scheduler restart/replay and Home presentation claims traced through actual callers. EXECUTED: read-only source inspection only; no broad tests/readiness. This proposed document digest matches suggestions.patch, not the unchanged root file until the owner applies it.",
         "Formatter-only change; parsed media metadata is identical.",
-        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused provider preview method; HTTP/MCP preview still belongs to SchedulerService with zone validation. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
       ]
     },
     {
@@ -18435,8 +18474,8 @@
     },
     {
       "path": "docs/guides/testing.md",
-      "documentDigest": "1109abb2dbedb62e3b5f5407e87a0949adbac2ffb04e1cb1292e2b2173259e87",
-      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
+      "documentDigest": "448b9fe89cc9b69b0359f6a024b196bf4f5a1a45b5387d54e8dba4aae9141849",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
@@ -18496,7 +18535,7 @@
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "ea617f5b50620ffa33c700ce3702e7b2f6f38fb01e2aed8c1c6c86b94efe9d5b"
+          "digest": "fdc38068ccac531dd2573cddb929b8d31946920aaa1e4a38baa63e06fbffc627"
         },
         {
           "path": "package.json",
@@ -18512,7 +18551,7 @@
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
-          "digest": "6002b4f7447932bef72f43e528f18dc686cafa153779ce87a2d093a1829289e2"
+          "digest": "91e428a024b5f68b116cea40cc706fae3ccbea4f7dbb6344c6ffe71cd333e026"
         },
         {
           "path": "scripts/cli-agent-e2e.mjs",
@@ -18528,7 +18567,7 @@
         },
         {
           "path": "scripts/fast-checks-shard.mjs",
-          "digest": "36cc3d436a971064e09106246c3e330ebcdb2bfc787fa873dbccda9ded67f57f"
+          "digest": "158029ee97170ea31487f4c6dd452d1571cc3024c8e3c1b50d6f6ba4f29f8ca7"
         },
         {
           "path": "scripts/just-interface.mjs",
@@ -18552,7 +18591,7 @@
         },
         {
           "path": "scripts/run-ci-fast.mjs",
-          "digest": "67473fbf27b0e651af3475859ecc495378f3c47e74fbb505ed3db20c1bb44190"
+          "digest": "c5dc9e3896d34589dcf79394c2419094ae573b4bf46cc359d2938cc32b30c8ec"
         },
         {
           "path": "scripts/run-focused-tests.mjs",
@@ -18576,7 +18615,7 @@
         },
         {
           "path": "scripts/verification-policy-gate.mjs",
-          "digest": "738a575871c24d50456e1080f7d54e1c4c9462ae1fb488b1009c1e57cbb6e611"
+          "digest": "19e62c0aaa718f5a19b4ada40fffed9c4a59f84f770e3805bfb4eee7dca6319c"
         },
         {
           "path": "src-server/__test-utils__/read-json.ts",
@@ -18610,13 +18649,14 @@
         "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
         "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
         "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
-        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "2b47b057ea4e538d6a825f10f12bfb60758eafcde3db56e7d3995c900361155e",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -18624,7 +18664,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "1e389410258736c1f11c83fb430b523b9a7046c1552a356efa0a435260b13f57"
+          "digest": "ca54b4a448fe227db52f3fa0060f33a01eeb15c7079b824929bcacb0f6a4daac"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -18724,7 +18764,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -18762,7 +18802,8 @@
         "Reviewed source deltas: Auth limiter code moved to contracts/http with identical authentication_rate_limited value; request admission behavior unchanged.",
         "Reviewed source changes: One retained independent-review inspector is now an explicit unmounted exception; its surface proof is deferred. General responsive primitives and actual Review layout remain the current path. Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser.",
         "Reviewed source changes: StationHttpError moved with details support; common envelope helper adoption reviewed; captured requestAuthority and mutationAllowed behavior unchanged. Corrected success-shape validation wording. Root reviewed the corresponding diff and the affected current-document claims. Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims. PlatformSessionGate extracted unchanged conditional into platform/PlatformSessionGate.tsx with explicit API base prop; voice/default SDK composition unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
-        "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures."
+        "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
@@ -19464,7 +19505,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -19516,7 +19557,7 @@
         },
         {
           "path": "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-          "digest": "3235d7af3f044df926eee73abf7b2d088ebc38057e637cabaed6508abb53814a"
+          "digest": "54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca"
         },
         {
           "path": "examples/knowledge-library/src/RootPicker.tsx",
@@ -19592,7 +19633,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -19675,7 +19716,8 @@
         "After preventing screenshot upscaling, repeated actual wide/narrow decode/playback probe passed. Media and documentation-impact focused suites:15 tests passed.",
         "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures. src-ui/src/views/ProjectPage.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found.",
         "Formatter-only change; parsed media metadata is identical.",
-        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable."
       ]
     },
     {
@@ -19706,8 +19748,8 @@
     },
     {
       "path": "docs/patterns/backend.md",
-      "documentDigest": "eada32f4f9685b7e9c95de2547179246f23af2703d546ab402c6fc3cd0197225",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "documentDigest": "bcae9c139d65732d7303df916b007009830c4e80bfe20601cf5f0b772c8f4952",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -19715,7 +19757,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "1e389410258736c1f11c83fb430b523b9a7046c1552a356efa0a435260b13f57"
+          "digest": "ca54b4a448fe227db52f3fa0060f33a01eeb15c7079b824929bcacb0f6a4daac"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -19815,7 +19857,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -19853,13 +19895,14 @@
         "Reviewed source deltas: Auth limiter code moved to contracts/http with identical authentication_rate_limited value; request admission behavior unchanged.",
         "Reviewed source changes: One retained independent-review inspector is now an explicit unmounted exception; its surface proof is deferred. General responsive primitives and actual Review layout remain the current path. Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser.",
         "Reviewed source changes: StationHttpError moved with details support; common envelope helper adoption reviewed; captured requestAuthority and mutationAllowed behavior unchanged. Corrected success-shape validation wording. Root reviewed the corresponding diff and the affected current-document claims. Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims. PlatformSessionGate extracted unchanged conditional into platform/PlatformSessionGate.tsx with explicit API base prop; voice/default SDK composition unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
-        "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures."
+        "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
       "documentDigest": "c9ab186f206220afa048246db4cb0dfbbd68b3c3cc0b756ebdbc500198135206",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -19867,7 +19910,7 @@
       "sources": [
         {
           "path": "docs/ui/responsive-action-surfaces.txt",
-          "digest": "1e389410258736c1f11c83fb430b523b9a7046c1552a356efa0a435260b13f57"
+          "digest": "ca54b4a448fe227db52f3fa0060f33a01eeb15c7079b824929bcacb0f6a4daac"
         },
         {
           "path": "docs/ui/responsive-surfaces.json",
@@ -19967,7 +20010,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -20005,7 +20048,8 @@
         "Reviewed source deltas: Auth limiter code moved to contracts/http with identical authentication_rate_limited value; request admission behavior unchanged.",
         "Reviewed source changes: One retained independent-review inspector is now an explicit unmounted exception; its surface proof is deferred. General responsive primitives and actual Review layout remain the current path. Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser.",
         "Reviewed source changes: StationHttpError moved with details support; common envelope helper adoption reviewed; captured requestAuthority and mutationAllowed behavior unchanged. Corrected success-shape validation wording. Root reviewed the corresponding diff and the affected current-document claims. Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims. PlatformSessionGate extracted unchanged conditional into platform/PlatformSessionGate.tsx with explicit API base prop; voice/default SDK composition unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
-        "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures."
+        "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
@@ -20068,8 +20112,8 @@
     },
     {
       "path": "docs/plans/documentation-code-audit.md",
-      "documentDigest": "ea617f5b50620ffa33c700ce3702e7b2f6f38fb01e2aed8c1c6c86b94efe9d5b",
-      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
+      "documentDigest": "fdc38068ccac531dd2573cddb929b8d31946920aaa1e4a38baa63e06fbffc627",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "policy",
       "state": "classified",
       "summary": "Completed source audit scope, executed verification limits, linked follow-up work and owner-approved documentation policy activation in this branch.",
@@ -20080,7 +20124,8 @@
         "Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
         "Reviewed integration deltas: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
         "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
-        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
@@ -20286,7 +20331,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -20338,7 +20383,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -20373,7 +20418,8 @@
         "441 focused tests across 28 files passed. Full local Markdown link check passed; Veritas readiness reported zero failures and warnings. Actual external provider, physical-device and hosted deployment outcomes were not exercised.",
         "Reviewed integration deltas: src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
         "Formatter-only change; parsed media metadata is identical.",
-        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
       ]
     },
     {
@@ -20404,7 +20450,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -20545,7 +20591,7 @@
         },
         {
           "path": "src-server/analytics/usage-aggregator-state.ts",
-          "digest": "f41dbbc9495574e95673d4d8485df67a413add2028d46f74f37fae329d671639"
+          "digest": "12b5d86068c4ddaa5738cde5337f33c36ae5871a49db3d097264aaf7e3f6b522"
         },
         {
           "path": "src-server/analytics/usage-aggregator.ts",
@@ -20973,7 +21019,7 @@
         },
         {
           "path": "src-server/services/scheduling/builtin-scheduler.ts",
-          "digest": "8561224c61da3ad7e7cc55fb98238474ab5b14ba5bd182728162baf1f64ee33e"
+          "digest": "336dcaccdb0e4b0102e383c186cdacad99b7c4603d67631d21f458ef29e82543"
         },
         {
           "path": "src-server/services/scheduling/scheduler-service.ts",
@@ -21092,7 +21138,8 @@
         "Full API:37 JSON/JSONC/TS fences parse;12 verbatim request examples pass actual exported request schemas, including Agent/Board/plugin/job/invoke/review bodies. No request dispatched.",
         "Final API links:407 Markdown files pass. Veritas1790527139317:0 failures0 warnings.37 syntax fences pass;12 request examples pass actual schemas using node --import tsx. Plain node invocation first failed import resolution before schema execution; no endpoint dispatched. git diff --check passed.",
         "Removed orphaned compatibility comment after source search confirmed the execution-mode normalization helper is absent; type declarations unchanged.",
-        "Reviewed integration deltas: Integrated frozen upstream Agent effective-default admission and current inheritance/clear-to-never authority condition; source/caller review, not new live execution. packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/tools/station-control-delegation.ts: Wires approvalPickReachesFullAccess into delegation; no transport, home-transfer, target activation or Project import authority added. src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged. src-server/services/plugins/plugin-update-check.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged."
+        "Reviewed integration deltas: Integrated frozen upstream Agent effective-default admission and current inheritance/clear-to-never authority condition; source/caller review, not new live execution. packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/tools/station-control-delegation.ts: Wires approvalPickReachesFullAccess into delegation; no transport, home-transfer, target activation or Project import authority added. src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged. src-server/services/plugins/plugin-update-check.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: UTC date stepping fixes streak counts across DST; API docs contain no contradictory local-day guarantee. Removed unused provider preview method; HTTP/MCP preview still belongs to SchedulerService with zone validation."
       ]
     },
     {
@@ -21472,7 +21519,7 @@
     },
     {
       "path": "docs/reference/config.md",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full current-claim review of app and Agent settings, examples, prompt substitution, model/framework selection, local dispatch evidence/cache and receipt boundary, tool loading/approval, logs and log-read authority, attachment storage/retention/retry, and scheduler correlation. Corrected stale defaults and configured-versus-effective scope, removed automatic Ollama enablement, repaired actual file examples, and documented retained quick prompts, schema/step-cap differences, bounded log search, conditional station-control locality and best-effort blob reclamation. Added direct owner/caller navigation.",
@@ -21653,7 +21700,7 @@
         },
         {
           "path": "src-server/security/runtime-request-security.ts",
-          "digest": "c73e5e818a3ebf97c5aaebf27182b80aeb581ab3800b94091bbf6cbf0faf1469"
+          "digest": "71b1d03b1f8a5776ff5c5be07269d91444911cb99982c7e2c72f6e7535007313"
         },
         {
           "path": "src-server/security/station-control-authority-guard.ts",
@@ -21689,7 +21736,7 @@
         },
         {
           "path": "src-server/services/scheduling/builtin-scheduler.ts",
-          "digest": "8561224c61da3ad7e7cc55fb98238474ab5b14ba5bd182728162baf1f64ee33e"
+          "digest": "336dcaccdb0e4b0102e383c186cdacad99b7c4603d67631d21f458ef29e82543"
         },
         {
           "path": "src-server/services/ssh/device-pairing-service.ts",
@@ -21736,12 +21783,13 @@
         "Actual SchemaValidator + prompt substitution on extracted old/current examples: three old failures (date-format JSON, malformed JSON fragment, invalid Agent shape); five corrected current fences pass. The standalone policy object is syntax-only, not a complete config. No home writes or inference.",
         "250 existing tests across 11 focused files pass, exit 0, 27.13s: config loader/validator/templates/dispatch/tool filters/pre-tool policy/log reader/store/diagnostics/attachments.",
         "407 Markdown local paths and rendered anchors pass; git diff --check passes; Veritas readiness veritas-1790521583908: 0 failures, 0 warnings. One documentation file committed; no runtime edits.",
-        "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/runtime/plugins/runtime-provider-resolution.ts: Removed test-only configured-model wrapper; actual managed-model resolution now calls private resolveBedrockModelId with the already validated preferred selector. Provider, model and per-connection auth precedence unchanged. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-server/security/station-control-authority-guard.ts: Adds thread-command scope validation for steer/adopt: derives target owner/project/host from persisted session; bound non-operator requires same owner; other scoped callers need same owner/project and not host. Bound operator still passes route ownership checks. Unknown thread fails closed. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation."
+        "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/runtime/plugins/runtime-provider-resolution.ts: Removed test-only configured-model wrapper; actual managed-model resolution now calls private resolveBedrockModelId with the already validated preferred selector. Provider, model and per-connection auth precedence unchanged. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-server/security/station-control-authority-guard.ts: Adds thread-command scope validation for steer/adopt: derives target owner/project/host from persisted session; bound non-operator requires same owner; other scoped callers need same owner/project and not host. Bound operator still passes route ownership checks. Unknown thread fails closed. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused clearBudget and documentary SSE list; active GET/non-mutation and mutating-verb classifier unchanged. Removed unused provider preview method; HTTP/MCP preview still belongs to SchedulerService with zone validation."
       ]
     },
     {
       "path": "docs/reference/connect.md",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Previous declaration/health/endpoint/CLI review unchanged by source hashes. Finished store selection and legacy migration, React asynchronous broker activation, profile normalization, pairing offer/QR/exchange/cookie/native host custody and revocation admission callers. Corrected setActive boolean/refusals, React Promise<void>, retained migration key, source-ranked candidate ordering, server-versus-decoder HTTP difference and blanket existing-socket revocation wording. Public endpoint ownership limitation retained without further security probing.",
@@ -21878,7 +21926,7 @@
         },
         {
           "path": "src-server/security/runtime-request-security.ts",
-          "digest": "c73e5e818a3ebf97c5aaebf27182b80aeb581ab3800b94091bbf6cbf0faf1469"
+          "digest": "71b1d03b1f8a5776ff5c5be07269d91444911cb99982c7e2c72f6e7535007313"
         },
         {
           "path": "src-server/security/websocket-auth.ts",
@@ -21935,7 +21983,8 @@
         "Frozen-source checks:267 tests/13 files passed(18.20s),39 MCP-page/Connect-relay-consumer tests passed(1.62s),154 TS/TSX/JS/JSON fences parse,407 Markdown local paths/anchors pass. Veritas1790516770624:0failures0warnings. Fixtures do not establish live provider or physical/native/relay delivery.",
         "Final Contracts/Connect combined fixture selection:277 tests/9 files PASS,30.92s. No physical/native or live-network pairing executed.",
         "Final four-document bytes:407 Markdown paths/anchors PASS;154 reference/example syntax fences PASS;git diff --check PASS. Veritas1790527733697:0 failures0 warnings. Three owned documentation-only commits; no runtime edits or external writes.",
-        "Reviewed integration deltas: src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change."
+        "Reviewed integration deltas: src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused clearBudget and documentary SSE list; active GET/non-mutation and mutating-verb classifier unchanged."
       ]
     },
     {
@@ -22213,14 +22262,14 @@
       "path": "docs/reference/deploy-ledger.md",
       "kind": "generated",
       "state": "source-reviewed",
-      "documentDigest": "9b4b126fc13419a4b85d5f1d54219cf8145b16cf15618d6ee5b353e0f7746f9d",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "documentDigest": "6b424a1ecbd9d60f38e980fd9359a8cec25755e72af6260930c850694007df30",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "summary": "Validated the 142-entry ledger and deterministic Markdown projection, with publication separated from its independently fallible commit-back step.",
       "limits": "Generated contract or retained release evidence; no new hosted release, live label mutation or platform result is claimed.",
       "sources": [
         {
           "path": "docs/reference/deploy-ledger.json",
-          "digest": "50b9ae9f46d6cf4b60b01aea255a8c372e7f7dcf0f8b284afdf077c695d54ef7"
+          "digest": "940855ad46c243f8d368d0f7350580bda9de0bca58ab8e7030a5994949858da6"
         },
         {
           "path": "scripts/deploy-ledger.mjs",
@@ -22229,7 +22278,8 @@
       ],
       "checks": [
         "Actual entry validation and deterministic rendering passed; public raw JSON returned HTTP 200 without authentication.",
-        "Reviewed integration deltas: Reviewed added upstream release record and deterministic projection separately from actual release execution; historical publication claims are not renewed by this audit. docs/reference/deploy-ledger.json: Reviewed added frozen upstream nightly-npm receipt as historical input; no new registry or hosted release execution claimed."
+        "Reviewed integration deltas: Reviewed added upstream release record and deterministic projection separately from actual release execution; historical publication claims are not renewed by this audit. docs/reference/deploy-ledger.json: Reviewed added frozen upstream nightly-npm receipt as historical input; no new registry or hosted release execution claimed.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
@@ -22593,7 +22643,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -22633,7 +22683,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -22672,7 +22722,8 @@
         "441 focused tests across 28 files passed. Full local Markdown link check passed; Veritas readiness reported zero failures and warnings. Actual external provider, physical-device and hosted deployment outcomes were not exercised.",
         "Reviewed integration deltas: src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
         "Formatter-only change; parsed media metadata is identical.",
-        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
       ]
     },
     {
@@ -24288,7 +24339,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "3ad2847f00064b63e23347fcf50c4db35044218d1cc8b2b216e3ca3cf6216296",
-      "sourceRevision": "2dd99129dc84d2589b416ca56f5e0060fc30c1ab",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "summary": "Reviewed request identity, schema and semantic pass conditions, source drift, terminal reporting, artifact protection, handoff/orphan retention and CLI composition. Qualified inventory read errors and preview path disclosure.",
       "limits": "Historical redaction sweep counts and release incidents are retained observations, not rerun measurements. Source/focused evidence does not establish a new full-regression or hosted promotion receipt.",
       "sources": [
@@ -24338,7 +24389,7 @@
         },
         {
           "path": "scripts/run-changed-verification.mjs",
-          "digest": "c70e77599d5993dc1fd720f8caa72a76264ddda37c819246aefc40ffc58e9260"
+          "digest": "0a863c75fbd251d1ebc87040d75240ae06dc9f337fd4a7f61079ae471a139645"
         },
         {
           "path": "scripts/run-verification.mjs",
@@ -24351,13 +24402,14 @@
       ],
       "checks": [
         "Traced status/submit-status read-only inventory, submit maintenance, explicit handoff-gc and orphan GC preview/delete modes. Independently checked current #1835 remains open with the documented redaction finding.",
-        "Executed 392 tests across receipt, lane, reporter, redaction and submission suites; all passed. This is focused evidence, not a full-regression receipt."
+        "Executed 392 tests across receipt, lane, reporter, redaction and submission suites; all passed. This is focused evidence, not a full-regression receipt.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Shard planning records actual related-discovery duration and its existing cap; no coverage or execution semantics weakened."
       ]
     },
     {
       "path": "docs/security/remote-access-threat-model.md",
-      "documentDigest": "c8312ba2b82beb32bad4313ec760ff207ca79064798a803719c5b6eed2b73057",
-      "sourceRevision": "45fcdd5230b0b5e5028e469864ab70693e6088b0",
+      "documentDigest": "40b03513e9464f95b657b9cf7d2f8a1084c4a604ec3b0156acfe51e6af3adbb1",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented HTTP capability, proxy/Origin, scope, mutation budget, SSH host-key/probe, fleet, credential and recovery boundaries. Historical pairing probes remain explicitly historical. Corrected custom capability/query-token exceptions, unmapped-route refusal, retained loopback WS scope limits, and SSH handshake versus authenticated-session reachability.",
@@ -24449,7 +24501,7 @@
         },
         {
           "path": "src-server/security/runtime-request-security.ts",
-          "digest": "c73e5e818a3ebf97c5aaebf27182b80aeb581ab3800b94091bbf6cbf0faf1469"
+          "digest": "71b1d03b1f8a5776ff5c5be07269d91444911cb99982c7e2c72f6e7535007313"
         },
         {
           "path": "src-server/security/station-browser-origins.ts",
@@ -24576,7 +24628,8 @@
         "EXECUTED: current and archive GitHub issue titles checked for 303, 483, 487, 488, 489, 495, 496 and 497. Restored explicit current membership/hosted identity/tenant isolation/acceptance references; retained archive303 reconnect history and archive496 Task history because their titles match. Current488 is closed; its historical implementation link does not prove the independent-human acceptance.",
         "REASONED: synchronized bootstrap delta changes only KnowledgeStoreProvider comment, correcting the knowledgeStores flag description; connection bootstrap, terminal authentication and runtime statements reviewed here are unchanged.",
         "REASONED: reviewed all changed recorded source dependencies through frozen upstream f3954615e / root6fa523e4d. Exact per-path reasons retained in source-delta-notes.json; no runtime receipt renewed.",
-        "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun."
+        "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused clearBudget and documentary SSE list; active GET/non-mutation and mutating-verb classifier unchanged. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
@@ -25027,7 +25080,7 @@
     {
       "path": "docs/testing/browser-smoke.md",
       "documentDigest": "2bc25a448c6189b75253f9b26a10665f40107d168858254c46752f8a2f559412",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "PR smoke manifest, fixture boundaries, browser-health scope and CI execution policy. Full 40-line baseline read. Traced all seven manifest selections, real HTTP Ollama-shaped fixture versus page-routed streams, explicit monitor installations/assertions/exceptions, worker/retry runner flags, CI step timeout and nonblocking artifact retention. Existing mutation protocol remains a maintenance instruction; not executed in this doc-only pass. Final follow-up scopes required fast-checks to same-repository PRs/merge groups, with fork routing distinct.",
@@ -25051,7 +25104,7 @@
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
-          "digest": "6002b4f7447932bef72f43e528f18dc686cafa153779ce87a2d093a1829289e2"
+          "digest": "91e428a024b5f68b116cea40cc706fae3ccbea4f7dbb6344c6ffe71cd333e026"
         },
         {
           "path": "scripts/critical-browser-reporter.mjs",
@@ -25059,7 +25112,7 @@
         },
         {
           "path": "scripts/fast-checks-shard.mjs",
-          "digest": "36cc3d436a971064e09106246c3e330ebcdb2bfc787fa873dbccda9ded67f57f"
+          "digest": "158029ee97170ea31487f4c6dd452d1571cc3024c8e3c1b50d6f6ba4f29f8ca7"
         },
         {
           "path": "scripts/lib/fast-checks-shards.mjs",
@@ -25118,7 +25171,8 @@
         "Upstream source review: Reviewed plan/shard/statics/required aggregator, same-repository/fork conditions, success/receipt admission, smoke timeout and diagnostic versus verdict-bearing uploads; six-suite195PASS includes real workflow job-graph model and fast runner fixtures. Fixed affected current prose.",
         "Upstream source review: Only upstream deletion removes Android split-pane spec entry; seven PR-smoke specs and non-quarantine bucket contract unchanged. Our table never claims full coverage or names removed spec.",
         "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
-        "Reviewed integration deltas: scripts/run-e2e-suite.mjs: Classifies new early-dead-child identity-wait messages as boot-race only for fetch-failed or exact boot identity mismatch, preserving existing retry category; other failures remain fatal. No E2E run claimed."
+        "Reviewed integration deltas: scripts/run-e2e-suite.mjs: Classifies new early-dead-child identity-wait messages as boot-race only for fetch-failed or exact boot identity mismatch, preserving existing retry category; other failures remain fatal. No E2E run claimed.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts."
       ]
     },
     {
@@ -25222,7 +25276,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -25351,7 +25405,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -25398,7 +25452,8 @@
         "Prior starter-work/native/install/module audit receipts reused only for unchanged source-owned claims; no repeated physical journey implied.",
         "Reviewed integration deltas: packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-ui/src/components/first-run/FirstRunHomeChapter.tsx: planFirstRunChapterSteps becomes private to the production owner; implementation and actual component/caller unchanged. No current Markdown advertises the removed export. Test changes move assertions to owner output; no new execution receipt inferred. docs/guides/starter-work.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. Proposed copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures. src-ui/src/views/ProjectPage.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
         "Formatter-only change; parsed media metadata is identical.",
-        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
       ]
     },
     {
@@ -25647,7 +25702,7 @@
     {
       "path": "examples/builder-delivery-viewer/README.md",
       "documentDigest": "9088109235e5da8959933a643ca29acd2c273e26ba3a36927acad5d9f59b1df5",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README claim review through actual GET registrations, bounded descriptor reads, schema/public validator/report derivation, browser query/render and exact Flow run join; host server-module permission and lifecycle plus registry installation entry traced. Corrected workspace delivery companion path, artifact-only byte limits, unsorted discovery cap and filename-only seal meaning. Cache/transport and raw trusted server-code boundaries retained.",
@@ -25667,11 +25722,11 @@
         },
         {
           "path": "examples/builder-delivery-viewer/server/__tests__/plugin-server.test.ts",
-          "digest": "35502287ec8bdb8e597e4171ddbb2de3c3df3dabd94cbcba6bbfccf615425099"
+          "digest": "7e8e9b5098fb342e4d8c625025b7a95196217aa0ab162aafab233d5a296ddf3c"
         },
         {
           "path": "examples/builder-delivery-viewer/server/plugin.mjs",
-          "digest": "4b08c7819693e91d5e8b7cedec09b4e89732121a12457e14453bb670d8489b9c"
+          "digest": "396442e759721a086fa7b37ca065da1a340b0d3851572b76e66b20d2d974162b"
         },
         {
           "path": "examples/builder-delivery-viewer/src/index.tsx",
@@ -25721,7 +25776,8 @@
         "Executed: TypeScript AST printer comparison with comments removed confirms all five edited source/test files are comment-only against221888d35. No behavior or deadline changed; no additional typecheck solely for comment changes.",
         "Executed focused5files:66PASS in12.15s (Builder, Fieldwork, Survey plugin server route tests; plugin-public-server lifecycle/admission; MCP UI resolver). Fieldwork facade is mocked in its fixture; Survey public dependency routes executed with no skips; not an installed UI journey.",
         "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
-        "Reviewed integration deltas: Corrected verified issue ownership: #36 was folded into #162, rather than unrelated current #501. Preserved plugin-readonly versus process-sandbox boundary."
+        "Reviewed integration deltas: Corrected verified issue ownership: #36 was folded into #162, rather than unrelated current #501. Preserved plugin-readonly versus process-sandbox boundary.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable."
       ]
     },
     {
@@ -26061,7 +26117,7 @@
     {
       "path": "examples/fieldwork-review/README.md",
       "documentDigest": "10a3d19e9905edc792e68a545a59b73f3452db279d478d08489e89bf881387aa",
-      "sourceRevision": "99d5df242f43d2b5a52db933586ae6be0a431b2d",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README claim review through launch/open/list/close/output routes, path and owned-storage checks, corruption preservation, lazy and short-lived published Fieldwork facades, browser frame and query/cleanup callers, and actual host acquire/quiesce/dispose/update/reload/shutdown wiring. Corrected browser-versus-owner data boundary, reviewed-output read/discard behavior, boolean error fallback, close-before-persist order, capacity checks and timers. No stronger global concurrency reservation or process sandbox claimed.",
@@ -26081,7 +26137,7 @@
         },
         {
           "path": "examples/fieldwork-review/server/__tests__/plugin-server.test.ts",
-          "digest": "4fa5f099c80a4b63cfd165d95299af3a2c9047243475bf66495ca75ff17d26d3"
+          "digest": "e343c931ef0b7c062e9a71917ec13dcd657190e4e612980f7bab68fa514928a9"
         },
         {
           "path": "examples/fieldwork-review/server/plugin.mjs",
@@ -26143,7 +26199,8 @@
         "Executed: TypeScript AST printer comparison with comments removed confirms all five edited source/test files are comment-only against221888d35. No behavior or deadline changed; no additional typecheck solely for comment changes.",
         "Executed focused5files:66PASS in12.15s (Builder, Fieldwork, Survey plugin server route tests; plugin-public-server lifecycle/admission; MCP UI resolver). Fieldwork facade is mocked in its fixture; Survey public dependency routes executed with no skips; not an installed UI journey.",
         "Pinned published @kontourai/fieldwork0.10.0 host-application.js and .d.ts reviewed: reviewedOutput returns ReviewedExportV1 after owner read, and emits review-exported; Station discards contents in the boolean route. This is dependency source evidence, not live run creation.",
-        "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision."
+        "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable."
       ]
     },
     {
@@ -26233,7 +26290,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -26265,7 +26322,7 @@
         },
         {
           "path": "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-          "digest": "3235d7af3f044df926eee73abf7b2d088ebc38057e637cabaed6508abb53814a"
+          "digest": "54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca"
         },
         {
           "path": "examples/knowledge-library/src/RootPicker.tsx",
@@ -26321,7 +26378,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -26338,7 +26395,8 @@
         "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
         "Reviewed integration deltas: src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
         "Formatter-only change; parsed media metadata is identical.",
-        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable."
       ]
     },
     {
@@ -27184,7 +27242,7 @@
     {
       "path": "examples/station-sessions-mcp/README.md",
       "documentDigest": "1d7616d80d23c79a00e2be3e4dd103ea6b36443ec24363362cb366e1cea433dc",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full server, renderer and guide read. Corrected canonical API/authentication and false-empty behavior; #2785 owns repair. No current working sessions-reader claim.",
@@ -27192,11 +27250,11 @@
       "sources": [
         {
           "path": "examples/station-sessions-mcp/__tests__/render.test.mjs",
-          "digest": "962492c06f5a81402669a9687d9575d0ca478fcb4634578acfa51ad96e7c0a6b"
+          "digest": "ac76e87a6491276619e11f19c772f535afa8dcb6244b52b566ee8238a080626e"
         },
         {
           "path": "examples/station-sessions-mcp/panel.mjs",
-          "digest": "832a5004502793149081806c31eade94ce1abc4210b9062000f4c0e4b37362a1"
+          "digest": "0a573f986f83ab7240b5ee0b173958e71235bb3b93c77f74b60aaae052ebe35f"
         },
         {
           "path": "examples/station-sessions-mcp/server.mjs",
@@ -27210,13 +27268,14 @@
       "checks": [
         "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
         "Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
-        "Reviewed integration deltas: src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture."
+        "Reviewed integration deltas: src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable."
       ]
     },
     {
       "path": "examples/survey-review-workbench/README.md",
       "documentDigest": "d8551d4b9cfca89a35f9827dffff6b9c80bcff5af8f02e45e733b07a8b8b7efa",
-      "sourceRevision": "99d5df242f43d2b5a52db933586ae6be0a431b2d",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README claim review through actual server registrations and browser mount/persistence/projection callbacks, build/manifest and host trusted server admission. Corrected lazy dependency claim, optional event-count mismatch check versus replacement writes/concurrent save transaction, partial resolved-item projection and nonexistent-workspace fallback. Documented pending-save projection and component-state context-switch limits. Actual disposable route probe demonstrates omitted count can replace prior history and wrong count returns409.",
@@ -27236,7 +27295,7 @@
         },
         {
           "path": "examples/survey-review-workbench/server/__tests__/plugin-server.test.ts",
-          "digest": "a2ffd1e040bdf925e715d49c5859e0d81a982dd2083424a5f0b7a1217c691310"
+          "digest": "89380f6a7785f991d4622cd924ee8161883b50fb738b0412bd5a5cbc4d6ce658"
         },
         {
           "path": "examples/survey-review-workbench/server/plugin.mjs",
@@ -27286,7 +27345,8 @@
         "Executed: TypeScript AST printer comparison with comments removed confirms all five edited source/test files are comment-only against221888d35. No behavior or deadline changed; no additional typecheck solely for comment changes.",
         "Executed focused5files:66PASS in12.15s (Builder, Fieldwork, Survey plugin server route tests; plugin-public-server lifecycle/admission; MCP UI resolver). Fieldwork facade is mocked in its fixture; Survey public dependency routes executed with no skips; not an installed UI journey.",
         "Executed disposable actual Hono/register PUT probe: seed200, omitted count replaces prior events200, mismatched count409 preserves current events, matching count replacement200; final GET contains replacement. Receipt .kontourai/placement-example-continuation/survey-put-probe.json. No provider or personal home touched.",
-        "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision."
+        "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable."
       ]
     },
     {
@@ -28229,7 +28289,7 @@
     },
     {
       "path": "scripts/AGENTS.md",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "policy",
       "state": "classified",
       "summary": "Names deterministic fail-closed gates, resource classification, owned processes, introduced code-health findings, focused mutation evidence, exit-status collection, and read-only lint after formatting. All routed paths and npm scripts resolve.",
@@ -28238,11 +28298,11 @@
       "sources": [
         {
           "path": "docs/guides/code-quality.md",
-          "digest": "26dd41e32a4e40337afd4f3dee0d9423aa027cd07f54735b7c591d2e853787e4"
+          "digest": "4a25a0c7b59e67e2e12e2eca32e5438acb97e5862736bffbf33c6a76a4e24e25"
         },
         {
           "path": "docs/guides/testing.md",
-          "digest": "1109abb2dbedb62e3b5f5407e87a0949adbac2ffb04e1cb1292e2b2173259e87"
+          "digest": "448b9fe89cc9b69b0359f6a024b196bf4f5a1a45b5387d54e8dba4aae9141849"
         },
         {
           "path": "scripts/code-health-gate.mjs",
@@ -28269,7 +28329,8 @@
         "Reviewed source changes: Removed only the unused waitForOwnedOutputEOF public wrapper; the actual owned-process observer and process ownership route remain.",
         "Reviewed source changes: Added bounded documentation-impact/media and Knowledge graph fixture tests to process-heavy classification; existing execution policy is unchanged. Frozen-main guide was reviewed against plan/shard/statics routing, hosted promotion receipts and current local typecheck rules; instruction files continue to route to this owner. Updated testing/dependency/effectiveness guidance preserves source-owned checks; scoped instruction files still route to this owner rather than copy its implementation.",
         "Reviewed added graph/media test classification and tracked temp-directory fixture ownership; no lane policy bypass.",
-        "Reviewed integration deltas: scripts/vitest-resource-manifest.mjs: Registers portable smoke and real-Chromium geometry fixtures as process-heavy. Current root also registers learning browser/media/impact, metric CLI children and repository knowledge graph. Scheduling metadata, not proof those journeys passed."
+        "Reviewed integration deltas: scripts/vitest-resource-manifest.mjs: Registers portable smoke and real-Chromium geometry fixtures as process-heavy. Current root also registers learning browser/media/impact, metric CLI children and repository knowledge graph. Scheduling metadata, not proof those journeys passed.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
@@ -28293,7 +28354,7 @@
     },
     {
       "path": "scripts/__tests__/fixtures/changed-verification/README.md",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "fixture",
       "state": "classified",
       "summary": "One-sentence fixture marker. scenarios.json names this README as a boundary-selection input; it is not a production feature or executable module.",
@@ -28302,7 +28363,7 @@
       "sources": [
         {
           "path": "scripts/__tests__/changed-verification.test.ts",
-          "digest": "efbb587f53a2622e3bb5df2697961097fa216d510997b15f992d736e1d8e0df0"
+          "digest": "0e4281da23da23960119ea87dce242c58ab43ba828dfe0c217bf60ae19460402"
         },
         {
           "path": "scripts/__tests__/fixtures/changed-verification/scenarios.json",
@@ -28310,14 +28371,15 @@
         },
         {
           "path": "scripts/run-changed-verification.mjs",
-          "digest": "c70e77599d5993dc1fd720f8caa72a76264ddda37c819246aefc40ffc58e9260"
+          "digest": "0a863c75fbd251d1ebc87040d75240ae06dc9f337fd4a7f61079ae471a139645"
         }
       ],
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
         "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
         "Reviewed source changes: Additional hosted selection/shard cases do not change the fixture directory role: named boundaries only, no executable production input. Hosted plan/shard execution reuses the existing resource partition and verdict rules. The fixture README only describes named non-executable selector inputs; no end-to-end or hosted result follows from it.",
-        "Reviewed integration deltas: scripts/__tests__/changed-verification.test.ts: Adds exact known changeset/Fallow suite selection and unknown-path controls, plus injected runner completion test. Governing manifest inspected. No broad CI completion inferred from selector fixture."
+        "Reviewed integration deltas: scripts/__tests__/changed-verification.test.ts: Adds exact known changeset/Fallow suite selection and unknown-path controls, plus injected runner completion test. Governing manifest inspected. No broad CI completion inferred from selector fixture.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Shard planning records actual related-discovery duration and its existing cap; no coverage or execution semantics weakened. Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts."
       ]
     },
     {
@@ -28492,7 +28554,7 @@
     {
       "path": "src-desktop/icons/README.md",
       "documentDigest": "93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc",
-      "sourceRevision": "221888d3571afa5b4a208c65437f30acf0046112",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
@@ -28544,7 +28606,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         }
       ],
       "checks": [
@@ -28556,7 +28618,8 @@
         "Executed: docs:links:check PASS 415 Markdown files; git diff --check PASS. Final doctor wording only refines plain prose and adds no links.",
         "Frozen deltas 2317f4ed3, 73e3cdac8, ae8f5d44f and 1bf1a1e98 reviewed through registered IPC, actual renderer/startup/staging callers. Package docs-script additions and tracked learning PNG exception also reviewed; no native semantic impact.",
         "All remaining concrete claims and full-page consistency reviewed. This is source-reviewed documentation, not every branch of each named owner or physical/provider acceptance.",
-        "Veritas readiness veritas-1790533833943 on the three-file native delta before final Doctor wording refinement: exit0, 0 FAIL/1 WARN. repo-governance and lint PASS. Optional verification-policy exit80: five product laws behavior/fault-injection PASS; mobile-context primary-actions behavior PASS but fault-injection structured Vitest observation timed out after25916ms (INFRASTRUCTURE_ERROR), not a product failure or passing rejection proof. No rerun; root owns combined CI."
+        "Veritas readiness veritas-1790533833943 on the three-file native delta before final Doctor wording refinement: exit0, 0 FAIL/1 WARN. repo-governance and lint PASS. Optional verification-policy exit80: five product laws behavior/fault-injection PASS; mobile-context primary-actions behavior PASS but fault-injection structured Vitest observation timed out after25916ms (INFRASTRUCTURE_ERROR), not a product failure or passing rejection proof. No rerun; root owns combined CI.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
       ]
     },
     {
@@ -28572,7 +28635,7 @@
     },
     {
       "path": "src-server/AGENTS.md",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to module-map/development/testing owners. Preserves route/domain boundaries, logger and Windows launch requirements, request-local batching, and yielding installed-package integrity observations. The current integrity owner serializes scans and joins only a queued observation starting after arrival.",
@@ -28585,11 +28648,11 @@
         },
         {
           "path": "docs/guides/development.md",
-          "digest": "d2fe6a32adfcfba50a1601ef305814949d971ddb31a3527af849db47d15a733a"
+          "digest": "2a134b5439fab737a3b67358c34f8ab6de1f9aa66a9336805363fcdfc8847d20"
         },
         {
           "path": "docs/guides/testing.md",
-          "digest": "1109abb2dbedb62e3b5f5407e87a0949adbac2ffb04e1cb1292e2b2173259e87"
+          "digest": "448b9fe89cc9b69b0359f6a024b196bf4f5a1a45b5387d54e8dba4aae9141849"
         },
         {
           "path": "src-server/services/evidence/workflow-sidecar-service.ts",
@@ -28608,7 +28671,8 @@
         "Reviewed the architecture rewrite and added shortcut owner as routing dependencies; existing bounded purpose/claims preserved.",
         "Reviewed routing dependencies after package-reference and contributor-guide corrections; instruction scope is unchanged. Verification-lane source delta changes only its displayed scope label.",
         "Reviewed source changes: All73 documented module sections were reviewed against implementation and real callers; instruction files still use this map as their source route. Reviewed frozen upstream portable/channel/native setup changes and current owned commands; server instruction links remain current. Frozen-main guide was reviewed against plan/shard/statics routing, hosted promotion receipts and current local typecheck rules; instruction files continue to route to this owner. Independent plugin acquisition delta review distinguished plain-copy Git-metadata filtering from the unchanged tree-digest encoding; yielding content checks remain the server instruction contract.",
-        "Reviewed integration deltas: docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained."
+        "Reviewed integration deltas: docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
@@ -28795,7 +28859,7 @@
     },
     {
       "path": "src-ui/AGENTS.md",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to canonical module/test guidance. The navigation store and useUnsavedGuard support the single route-guard ownership rule; shared controls and physical layout claims remain distinct from DOM tests.",
@@ -28808,7 +28872,7 @@
         },
         {
           "path": "docs/guides/testing.md",
-          "digest": "1109abb2dbedb62e3b5f5407e87a0949adbac2ffb04e1cb1292e2b2173259e87"
+          "digest": "448b9fe89cc9b69b0359f6a024b196bf4f5a1a45b5387d54e8dba4aae9141849"
         },
         {
           "path": "src-ui/src/components/Button.tsx",
@@ -28839,7 +28903,8 @@
         "Reviewed the architecture rewrite and added shortcut owner as routing dependencies; existing bounded purpose/claims preserved.",
         "Reviewed routing dependencies after package-reference and contributor-guide corrections; instruction scope is unchanged. Verification-lane source delta changes only its displayed scope label.",
         "Reviewed source changes: All73 documented module sections were reviewed against implementation and real callers; instruction files still use this map as their source route. Frozen-main guide was reviewed against plan/shard/statics routing, hosted promotion receipts and current local typecheck rules; instruction files continue to route to this owner.",
-        "Reviewed integration deltas: docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained."
+        "Reviewed integration deltas: docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {
@@ -28863,7 +28928,7 @@
     },
     {
       "path": "tests/AGENTS.md",
-      "sourceRevision": "237890e97ce7112aa47cdc0fcc9521650cfdc43e",
+      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
       "kind": "policy",
       "state": "classified",
       "summary": "All named fixture helpers and npm scripts resolve. buildExamplePlugin uses the supported scripts/station-cli.ts bootstrap with windowsHide; pairBrowser and fixture audit helpers exist. Conversation, navigation, dialog, bootstrap, and real-action requirements are preserved as policy.",
@@ -28872,7 +28937,7 @@
       "sources": [
         {
           "path": "docs/guides/testing.md",
-          "digest": "1109abb2dbedb62e3b5f5407e87a0949adbac2ffb04e1cb1292e2b2173259e87"
+          "digest": "448b9fe89cc9b69b0359f6a024b196bf4f5a1a45b5387d54e8dba4aae9141849"
         },
         {
           "path": "scripts/station-cli.ts",
@@ -28903,7 +28968,8 @@
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
         "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
         "Reviewed routing dependencies after package-reference and contributor-guide corrections; instruction scope is unchanged. Verification-lane source delta changes only its displayed scope label.",
-        "Reviewed source changes: Frozen-main guide was reviewed against plan/shard/statics routing, hosted promotion receipts and current local typecheck rules; instruction files continue to route to this owner."
+        "Reviewed source changes: Frozen-main guide was reviewed against plan/shard/statics routing, hosted promotion receipts and current local typecheck rules; instruction files continue to route to this owner.",
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
       ]
     },
     {

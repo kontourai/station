@@ -349,8 +349,8 @@ receipt does not certify completion. Do not repeatedly launch `npm test`,
 host-coordinated lanes consume shared CPU and mutable-output leases.
 
 Use `npm run ci:fast` for bounded per-push feedback: it runs affected tests
-against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
-and verification-policy, lint, governance and typecheck invariants. It is not
+against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow, documentation,
+verification-policy, lint, governance and typecheck invariants. It is not
 the full static/build chain or full Vitest corpus.
 Hosted CI splits that work: `fast-checks-plan` selects once, four
 `fast-checks-shard` jobs run the affected tests, and `fast-checks-statics` runs
