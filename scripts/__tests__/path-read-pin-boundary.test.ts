@@ -505,6 +505,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'walks its own fixture root',
   'scripts/__tests__/path-read-pin-boundary.test.ts':
     "this file: the detector's own strings name the calls it looks for; the prepush floor runs it (#1913)",
+  'scripts/__tests__/portable-nightly-publish-workflow.test.ts':
+    'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/release-workflow.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/verification-policy-gate.test.ts':
