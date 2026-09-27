@@ -406,6 +406,7 @@ fn admit_station_runtime_home_with_root(
         Path::new("config"),
         Path::new("cache"),
         Path::new("installs"),
+        Path::new("state"),
         Path::new("instances"),
         Path::new("instances/dev"),
     ] {
@@ -431,7 +432,9 @@ fn admit_station_runtime_home_with_root(
     if same_or_descendant(&root, &home) && !(root_derived_from_home && home == root) {
         return Err("runtime home is the shared Station root or an ancestor of it".into());
     }
-    for name in ["config", "cache", "installs"] {
+    // `state` holds CLI lifecycle state for prebuilt archives (#2675), the
+    // same protected set as packages/shared/src/runtime-path-resolver.ts.
+    for name in ["config", "cache", "installs", "state"] {
         let canonical_protected =
             canonical_path_through_existing_ancestor(&lexical_root.join(name))?;
         if same_or_descendant(&home, &canonical_protected)
@@ -1244,6 +1247,8 @@ mod tests {
             root.join("config"),
             root.join("cache"),
             root.join("installs"),
+            root.join("state"),
+            root.join("state/stable"),
             root.join("instances"),
             root.join("instances/dev"),
             root.join("instances/stable/nested"),
@@ -1298,7 +1303,7 @@ mod tests {
         let outside = parent.join("outside");
         fs::create_dir(&root).unwrap();
         fs::create_dir(&outside).unwrap();
-        for name in ["config", "cache", "installs"] {
+        for name in ["config", "cache", "installs", "state"] {
             let target = outside.join(name);
             fs::create_dir(&target).unwrap();
             symlink(&target, root.join(name)).unwrap();
@@ -1317,7 +1322,14 @@ mod tests {
     #[test]
     fn unsafe_shared_containers_block_unrelated_runtime_homes() {
         use std::os::unix::fs::symlink;
-        for container in ["config", "cache", "installs", "instances", "instances/dev"] {
+        for container in [
+            "config",
+            "cache",
+            "installs",
+            "state",
+            "instances",
+            "instances/dev",
+        ] {
             let parent = temp_home();
             let root = parent.join("root");
             let outside = parent.join("outside");

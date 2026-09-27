@@ -1045,6 +1045,10 @@ function buildProgram(
         ? lifecycleArgs.uiPort
         : undefined,
       ...(lifecycleArgs.stopIntent ? { intent: lifecycleArgs.stopIntent } : {}),
+      // The home this command resolved (--home, --base, STATION_HOME or the
+      // default), whether or not it narrows the match: a prebuilt archive
+      // keeps records in that home's Station root (#2675).
+      stateHome: lifecycleArgs.baseDir,
     });
   });
 
