@@ -178,7 +178,7 @@ submission; [Apple's guidance](https://developer.apple.com/app-store/app-privacy
 includes third-party linkage in that assessment. No store submission or public
 policy publication was performed by this audit.
 
-The [abstraction review](../architecture/abstraction-review.md#notification-alert-suppression-has-two-different-owners)
+The [abstraction review](../architecture/abstraction-review.md#notification-suppression-now-shares-its-policy-owner)
 records a separate, executed classification difference between FCM and APNs.
 The FCM comment now states that difference; its emitted executable code is
 unchanged. Selecting a common suppression policy requires a behavior change,

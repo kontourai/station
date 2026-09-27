@@ -1,9 +1,9 @@
 # Provider and integration icons
 
-Station renders Claude Code, Codex/OpenAI, Pi, Kiro, OpenCode, Muse Code,
-Cursor, Goose, and Qwen Code through a small bundled SVG mark family:
-`BrandIcon` renders it, and the inline marks live in `BrandMarks.tsx`, which
-loads on demand. The Claude, Codex, Pi, Kiro, and OpenCode path data is taken from
+`BrandIcon` renders bundled provider marks. Claude Code, Codex/OpenAI, Pi,
+Kiro and OpenCode use inline paths from the lazy-loaded `BrandMarks.tsx`.
+Muse Code, Cursor, Goose and Qwen Code use local SVG image assets under
+`src-ui/public/provider-icons/`. The Claude, Codex, Pi, Kiro, and OpenCode path data is taken from
 each provider's own published asset, retrieved 2026-09-25:
 
 | Mark | Source | SHA-256 of the retrieved file |
@@ -14,7 +14,9 @@ each provider's own published asset, retrieved 2026-09-25:
 | Kiro | `https://kiro.dev/icon.svg` | `774cbc1c7ecec8c935a6091595583d7a92fc8289d6f1db3f071c0f50c61c369f` |
 | OpenCode | `packages/identity/mark.svg` in the official `anomalyco/opencode` repository at commit `1251a870cb384543c150c4a72fb101b55eec971b` (the same file `https://opencode.ai/favicon.svg` serves; background square dropped) | `e29bbe33380ad1c1ada9134b52f229d30e9776d60481512c9d81f2bb6f37def9` |
 
-Station takes only the path geometry; fills come from `BrandIcon.css`.
+For the inline marks, Station takes the path geometry and supplies fills
+through `BrandIcon.css`. The source URLs, revisions and hashes above record
+the September 25 retrieval; they are not a new check of upstream asset bytes.
 
 The Cursor and Meta marks come from Simple Icons 16.28.0 at commit
 `c956d67dfa7c37ae65206fc0775b0c02d1e695c2` (CC0-1.0); the Simple Icons
@@ -33,7 +35,7 @@ capabilities.
 Installed integrations may set `icon` to a relative raster filename such as
 `icon.png`. Station also checks a short local `icon.*`, `favicon.*`, and
 `logo.*` list. The server only exposes PNG, JPEG, WebP, and ICO files after
-realpath containment, size, extension, and magic-byte validation. It never
+realpath containment, a 128 KiB limit, extension, and magic-byte validation. It never
 downloads, proxies, or renders remote icon URLs; SVG is intentionally rejected.
 
 The output-only `/integrations/:id/icon` route is same-origin, privately cached,

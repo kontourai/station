@@ -209,8 +209,8 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   `'inline'` otherwise; pid + birth fingerprint; best-effort with a stderr
   note on failure) and `station stop` removes the entry — identity-checked on
   pid, ownership-checked on type, including the already-absent stop path so a
-  crashed instance's entry is reaped on the next stop. The CWD-scoped
-  `.station/instances/*` mechanism still exists and remains the only record
+  crashed instance's entry is reaped on the next stop. The separate CLI lifecycle
+  state mechanism still exists and remains the only record
   visible when the registry write was declined or failed. Desktop neither
   selects a service from stale registry data alone nor treats a sidecar
   record as a durable-service candidate.
@@ -229,29 +229,37 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   yet) `station service install` seeds the registry's origins from the existing
   `<home>/service/*.json` manifest and re-validates them; the manifest is now a
   derived mirror + one-time migration fallback rather than the authority. The
-  broader `.station/instances/*` mechanism is still untouched and unmigrated.
+  separate CLI lifecycle records are not replaced by this registry.
 - **No `STATION_HOME_SCHEMA_VERSION` bump.** This file is purely additive.
 
 ## Distinction from `.station/instances/*`
 
 `docs/reference/cli.md`'s "Instance State Mechanism" section documents the
-pre-existing, **CWD-anchored** mechanism: `station start` writes
+**CWD-anchored source-checkout** mechanism: `station start` writes
 `.station/instances/<instance-id>.json` in the *current working directory* of
 the checkout that launched it, recording that one checkout's server/UI PIDs so
 `station stop` can find and terminate the matching instance.
 
+Prebuilt server archives instead put those per-instance lifecycle records in
+`<root>/state/<channel>/instances/`, outside the extracted version. The resolved
+home determines the root; service status and stop calls carry that same home.
+Archives share their shipped build and refuse an in-place build or upgrade.
+See [the CLI reference](../reference/cli.md#instance-state-mechanism) for root
+selection and manual archive replacement. This differs from the source-checkout
+mechanism without replacing the shared registry described here.
+
 `<STATION_HOME>/instances.json` (this document) is **home-scoped**: one file
-per Station home (`~/.station` by default, or wherever `STATION_HOME` points),
+per selected Station runtime home (see [topology](station-topology.md)),
 intended to describe every instance associated with that home regardless of
 which checkout or working directory started it. That is a real distinction,
 not a naming collision to "fix":
 
 | | `.station/instances/<id>.json` | `<STATION_HOME>/instances.json` |
 |---|---|---|
-| Scope | Per-checkout (CWD-anchored) | Per-home (host-wide) |
+| Scope | Per-checkout for source; home-derived channel state root for prebuilt archives | Per-home |
 | Cardinality | One file per instance | One file, many instances inside it |
 | Owner | `station start`/`station stop` (CLI lifecycle) | `station service install` (durable service), Desktop's shared-registry bridge (desktop-owned sidecar), and — since station#2904 slice 2 — `station start`/`stop` themselves (types `'inline'`/`'worktree'`) |
-| Purpose | "Which PID/port did *this checkout* start, so I can stop it?" | "What instances exist under *this home*, across checkouts?" |
+| Purpose | "Which processes did this lifecycle target start, so I can stop them?" | "What instances exist under *this home*, across checkouts?" |
 
 Both mechanisms now have real producers and consumers. Deriving one from the
 other remains a separate design choice; neither file can simply replace the
