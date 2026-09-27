@@ -128,13 +128,14 @@ export class RegistrySourceConfinementError extends Error {
 }
 
 /**
- * Where a manifest source resolved. `local` is a filesystem path already
- * proven to be inside the registry root; `remote` is a network address (an
- * allowed URL scheme or scp-style `git@host:path`) that never reads local
- * files.
+ * Where a manifest source resolved. `local` is the PHYSICAL path (symlinks
+ * followed) that was proven to be inside `root`, the physical registry root;
+ * consumers act on that path, not the manifest's spelling of it. `remote` is a
+ * network address (an allowed URL scheme or scp-style `git@host:path`) that
+ * never reads local files.
  */
 type ResolvedManifestSource =
-  | { kind: 'local'; location: string }
+  | { kind: 'local'; location: string; root: string }
   | { kind: 'remote'; location: string };
 
 /** Schemes a manifest source may name. `file:` and everything else refuse. */
@@ -169,8 +170,13 @@ function parseRemoteSource(source: string, base?: string): URL {
   return url;
 }
 
+/** Containment by `path.relative`, so a root of `/` works too. */
 function isInsideOrEqual(root: string, candidate: string): boolean {
-  return candidate === root || candidate.startsWith(`${root}${sep}`);
+  const rel = relative(root, candidate);
+  return (
+    rel === '' ||
+    (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`))
+  );
 }
 
 /**
@@ -200,14 +206,15 @@ function physicalPath(path: string): string {
 
 /**
  * Refuses `candidate` unless it is inside `root` both lexically and
- * physically. A git source's `#branch` suffix is split off by the installer,
- * so the path before it must be contained as well.
+ * physically, and returns the physical path and root that were checked. A git
+ * source's `#branch` suffix is split off by the installer, so the path before
+ * it must be contained as well.
  */
-function assertLocalSourceInsideRoot(
+function confineLocalSource(
   source: string,
   root: string,
   candidate: string,
-): void {
+): { physical: string; physicalRoot: string } {
   const lexicalRoot = resolve(root);
   let physicalRoot: string;
   try {
@@ -218,7 +225,8 @@ function assertLocalSourceInsideRoot(
       'the registry root does not exist',
     );
   }
-  const paths = new Set([candidate, candidate.split('#')[0] ?? candidate]);
+  let physical = '';
+  const paths = [candidate, candidate.split('#')[0] ?? candidate];
   for (const path of paths) {
     if (!isInsideOrEqual(lexicalRoot, resolve(path))) {
       throw new RegistrySourceConfinementError(
@@ -226,20 +234,101 @@ function assertLocalSourceInsideRoot(
         'resolves outside the registry root',
       );
     }
-    let physical: string;
+    const checked = assertPhysicallyInside(source, physicalRoot, path);
+    if (!physical) physical = checked;
+  }
+  return { physical, physicalRoot };
+}
+
+/** Physical path of `path`, refused unless inside `physicalRoot`. */
+function assertPhysicallyInside(
+  source: string,
+  physicalRoot: string,
+  path: string,
+): string {
+  let physical: string;
+  try {
+    physical = physicalPath(resolve(path));
+  } catch {
+    throw new RegistrySourceConfinementError(
+      source,
+      'cannot be resolved to a physical path',
+    );
+  }
+  if (!isInsideOrEqual(physicalRoot, physical)) {
+    throw new RegistrySourceConfinementError(
+      source,
+      'resolves outside the registry root through a symlink',
+    );
+  }
+  return physical;
+}
+
+/**
+ * A local git source clones whatever its git metadata points at, not just the
+ * directory named: a `.git` gitfile (`gitdir: <path>`), a worktree
+ * `commondir`, or an `objects` directory reached through a symlink can all
+ * sit outside the registry root. Those locations must be inside it, and object
+ * alternates (`objects/info/alternates`, `http-alternates`) are refused
+ * outright — they borrow objects from another repository by design.
+ */
+function assertLocalGitRepositoryConfined(
+  source: string,
+  physicalRoot: string,
+  repository: string,
+): void {
+  const readPointer = (file: string, prefix: string): string | null => {
+    let stat: ReturnType<typeof lstatSync>;
     try {
-      physical = physicalPath(resolve(path));
+      stat = lstatSync(file);
     } catch {
+      return null;
+    }
+    if (!stat.isFile()) {
       throw new RegistrySourceConfinementError(
         source,
-        'cannot be resolved to a physical path',
+        `git metadata ${basename(file)} is not a regular file`,
       );
     }
-    if (!isInsideOrEqual(physicalRoot, physical)) {
+    const value = readFileSync(file, 'utf-8').trim();
+    if (!value.startsWith(prefix)) {
       throw new RegistrySourceConfinementError(
         source,
-        'resolves outside the registry root through a symlink',
+        `git metadata ${basename(file)} is malformed`,
       );
+    }
+    return resolve(dirname(file), value.slice(prefix.length).trim());
+  };
+
+  let gitDir = repository;
+  const dotGit = join(repository, '.git');
+  try {
+    const stat = lstatSync(dotGit);
+    gitDir = stat.isFile()
+      ? (readPointer(dotGit, 'gitdir:') ?? dotGit)
+      : dotGit;
+  } catch {
+    // No `.git` entry: a bare repository, or not a repository at all (git
+    // then fails on its own).
+  }
+  const gitDirs = [assertPhysicallyInside(source, physicalRoot, gitDir)];
+  const commonDir = readPointer(join(gitDirs[0]!, 'commondir'), '');
+  if (commonDir) {
+    gitDirs.push(assertPhysicallyInside(source, physicalRoot, commonDir));
+  }
+  for (const dir of gitDirs) {
+    const objects = assertPhysicallyInside(
+      source,
+      physicalRoot,
+      join(dir, 'objects'),
+    );
+    for (const name of ['alternates', 'http-alternates']) {
+      if (existsSync(join(objects, 'info', name))) {
+        throw new RegistrySourceConfinementError(
+          source,
+          `git object ${name} are not allowed in a local registry source`,
+        );
+      }
     }
   }
 }
@@ -405,13 +494,12 @@ export class JsonManifestRegistryProvider
     }
 
     if (this.isLocalManifest()) {
-      const location = resolve(dirname(this.manifestUrl), source);
-      assertLocalSourceInsideRoot(
+      const { physical, physicalRoot } = confineLocalSource(
         source,
         this.getLocalRegistryRoot(),
-        location,
+        resolve(dirname(this.manifestUrl), source),
       );
-      return { kind: 'local', location };
+      return { kind: 'local', location: physical, root: physicalRoot };
     }
 
     if (isAbsolute(source) || isDriveLetterPath(source)) {
@@ -420,10 +508,25 @@ export class JsonManifestRegistryProvider
         'a network registry manifest cannot name a local path',
       );
     }
-    return {
-      kind: 'remote',
-      location: parseRemoteSource(source, this.manifestUrl).toString(),
-    };
+    // A relative reference stays on the registry host. A backslash makes the
+    // URL parser read `\\host` as an authority and switch hosts, so it is
+    // refused rather than resolved (`//host` was refused above as absolute).
+    // The origin is checked after resolution too, because the parser also
+    // strips leading whitespace and tabs anywhere (`\t//host`).
+    if (source.includes('\\')) {
+      throw new RegistrySourceConfinementError(
+        source,
+        'a relative source cannot contain a backslash',
+      );
+    }
+    const url = parseRemoteSource(source, this.manifestUrl);
+    if (url.origin !== new URL(this.manifestUrl).origin) {
+      throw new RegistrySourceConfinementError(
+        source,
+        'a relative source resolved to another host',
+      );
+    }
+    return { kind: 'remote', location: url.toString() };
   }
 
   /**
@@ -492,6 +595,9 @@ export class JsonManifestRegistryProvider
           throw new Error(
             `Plugin source ${url} uses plain http://. Use an https:// address: code installed over http can be tampered with in transit.`,
           );
+        }
+        if (resolved.kind === 'local') {
+          assertLocalGitRepositoryConfined(source, resolved.root, url);
         }
         const cloneArgs = ['clone', '--depth', '1'];
         if (branch) cloneArgs.push('--branch', branch);
@@ -823,8 +929,13 @@ export class JsonManifestRegistryProvider
       const resolved = this.resolveManifestSource(tool.source);
       let raw: string;
       if (resolved.kind === 'local') {
+        // The file itself must be inside the root, not only its directory.
         raw = readFileSync(
-          join(resolved.location, 'integration.json'),
+          assertPhysicallyInside(
+            tool.source,
+            resolved.root,
+            join(resolved.location, 'integration.json'),
+          ),
           'utf-8',
         );
       } else {
