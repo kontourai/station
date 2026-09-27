@@ -2766,8 +2766,9 @@ describe('lifecycle instance state', () => {
     // The server failed its startup and exited (process.exit(1)).
     alive = false;
     await vi.advanceTimersByTimeAsync(500);
-    await waiting;
+    // Settled within one poll of the exit, 88s before the deadline.
     expect(failure).not.toBeNull();
+    await waiting;
     expect(failure!.message).toBe(
       `Station process exited before ${url} answered (fetch failed)`,
     );
@@ -2800,6 +2801,7 @@ describe('lifecycle instance state', () => {
     expect(failure).toBeNull();
     abort.abort();
     await vi.advanceTimersByTimeAsync(500);
+    expect(failure).not.toBeNull();
     await waiting;
     expect(failure!.message).toBe('Readiness wait abandoned');
   });

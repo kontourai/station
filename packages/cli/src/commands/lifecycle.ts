@@ -3989,14 +3989,9 @@ export async function awaitReadiness(
 ): Promise<void> {
   const readiness = new AbortController();
   try {
-    await Promise.all(
-      waits.map((wait) =>
-        wait(readiness.signal).catch((error: unknown) => {
-          readiness.abort();
-          throw error;
-        }),
-      ),
-    );
+    // Promise.all settles on the first rejection; the others are then told
+    // to stop (their later rejections are already handled by Promise.all).
+    await Promise.all(waits.map((wait) => wait(readiness.signal)));
   } finally {
     readiness.abort();
   }
