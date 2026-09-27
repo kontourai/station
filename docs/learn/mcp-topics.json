@@ -5,7 +5,7 @@
     {
       "id": "station-overview",
       "title": "What Station is",
-      "summary": "Station is a local-first agent workspace where agent work is run, observed, and evidence-gated, so \"done\" is a gate verdict rather than the agent's own confidence.",
+      "summary": "Station is a local-first agent workspace for directing execution and inspecting results and evidence. Ordinary turn completion and an explicitly attached workflow's gate verdict are different facts.",
       "tags": [
         "overview",
         "what is station",
@@ -20,7 +20,7 @@
     {
       "id": "station-docs",
       "title": "These docs, and what they cannot do",
-      "summary": "station-docs is a read-only documentation server: an engine that has it can EXPLAIN Station but CANNOT operate it — operating Station needs the separate station-control server, which only some engines can receive.",
+      "summary": "station-docs serves static, read-only documentation on supported tool-server delivery paths. Station operations use separate station-control tools and remain subject to caller authority and policy.",
       "tags": [
         "station-docs",
         "capability",
@@ -85,7 +85,7 @@
     {
       "id": "builtin-assistant",
       "title": "The built-in assistant, and what it needs",
-      "summary": "The built-in assistant is the agent that operates Station for you; it needs the station-control tool server, which only engines with a reviewed delivery mechanism can receive.",
+      "summary": "The reserved Station Agent operates the workspace through Station Control. Its selected engine must support control delivery, and delivery alone does not grant operator authority or full access.",
       "tags": [
         "built-in assistant",
         "default agent",
@@ -132,14 +132,23 @@
     {
       "id": "scheduled-jobs",
       "title": "Scheduled jobs and notifications",
-      "summary": "A scheduled job runs an agent on a cron schedule and produces runs like any other work; notifications are contributed by subsystems and plugins and aggregated by Station.",
-      "tags": ["job", "jobs", "schedule", "scheduler", "cron", "notifications"],
+      "summary": "Jobs support cron, fixed-interval and one-time schedules, plus manual runs. Scheduler receipts describe execution outcomes; they do not automatically attach Flow gates. Subsystems and plugins also contribute notifications.",
+      "tags": [
+        "job",
+        "jobs",
+        "schedule",
+        "scheduler",
+        "cron",
+        "interval",
+        "one-time",
+        "notifications"
+      ],
       "section": "Scheduled jobs and notifications"
     },
     {
       "id": "skills",
       "title": "Skills",
-      "summary": "A skill is a reusable bundle of instructions and behavior an agent adopts; skills are a Station-agent capability, and only engines with a skills channel receive them.",
+      "summary": "A skill is a reusable instruction and behavior bundle. Station-authored skill delivery depends on the selected engine's supported channel; missing delivery must not be confused with activation.",
       "tags": [
         "skill",
         "skills",
@@ -174,7 +183,7 @@
     {
       "id": "trust-and-receipts",
       "title": "Trust, gates, evidence, and receipts",
-      "summary": "Station renders evidence-gated process state — Flow gates and verdicts, Veritas readiness, Surface trust bundles — beside the work, and never computes those verdicts itself.",
+      "summary": "Station presents Flow verdicts, Veritas readiness and Surface trust bundles through their owners' contracts, alongside its own execution records. Missing evidence and source authority remain explicit.",
       "tags": [
         "trust",
         "gate",

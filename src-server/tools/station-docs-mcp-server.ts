@@ -14,8 +14,8 @@ import {
  *
  * Deliberately NOT built on `StationControlToolRegistry`: importing that
  * module would pull `station-control-shared.ts` and the SDK HTTP client into
- * this bundle, and the whole point of this server is that its bundle
- * contains no way to reach the network, the filesystem, or Station's API.
+ * this bundle. Documentation handlers use only bundled data; importing the
+ * control registry would couple them to operational capabilities.
  * The registration surface here is small enough that duplicating four lines
  * is cheaper than the coupling.
  *
@@ -23,10 +23,12 @@ import {
  * compiled into the bundle. There is no tool that reads this Station's live
  * or user state, and there must never be one: that requires authentication
  * and belongs to `station-control`, a different server with a different
- * review. `createStationDocsIntegration()`
+ * review. `createRuntimeDocsIntegration()`
  * (`src-server/runtime/agents/runtime-default-agent.ts`) therefore declares
- * NO `env`, which is what lets this server be delivered to every engine
- * including the ones that can never receive `station-control`.
+ * NO `env`, removing credential custody as a delivery prerequisite. An engine
+ * still needs a supported tool-server channel and the genuine runtime server;
+ * credential-free documentation does not create a transport for engines such
+ * as Muse, whose tool-server capability is unsupported.
  */
 
 // Package version is not a build identity (archive#1547, archive#1635).
@@ -174,9 +176,9 @@ export function createStationDocsMcpServer(): McpServer {
     'search_station_docs',
     {
       description:
-        "Keyword search across Station's SHIPPED DOCUMENTATION. Returns matching bundled documentation topics, never live state: it searches Station's manual, not this Station's data.",
+        "Case-insensitive substring search across Station's SHIPPED DOCUMENTATION. Returns matching bundled documentation topics, never live state: it searches Station's manual, not this Station's data.",
       inputSchema: z.object({
-        query: z.string().describe('Words to look for, e.g. "gate evidence".'),
+        query: z.string().describe('Substring to look for, e.g. "approval".'),
         limit: z
           .number()
           .int()

@@ -169,7 +169,14 @@ describe('station-docs plugin-authoring topic', () => {
   const exampleManifests = () =>
     paragraphs()
       .filter((block) => block.startsWith('A complete minimal manifest'))
-      .map((block) => JSON.parse(block.slice(block.indexOf('\n{') + 1)));
+      .map((block) => {
+        const json = block.match(/```json\n([\s\S]*?)\n```/)?.[1];
+        expect(
+          json,
+          'manifest example must remain a fenced JSON block',
+        ).toBeDefined();
+        return JSON.parse(json!);
+      });
 
   const load = (manifest: unknown) =>
     parsePluginManifestDocumentWithFormat(
@@ -380,9 +387,9 @@ describe('station-docs plugin-authoring topic', () => {
     const PERMITTED = [
       [
         'station-docs',
-        'Installing a plugin is not among those operations: it needs a person to approve the install preview, on the Plugins page or with `station plugin install <source>`, so no agent can install one (see the `plugin-authoring` topic).',
+        "Installing a plugin through Station's agent tools is refused: a person approves its preview on the Plugins page or with `station plugin install <source>` (see the `plugin-authoring` topic).",
       ],
-      ['builtin-assistant', 'It cannot install a plugin.'],
+      ['builtin-assistant', 'Its Station tools cannot install a plugin.'],
       [
         'builtin-assistant',
         'An install is approved by a person who has read its preview — its permissions and the parts that run in Station’s own page — on the Plugins page or with `station plugin install <source>`.',
@@ -393,15 +400,7 @@ describe('station-docs plugin-authoring topic', () => {
       ],
       [
         'plugin-authoring',
-        'Station builds the bundle itself when the plugin is installed, so a plugin ships source, not a `dist/` folder.',
-      ],
-      [
-        'plugin-authoring',
         'Pane ids and renderer ids are opaque strings, but they are global across every installed plugin: follow the `pane:plugin%3A<plugin-name>:<group>:<name>` and `renderer:plugin%3A<plugin-name>:<renderer kind>:<name>` pattern above so yours cannot collide, write the parts you choose in lowercase, and give every pane its own `id` and its own `rendererId`.',
-      ],
-      [
-        'plugin-authoring',
-        'For local typechecking, `npm install @kontourai/station-sdk react @types/react typescript` in the plugin folder is enough.',
       ],
       [
         'plugin-authoring',
