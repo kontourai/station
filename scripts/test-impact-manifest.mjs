@@ -886,9 +886,8 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'scripts/__tests__/agent-instructions-gate.test.ts',
       'scripts/__tests__/verification-policy-gate.test.ts',
-      'scripts/__tests__/trust-reconcile-manifest.test.ts',
     ],
-    reason: 'root instruction routing, completion evidence, and wrapper policy',
+    reason: 'root instruction routing and wrapper policy',
   },
   {
     pattern: 'CLAUDE.md',

@@ -121,7 +121,7 @@ export function parseLoadReliabilityOptions(args) {
   return options;
 }
 
-export function buildLoadReliabilityPlan(options) {
+function buildLoadReliabilityPlan(options) {
   return {
     lane: 'load-reliability',
     mode: options.run ? 'run' : 'dry',
@@ -145,11 +145,7 @@ export function buildLoadReliabilityPlan(options) {
 }
 
 /** Production samples the host's real one-minute load average. */
-export function createDefaultLoadavg(os = { loadavg: nodeLoadavg }) {
-  return () => os.loadavg();
-}
-
-const defaultLoadavg = createDefaultLoadavg();
+const defaultLoadavg = () => nodeLoadavg();
 
 function loadValue(loadavg) {
   const value = loadavg()[0];

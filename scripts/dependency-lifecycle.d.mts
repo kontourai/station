@@ -1,4 +1,3 @@
-export function resolveNpmCli(env?: NodeJS.ProcessEnv, node?: string): string;
 export const INERT_INSTALL_TIMEOUT_ENV: string;
 export function inertInstallTimeout(
   platform?: NodeJS.Platform,

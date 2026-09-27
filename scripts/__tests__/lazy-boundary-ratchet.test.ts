@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { describe, expect, test } from 'vitest';
 import { countBareMounts } from '../lazy-boundary-ratchet.mjs';
 
@@ -28,3 +29,13 @@ describe('lazy-boundary ratchet source matching', () => {
     ).toBe(0);
   });
 });
+
+test('the gate accepts this repository as a real child process', () => {
+  const result = spawnSync(
+    process.execPath,
+    ['scripts/lazy-boundary-ratchet.mjs'],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr).toBe(0);
+}, 30_000);

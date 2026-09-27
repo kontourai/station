@@ -14,10 +14,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
-  collectWorkspaceProvenance,
-  summarizeAttempts as summarizeReliabilityAttempts,
-  updateHashFromRegularFile as updateReliabilityHashFromRegularFile,
-  writeReceiptSecurely as writeReliabilityReceiptSecurely,
+  summarizeAttempts,
+  updateHashFromRegularFile,
+  writeReceiptSecurely,
 } from '../lib/test-reliability.mjs';
 import {
   PREPUSH_TEST_FILES,
@@ -28,9 +27,6 @@ import {
   collectProvenance,
   parsePrepushOptions,
   runPrepushTier,
-  summarizeAttempts,
-  updateHashFromRegularFile,
-  writeReceiptSecurely,
 } from '../run-prepush-tier.mjs';
 
 const TEST_PROVENANCE = {
@@ -72,15 +68,6 @@ describe('deterministic pre-push tier', () => {
     expect(buildVitestArgs()).toEqual(
       expect.arrayContaining(['--maxWorkers=1', '--no-file-parallelism']),
     );
-  });
-
-  test('keeps schema-v2 pre-push metadata separate from neutral provenance helpers', () => {
-    expect(collectProvenance).not.toBe(collectWorkspaceProvenance);
-    expect(summarizeAttempts).toBe(summarizeReliabilityAttempts);
-    expect(updateHashFromRegularFile).toBe(
-      updateReliabilityHashFromRegularFile,
-    );
-    expect(writeReceiptSecurely).toBe(writeReliabilityReceiptSecurely);
   });
 
   test('preserves schema-v2 provenance key order while adding pre-push metadata', () => {

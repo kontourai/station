@@ -1,6 +1,5 @@
 import { EventEmitter } from 'node:events';
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
@@ -11,8 +10,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
-  buildLoadReliabilityPlan,
-  createDefaultLoadavg,
   executeVerifyLocal,
   isTrackedPath,
   parseLoadReliabilityOptions,
@@ -160,11 +157,6 @@ describe('load-reliability runner', () => {
     ).toThrow(/beneath .kontourai\/test-reliability/);
   });
 
-  test('uses node:os loadavg as the production default without creating load', () => {
-    const loadavg = createDefaultLoadavg({ loadavg: () => [57, 2, 1] });
-    expect(loadavg()).toEqual([57, 2, 1]);
-  });
-
   test('keeps the production suite execution pending until the child closes', async () => {
     const child = new EventEmitter() as EventEmitter & {
       pid?: number;
@@ -226,8 +218,13 @@ describe('load-reliability runner', () => {
           isTracked: () => false,
         }),
       ).not.toThrow();
-      writeFileSync(join(root, output), 'not a receipt directory');
-      expect(existsSync(join(root, output))).toBe(true);
+      // A previous receipt is a regular file: it is replaced, not refused.
+      writeFileSync(join(root, output), '{}');
+      expect(() =>
+        preflightLoadReceiptDestination(output, root, {
+          isTracked: () => false,
+        }),
+      ).not.toThrow();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -295,9 +292,26 @@ describe('load-reliability runner', () => {
     );
     expect(result.exitCode).toBe(0);
     expect(result.receipt).toBeNull();
-    expect(result.plan).toEqual(
-      buildLoadReliabilityPlan(parseLoadReliabilityOptions([])),
-    );
+    expect(result.plan).toEqual({
+      lane: 'load-reliability',
+      mode: 'dry',
+      attempts: 3,
+      requested: {
+        targetLoad: 50,
+        workers: 4,
+        warmupMs: 60_000,
+        sampleIntervalMs: 5_000,
+        deadlineMs: 90 * 60_000,
+        output: '.kontourai/test-reliability/load-reliability-latest.json',
+      },
+      suiteCommand: [
+        process.execPath,
+        'scripts/run-verification.mjs',
+        'request',
+        'verify-local',
+        '--force',
+      ],
+    });
     expect(workers).toEqual([]);
     expect(suiteCalls).toEqual([]);
     expect(receiptCheckpoints).toEqual([]);

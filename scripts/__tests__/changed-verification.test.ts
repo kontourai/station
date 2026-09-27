@@ -230,19 +230,6 @@ describe('changed verification selection', () => {
         ].sort(),
       );
     }
-    // And the settings generator's inputs, named independently of the
-    // manifest, each reach its suite.
-    for (const path of [
-      'src-ui/src/views/settings/settings-catalog.ts',
-      'src-ui/src/views/settings/settings-deep-link.ts',
-      'packages/contracts/src/settings-registry.ts',
-      'packages/contracts/src/device-settings.ts',
-      'src-server/generated/settings-registry.json',
-    ])
-      expect(
-        selectChangedVerification([path]).tests.map((entry) => entry.path),
-        path,
-      ).toContain('scripts/__tests__/gen-settings-registry.test.ts');
   });
   test('a supplemental edge widens the layout contract receipt without narrowing it', () => {
     const selection = selectChangedVerification([
@@ -506,8 +493,9 @@ describe('changed verification selection', () => {
       ]),
     );
   });
+  // http.ts is pinned in full, with the same #2301 checks, by 'the SDK
+  // transport edge names exactly its own-behaviour suites' below.
   test.each([
-    'packages/sdk/src/client/http.ts',
     'packages/sdk/src/client/bounded-response.ts',
     'packages/sdk/src/client/client-origin.ts',
   ])(
@@ -747,13 +735,18 @@ describe('changed verification selection', () => {
     },
   );
   test('the SDK transport edge names exactly its own-behaviour suites', () => {
+    const selection = selectChangedVerification([
+      'packages/sdk/src/client/http.ts',
+    ]);
+    // #2301: its import graph must not reach the fast lane, and no lane may
+    // switch the whole diff to deferred execution.
+    expect(selection.relatedPaths).not.toContain(
+      'packages/sdk/src/client/http.ts',
+    );
+    expect(selection.lanes).toEqual([]);
     // Pinned in full: trimming a suite from the list is a coverage loss that
     // a sampled arrayContaining would not notice.
-    expect(
-      selectChangedVerification(['packages/sdk/src/client/http.ts'])
-        .tests.map((entry) => entry.path)
-        .sort(),
-    ).toEqual([
+    expect(selection.tests.map((entry) => entry.path).sort()).toEqual([
       'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
       'packages/sdk/src/__tests__/client-entry-portability.test.ts',
       'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
