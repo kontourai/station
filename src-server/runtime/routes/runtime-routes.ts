@@ -640,6 +640,7 @@ import {
   resolveStationControlCallerForRequest,
   stationControlCallerRecordSources,
 } from '../mcp/station-control-caller.js';
+import { createStationControlDispatchScope } from '../mcp/station-control-dispatch-scope.js';
 import {
   createStationEngineAvailabilityReader,
   resolveBedrockConnectionAuth,
@@ -1638,6 +1639,52 @@ export function configureRuntimeRoutes(
         getProject: (slug) => context.storageAdapter.getProject(slug),
       }),
     );
+  // #2377 slices C1 and C2a: the server's records for whatever a
+  // station-control call aims at (a steer, an adoption, a dispatch, a
+  // follow-up, an answer), read from the same records as the caller's own
+  // session, for the one scope rule the guard and the dispatch routes apply.
+  const stationControlDispatchScope = createStationControlDispatchScope({
+    resolveRecord: (threadId) => resolveStationControlCallerRecord(threadId),
+    sessionOwnerId: (threadId) =>
+      context.orchestrationService.sessionRecordedOwnerId(threadId),
+    sessionExists: (threadId) =>
+      context.orchestrationService.hasSessionStartRecord(threadId),
+    sessionRunsHost: (threadId) =>
+      context.orchestrationService.sessionRunsHost(threadId),
+    conversationThreads: (threadId) => {
+      const store = context.orchestrationEventStore;
+      const lineage = store?.conversationForSession(threadId);
+      return store && lineage
+        ? store
+            .conversationSessions(lineage.conversationId)
+            .map((session) => session.sessionId)
+        : [];
+    },
+    currentConversationSessionId: (conversationId) =>
+      context.orchestrationService.currentConversationSessionId(conversationId),
+    projectIdForSlug: (slug) => {
+      const id = context.storageAdapter.getProject(slug).id;
+      return typeof id === 'string' && id ? id : undefined;
+    },
+    // The same membership rule as the Project routes: an account principal
+    // holds exactly its membership's actions; any other owner is
+    // unrestricted in its own requests, so it may execute. Approving a
+    // worker's request is the operator's there: no membership row names
+    // anyone else an admin.
+    ownerMay: (ownerId, localProjectId, action) => {
+      if (!isDeploymentAccountPrincipalId(ownerId))
+        return action === 'execute' || ownerId === LOCAL_OPERATOR_PRINCIPAL_ID;
+      if (!context.projectMembership) return false;
+      return context.projectMembership
+        .admissionsForResolvedPrincipal(ownerId)
+        .some(
+          ({ scope, member }) =>
+            scope.localProjectId === localProjectId &&
+            member.status === 'active' &&
+            member.actions.includes(action),
+        );
+    },
+  });
   // #2377 slice A: every request the boundary above stamped `kind:'internal'`
   // (every station-control tool call, and Station's own server code) is
   // decided here from the station-control authority table, before any route
@@ -1662,21 +1709,13 @@ export function configureRuntimeRoutes(
           () => schedulerService.listJobs(),
           unattendedGrantStore,
         ),
-      // Slice C1: the thread a `steerTurn` or `adoptSession` names, read
-      // from the same records the caller's own session is: its owner and
-      // session-record Project (`resolveStationControlCallerRecord`), and
-      // whether it runs unconfined.
-      commandThread: (threadId) => {
-        const record = resolveStationControlCallerRecord(threadId);
-        return {
-          ...(record?.principal ? { ownerId: record.principal.id } : {}),
-          ...(record?.projectIdSource === 'session-record' &&
-          record.localProjectId
-            ? { localProjectId: record.localProjectId }
-            : {}),
-          host: context.orchestrationService.sessionRunsHost(threadId),
-        };
-      },
+      // Slices C1 and C2a: the thread a `steerTurn` or `adoptSession` names.
+      commandThread: (threadId) =>
+        stationControlDispatchScope.target({
+          kind: 'thread',
+          threadId,
+          remote: false,
+        }),
       onRefusal: (refusal, method, path) =>
         context.logger.warn(
           `station-control authority refused ${method} ${path}: ${refusal.code}`,
@@ -3664,6 +3703,7 @@ export function configureRuntimeRoutes(
       // verified session's owner, or is marked unattributed; never silently
       // as the operator the internal token resolves to.
       resolveAgentDispatchActor,
+      stationControlDispatchScope,
       isRequestPrincipalCurrent,
       answerAssessmentModule,
       answerNarrativeBindingModule,

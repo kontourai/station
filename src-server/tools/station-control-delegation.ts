@@ -2029,6 +2029,9 @@ async function connectSshTarget(
     `${currentControlApiBase()}/api/environments/ssh`,
     trustedRequest(),
     'Saved SSH environments are unavailable',
+    // This Station's own control API: its typed refusal (#2377 slice C2a,
+    // a remote target needs a bound operator) reaches the agent.
+    { kind: 'current' },
   );
   if (!list.success || !Array.isArray(list.data)) {
     throw new Error(list.error || 'Saved SSH environments are unavailable');
@@ -2062,6 +2065,7 @@ async function connectSshTarget(
     `${currentControlApiBase()}/api/environments/ssh/${encodeURIComponent(saved.profile.id)}/connect`,
     trustedRequest({ method: 'POST' }),
     'The selected SSH environment could not be connected',
+    { kind: 'current' },
   );
   const view = connected.data;
   if (!connected.success || !view) {
@@ -2173,9 +2177,12 @@ async function fetchPeerCredential(
     );
   }
   if (!response.ok || !payload.success || !payload.data) {
-    throw new Error(
-      payload.error || 'The selected peer environment is unavailable',
-    );
+    const message =
+      payload.error || 'The selected peer environment is unavailable';
+    // This Station's own credential leaf: its typed refusal (#2377 slice
+    // C2a) reaches the agent.
+    const cause = localRefusalOf({ kind: 'current' }, payload, message);
+    throw new Error(message, cause ? { cause } : undefined);
   }
   return payload.data;
 }
