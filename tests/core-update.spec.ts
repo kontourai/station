@@ -250,3 +250,113 @@ test.describe('Core Update Flow', () => {
     });
   });
 });
+
+test.describe('Release archive run by the service launcher (#2675 D3)', () => {
+  const REQUEST_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+  const archiveStatus = (serviceUpdate: unknown) =>
+    JSON.stringify({
+      installKind: 'archive-service',
+      applyMethod: 'service-update',
+      channel: 'preview',
+      currentVersion: '0.8.0-preview.1',
+      latestVersion: '0.8.0-preview.2',
+      releaseCheck: 'verified',
+      updateAvailable: true,
+      serverIdentity: ANSWER_IDENTITY,
+      provenanceIssue: null,
+      technicalDetail: null,
+      selfUpdateUnavailableReason: null,
+      selfUpdateUnavailableCode: null,
+      serviceUpdate,
+    });
+
+  test('offers the verified release, follows the service update, and shows its rollback', async ({
+    page,
+  }, testInfo) => {
+    await seedRoutes(page);
+    let progress: unknown = { state: 'idle' };
+    await page.route('**/api/system/core-update/service-update', (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(progress),
+      }),
+    );
+    await page.route('**/api/system/core-update', (r) => {
+      if (r.request().method() === 'GET') {
+        return r.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: archiveStatus(progress),
+        });
+      }
+      if (r.request().method() === 'POST') {
+        progress = {
+          state: 'updating',
+          requestId: REQUEST_ID,
+          phase: 'trial',
+          fromVersion: '0.8.0-preview.1',
+          targetVersion: '0.8.0-preview.2',
+          attempts: 1,
+        };
+        return r.fulfill({
+          status: 202,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            serviceUpdate: { requestId: REQUEST_ID },
+            message: 'Update requested.',
+          }),
+        });
+      }
+      return r.continue();
+    });
+
+    await page.goto('/settings');
+    await page
+      .getByRole('button', { name: /Check for server updates/ })
+      .click();
+    const serverCard = page.locator('[data-catalog-id="core-app-updates"]');
+    const apply = serverCard.getByRole('button', {
+      name: 'Update server to 0.8.0-preview.2',
+    });
+    await expect(apply).toBeVisible({ timeout: 10000 });
+    await expect(
+      serverCard.getByText(
+        'Station 0.8.0-preview.2 is available. This server runs 0.8.0-preview.1.',
+      ),
+    ).toBeVisible();
+    await expect(serverCard.getByText(/Source update/)).toHaveCount(0);
+    await serverCard.scrollIntoViewIfNeeded();
+    await serverCard.screenshot({
+      path: testInfo.outputPath('archive-update-offer.png'),
+    });
+
+    await apply.click();
+    await expect(
+      serverCard.getByText(
+        'Trying Station 0.8.0-preview.2 (attempt 1). The server restarts during the trial.',
+      ),
+    ).toBeVisible({ timeout: 10000 });
+    await serverCard.screenshot({
+      path: testInfo.outputPath('archive-update-trial.png'),
+    });
+
+    progress = {
+      state: 'rolled-back',
+      requestId: REQUEST_ID,
+      fromVersion: '0.8.0-preview.1',
+      targetVersion: '0.8.0-preview.2',
+      reason: 'prepared-timeout',
+      finishedAt: new Date().toISOString(),
+    };
+    await expect(
+      serverCard.getByText(
+        /The update to 0\.8\.0-preview\.2 was rolled back: the new version did not become ready in time\. The server runs 0\.8\.0-preview\.1/,
+      ),
+    ).toBeVisible({ timeout: 10000 });
+    await serverCard.screenshot({
+      path: testInfo.outputPath('archive-update-rolled-back.png'),
+    });
+  });
+});
