@@ -7,7 +7,6 @@ import {
   fileHasLiveEmptyClass,
   fileRendersUnguardedEmpty,
   findEmptyFamilyFiles,
-  findUnguardedEmptyFiles,
   PRE_SHELL_LOADING_EXCLUSIONS,
   runEmptyFamilyCheck,
   S4_DEFERRED_EXCLUSIONS,
@@ -17,6 +16,7 @@ import {
   scanFabricatedLoadingFile,
   scanLoadingStrings,
   scanLoadingStringsFile,
+  scanUnguardedEmpty,
   scanUnguardedEmptyFile,
   splitTopLevelChunks,
   TEXT_NODE_PATTERN,
@@ -542,10 +542,10 @@ describe('state-primitives-ratchet', () => {
     it('skips test files', () => {
       const content = 'const { isPending } = useQ();\n<Empty label="x" />';
       expect(
-        findUnguardedEmptyFiles(
+        scanUnguardedEmpty(
           ['src-ui/src/__tests__/A.test.tsx', 'src-ui/src/B.tsx'],
           () => content,
-        ),
+        ).map((finding) => finding.file),
       ).toEqual(['src-ui/src/B.tsx']);
     });
   });

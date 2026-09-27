@@ -2,16 +2,18 @@
  * Seals a payload to one registered phone: AES-256-GCM under that
  * registration's own payload key, a fresh 12-byte random nonce, a 128-bit
  * tag, and the registrationId bound in as additional authenticated data
- * after a per-kind prefix. The push gateway and FCM carry only the result
- * and routing data. Format: `@kontourai/station-contracts/native-push` —
- * the agent-activity card (`NATIVE_PUSH_SEALED_AAD_PREFIX`,
- * `NATIVE_PUSH_SEALED_TEST_VECTOR`) and a Station notification
+ * after a per-kind prefix. The push gateway and FCM/APNs carry only the
+ * result and routing data. Format: `@kontourai/station-contracts/native-push`
+ * — the agent-activity card (`NATIVE_PUSH_SEALED_AAD_PREFIX`,
+ * `NATIVE_PUSH_SEALED_TEST_VECTOR`), an Android Station notification
  * (`NATIVE_PUSH_NOTIFICATION_AAD_PREFIX`,
- * `NATIVE_PUSH_NOTIFICATION_TEST_VECTOR`). The prefix keeps one kind from
- * opening as the other.
+ * `NATIVE_PUSH_NOTIFICATION_TEST_VECTOR`) and an iOS notification alert
+ * (`NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX`). The prefix keeps one kind from
+ * opening as another.
  */
 import { createCipheriv, randomBytes } from 'node:crypto';
 import {
+  NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX,
   NATIVE_PUSH_NOTIFICATION_AAD_PREFIX,
   NATIVE_PUSH_SEALED_AAD_PREFIX,
 } from '@kontourai/station-contracts/native-push';
@@ -51,6 +53,12 @@ export function sealAgentActivityCard(input: SealInput): string {
   return seal(NATIVE_PUSH_SEALED_AAD_PREFIX, input);
 }
 
+/** Android (#2588): a Station notification delivered over FCM. */
 export function sealStationNotification(input: SealInput): string {
   return seal(NATIVE_PUSH_NOTIFICATION_AAD_PREFIX, input);
+}
+
+/** iOS (#2589): a notification alert delivered over APNs. */
+export function sealApnsAlert(input: SealInput): string {
+  return seal(NATIVE_PUSH_ALERT_SEALED_AAD_PREFIX, input);
 }
