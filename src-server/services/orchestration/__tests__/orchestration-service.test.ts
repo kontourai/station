@@ -20,6 +20,7 @@ import {
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type { ConnectionRecoveryIntent } from '@kontourai/station-contracts/connection-recovery';
 import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestration';
 import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
@@ -10795,20 +10796,113 @@ describe('OrchestrationService', () => {
       false,
     );
     expect(isRestarting?.('loop-guard-thread')).toBe(false);
-    // The WRITER edge — the ctor's `setRestarting` closure handed to
-    // createCredentialRecoveryModule — is a closure no runtime probe can
-    // reach without driving a full recovery dispatch, so it is pinned as a
-    // source invariant: the option must forward to the module's method
-    // (review round 1: neutering that one closure would leave isRestarting
-    // permanently false and let a credential-restart loop run unbounded).
-    const ctorSource = readFileSync(
-      join(__dirname, '..', 'orchestration-service.ts'),
-      'utf8',
-    );
-    expect(ctorSource).toContain(
-      'setRestarting: (threadId, restarting) =>\n' +
-        '            this.credentialProfileRecovery.setRestarting(threadId, restarting),',
-    );
+  });
+
+  test('a real credential-profile recovery marks its thread restarting for exactly the dispatch (slice 7 I5 writer)', async () => {
+    // The WRITER edge of the loop guard: the ctor's `setRestarting` closure
+    // handed to createCredentialRecoveryModule. Neutering it leaves
+    // isCredentialRestarting permanently false, and the coordinator then
+    // cancels the recovery it is running when the restart exits the session
+    // (review round 1). Driven through the composed module, dispatch adapter
+    // and provider restart; observed through the coordinator's own reader.
+    const adapter = new FakeAdapter('codex');
+    const now = () => new Date().toISOString();
+    const restartService = new OrchestrationService({
+      adapterRegistry: createRegistry([adapter]),
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+      credentialProfileRecoveryAdapter: {
+        stage: async (input) => {
+          const application = eventStore
+            .createCredentialApplicationFactory()
+            .start({
+              recoveryFingerprint: input.recoveryFingerprint,
+              connectionId: input.provider,
+              candidateProfileRef: 'loop-guard-profile',
+              now: now(),
+            });
+          if (application.kind !== 'owner') return { kind: 'indeterminate' };
+          application.claim.staged(now());
+          return {
+            kind: 'staged',
+            attempt: {
+              candidateProfileRef: 'loop-guard-profile',
+              capability: 'restart_resume',
+              commit: async () => ({ kind: 'adopted' }),
+              rollback: async () => ({ kind: 'rolled-back' }),
+              inspect: async () => ({ kind: 'staged' }),
+              acknowledge: async () => ({ kind: 'applied' }),
+            },
+          };
+        },
+      },
+    });
+    const internals = restartService as unknown as {
+      credentialRecovery?: {
+        recover(observation: {
+          intent: ConnectionRecoveryIntent;
+          replay: {
+            threadId: string;
+            input: string;
+            recoveryCorrelationId: string;
+            signal: AbortSignal;
+          };
+        }): Promise<{ kind: string }>;
+      };
+      recoveryCoordinator?: {
+        options: { isCredentialRestarting?: (threadId: string) => boolean };
+      };
+    };
+    const isRestarting =
+      internals.recoveryCoordinator?.options.isCredentialRestarting;
+    expect(internals.credentialRecovery).toBeDefined();
+    expect(isRestarting).toBeDefined();
+
+    const threadId = 'loop-guard-real-recovery';
+    await restartService.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'codex' },
+    });
+    const restartObservations: boolean[] = [];
+    const startDefault = adapter.startSession.getMockImplementation()!;
+    adapter.startSession.mockImplementationOnce(async (input) => {
+      restartObservations.push(isRestarting!(threadId));
+      return startDefault(input);
+    });
+    const intent = eventStore.createRecoveryLedger().arm({
+      fingerprint: `${threadId}:turn-1:capacity:account`,
+      threadId,
+      provider: 'codex',
+      sourceEventId: 'loop-guard-source',
+      sourceTurnId: 'turn-1',
+      failureKind: 'capacity',
+      scope: 'account',
+      decision: 'retry-now',
+      dueAt: now(),
+      maxAttempts: 1,
+      outcome: 'armed',
+      createdAt: now(),
+      updatedAt: now(),
+    });
+
+    expect(isRestarting!(threadId)).toBe(false);
+    const outcome = await internals.credentialRecovery!.recover({
+      intent,
+      replay: {
+        threadId,
+        input: 'replayed prompt',
+        recoveryCorrelationId: 'loop-guard-correlation',
+        signal: new AbortController().signal,
+      },
+    });
+
+    // The restart reached the provider, and the guard was up while it ran.
+    expect(restartObservations).toEqual([true]);
+    expect(outcome.kind).not.toBe('conflicted');
+    // ...and is released afterwards, so a later exit is not suppressed.
+    expect(isRestarting!(threadId)).toBe(false);
+    await restartService.shutdown();
   });
 
   test('BOTH REAL HALVES: a restart whose REPLAY dispatch fails still pushes "needs attention" for the stopped turn (slice 7 I7 guard)', async () => {

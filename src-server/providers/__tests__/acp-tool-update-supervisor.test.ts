@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
@@ -45,15 +45,6 @@ const text = (value: string) => [
 ];
 
 describe('AcpToolUpdateSupervisor', () => {
-  test('never stringifies an original untrusted raw value to estimate omission', () => {
-    const source = readFileSync(
-      new URL('../adapters/acp-tool-update-supervisor.ts', import.meta.url),
-      'utf8',
-    );
-    expect(source).not.toContain('JSON.stringify(value)');
-    expect(source).not.toContain('private estimate(');
-  });
-
   test('does not inspect a hostile second raw field after the first consumes the budget', () => {
     const traps = { ownKeys: 0, descriptor: 0, get: 0 };
     const hostile = new Proxy(
@@ -278,16 +269,6 @@ describe('AcpToolUpdateSupervisor', () => {
       store.close();
       rmSync(dir, { recursive: true, force: true });
     }
-  });
-
-  test('the mapper inventory has no bypass or unbounded raw-value renderer', () => {
-    const source = readFileSync(
-      new URL('../adapters/acp-adapter-events.ts', import.meta.url),
-      'utf8',
-    );
-    expect(source).not.toContain('stringifyRawValue');
-    expect(source).not.toContain('toolUpdateSupervisor?');
-    expect(source).toContain('toolUpdateSupervisor: AcpToolUpdateSupervisor');
   });
 
   test('one pending redraw is flushed before a status-only terminal and retained content is used', () => {

@@ -3,7 +3,6 @@ import {
   createPublicIngressOriginResolver,
   createTailscaleCli,
   parseMagicDnsHost,
-  parseServePublicOrigin,
   parseServePublicOrigins,
   TAILSCALE_MACOS_APP_CLI,
   type TailscaleCliResult,
@@ -58,15 +57,15 @@ describe('parseMagicDnsHost', () => {
   });
 });
 
-describe('parseServePublicOrigin', () => {
+describe('parseServePublicOrigins', () => {
   const host = 'kontour.python-smelt.ts.net';
 
   test('finds the origin serving the UI proxy port', () => {
     // The topology that actually ships: serve fronts the UI proxy, which
     // forwards the pairing paths to the API.
-    expect(parseServePublicOrigin(SERVE_JSON, host, [3141, 3000])).toBe(
+    expect(parseServePublicOrigins(SERVE_JSON, host, [3141, 3000])).toEqual([
       'https://kontour.python-smelt.ts.net',
-    );
+    ]);
   });
 
   test('finds the origin serving the API port directly', () => {
@@ -77,9 +76,9 @@ describe('parseServePublicOrigin', () => {
         },
       },
     });
-    expect(parseServePublicOrigin(serve, host, [3141, 3000])).toBe(
+    expect(parseServePublicOrigins(serve, host, [3141, 3000])).toEqual([
       'https://kontour.python-smelt.ts.net',
-    );
+    ]);
   });
 
   test('keeps a non-default serve port in the origin', () => {
@@ -90,15 +89,15 @@ describe('parseServePublicOrigin', () => {
         },
       },
     });
-    expect(parseServePublicOrigin(serve, host, [3000])).toBe(
+    expect(parseServePublicOrigins(serve, host, [3000])).toEqual([
       'https://kontour.python-smelt.ts.net:8443',
-    );
+    ]);
   });
 
   test('ignores mappings that are not this Station', () => {
     // A serve config routinely carries unrelated mappings; claiming one of
     // them would publish another service's address as a pairing endpoint.
-    expect(parseServePublicOrigin(SERVE_JSON, host, [3141])).toBeUndefined();
+    expect(parseServePublicOrigins(SERVE_JSON, host, [3141])).toBeUndefined();
   });
 
   test('ignores a mapping published for a different host', () => {
@@ -109,7 +108,7 @@ describe('parseServePublicOrigin', () => {
         },
       },
     });
-    expect(parseServePublicOrigin(serve, host, [3000])).toBeUndefined();
+    expect(parseServePublicOrigins(serve, host, [3000])).toBeUndefined();
   });
 
   test('ignores a mapping that only serves a subpath', () => {
@@ -122,7 +121,7 @@ describe('parseServePublicOrigin', () => {
         },
       },
     });
-    expect(parseServePublicOrigin(serve, host, [3000])).toBeUndefined();
+    expect(parseServePublicOrigins(serve, host, [3000])).toBeUndefined();
   });
 
   test('ignores a proxy target that is not loopback', () => {
@@ -133,7 +132,7 @@ describe('parseServePublicOrigin', () => {
         },
       },
     });
-    expect(parseServePublicOrigin(serve, host, [3000])).toBeUndefined();
+    expect(parseServePublicOrigins(serve, host, [3000])).toBeUndefined();
   });
 
   test('prefers the default HTTPS port when several listeners reach it', () => {
@@ -147,9 +146,10 @@ describe('parseServePublicOrigin', () => {
         },
       },
     });
-    expect(parseServePublicOrigin(serve, host, [3000])).toBe(
+    expect(parseServePublicOrigins(serve, host, [3000])).toEqual([
       'https://kontour.python-smelt.ts.net',
-    );
+      'https://kontour.python-smelt.ts.net:8443',
+    ]);
   });
 
   test('retains every daemon-validated listener targeting the same local port', () => {
@@ -174,9 +174,9 @@ describe('parseServePublicOrigin', () => {
   });
 
   test('survives malformed serve output', () => {
-    expect(parseServePublicOrigin('not json', host, [3000])).toBeUndefined();
+    expect(parseServePublicOrigins('not json', host, [3000])).toBeUndefined();
     expect(
-      parseServePublicOrigin(JSON.stringify({}), host, [3000]),
+      parseServePublicOrigins(JSON.stringify({}), host, [3000]),
     ).toBeUndefined();
   });
 });
