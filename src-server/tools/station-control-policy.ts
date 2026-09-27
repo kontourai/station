@@ -114,8 +114,15 @@ export type StationControlHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
  *   connection default loosen it as surely as `never`). An agent must not
  *   approve its own requests or loosen its own approvals, so both need a
  *   bound operator caller (decision 3 names bound + Project approve for
- *   respond, which slice C adds; until then only the operator). `steerTurn`
- *   is dispatch and stays with slice C.
+ *   respond, which slice C adds; until then only the operator).
+ * - `steer-needs-own-thread` (slice C1): the same leaf also carries
+ *   `steerTurn`, which injects input into a live turn. An agent may steer
+ *   only a thread whose recorded owner is the principal its own session
+ *   acts for (the ownership record slice B reads). A bound operator caller
+ *   keeps the operator's reach (decision 3: dispatch beyond the caller's own
+ *   scope needs bound + operator); the route's own session authorization
+ *   still applies to it. The guard reads the thread's owner
+ *   (`commandThreadOwnerId`); an owner it could not read refuses.
  * - `retarget-of-granted-job-is-person-only`: an unattended grant a person
  *   gave a scheduled job is keyed by the job, not by what it runs. Changing a
  *   granted job's prompt, agent, provider or monitor (a monitor dispatch runs
@@ -125,11 +132,12 @@ export type StationControlHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
  */
 export type StationControlRouteRule =
   | 'approval-commands-need-bound-operator'
+  | 'steer-needs-own-thread'
   | 'retarget-of-granted-job-is-person-only';
 
 export interface StationControlRoute {
   readonly method: StationControlHttpMethod;
-  readonly rule?: StationControlRouteRule;
+  readonly rules?: readonly StationControlRouteRule[];
   /**
    * A path pattern: literal segments and `:name` segments, each `:name`
    * matching exactly one non-empty segment. No wildcards: every leaf a tool
@@ -165,12 +173,20 @@ export interface StationControlToolPolicy {
 const get = (path: string): StationControlRoute => ({ method: 'GET', path });
 const post = (
   path: string,
-  rule?: StationControlRouteRule,
-): StationControlRoute => ({ method: 'POST', path, ...(rule ? { rule } : {}) });
+  ...rules: StationControlRouteRule[]
+): StationControlRoute => ({
+  method: 'POST',
+  path,
+  ...(rules.length > 0 ? { rules } : {}),
+});
 const put = (
   path: string,
-  rule?: StationControlRouteRule,
-): StationControlRoute => ({ method: 'PUT', path, ...(rule ? { rule } : {}) });
+  ...rules: StationControlRouteRule[]
+): StationControlRoute => ({
+  method: 'PUT',
+  path,
+  ...(rules.length > 0 ? { rules } : {}),
+});
 const del = (path: string): StationControlRoute => ({ method: 'DELETE', path });
 
 /**
@@ -262,7 +278,11 @@ export const DISPATCH_ROUTES: readonly StationControlRoute[] = [
   get('/api/orchestration/delegations/:taskId/events'),
   post('/api/orchestration/delegations/:taskId/continue'),
   post('/api/orchestration/delegations/:taskId/interrupt'),
-  post('/api/orchestration/commands', 'approval-commands-need-bound-operator'),
+  post(
+    '/api/orchestration/commands',
+    'approval-commands-need-bound-operator',
+    'steer-needs-own-thread',
+  ),
   get('/api/orchestration/sessions/read-model'),
   get('/api/orchestration/sessions/:threadId'),
   get('/api/orchestration/sessions/:threadId/event-page'),
@@ -820,6 +840,13 @@ export interface StationControlPolicyContext {
    * (it reads the grant store); absent means it does not.
    */
   readonly retargetsGrantedJob?: boolean;
+  /**
+   * For `steer-needs-own-thread`: the recorded owner of the thread a
+   * `steerTurn` names. Only the server can know it; `undefined` means the
+   * thread has no recorded owner or the guard could not read one, and
+   * either refuses.
+   */
+  readonly commandThreadOwnerId?: string;
 }
 
 const ASSURANCE_RANK = {
@@ -942,8 +969,8 @@ function buildRouteIndex(): readonly IndexedRoute[] {
       };
       entry.owners.push(owner);
       entry.policies.push(policy);
-      if (route.rule && !entry.rules.includes(route.rule))
-        entry.rules.push(route.rule);
+      for (const rule of route.rules ?? [])
+        if (!entry.rules.includes(rule)) entry.rules.push(rule);
       byKey.set(key, entry);
     }
   };
@@ -1030,6 +1057,78 @@ const APPROVAL_COMMANDS: ReadonlySet<string> = new Set([
   'setApprovalMode',
 ]);
 
+/** The `type` of an `/api/orchestration/commands` body, if it has one. */
+function commandType(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const type = (body as { type?: unknown }).type;
+  return typeof type === 'string' ? type : undefined;
+}
+
+function isOperatorCaller(
+  caller: StationControlPolicyCaller,
+  context: StationControlPolicyContext,
+): boolean {
+  const isOperator =
+    context.isOperatorPrincipal ??
+    ((id: string) => id === STATION_CONTROL_OPERATOR_PRINCIPAL_ID);
+  return (
+    caller.principal?.elevationEligible === true &&
+    isOperator(caller.principal.id)
+  );
+}
+
+/** `approval-commands-need-bound-operator`. */
+function approvalCommandRefusal(
+  context: StationControlPolicyContext,
+): StationControlRefusal | undefined {
+  const type = commandType(context.body);
+  if (type === undefined || !APPROVAL_COMMANDS.has(type)) return undefined;
+  const caller = context.caller;
+  if (!caller) return stationControlRefusal('station_control_caller_required');
+  if (caller.assurance !== 'bound')
+    return stationControlRefusal('station_control_assurance_insufficient');
+  if (!isOperatorCaller(caller, context))
+    return stationControlRefusal('station_control_role_required');
+  return undefined;
+}
+
+/**
+ * `steer-needs-own-thread`: a `steerTurn` names a thread its caller's session
+ * owner owns, or the caller is a bound operator. Past its own threads the
+ * refusal names what would have admitted it: an operator-owned session
+ * short of `bound` needs a stronger credential; anyone else needs to be the
+ * operator.
+ */
+function steerRefusal(
+  context: StationControlPolicyContext,
+): StationControlRefusal | undefined {
+  if (commandType(context.body) !== 'steerTurn') return undefined;
+  const caller = context.caller;
+  if (!caller) return stationControlRefusal('station_control_caller_required');
+  const operator = isOperatorCaller(caller, context);
+  if (operator && caller.assurance === 'bound') return undefined;
+  const owner = caller.principal?.id;
+  if (owner !== undefined && owner === context.commandThreadOwnerId)
+    return undefined;
+  return stationControlRefusal(
+    operator
+      ? 'station_control_assurance_insufficient'
+      : 'station_control_role_required',
+  );
+}
+
+const ROUTE_RULE_REFUSALS: Record<
+  StationControlRouteRule,
+  (context: StationControlPolicyContext) => StationControlRefusal | undefined
+> = {
+  'approval-commands-need-bound-operator': approvalCommandRefusal,
+  'steer-needs-own-thread': steerRefusal,
+  'retarget-of-granted-job-is-person-only': (context) =>
+    context.retargetsGrantedJob
+      ? stationControlRefusal('station_control_person_only')
+      : undefined,
+};
+
 /**
  * The leaf's own body-dependent rules, applied after some tool's policy
  * admitted the request (so no tool reaching the leaf can loosen them).
@@ -1039,31 +1138,8 @@ function routeRuleRefusal(
   context: StationControlPolicyContext,
 ): StationControlRefusal | undefined {
   for (const rule of rules) {
-    if (rule === 'retarget-of-granted-job-is-person-only') {
-      if (context.retargetsGrantedJob)
-        return stationControlRefusal('station_control_person_only');
-      continue;
-    }
-    const body = context.body;
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      !APPROVAL_COMMANDS.has(String((body as { type?: unknown }).type))
-    )
-      continue;
-    const caller = context.caller;
-    if (!caller)
-      return stationControlRefusal('station_control_caller_required');
-    if (caller.assurance !== 'bound')
-      return stationControlRefusal('station_control_assurance_insufficient');
-    const isOperator =
-      context.isOperatorPrincipal ??
-      ((id: string) => id === STATION_CONTROL_OPERATOR_PRINCIPAL_ID);
-    if (
-      !caller.principal?.elevationEligible ||
-      !isOperator(caller.principal.id)
-    )
-      return stationControlRefusal('station_control_role_required');
+    const refusal = ROUTE_RULE_REFUSALS[rule](context);
+    if (refusal) return refusal;
   }
   return undefined;
 }

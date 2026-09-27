@@ -525,10 +525,8 @@ describe('station-control authority: route matching and refusals', () => {
           mode,
         }),
       ).toBe('station_control_assurance_insufficient');
-    // Other commands keep the dispatch policy (slice C), steerTurn included.
-    expect(
-      decide(CALLERS['bearer-operator'] ?? null, { type: 'steerTurn' }),
-    ).toBeUndefined();
+    // Other commands keep the dispatch policy (slice C); steerTurn has its
+    // own rule (below).
     expect(
       decide(CALLERS['bearer-operator'] ?? null, { type: 'interruptTurn' }),
     ).toBeUndefined();
@@ -540,6 +538,54 @@ describe('station-control authority: route matching and refusals', () => {
         { caller: CALLERS['bearer-operator'] ?? null, isOperatorPrincipal },
       )?.code,
     ).toBe('station_control_assurance_insufficient');
+  });
+
+  test('slice C1: a steerTurn reaches only the caller’s own threads, unless the caller is a bound operator', () => {
+    const OTHER = 'human:local:someone-else';
+    const decide = (
+      caller: StationControlPolicyCaller | null,
+      commandThreadOwnerId: string | undefined,
+    ) =>
+      authorizeStationControlRequest('POST', '/api/orchestration/commands', {
+        caller,
+        isOperatorPrincipal,
+        body: { type: 'steerTurn', threadId: 't', input: 'go' },
+        ...(commandThreadOwnerId ? { commandThreadOwnerId } : {}),
+      })?.code;
+    // Its own owner's thread, at every assurance.
+    for (const name of [
+      'bound-operator',
+      'delegated-operator',
+      'bearer-operator',
+    ])
+      expect([name, decide(CALLERS[name] ?? null, OPERATOR)]).toEqual([
+        name,
+        undefined,
+      ]);
+    expect(
+      decide(CALLERS['bound-other-person'] ?? null, OTHER),
+    ).toBeUndefined();
+    // Another owner's thread, or one with no recorded owner.
+    for (const owner of [OTHER, undefined]) {
+      expect(decide(CALLERS['bound-operator'] ?? null, owner)).toBeUndefined();
+      expect(decide(CALLERS['delegated-operator'] ?? null, owner)).toBe(
+        'station_control_assurance_insufficient',
+      );
+      expect(decide(CALLERS['bearer-operator'] ?? null, owner)).toBe(
+        'station_control_assurance_insufficient',
+      );
+      expect(decide(CALLERS['bound-operator-inferred'] ?? null, owner)).toBe(
+        'station_control_role_required',
+      );
+    }
+    expect(decide(CALLERS['bound-other-person'] ?? null, OPERATOR)).toBe(
+      'station_control_role_required',
+    );
+    expect(decide(null, OPERATOR)).toBe('station_control_caller_required');
+    // A caller with no recorded owner owns nothing, even an ownerless thread.
+    expect(decide({ assurance: 'bound' }, undefined)).toBe(
+      'station_control_role_required',
+    );
   });
 
   test('retargeting a granted job is a person’s step even for the bound operator', () => {

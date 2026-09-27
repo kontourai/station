@@ -1662,6 +1662,11 @@ export function configureRuntimeRoutes(
           () => schedulerService.listJobs(),
           unattendedGrantStore,
         ),
+      // Slice C1: whose thread a `steerTurn` names, from the same ownership
+      // record the caller's own principal is read from.
+      sessionOwnerId: (threadId) =>
+        context.orchestrationService.resolveSessionActingPrincipal(threadId)
+          ?.id,
       onRefusal: (refusal, method, path) =>
         context.logger.warn(
           `station-control authority refused ${method} ${path}: ${refusal.code}`,

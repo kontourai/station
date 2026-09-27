@@ -40,6 +40,8 @@ import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 const support = vi.hoisted(() => ({
   notificationService: undefined as unknown,
+  /** Every command the real `/commands` route handed to the service. */
+  dispatched: [] as string[],
 }));
 
 vi.mock('../runtime-route-support.js', () => {
@@ -81,6 +83,7 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
     if (originalHosted === undefined) delete process.env[HOSTED_ENV];
     else process.env[HOSTED_ENV] = originalHosted;
     __resetStationControlMcpTokensForTests();
+    support.dispatched.length = 0;
     for (const close of closers.splice(0)) await close();
   });
 
@@ -136,6 +139,14 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
                 }
               : undefined,
         canUserReadSession: () => true,
+        // The real `/commands` route's hand-off: "reached the service".
+        dispatchWithReceipt: async (command: {
+          type: string;
+          threadId?: string;
+        }) => {
+          support.dispatched.push(`${command.type} ${command.threadId}`);
+          return { receipt: { commandId: 'c', status: 'accepted' } };
+        },
         // The start record of the calling session: its agent, and a
         // model-written delegation root that must choose nothing.
         firstStartedMetadataOfThread: () => undefined,
@@ -321,5 +332,117 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
     } finally {
       delete process.env.STATION_API_BASE;
     }
+  });
+
+  // #2377 slice C1: `steerTurn` on `/commands` reaches only the caller's own
+  // threads. The thread's owner is read by the production composition
+  // (`resolveSessionActingPrincipal`, the same record the caller's own
+  // principal comes from): `op-` threads are the operator's, `person-`
+  // threads another person's, anything else has no recorded owner.
+  test('slice C1: an agent steers only its own owner’s threads; the operator UI steers any', async () => {
+    const { base } = await setup();
+    const steer = (threadId: string) => ({
+      type: 'steerTurn',
+      threadId,
+      input: 'also check the tests',
+    });
+    const cases: Array<
+      [string, () => Record<string, string>, string, string | 'passed-guard']
+    > = [
+      // Its own owner's thread, at either assurance.
+      [
+        'bearer op→op',
+        () => callerFor('op-codex', 'url-token'),
+        'op-thread',
+        'passed-guard',
+      ],
+      [
+        'bound person→person',
+        () => callerFor('person-claude', 'sdk-in-process'),
+        'person-thread',
+        'passed-guard',
+      ],
+      // Another owner's thread.
+      [
+        'bearer op→person',
+        () => callerFor('op-codex', 'url-token'),
+        'person-thread',
+        'station_control_assurance_insufficient',
+      ],
+      [
+        'bound person→op',
+        () => callerFor('person-claude', 'sdk-in-process'),
+        'op-thread',
+        'station_control_role_required',
+      ],
+      [
+        'bearer person→op',
+        () => callerFor('person-codex', 'url-token'),
+        'op-thread',
+        'station_control_role_required',
+      ],
+      // A thread with no recorded owner is nobody's own.
+      [
+        'bearer op→ownerless',
+        () => callerFor('op-codex', 'url-token'),
+        'x-thread',
+        'station_control_assurance_insufficient',
+      ],
+      // The bound operator keeps the operator's reach (decision 3).
+      [
+        'bound op→person',
+        () => callerFor('op-claude', 'sdk-in-process'),
+        'person-thread',
+        'passed-guard',
+      ],
+      // No caller at all: dispatch is not a read (decision 4).
+      [
+        'raw token→op',
+        () => internal(),
+        'op-thread',
+        'station_control_caller_required',
+      ],
+    ];
+    // Minted per request: a new mint for a session replaces its last token.
+    for (const [label, headers, threadId, expected] of cases)
+      expect([
+        label,
+        await outcome(
+          base,
+          'POST',
+          '/api/orchestration/commands',
+          headers(),
+          steer(threadId),
+        ),
+      ]).toEqual([label, expected]);
+    // The allowed steers reached the service through the real route; the
+    // refused ones never did.
+    expect(support.dispatched).toEqual([
+      'steerTurn op-thread',
+      'steerTurn person-thread',
+      'steerTurn person-thread',
+    ]);
+
+    // The operator's UI is never an internal request: it steers any thread,
+    // and the route hands it to the service.
+    support.dispatched.length = 0;
+    for (const threadId of ['op-thread', 'person-thread', 'x-thread'])
+      expect(
+        await outcome(
+          base,
+          'POST',
+          '/api/orchestration/commands',
+          {
+            'content-type': 'application/json',
+            authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+          },
+          steer(threadId),
+        ),
+      ).toBe('passed-guard');
+    expect(support.dispatched).toEqual([
+      'steerTurn op-thread',
+      'steerTurn person-thread',
+      'steerTurn x-thread',
+    ]);
   });
 });

@@ -123,6 +123,12 @@ export interface StationControlAuthorityGuardOptions {
     jobName: string,
     changes: Record<string, unknown>,
   ): boolean | Promise<boolean>;
+  /**
+   * The recorded owner of a session (`resolveSessionActingPrincipal`), for
+   * the `steer-needs-own-thread` rule. Absent, throwing or answering nothing:
+   * the steer is refused (fail closed).
+   */
+  sessionOwnerId?(threadId: string): string | undefined;
   /** Called once per refusal, for the operator's logs. */
   onRefusal?(
     refusal: StationControlRefusal,
@@ -200,6 +206,33 @@ async function retargetsGrantedJob(
 }
 
 /**
+ * For `steer-needs-own-thread`: the recorded owner of the thread a
+ * `steerTurn` body names. Read only for that command on that leaf.
+ */
+function commandThreadOwnerId(
+  options: StationControlAuthorityGuardOptions,
+  method: string,
+  path: string,
+  body: unknown,
+): string | undefined {
+  if (
+    !matchStationControlRoute(method, path)?.rules.includes(
+      'steer-needs-own-thread',
+    ) ||
+    !body ||
+    typeof body !== 'object'
+  )
+    return undefined;
+  const { type, threadId } = body as { type?: unknown; threadId?: unknown };
+  if (type !== 'steerTurn' || typeof threadId !== 'string') return undefined;
+  try {
+    return options.sessionOwnerId?.(threadId);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The guard middleware. Register it immediately after `configureRuntimeHttp`
  * (and before any route), so it sees the principal the boundary bound and
  * every route sits behind it. Creating it also mints the server-self
@@ -254,6 +287,7 @@ export function createStationControlAuthorityGuard(
         path,
         body,
       ),
+      commandThreadOwnerId: commandThreadOwnerId(options, method, path, body),
     });
     if (!refusal) {
       await next();
