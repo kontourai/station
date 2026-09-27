@@ -605,7 +605,7 @@ import {
   outwardTransportFailure,
   sanitizedTransportError,
 } from '../../utils/outward-error.js';
-import { expandTilde } from '../../utils/paths.js';
+import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import {
   createCallerDelegationDeriver,
   createRequestDelegationResolver,
@@ -1644,8 +1644,11 @@ export function configureRuntimeRoutes(
             .map((session) => session.sessionId)
         : [];
     },
-    currentConversationSessionId: (conversationId) =>
-      context.orchestrationService.currentConversationSessionId(conversationId),
+    conversationSessionIds: (conversationId) =>
+      context.orchestrationEventStore
+        ?.conversationSessions(conversationId)
+        .map((session) => session.sessionId) ?? [],
+    defaultSessionDirectory: () => safeHomeDirectory(),
     projectDirectories: () => context.projectService.listProjects(),
     sessionCwd: (threadId) =>
       context.orchestrationEventStore?.readSessionByThread(threadId)?.cwd,

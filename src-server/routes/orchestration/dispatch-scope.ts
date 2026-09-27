@@ -30,27 +30,89 @@ export type DispatchTargetFor = (
 ) => StationControlDispatchTargetRef | undefined;
 
 /**
- * A 403 with the typed refusal when a station-control caller aims outside
- * its scope; `undefined` otherwise. `scope` absent (a composition without
- * it) refuses every station-control caller: a dispatch nobody scoped is not
- * allowed by default.
+ * The scope decision for one request: `refused` with the typed 403 when a
+ * station-control caller aims outside its scope. Otherwise, for a caller
+ * whose new session names a folder, `canonicalCwd` is the canonical path the
+ * check decided on; the route dispatches that path (and the session records
+ * it), so a symlink swapped after the check cannot move the session.
+ *
+ * `scope` absent (a composition without it) refuses every station-control
+ * caller: a dispatch nobody scoped is not allowed by default. A request that
+ * is not a station-control caller's is not decided here.
  */
-export function refuseOutOfScopeDispatch(
+export function scopeDispatch(
   c: Context,
   scope: StationControlDispatchScope | undefined,
   targetFor: DispatchTargetFor,
   /** The Project action the owner needs. */
   action: StationControlProjectAction = 'execute',
-): Response | undefined {
+): { readonly refused: Response } | { readonly canonicalCwd?: string } {
   const authority = stationControlRequestAuthority(c.req.raw);
-  if (authority?.kind !== 'caller') return undefined;
+  if (authority?.kind !== 'caller') return {};
   const caller = authority.caller;
   const ref = targetFor(
     caller.principal?.elevationEligible ? caller.principal.id : undefined,
   );
   const target = ref ? scope?.target(ref, action) : undefined;
   const refusal = stationControlScopeRefusal(caller, target);
+  if (refusal)
+    return { refused: c.json(stationControlRefusalBody(refusal), 403) };
+  return target?.canonicalCwd !== undefined
+    ? { canonicalCwd: target.canonicalCwd }
+    : {};
+}
+
+/** {@link scopeDispatch} where the route has no folder to dispatch. */
+export function refuseOutOfScopeDispatch(
+  c: Context,
+  scope: StationControlDispatchScope | undefined,
+  targetFor: DispatchTargetFor,
+  action: StationControlProjectAction = 'execute',
+): Response | undefined {
+  const decided = scopeDispatch(c, scope, targetFor, action);
+  return 'refused' in decided ? decided.refused : undefined;
+}
+
+/**
+ * #2377 slice C2a (decision 3): another Station needs a bound operator. For
+ * the routes that read or steer a task on a saved Environment
+ * (`environmentId`), the same verdict the scope rule gives a remote target,
+ * before the route resolves the Environment as Station's own server code.
+ */
+export function refuseRemoteForStationControlCaller(
+  c: Context,
+  remote: boolean,
+): Response | undefined {
+  if (!remote) return undefined;
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind !== 'caller') return undefined;
+  const caller = authority.caller;
+  const refusal = stationControlScopeRefusal(caller, {
+    ...(caller.principal?.elevationEligible
+      ? { ownerId: caller.principal.id }
+      : {}),
+    scope: { kind: 'global' },
+    host: false,
+    remote: true,
+  });
   return refusal ? c.json(stationControlRefusalBody(refusal), 403) : undefined;
+}
+
+/**
+ * The workspace a station-control caller dispatches: its `cwd` replaced by
+ * the canonical path the scope check decided on, when there is one.
+ */
+export function withCanonicalCwd<
+  T extends { readonly workspace?: { readonly kind: string } },
+>(target: T, canonicalCwd: string | undefined): T {
+  const workspace = target.workspace;
+  if (
+    canonicalCwd === undefined ||
+    !workspace ||
+    (workspace.kind !== 'directory' && workspace.kind !== 'project')
+  )
+    return target;
+  return { ...target, workspace: { ...workspace, cwd: canonicalCwd } };
 }
 
 /** Whether an environment reference names another Station. */

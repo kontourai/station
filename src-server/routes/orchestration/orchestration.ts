@@ -154,6 +154,9 @@ import {
   foregroundDispatchTarget,
   namesAnotherStation,
   refuseOutOfScopeDispatch,
+  refuseRemoteForStationControlCaller,
+  scopeDispatch,
+  withCanonicalCwd,
 } from './dispatch-scope.js';
 
 // These are intentional public projections. The typed code/outcome and, when
@@ -1723,14 +1726,16 @@ export function createOrchestrationRoutes(
       // #2377 slice C2a: a station-control caller stays in its scope. An
       // input reply names its thread, a known conversation is a follow-up,
       // anything else starts a session in the Project the body names.
-      const scopeRefused = refuseOutOfScopeDispatch(
+      const scoped = scopeDispatch(
         c,
         deps.stationControlDispatchScope,
         (ownerId) =>
           foregroundDispatchTarget(deps.stationControlDispatchScope, {
             ownerId,
             ...(projectSlug !== undefined ? { projectSlug } : {}),
-            ...(body.target.workspace?.kind === 'directory'
+            ...(body.target.workspace?.kind === 'directory' ||
+            (body.target.workspace?.kind === 'project' &&
+              body.target.workspace.cwd !== undefined)
               ? { directory: body.target.workspace.cwd }
               : {}),
             ...(body.conversationId
@@ -1749,7 +1754,7 @@ export function createOrchestrationRoutes(
                 )),
           }),
       );
-      if (scopeRefused) return scopeRefused;
+      if ('refused' in scoped) return scoped.refused;
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
       if (body.expectedInputRequest) {
@@ -1825,7 +1830,7 @@ export function createOrchestrationRoutes(
             ? { attachments: body.attachments as ChatAttachmentInput[] }
             : {}),
         target: normalizeExecutionTarget(
-          body.target,
+          withCanonicalCwd(body.target, scoped.canonicalCwd),
           !body.target.environment && projectSlug
             ? deps.projectDefaultEnvironment?.(projectSlug)
             : undefined,
@@ -2298,7 +2303,7 @@ export function createOrchestrationRoutes(
           };
         }
       ).target;
-      const scopeRefused = refuseOutOfScopeDispatch(
+      const scoped = scopeDispatch(
         c,
         deps.stationControlDispatchScope,
         (ownerId) => {
@@ -2310,7 +2315,8 @@ export function createOrchestrationRoutes(
                 kind: 'new',
                 ownerId,
                 ...(projectSlug !== undefined ? { projectSlug } : {}),
-                ...(workspace?.kind === 'directory' &&
+                ...((workspace?.kind === 'directory' ||
+                  workspace?.kind === 'project') &&
                 typeof workspace.cwd === 'string'
                   ? { directory: workspace.cwd }
                   : {}),
@@ -2321,7 +2327,7 @@ export function createOrchestrationRoutes(
             : undefined;
         },
       );
-      if (scopeRefused) return scopeRefused;
+      if ('refused' in scoped) return scoped.refused;
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
       const clientOrigin = resolveClientOriginForRequest(c.req.raw);
@@ -2382,7 +2388,9 @@ export function createOrchestrationRoutes(
       const data = await deps.delegateTask({
         ...request,
         ...(delegation ? { delegation } : {}),
-        target: normalizeExecutionTarget(body.target),
+        target: normalizeExecutionTarget(
+          withCanonicalCwd(body.target, scoped.canonicalCwd),
+        ),
         userId,
         principal,
         ownerAttribution,
@@ -2525,6 +2533,11 @@ export function createOrchestrationRoutes(
           503,
         );
       }
+      const remoteRefused = refuseRemoteForStationControlCaller(
+        c,
+        (getBody(c) as { environmentId?: unknown }).environmentId !== undefined,
+      );
+      if (remoteRefused) return remoteRefused;
       try {
         const data = await deps.discoverDelegationOptions(getBody(c));
         return c.json({ success: true, data });
@@ -2551,6 +2564,14 @@ export function createOrchestrationRoutes(
         400,
       );
     }
+    // #2377 slice C2a (decision 3): another Station needs a bound
+    // operator; refused before the route resolves the Environment as
+    // Station's own server code.
+    const remoteRefused = refuseRemoteForStationControlCaller(
+      c,
+      parsed.data.environmentId !== undefined,
+    );
+    if (remoteRefused) return remoteRefused;
     try {
       const data = await deps.listDelegatedTasks({
         ...parsed.data,
@@ -2645,6 +2666,14 @@ export function createOrchestrationRoutes(
         400,
       );
     }
+    // #2377 slice C2a (decision 3): another Station needs a bound
+    // operator; refused before the route resolves the Environment as
+    // Station's own server code.
+    const remoteRefused = refuseRemoteForStationControlCaller(
+      c,
+      parsed.data.environmentId !== undefined,
+    );
+    if (remoteRefused) return remoteRefused;
     try {
       const data = await deps.observeDelegatedTask({
         ...parsed.data,
@@ -2678,6 +2707,14 @@ export function createOrchestrationRoutes(
         400,
       );
     }
+    // #2377 slice C2a (decision 3): another Station needs a bound
+    // operator; refused before the route resolves the Environment as
+    // Station's own server code.
+    const remoteRefused = refuseRemoteForStationControlCaller(
+      c,
+      parsed.data.environmentId !== undefined,
+    );
+    if (remoteRefused) return remoteRefused;
     try {
       const data = await deps.observeDelegatedTaskEvents({
         ...parsed.data,
@@ -2881,6 +2918,11 @@ export function createOrchestrationRoutes(
           503,
         );
       }
+      const remoteRefused = refuseRemoteForStationControlCaller(
+        c,
+        (getBody(c) as { environmentId?: unknown }).environmentId !== undefined,
+      );
+      if (remoteRefused) return remoteRefused;
       try {
         const { principal, userId, ownerAttribution } = resolveDispatchActor(
           deps,

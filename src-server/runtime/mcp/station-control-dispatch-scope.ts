@@ -10,14 +10,15 @@
  * its session-record Project (the same resolver the caller's own session is
  * read through), and whether any session of its conversation runs `host`.
  */
-import { realpathSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   type StationControlDispatchTarget,
   type StationControlScope,
   stationControlSessionScope,
 } from '../../tools/station-control-policy.js';
-import { expandTilde } from '../../utils/paths.js';
+import {
+  canonicalPath,
+  isCanonicalPathWithin,
+} from '../../utils/path-containment.js';
 import type { StationControlCallerRecordResolver } from './station-control-caller.js';
 
 /** The Project action a scoped call needs from the session's owner. */
@@ -34,8 +35,17 @@ export interface StationControlDispatchScopeSources {
   sessionRunsHost(threadId: string): boolean;
   /** Every session of the thread's conversation (the thread itself at least). */
   conversationThreads(threadId: string): readonly string[];
-  /** The conversation's current session (the conversation id when none). */
-  currentConversationSessionId(conversationId: string): string;
+  /**
+   * Every session of a conversation's lineage, oldest first, reserved but
+   * unstarted successors included (the conversation id itself may be absent).
+   */
+  conversationSessionIds(conversationId: string): readonly string[];
+  /**
+   * Where a session with no workspace runs: the directory the session start
+   * defaults to (`resolveStartSessionCwd`: the home directory, never the
+   * server's own working directory). `undefined` when there is none.
+   */
+  defaultSessionDirectory(): string | undefined;
   /** `ProjectConfig.id` for a slug; `undefined` or a throw when none. */
   projectIdForSlug(slug: string): string | undefined;
   /** Every Project with its working directory, for a folder's scope. */
@@ -60,7 +70,10 @@ export type StationControlDispatchTargetRef =
       readonly kind: 'new';
       readonly ownerId: string;
       readonly projectSlug?: string;
-      /** A plain-folder target's `cwd`: its scope is the folder's Project. */
+      /**
+       * The `cwd` the body names: a plain folder's (its scope is the folder's
+       * Project), or a Project workspace's (it must lie inside that Project).
+       */
       readonly directory?: string;
       readonly remote: boolean;
     }
@@ -80,6 +93,14 @@ export type StationControlDispatchTargetRef =
       readonly remote: boolean;
     };
 
+/**
+ * A target as the scope rule reads it, plus, for a new session with a
+ * folder, the canonical path the check decided on: the route dispatches
+ * that path, so a symlink swapped after the check cannot move the session.
+ */
+export type StationControlResolvedDispatchTarget =
+  StationControlDispatchTarget & { readonly canonicalCwd?: string };
+
 export interface StationControlDispatchScope {
   /**
    * The target a reference names, checked for `action` in its Project;
@@ -88,7 +109,7 @@ export interface StationControlDispatchScope {
   target(
     ref: StationControlDispatchTargetRef,
     action?: StationControlProjectAction,
-  ): StationControlDispatchTarget | undefined;
+  ): StationControlResolvedDispatchTarget | undefined;
   /** Whether a conversation already has a session (a follow-up, not a start). */
   conversationExists(conversationId: string): boolean;
 }
@@ -112,18 +133,9 @@ export function stationControlDirectoryScope(
     readonly workingDirectory?: string;
   }[],
 ): StationControlScope {
-  const canonical = (path: string): string =>
-    realpathSync.native(resolve(expandTilde(path)));
-  const within = (root: string, candidate: string): boolean => {
-    const rel = relative(root, candidate);
-    return (
-      rel === '' ||
-      (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
-    );
-  };
   let folder: string;
   try {
-    folder = canonical(cwd);
+    folder = canonicalPath(cwd);
   } catch {
     return { kind: 'unreadable' };
   }
@@ -132,11 +144,14 @@ export function stationControlDirectoryScope(
     if (!project.workingDirectory) continue;
     let root: string;
     try {
-      root = canonical(project.workingDirectory);
+      root = canonicalPath(project.workingDirectory);
     } catch {
       continue;
     }
-    if (within(root, folder) && (!deepest || root.length > deepest.root.length))
+    if (
+      isCanonicalPathWithin(root, folder) &&
+      (!deepest || root.length > deepest.root.length)
+    )
       deepest = { id: project.id, root };
   }
   return deepest ? { kind: 'project', id: deepest.id } : { kind: 'global' };
@@ -164,8 +179,15 @@ export function createStationControlDispatchScope(
     return action === 'approve' ? { ownerHoldsAction: false } : {};
   };
 
+  /**
+   * A started session, scoped by its own records, with `host` read across
+   * `lineage`: a decision or a follow-up reaches the whole conversation, so
+   * any session of it that runs unconfined (including a reserved successor
+   * a recorded `never` would start `host`) makes the target `host`.
+   */
   const threadTarget = (
     threadId: string,
+    lineage: readonly string[],
     remote: boolean,
     action: StationControlProjectAction,
   ): StationControlDispatchTarget | undefined => {
@@ -186,10 +208,8 @@ export function createStationControlDispatchScope(
       cwd !== undefined
         ? stationControlDirectoryScope(cwd, sources.projectDirectories())
         : recorded;
-    // A decision or a follow-up reaches the whole conversation, so any
-    // session of it that runs unconfined makes the target `host`.
-    const host = [threadId, ...sources.conversationThreads(threadId)].some(
-      (thread) => sources.sessionRunsHost(thread),
+    const host = [threadId, ...lineage].some((thread) =>
+      sources.sessionRunsHost(thread),
     );
     return {
       ...(ownerId ? { ownerId } : {}),
@@ -200,6 +220,34 @@ export function createStationControlDispatchScope(
     };
   };
 
+  /** Every session of a conversation, the conversation id first. */
+  const conversationThreadIds = (conversationId: string): string[] => [
+    ...new Set([
+      conversationId,
+      ...sources.conversationSessionIds(conversationId),
+    ]),
+  ];
+
+  /**
+   * A conversation is scoped by its newest STARTED session: a reserved
+   * successor has no records yet, and the executor continues the
+   * conversation's binding, not a new session. Its `host` covers every
+   * session, the reserved ones included. None started: unreadable.
+   */
+  const conversationTarget = (
+    conversationId: string,
+    remote: boolean,
+    action: StationControlProjectAction,
+  ): StationControlDispatchTarget | undefined => {
+    const threads = conversationThreadIds(conversationId);
+    const newestStarted = [...threads]
+      .reverse()
+      .find((thread) => sources.sessionExists(thread));
+    return newestStarted
+      ? threadTarget(newestStarted, threads, remote, action)
+      : undefined;
+  };
+
   const taskThread = (taskId: string): string | undefined => {
     // A delegated task's session id carries the `task:` prefix; a bare id is
     // the same task (`loadDelegatedTask` resolves it the same way).
@@ -208,26 +256,65 @@ export function createStationControlDispatchScope(
     return sources.sessionExists(prefixed) ? prefixed : undefined;
   };
 
+  /** A Project named by slug, or `unreadable` when Station has none. */
+  const projectScope = (slug: string): StationControlScope => {
+    let id: string | undefined;
+    try {
+      id = sources.projectIdForSlug(slug);
+    } catch {
+      id = undefined;
+    }
+    return id ? { kind: 'project', id } : { kind: 'unreadable' };
+  };
+
+  /**
+   * Where a new session runs, and so its scope:
+   * - a Project workspace with a `cwd`: that Project, only while the `cwd`
+   *   canonically lies inside it (else unreadable);
+   * - a Project workspace: that Project;
+   * - a plain folder: the Project that contains it, else global;
+   * - no workspace: the default session directory's scope, for the same
+   *   reason (it is global unless a Project contains it).
+   */
+  const newScope = (
+    ref: Extract<StationControlDispatchTargetRef, { kind: 'new' }>,
+  ): { scope: StationControlScope; canonicalCwd?: string } => {
+    const projects = sources.projectDirectories();
+    const canonical = (path: string): string | undefined => {
+      try {
+        return canonicalPath(path);
+      } catch {
+        return undefined;
+      }
+    };
+    if (ref.projectSlug !== undefined) {
+      const named = projectScope(ref.projectSlug);
+      if (ref.directory === undefined || named.kind !== 'project')
+        return { scope: named };
+      const cwd = canonical(ref.directory);
+      const root = projects.find(
+        (project) => project.id === named.id,
+      )?.workingDirectory;
+      const rootPath = root !== undefined ? canonical(root) : undefined;
+      return cwd !== undefined &&
+        rootPath !== undefined &&
+        isCanonicalPathWithin(rootPath, cwd)
+        ? { scope: named, canonicalCwd: cwd }
+        : { scope: { kind: 'unreadable' } };
+    }
+    const directory = ref.directory ?? sources.defaultSessionDirectory();
+    if (directory === undefined) return { scope: { kind: 'global' } };
+    const scope = stationControlDirectoryScope(directory, projects);
+    const cwd =
+      ref.directory !== undefined ? canonical(ref.directory) : undefined;
+    return cwd !== undefined ? { scope, canonicalCwd: cwd } : { scope };
+  };
+
   const newTarget = (
     ref: Extract<StationControlDispatchTargetRef, { kind: 'new' }>,
     action: StationControlProjectAction,
-  ): StationControlDispatchTarget => {
-    let scope: StationControlScope =
-      ref.directory !== undefined
-        ? stationControlDirectoryScope(
-            ref.directory,
-            sources.projectDirectories(),
-          )
-        : { kind: 'global' };
-    if (ref.projectSlug !== undefined) {
-      let id: string | undefined;
-      try {
-        id = sources.projectIdForSlug(ref.projectSlug);
-      } catch {
-        id = undefined;
-      }
-      scope = id ? { kind: 'project', id } : { kind: 'unreadable' };
-    }
+  ): StationControlResolvedDispatchTarget => {
+    const { scope, canonicalCwd } = newScope(ref);
     // A new session starts confined: no station-control caller carries the
     // full-access grant (`fullAccessGrantFor` refuses an agent).
     return {
@@ -236,6 +323,7 @@ export function createStationControlDispatchScope(
       host: false,
       remote: ref.remote,
       ...mayAct(ref.ownerId, scope, action),
+      ...(canonicalCwd !== undefined ? { canonicalCwd } : {}),
     };
   };
 
@@ -246,17 +334,23 @@ export function createStationControlDispatchScope(
           case 'new':
             return newTarget(ref, action);
           case 'thread':
-            return threadTarget(ref.threadId, ref.remote, action);
-          case 'conversation':
             return threadTarget(
-              sources.currentConversationSessionId(ref.conversationId),
+              ref.threadId,
+              sources.conversationThreads(ref.threadId),
               ref.remote,
               action,
             );
+          case 'conversation':
+            return conversationTarget(ref.conversationId, ref.remote, action);
           case 'task': {
             const thread = taskThread(ref.taskId);
             return thread
-              ? threadTarget(thread, ref.remote, action)
+              ? threadTarget(
+                  thread,
+                  sources.conversationThreads(thread),
+                  ref.remote,
+                  action,
+                )
               : undefined;
           }
         }
@@ -266,9 +360,12 @@ export function createStationControlDispatchScope(
       }
     },
     conversationExists(conversationId) {
+      // Any lineage (a reservation writes it before its session starts) or
+      // a started root is an existing conversation, never a new session.
       try {
-        return sources.sessionExists(
-          sources.currentConversationSessionId(conversationId),
+        return (
+          sources.conversationSessionIds(conversationId).length > 0 ||
+          sources.sessionExists(conversationId)
         );
       } catch {
         // Unknown is not "new": a follow-up that cannot be read refuses.

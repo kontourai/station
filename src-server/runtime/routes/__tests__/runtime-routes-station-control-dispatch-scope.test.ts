@@ -16,7 +16,7 @@
  */
 import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
@@ -54,6 +54,10 @@ const support = vi.hoisted(() => ({
   projectDirs: [] as { id: string; slug: string; workingDirectory: string }[],
   /** The working directory each session recorded. */
   cwds: new Map<string, string>(),
+  /** Each conversation's lineage, oldest first (reserved sessions too). */
+  lineage: new Map<string, string[]>(),
+  /** The `cwd` each reached executor was handed (new sessions). */
+  dispatchedCwds: [] as (string | undefined)[],
 }));
 
 vi.mock('../runtime-route-support.js', () => {
@@ -83,6 +87,10 @@ vi.mock('../../../tools/station-control-delegation.js', async (original) => {
       support.dispatched.push(
         `${name} ${String(input.conversationId ?? input.taskId ?? 'new')}`,
       );
+      const target = input.target as
+        | { workspace?: { cwd?: string } }
+        | undefined;
+      support.dispatchedCwds.push(target?.workspace?.cwd);
       return answer(input);
     };
   const handle = () => ({
@@ -144,6 +152,8 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
     support.accountActions = ['view', 'discuss', 'edit', 'execute'];
     support.projectDirs = [];
     support.cwds.clear();
+    support.lineage.clear();
+    support.dispatchedCwds.length = 0;
     for (const close of closers.splice(0)) await close();
   });
 
@@ -183,7 +193,15 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         sessionTurnBoundaryAuthority: () => ({
           reconcile: () => ({ kind: 'available', interrupted: [] }),
         }),
-        conversationForSession: () => undefined,
+        conversationForSession: (threadId: string) => {
+          for (const [conversationId, threads] of support.lineage)
+            if (threads.includes(threadId)) return { conversationId };
+          return undefined;
+        },
+        conversationSessions: (conversationId: string) =>
+          (support.lineage.get(conversationId) ?? []).map((sessionId) => ({
+            sessionId,
+          })),
         readSessionByThread: (threadId: string) => {
           const cwd = support.cwds.get(threadId);
           return cwd ? { threadId, cwd } : undefined;
@@ -962,6 +980,306 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         followUp.path,
         as('bearer-exposed', 'op-caller-a')(),
         followUp.body,
+      ),
+    ).toBe('reached');
+  });
+
+  // Review A1: a Project workspace's `cwd` must lie inside that Project.
+  test('a Project workspace with a cwd in another Project’s folder is refused', async () => {
+    const { base } = await setup();
+    const root = realpathSync(makeTempDir('dispatch-project-cwd-'));
+    const pa = join(root, 'pa');
+    const pb = join(root, 'pb');
+    for (const dir of [join(pa, 'sub'), pb])
+      mkdirSync(dir, { recursive: true });
+    support.projectDirs = [
+      { id: 'project-a', slug: 'project-a-slug', workingDirectory: pa },
+      { id: 'project-b', slug: 'project-b-slug', workingDirectory: pb },
+    ];
+    const caller = as('bearer-exposed', 'op-caller-a');
+    for (const [route, cwd, expected] of [
+      ['POST /chat', pb, ROLE],
+      ['POST /delegations', pb, ROLE],
+      ['POST /chat', join(pa, 'sub'), 'reached'],
+      ['POST /delegations', join(pa, 'sub'), 'reached'],
+    ] as const) {
+      const request = ROUTES[route]!({
+        kind: 'new',
+        workspace: { kind: 'project', projectSlug: 'project-a-slug', cwd },
+      })!;
+      expect([
+        route,
+        cwd,
+        await outcome(base, request.path, caller(), request.body),
+      ]).toEqual([route, cwd, expected]);
+    }
+  });
+
+  // Review A2: a conversation whose newest session is only reserved is a
+  // follow-up, scoped by its newest STARTED session, and `host` covers every
+  // session of it.
+  test('a conversation with a reserved newest session is scoped by its newest started one', async () => {
+    const { base } = await setup();
+    const global = as('bearer-exposed', 'op-caller-global');
+    const inA = as('bearer-exposed', 'op-caller-a');
+    const follow = (conversationId: string) =>
+      ROUTES['POST /chat']!({ kind: 'thread', threadId: conversationId })!;
+    // Project b, newest reserved.
+    support.lineage.set('conv-b', ['op-thread-b', 'new-reserved-b']);
+    // Global, but a sibling runs host.
+    support.hostThreads.add('op-host-global');
+    support.lineage.set('conv-h', [
+      'op-host-global',
+      'op-thread-global',
+      'new-reserved-h',
+    ]);
+    // Nothing started yet.
+    support.lineage.set('new-conv-r', ['new-reserved-r']);
+    const cases: Array<[string, () => Record<string, string>, string, string]> =
+      [
+        [
+          'Project b, reserved newest, global caller',
+          global,
+          'conv-b',
+          ASSURANCE,
+        ],
+        ['Project b, reserved newest, caller in a', inA, 'conv-b', ASSURANCE],
+        ['host sibling, global caller', global, 'conv-h', ASSURANCE],
+        ['only reserved sessions', global, 'new-conv-r', ASSURANCE],
+      ];
+    for (const [label, caller, conversationId, expected] of cases) {
+      const request = follow(conversationId);
+      expect([
+        label,
+        await outcome(base, request.path, caller(), request.body),
+      ]).toEqual([label, expected]);
+    }
+    const cont = ROUTES['POST /chat/:conversationId/continue']!({
+      kind: 'thread',
+      threadId: 'conv-b',
+    })!;
+    expect(await outcome(base, cont.path, global(), cont.body)).toBe(ASSURANCE);
+    // The control: a global conversation with nothing unconfined is the
+    // global caller's.
+    support.lineage.set('conv-g', ['op-thread-global', 'new-reserved-g']);
+    const ok = follow('conv-g');
+    expect(await outcome(base, ok.path, global(), ok.body)).toBe('reached');
+  });
+
+  // Review A4 (n1): `host` is read across the thread's whole conversation,
+  // not only the thread the call names.
+  test('a thread whose conversation has an unconfined sibling is host', async () => {
+    const { base } = await setup();
+    support.hostThreads.add('op-host-a');
+    support.lineage.set('conv-sibling', ['op-host-a', 'op-thread-a']);
+    const reply = {
+      message: 'yes',
+      conversationId: 'op-thread-a',
+      target: { agent: 'writer', environment: { kind: 'current' } },
+      expectedInputRequest: {
+        threadId: 'op-thread-a',
+        requestId: 'r',
+        requestEventId: 'e',
+      },
+    };
+    expect(
+      await send(
+        base,
+        '/api/orchestration/chat',
+        as('bearer-exposed', 'op-caller-a')(),
+        reply,
+      ),
+    ).toEqual({ status: 403, code: ASSURANCE });
+    // A task follow-up reads its conversation the same way.
+    const task = ROUTES['POST /delegations/:taskId/continue']!({
+      kind: 'thread',
+      threadId: 'op-thread-a',
+    })!;
+    expect(
+      await outcome(
+        base,
+        task.path,
+        as('bearer-exposed', 'op-caller-a')(),
+        task.body,
+      ),
+    ).toBe(ASSURANCE);
+  });
+
+  // Review A3: every route that takes an Environment refuses another
+  // Station to a caller that is not a bound operator, before resolving it.
+  test('task reads, events, interrupts and listings on another Station need a bound operator', async () => {
+    const { base } = await setup();
+    const request = async (
+      method: 'GET' | 'POST',
+      path: string,
+      headers: Record<string, string>,
+      body?: unknown,
+    ) => {
+      const response = await fetch(`${base}${path}`, {
+        method,
+        headers,
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        code?: string;
+      };
+      return response.status === 403 &&
+        payload.code?.startsWith('station_control_')
+        ? payload.code
+        : 'passed';
+    };
+    const remote: Array<['GET' | 'POST', string, unknown]> = [
+      [
+        'GET',
+        '/api/orchestration/delegations/op-thread-a?environmentId=env-peer',
+        undefined,
+      ],
+      [
+        'GET',
+        '/api/orchestration/delegations/op-thread-a/events?environmentId=env-peer',
+        undefined,
+      ],
+      [
+        'POST',
+        '/api/orchestration/delegations/op-thread-a/interrupt',
+        { environmentId: 'env-peer' },
+      ],
+    ];
+    for (const [method, path, body] of remote) {
+      expect([
+        path,
+        await request(
+          method,
+          path,
+          as('bearer-exposed', 'op-caller-a')(),
+          body,
+        ),
+      ]).toEqual([path, ASSURANCE]);
+      expect([
+        path,
+        await request(
+          method,
+          path,
+          as('delegated-custody', 'op-caller-a')(),
+          body,
+        ),
+      ]).toEqual([path, ASSURANCE]);
+      expect([
+        path,
+        await request(method, path, as('bound', 'person-caller-a')(), body),
+      ]).toEqual([path, ROLE]);
+      expect([
+        path,
+        await request(method, path, as('bound', 'op-caller-a')(), body),
+      ]).toEqual([path, 'passed']);
+    }
+    // This Station's own task needs no Environment and is not refused here.
+    for (const [method, path, body] of [
+      ['GET', '/api/orchestration/delegations/op-thread-a', undefined],
+      ['POST', '/api/orchestration/delegations/op-thread-a/interrupt', {}],
+    ] as const)
+      expect([
+        path,
+        await request(
+          method,
+          path,
+          as('bearer-exposed', 'op-caller-a')(),
+          body,
+        ),
+      ]).toEqual([path, 'passed']);
+    // The listing and options routes take an Environment too; no tool
+    // reaches them (the guard refuses them unmapped).
+    for (const [method, path, body] of [
+      [
+        'GET',
+        '/api/orchestration/delegations?environmentId=env-peer',
+        undefined,
+      ],
+      [
+        'POST',
+        '/api/orchestration/delegations/options',
+        { environmentId: 'env-peer' },
+      ],
+    ] as const)
+      expect([
+        path,
+        await request(method, path, as('bound', 'op-caller-a')(), body),
+      ]).toEqual([path, 'station_control_route_unmapped']);
+  });
+
+  // Review A5: the route dispatches the canonical folder its check decided
+  // on, so the session starts (and records) that path, not the link.
+  test('a new session’s folder is dispatched as the canonical path the check resolved', async () => {
+    const { base } = await setup();
+    const root = realpathSync(makeTempDir('dispatch-canonical-cwd-'));
+    mkdirSync(join(root, 'real', 'work'), { recursive: true });
+    symlinkSync(join(root, 'real'), join(root, 'link'));
+    const viaLink = `${join(root, 'link', 'work')}/`;
+    for (const route of ['POST /chat', 'POST /delegations'] as const) {
+      support.dispatchedCwds.length = 0;
+      const request = ROUTES[route]!({
+        kind: 'new',
+        workspace: { kind: 'directory', cwd: viaLink },
+      })!;
+      expect(
+        await outcome(
+          base,
+          request.path,
+          as('bearer-exposed', 'op-caller-global')(),
+          request.body,
+        ),
+      ).toBe('reached');
+      expect([route, support.dispatchedCwds]).toEqual([
+        route,
+        [join(root, 'real', 'work')],
+      ]);
+    }
+    // The operator's UI is not rewritten: its request is not scoped here.
+    support.dispatchedCwds.length = 0;
+    const ui = ROUTES['POST /chat']!({
+      kind: 'new',
+      workspace: { kind: 'directory', cwd: viaLink },
+    })!;
+    expect(await outcome(base, ui.path, operatorUi, ui.body)).toBe('reached');
+    expect(support.dispatchedCwds).toEqual([viaLink]);
+  });
+
+  // Review A6: a session with no workspace starts in the default session
+  // directory (the home directory), so its scope is that folder's.
+  test('a dispatch with no workspace is scoped by the default session directory', async () => {
+    const { base } = await setup();
+    const noWorkspace = ROUTES['POST /chat']!({ kind: 'new' })!;
+    // Home in no Project: the global space.
+    expect(
+      await outcome(
+        base,
+        noWorkspace.path,
+        as('bearer-exposed', 'op-caller-global')(),
+        noWorkspace.body,
+      ),
+    ).toBe('reached');
+    // Home inside Project a: Project a's.
+    support.projectDirs = [
+      {
+        id: 'project-a',
+        slug: 'project-a-slug',
+        workingDirectory: realpathSync(homedir()),
+      },
+    ];
+    expect(
+      await outcome(
+        base,
+        noWorkspace.path,
+        as('bearer-exposed', 'op-caller-global')(),
+        noWorkspace.body,
+      ),
+    ).toBe(ASSURANCE);
+    expect(
+      await outcome(
+        base,
+        noWorkspace.path,
+        as('bearer-exposed', 'op-caller-a')(),
+        noWorkspace.body,
       ),
     ).toBe('reached');
   });

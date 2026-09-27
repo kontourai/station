@@ -31,6 +31,10 @@ import {
   type WorkspaceIsolationMode,
 } from '@kontourai/station-contracts/workspace-isolation';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import {
+  canonicalPath,
+  isCanonicalPathWithin,
+} from '../../utils/path-containment.js';
 import { expandTilde } from '../../utils/paths.js';
 
 /**
@@ -278,6 +282,41 @@ export function matchVerifiedRemoteProjectPath(
       };
 }
 
+/**
+ * #2377 slice C2a: a Project workspace's `cwd` must lie inside that Project.
+ * The session start already refuses one outside it, lexically
+ * (`resolveStartSessionCwd`); this refuses it before anything runs, and on
+ * canonical paths (symlinks followed, whole segments), so a link inside the
+ * Project that points at another Project's folder cannot name that folder
+ * as this Project's.
+ */
+export class ExecutionWorkspaceOutsideProjectError extends Error {
+  readonly code = 'execution_workspace_outside_project' as const;
+  constructor(projectSlug: string) {
+    super(
+      `The requested working directory is not inside project '${projectSlug}'.`,
+    );
+    this.name = 'ExecutionWorkspaceOutsideProjectError';
+  }
+}
+
+function assertCwdInsideProject(
+  slug: string,
+  projectDirectory: string,
+  cwd: string,
+): void {
+  let inside = false;
+  try {
+    inside = isCanonicalPathWithin(
+      canonicalPath(projectDirectory),
+      canonicalPath(cwd),
+    );
+  } catch {
+    inside = false;
+  }
+  if (!inside) throw new ExecutionWorkspaceOutsideProjectError(slug);
+}
+
 async function resolveWorkspace(
   deps: ExecutionTargetResolverDependencies,
   access: EnvironmentAccess,
@@ -409,6 +448,8 @@ async function resolveWorkspace(
   // `verifiedProjectPath` stays OUTSIDE the expansion deliberately: it is a
   // REMOTE path, and this file's own comment above forbids applying local
   // home expansion or realpath to it — that would describe the wrong machine.
+  if (requestedCwd && !access.verifiedProjectPath)
+    assertCwdInsideProject(slug, project.workingDirectory, requestedCwd);
   const localCwd = requestedCwd ?? project.workingDirectory;
   const cwd = access.verifiedProjectPath ?? resolve(expandTilde(localCwd));
   return {
