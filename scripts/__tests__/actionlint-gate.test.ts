@@ -6,7 +6,9 @@ import {
   expressionReadsCredential,
   FAST_CHECKS_JOB_TIMEOUT_MINUTES,
   findingKey,
+  PNPM_JS_SETUP_STEP,
   PNPM_SETUP_ACTION,
+  PNPM_SETUP_NATIVE_GUARD,
   parseFindings,
   persistentRunnerPolicyFindings,
   REVIEWED_CACHE_RESTORE_ACTION,
@@ -4165,4 +4167,187 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       },
     );
   });
+});
+
+describe('Intel macOS pnpm provisioning (#2675)', () => {
+  type Step = Record<string, unknown>;
+  type Job = {
+    'runs-on'?: unknown;
+    strategy?: { matrix?: { include?: Array<Record<string, unknown>> } };
+    steps: Step[];
+  };
+  const PORTABLE = '.github/workflows/portable-server-archives.yml';
+  const RELEASE = '.github/workflows/release.yml';
+  const INTEL_JOBS = [
+    [PORTABLE, 'archive'],
+    [RELEASE, 'desktop-macos'],
+  ] as const;
+  // Pinned literals, independent of the constants under test.
+  const NATIVE_GUARD = "runner.os != 'macOS' || runner.arch != 'X64'";
+  const JS_GUARD = "runner.os == 'macOS' && runner.arch == 'X64'";
+  const INTEL_MESSAGE = expect.stringContaining(
+    'a job that can run on Intel macOS must guard pnpm/setup',
+  );
+
+  function corpusWith(
+    file: string,
+    jobId: string,
+    mutate?: (job: Job) => void,
+  ) {
+    const workflows = readWorkflowDocuments().map((workflow) => ({
+      ...workflow,
+      document: structuredClone(workflow.document),
+    }));
+    const target = workflows.find((workflow) => workflow.file === file);
+    if (!target) throw new Error(`Expected ${file}.`);
+    const job = (target.document as { jobs: Record<string, Job> }).jobs[jobId];
+    if (!job) throw new Error(`Expected ${file} job ${jobId}.`);
+    mutate?.(job);
+    return { workflows, job };
+  }
+  const nativeSetup = (job: Job) => {
+    const step = job.steps.find((candidate) =>
+      String(candidate.uses).startsWith('pnpm/setup@'),
+    );
+    if (!step) throw new Error('Expected pnpm/setup.');
+    return step;
+  };
+  const withoutJsStep = (job: Job) => {
+    job.steps = job.steps.filter(
+      (step) => step.name !== PNPM_JS_SETUP_STEP.name,
+    );
+  };
+  const findingsFor = (
+    workflows: ReturnType<typeof corpusWith>['workflows'],
+    file: string,
+    jobId: string,
+  ) =>
+    persistentRunnerPolicyFindings(workflows).filter(
+      (finding) => finding.file === file && finding.jobId === jobId,
+    );
+
+  test.each(INTEL_JOBS)(
+    'the checked-in %s %s job is clean and provisions JS pnpm only on Intel',
+    (file, jobId) => {
+      const { workflows, job } = corpusWith(file, jobId);
+      expect(findingsFor(workflows, file, jobId)).toEqual([]);
+      // Non-vacuity: this job really has an Intel leg and an Apple one.
+      const runners = (job.strategy?.matrix?.include ?? []).map(
+        (entry) => entry.runner,
+      );
+      expect(runners).toContain('macos-15-intel');
+      expect(runners).toContain('macos-15');
+      expect(nativeSetup(job).if).toBe(NATIVE_GUARD);
+      const js = job.steps.find(
+        (step) => step.name === PNPM_JS_SETUP_STEP.name,
+      );
+      expect(js).toEqual({ ...PNPM_JS_SETUP_STEP });
+      expect(js?.if).toBe(JS_GUARD);
+      expect(PNPM_SETUP_NATIVE_GUARD).toBe(NATIVE_GUARD);
+      // pnpm must be on PATH before setup-node (release caches with pnpm).
+      const setupNode = job.steps.findIndex((step) =>
+        String(step.uses).startsWith('actions/setup-node@'),
+      );
+      expect(job.steps.indexOf(js as Step)).toBeLessThan(setupNode);
+    },
+  );
+
+  test.each(INTEL_JOBS)(
+    'refuses %s %s reverted to unguarded pnpm/setup',
+    (file, jobId) => {
+      const { workflows } = corpusWith(file, jobId, (job) => {
+        delete nativeSetup(job).if;
+        withoutJsStep(job);
+      });
+      expect(
+        findingsFor(workflows, file, jobId).map(({ message }) => message),
+      ).toContainEqual(INTEL_MESSAGE);
+    },
+  );
+
+  test.each(INTEL_JOBS)(
+    'refuses %s %s with the guard but no JS pnpm step',
+    (file, jobId) => {
+      const { workflows } = corpusWith(file, jobId, withoutJsStep);
+      expect(
+        findingsFor(workflows, file, jobId).map(({ message }) => message),
+      ).toContainEqual(INTEL_MESSAGE);
+    },
+  );
+
+  test.each(INTEL_JOBS)(
+    'refuses a drifted JS pnpm step in %s %s',
+    (file, jobId) => {
+      const { workflows } = corpusWith(file, jobId, (job) => {
+        const js = job.steps.find(
+          (step) => step.name === PNPM_JS_SETUP_STEP.name,
+        );
+        if (!js) throw new Error('Expected the JS pnpm step.');
+        js.run = String(js.run).replace(
+          'npm pack "$manager"',
+          'npm pack pnpm@latest',
+        );
+      });
+      const messages = findingsFor(workflows, file, jobId).map(
+        ({ message }) => message,
+      );
+      expect(messages).toContain(
+        `'${PNPM_JS_SETUP_STEP.name}' must match PNPM_JS_SETUP_STEP exactly`,
+      );
+      expect(messages).toContainEqual(INTEL_MESSAGE);
+    },
+  );
+
+  test('refuses any other condition on pnpm/setup', () => {
+    const { workflows } = corpusWith(PORTABLE, 'archive', (job) => {
+      nativeSetup(job).if = 'always()';
+    });
+    const messages = findingsFor(workflows, PORTABLE, 'archive').map(
+      ({ message }) => message,
+    );
+    expect(messages).toContainEqual(INTEL_MESSAGE);
+    // The base-controlled PR policy stops admitting the bootstrap, too.
+    expect(messages).toContain(
+      'base-controlled PR workflows must not add unreviewed custom actions or reusable execution',
+    );
+  });
+
+  function oneJob(runsOn: unknown, steps: Step[]) {
+    return [
+      {
+        file: '.github/workflows/synthetic.yml',
+        document: {
+          on: { push: {} },
+          jobs: { build: { 'runs-on': runsOn, steps } },
+        },
+      },
+    ];
+  }
+  const unguarded = {
+    name: 'Setup pinned pnpm',
+    uses: PNPM_SETUP_ACTION,
+    with: { install: false },
+  };
+
+  test.each(['macos-15-intel', 'macos-13', 'macos-15-large'])(
+    'refuses unguarded pnpm/setup on %s',
+    (label) => {
+      expect(
+        persistentRunnerPolicyFindings(oneJob(label, [unguarded])).map(
+          ({ message }) => message,
+        ),
+      ).toContainEqual(INTEL_MESSAGE);
+    },
+  );
+
+  test.each(['macos-15', 'macos-15-xlarge', 'ubuntu-latest', 'windows-latest'])(
+    'leaves unguarded pnpm/setup alone on %s (false-positive control)',
+    (label) => {
+      expect(
+        persistentRunnerPolicyFindings(oneJob(label, [unguarded])).map(
+          ({ message }) => message,
+        ),
+      ).not.toContainEqual(INTEL_MESSAGE);
+    },
+  );
 });
