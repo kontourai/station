@@ -834,4 +834,42 @@ mod tests {
         let other = owner_with_device("55555555-5555-4555-8555-555555555555");
         assert_ne!(account, other.account());
     }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "writes one random account to the current macOS Keychain"]
+    fn macos_keychain_roundtrip() {
+        struct RevokeOnDrop<'a> {
+            vault: &'a NativeAccountProofKeyVault,
+            owner: NativeAccountProofKeyOwner,
+        }
+        impl Drop for RevokeOnDrop<'_> {
+            fn drop(&mut self) {
+                let _ = self.vault.revoke(&self.owner);
+            }
+        }
+
+        let vault = NativeAccountProofKeyVault::new();
+        let owner = NativeAccountProofKeyOwner::new(
+            "io.kontourai.station.test",
+            NativeProofKeyChannel::Dev,
+            &Uuid::new_v4().to_string(),
+            &Uuid::new_v4().to_string(),
+            &Uuid::new_v4().to_string(),
+        )
+        .unwrap();
+        let _cleanup = RevokeOnDrop {
+            vault: &vault,
+            owner: owner.clone(),
+        };
+        let created = vault.create(&owner).unwrap();
+        assert_eq!(vault.restore(&owner).unwrap(), created);
+        let signature = vault.sign_es256_p1363(&owner, MESSAGE).unwrap();
+        assert!(verify_p1363(created.jwk(), MESSAGE, &signature));
+        vault.revoke(&owner).unwrap();
+        assert_eq!(
+            vault.restore(&owner).unwrap_err(),
+            AccountProofKeyError::Missing
+        );
+    }
 }
