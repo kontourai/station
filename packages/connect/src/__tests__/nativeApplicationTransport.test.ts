@@ -1,3 +1,7 @@
+import {
+  APPLICATION_TRANSPORT_CHANNEL,
+  createNativeApplicationTransport,
+} from '@kontourai/station-connect/native-application';
 import type {
   ApprovedStationConnectionTrust,
   StationConnectionProofBinding,
@@ -9,10 +13,6 @@ import {
 import { exportJWK, generateKeyPair } from 'jose';
 import { describe, expect, test, vi } from 'vitest';
 import { writeApplicationFrame } from '../core/applicationChannelFrames.js';
-import {
-  APPLICATION_TRANSPORT_CHANNEL,
-  createNativeApplicationTransport,
-} from '../core/nativeApplicationTransport.js';
 import type { NativeDiagnosticSignalAnswer } from '../core/nativeDiagnosticEcho.js';
 
 const CLIENT_FP = Array(32).fill('AA').join(':');
