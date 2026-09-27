@@ -1542,26 +1542,7 @@ invariants must state the product decision and replacement behavioral evidence
 in the PR; changing an assertion solely to match an implementation is not that
 justification.
 
-The required `fast-checks` check is an aggregator (#2709). `fast-checks-plan`
-computes the affected-test selection once; `fast-checks-shard` runs it as four
-deterministic round-robin slices, each inside the fifteen-minute budget and
-each writing a receipt (an empty slice passes explicitly with an `empty`
-receipt); `fast-checks-statics` runs `ci:fast` with
-`STATION_CI_FAST_SCOPE=statics` plus the browser smoke, performance smoke and
-UI bundle budget. `fast-checks` fails unless every part job succeeded and
-the `aggregate` command of `scripts/fast-checks-shard.mjs` proves each shard ran exactly its
-slice of that plan; a skipped or cancelled part, a missing receipt, or a
-receipt for another plan or head fails it. A deferred selection (the
-selector's exit 3) is reported and passes, as it does in unsharded `ci:fast`.
-Local `npm run ci:fast` and fork-smoke still run the whole lane unsharded.
-Transitionally, a pull request branched before the sharded lane (no
-`scripts/fast-checks-shard.mjs`) runs its whole unsharded `ci:fast` in
-`fast-checks-plan` instead, its shards skip, and `fast-checks` requires that
-job and `fast-checks-statics`; its statics therefore run twice. That path is
-removed once open pull requests have merged `main`.
-
-The required `fast-checks` check covers critical browser smoke before merge,
-through `fast-checks-statics`.
+The required `fast-checks` job executes critical browser smoke before merge.
 The required repository-governance evidence rejects moving that suite into an
 optional/manual dependency or swallowing its result. Product-law observations
 use named structured results: missing, skipped, or unavailable evidence is not
