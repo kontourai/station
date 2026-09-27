@@ -1352,3 +1352,37 @@ describe('#2377 slice C1: a Default pick is checked against the whole conversati
     },
   );
 });
+
+/**
+ * #2377 slice C1: the steer and adopt scope reads a thread's confinement
+ * through `sessionRunsHost`, which must agree with what its next turn runs.
+ */
+test('sessionRunsHost reads the start stamp and a recorded never, as a turn does', async () => {
+  const f = await fixture({ station: 'never' });
+  await f.chat(f.bearer(f.operator.credential), 'claude-agent');
+  const operatorThread = f.claude.starts.at(-1)!.threadId;
+  const phone = f.pair('Phone');
+  await f.chat(f.bearer(phone.credential), 'claude-agent');
+  const phoneThread = f.claude.starts.at(-1)!.threadId;
+  expect(f.service.sessionRunsHost(operatorThread)).toBe(true);
+  expect(f.service.sessionRunsHost(phoneThread)).toBe(false);
+  expect(f.service.sessionRunsHost('no-such-thread')).toBe(false);
+
+  const decided = await f.request(
+    f.bearer(f.operator.credential),
+    '/api/orchestration/commands',
+    {
+      type: 'setApprovalMode',
+      threadId: phoneThread,
+      approvalMode: 'never',
+      basedOnSequence: null,
+    },
+  );
+  expect(decided.status, decided.text).toBe(200);
+  expect(f.service.sessionRunsHost(phoneThread)).toBe(true);
+  await f.service.dispatch({
+    type: 'sendTurn',
+    input: { threadId: phoneThread, input: 'again' },
+  });
+  expect(f.claude.turns.at(-1)).toMatchObject({ confinement: 'host' });
+});
