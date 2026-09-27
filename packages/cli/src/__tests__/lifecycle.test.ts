@@ -2773,7 +2773,55 @@ describe('lifecycle instance state', () => {
       `Station process exited before ${url} answered (fetch failed)`,
     );
     expect(failure!.message).toBe(
-      lifecycle.childExitedBeforeReadinessMessage(url, 'fetch failed'),
+      lifecycle.childExitedBeforeReadinessMessage(
+        url,
+        'fetch failed',
+        'no-listener',
+      ),
+    );
+  });
+
+  it('names the other instance when the child exits after a mismatch, keeping the detail (#2805)', async () => {
+    vi.useFakeTimers();
+    // Another instance owns the port: it answers with its own boot triple.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              instanceId: 'smoke-b',
+              sha: 'identity-sha',
+              bootId: 'other-boot',
+            }),
+        } as unknown as Response),
+      ),
+    );
+    const { lifecycle } = await loadLifecycleModule();
+    const url = 'http://localhost:3246/api/system/identity';
+    let alive = true;
+    let failure: Error | null = null;
+    const waiting = lifecycle
+      .waitForIdentity(
+        url,
+        { instanceId: 'smoke-b', sha: 'identity-sha', bootId: 'identity-boot' },
+        90_000,
+        undefined,
+        { childAlive: () => alive, log: vi.fn() },
+      )
+      .catch((error: Error) => {
+        failure = error;
+      });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(failure).toBeNull();
+    // Our child lost the bind race and exited.
+    alive = false;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(failure).not.toBeNull();
+    await waiting;
+    expect(failure!.message).toBe(
+      `Station process exited; ${url} answered as a different instance (managed boot identity mismatch): bootId expected "identity-boot", got "other-boot"`,
     );
   });
 

@@ -3513,7 +3513,18 @@ export interface IdentityWaitOptions {
 export function childExitedBeforeReadinessMessage(
   url: string,
   lastFailure: string,
+  lastKind: IdentityWaitFailureKind | null,
+  mismatchDetail = '',
 ): string {
+  // Something else answered with another boot's identity: the station#1177
+  // lost port race (our child failed to bind and exited). Say so, with the
+  // differing fields, rather than claim nothing answered.
+  if (lastKind === 'identity-mismatch') {
+    return `Station process exited; ${url} answered as a different instance (${lastFailure}): ${mismatchDetail}`;
+  }
+  if (lastKind === 'http-error' || lastKind === 'gateway-unavailable') {
+    return `Station process exited; ${url} answered ${lastFailure}`;
+  }
   return `Station process exited before ${url} answered (${lastFailure})`;
 }
 
@@ -3600,9 +3611,16 @@ export async function waitForIdentity(
     } finally {
       if (timeout) clearTimeout(timeout);
     }
-    // No answer yet and the child is gone: it will never answer (#2805).
+    // Not ready yet and the child is gone: it never will be (#2805).
     if (options?.childAlive && !options.childAlive()) {
-      throw new Error(childExitedBeforeReadinessMessage(url, lastFailure));
+      throw new Error(
+        childExitedBeforeReadinessMessage(
+          url,
+          lastFailure,
+          lastKind,
+          lastMismatchDetail,
+        ),
+      );
     }
     const retryDelayMs = Math.min(200, Math.max(0, deadline - Date.now()));
     if (retryDelayMs > 0) {
