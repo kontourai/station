@@ -1,13 +1,23 @@
 # Knowledge foundation — K2..K5 interface contract
 
+> **Reading status: implemented Knowledge foundations with historical planning sketches.**
+> Current [store contracts](../../packages/contracts/src/knowledge-store.ts),
+> [Station-owned file adapters](../../src-server/knowledge-store/adapters/default-store.ts),
+> and [index provider](../../src-server/knowledge-index/sqlite-vec-index-provider.ts)
+> take precedence over the dated pseudocode, dependency pins, and rollout notes.
+> Station implements the published format locally; it does not load a sibling
+> checkout as runtime authority. This review does not requalify every mutation,
+> migration, embedding provider, external Kit version, or Neo4j deployment.
+
 Design contract for the Knowledge foundation program (milestone #4, issues #200–#203), implementing
 [ADR-0009](../adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md): Kit-format,
 adapter-backed stores are canonical; the retrieval index is derived and rebuildable. The successor
 index is **sqlite-vec** (runner-up: real LanceDB as an optional adapter) — the evidence matrix,
 probe transcripts, and license notes live in ADR-0009's appendix and are not restated here.
 
-K2's and K3's planners should be able to implement directly from this document. Interface names are
-normative; shapes are precise enough to paste into TypeScript with minimal translation.
+The K2/K3 snippets preserve the original interface design. Use the checked-in
+contracts and current [Knowledge guide](../guides/knowledge.md) when implementing
+or integrating; the historical snippets are not a copy-paste API reference.
 
 ## Today's seam (what is being extended/replaced)
 
@@ -25,8 +35,9 @@ normative; shapes are precise enough to paste into TypeScript with minimal trans
 
 Layer 1 of ADR-0009. Store roots are first-class entities; every record CRUD call delegates to the
 Kit's published `KnowledgeStoreAdapter` contract (`kits/knowledge/docs/store-contract.md` §8 — inside the installed `@kontourai/flow-agents` package, not this repo, plus
-`supersede` from Addendum A.6 and `retire` from Addendum B.5) — Station never parses or writes the
-Kit's on-disk format itself and never imports Kit internals (ADR-0001; enforced by a zero-tolerance
+`supersede` from Addendum A.6 and `retire` from Addendum B.5). Station's own default
+and Obsidian adapters parse and write that format through KnowledgeFileTransactions;
+Station does not import Kit internals (ADR-0001; enforced by a zero-tolerance
 grep gate, `scripts/knowledge-kit-import-gate.mjs`, wired into `verify:static` as of K2 Wave 3 —
 issue #200's `k2-no-kit-internal-imports` AC).
 
@@ -67,8 +78,8 @@ export interface KnowledgeStoreRoot {
 
 /**
  * The Kit's adapter contract, §8 verbatim (+ A.6 supersede, B.5 retire).
- * Station TYPES this seam but the implementations are the Kit's own published adapter modules
- * (adapters/default-store, adapters/obsidian-store), loaded as ESM per the contract:
+ * Historical interface sketch. The current implementations are Station-owned
+ * default-store and obsidian-store adapters over the published format. The original Kit contract described:
  * "a JavaScript module (ESM) exporting a default class or factory function" whose
  * constructor/factory accepts `{ storeRoot }`.
  */
@@ -415,18 +426,13 @@ management lives in Settings vs the Connections page.
 >   Wave 1 commit, so no follow-up server change was needed when Wave 2's project-settings UI started
 >   calling `POST /roots` with an omitted `storeRoot` for `scope.kind === 'project'`.
 >
-> **`knowledgeStores` config flag status, unchanged by this work.** `AppConfig.knowledgeStores`
-> (`packages/contracts/src/config.ts`) still reads as "default off" in its own doc comment, and this
-> plan — like K2 and K3 before it — does not add any conditional on it: every route in
-> `knowledge-store-routes.ts`, every new SDK hook, and every new UI surface (Settings section,
-> project-settings subsection) is unconditionally reachable regardless of the
-> flag's value. Verified by repo-wide grep during this work: the only non-comment, non-type-decl
-> reference to the string `knowledgeStores` anywhere in `src-server/`, `src-ui/`, or `packages/` is
-> the config type declaration itself (`packages/contracts/src/config.ts`) plus one explanatory
-> comment (`src-server/runtime/bootstrap/runtime-service-bootstrap.ts`) — zero code paths branch on it. This
-> is flagged for the user at PR review, not silently decided: confirm this unconditional rollout is
-> intended, or decide separately whether the flag should become load-bearing (a larger, distinct
-> change this plan does not make).
+> **Current `knowledgeStores` scope.** Ordinary Knowledge routes and Settings
+> management are not gated by this flag. Personal runtime initialization passes
+> it to [conversation-root bootstrap](../../src-server/knowledge-store/conversation-root-bootstrap.ts),
+> which creates `root:conversations` only when it is `true` and the root is absent.
+> Turning it off does not remove an existing root. Hosted initialization refuses
+> that projection. The earlier K4 claim that no code reads the flag is historical.
+
 
 ## K5 — Meeting notes app (issue #203)
 

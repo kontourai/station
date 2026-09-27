@@ -1,5 +1,15 @@
 # Notification delivery on native shells
 
+> **Reading status: historical mobile failures plus current push design and recorded receipts.**
+> [Native capability reporting](../../src-desktop/src/lib.rs), the
+> [publisher](../../src-server/services/notifications/agent-activity-publisher.ts),
+> [registration routes](../../src-server/routes/operations/native-push-routes.ts),
+> and [client registration](../../src-ui/src/platform/native/agentActivity.ts)
+> own the current path. Early foreground-only tables predate the push work.
+> Provisioning and delivery-status entries retain their recorded evidence;
+> this review did not inspect a live gateway, provider account, installed app,
+> or physical phone, and does not claim that those deployments remain current.
+
 The contract for how a Station notification reaches the person who needs to act
 on it, and why the obvious implementations do not work.
 
@@ -84,24 +94,26 @@ WebView in the same process resolves and fetches the same URL over HTTPS
 without trouble, because Chromium resolves through Android's own resolver while
 Rust's `std` goes to bionic `getaddrinfo`.
 
-The lesson generalises past notifications: **native Rust HTTP is not usable on
-Android in this app**. Anything the host needs to fetch has to be resolved by
-the platform, not by `getaddrinfo`.
+That device probe demonstrated a resolver failure in the then-current Rust
+HTTP path. It is historical evidence for that path and build, not proof that
+every current native HTTP operation fails on Android. New native transport
+paths require their own platform verification.
 
 ## Status: the watch is landed and dormant
 
 `notification_watch_start` / `notification_watch_stop` exist and are tested, and
 **nothing calls them**. Push (below) supersedes it for backgrounded delivery.
-The dormant call site is commented in
-`src-ui/src/contexts/ApiBaseContext.tsx` so switching it on is a visible,
-small change rather than an archaeology exercise.
+The [native notifier adapter](../../src-ui/src/platform/native/notifier.ts)
+retains the command wrapper; no production UI caller starts that generic watch.
+Enabling it needs a reviewed caller and delivery evidence, not just a surviving
+Rust command.
 
 (Historical: archive#3088 corrected this record after a backlog sweep closed
 the original tracking issue with no code change. It is itself now closed, so
 it must not be cited here as live tracking — that would repeat the very
 defect it was filed for.)
 
-## Where this leaves delivery
+## Historical delivery limits before native push
 
 | App state | Covered |
 |---|---|
@@ -111,12 +123,11 @@ defect it was filed for.)
 | Device rebooted, app never opened | **no** |
 
 Everything below the first row needs FCM on Android and APNs on iOS
-(archive#917, reseeded as #63 and batched into #177). The native capability
-report therefore returns `remote-push: unsupported` instead of allowing the
-presence of the local-notification plugin or dormant watch to be mistaken for
-wake-capable delivery. archive#1225 remains open until the mobile applications
-and server send credentials are provisioned; repository code cannot
-manufacture those provider identities.
+(archive#917, reseeded as #63 and batched into #177). The capability report originally returned `remote-push: unsupported` for that
+reason. It now reports build-dependent push support: Android requires its
+Firebase build values; iOS requires the Live Activity build. Neither means a
+phone has registered or a provider delivered a message. The later sections
+record implementation and qualification separately from these original limits.
 
 That is not a consolation prize. Push is the mechanism that does not require
 keeping a process alive at all — the system unfreezes the app to deliver — so it
@@ -585,8 +596,8 @@ the route answers 503. The gateway is deployed by hand
   `cardShown` in the Android file: such a Station answers 503 for native push
   until it is upgraded again, or `security/native-push-ios-registrations.json`
   is deleted and agent activity is turned on again on the phone.
-- **Web-layer contract** (for the iOS registration flow, #2660, not built:
-  the settings flow is Android-only today, so no phone sends a token yet):
+- **Alert-token web-layer contract** (separate from the implemented iOS
+  push-to-start registration described in Delivery status):
   - every registration and re-registration of an iPhone that should get
     alerts must restate `alertToken`; one that omits it turns alerts off for
     that phone (the stored token is dropped);
@@ -721,10 +732,10 @@ the route answers 503. The gateway is deployed by hand
   with a quiet "handled" push was rejected: it re-posts to the lock screen to
   say there is nothing to see. An iOS alert therefore stays in Notification
   Center until the person clears it.
-- **Not built.** Foreground presentation (the app sets no
-  `UNUserNotificationCenter` delegate, so an alert that arrives while the app
-  is open is not shown; the in-app toast covers that case), tap routing, and
-  the web layer's iOS registration.
+- **Remaining alert-specific work.** Foreground alert presentation, alert tap
+  routing, and web-layer alert-token registration are separate from the
+  implemented iOS Live Activity registration. A push-to-start registration does
+  not by itself enable regular alert pushes.
 - **Enablement checklist** (in addition to the Live Activity slice D steps):
   1. Push on the App ID (alerts need no broadcast capability or extension),
      and the `ALERT_PER_TOKEN_LIMITER` binding deployed with the gateway.

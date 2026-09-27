@@ -1,5 +1,13 @@
 # Knowledge recall UI boundary
 
+> **Reading status: current SDK recall boundary.**
+> [KnowledgeRecall](../../packages/sdk/src/components/KnowledgeRecall.tsx) and
+> the [root metadata key](../../packages/shared/src/knowledge-root-identity.ts)
+> own shared selection and presentation. [Knowledge Library](../../examples/knowledge-library/src/KnowledgeLibrary.tsx)
+> and [Meeting Notes](../../examples/meeting-notes/src/GraphPane.tsx) are callers.
+> The extraction's original behavior/packaging claims do not replace current
+> provider, live plugin, or real Knowledge-store verification.
+
 Status: accepted for the Station #528 extraction, 2026-07-19.
 
 This decision follows the generic Knowledge Library pilot with a supported
@@ -81,11 +89,13 @@ is disclosed rather than fetched under an invented authority.
 
 ## Lifecycle and cache integrity
 
-Root authority is more than a root id. The incarnation key includes scope,
-adapter, store root, display name, and creation time so a reconfigured root that
-reuses an id cannot inherit a prior graph or canonical-record presentation.
-Canonical record queries are explicitly revalidated when that authority key or
-the selected record changes.
+A root id alone is not enough to detect changed registration metadata. The
+metadata key includes id, scope, adapter, store root, display name, and creation
+time; changes trigger graph and canonical-record revalidation. It is not an
+immutable incarnation, owner revision, or authorization grant: identically
+restored metadata can produce the same key. Canonical record queries also
+revalidate when the selected record changes; server read authority remains
+separate from this UI cache key.
 
 The shared detail renders status and freshness from the canonical record, not
 from graph-node metadata. A missing canonical record is an explicit error even
