@@ -1,7 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it } from 'vitest';
 // @ts-expect-error Plain ESM plugin module without declarations.
@@ -110,6 +117,15 @@ function app(home: string) {
   });
   return instance;
 }
+/** Every path under `root` with a directory flag, size, and mtime. */
+function treeSnapshot(root: string): string[] {
+  return readdirSync(root, { recursive: true, encoding: 'utf8' })
+    .sort()
+    .map((entry) => {
+      const stat = lstatSync(join(root, entry));
+      return `${entry}|${stat.isDirectory() ? 'd' : 'f'}|${stat.size}|${stat.mtimeMs}`;
+    });
+}
 afterEach(() => {
   for (const dir of dirs.splice(0))
     rmSync(dir, { recursive: true, force: true });
@@ -119,12 +135,21 @@ describe('Builder Delivery Viewer server', () => {
   it('lists valid published state without writing workspace files', async () => {
     const { home, workspace } = fixture();
     mkdirSync(join(workspace, '.kontourai', 'flow-agents', 'not-a-session'));
-    const response = await app(home).request('/projects/demo/builder-sessions');
+    // home and workspace share one fixture root.
+    const root = dirname(home);
+    const before = treeSnapshot(root);
+    const instance = app(home);
+    const response = await instance.request('/projects/demo/builder-sessions');
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(body.sessions).toHaveLength(1);
     expect(body.sessions[0].slug).toBe('demo');
     expect(body.sessions[0].validation.state.valid).toBe(true);
+    const detail = await instance.request(
+      '/projects/demo/builder-sessions/demo',
+    );
+    expect(detail.status).toBe(200);
+    expect(treeSnapshot(root)).toEqual(before);
   });
   it('bounds oversized artifacts and rejects FIFOs without opening them', async () => {
     const oversized = fixture();

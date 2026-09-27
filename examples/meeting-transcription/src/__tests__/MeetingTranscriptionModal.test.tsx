@@ -1,53 +1,20 @@
 /**
  * @vitest-environment jsdom
  */
-import {
-  type STTOptions,
-  type STTProvider,
-  type STTState,
-  voiceRegistry,
-} from '@kontourai/station-sdk';
+import { voiceRegistry } from '@kontourai/station-sdk';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { MeetingTranscriptionModal } from '../MeetingTranscriptionModal';
-
-/** A registrable STT provider whose state and transcript the test drives. */
-function fakeSTT(id: string, isSupported = true) {
-  const listeners = new Set<() => void>();
-  const provider = {
-    id,
-    name: id,
-    isSupported,
-    state: 'idle' as STTState,
-    transcript: '',
-    startListening: vi.fn((_opts?: STTOptions) => {
-      provider.state = 'listening';
-      for (const fn of listeners) fn();
-    }),
-    stopListening: vi.fn(() => {
-      provider.state = 'idle';
-      for (const fn of listeners) fn();
-    }),
-    subscribe: (fn: () => void) => {
-      listeners.add(fn);
-      return () => listeners.delete(fn);
-    },
-    hear(text: string) {
-      provider.transcript = text;
-      for (const fn of listeners) fn();
-    },
-  };
-  return provider satisfies STTProvider;
-}
+import { fakeSTT } from './helpers/fake-stt';
 
 const disposers: Array<() => void> = [];
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
 });
 
-function renderModal() {
+function renderModal(onSend: (prompt: string) => void = vi.fn()) {
   return render(
-    <MeetingTranscriptionModal isOpen onSend={vi.fn()} onClose={vi.fn()} />,
+    <MeetingTranscriptionModal isOpen onSend={onSend} onClose={vi.fn()} />,
   );
 }
 
@@ -89,5 +56,23 @@ describe('MeetingTranscriptionModal through the SDK voice registry', () => {
     expect(stt.startListening).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
     expect(stt.stopListening).toHaveBeenCalled();
+  });
+
+  test('extracts action items with the prompt meeting-notes vendors verbatim', () => {
+    const stt = fakeSTT('extract-stt');
+    disposers.push(voiceRegistry.registerSTT(stt));
+    const onSend = vi.fn();
+
+    renderModal(onSend);
+    act(() => stt.hear('ship the release on Friday'));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Extract action items' }),
+    );
+
+    // Same bytes as examples/meeting-notes EXTRACTION_PROMPT_PREFIX; change
+    // both together.
+    expect(onSend).toHaveBeenCalledExactlyOnceWith(
+      'Here is a meeting transcript. Please extract the key action items, decisions made, and any important points:\n\nship the release on Friday',
+    );
   });
 });

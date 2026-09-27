@@ -100,7 +100,7 @@ type ChapterStep = 'disclosure' | 'engines' | 'engine-role' | 'about-you';
  * powers Station", then "Step 3 of 3" — four screens for three steps, and the
  * one with no number reading as something that had escaped the run.
  */
-export function planFirstRunChapterSteps(input: {
+function planFirstRunChapterSteps(input: {
   disclosureOutstanding: boolean;
   engineRoleUnanswered: boolean;
 }): ChapterStep[] {
