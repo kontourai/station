@@ -34,6 +34,12 @@ afterEach(() => {
 
 const silentLogger = { info: vi.fn(), warn: vi.fn() };
 
+const containedScreenshotEnv = {
+  [SUPPRESS_NATIVE_ENGINE_ADOPTION_ENV]: '1',
+  STATION_HOME_SOURCE: '--temp-home',
+  STATION_INSTANCE_ID: 'e2e-screenshot-mes5x00-abc123',
+};
+
 /**
  * How long the cases below wait for a probe to be invoked (station#1815).
  *
@@ -84,13 +90,21 @@ async function seedLegacyStationRecord(
 describe('adoptDetectedNativeEngines (#1575)', () => {
   it('adopts every detected CLI into the registry', async () => {
     const loader = createLoader();
+    const detect = vi.fn(async (_cli: string) => true);
     const summary = await adoptDetectedNativeEngines({
       configLoader: loader,
       logger: silentLogger,
-      detect: async () => true,
+      detect,
       delaysMs: [0],
     });
 
+    // The executable names probed on the host's PATH, as literals: a renamed
+    // binary would adopt nothing on a real machine.
+    expect(detect.mock.calls.map(([cli]) => cli)).toEqual([
+      'claude',
+      'codex',
+      'muse',
+    ]);
     expect(summary.outcomes).toEqual({
       claude: 'adopted',
       codex: 'adopted',
@@ -534,11 +548,7 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       logger: silentLogger,
       detect,
       delaysMs: [0],
-      env: {
-        [SUPPRESS_NATIVE_ENGINE_ADOPTION_ENV]: '1',
-        STATION_HOME_SOURCE: '--temp-home',
-        STATION_INSTANCE_ID: 'e2e-screenshot-mes5x00-abc123',
-      },
+      env: containedScreenshotEnv,
     });
 
     // Zero probes were made, so an absence would be a claim about a host
@@ -553,6 +563,57 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     const registry = await loadOrCreateAgentRegistry(loader);
     expect(registry.engineConnections).toEqual([]);
   });
+
+  // #875: the suppression request is inert unless the whole containment
+  // conjunction holds, so a persistent or non-screenshot runtime still adopts.
+  it.each([
+    {
+      name: 'flag absent',
+      env: {
+        STATION_HOME_SOURCE: '--temp-home',
+        STATION_INSTANCE_ID: 'e2e-screenshot-mes5x00-abc123',
+      },
+    },
+    {
+      name: 'persistent home',
+      env: { ...containedScreenshotEnv, STATION_HOME_SOURCE: 'default' },
+    },
+    {
+      name: 'non-screenshot E2E instance',
+      env: {
+        ...containedScreenshotEnv,
+        STATION_INSTANCE_ID: 'e2e-product-mes5x00-abc123',
+      },
+    },
+    {
+      name: 'wrong flag value',
+      env: {
+        ...containedScreenshotEnv,
+        [SUPPRESS_NATIVE_ENGINE_ADOPTION_ENV]: 'true',
+      },
+    },
+  ])(
+    'probes and adopts without the full screenshot containment: $name',
+    async ({ env }) => {
+      const loader = createLoader();
+      const detect = vi.fn(async () => true);
+
+      const summary = await adoptDetectedNativeEngines({
+        configLoader: loader,
+        logger: silentLogger,
+        detect,
+        delaysMs: [0],
+        env,
+      });
+
+      expect(detect).toHaveBeenCalledTimes(3);
+      expect(summary.outcomes).toEqual({
+        claude: 'adopted',
+        codex: 'adopted',
+        muse: 'adopted',
+      });
+    },
+  );
 
   it('leaves a partially adopted registry the next run completes (#1815)', async () => {
     const loader = createLoader();
@@ -636,16 +697,6 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
 });
 
 describe('native engine candidates', () => {
-  it('adopts muse under its engine id', () => {
-    const muse = NATIVE_ENGINE_CANDIDATES.find(
-      (candidate) => candidate.id === 'muse',
-    );
-    expect(muse).toEqual({
-      id: 'muse',
-      cli: 'muse',
-    });
-  });
-
   it('binds every candidate to a distinct id and cli', () => {
     const ids = NATIVE_ENGINE_CANDIDATES.map((c) => c.id);
     const clis = NATIVE_ENGINE_CANDIDATES.map((c) => c.cli);

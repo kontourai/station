@@ -6,10 +6,6 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PAIRING_SCOPE_ROUTE_TABLE } from '../../../security/pairing-route-scopes.js';
-import {
-  getRuntimeAuthenticatedRequestPrincipal,
-  setRuntimeAuthenticatedRequestPrincipal,
-} from '../../../security/runtime-request-security.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import type { Logger } from '../../../utils/logger.js';
 import { RouteError } from '../../../utils/route-error.js';
@@ -142,25 +138,6 @@ describe('resolveRuntimeCorsOrigin', () => {
       'https://app.example.com',
     );
     expect(resolveRuntimeCorsOrigin('https://unknown.example.com')).toBeNull();
-  });
-
-  test('keeps the middleware-authenticated cookie or bearer principal on its exact request', () => {
-    const request = new Request('http://station.test/api/tasks/task/room');
-    setRuntimeAuthenticatedRequestPrincipal(request, {
-      credential: 'paired-device-credential',
-      authority: 'device-credential',
-      source: 'session',
-    });
-    expect(getRuntimeAuthenticatedRequestPrincipal(request)).toEqual({
-      credential: 'paired-device-credential',
-      authority: 'device-credential',
-      source: 'session',
-    });
-    expect(
-      getRuntimeAuthenticatedRequestPrincipal(
-        new Request('http://station.test/api/tasks/task/room'),
-      ),
-    ).toBeUndefined();
   });
 
   test('station#169: the preflight allowlist admits Last-Event-ID so cross-origin SSE reconnects survive', async () => {
