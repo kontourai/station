@@ -28,7 +28,10 @@ import {
 import { errorMessage } from '../../routes/schemas/schemas.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
 import { execGit, isLocalGitSource } from '../../utils/git-exec.js';
-import { endsAsGitName } from '../../utils/git-metadata-name.js';
+import {
+  endsAsGitName,
+  isGitMetadataName,
+} from '../../utils/git-metadata-name.js';
 import type { Logger } from '../../utils/logger.js';
 import { ownGitRepositoryArgs } from '../../utils/own-git-repository.js';
 import { DistributionProfileService } from './distribution-profile-service.js';
@@ -517,9 +520,9 @@ export async function fetchPluginSource(
    * local git is never cloned. An operator's own `station install <path>`
    * keeps its `.git`, which the update route relies on.
    *
-   * `excludeGitMetadata`: a local source someone other than the operator
-   * proposed (#2719). Copied the same way, and, like a dependency, never a
-   * local git repository.
+   * `excludeGitMetadata`: a source someone other than the operator proposed
+   * (#2719). A local tree is copied the same way and, like a dependency, is
+   * never a local git repository; a remote clone has its `.git` removed.
    */
   options: { dependency?: boolean; excludeGitMetadata?: boolean } = {},
 ): Promise<{ tempDir: string; tempName: string } | { error: string }> {
@@ -603,6 +606,16 @@ export async function fetchPluginSource(
       } catch (cloneError: unknown) {
         rmSync(tempDir, { recursive: true, force: true });
         return { error: `Failed to clone: ${errorMessage(cloneError)}` };
+      }
+    }
+    // A proposed remote source is staged without git metadata, as its
+    // preview says. A clone's only repository is its top-level `.git`: git
+    // refuses to check out a `.git` path from the tree, and this clone does
+    // not fetch submodules. Every spelling is still removed.
+    if (options.excludeGitMetadata) {
+      for (const name of readdirSync(tempDir)) {
+        if (isGitMetadataName(name))
+          rmSync(join(tempDir, name), { recursive: true, force: true });
       }
     }
   } else {
