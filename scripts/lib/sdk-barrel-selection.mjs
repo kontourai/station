@@ -1387,13 +1387,43 @@ function importChangeContext(graph, baseSources, baseUnknown = null) {
     if (source !== undefined) {
       const file = parse(module, source);
       const mutable = new Set();
+      // Every identifier an assignment target names: a plain name, or the
+      // names inside a destructuring pattern (`[a, { b }] = ...`).
+      const targetNames = (target) => {
+        if (ts.isIdentifier(target)) mutable.add(target.text);
+        else if (ts.isArrayLiteralExpression(target))
+          for (const element of target.elements)
+            targetNames(
+              ts.isSpreadElement(element) ? element.expression : element,
+            );
+        else if (ts.isObjectLiteralExpression(target))
+          for (const property of target.properties) {
+            if (ts.isShorthandPropertyAssignment(property))
+              mutable.add(property.name.text);
+            else if (ts.isPropertyAssignment(property))
+              targetNames(property.initializer);
+            else if (ts.isSpreadAssignment(property))
+              targetNames(property.expression);
+          }
+        else if (
+          ts.isBinaryExpression(target) &&
+          target.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        )
+          targetNames(target.left); // a default: `[a = 1] = ...`
+        else if (ts.isParenthesizedExpression(target))
+          targetNames(target.expression);
+      };
       const assigned = (node) => {
         if (
           ts.isBinaryExpression(node) &&
-          IMPURE_OPERATORS.has(node.operatorToken.kind) &&
-          ts.isIdentifier(node.left)
+          IMPURE_OPERATORS.has(node.operatorToken.kind)
         )
-          mutable.add(node.left.text);
+          targetNames(node.left);
+        if (
+          (ts.isForOfStatement(node) || ts.isForInStatement(node)) &&
+          !ts.isVariableDeclarationList(node.initializer)
+        )
+          targetNames(node.initializer);
         if (
           (ts.isPrefixUnaryExpression(node) ||
             ts.isPostfixUnaryExpression(node)) &&

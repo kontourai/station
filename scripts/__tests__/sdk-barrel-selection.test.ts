@@ -737,6 +737,32 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
               'export function count() { return 0; }\nexport function inc() { count = () => 1; }',
           },
         ],
+        [
+          'of a function reassigned by destructuring',
+          qReadsCount,
+          {
+            'packages/sdk/src/s.ts':
+              'export function count() { return 0; }\nexport function inc() { [count] = [() => 1]; }',
+          },
+        ],
+        [
+          'of a function reassigned in a for-of head',
+          qReadsCount,
+          {
+            'packages/sdk/src/s.ts':
+              'export function count() { return 0; }\nexport function inc() { for (count of [() => 1]) {} }',
+          },
+        ],
+        [
+          // The rule counts every `export let`/`var`, even one the module never
+          // visibly reassigns: the declaration says it may change.
+          'of an `export let` with no visible reassignment',
+          qReadsCount,
+          {
+            'packages/sdk/src/s.ts':
+              'export let count = 0;\nexport function inc() { return count; }',
+          },
+        ],
       ])('B, %s', (_label, q, extra) => {
         const decision = decideMove(
           { ...liveFiles(q), ...extra },
