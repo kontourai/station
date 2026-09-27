@@ -6,6 +6,7 @@ import {
   RELAY_ENROLLMENT_FINALIZE_PATH,
   RELAY_ENROLLMENT_LOGIN_PATH,
 } from '@kontourai/station-contracts/relay-enrollment';
+import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 
 /** Trusted process composition only. This is not an authentication provider. */
 export interface VirtualApplication {
@@ -29,6 +30,45 @@ export interface VerifiedPionApplicationRequestFacts {
 export type ReadPionApplicationRequestFacts = (
   request: Request,
 ) => VerifiedPionApplicationRequestFacts | undefined;
+
+/** Native authority is supplied by the admitted Pion peer, never an HTTP Origin. */
+export interface VerifiedNativePionApplicationRequestFacts {
+  readonly stationId: string;
+  readonly connectionEnrollmentId: string;
+  readonly routingGeneration: number;
+  readonly connectionId: string;
+  readonly stationOrigin: string;
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  readonly signal: AbortSignal;
+  isCurrent(): boolean;
+}
+export type ReadNativePionApplicationRequestFacts = (
+  request: Request,
+) => VerifiedNativePionApplicationRequestFacts | undefined;
+export interface VerifiedNativeVirtualApplicationRequestFacts
+  extends VerifiedNativePionApplicationRequestFacts {
+  readonly requestOrigin: string;
+}
+const verifiedNativeVirtualRequests = new WeakMap<
+  Request,
+  VerifiedNativeVirtualApplicationRequestFacts
+>();
+
+export function readVerifiedNativeVirtualApplicationRequest(
+  request: Request,
+): VerifiedNativeVirtualApplicationRequestFacts | undefined {
+  const facts = verifiedNativeVirtualRequests.get(request);
+  if (
+    !facts ||
+    request.signal.aborted ||
+    facts.signal.aborted ||
+    !facts.isCurrent() ||
+    request.headers.has('origin') ||
+    new URL(request.url).origin !== facts.requestOrigin
+  )
+    return undefined;
+  return facts;
+}
 
 export interface VerifiedVirtualApplicationRequestFacts
   extends VerifiedPionApplicationRequestFacts {
@@ -116,6 +156,7 @@ export class VirtualApplicationIngress {
   constructor(
     private readonly origin: string,
     private readonly readPionFacts?: ReadPionApplicationRequestFacts,
+    private readonly readNativePionFacts?: ReadNativePionApplicationRequestFacts,
   ) {
     const url = new URL(origin);
     if (!['http:', 'https:'].includes(url.protocol) || url.origin !== origin)
@@ -191,6 +232,9 @@ export class VirtualApplicationIngress {
       if (forbiddenHeader(name))
         return refusal(400, 'virtual_header_forbidden');
     const pionFacts = this.readPionFacts?.(input);
+    const nativeFacts = this.readNativePionFacts?.(input);
+    if (pionFacts && nativeFacts)
+      return refusal(403, 'virtual_pion_provenance_invalid');
     if (
       pionFacts &&
       (!pionFacts.isCurrent() ||
@@ -200,6 +244,16 @@ export class VirtualApplicationIngress {
         input.headers.get('origin') !== pionFacts.browserOrigin)
     )
       return refusal(403, 'virtual_pion_provenance_invalid');
+    if (
+      nativeFacts &&
+      (!nativeFacts.isCurrent() ||
+        nativeFacts.signal.aborted ||
+        nativeFacts.stationOrigin !== this.origin ||
+        url.origin !== nativeFacts.stationOrigin ||
+        input.headers.has('origin') ||
+        nativeFacts.surface.kind !== 'station-native')
+    )
+      return refusal(403, 'virtual_pion_provenance_invalid');
     if (this.pending.size >= 32)
       return refusal(429, 'virtual_capacity_exhausted');
     const controller = new AbortController();
@@ -207,6 +261,7 @@ export class VirtualApplicationIngress {
       input.signal,
       controller.signal,
       ...(pionFacts ? [pionFacts.signal] : []),
+      ...(nativeFacts ? [nativeFacts.signal] : []),
     ]);
     signal.throwIfAborted();
     this.pending.add(controller);
@@ -239,6 +294,21 @@ export class VirtualApplicationIngress {
             new URL(request.url).origin === pionFacts.stationOrigin,
         });
         verifiedVirtualRequests.set(request, facts);
+      }
+      if (nativeFacts) {
+        verifiedNativeVirtualRequests.set(
+          request,
+          Object.freeze({
+            ...nativeFacts,
+            surface: Object.freeze({ ...nativeFacts.surface }),
+            signal,
+            requestOrigin: this.origin,
+            isCurrent: () =>
+              !signal.aborted &&
+              nativeFacts.isCurrent() &&
+              new URL(request.url).origin === nativeFacts.stationOrigin,
+          }),
+        );
       }
       handlerStarted = true;
       response = await this.awaitResponse(this.application, request, () => {
