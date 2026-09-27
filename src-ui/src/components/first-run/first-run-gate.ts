@@ -27,7 +27,6 @@
 
 import type {
   FirstRunState,
-  FirstRunStatus,
   FirstRunTransitionRequest,
 } from '@kontourai/station-contracts/config';
 
@@ -68,13 +67,6 @@ export function resolveFirstRunOffer(
     default:
       return CLOSED;
   }
-}
-
-/** Whether a status string is one this build knows how to act on. */
-export function isKnownFirstRunStatus(
-  status: string | undefined,
-): status is FirstRunStatus {
-  return status === 'pending' || status === 'skipped' || status === 'completed';
 }
 
 /**

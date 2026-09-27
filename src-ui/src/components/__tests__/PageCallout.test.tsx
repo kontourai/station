@@ -5,11 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
-import {
-  dedupePageCallouts,
-  PageCallout,
-  PageCalloutStack,
-} from '../PageCallout';
+import { PageCallout, PageCalloutStack } from '../PageCallout';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const readCss = (relative: string) =>
@@ -290,8 +286,25 @@ describe('a stack is dedupable', () => {
     // A stack holds whatever the page puts in it. Home's own stack is handed
     // two COMPONENTS, each of which may or may not render a callout, and
     // dropping either of those would take the surface off the page.
+    function MaybeCallout() {
+      return (
+        <PageCallout calloutId="starter-work" ariaLabel="from a component">
+          component
+        </PageCallout>
+      );
+    }
     const child = <div data-testid="not-a-callout">x</div>;
-    const kept = dedupePageCallouts([child, null, child, undefined]);
-    expect(kept).toEqual([child, null, child, undefined]);
+    render(
+      <PageCalloutStack>
+        <MaybeCallout />
+        {child}
+        {null}
+        {child}
+        {undefined}
+      </PageCalloutStack>,
+    );
+
+    expect(screen.getByLabelText('from a component')).toBeTruthy();
+    expect(screen.getAllByTestId('not-a-callout')).toHaveLength(2);
   });
 });

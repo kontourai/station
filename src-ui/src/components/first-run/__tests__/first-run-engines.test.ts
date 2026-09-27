@@ -15,7 +15,6 @@ import {
   firstRunEnableFailureOutcome,
   firstRunEnableOutcomeMessage,
   firstRunEnableSuccessOutcome,
-  firstRunEngineChapterHasWork,
   firstRunEngineRowLabel,
   summarizeFirstRunEnableOutcomes,
   unplannableFirstRunEngineOutcomes,
@@ -298,38 +297,6 @@ describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
       'Blocked',
       'Gone',
     ]);
-  });
-});
-
-describe('firstRunEngineChapterHasWork — when the chapter is worth showing', () => {
-  test('nothing detected anywhere means no card at all', () => {
-    const options = buildFirstRunEngineOptions({
-      engines: [
-        engine({ name: 'Codex', engineConnectionId: 'codex' as never }),
-        engine({ name: 'Claude Code', engineConnectionId: 'claude' as never }),
-      ],
-      agents: [],
-    });
-    expect(firstRunEngineChapterHasWork(options)).toBe(false);
-  });
-
-  test('an empty server answer means no card', () => {
-    expect(firstRunEngineChapterHasWork([])).toBe(false);
-  });
-
-  test('a detected-but-blocked engine is still worth showing', () => {
-    const options = buildFirstRunEngineOptions({
-      engines: [
-        engine({
-          name: 'Codex',
-          engineConnectionId: 'codex' as never,
-          detected: true,
-          reason: 'sign_in_required',
-        }),
-      ],
-      agents: [],
-    });
-    expect(firstRunEngineChapterHasWork(options)).toBe(true);
   });
 });
 

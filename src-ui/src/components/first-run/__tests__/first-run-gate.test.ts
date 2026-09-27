@@ -1,9 +1,7 @@
-import type { FirstRunState } from '@kontourai/station-contracts/config';
 import { describe, expect, test } from 'vitest';
 import {
   FIRST_RUN_COMPLETED,
   FIRST_RUN_DEFERRED,
-  isKnownFirstRunStatus,
   resolveFirstRunOffer,
 } from '../first-run-gate';
 
@@ -49,25 +47,6 @@ describe('resolveFirstRunOffer — the one read', () => {
     expect(
       resolveFirstRunOffer({ status: 'from-a-newer-station' } as never),
     ).toEqual({ autoOpen: false, offered: false });
-  });
-
-  test('the answer is a pure function of the field — same in, same out', () => {
-    // pure half: nothing here reads a probe, a clock, or a query, so a
-    // flapping `/api/system/status` cannot reach this decision at all.
-    const state: FirstRunState = { status: 'pending' };
-    const first = resolveFirstRunOffer(state);
-    const second = resolveFirstRunOffer(state);
-    expect(first).toEqual(second);
-  });
-});
-
-describe('isKnownFirstRunStatus', () => {
-  test('names exactly the three states this build can act on', () => {
-    expect(isKnownFirstRunStatus('pending')).toBe(true);
-    expect(isKnownFirstRunStatus('skipped')).toBe(true);
-    expect(isKnownFirstRunStatus('completed')).toBe(true);
-    expect(isKnownFirstRunStatus('done')).toBe(false);
-    expect(isKnownFirstRunStatus(undefined)).toBe(false);
   });
 });
 
