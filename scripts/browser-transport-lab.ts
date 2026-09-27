@@ -34,12 +34,15 @@ import {
   runBrowserCookieAdoptionScenario,
 } from './lib/browser-account-scenario.js';
 import {
+  browserAcceptApplicationInvitation,
   browserApplicationAccountPrincipal,
   browserApplicationAccountRequest,
   browserBeginFreshRelayEnrollment,
   browserFinalizeAndActivateFreshRelayEnrollment,
   browserFreshProfileState,
   browserFreshRelayProjectRead,
+  browserStartApplicationAccount,
+  browserStopApplicationAccount,
 } from './lib/browser-application-account.mjs';
 import { browserCheckApplicationChannel } from './lib/browser-application-channel.mjs';
 import { installRelayCandidatePairRecorder } from './lib/browser-relay-candidate-pair.mjs';
@@ -73,7 +76,10 @@ import {
   runLabCommand,
   startLabRelay,
 } from './lib/local-collaboration-process.mjs';
-import { startRelayAccountStation } from './lib/local-collaboration-relay-account.js';
+import {
+  startRelayAccountStation,
+  startRelayAccountStationGroup,
+} from './lib/local-collaboration-relay-account.js';
 import { nodeApplicationChannel } from './lib/node-application-channel.js';
 import { startSelfHostedBrokerProcess } from './lib/self-hosted-broker-process.js';
 
@@ -95,6 +101,7 @@ if (
         '--application-accounts',
         '--self-hosted-broker',
         '--station-ui',
+        '--two-station-isolation',
       ].includes(arg),
   ) ||
   args.filter((arg) => arg.startsWith('--browser-turn=')).length > 1 ||
@@ -106,6 +113,7 @@ if (
 const peerAdapter = args.includes('--peer=pion') ? 'pion' : 'node';
 const selfHostedBroker = args.includes('--self-hosted-broker');
 const stationUi = args.includes('--station-ui');
+const twoStationIsolation = args.includes('--two-station-isolation');
 const fixtureDocumentUrl = (origin: string) =>
   stationUi ? new URL('/__fixture', origin).href : origin;
 if (
@@ -118,6 +126,13 @@ if (
 if (stationUi && !selfHostedBroker)
   throw new Error('--station-ui requires --self-hosted-broker');
 if (
+  twoStationIsolation &&
+  (!selfHostedBroker || stationUi || !args.includes('--browser-turn=tcp'))
+)
+  throw new Error(
+    '--two-station-isolation requires --self-hosted-broker --browser-turn=tcp without --station-ui',
+  );
+if (
   args.includes('--application-protocol') &&
   args.includes('--application-accounts')
 )
@@ -125,9 +140,20 @@ if (
 let accountStation:
   | Awaited<ReturnType<typeof startRelayAccountStation>>
   | undefined;
+let accountStationGroup:
+  | Awaited<ReturnType<typeof startRelayAccountStationGroup>>
+  | undefined;
+let secondAccountStation:
+  | Awaited<ReturnType<typeof startRelayAccountStation>>
+  | undefined;
 let brokerLab:
   | Awaited<ReturnType<typeof startSelfHostedBrokerProcess>>
   | undefined;
+let secondBrokerLab:
+  | Awaited<ReturnType<typeof startSelfHostedBrokerProcess>>
+  | undefined;
+let secondConnectionTrust: ApprovedStationConnectionTrust | undefined;
+let twoStationReport: Record<string, unknown> | undefined;
 let accountReport: Record<string, unknown> | undefined;
 let cookieAdoptionReport: Record<string, unknown> | undefined;
 let cookieAdoptionSecrets: string[] = [];
@@ -232,6 +258,7 @@ const admittedConnections = new Set<string>();
 let securePageServer: ReturnType<typeof createHttpsServer> | undefined;
 let secondarySecurePageServer: ReturnType<typeof createHttpsServer> | undefined;
 let stationUpstreamPort: number | undefined;
+let secondStationUpstreamPort: number | undefined;
 function serveBrowserDocument(
   request: import('node:http').IncomingMessage,
   response: import('node:http').ServerResponse,
@@ -1276,6 +1303,323 @@ async function runStationUiRelayJourney(input: {
   };
 }
 
+/** Two independent Stations and browser principals share only the local TURN
+ * fixture. Each route has its own broker, Station key, account, Device and
+ * Project authority; neither browser uses direct application HTTP. */
+async function runTwoStationIsolation(input: {
+  browser: NonNullable<typeof browser>;
+  firstPage: Page;
+  firstStation: NonNullable<typeof accountStation>;
+  secondStation: NonNullable<typeof secondAccountStation>;
+  firstBroker: NonNullable<typeof brokerLab>;
+  secondBroker: NonNullable<typeof secondBrokerLab>;
+  firstTrust: ApprovedStationConnectionTrust;
+  secondTrust: ApprovedStationConnectionTrust;
+  secondPageOrigin: string;
+  turnPort: number;
+}) {
+  const context = await input.browser.newContext();
+  const page = await context.newPage();
+  let primaryError: unknown;
+  const cleanupErrors: unknown[] = [];
+  let report: Record<string, unknown> | undefined;
+  let accountStarted = false;
+  let routeConnected = false;
+  let directApplicationAttempts = 0;
+  let phase = 'browser setup';
+  try {
+    await page.goto(fixtureDocumentUrl(input.secondPageOrigin));
+    for (const station of [input.firstStation, input.secondStation]) {
+      await page.route(`${station.station.base}/api/**`, async (route) => {
+        directApplicationAttempts += 1;
+        await route.abort('blockedbyclient');
+      });
+    }
+    await page.evaluate(browserSetConnectionTrust, {
+      trust: input.secondTrust,
+      approvedKeyId: await stationConnectionSigningKeyId(input.secondTrust),
+    });
+    phase = 'first connector lease before cross-Station admission';
+    assert.equal((await input.firstBroker.readLease()).state, 'online');
+    phase = 'second connector lease before cross-Station admission';
+    assert.equal((await input.secondBroker.readLease()).state, 'online');
+    phase = 'foreign route invitation issuance';
+    const foreignInvitation = input.firstBroker.issueInvitation({
+      clientOrigin: input.secondPageOrigin,
+      stationSigningKeyId: await stationConnectionSigningKeyId(
+        input.firstTrust,
+      ),
+      stationSigningGeneration: input.firstTrust.generation,
+    });
+    // A failed admission may still allocate a partial browser owner. Always
+    // close this page's broker state on the error path as well.
+    routeConnected = true;
+    phase = 'foreign route invitation refusal';
+    let foreignAdmissionRequests = 0;
+    const observeForeignAdmission = (
+      request: import('@playwright/test').Request,
+    ) => {
+      const url = new URL(request.url());
+      if (
+        [
+          input.firstBroker.brokerOrigin,
+          input.secondBroker.brokerOrigin,
+        ].includes(url.origin) &&
+        url.pathname.startsWith('/broker/')
+      )
+        foreignAdmissionRequests += 1;
+    };
+    page.on('request', observeForeignAdmission);
+    try {
+      await assert.rejects(
+        page.evaluate(browserBrokerConnect, {
+          brokerOrigin: input.secondBroker.brokerOrigin,
+          scope: input.secondBroker.scope,
+          invitation: foreignInvitation,
+          applicationOrigin: input.secondStation.station.base,
+          port: input.turnPort,
+          username,
+          password,
+          transport: 'tcp',
+        }),
+        /broker_route_trust_required/,
+      );
+      assert.equal(
+        foreignAdmissionRequests,
+        0,
+        'Foreign Station trust refusal must precede broker redemption or admission',
+      );
+    } finally {
+      page.off('request', observeForeignAdmission);
+    }
+    phase = 'second route invitation issuance';
+    const invitation = input.secondBroker.issueInvitation({
+      clientOrigin: input.secondPageOrigin,
+      stationSigningKeyId: await stationConnectionSigningKeyId(
+        input.secondTrust,
+      ),
+      stationSigningGeneration: input.secondTrust.generation,
+    });
+    phase = 'second broker Pion connect';
+    const connected = await bounded(
+      page.evaluate(browserBrokerConnect, {
+        brokerOrigin: input.secondBroker.brokerOrigin,
+        scope: invitation.scope,
+        invitation,
+        applicationOrigin: input.secondStation.station.base,
+        port: input.turnPort,
+        username,
+        password,
+        transport: 'tcp',
+      }),
+      'second Station browser broker connect',
+    );
+    assert.notEqual(
+      connected.routingGrantId,
+      input.secondBroker.bundle.routing.id,
+    );
+    await page.evaluate(browserBrokerAdmitApplicationTransport);
+    const pair = await page.evaluate(browserBrokerSelectedCandidatePair);
+    assert.equal(pair.localType, 'relay');
+    assert.equal(pair.remoteType, 'relay');
+
+    phase = 'second encrypted account login';
+    const account = await bounded(
+      page.evaluate(
+        browserStartApplicationAccount,
+        input.secondStation.browser,
+      ),
+      'second Station encrypted account login',
+    );
+    accountStarted = true;
+    assert.equal(account.stationId, input.secondStation.station.stationId);
+    assert.notEqual(
+      account.principalId,
+      await input.firstPage.evaluate(browserApplicationAccountPrincipal),
+      'The two Station accounts must be distinct issuer-qualified principals',
+    );
+    phase = 'second Project invitation acceptance';
+    const accepted = await page.evaluate(browserAcceptApplicationInvitation);
+    assert.equal(accepted.status, 200);
+    await input.secondStation.verifyMembership(account.principalId);
+    phase = 'two-Station Project reads';
+    const secondRead = await page.evaluate(browserApplicationAccountRequest, {
+      path: '/api/projects/relay-shared/shared-work',
+    });
+    assert.equal(secondRead.status, 200, secondRead.body);
+    assert(
+      secondRead.body.includes(input.secondStation.sharedWork.sharedTask.title),
+    );
+    assert(
+      !secondRead.body.includes(input.firstStation.sharedWork.sharedTask.title),
+    );
+    const firstRead = await input.firstPage.evaluate(
+      browserApplicationAccountRequest,
+      { path: '/api/projects/relay-shared/shared-work' },
+    );
+    assert.equal(firstRead.status, 200, firstRead.body);
+    assert(
+      firstRead.body.includes(input.firstStation.sharedWork.sharedTask.title),
+    );
+    assert(
+      !firstRead.body.includes(input.secondStation.sharedWork.sharedTask.title),
+    );
+    const secondDocument = await page.evaluate(
+      browserApplicationAccountRequest,
+      {
+        path: `/api/projects/relay-shared/shared-work/${encodeURIComponent(input.secondStation.sharedWork.sharedTask.id)}/document`,
+      },
+    );
+    assert.equal(secondDocument.status, 200, secondDocument.body);
+    assert(
+      secondDocument.body.includes(
+        input.secondStation.sharedWork.sharedTask.documentMarker,
+      ),
+    );
+    assert(
+      !secondDocument.body.includes(
+        input.firstStation.sharedWork.sharedTask.documentMarker,
+      ),
+    );
+    const firstDocument = await input.firstPage.evaluate(
+      browserApplicationAccountRequest,
+      {
+        path: `/api/projects/relay-shared/shared-work/${encodeURIComponent(input.firstStation.sharedWork.sharedTask.id)}/document`,
+      },
+    );
+    assert.equal(firstDocument.status, 200, firstDocument.body);
+    assert(
+      firstDocument.body.includes(
+        input.firstStation.sharedWork.sharedTask.documentMarker,
+      ),
+    );
+    assert(
+      !firstDocument.body.includes(
+        input.secondStation.sharedWork.sharedTask.documentMarker,
+      ),
+    );
+    const secondHistory = await page.evaluate(
+      browserApplicationAccountRequest,
+      {
+        path: `/api/projects/relay-shared/shared-work/${encodeURIComponent(input.secondStation.sharedWork.sharedTask.id)}/history`,
+      },
+    );
+    assert.equal(secondHistory.status, 200, secondHistory.body);
+    assert(
+      secondHistory.body.includes(
+        input.secondStation.sharedWork.sharedTask.messageMarker,
+      ),
+    );
+    for (const [reader, foreignTask] of [
+      [page, input.firstStation.sharedWork.sharedTask],
+      [input.firstPage, input.secondStation.sharedWork.sharedTask],
+    ] as const) {
+      const foreignDocument = await reader.evaluate(
+        browserApplicationAccountRequest,
+        {
+          path: `/api/projects/relay-shared/shared-work/${encodeURIComponent(foreignTask.id)}/document`,
+        },
+      );
+      assert.equal(foreignDocument.status, 404);
+      assert(!foreignDocument.body.includes(foreignTask.documentMarker));
+    }
+    const secondPrivate = await page.evaluate(
+      browserApplicationAccountRequest,
+      {
+        path: '/api/projects/relay-private',
+      },
+    );
+    assert.equal(secondPrivate.status, 404);
+    assert(
+      !secondPrivate.body.includes(input.firstStation.browser.privateName),
+    );
+
+    phase = 'foreign Project invitation refusal';
+    const foreignProjectInvitation = await input.firstStation.inviteAgain();
+    const foreignProjectAccept = await page.evaluate(
+      browserAcceptApplicationInvitation,
+      foreignProjectInvitation,
+    );
+    assert.equal(foreignProjectAccept.status, 409);
+    assert.equal(
+      foreignProjectAccept.body.error?.code,
+      'project_access_invitation_invalid',
+      'Another Station Project invitation must refuse as an invalid invitation',
+    );
+
+    phase = 'second Device and broker-grant revocation';
+    await input.secondStation.revokeDevice();
+    const secondRevoked = await page.evaluate(
+      browserApplicationAccountRequest,
+      { path: '/api/projects/relay-shared' },
+    );
+    assert.equal(secondRevoked.status, 401);
+    const firstStillReadable = await input.firstPage.evaluate(
+      browserApplicationAccountRequest,
+      { path: '/api/projects/relay-shared' },
+    );
+    assert.equal(firstStillReadable.status, 200);
+    input.secondBroker.revokeClientGrant(connected.routingGrantId);
+    await assert.rejects(
+      page.evaluate(browserBrokerReconnect),
+      /broker_request_refused_401|Failed to fetch/,
+    );
+    assert.equal(
+      (await input.firstPage.evaluate(browserBrokerReadStatus)).state,
+      'online',
+    );
+    assert.equal(directApplicationAttempts, 0);
+    report = {
+      status: 'passed',
+      firstStationId: input.firstStation.station.stationId,
+      secondStationId: input.secondStation.station.stationId,
+      distinctStationAndDevice: true,
+      distinctIssuerQualifiedPrincipals: true,
+      distinctBrokerOrigins:
+        input.firstBroker.brokerOrigin !== input.secondBroker.brokerOrigin,
+      browserSelectedRelayCandidates:
+        pair.localType === 'relay' && pair.remoteType === 'relay',
+      foreignRouteInvitationRefused: true,
+      foreignProjectInvitationRefused: true,
+      privateProjectRefused: true,
+      crossStationSharedContentHidden: true,
+      foreignDocumentIdsRefused: true,
+      secondDeviceRevokedFirstStillReadable: true,
+      secondGrantRevokedFirstRouteOnline: true,
+      directApplicationAttempts,
+      scope:
+        'synthetic local accounts and Devices on two source Stations over separate local encrypted broker routes; no fresh-client or two-human proof',
+    };
+  } catch (error) {
+    console.error(`Two-Station isolation failed at phase: ${phase}`);
+    primaryError = error;
+  } finally {
+    for (const cleanup of [
+      () =>
+        accountStarted
+          ? page.evaluate(browserStopApplicationAccount)
+          : undefined,
+      () => (routeConnected ? page.evaluate(browserBrokerClose) : undefined),
+      () => context.close(),
+    ]) {
+      try {
+        await cleanup();
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+  }
+  const errors = [
+    ...(primaryError === undefined ? [] : [primaryError]),
+    ...cleanupErrors,
+  ];
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1)
+    throw new AggregateError(errors, 'Two-Station relay isolation failed');
+  assert(report);
+  return report;
+}
+
 async function identity(name: string) {
   const home = join(root, name);
   mkdirSync(home, { mode: 0o700 });
@@ -1520,6 +1864,23 @@ try {
     authorityHome,
   ).initialize();
   assert.equal(connectionTrust.stationId, environmentIdentity.environmentId);
+  if (twoStationIsolation) {
+    const secondHome = join(
+      root,
+      'secondary-application-station',
+      'application-station',
+      'home',
+    );
+    ensureStationHomeSchemaSync(secondHome);
+    const secondIdentity = await new EnvironmentSecurityService({
+      homeDir: secondHome,
+    }).initialize();
+    secondConnectionTrust = await new ConnectionSigningKeyStore(
+      secondHome,
+    ).initialize();
+    assert.equal(secondConnectionTrust.stationId, secondIdentity.environmentId);
+    assert.notEqual(secondConnectionTrust.stationId, connectionTrust.stationId);
+  }
   const reopenedKeys = new ConnectionSigningKeyStore(authorityHome);
   assert.deepEqual(reopenedKeys.readDescriptor(), connectionTrust);
   proofIssuer = reopenedKeys.createIssuer((binding) =>
@@ -1567,6 +1928,9 @@ try {
     peerAdapter === 'pion' ? 'tcp' : 'udp',
   );
   const approved = await identity('approved-station');
+  const approvedSecond = twoStationIsolation
+    ? await identity('approved-station-second')
+    : undefined;
   const substituted = await identity('unapproved-station');
   let address: import('node:net').AddressInfo;
   let pageOrigin: string;
@@ -1588,6 +1952,7 @@ try {
     const securePageHandler = (
       request: import('node:http').IncomingMessage,
       response: import('node:http').ServerResponse,
+      station: 'first' | 'second',
     ) => {
       if (
         (!stationUi && request.url === '/') ||
@@ -1609,20 +1974,22 @@ try {
         });
         return;
       }
-      if (!stationUpstreamPort) {
+      const upstreamPort =
+        station === 'second' ? secondStationUpstreamPort : stationUpstreamPort;
+      if (!upstreamPort) {
         response.writeHead(503).end();
         return;
       }
       const headers = {
         ...request.headers,
-        host: `127.0.0.1:${stationUpstreamPort}`,
+        host: `127.0.0.1:${upstreamPort}`,
       };
       delete headers.connection;
       delete headers.upgrade;
       const upstream = httpRequest(
         {
           hostname: '127.0.0.1',
-          port: stationUpstreamPort,
+          port: upstreamPort,
           path: request.url ?? '/',
           method: request.method,
           headers,
@@ -1641,7 +2008,9 @@ try {
       });
       request.pipe(upstream);
     };
-    securePageServer = createHttpsServer(tlsOptions, securePageHandler);
+    securePageServer = createHttpsServer(tlsOptions, (request, response) =>
+      securePageHandler(request, response, 'first'),
+    );
     securePageServer.listen(0, '127.0.0.1');
     await once(securePageServer, 'listening');
     const secureAddress = securePageServer.address();
@@ -1650,7 +2019,12 @@ try {
     pageOrigin = `https://127.0.0.1:${address.port}`;
     secondarySecurePageServer = createHttpsServer(
       tlsOptions,
-      securePageHandler,
+      (request, response) =>
+        securePageHandler(
+          request,
+          response,
+          twoStationIsolation ? 'second' : 'first',
+        ),
     );
     secondarySecurePageServer.listen(0, '127.0.0.1');
     await once(secondarySecurePageServer, 'listening');
@@ -1669,7 +2043,12 @@ try {
   let prepareStationConnectorConfig:
     | ((stationOrigin: string) => string)
     | undefined;
+  let prepareSecondStationConnectorConfig:
+    | ((stationOrigin: string) => string)
+    | undefined;
+  let startSecondBrokerFixture: (() => Promise<void>) | undefined;
   let brokerPort: number | undefined;
+  let secondBrokerPort: number | undefined;
   if (selfHostedBroker) {
     const activeRelay = relay;
     assert(activeRelay);
@@ -1744,34 +2123,129 @@ try {
       );
       return stationConnectorConfigPath;
     };
-  }
-  if (args.includes('--application-accounts'))
-    accountStation = await startRelayAccountStation(
-      root,
-      pageOrigin,
-      abort.signal,
-      {
-        prepareSelfHostedBrokerConfig: prepareStationConnectorConfig,
-        ownedBrokerTcpPort: brokerPort,
-        ...(selfHostedBroker
-          ? {
-              publicOrigin: pageOrigin,
-              additionalBrowserOrigins: secondaryPageOrigin
-                ? [secondaryPageOrigin]
-                : [],
-              onStationReady: (station) => {
-                stationUpstreamPort = station.port;
+    if (twoStationIsolation)
+      startSecondBrokerFixture = async () => {
+        if (secondBrokerLab)
+          throw new Error('Second broker fixture already started');
+        assert(secondConnectionTrust && secondaryPageOrigin && approvedSecond);
+        const secondRoot = join(root, 'secondary-application-station');
+        secondBrokerLab = await startSelfHostedBrokerProcess({
+          directory: secondRoot,
+          scope: {
+            stationId: secondConnectionTrust.stationId,
+            enrollmentId: secondConnectionTrust.enrollmentId,
+            routingGeneration: secondConnectionTrust.generation,
+            browserOrigin: secondaryPageOrigin,
+          },
+          signal: abort.signal,
+        });
+        const secondLab = secondBrokerLab;
+        secondBrokerPort = Number(new URL(secondLab.brokerOrigin).port);
+        assert(
+          Number.isSafeInteger(secondBrokerPort) && secondBrokerPort > 1024,
+        );
+        assert.notEqual(secondBrokerPort, brokerPort);
+        prepareSecondStationConnectorConfig = (stationOrigin) => {
+          const connectorDirectory = join(
+            secondRoot,
+            'application-station',
+            'connector',
+          );
+          mkdirSync(connectorDirectory, { recursive: true, mode: 0o700 });
+          const certificatePath = join(connectorDirectory, 'peer-cert.pem');
+          const privateKeyPath = join(connectorDirectory, 'peer-key.pem');
+          const credentialsPath = join(connectorDirectory, 'credentials.json');
+          const stationConnectorConfigPath = join(
+            connectorDirectory,
+            'connector.json',
+          );
+          writeFileSync(certificatePath, readFileSync(approvedSecond.cert), {
+            flag: 'wx',
+            mode: 0o600,
+          });
+          writeFileSync(privateKeyPath, readFileSync(approvedSecond.key), {
+            flag: 'wx',
+            mode: 0o600,
+          });
+          writeFileSync(
+            credentialsPath,
+            JSON.stringify({
+              version: 'station-self-hosted-broker-credentials/v1',
+              scope: secondLab.scope,
+              bundle: secondLab.bundle,
+            }),
+            { flag: 'wx', mode: 0o600 },
+          );
+          writeFileSync(
+            stationConnectorConfigPath,
+            JSON.stringify({
+              version: 'station-self-hosted-connector/v1',
+              brokerOrigin: secondLab.brokerOrigin,
+              applicationOrigin: stationOrigin,
+              credentialsPath,
+              certificatePath,
+              privateKeyPath,
+              pionExecutable,
+              turn: {
+                url: `turn:127.0.0.1:${activeRelay.port}?transport=tcp`,
+                username,
+                password,
               },
-            }
-          : {}),
-      },
-    );
+            }),
+            { flag: 'wx', mode: 0o600 },
+          );
+          const persisted = JSON.parse(
+            readFileSync(stationConnectorConfigPath, 'utf8'),
+          ) as { applicationOrigin?: unknown };
+          assert.equal(persisted.applicationOrigin, stationOrigin);
+          return stationConnectorConfigPath;
+        };
+      };
+  }
+  if (args.includes('--application-accounts')) {
+    const firstOptions = {
+      prepareSelfHostedBrokerConfig: prepareStationConnectorConfig,
+      ownedBrokerTcpPort: brokerPort,
+      ...(selfHostedBroker
+        ? {
+            publicOrigin: pageOrigin,
+            additionalBrowserOrigins: secondaryPageOrigin
+              ? [secondaryPageOrigin]
+              : [],
+            onStationReady: (station: { port: number }) => {
+              stationUpstreamPort = station.port;
+            },
+          }
+        : {}),
+    };
+    if (twoStationIsolation) {
+      accountStationGroup = await startRelayAccountStationGroup();
+      accountStation = await accountStationGroup.startStation(
+        root,
+        pageOrigin,
+        abort.signal,
+        firstOptions,
+      );
+    } else {
+      accountStation = await startRelayAccountStation(
+        root,
+        pageOrigin,
+        abort.signal,
+        firstOptions,
+      );
+    }
+  }
   if (accountStation)
     assert.equal(
       accountStation.station.stationId,
       connectionTrust.stationId,
       'Application and transport must be the same Station',
     );
+  if (twoStationIsolation) {
+    assert(
+      accountStationGroup && startSecondBrokerFixture && secondConnectionTrust,
+    );
+  }
   const stationSpki = createHash('sha256')
     .update(
       new X509Certificate(readFileSync(approved.cert)).publicKey.export({
@@ -2048,6 +2522,68 @@ try {
               pageOrigin: secondaryPageOrigin ?? pageOrigin,
             });
             freshRelayReport = freshRelayJourney.report;
+            if (twoStationIsolation) {
+              assert(startSecondBrokerFixture);
+              await startSecondBrokerFixture();
+              assert(
+                accountStationGroup &&
+                  secondaryPageOrigin &&
+                  secondBrokerPort &&
+                  prepareSecondStationConnectorConfig &&
+                  secondConnectionTrust,
+              );
+              // Complete A's room and membership matrix before booting the
+              // second heavy Station. Both stay live for cross-Station reads.
+              secondAccountStation = await accountStationGroup.startStation(
+                join(root, 'secondary-application-station'),
+                secondaryPageOrigin,
+                abort.signal,
+                {
+                  prepareSelfHostedBrokerConfig:
+                    prepareSecondStationConnectorConfig,
+                  ownedBrokerTcpPort: secondBrokerPort,
+                  publicOrigin: secondaryPageOrigin,
+                  additionalBrowserOrigins: [pageOrigin],
+                  onStationReady: (station) => {
+                    secondStationUpstreamPort = station.port;
+                  },
+                },
+              );
+              assert.equal(
+                secondAccountStation.station.stationId,
+                secondConnectionTrust.stationId,
+              );
+              assert.notEqual(
+                secondAccountStation.station.stationId,
+                accountStation?.station.stationId,
+              );
+              assert.notEqual(
+                secondAccountStation.browser.deviceId,
+                accountStation?.browser.deviceId,
+              );
+              assert(
+                browser &&
+                  accountStation &&
+                  secondAccountStation &&
+                  brokerLab &&
+                  secondBrokerLab &&
+                  secondConnectionTrust &&
+                  secondaryPageOrigin &&
+                  relay,
+              );
+              twoStationReport = await runTwoStationIsolation({
+                browser,
+                firstPage: page,
+                firstStation: accountStation,
+                secondStation: secondAccountStation,
+                firstBroker: brokerLab,
+                secondBroker: secondBrokerLab,
+                firstTrust: connectionTrust,
+                secondTrust: secondConnectionTrust,
+                secondPageOrigin: secondaryPageOrigin,
+                turnPort: relay.port,
+              });
+            }
           }
         },
       );
@@ -2323,6 +2859,22 @@ try {
     ])
       assert.equal(captured.includes(Buffer.from(secret)), false);
   }
+  if (secondAccountStation) {
+    for (const secret of [
+      secondAccountStation.browser.password,
+      secondAccountStation.browser.credential,
+      secondAccountStation.browser.invitation,
+      secondAccountStation.sharedWork.sharedTask.messageMarker,
+      secondAccountStation.sharedWork.sharedTask.documentMarker,
+    ])
+      assert.equal(
+        captured.includes(Buffer.from(secret)),
+        false,
+        'Second Station application marker appeared in TURN capture',
+      );
+    if (twoStationReport)
+      twoStationReport.turnCaptureApplicationMarkersAbsent = true;
+  }
   if (freshRelayReport && accountStation) {
     const passwordAbsent = !captured.includes(
       Buffer.from(accountStation.browser.password),
@@ -2356,6 +2908,7 @@ try {
     applicationAccounts: accountReport ?? { status: 'not-run' },
     cookieAdoption: cookieAdoptionReport ?? { status: 'not-run' },
     freshRelayEnrollment: freshRelayReport ?? { status: 'not-run' },
+    twoStationIsolation: twoStationReport ?? { status: 'not-run' },
     stationUiRelayJourney: stationUiRelayJourney ?? { status: 'not-run' },
     applicationProtocol: applicationProtocol
       ? {
@@ -2400,6 +2953,13 @@ try {
             'tampered broker proof rejected before setRemoteDescription',
             'cross-tab Device trust revocation refuses new admission',
             'withdrawn routing credential refused by browser and exact HTTP control',
+            ...(twoStationIsolation
+              ? [
+                  'two independent Stations and browser principals keep Projects and Devices isolated over separate encrypted local broker routes',
+                  'revoking the second Device and routing grant leaves the first Station readable and online',
+                  'both Stations have zero direct browser application HTTP and no tested application markers in TURN capture',
+                ]
+              : []),
           ]
         : [
             'TURN relay selected at both peers',
@@ -2439,7 +2999,8 @@ try {
   for (const cleanup of [
     () => freshRelayJourney?.close(),
     () => (browser ? bounded(browser.close(), 'browser cleanup') : undefined),
-    () => accountStation?.stop(),
+    () => accountStationGroup?.stop() ?? accountStation?.stop(),
+    () => secondBrokerLab?.stop(),
     () => brokerLab?.stop(),
     () => relay?.close(),
     () => turnFixture.stop(),
