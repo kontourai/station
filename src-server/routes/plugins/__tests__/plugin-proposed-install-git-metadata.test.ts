@@ -9,7 +9,6 @@
  * consent check, real installer) over a real proposal store, then reads the
  * installed package back through `GET /` (git info) and the update scan.
  */
-import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   lstatSync,
@@ -26,6 +25,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
 import { PluginLifecycleProposalService } from '../../../services/plugins/plugin-lifecycle-proposals.js';
 import { checkPluginUpdates } from '../../../services/plugins/plugin-update-check.js';
+import { execGitSync } from '../../../utils/git-exec.js';
 import { isGitMetadataName } from '../../../utils/git-metadata-name.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 
@@ -41,18 +41,15 @@ function logger() {
 }
 
 function git(cwd: string, ...args: string[]) {
-  execFileSync(
-    'git',
+  execGitSync(
     [
       '-c',
       'user.name=Station Test',
       '-c',
       'user.email=station@example.test',
-      '-c',
-      'protocol.file.allow=always',
       ...args,
     ],
-    { cwd, stdio: 'ignore', windowsHide: true },
+    { cwd, stdio: 'ignore', hardening: { allowFileProtocol: true } },
   );
 }
 
