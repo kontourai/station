@@ -26,6 +26,7 @@ import {
   WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS,
   WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS,
 } from '../process-identity.mjs';
+import { windowsPowerShell7Path } from '../windows-system-utility.mjs';
 
 // The portable-archive smoke's launcher environment (#2675): only System32
 // and the Windows directory on PATH, so a bare `powershell.exe` cannot be
@@ -451,6 +452,86 @@ describe('birthProvesReuse (station#2904)', () => {
       ).toBeNull();
     }
     expect(refused).not.toHaveBeenCalled();
+  });
+
+  test('retries the own-process probe with PowerShell 7 from its install path on a minimal PATH (#2805)', () => {
+    const canonical = '2026-08-29T16:16:27.1234567Z';
+    // The smoke's scrubbed environment names no ProgramFiles: PowerShell 7's
+    // default location is Program Files on the Windows directory's drive.
+    const pwsh7 = 'D:\\Program Files\\PowerShell\\7\\pwsh.exe';
+    const spawned: string[] = [];
+    const exec = (file: string) => {
+      spawned.push(file);
+      if (file === MINIMAL_ENV_POWERSHELL) {
+        throw Object.assign(new Error('spawnSync powershell.exe ETIMEDOUT'), {
+          code: 'ETIMEDOUT',
+        });
+      }
+      if (!file.includes('\\')) {
+        throw Object.assign(new Error(`spawnSync ${file} ENOENT`), {
+          code: 'ENOENT',
+        });
+      }
+      return `${canonical}\n`;
+    };
+    const probed: string[] = [];
+    expect(
+      resolveOwnProcessIdentity(42, {
+        platform: 'win32',
+        env: MINIMAL_WINDOWS_ENV,
+        fileExists: (path: string) => {
+          probed.push(path);
+          return path === pwsh7;
+        },
+        alive: () => 'alive',
+        wait: () => {},
+        exec,
+      }),
+    ).toEqual({ state: 'exact', identity: { pid: 42, start: canonical } });
+    expect(spawned).toEqual([MINIMAL_ENV_POWERSHELL, pwsh7]);
+    expect(probed).toEqual([pwsh7]);
+  });
+
+  test('locates PowerShell 7 by ProgramW6432, then ProgramFiles, then the system drive, else PATH (#2805)', () => {
+    const at =
+      (...present: string[]) =>
+      (path: string) =>
+        present.includes(path);
+    const env = {
+      ProgramW6432: 'E:\\Apps64',
+      ProgramFiles: 'F:\\Apps',
+      SystemRoot: 'D:\\WinRoot',
+    };
+    const w6432 = 'E:\\Apps64\\PowerShell\\7\\pwsh.exe';
+    const programFiles = 'F:\\Apps\\PowerShell\\7\\pwsh.exe';
+    const systemDrive = 'D:\\Program Files\\PowerShell\\7\\pwsh.exe';
+    expect(windowsPowerShell7Path(env, at(w6432, programFiles))).toBe(w6432);
+    expect(windowsPowerShell7Path(env, at(programFiles, systemDrive))).toBe(
+      programFiles,
+    );
+    expect(windowsPowerShell7Path(env, at(systemDrive))).toBe(systemDrive);
+    // Not installed at any standard location: PATH lookup, as before.
+    expect(windowsPowerShell7Path(env, at())).toBe('pwsh.exe');
+    // A throwing existence check is an absent file, not a probe failure.
+    expect(
+      windowsPowerShell7Path(env, () => {
+        throw new Error('EACCES');
+      }),
+    ).toBe('pwsh.exe');
+    // Relative and UNC locations are never consulted.
+    const consulted: string[] = [];
+    windowsPowerShell7Path(
+      {
+        ProgramW6432: 'Apps',
+        ProgramFiles: '\\\\server\\share',
+        SystemRoot: 'D:\\WinRoot',
+      },
+      (path) => {
+        consulted.push(path);
+        return false;
+      },
+    );
+    expect(consulted).toEqual([systemDrive]);
   });
 
   test('names the default birth probe so a fail-closed lock can say which lookup failed (#2675)', () => {

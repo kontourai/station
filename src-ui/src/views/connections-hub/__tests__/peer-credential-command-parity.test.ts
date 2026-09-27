@@ -42,12 +42,6 @@ function environmentHelpBlock(): string {
 describe('Computers page CLI instruction stays a real, advertised CLI command (#765 D3)', () => {
   const tokens = PEER_CREDENTIAL_COMMAND.split(' ');
 
-  test('the instruction is a station environment subcommand', () => {
-    expect(tokens[0]).toBe('station');
-    expect(tokens[1]).toBe('environment');
-    expect(tokens.length).toBeGreaterThanOrEqual(3);
-  });
-
   test('the CLI dispatcher itself parses the instructed command (environment.ts USAGE)', () => {
     const environmentSource = readSource(
       'packages/cli/src/commands/environment.ts',

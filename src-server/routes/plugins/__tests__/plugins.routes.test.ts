@@ -711,7 +711,14 @@ describe('Plugin Routes', () => {
 
     expect(response.status).toBe(200);
     expect(execGit).toHaveBeenCalledWith(
-      ['pull', '--ff-only'],
+      [
+        '--git-dir',
+        expect.stringMatching(/test-plugin[\\/]\.git$/),
+        '--work-tree',
+        expect.stringMatching(/test-plugin$/),
+        'pull',
+        '--ff-only',
+      ],
       expect.anything(),
     );
     expect(complete).toHaveBeenCalledWith(LEGACY_UPDATE_PROPOSAL.id, {
@@ -1430,10 +1437,9 @@ describe('Plugin Routes', () => {
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ success: true });
     expect(pluginRegistryProvider.update).toHaveBeenCalledWith('test-plugin');
-    expect(execGit).not.toHaveBeenCalledWith(
-      ['pull', '--ff-only'],
-      expect.anything(),
-    );
+    expect(
+      execGit.mock.calls.some(([args]) => (args as string[]).includes('pull')),
+    ).toBe(false);
   });
 
   test('rejects updates when the installed plugin root is a symbolic link', async () => {

@@ -7,12 +7,13 @@
  * the saved ref (or raises a named unavailable outcome); it never executes
  * locally for a saved intent.
  *
- * Proof structure (review: helper tests are diagnostics, not caller proof):
- * - unit: `resolveProjectDefaultEnvironmentRef` directly (diagnostic);
+ * Proof structure:
  * - composition: POST /chat through the REAL production callback built by
  *   `createProjectDefaultEnvironmentCallback` (the exact factory the route
  *   wiring uses) — a saved peer/dangling default must reach the executor
  *   unchanged, never as `current`;
+ * - factory: the same callback, called directly, maps a missing or
+ *   non-saved default to `current`;
  * - canonical resolver: the REAL `executeExecutionTargetMessage` with a
  *   dangling saved default rejects with the named unavailable outcome and
  *   the local provider surface sees ZERO invocations.
@@ -25,10 +26,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createOrchestrationRoutes } from '../../../routes/orchestration/orchestration.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { executeExecutionTargetMessage } from '../../../tools/station-control-delegation.js';
-import {
-  createProjectDefaultEnvironmentCallback,
-  resolveProjectDefaultEnvironmentRef,
-} from '../runtime-routes.js';
+import { createProjectDefaultEnvironmentCallback } from '../runtime-routes.js';
 
 const ROUTE_TEST_USER_ID = 'placement-default-route-test-user';
 const CONTROL_API_BASE = 'http://placement-default.test';
@@ -42,120 +40,66 @@ function stubProjectService(defaultEnvironment?: EnvironmentRef) {
   };
 }
 
-describe('resolveProjectDefaultEnvironmentRef', () => {
-  test('preserves a paired-peer saved default instead of substituting current', () => {
-    const saved = { kind: 'saved', id: 'env-peer-b' } as EnvironmentRef;
-    expect(
-      resolveProjectDefaultEnvironmentRef(stubProjectService(saved), 'station'),
-    ).toEqual(saved);
-  });
+describe('POST /chat with the production default-environment callback', () => {
+  test.each([
+    ['a saved peer default', 'env-peer-b'],
+    ['a dangling saved default', 'env-deleted'],
+  ])(
+    '%s reaches the executor unchanged, never as current',
+    async (_label, id) => {
+      const executeForegroundMessage = vi.fn().mockResolvedValue({
+        conversationId: `conversation:placement-${id}`,
+        sessionId: `session:placement-${id}`,
+        providerTurnId: `provider-turn-placement-${id}`,
+        target: { kind: 'agent', id: 'codex' },
+      });
+      const app = createOrchestrationRoutes({} as any, {
+        getUserId: () => ROUTE_TEST_USER_ID,
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn() },
+        executeForegroundMessage,
+        // The REAL production callback via the factory the route wiring uses —
+        // not a hand-written arrow. Reintroducing `current` substitution in
+        // runtime-routes fails this composition.
+        projectDefaultEnvironment: createProjectDefaultEnvironmentCallback(
+          stubProjectService({ kind: 'saved', id } as EnvironmentRef),
+        ),
+      });
 
-  test('preserves a dangling saved default instead of substituting current', () => {
-    const saved = { kind: 'saved', id: 'env-deleted' } as EnvironmentRef;
-    expect(
-      resolveProjectDefaultEnvironmentRef(stubProjectService(saved), 'station'),
-    ).toEqual(saved);
-  });
+      const response = await app.request('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: 'Use the saved default',
+          target: {
+            agent: 'codex',
+            workspace: { kind: 'project', projectSlug: 'station' },
+          },
+        }),
+      });
 
-  test('maps a missing or non-saved default to current', () => {
-    expect(
-      resolveProjectDefaultEnvironmentRef(stubProjectService(), 'station'),
-    ).toEqual({ kind: 'current' });
-    expect(
-      resolveProjectDefaultEnvironmentRef(
-        stubProjectService({ kind: 'current' }),
-        'station',
-      ),
-    ).toEqual({ kind: 'current' });
-  });
+      expect(response.status).toBe(200);
+      expect(executeForegroundMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: expect.objectContaining({
+            environment: { kind: 'saved', id },
+          }),
+        }),
+      );
+    },
+  );
 });
 
-describe('POST /chat with the production default-environment callback', () => {
-  test('a saved peer default reaches the executor unchanged, never as current', async () => {
-    const executeForegroundMessage = vi.fn().mockResolvedValue({
-      conversationId: 'conversation:placement-peer-default',
-      sessionId: 'session:placement-peer-default',
-      providerTurnId: 'provider-turn-placement-peer-default',
-      target: { kind: 'agent', id: 'codex' },
-    });
-    const projectService = stubProjectService({
-      kind: 'saved',
-      id: 'env-peer-b',
-    } as EnvironmentRef);
-    const app = createOrchestrationRoutes({} as any, {
-      getUserId: () => ROUTE_TEST_USER_ID,
-      eventBus: new EventBus(),
-      logger: { debug: vi.fn() },
-      executeForegroundMessage,
-      // The REAL production callback via the factory the route wiring uses —
-      // not a hand-written arrow. Reintroducing `current` substitution in
-      // runtime-routes fails this composition.
-      projectDefaultEnvironment:
-        createProjectDefaultEnvironmentCallback(projectService),
-    });
-
-    const response = await app.request('/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: 'Use the saved peer default',
-        target: {
-          agent: 'codex',
-          workspace: { kind: 'project', projectSlug: 'station' },
-        },
-      }),
-    });
-
-    expect(response.status).toBe(200);
-    expect(executeForegroundMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        target: expect.objectContaining({
-          environment: { kind: 'saved', id: 'env-peer-b' },
-        }),
-      }),
-    );
-  });
-
-  test('a dangling saved default reaches the executor unchanged, never as current', async () => {
-    const executeForegroundMessage = vi.fn().mockResolvedValue({
-      conversationId: 'conversation:placement-dangling-default',
-      sessionId: 'session:placement-dangling-default',
-      providerTurnId: 'provider-turn-placement-dangling-default',
-      target: { kind: 'agent', id: 'codex' },
-    });
-    const projectService = stubProjectService({
-      kind: 'saved',
-      id: 'env-deleted',
-    } as EnvironmentRef);
-    const app = createOrchestrationRoutes({} as any, {
-      getUserId: () => ROUTE_TEST_USER_ID,
-      eventBus: new EventBus(),
-      logger: { debug: vi.fn() },
-      executeForegroundMessage,
-      projectDefaultEnvironment:
-        createProjectDefaultEnvironmentCallback(projectService),
-    });
-
-    const response = await app.request('/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: 'Keep the dangling default visible',
-        target: {
-          agent: 'codex',
-          workspace: { kind: 'project', projectSlug: 'station' },
-        },
-      }),
-    });
-
-    expect(response.status).toBe(200);
-    expect(executeForegroundMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        target: expect.objectContaining({
-          environment: { kind: 'saved', id: 'env-deleted' },
-        }),
-      }),
-    );
+describe('createProjectDefaultEnvironmentCallback', () => {
+  test('maps a missing or non-saved default to current', () => {
+    expect(
+      createProjectDefaultEnvironmentCallback(stubProjectService())('station'),
+    ).toEqual({ kind: 'current' });
+    expect(
+      createProjectDefaultEnvironmentCallback(
+        stubProjectService({ kind: 'current' }),
+      )('station'),
+    ).toEqual({ kind: 'current' });
   });
 });
 

@@ -1,4 +1,32 @@
+import { spawnSync } from 'node:child_process';
 import { windowsSystemUtilityPath } from './windows-system-utility.mjs';
+
+/**
+ * The one budget for a Windows trust PowerShell run (#2805). Every caller is a
+ * one-shot at startup or before a sensitive write, and every failure fails
+ * closed — the server does not boot, the CLI command refuses — so a slow
+ * success is worth far more than a fast failure. 30s was measured too short:
+ * on a GitHub Windows runner saturated by scanning a freshly extracted
+ * 44k-file archive, the server's first trust call timed out at 30s
+ * (run 36326088380) while a bare `where.exe` took ~58s. 120s covers that
+ * host with room. ONE call at the full budget fits inside `station start`'s
+ * readiness wait, which extends to 180s while the server process is alive
+ * (lifecycle.ts, STARTUP_READINESS_MAX_TIMEOUT_MS); two sequential calls at
+ * the full budget would not. The server's boot makes two
+ * (`writeLocalGrantSecretFile`: the directory, then the new empty file), so
+ * its worst case is 240s. They stay separate on purpose — see there — and in
+ * practice only the first PowerShell start is cold. A caller that runs on a
+ * repeating tick passes its own shorter budget (desktop-companion.ts).
+ */
+export const WINDOWS_TRUST_COMMAND_TIMEOUT_MS = 120_000;
+
+// A type alias, not an interface, so a general command runner whose options
+// are `Record<string, unknown>` (the service manager's) accepts it.
+export type WindowsTrustCommandOptions = {
+  /** Kill the command after this many milliseconds. */
+  timeout: number;
+};
+
 export interface WindowsTrustCommandResult {
   error?: Error;
   status: number | null;
@@ -6,10 +34,43 @@ export interface WindowsTrustCommandResult {
   stdout?: string;
 }
 
+/**
+ * Runs one trust command. The trust functions pass the budget as `options`;
+ * a production runner must honor it. Test runners may ignore it.
+ */
 export type WindowsTrustCommandRunner = (
   command: string,
   args: string[],
+  options?: WindowsTrustCommandOptions,
 ) => WindowsTrustCommandResult;
+
+/** The default production runner for the Windows trust functions. */
+export function runWindowsTrustCommand(
+  command: string,
+  args: string[],
+  options: WindowsTrustCommandOptions = {
+    timeout: WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+  },
+): WindowsTrustCommandResult {
+  const result = spawnSync(command, args, {
+    encoding: 'utf8',
+    shell: false,
+    windowsHide: true,
+    timeout: options.timeout,
+    // The program prints one short JSON line; errors are a few KB at most.
+    maxBuffer: 1024 * 1024,
+  });
+  return {
+    error: result.error,
+    status: result.status,
+    stderr: typeof result.stderr === 'string' ? result.stderr : undefined,
+    stdout: typeof result.stdout === 'string' ? result.stdout : undefined,
+  };
+}
+
+const TRUST_COMMAND_OPTIONS: WindowsTrustCommandOptions = {
+  timeout: WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+};
 
 export type WindowsTrustKind = 'directory' | 'file';
 export type WindowsTrustOperation = 'ensure' | 'verify';
@@ -189,6 +250,7 @@ export function assertWindowsPathsTrusted(
   const result = run(
     windowsSystemUtilityPath('powershell'),
     buildWindowsTrustCommand('verify', targets),
+    TRUST_COMMAND_OPTIONS,
   );
   if (result.status !== 0 || result.error) {
     throw new Error(
@@ -207,6 +269,7 @@ export function ensureWindowsDirectoriesTrusted(
   const result = run(
     windowsSystemUtilityPath('powershell'),
     buildWindowsTrustCommand('ensure', targets),
+    TRUST_COMMAND_OPTIONS,
   );
   if (result.status !== 0 || result.error) {
     throw new Error(
@@ -227,6 +290,7 @@ export function hardenWindowsPathsTrusted(
   const result = run(
     windowsSystemUtilityPath('powershell'),
     buildWindowsTrustCommand('ensure', targets),
+    TRUST_COMMAND_OPTIONS,
   );
   if (result.status !== 0 || result.error) {
     throw new Error(

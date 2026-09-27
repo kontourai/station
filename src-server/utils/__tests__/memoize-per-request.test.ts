@@ -1,55 +1,18 @@
 /**
  * station#4518 fix round (MED-2): `resolveOrchestrationRequestPrincipal`
- * (`runtime-routes.ts`) is wrapped in `memoizePerRequest` so that
- * `orchestration.ts`'s `readAuthorityFor(c)` — the single fail-closed
- * resolution point 41 call sites reach through — stops re-running the
- * timing-safe operator-credential comparison and paired-device registry
- * scan (a possible fsync) on every call, including the (at least) two real
- * handlers that call it MORE THAN ONCE within a single request (`GET
- * .../narrative/target`, `GET .../assessment/target`).
- *
- * This tests the EXPORTED, PRODUCTION memoization utility directly — the
- * same `memoizePerRequest` function `resolveOrchestrationRequestPrincipal`
- * is built from — rather than a hand-rolled duplicate. A counting spy
- * stands in for the expensive derivation (`identifyDevice` in production);
- * the two behaviors that matter are both pinned: the SAME `Request` object
- * reuses the first resolution (no re-derivation within one request), and a
- * DIFFERENT `Request` object re-derives (memoization never crosses
- * requests — a fresh `Request` per real HTTP call means there is nothing to
- * leak between callers).
+ * (`runtime/bootstrap/orchestration-request-principal.ts`) is built from
+ * `memoizePerRequest` so that `orchestration.ts`'s `readAuthorityFor(c)` stops
+ * re-running the timing-safe operator-credential comparison and paired-device
+ * registry scan on every call within one request. A counting spy stands in
+ * for that derivation (`identifyDevice` in production): the SAME `Request`
+ * object reuses the first resolution, and a DIFFERENT `Request` object
+ * re-derives, so memoization never crosses requests.
  */
 import { describe, expect, test, vi } from 'vitest';
-import { memoizePerRequest } from '../runtime-routes.js';
+import { memoizePerRequest } from '../memoize-per-request.js';
 
 describe('memoizePerRequest (station#4518 fix round MED-2)', () => {
-  test('the same Request object reuses the first resolution — identifyDevice-shaped work runs once, not once per call', () => {
-    const identifyDevice = vi.fn((credential: string) => ({
-      id: 'device-x',
-      name: 'Phone',
-      credential,
-    }));
-    const resolve = memoizePerRequest((context: { req: { raw: Request } }) => {
-      const device = identifyDevice(
-        context.req.raw.headers.get('authorization') ?? '',
-      );
-      return {
-        id: `human:device:${device.id}`,
-        kind: 'human' as const,
-        display: device.name,
-      };
-    });
-    const request = new Request('http://station/x', {
-      headers: { authorization: 'Bearer device-cred' },
-    });
-
-    const first = resolve({ req: { raw: request } });
-    const second = resolve({ req: { raw: request } });
-
-    expect(second).toBe(first);
-    expect(identifyDevice).toHaveBeenCalledTimes(1);
-  });
-
-  test('a different Request object re-derives — memoization never crosses requests', () => {
+  test('the same Request reuses the first resolution and a different Request re-derives', () => {
     const identifyDevice = vi.fn((credential: string) => ({
       id: 'device-x',
       name: 'Phone',
@@ -72,8 +35,8 @@ describe('memoizePerRequest (station#4518 fix round MED-2)', () => {
       headers: { authorization: 'Bearer device-cred' },
     });
 
-    resolve({ req: { raw: firstRequest } });
-    resolve({ req: { raw: firstRequest } });
+    const first = resolve({ req: { raw: firstRequest } });
+    expect(resolve({ req: { raw: firstRequest } })).toBe(first);
     expect(identifyDevice).toHaveBeenCalledTimes(1);
 
     resolve({ req: { raw: secondRequest } });
