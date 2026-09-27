@@ -515,7 +515,7 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
  * outer sentence beside it. `undefined` when there is no such answer; the
  * caller then rethrows as before.
  */
-export function typedToolFailure(error: unknown):
+function typedToolFailure(error: unknown):
   | {
       success: false;
       error: string;
