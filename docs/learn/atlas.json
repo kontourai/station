@@ -9,7 +9,8 @@
         "docs/user/concepts.md",
         "docs/design/portable-project-identity.md",
         "docs/design/task-dispatcher.md",
-        "docs/reference/task-basis-mcp-app.md"
+        "docs/reference/task-basis-mcp-app.md",
+        "docs/learn/walkthroughs.md#projects-and-tasks"
       ],
       "modules": [
         "ProjectFileTransactions",
@@ -96,7 +97,8 @@
         "docs/guides/connections.md",
         "docs/guides/deployment-authentication.md",
         "docs/guides/self-hosted-broker.md",
-        "docs/security/remote-access-threat-model.md"
+        "docs/security/remote-access-threat-model.md",
+        "docs/learn/walkthroughs.md#connections"
       ],
       "modules": [
         "DeploymentAuthentication",
@@ -114,7 +116,7 @@
     {
       "id": "collaboration",
       "title": "Shared work and remote execution",
-      "summary": "How shared documents, presence, execution placement, and machine-local state fit together—and which proofs remain separate.",
+      "summary": "How shared documents, presence, execution placement, and machine-local state fit together\u2014and which proofs remain separate.",
       "docs": [
         "docs/design/shared-working-state.md",
         "docs/design/live-work-session.md",
@@ -194,7 +196,8 @@
         "docs/guides/monitoring.md",
         "docs/guides/web-push-notifications.md",
         "docs/reference/usage-telemetry.md",
-        "docs/architecture/module-map.md#voiceturnruns-and-correlated-s2s-v1"
+        "docs/architecture/module-map.md#voiceturnruns-and-correlated-s2s-v1",
+        "docs/learn/walkthroughs.md#inspect-an-approval"
       ],
       "modules": [
         "OperationalEventOutbox",

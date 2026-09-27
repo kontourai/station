@@ -16,6 +16,8 @@ personal-home Starter route.
 The technical behavior below accompanies the shorter
 [user instructions](../user/getting-started.md#start-your-first-task).
 
+See the [application walkthrough](../learn/walkthroughs.md#projects-and-tasks) for a captured example and its evidence limits.
+
 ## Start Your First Task
 
 When Home offers **Start your first task**, it appears only after the durable

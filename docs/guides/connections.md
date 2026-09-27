@@ -9,6 +9,8 @@ For the precise vocabulary used below, see [docs/glossary.md](../glossary.md).
 
 ---
 
+See the [application walkthrough](../learn/walkthroughs.md#connections) for a captured example and its evidence limits.
+
 ## Read the connection list
 
 Each row shows one readiness state and a next action. Model connections distinguish

@@ -23,6 +23,8 @@ interactive concept tree. It connects high-level responsibilities to module
 interfaces, canonical documents, source, evidence, and architecture questions.
 The searchable library includes all tracked Markdown, with historical material
 kept distinct from current implementation claims.
+The [visual walkthroughs](learn/walkthroughs.md) show selected application
+scenarios, with capture provenance and links into the implementation.
 
 ### Product and marketing
 

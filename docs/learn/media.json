@@ -1,4 +1,237 @@
 {
   "version": 1,
-  "captures": []
+  "captures": [
+    {
+      "path": "docs/learn/media/project-with-task.png",
+      "kind": "image",
+      "digest": "c169e2cb89311c0edbd78e567b3c8b7c41e070e3d08222eda904f99ae93ed7ba",
+      "alt": "A Project with one saved Task and its workspace details.",
+      "caption": "A saved Project and Task.",
+      "scenario": "Create durable work",
+      "evidence": "Running isolated Station with sample data and a sample display name. No Agent dispatched.",
+      "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
+      "reviewedRevision": "fb4cba52d3b36c36e07706b540f496c67f298ea8",
+      "sources": [
+        {
+          "path": "src-ui/src/components/header/Header.tsx",
+          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
+        },
+        {
+          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
+          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
+        },
+        {
+          "path": "src-ui/src/index.css",
+          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+        },
+        {
+          "path": "src-ui/src/views/ProjectPage.css",
+          "digest": "804bf02dc7f00a0ac47bf5bf381d9f052a8e97a55083dfcd1649883d3f6154c3"
+        },
+        {
+          "path": "src-ui/src/views/ProjectPage.tsx",
+          "digest": "278a282cdafb81524af722807368f9d4f9e45c408645df5f2ff998c87e37b84a"
+        },
+        {
+          "path": "src-ui/src/views/page-layout.css",
+          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
+        },
+        {
+          "path": "tests/helpers/live-station-task.ts",
+          "digest": "f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f"
+        }
+      ],
+      "documents": [
+        "docs/guides/starter-work.md",
+        "docs/learn/walkthroughs.md",
+        "docs/user/getting-started.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/shared-task-document.png",
+      "kind": "image",
+      "digest": "7f6b0ad776d4c9488f991df92236cb2e8b209e3dc3b58d3335fc434e158baadc",
+      "alt": "A Task with its shared document, live room and saved revision history.",
+      "caption": "A saved Task document and its room history.",
+      "scenario": "Save a shared revision",
+      "evidence": "Running isolated Station; the document and revision were persisted. No external Agent or provider. The small editor and clipped heading are the current UI.",
+      "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
+      "reviewedRevision": "fb4cba52d3b36c36e07706b540f496c67f298ea8",
+      "sources": [
+        {
+          "path": "src-server/services/orchestration/project-task-room-runtime.ts",
+          "digest": "0f1ead7c25dfa3a8217f9b31102762ac1e4ce5e8eaf7f7cdd5017a827c4d7cd5"
+        },
+        {
+          "path": "src-ui/src/components/header/Header.tsx",
+          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
+        },
+        {
+          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
+          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
+        },
+        {
+          "path": "src-ui/src/index.css",
+          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+        },
+        {
+          "path": "src-ui/src/views/TaskWorkspaceView.css",
+          "digest": "840e1c5e9fe66275729aa508628e29deeeaf42ab63af5789052038d159c46b59"
+        },
+        {
+          "path": "src-ui/src/views/TaskWorkspaceView.tsx",
+          "digest": "c1dc809b5cfe9e16e5daf7cad1af50fdc70675727dff9d6c8be351444b4f1bd8"
+        },
+        {
+          "path": "src-ui/src/views/page-layout.css",
+          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
+          "digest": "37939136798ca53c7328477bcb6b1e3a7fb8550c79effd535a8cec5cb5650152"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/ProjectTaskRoomPresence.tsx",
+          "digest": "dc406fe2f30112e8baf9399d957551aefe38128232681c971e79fd8f4f581ced"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/TaskRoomEditorPane.tsx",
+          "digest": "aa5a44f48f228e5de3b446ba60f9c5261587718c9d0863179aacb5e4c2ce5e0a"
+        }
+      ],
+      "documents": [
+        "docs/guides/starter-work.md",
+        "docs/learn/walkthroughs.md",
+        "docs/reference/project-task-room-collaboration-acceptance.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/connections-models.png",
+      "kind": "image",
+      "digest": "708bc37f892ae2da8d8129dbc25002c831f08f9026404b1a7debf942b03282c9",
+      "alt": "The Models page shows the settings for an example local model connection.",
+      "caption": "Inspect a model connection.",
+      "scenario": "Connections \u2192 Models",
+      "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran.",
+      "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
+      "reviewedRevision": "fb4cba52d3b36c36e07706b540f496c67f298ea8",
+      "sources": [
+        {
+          "path": "src-ui/src/components/SplitPaneLayout.css",
+          "digest": "4f894553a4fe3eaeb4824e4c23dfbe2206dd3df67260bf6a89795b2fe27216ac"
+        },
+        {
+          "path": "src-ui/src/components/SplitPaneLayout.tsx",
+          "digest": "6563e12d7bf8180dabeba03c6f9cc808521264ea5ad0bbd3ec5a71c7d66a685f"
+        },
+        {
+          "path": "src-ui/src/components/header/Header.tsx",
+          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
+        },
+        {
+          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
+          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
+        },
+        {
+          "path": "src-ui/src/index.css",
+          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+        },
+        {
+          "path": "src-ui/src/views/AgentConnectionView.tsx",
+          "digest": "6954fcdae1e5ade91f4f4f6078bc01b8c7a191726638734d1019471c26605f61"
+        },
+        {
+          "path": "src-ui/src/views/ConnectionsSectionFrame.tsx",
+          "digest": "78a8cef4a703a2eb9f0382386d738ecd1f0909a4b11a7219771ac0e92f2c7b6c"
+        },
+        {
+          "path": "src-ui/src/views/ProviderSettingsView.tsx",
+          "digest": "e04221808c7d92c450acb5d91c32ddae7dc103e981abbe9c900f4e867ce900bf"
+        },
+        {
+          "path": "src-ui/src/views/page-layout.css",
+          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
+        },
+        {
+          "path": "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
+          "digest": "bb5736723e42206a21c71edde5f2b0311dc00d8b2b7e4f16ddd5e9ca5a0925d6"
+        },
+        {
+          "path": "src-ui/src/views/provider-settings/ProviderStackOverview.tsx",
+          "digest": "5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208"
+        },
+        {
+          "path": "tests/connections-crud.spec.ts",
+          "digest": "b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5"
+        }
+      ],
+      "documents": [
+        "docs/guides/connections.md",
+        "docs/learn/walkthroughs.md",
+        "docs/reference/agent-smoke-confidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/inspect-request.png",
+      "kind": "image",
+      "digest": "389dbc299fc8f8e384fc666d4f6c3672e754181f5b0e794840211746d9c28cc7",
+      "alt": "A request inspector shows the tool scope and Approve once and Deny controls.",
+      "caption": "Inspect a request before answering it.",
+      "scenario": "Notifications \u2192 Inspect request",
+      "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture.",
+      "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
+      "reviewedRevision": "fb4cba52d3b36c36e07706b540f496c67f298ea8",
+      "sources": [
+        {
+          "path": "src-server/routes/orchestration/attention.ts",
+          "digest": "13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07"
+        },
+        {
+          "path": "src-server/services/orchestration/orchestration-service.ts",
+          "digest": "a11490103701a1bbe3fd7d2bcb52318ac0e2911977ec15412bb21ba8b1e796a1"
+        },
+        {
+          "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
+          "digest": "a1d787a1581edcd31fa4f208e9a50a899dc23e95ee93cf23720f94ec03a9e2da"
+        },
+        {
+          "path": "src-ui/src/components/attention/RequestInspectionDialog.tsx",
+          "digest": "22e170f6a032aec9ef353593a9b09207b2fb51d63d29b3b0a394494aa3d79acc"
+        },
+        {
+          "path": "src-ui/src/components/header/Header.tsx",
+          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
+        },
+        {
+          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
+          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
+        },
+        {
+          "path": "src-ui/src/index.css",
+          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+        },
+        {
+          "path": "src-ui/src/pages/NotificationsPage.css",
+          "digest": "cdf0711c5fb4a0f9112aaad12dd8af43d6b6e55e5aefb33ad0463b858d8d62d5"
+        },
+        {
+          "path": "src-ui/src/pages/NotificationsPage.tsx",
+          "digest": "cb48a8c4c057c72ed970a8a7a8206472eb01fad019fe2b6b0da98d69bc464a28"
+        },
+        {
+          "path": "src-ui/src/views/page-layout.css",
+          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
+        },
+        {
+          "path": "tests/helpers/exact-request-backend.ts",
+          "digest": "ddfd358fd04c7274ce9e2522af61fc153e5b051fa4826b72792f3b8a05537fff"
+        }
+      ],
+      "documents": [
+        "docs/guides/starter-work.md",
+        "docs/learn/walkthroughs.md",
+        "docs/user/getting-started.md"
+      ]
+    }
+  ]
 }
