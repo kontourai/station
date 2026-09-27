@@ -151,7 +151,6 @@ export interface ISchedulerProvider {
   readRunFile?(path: string): Promise<string>;
   getStats(): Promise<SchedulerProviderStats>;
   getStatus(): Promise<SchedulerProviderStatus>;
-  previewSchedule?(cron: string, count?: number): Promise<string[]>;
   subscribe?(send: (data: string) => void): () => void;
   getPrerequisites?(): Promise<Prerequisite[]>;
 }

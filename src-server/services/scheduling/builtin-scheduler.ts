@@ -1,5 +1,4 @@
 import {
-  nextOccurrences,
   type Schedule,
   validateSchedule,
 } from '@kontourai/ephemeris';
@@ -2075,16 +2074,6 @@ export class BuiltinScheduler implements ISchedulerProvider {
       healthy:
         this.timer !== null && (tickAge === null || tickAge < HEALTH_WINDOW_MS),
     };
-  }
-
-  async previewSchedule(cron: string, count = 5): Promise<string[]> {
-    // Back-compat: the UI passes a bare cron string. Wrap as a UTC cron
-    // schedule and defer to ephemeris. The caller (SchedulerService) already
-    // validates the cron shape via the route schema before reaching here.
-    const schedule: Schedule = { kind: 'cron', expr: cron };
-    return nextOccurrences(schedule, count, Date.now()).map((ms) =>
-      new Date(ms).toISOString(),
-    );
   }
 
   subscribe(send: (data: string) => void): () => void {
