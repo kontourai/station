@@ -4,6 +4,7 @@ vi.mock('../api', () => ({
   _getApiBase: vi.fn().mockResolvedValue('http://example.test'),
 }));
 
+import { StationHttpError } from '../client/http';
 import {
   fetchKitLayout,
   fetchKitRegistry,
@@ -13,8 +14,10 @@ import {
   requestRegistryLayoutAction,
 } from '../query-domains/catalogRequests';
 
-function mockJsonResponse(payload: unknown) {
+function mockJsonResponse(payload: unknown, status = 200) {
   vi.mocked(fetch).mockResolvedValue({
+    ok: status >= 200 && status < 300,
+    status,
     json: async () => payload,
   } as Response);
 }
@@ -100,6 +103,45 @@ describe('catalogRequests', () => {
     await expect(
       requestIntegration('/integration-1/enabled', { method: 'POST' }),
     ).resolves.toEqual(outcome);
+  });
+
+  // #2708: the Integrations view curates a refusal from the error's
+  // `details`; a plain Error carrying only "Validation failed" gave it nothing.
+  it('an integration refusal keeps its status, code and validation details', async () => {
+    const details = {
+      formErrors: [],
+      fieldErrors: { command: ['Command is required for stdio integrations'] },
+    };
+    mockJsonResponse(
+      { success: false, error: 'Validation failed', details },
+      400,
+    );
+
+    const failure = await requestIntegration('', {
+      method: 'POST',
+      body: '{}',
+    }).catch((caught: unknown) => caught);
+
+    expect(failure).toBeInstanceOf(StationHttpError);
+    expect(failure).toMatchObject({
+      status: 400,
+      details,
+      message:
+        'Validation failed: command Command is required for stdio integrations',
+    });
+
+    mockJsonResponse(
+      {
+        success: false,
+        code: 'station_control_caller_required',
+        error: 'This action needs a verified calling session.',
+      },
+      403,
+    );
+    await expect(requestIntegration('/integration-1')).rejects.toMatchObject({
+      status: 403,
+      code: 'station_control_caller_required',
+    });
   });
 
   it('uses the integration message fallback when an install fails', async () => {

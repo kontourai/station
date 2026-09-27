@@ -163,6 +163,9 @@ describe('sdk envelope-read rule: what counts', () => {
       'const { error } = body;\nthrow new Error(error.message);',
       'new Error(.message)',
     ],
+    // #2708 A-1 review: a body aliased to an arbitrary name is still read.
+    // The alias is not a caught failure, so its `.error` is an envelope read.
+    ['const e = body;\nthrow new Error(e.error);', 'new Error(.error)'],
   ])('counts %s', (source, kind) => {
     expect(sites(source)).toEqual([kind]);
   });
