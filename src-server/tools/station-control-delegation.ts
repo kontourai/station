@@ -120,6 +120,7 @@ import {
 } from '../telemetry/metrics.js';
 import {
   controlRequestOptions,
+  LocalStationRefusal,
   resolveControlApiBase,
 } from './station-control-shared.js';
 
@@ -1439,10 +1440,30 @@ const MAX_TASK_LIST_SCAN = 200;
 const TASK_BINDING_EVENT_LIMIT = 10;
 const TASK_LIST_VERIFY_BATCH = 8;
 
+/**
+ * #2708: the typed refusal in an answer from THIS Station, for the
+ * delegation tools to relay (`LocalStationRefusal`). `target.kind` is the
+ * only thing that decides origin: `'current'` is this Station's own control
+ * API (`resolveTarget`); an SSH or peer target's answer is never a local
+ * refusal, whatever code it carries.
+ */
+function localRefusalOf(
+  target: { kind?: DelegationTarget['kind'] },
+  payload: unknown,
+  message: string,
+): LocalStationRefusal | undefined {
+  if (target.kind !== 'current') return undefined;
+  const code = (payload as { code?: unknown } | null | undefined)?.code;
+  return typeof code === 'string' && code
+    ? new LocalStationRefusal(code, message)
+    : undefined;
+}
+
 async function readJson<T>(
   url: string,
   init?: RequestInit,
   unavailableMessage = 'Station request failed',
+  origin: { kind?: DelegationTarget['kind'] } = {},
 ): Promise<T> {
   let response: Response;
   try {
@@ -1450,31 +1471,23 @@ async function readJson<T>(
   } catch {
     throw new Error(unavailableMessage);
   }
-  let payload: T & { error?: string; code?: unknown };
+  let payload: T & { error?: string };
   try {
-    payload = (await response.json()) as T & {
-      error?: string;
-      code?: unknown;
-    };
+    payload = (await response.json()) as T & { error?: string };
   } catch {
     throw new Error(unavailableMessage);
   }
   if (!response.ok) {
-    // #2708: Station answered, so the error keeps the status and the typed
-    // code (a station-control refusal) for the tool to relay.
-    throw new StationHttpError(
-      response.status,
-      payload.error || unavailableMessage,
-      typeof payload.code === 'string' && payload.code
-        ? { code: payload.code }
-        : undefined,
-    );
+    const message = payload.error || unavailableMessage;
+    const cause = localRefusalOf(origin, payload, message);
+    throw new Error(message, cause ? { cause } : undefined);
   }
   return payload;
 }
 
 async function postCanonical<T>(
-  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'>,
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'> &
+    Partial<Pick<DelegationTarget, 'kind'>>,
   path: string,
   body: unknown,
   unavailableMessage: string,
@@ -1490,6 +1503,7 @@ async function postCanonical<T>(
       body: JSON.stringify(body),
     },
     unavailableMessage,
+    target,
   );
   if (!payload.success || payload.data === undefined) {
     throw new Error(payload.error || unavailableMessage);
@@ -1698,17 +1712,9 @@ function peerPortableFollowUpRefusalFor(
  * fixed-copy, 403 at the route) versus this sentinel (generic, 400).
  */
 class PeerPortableFollowUpError extends Error {
-  /** The answer's status and envelope `code`, when Station answered (#2708). */
-  readonly status?: number;
-  readonly code?: string;
-
-  constructor(message: string, answer?: { status: number; code?: string }) {
-    super(message);
+  constructor(message: string, localRefusal?: LocalStationRefusal) {
+    super(message, localRefusal ? { cause: localRefusal } : undefined);
     this.name = 'PeerPortableFollowUpError';
-    if (answer) {
-      this.status = answer.status;
-      if (answer.code !== undefined) this.code = answer.code;
-    }
   }
 }
 
@@ -1734,7 +1740,8 @@ async function postDelegationJson(
  * other failure becomes the generic sentinel — never peer text.
  */
 async function postPeerPortableFollowUp<T>(
-  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'>,
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'> &
+    Partial<Pick<DelegationTarget, 'kind'>>,
   path: string,
   body: unknown,
   unavailableMessage: string,
@@ -1755,12 +1762,13 @@ async function postPeerPortableFollowUp<T>(
   if (!response.ok) {
     const refusal = peerPortableFollowUpRefusalFor(response.status, payload);
     if (refusal) throw refusal;
-    throw new PeerPortableFollowUpError(unavailableMessage, {
-      status: response.status,
-      ...(typeof payload?.code === 'string' && payload.code
-        ? { code: payload.code }
-        : {}),
-    });
+    // The sentinel itself stays code-free: a peer's diagnostics never cross
+    // this seam. Only this Station's own answer rides along, as a cause the
+    // routes never read (#2708, `LocalStationRefusal`).
+    throw new PeerPortableFollowUpError(
+      unavailableMessage,
+      localRefusalOf(target, payload, unavailableMessage),
+    );
   }
   if (!payload?.success || payload.data === undefined) {
     throw new PeerPortableFollowUpError(unavailableMessage);
@@ -1769,7 +1777,8 @@ async function postPeerPortableFollowUp<T>(
 }
 
 async function getCanonical<T>(
-  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'>,
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'> &
+    Partial<Pick<DelegationTarget, 'kind'>>,
   path: string,
   unavailableMessage: string,
   signal?: AbortSignal,
@@ -1801,18 +1810,14 @@ async function getCanonical<T>(
     );
   }
   if (!response.ok || !payload.success || payload.data === undefined) {
-    const { code, details } = payload as { code?: unknown; details?: unknown };
+    const message = payload.error || unavailableMessage;
     throw new CanonicalDelegationReadError(
       'http',
-      payload.error || unavailableMessage,
+      message,
       response.status,
-      undefined,
-      {
-        // #2708: the answer's typed code (a station-control refusal) and
-        // details ride on the error for the tool to relay.
-        ...(typeof code === 'string' && code ? { code } : {}),
-        ...(details === undefined ? {} : { details }),
-      },
+      // Only this Station's own answer, as a cause (#2708); the error itself
+      // carries no code.
+      localRefusalOf(target, payload, message),
     );
   }
   return payload.data;
@@ -1824,18 +1829,10 @@ export class CanonicalDelegationReadError extends Error {
     message: string,
     readonly status?: number,
     cause?: unknown,
-    answer?: { code?: string; details?: unknown },
   ) {
     super(message, { cause });
     this.name = 'CanonicalDelegationReadError';
-    if (answer?.code !== undefined) this.code = answer.code;
-    if (answer?.details !== undefined) this.details = answer.details;
   }
-
-  /** The answer's envelope `code`, when Station sent one (#2708). */
-  readonly code?: string;
-  /** The answer's envelope `details`, as sent. */
-  readonly details?: unknown;
 }
 
 /** Older Stations predate explicit conversation/current-child fields. */
@@ -3690,13 +3687,18 @@ export async function listDelegatedTasks(
             target.apiBase,
             target.requestOptions,
           );
-  } catch (cause) {
-    // The sentence stays; the answer underneath (a typed station-control
-    // refusal, #2708) rides as its cause for the tool to relay.
-    throw new Error(
-      'Delegated task inventory is unavailable on the selected Station',
-      { cause },
-    );
+  } catch (error) {
+    // #2708: this Station's own refusal (the station-control guard answering
+    // the local control API) rides as a cause; a peer's answer does not.
+    const message =
+      'Delegated task inventory is unavailable on the selected Station';
+    const cause =
+      target.kind === 'current' &&
+      error instanceof StationHttpError &&
+      error.code
+        ? new LocalStationRefusal(error.code, error.message)
+        : undefined;
+    throw new Error(message, cause ? { cause } : undefined);
   }
   if (!Array.isArray(rawSessions)) {
     throw new Error(

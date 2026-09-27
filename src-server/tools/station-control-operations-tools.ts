@@ -68,8 +68,8 @@ export const MONITORING_ENGINE_FILTER_VALUES = [
 import {
   api,
   controlRequestOptions,
+  delegationToolResult,
   jsonToolResult,
-  jsonToolResultOrTypedFailure,
   navigateTo,
   resolveControlApiBase,
   toToolEnvelope as toOperationsEnvelope,
@@ -892,7 +892,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResultOrTypedFailure(() =>
+      delegationToolResult(() =>
         listDelegatedTasks({ ...input, userId: _userId }),
       ),
   );
@@ -1007,7 +1007,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResultOrTypedFailure(() =>
+      delegationToolResult(() =>
         observeDelegatedTask({ ...input, userId: _userId }),
       ),
   );
@@ -1031,7 +1031,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResultOrTypedFailure(() =>
+      delegationToolResult(() =>
         observeDelegatedTaskEvents({ ...input, userId: _userId }),
       ),
   );
@@ -1075,7 +1075,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResultOrTypedFailure(() =>
+      delegationToolResult(() =>
         respondToDelegatedTaskRequest({
           ...input,
           userId: _userId,
@@ -1098,7 +1098,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResultOrTypedFailure(() =>
+      delegationToolResult(() =>
         interruptDelegatedTask({
           ...input,
           userId: _userId,

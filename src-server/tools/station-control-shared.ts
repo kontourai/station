@@ -505,57 +505,53 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
 }
 
 /**
- * #2708: the typed refusal inside a failure a tool is about to throw, as a
- * tool result. Delegation tools wrap Station's answer in their own sentence
- * ("Delegated task inventory is unavailable…"), and a thrown error reaches the
- * agent as text only, so the guard's `code` never arrived. This walks the
- * error and its `cause` chain for the first error that carries both an HTTP
- * `status` and a string `code` — an answer Station gave, never a transport
- * errno such as `ECONNREFUSED`, which carries no status — and keeps the
- * outer sentence beside it. `undefined` when there is no such answer; the
- * caller then rethrows as before.
+ * #2708: THIS Station's own typed refusal of a station-control request —
+ * its guard or route decided it, and nothing else may build one. The
+ * delegation tools reach their current Station through the same helpers they
+ * use for peers; a peer's answer is never trusted as a code (a peer can send
+ * any string, `station_control_caller_required` included), so only the call
+ * sites that KNOW the target is this Station wrap its answer in one of these,
+ * as a `cause` beneath their own sentence. The code is in `refusalCode`, not
+ * `code`, so no route's `errorCode()` and no peer-refusal mapping reads it.
  */
-function typedToolFailure(error: unknown):
-  | {
-      success: false;
-      error: string;
-      code: string;
-      status: number;
-      details?: unknown;
-    }
-  | undefined {
-  if (!(error instanceof Error)) return undefined;
+export class LocalStationRefusal extends Error {
+  constructor(
+    readonly refusalCode: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'LocalStationRefusal';
+  }
+}
+
+function localRefusalCode(error: unknown): string | undefined {
   let current: unknown = error;
   for (let depth = 0; current instanceof Error && depth < 8; depth += 1) {
-    const { code, status, details } = current as {
-      code?: unknown;
-      status?: unknown;
-      details?: unknown;
-    };
-    if (typeof code === 'string' && code && typeof status === 'number') {
-      return {
-        success: false,
-        error: error.message,
-        code,
-        status,
-        ...(details === undefined ? {} : { details }),
-      };
-    }
+    if (current instanceof LocalStationRefusal) return current.refusalCode;
     current = current.cause;
   }
   return undefined;
 }
 
-/** A tool result for `run`, or its typed refusal (`typedToolFailure`). */
-export async function jsonToolResultOrTypedFailure(
-  run: () => Promise<unknown>,
-) {
+/**
+ * A delegation tool's result: its value on success, exactly as before, and on
+ * ANY failure `toToolEnvelope`'s failure shape — `{ success: false, error,
+ * code? }` — so one tool never fails two ways. `error` is the tool's own
+ * sentence. `code` is present only when a `LocalStationRefusal` is in the
+ * error's cause chain: this Station decided it. Not `toToolEnvelope` itself:
+ * its success arm would wrap these tools' results as `{ success, data }`, and
+ * its failure arm relays any `.code`, which on these errors can be a peer's.
+ */
+export async function delegationToolResult(run: () => Promise<unknown>) {
   try {
     return jsonToolResult(await run());
   } catch (error) {
-    const typed = typedToolFailure(error);
-    if (!typed) throw error;
-    return jsonToolResult(typed);
+    const code = localRefusalCode(error);
+    return jsonToolResult({
+      success: false,
+      error: error instanceof Error ? error.message : 'Request failed',
+      ...(code === undefined ? {} : { code }),
+    });
   }
 }
 

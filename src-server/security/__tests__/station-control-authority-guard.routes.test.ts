@@ -1100,8 +1100,10 @@ describe('the server guard alone gives agents a typed refusal (F2)', () => {
   });
 
   // #2708 A-1b review: the delegation tools wrap Station's answer in their
-  // own sentence and used to throw it, so the agent got text only. They now
-  // relay the typed refusal underneath, keeping their sentence.
+  // own sentence and used to throw it, so the agent got text only. Against
+  // THIS Station (the current target) they now relay its guard's typed code,
+  // keeping their sentence. A peer's code is never relayed (see
+  // orchestration-portable-delegation.test.ts).
   test.each([
     ['list_delegated_tasks', {}],
     ['get_task', { taskId: 'task:1' }],
@@ -1114,10 +1116,10 @@ describe('the server guard alone gives agents a typed refusal (F2)', () => {
   ] as const)('%s relays the server’s typed code', async (name, args) => {
     const handler = handlers()[name]?.handler;
     const result = await toolSideOff(() => handler!(args, {}));
+    // `toToolEnvelope`'s failure shape; the code is this Station's guard's.
     expect(JSON.parse(result.content[0].text)).toEqual({
       success: false,
       code: 'station_control_caller_required',
-      status: 403,
       error: expect.any(String),
     });
     expect(hits).toEqual([]);
