@@ -836,7 +836,8 @@ describe('Invoke Routes', () => {
     expect(controlActions.add).toHaveBeenCalledWith(1, {
       tool: 'station-control_update_skill',
       outcome: 'failure',
-      reason: 'create failed',
+      // #2795: a fixed reason; free text never becomes a metric attribute.
+      reason: 'tool_failed',
     });
   });
 
@@ -891,7 +892,8 @@ describe('Invoke Routes', () => {
     expect(controlActions.add).toHaveBeenCalledWith(1, {
       tool: 'station-control_respond_to_task_request',
       outcome: 'failure',
-      reason: 'Delegated task request is not open',
+      // #2795: a fixed reason; free text never becomes a metric attribute.
+      reason: 'tool_failed',
     });
   });
 
@@ -1059,7 +1061,10 @@ describe('Invoke Routes', () => {
       caller: 'bound' | 'none';
       answer: { status: number; body: unknown };
       sentence: string;
-      code: string;
+      /** The typed code the agent reads (absent: the body carries none). */
+      code?: string;
+      /** The telemetry reason: the envelope's code, else the fixed one. */
+      reason: string;
     };
     const rows: Row[] = [
       {
@@ -1070,6 +1075,7 @@ describe('Invoke Routes', () => {
         answer: { status: 200, body: { success: true } },
         sentence: 'verified calling session',
         code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
       },
       {
         family: 'agent',
@@ -1079,6 +1085,7 @@ describe('Invoke Routes', () => {
         answer: { status: 403, body: guardRefusal },
         sentence: GUARD_SENTENCE,
         code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
       },
       {
         family: 'board',
@@ -1092,6 +1099,7 @@ describe('Invoke Routes', () => {
         answer: { status: 403, body: guardRefusal },
         sentence: GUARD_SENTENCE,
         code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
       },
       {
         family: 'catalog',
@@ -1101,6 +1109,7 @@ describe('Invoke Routes', () => {
         answer: { status: 403, body: guardRefusal },
         sentence: GUARD_SENTENCE,
         code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
       },
       {
         family: 'operations',
@@ -1110,6 +1119,7 @@ describe('Invoke Routes', () => {
         answer: { status: 403, body: guardRefusal },
         sentence: GUARD_SENTENCE,
         code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
       },
       {
         family: 'operations (indeterminate run)',
@@ -1119,6 +1129,7 @@ describe('Invoke Routes', () => {
         answer: { status: 409, body: indeterminate },
         sentence: INDETERMINATE_SENTENCE,
         code: 'scheduler_run_indeterminate',
+        reason: 'scheduler_run_indeterminate',
       },
       {
         family: 'platform',
@@ -1128,6 +1139,7 @@ describe('Invoke Routes', () => {
         answer: { status: 403, body: guardRefusal },
         sentence: GUARD_SENTENCE,
         code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
       },
       {
         family: 'delegation',
@@ -1137,6 +1149,89 @@ describe('Invoke Routes', () => {
         answer: { status: 403, body: guardRefusal },
         sentence: 'could not resolve the delegated task request',
         code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
+      },
+      {
+        family: 'agent notification, no caller (notify_user)',
+        tool: 'notify_user',
+        args: { title: 'Build finished' },
+        caller: 'none',
+        answer: { status: 200, body: { status: 'sent' } },
+        sentence: 'Tool call failed',
+        reason: 'tool_failed',
+      },
+      {
+        family: 'agent notification, guard refusal (notify_user)',
+        tool: 'notify_user',
+        args: { title: 'Build finished' },
+        caller: 'bound',
+        answer: { status: 403, body: guardRefusal },
+        sentence: 'Tool call failed',
+        code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
+      },
+      {
+        family: 'platform guidance (install_plugin)',
+        tool: 'install_plugin',
+        args: { source: './my-plugin' },
+        caller: 'bound',
+        answer: { status: 200, body: { success: true } },
+        sentence: 'Station did not install ./my-plugin',
+        reason: 'tool_failed',
+      },
+      {
+        // The runtime's generic 500: no sentence, and a correlation id that
+        // must reach neither the HTTP error nor the metric attribute.
+        family: 'runtime internal error (forwarded envelope)',
+        tool: 'get_usage',
+        args: {},
+        caller: 'bound',
+        answer: {
+          status: 500,
+          body: {
+            success: false,
+            error: {
+              code: 'internal_error',
+              correlationId: 'corr-7f3a9c11-e2b4',
+            },
+          },
+        },
+        sentence: 'Tool call failed',
+        reason: 'internal_error',
+      },
+      {
+        // The runtime auth boundary's object error: its message is the
+        // sentence, its code the reason.
+        family: 'object error with a message (forwarded envelope)',
+        tool: 'get_usage',
+        args: {},
+        caller: 'bound',
+        answer: {
+          status: 403,
+          body: {
+            error: { code: 'insufficient_scope', message: 'Scope is missing.' },
+            success: false,
+          },
+        },
+        sentence: 'Scope is missing.',
+        reason: 'insufficient_scope',
+      },
+      {
+        // A code that is not a bounded token never becomes the attribute.
+        family: 'free-text code (forwarded envelope)',
+        tool: 'get_usage',
+        args: {},
+        caller: 'bound',
+        answer: {
+          status: 409,
+          body: {
+            success: false,
+            code: 'Retry after request 8841 finishes',
+            error: 'Busy.',
+          },
+        },
+        sentence: 'Busy.',
+        reason: 'tool_failed',
       },
     ];
 
@@ -1225,25 +1320,25 @@ describe('Invoke Routes', () => {
         };
         // The agent reads the whole envelope, typed code included.
         expect(toolResult.isError).toBe(true);
-        expect(JSON.parse(toolResult.content[0]!.text)).toMatchObject({
-          success: false,
-          code: row.code,
-        });
+        if (row.code !== undefined)
+          expect(JSON.parse(toolResult.content[0]!.text)).toMatchObject({
+            code: row.code,
+          });
         // The route answers a failure, in a sentence.
         expect(res.status).toBe(500);
         const body = (await json(res)) as { success: boolean; error: string };
         expect(body.success).toBe(false);
         expect(body.error).toContain(row.sentence);
         expect(body.error.trim().startsWith('{')).toBe(false);
+        expect(body.error).not.toContain('corr-');
         expect(controlActions.add).toHaveBeenCalledTimes(1);
         const [, attributes] = vi.mocked(controlActions.add).mock.calls[0]!;
-        expect(attributes).toMatchObject({
+        // A bounded code or the fixed reason: never free text or an id.
+        expect(attributes).toEqual({
           tool: toolName,
           outcome: 'failure',
+          reason: row.reason,
         });
-        expect(
-          String((attributes as { reason?: unknown }).reason).startsWith('{'),
-        ).toBe(false);
       } finally {
         vi.unstubAllGlobals();
         if (previousBase === undefined) delete process.env.STATION_API_BASE;

@@ -417,14 +417,26 @@ export async function api(path: string, opts?: RequestInit) {
  * than at each failure site. Agents still receive the same JSON, typed `code`
  * included; `isError` only marks it.
  */
-export function jsonToolResult(data: unknown): {
+export function jsonToolResult(
+  data: unknown,
+  options?: {
+    /**
+     * A refusal whose body is not a `success: false` envelope (`notify_user`'s
+     * `caller-required`, `install_plugin`'s `installed: false`): the caller
+     * states it, since only it knows the shape means "did not happen".
+     */
+    failed?: boolean;
+  },
+): {
   content: { type: 'text'; text: string }[];
   isError?: true;
 } {
   const content = [
     { type: 'text' as const, text: JSON.stringify(data, null, 2) },
   ];
-  return isFailureEnvelope(data) ? { content, isError: true } : { content };
+  return options?.failed === true || isFailureEnvelope(data)
+    ? { content, isError: true }
+    : { content };
 }
 
 function isFailureEnvelope(data: unknown): boolean {

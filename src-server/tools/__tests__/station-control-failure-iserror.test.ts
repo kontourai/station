@@ -1,16 +1,18 @@
 /**
- * #2795 (catch s5-436): no station-control tool answers `success: false`
- * without MCP `isError`. The native invoke route recognises a failed control
- * tool only by that flag, so a failure body without it reads as a success.
+ * #2795 (catch s5-436): a station-control tool that could not do its job
+ * answers an MCP error. The native invoke route (and every MCP host)
+ * recognises a failed tool only by `isError`; a failure in any other shape
+ * — `{ success: false }`, `{ status: 'unavailable' }`, `{ installed: false }`,
+ * `{ ok: false }` — reads as a success.
  *
- * Structural, but by behaviour rather than by reading source: every
- * registered tool's handler runs twice — once as a caller-less request (the
- * tool-side authority check refuses the guarded tools), and once as a bound
- * operator while every Station request answers the station-control guard's
- * refusal (each tool's own failure path). Every result whose JSON body says
- * `success: false` must carry `isError: true`. A tool that throws is already
- * an MCP error; a tool that succeeds or answers a non-envelope is outside
- * this rule.
+ * By behaviour, not by reading source: every registered tool's handler runs
+ * twice against a Station that refuses everything — once as a caller-less
+ * request (the tool-side authority check refuses the guarded tools), once as
+ * a bound operator (each tool's own failure path). In that environment no
+ * tool can succeed, so every result must be an MCP error (`isError`, or a
+ * throw, which the MCP SDK turns into one). The only exceptions are pinned by
+ * name with their reason; a new refusal shape without `isError`, in any
+ * family, adds a tool to the observed set and fails the pin.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
@@ -31,21 +33,6 @@ function registeredTools(): Record<string, { handler: Handler }> {
       _registeredTools: Record<string, { handler: Handler }>;
     }
   )._registeredTools;
-}
-
-function failureEnvelope(result: unknown): boolean {
-  const text = (result as ToolResult | undefined)?.content?.[0]?.text;
-  if (typeof text !== 'string') return false;
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      (parsed as { success?: unknown }).success === false
-    );
-  } catch {
-    return false;
-  }
 }
 
 async function run(
@@ -115,27 +102,35 @@ afterEach(() => {
   else process.env.STATION_API_BASE = previousBase;
 });
 
-describe('every station-control failure envelope is an MCP error (#2795)', () => {
+/**
+ * Deliberate non-errors in a refusing environment, each with its reason. The
+ * basis and session-inventory tools are MCP App views: when their read is
+ * unavailable they answer a rendered "unavailable" state with an explicit
+ * `isError: false` (`buildStationBasisUnavailableToolResult`,
+ * `buildStationSessionInventoryUnavailableToolResult`), which the app view
+ * displays as a state rather than as a failed call. Caller-less, the
+ * tool-side check refuses them first, so they are errors there.
+ */
+const NOT_AN_ERROR_BY_DESIGN: Record<'none' | 'bound', readonly string[]> = {
+  none: [],
+  bound: ['get_basis', 'get_session_inventory', 'get_task_basis'],
+};
+
+describe('every station-control failure is an MCP error (#2795)', () => {
   test.each(['none', 'bound'] as const)(
-    'caller %s: no tool answers success:false without isError',
+    'caller %s: only the pinned app views answer without an MCP error',
     async (caller) => {
       const tools = registeredTools();
       const names = Object.keys(tools).sort();
-      const failures: string[] = [];
-      const unflagged: string[] = [];
+      expect(names.length).toBeGreaterThan(80);
+      const notErrors: string[] = [];
       for (const name of names) {
         const result = await run(tools[name]!.handler, caller);
-        if (!failureEnvelope(result)) continue;
-        failures.push(name);
-        if ((result as ToolResult).isError !== true) unflagged.push(name);
+        if (result === 'threw') continue;
+        if ((result as ToolResult | undefined)?.isError === true) continue;
+        notErrors.push(name);
       }
-      expect(unflagged).toEqual([]);
-      // Reachability: the refusal paths really ran. A caller-less request is
-      // refused for every guarded tool; a bound operator reaches each tool's
-      // own failure path through the stubbed Station.
-      expect(failures.length).toBeGreaterThanOrEqual(
-        caller === 'none' ? 75 : 60,
-      );
+      expect(notErrors).toEqual(NOT_AN_ERROR_BY_DESIGN[caller]);
     },
     120_000,
   );

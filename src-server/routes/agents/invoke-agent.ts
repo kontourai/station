@@ -7,6 +7,11 @@ import {
   requireStableRuntimeConfigurationAcross,
 } from '../../runtime/plugins/runtime-configuration-lease.js';
 import { createRuntimeModelSelection } from '../../runtime/plugins/runtime-provider-resolution.js';
+import {
+  CONTROL_TOOL_FAILED_REASON,
+  ControlToolFailureError,
+  readControlToolFailure,
+} from '../../runtime/tools/control-tool-failure.js';
 import { executeRuntimeGenerationToolWithinLease } from '../../runtime/tools/runtime-generation-tools.js';
 import { isTrustedNativeStationControlTool } from '../../runtime/tools/tool-provenance.js';
 import type { RuntimeContext } from '../../runtime/types.js';
@@ -207,13 +212,8 @@ async function invokeAgentToolWithStableConfiguration(
         ctx.logger,
       );
     } else {
-      const result = toolResult as ToolResult;
-      if (result?.isError === true) {
-        const text = result.content?.find(
-          (entry) => typeof entry.text === 'string' && entry.text.trim(),
-        )?.text;
-        throw new Error(controlToolFailureSentence(text));
-      }
+      const failure = readControlToolFailure(toolResult);
+      if (failure) throw new ControlToolFailureError(failure);
     }
     if (isControlTool) {
       controlActions.add(1, {
@@ -224,10 +224,15 @@ async function invokeAgentToolWithStableConfiguration(
     }
   } catch (error) {
     if (isControlTool) {
+      // #2795: a metric attribute takes a bounded machine code or a fixed
+      // reason — never free text or an id. The HTTP error keeps the sentence.
       controlActions.add(1, {
         tool: invokedToolName,
         outcome: 'failure',
-        reason: errorMessage(error).slice(0, 120) || 'tool_error',
+        reason:
+          (error instanceof ControlToolFailureError
+            ? error.failure.code
+            : undefined) ?? CONTROL_TOOL_FAILED_REASON,
       });
     }
     throw error;
@@ -242,35 +247,6 @@ async function invokeAgentToolWithStableConfiguration(
       totalDuration: Math.round(performance.now() - startTime),
     },
   });
-}
-
-/**
- * The sentence a failed control tool reports (#2795). Station-control tools
- * answer a failure as a JSON envelope (`{ success: false, error, code? }`)
- * marked `isError`; the agent reads the whole envelope, but the HTTP `error`
- * and the telemetry `reason` want the sentence, not the stringified JSON: a
- * string `error`, else a string `message` (`install_skill` and the registry
- * routes answer `{ success: false, message }`). A text that is not such an
- * envelope is the sentence itself.
- */
-function controlToolFailureSentence(text: string | undefined): string {
-  const trimmed = text?.trim();
-  if (!trimmed) return 'Tool call failed';
-  try {
-    const parsed: unknown = JSON.parse(trimmed);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const { error, message } = parsed as {
-        error?: unknown;
-        message?: unknown;
-      };
-      for (const sentence of [error, message])
-        if (typeof sentence === 'string' && sentence.trim())
-          return sentence.trim();
-    }
-  } catch {
-    // Not JSON: the text is the sentence.
-  }
-  return trimmed;
 }
 
 export function invokeErrorResponse(

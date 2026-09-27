@@ -41,6 +41,7 @@ import type {
   PolicyHookProfile,
 } from '@kontourai/station-contracts/runtime-events';
 import { createStationTempDir } from '@kontourai/station-shared/temp-dir';
+import { readControlToolFailure } from '../../runtime/tools/control-tool-failure.js';
 import {
   bareControlToolName,
   classifyControlTool,
@@ -432,7 +433,16 @@ export function wrapPlatformMutationGatedTools<T extends GatedToolShape>(
         }
         try {
           const result = await execute.call(tool, args, execOptions);
-          await gate.afterMutation(ticket, { outcome: 'success' });
+          // #2795: a station-control tool answers a refusal or failure as an
+          // `isError` result rather than a throw; that is not an allowed
+          // mutation, so it is audited as the failure it is.
+          const failure = readControlToolFailure(result);
+          await gate.afterMutation(
+            ticket,
+            failure
+              ? { outcome: 'error', errorMessage: failure.sentence }
+              : { outcome: 'success' },
+          );
           return result;
         } catch (error) {
           await gate.afterMutation(ticket, {

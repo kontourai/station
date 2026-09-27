@@ -36,6 +36,9 @@ const {
   summarizeToolArgs,
   wrapPlatformMutationGatedTools,
 } = await import('../platform-mutation-gate.js');
+const { jsonToolResult } = await import(
+  '../../../tools/station-control-shared.js'
+);
 
 /** Minimal gated delivery definition (one step, one gate). */
 const GATED_DEFINITION = {
@@ -241,6 +244,28 @@ describe('opted workspace, ungated (no active run)', () => {
     await expect(wrapped.execute!({ source: './x' })).rejects.toThrow(
       'install exploded',
     );
+    expect(harness.events).toHaveLength(1);
+    expect(harness.events[0]).toMatchObject({
+      outcome: 'failed',
+      tool: 'install_plugin',
+    });
+  });
+
+  // #2795: station-control tools answer a refusal as an `isError` result, not
+  // a throw. The real result writer builds it here; the audit must record the
+  // failure, and the tool's result still reaches the caller unchanged.
+  test('a refused (isError) execution records a failed audit and returns the result', async () => {
+    const cwd = optedWorkspace();
+    const harness = createGate({ cwd });
+    const refusal = jsonToolResult({
+      success: false,
+      code: 'station_control_person_only',
+      error: 'A person must do this in Station.',
+    });
+    const { tool } = makeTool('station-control_install_plugin', () => refusal);
+    const wrapped = wrapWithGate(harness, tool);
+
+    await expect(wrapped.execute!({ source: './x' })).resolves.toBe(refusal);
     expect(harness.events).toHaveLength(1);
     expect(harness.events[0]).toMatchObject({
       outcome: 'failed',
