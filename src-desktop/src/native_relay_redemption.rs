@@ -659,10 +659,28 @@ pub(crate) struct NativeRelayGrantMetadata {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct NativeRelayGrantState {
     pub(crate) profile_name: String,
+    pub(crate) profile_revision: u64,
     pub(crate) station_id: String,
     pub(crate) enrollment_id: String,
     pub(crate) grants: Vec<NativeRelayGrantStatusItem>,
     pub(crate) cleanups: Vec<NativeRelayGrantCleanupStatus>,
+}
+
+impl NativeRelayGrantState {
+    fn for_saved_profile(
+        profile: &NativeRelayProfileSnapshot,
+        grants: Vec<NativeRelayGrantStatusItem>,
+        cleanups: Vec<NativeRelayGrantCleanupStatus>,
+    ) -> Self {
+        Self {
+            profile_name: profile.profile_name.clone(),
+            profile_revision: profile.revision,
+            station_id: profile.station_id.clone(),
+            enrollment_id: profile.enrollment_id.clone(),
+            grants,
+            cleanups,
+        }
+    }
 }
 
 /// Tagged, secret-free response to an invite-redemption command. Domain
@@ -3395,6 +3413,37 @@ mod tests {
             transport.observed.lock().unwrap().as_ref().unwrap().0,
             RENEW_PATH
         );
+    }
+
+    #[test]
+    fn grant_status_revision_is_secret_free_and_rejects_renewal_after_profile_change() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let status = {
+            let context = prepared.authority.0.lock().unwrap();
+            NativeRelayGrantState::for_saved_profile(&context.profile, Vec::new(), Vec::new())
+        };
+        let status_json = serde_json::to_value(&status).unwrap();
+        assert_eq!(status_json["profileRevision"], 7);
+        assert!(status_json.get("credential").is_none());
+        assert!(!status_json.to_string().contains("secret"));
+
+        let grants = stored_signal_grant_until(&prepared, NOW + 12 * 60 * 60 * 1000);
+        let transport = NativeSignalTransport {
+            authority: Arc::clone(&prepared.authority),
+            status: 200,
+            response_body: Vec::new(),
+            mutate_profile_after_request: false,
+            return_transport_error: false,
+            observed: Mutex::new(None),
+        };
+        prepared.authority.0.lock().unwrap().profile.revision += 1;
+
+        assert_eq!(
+            native_signal_service(&prepared, &transport, &grants)
+                .renew("Local", status.profile_revision),
+            Err(NativeRedemptionError::StaleProfile)
+        );
+        assert!(transport.observed.lock().unwrap().is_none());
     }
 
     #[test]
@@ -6607,24 +6656,22 @@ pub(crate) async fn station_native_relay_grant_status(
                 &profile.client_instance_id,
             )
             .map_err(|_| NativeRedemptionError::InvalidProfile)?;
-            Ok(NativeRelayGrantState {
-                profile_name: profile.profile_name.clone(),
-                station_id: profile.station_id.clone(),
-                enrollment_id: profile.enrollment_id.clone(),
-                grants: grants.metadata_for_profile_route(
+            Ok(NativeRelayGrantState::for_saved_profile(
+                &profile,
+                grants.metadata_for_profile_route(
                     &owner,
                     &profile.broker_origin,
                     &profile.station_id,
                     &profile.enrollment_id,
                     native_now_ms_or_zero(),
                 )?,
-                cleanups: grants.cleanup_statuses_for_profile_route(
+                grants.cleanup_statuses_for_profile_route(
                     &owner,
                     &profile.broker_origin,
                     &profile.station_id,
                     &profile.enrollment_id,
                 )?,
-            })
+            ))
         })
         .map_err(|_| "Station could not read native relay grant status.".to_owned())
     })
@@ -6689,6 +6736,7 @@ pub(crate) async fn station_native_relay_grant_revoke(
         }
         Ok(NativeRelayGrantState {
             profile_name,
+            profile_revision: expected_profile_revision,
             station_id: station_id.clone(),
             enrollment_id: enrollment_id.clone(),
             grants: Vec::new(),
