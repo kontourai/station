@@ -216,6 +216,44 @@ subscription: [#2753](https://github.com/kontourai/station/issues/2753).
 The channel race was exercised with synthetic state; physical browser delivery
 was not. See the current [Web Push guide](../guides/web-push-notifications.md).
 
+### Reusable prompts have two different argument contracts
+
+Authored Agent commands and command skills both expand prompt text, but only
+the skill path rejects missing values and surplus positional words. Both use
+JavaScript replacement-string semantics, so dollar patterns in a supplied
+value can change its text. [#2764](https://github.com/kontourai/station/issues/2764)
+tracks authored argument validation;
+[#2763](https://github.com/kontourai/station/issues/2763) tracks literal-value
+preservation. The [command guide](../guides/commands.md) describes the current
+precedence and limits. A pure skill-helper probe reproduced the dollar-pattern
+behavior; no provider completion was inferred from prompt expansion.
+
+### Shortcut hints are separate from dispatch rules
+
+The keyboard editor derives context hints from command IDs, while dispatch
+uses registered conditions plus modal/input ownership checks.
+[#2767](https://github.com/kontourai/station/issues/2767) tracks a shared source
+for the visible explanation and actual availability rule. The
+[shortcut guide](../guides/keyboard-shortcuts.md) now names that distinction and
+the current local settings store. This is a source-confirmed explanation gap,
+not a physical keyboard or native-shell failure.
+
+A separate mounted-editor probe found that a captured Space binding is saved
+under a different key spelling from the standard dispatched event.
+[#2771](https://github.com/kontourai/station/issues/2771) tracks normalization
+across capture, storage and dispatch, including existing saved bindings.
+
+### One HTTP origin does not expose every realtime listener
+
+The default container mapping and lifecycle UI proxy expose HTTP and SSE through
+the UI port. Voice still derives a separate WebSocket destination from the port
+reported by the backend. The former deployment instructions implied that
+generic proxy upgrade headers connected those paths.
+[#2769](https://github.com/kontourai/station/issues/2769) tracks an authenticated,
+verified ingress contract. The corrected [deployment guide](../guides/deployment.md#reverse-proxy)
+states the current limit. Source inspection establishes the missing route;
+this audit did not execute a new container/proxy/phone voice journey.
+
 ### Live frames and human input share a transport budget
 
 The current live-surface hook opens a frame request per visible viewer.

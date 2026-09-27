@@ -320,6 +320,19 @@
       "checks": []
     },
     {
+      "path": ".changeset/documentation-contract-clarity.md",
+      "documentDigest": "8d5c2aa3852b7203df5a5a7175d84916bf7ff94b60bfbdbaadb60e0d1a93d8fb",
+      "sourceRevision": "5bc39d324d26c7d17fc8ee142408ff36d6f80f7b",
+      "kind": "release-note",
+      "state": "classified",
+      "summary": "Patch release intent for CLI help and the four affected public package documentation surfaces.",
+      "limits": "Not evidence of package versioning or publication.",
+      "sources": [],
+      "checks": [
+        "Changesets planner passed with 72 retained notes."
+      ]
+    },
+    {
       "path": ".changeset/engine-sign-in-device-scope.md",
       "documentDigest": "ac729c6617562d10b8f4f3d20c990d992b1b94e5f017e6ea647c49cb4135eeb5",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -978,6 +991,62 @@
       "checks": []
     },
     {
+      "path": "README.md",
+      "documentDigest": "d52709c3d40ceff6953f382e9da4db44b0bb44f107638e9db9a79a9afb5cb18a",
+      "sourceRevision": "5bc39d324d26c7d17fc8ee142408ff36d6f80f7b",
+      "kind": "current",
+      "state": "partial",
+      "summary": "Full entry-point read; source-backed corrections to optional gates, workspace availability, local inference scope, installer staging/token prerequisites, CLI help and data-flow limits. Docker HTTP/SSE exposure is separated from dedicated voice transport.",
+      "limits": "This is bounded entry-point review, not every linked guide, live provider/device journey, release installation or hosted publication. Current metadata observations below do not prove artifact operation.",
+      "sources": [
+        {
+          "path": "Dockerfile",
+          "digest": "21c565f9afa1089d81b0be1b53f8e8d6a3ae6e725813dc48505e7d93be387aa4"
+        },
+        {
+          "path": "docker-compose.yml",
+          "digest": "d8ae74f82e6fba7768be16dd601d1f98d0462b22576cb125023e0d868a99bfc8"
+        },
+        {
+          "path": "install.sh",
+          "digest": "2b21a2c2ff4f1e6bff427ff0a2613c967b437170a3bafa213dae32bc2df21afb"
+        },
+        {
+          "path": "packages/cli/src/cli.ts",
+          "digest": "1930473e672a2649db2f6532258ed1db2a173c442a62f0823410ec657aea1208"
+        },
+        {
+          "path": "packages/cli/src/commands/lifecycle.ts",
+          "digest": "1b9d7521cd19e5edabce4d75858b5cc8f5d797d67a6087df3a0f209f671a6994"
+        },
+        {
+          "path": "packages/cli/src/distribution.ts",
+          "digest": "f02cc7baf384dcfc9393a9b7223e7e0e6609762540ca04dcbbad8f6837be8c44"
+        },
+        {
+          "path": "src-server/services/orchestration/flow-policy-sidecar.ts",
+          "digest": "437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44"
+        },
+        {
+          "path": "src-server/services/privacy-inventory.ts",
+          "digest": "c09da77a44620062c17041bc3c8ec71e430f61e1fde614505410d6fdfa17c08b"
+        },
+        {
+          "path": "src-ui/src/hooks/voiceWsUrl.ts",
+          "digest": "4b609c4ad165efdf372f565aacdf1617ed9f0c793fbba7cca2005a0ab33f71b1"
+        },
+        {
+          "path": "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts",
+          "digest": "e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c"
+        }
+      ],
+      "checks": [
+        "Independent delta review caught GitHub/public-manifest downgrade-policy scope and help-before-dispatch wording; corrected.",
+        "Live metadata check on 2026-09-26: Nightly desktop includes macOS Apple-silicon and Windows x64 assets; retained versions are mixed. No asset installed.",
+        "Public npm metadata confirmed the four linked package names exist; it does not certify checkout API parity with those releases."
+      ]
+    },
+    {
       "path": "SECURITY.md",
       "documentDigest": "d04b0cb8af704fac894241b85f3fd422e448070339fc3b14029c86a14446e44d",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -992,7 +1061,7 @@
       "path": "docs/README.md",
       "documentDigest": "64e4ad431f1427e29089bb51760afe6f90092ba2970b9766113e7522e51314fd",
       "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
-      "kind": "reference",
+      "kind": "current",
       "state": "partial",
       "summary": "Added Browser guide and corrected Device guide title/summary; root dirty metrics link is external and must be retained during merge.",
       "limits": "Bounded source/caller review plus named synthetic tests; no real browser acquisition/launch, public-site navigation, physical device/app, SSH host operation, native package, Windows process tree or saturated-origin-pool proof. File hash identifies owner bytes, not whole-file implementation certification.",
@@ -2247,234 +2316,189 @@
     },
     {
       "path": "docs/architecture.md",
-      "documentDigest": "7041483a8f340090db4947082c42d40e0a6dd15fefc52c938ec644fe390d2220",
-      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
-      "kind": "architecture",
-      "state": "partial",
-      "summary": "Full-read contextual architecture; only one Browser/Device reading-path row added and source-backed. Other subsystem claims not re-certified.",
-      "limits": "Bounded source/caller review plus named synthetic tests; no real browser acquisition/launch, public-site navigation, physical device/app, SSH host operation, native package, Windows process tree or saturated-origin-pool proof. File hash identifies owner bytes, not whole-file implementation certification.",
+      "documentDigest": "d31fb4f0f2c41b8ca60c6cfc2cf0d1f0edcc59cc77aaac7a79610b58cecea6b3",
+      "sourceRevision": "e7cdcb6ce00f9e3bbad66eefacc031871f4f5683",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Full high-level overview and seven diagrams reviewed against current composition and callers. Corrected engine/tool ownership, durable versus live events, optional Flow/OTel, dedicated voice transport, plugin/provider boundaries, attached sessions and package scope; preserved all 30 prior reader anchors.",
+      "limits": "Source and focused fixtures, not every function in the linked owners or live provider/engine/tool-server, collector, voice, device, proxy deployment or native package qualification. Diagram syntax and anchors were checked; final visual layout review remains separate.",
       "sources": [
         {
-          "path": "packages/contracts/src/live-surface.ts",
-          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+          "path": "packages/cli/package.json",
+          "digest": "3326cda44f10983039189724dbec68a663a5fa2eecb7ba4663a96a4eaedd4d91"
         },
         {
-          "path": "packages/contracts/src/workspace-browser-pane.ts",
-          "digest": "34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e"
+          "path": "packages/cli/src/distribution.ts",
+          "digest": "f02cc7baf384dcfc9393a9b7223e7e0e6609762540ca04dcbbad8f6837be8c44"
         },
         {
-          "path": "packages/contracts/src/workspace-browser-preview.ts",
-          "digest": "5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4"
+          "path": "packages/connect/package.json",
+          "digest": "93065beef4542eb9cd1cffc27af9c7b85389d709b8f909bf379ce4de5b05a666"
         },
         {
-          "path": "packages/sdk/src/mobile-device.ts",
-          "digest": "8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a"
+          "path": "packages/contracts/package.json",
+          "digest": "be67e427665002a91848c74e6ab3e3d24703f4368b4a3177d380aafa4f95563f"
         },
         {
-          "path": "src-server/routes/browser-agent.ts",
-          "digest": "eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0"
+          "path": "packages/contracts/src/tool.ts",
+          "digest": "2b8764b165bd4eba4e6b67495cb71a1528f3a15a406ba999114afeb645cc6d71"
         },
         {
-          "path": "src-server/routes/browser.ts",
-          "digest": "41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e"
+          "path": "packages/sdk/package.json",
+          "digest": "47af8a80fddf80e9b52afb5eabd3bbd2f790a8e54fccee8289e7f9621ccbafb1"
         },
         {
-          "path": "src-server/routes/device-hosts.ts",
-          "digest": "d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87"
+          "path": "packages/sdk/src/index.ts",
+          "digest": "2ff83371f2bc38e9a0926360ba37ed3499d252c078bf0716cf745ff2f05310aa"
         },
         {
-          "path": "src-server/routes/device-toolchain.ts",
-          "digest": "08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c"
+          "path": "packages/sdk/src/voice/registry.ts",
+          "digest": "62ce9013b0c9d5e935c88ae2912bf31768f58ef5f40409745df9676ebfb87408"
         },
         {
-          "path": "src-server/routes/device-tools.ts",
-          "digest": "551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf"
+          "path": "packages/shared/package.json",
+          "digest": "bc3954dd7583762fbc25cb2e8cd9db3cd59b143f273a936b04dd27e1d0fc9389"
         },
         {
-          "path": "src-server/routes/live-surface.ts",
-          "digest": "d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148"
+          "path": "packages/shared/src/mcp-connection.ts",
+          "digest": "7820dc126d63a74fbb6b81f8c8ce080ac9d52af0fe3d80f55e882baf772d3a76"
         },
         {
-          "path": "src-server/routes/mobile-device.ts",
-          "digest": "0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46"
+          "path": "src-server/index.ts",
+          "digest": "53c36afff3a1c5a96e7c2054c7c0f2ce97c2d5b373e876e41d7c505163f30c27"
+        },
+        {
+          "path": "src-server/monitoring/emitter.ts",
+          "digest": "18a46c3c352fa9f5305e5bf2b03c20eb39cb2fe934d53e51900d908cd15fecf4"
+        },
+        {
+          "path": "src-server/providers/plugin-provider-loader.ts",
+          "digest": "7b780f31c1d234d708632b146294f59530984baec971edabdb8e0265f55ceb94"
+        },
+        {
+          "path": "src-server/providers/sessions/claude-transcript-session-source.ts",
+          "digest": "d1dc78e049ebbd92c6dabf54436f3b82779bbe0c801d6e31514351f1c58c560d"
+        },
+        {
+          "path": "src-server/providers/sessions/codex-rollout-session-source.ts",
+          "digest": "35e09b5648c9969919fa37fed58ff37af1e3b7e802a3b42c5fd236fa5100fba9"
+        },
+        {
+          "path": "src-server/routes/orchestration/orchestration.ts",
+          "digest": "1f41bd4d49611826023ee263ff5dff73aa65465a8d3369c46fb40320e5ac7ddd"
+        },
+        {
+          "path": "src-server/runtime/agents/agent-engine-classification.ts",
+          "digest": "cec04bb10726e4ce741930da266458c95fa1f53acd475d8d696a5271c32f7c6d"
+        },
+        {
+          "path": "src-server/runtime/agents/delegation.ts",
+          "digest": "68f406b4334bf5b4ed0bb64efc3a7149199fa6b8dcbab9aca17213dba5c3e363"
+        },
+        {
+          "path": "src-server/runtime/agents/runtime-agent-builder.ts",
+          "digest": "eee33c81babd2b13cc0ff1af05da1b946493e1aa0be09ece57b6f0925494337f"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/runtime-http.ts",
+          "digest": "5ed41b4afb2f3f83d80cd8a0957d72427ffd76e6136a6d0feb7fab23e85acca9"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/runtime-initialize.ts",
+          "digest": "f91cde8745073b2ff0e4c177d47fe9f4d261908a51f25a7defccff053852b622"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/runtime-service-bootstrap.ts",
+          "digest": "eae8c0416ce087086fa5adf0304a8e269de3d377ab52dfdee67a6b805f62c96a"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/station-runtime.ts",
+          "digest": "7c712a6ebb7d5525d04ad05432f5b8f169b6c3d20d6f64b1b8bff10e38e660ea"
+        },
+        {
+          "path": "src-server/runtime/conversation/runtime-event-log.ts",
+          "digest": "c73565025ce6279646a17c4c6f2e3b339d8ff79a1c6d2ca444b98fc6232b1b26"
+        },
+        {
+          "path": "src-server/runtime/conversation/stream-orchestrator.ts",
+          "digest": "9992d0781e384149a4611cf5676a4642f2faed472a1d7da866bada4c2bbe708a"
+        },
+        {
+          "path": "src-server/runtime/mcp/mcp-manager.ts",
+          "digest": "6c8054781d7ee65e7dd02f9fd622769a12aca86ee31d6b6812b666e8e719972d"
         },
         {
           "path": "src-server/runtime/routes/runtime-routes.ts",
           "digest": "709990d825244ef055dd0b70ce73736d2b3fae917686981d9be08b2bfe9a6658"
         },
         {
-          "path": "src-server/services/browser/browser-access.ts",
-          "digest": "c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870"
+          "path": "src-server/runtime/streaming/InjectableStream.ts",
+          "digest": "a35d9612bd7e68cf748b8cb9c5188b064446ac47a40b9ed7757cf109b7434ed1"
         },
         {
-          "path": "src-server/services/browser/browser-agent-authority.ts",
-          "digest": "e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf"
+          "path": "src-server/runtime/streaming/StreamPipeline.ts",
+          "digest": "cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2"
         },
         {
-          "path": "src-server/services/browser/browser-automation.ts",
-          "digest": "16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97"
+          "path": "src-server/runtime/tools/tool-executor.ts",
+          "digest": "3acb6e34cbb9e134d85acc405b4dacfc48d3f0520974a7ec15ce4d0f6cd2c9df"
         },
         {
-          "path": "src-server/services/browser/browser-egress-proxy.ts",
-          "digest": "87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8"
+          "path": "src-server/services/execution-target/execution-target-execution.ts",
+          "digest": "cba815b58613ef0eb6048e561c4b2b6a47e4db61dda19ae664b649a74e95c834"
         },
         {
-          "path": "src-server/services/browser/browser-host.ts",
-          "digest": "1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94"
+          "path": "src-server/services/flow/flow-run-service.ts",
+          "digest": "501881355a01c561de9ecdbe2cc99a9f83bb565873615997cba75965e6e29271"
         },
         {
-          "path": "src-server/services/browser/browser-live-surfaces.ts",
-          "digest": "e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9"
+          "path": "src-server/services/orchestration/orchestration-service.ts",
+          "digest": "a11490103701a1bbe3fd7d2bcb52318ac0e2911977ec15412bb21ba8b1e796a1"
         },
         {
-          "path": "src-server/services/browser/browser-local-targets.ts",
-          "digest": "daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83"
+          "path": "src-server/services/plugins/plugin-install-transaction.ts",
+          "digest": "bc81e514914c45793c0893f7ced2fc8dd0c16878e27b38d82d53fb83b25aa071"
         },
         {
-          "path": "src-server/services/browser/browser-project-settings.ts",
-          "digest": "6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6"
+          "path": "src-server/telemetry.ts",
+          "digest": "9ff37a9db00e896eddc6ac18bde74c70e3c894550f90c32dea45ea18fb9f9274"
         },
         {
-          "path": "src-server/services/browser/browser-service.ts",
-          "digest": "1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b"
+          "path": "src-server/telemetry/metrics.ts",
+          "digest": "2d34c80f94cd64389017805a8372f59854bd2943670a4e498eb6367f4436ff1b"
         },
         {
-          "path": "src-server/services/browser/browser-session-registry.ts",
-          "digest": "aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a"
+          "path": "src-server/voice/voice-session.ts",
+          "digest": "957f092791868376ee49c32261dc73d32fa25a8bdbfe5d79d6b70265ea685b28"
         },
         {
-          "path": "src-server/services/browser/chromium-acquisition.ts",
-          "digest": "baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6"
+          "path": "src-ui/src/components/coding-layout/TerminalPanel.tsx",
+          "digest": "971647009fb435dcdb7370c484b0e1e3a7d94112a08de080cae4b06ec2a79983"
         },
         {
-          "path": "src-server/services/browser/chromium-screencast-producer.ts",
-          "digest": "b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132"
+          "path": "src-ui/src/hooks/voiceWsUrl.ts",
+          "digest": "4b609c4ad165efdf372f565aacdf1617ed9f0c793fbba7cca2005a0ab33f71b1"
         },
         {
-          "path": "src-server/services/browser/egress-policy.ts",
-          "digest": "34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde"
-        },
-        {
-          "path": "src-server/services/browser/hosts/chromium-server-host.ts",
-          "digest": "f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2"
-        },
-        {
-          "path": "src-server/services/browser/station-listeners.ts",
-          "digest": "01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb"
-        },
-        {
-          "path": "src-server/services/browser/url-policy.ts",
-          "digest": "46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39"
-        },
-        {
-          "path": "src-server/services/devices/device-access.ts",
-          "digest": "c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96"
-        },
-        {
-          "path": "src-server/services/devices/device-hub-endpoint.ts",
-          "digest": "1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb"
-        },
-        {
-          "path": "src-server/services/devices/device-live-surface-producer.ts",
-          "digest": "c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77"
-        },
-        {
-          "path": "src-server/services/devices/device-session-service.ts",
-          "digest": "b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2"
-        },
-        {
-          "path": "src-server/services/devices/hosts/device-host-registry.ts",
-          "digest": "02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f"
-        },
-        {
-          "path": "src-server/services/devices/toolchain/device-hub-connection.ts",
-          "digest": "0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4"
-        },
-        {
-          "path": "src-server/services/devices/toolchain/device-toolchain-service.ts",
-          "digest": "af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50"
-        },
-        {
-          "path": "src-server/services/live-surface/control-lease.ts",
-          "digest": "8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30"
-        },
-        {
-          "path": "src-server/services/live-surface/producer.ts",
-          "digest": "9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78"
-        },
-        {
-          "path": "src-server/services/live-surface/registry.ts",
-          "digest": "7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a"
-        },
-        {
-          "path": "src-server/services/live-surface/surface-hub.ts",
-          "digest": "ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103"
-        },
-        {
-          "path": "src-server/services/mobile-device/mobile-device-host.ts",
-          "digest": "a1c380f92d4c506db418ff1961cd4edc737488d7c88d13a07dbc877add934a57"
-        },
-        {
-          "path": "src-server/tools/station-browser-mcp-server.ts",
-          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
-        },
-        {
-          "path": "src-server/tools/station-control-browser-tools.ts",
-          "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
-        },
-        {
-          "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
-          "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
-        },
-        {
-          "path": "src-ui/src/live-surface/LiveSurfaceCanvas.tsx",
-          "digest": "c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648"
-        },
-        {
-          "path": "src-ui/src/live-surface/useLiveSurface.ts",
-          "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
-        },
-        {
-          "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
-          "digest": "34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b"
-        },
-        {
-          "path": "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
-          "digest": "4637deeeeff416880c29085648a9d6193c17613711142e3434d240c3caf2f78f"
-        },
-        {
-          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
-          "digest": "5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea"
-        },
-        {
-          "path": "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
-          "digest": "495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6"
-        },
-        {
-          "path": "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
-          "digest": "56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce"
-        },
-        {
-          "path": "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
-          "digest": "38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906"
-        },
-        {
-          "path": "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
-          "digest": "bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c"
+          "path": "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts",
+          "digest": "e0af5660bc581fae84121a3890cb5a180960213d761eef4a23319e5fa1bece2c"
         }
       ],
       "checks": [
-        "Browser/Device source/caller review; 219 tests across eight files passed, historical bodies preserved.",
-        "Parent inspected key profile/access/egress and lifecycle callers; three source headers corrected with identical emitted JavaScript."
+        "Full original and rewritten article read; independent parent review traced key event subscription/replay, private-engine/MCP, voice and provider boundaries.",
+        "31 tests across documentation foundations, voice URL and streaming pipeline suites passed.",
+        "Actual reader preserved 30 anchors without duplicates; seven Mermaid diagrams parsed after a caught and corrected label syntax error.",
+        "Parent refined the voice source link to distinguish the querying adapter from its pure URL helper.",
+        "Replaced generic retired-hook warning with the concrete host-context/query distinction; useSendMessage and useConversations remain public context hooks."
       ]
     },
     {
       "path": "docs/architecture/module-map.md",
-      "documentDigest": "9f0b2429e0c70e9e0193be17726de109cc6ded91a7e7741934c07380148c72ce",
-      "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
+      "documentDigest": "21dd64ca3380b64459274782ef55cfb9c52cc7255b9374b83582b783a803f24b",
+      "sourceRevision": "e7cdcb6ce00f9e3bbad66eefacc031871f4f5683",
       "kind": "current",
       "state": "partial",
-      "summary": "Reviewed KnowledgeStoreProvider, SqliteVecIndexProvider, Workspace checkpoints, and Personal Work Board against their callers. Moved and qualified optional OIDC under its account owner. Other module sections remain subject to the broader audit. Browser/Device tranche: Only added BrowserSessionService and Shared live surface plus corrected existing MobileDeviceHost. Preserve every unrelated module/partial ledger section and OIDC subsection.",
+      "summary": "Reviewed KnowledgeStoreProvider, SqliteVecIndexProvider, Workspace checkpoints, and Personal Work Board against their callers. Moved and qualified optional OIDC under its account owner. Other module sections remain subject to the broader audit. Browser/Device tranche: Only added BrowserSessionService and Shared live surface plus corrected existing MobileDeviceHost. Preserve every unrelated module/partial ledger section and OIDC subsection. Added the Keyboard shortcuts owner: registry subscriptions, local binding storage, dispatch conditions and current editor limits.",
       "limits": "Reviewed sections do not certify the full catalog. No live provider, physical device, deployed identity service, or exact pre-effect/post-effect snapshot guarantee.",
       "sources": [
         {
@@ -2698,8 +2722,16 @@
           "digest": "c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10"
         },
         {
+          "path": "src-ui/src/contexts/KeyboardShortcutsContext.tsx",
+          "digest": "939eb7cbf2c2bbcb15679950a08f02f0e16190c4f69851e5e9022a6be2ba74f2"
+        },
+        {
           "path": "src-ui/src/float-over-chat/FloatOverChatHost.tsx",
           "digest": "04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f"
+        },
+        {
+          "path": "src-ui/src/lib/device-settings-store.ts",
+          "digest": "7a38734b965d9d54de83a801faf5e322224a18ca505de7b05c7bbd50e63366ed"
         },
         {
           "path": "src-ui/src/lib/queryDefaults.ts",
@@ -2712,6 +2744,18 @@
         {
           "path": "src-ui/src/live-surface/useLiveSurface.ts",
           "digest": "82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba"
+        },
+        {
+          "path": "src-ui/src/settings/shortcutPreferences.ts",
+          "digest": "4a734f717d38f9f63daf255d0bc448384df825f98a6a73ca13b562044e56ed27"
+        },
+        {
+          "path": "src-ui/src/views/settings/KeyboardShortcutsSection.tsx",
+          "digest": "442e18ff1d6da5f12184ddb6adda4e4f890227e4138bb43bce924e79cb7f5a8b"
+        },
+        {
+          "path": "src-ui/src/views/settings/utils.ts",
+          "digest": "662d78e4e5400976b8e0cd6a7751fd17d1c2b418e6bee1c3539a66327c5017a1"
         },
         {
           "path": "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
@@ -2747,7 +2791,8 @@
         "Work Board/checkpoint selection: 64 tests across 5 files passed; independent capture selection: 17 tests passed.",
         "OIDC fixture suite: 17 tests passed; bounded held-discovery probe confirmed startup dependency.",
         "Generated MCP checked: 95 topics from canonical inputs.",
-        "Browser/Device source/caller review: 219 tests across eight files passed; parent inspected key profile/access/egress and lifecycle callers. Three corrected source headers transpile identically."
+        "Browser/Device source/caller review: 219 tests across eight files passed; parent inspected key profile/access/egress and lifecycle callers. Three corrected source headers transpile identically.",
+        "Keyboard editor/registry: 14 existing tests passed; independent mounted Space probe failed its intended assertion, tracked in #2771. Comment-only registry changes emit identical JavaScript."
       ]
     },
     {
@@ -3414,7 +3459,7 @@
       "path": "docs/glossary.md",
       "documentDigest": "6f44ffede5005d474d063ad930e2c3fb01a79c7db65f795f1580b674604f08a7",
       "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
-      "kind": "reference",
+      "kind": "current",
       "state": "partial",
       "summary": "Read surrounding vocabulary; bounded Browser/live-surface/control-lease section review and new guide/module links only. Other concepts not re-certified.",
       "limits": "Bounded source/caller review plus named synthetic tests; no real browser acquisition/launch, public-site navigation, physical device/app, SSH host operation, native package, Windows process tree or saturated-origin-pool proof. File hash identifies owner bytes, not whole-file implementation certification.",
@@ -3747,7 +3792,7 @@
       "path": "docs/guides/browser-workspace.md",
       "documentDigest": "1d2dccb5819246936dc0457befef1cbd938447b24213369eddaf981dd172c434",
       "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
-      "kind": "guide",
+      "kind": "current",
       "state": "source-reviewed",
       "summary": "New guide; acquisition/consent, profile and network boundaries, bound Agent caller, evaluation, lifecycle, shared viewer, limits.",
       "limits": "Bounded source/caller review plus named synthetic tests; no real browser acquisition/launch, public-site navigation, physical device/app, SSH host operation, native package, Windows process tree or saturated-origin-pool proof. File hash identifies owner bytes, not whole-file implementation certification.",
@@ -3967,6 +4012,63 @@
       ]
     },
     {
+      "path": "docs/guides/commands.md",
+      "documentDigest": "83622cba5c9fb980797a0b5d57fea1fcf25eb41ab5c72cbefee14d8c3814155e",
+      "sourceRevision": "1b2ffed8b9efd4e35d762c0193799e259da25781",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Full guide rewritten and independently reviewed against chat dispatch: source precedence, ACP passthrough, catalog gating, authored versus skill argument rules, expansion, persistence/editor scope and non-recursive sending.",
+      "limits": "Synthetic schema/helper and chat-hook evidence, not a live engine/provider execution. Argument validation and literal substitution defects remain in #2764/#2763.",
+      "sources": [
+        {
+          "path": "packages/contracts/src/agent.ts",
+          "digest": "09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22"
+        },
+        {
+          "path": "schemas/agent.schema.json",
+          "digest": "d5f9d556348793b8a12764d68b005a9ab08c956da09304b61f2bf29620ba798d"
+        },
+        {
+          "path": "src-server/domain/config-loader-agents.ts",
+          "digest": "e7d8a221ff3de08e9a8c429b2b78cfb4fc45e8762136d218eeb96082fe6a7789"
+        },
+        {
+          "path": "src-server/domain/validator.ts",
+          "digest": "30eafb50e47da5d4affca4fe67b6d7e1b9e79e9e77ae61f265775da273bee69c"
+        },
+        {
+          "path": "src-server/routes/agents/enriched-agents.ts",
+          "digest": "c0183f5ded60c60935d7648fa1eaee2dbcdefe591e095f3b146fb9d2721a71a3"
+        },
+        {
+          "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+          "digest": "b6602f6ccaacd181fcaa5fa8916f851d10aff6127c123494440ccb755256a91f"
+        },
+        {
+          "path": "src-ui/src/hooks/useSlashCommandHandler.ts",
+          "digest": "59f95032d3560a23ec9e3ef76ebd4bf3cbb7efc4b7a325368912802636d8ce5e"
+        },
+        {
+          "path": "src-ui/src/hooks/useSlashCommands.ts",
+          "digest": "8e96978208792b6297f23ba6ef0139c8956a82bebc13b42b2fbe02a94516d2e5"
+        },
+        {
+          "path": "src-ui/src/utils/skill-commands.ts",
+          "digest": "963e854d4b8f7ab32ca5a9a387a12bdab40498a6dad467d6d129060ecf7476d5"
+        },
+        {
+          "path": "src-ui/src/views/agent-editor/AgentEditorCommandsTab.tsx",
+          "digest": "0c20e533985aac31254de68126f83bf9bce4ab3ca5a1cf33c2067936d370f5a9"
+        }
+      ],
+      "checks": [
+        "26 catalog/skill-handler tests across two files passed.",
+        "Actual SchemaValidator refused the old missing-description example and accepted the corrected one.",
+        "The exported skill helper reproduced four dollar replacement patterns. The authored path shares the source mechanism; no real engine was run.",
+        "Independent final guide delta accepted, including evidence limits and backlog links."
+      ]
+    },
+    {
       "path": "docs/guides/contributing.md",
       "documentDigest": "6bca909837219c3da219fa3609141596032db0fabc46cb2629b73e88eba331f3",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -4049,6 +4151,55 @@
       ]
     },
     {
+      "path": "docs/guides/keyboard-shortcuts.md",
+      "documentDigest": "ea0091f679507ccc61de0724d1fa57af4ca2eea954ee7502d5f1033b64d3f131",
+      "sourceRevision": "5bc39d324d26c7d17fc8ee142408ff36d6f80f7b",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Full guide checked against capture, local settings, dispatch, current registered defaults, limited warning/conflict hints and mobile layout. Known Space mismatch and hint derivation are explicit, with backlog links.",
+      "limits": "DOM/storage/caller evidence only; no physical keyboard, browser-reserved-key or native-shell qualification. The documented product defects remain unfixed.",
+      "sources": [
+        {
+          "path": "src-ui/src/__tests__/KeyboardShortcutsContext.test.ts",
+          "digest": "ac6e867bac63c0c5728df322b86cdc0ecd6f4d4b5db3d1969c85b218e4c03887"
+        },
+        {
+          "path": "src-ui/src/__tests__/KeyboardShortcutsSection.test.tsx",
+          "digest": "7fd216eee45a67de0d2d6532dc8a7c7059e258c2e27ade2c87ec4ee51b120933"
+        },
+        {
+          "path": "src-ui/src/contexts/KeyboardShortcutsContext.tsx",
+          "digest": "939eb7cbf2c2bbcb15679950a08f02f0e16190c4f69851e5e9022a6be2ba74f2"
+        },
+        {
+          "path": "src-ui/src/hooks/useIsMobile.ts",
+          "digest": "6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd"
+        },
+        {
+          "path": "src-ui/src/lib/device-settings-store.ts",
+          "digest": "7a38734b965d9d54de83a801faf5e322224a18ca505de7b05c7bbd50e63366ed"
+        },
+        {
+          "path": "src-ui/src/settings/shortcutPreferences.ts",
+          "digest": "4a734f717d38f9f63daf255d0bc448384df825f98a6a73ca13b562044e56ed27"
+        },
+        {
+          "path": "src-ui/src/views/settings/KeyboardShortcutsSection.tsx",
+          "digest": "442e18ff1d6da5f12184ddb6adda4e4f890227e4138bb43bce924e79cb7f5a8b"
+        },
+        {
+          "path": "src-ui/src/views/settings/utils.ts",
+          "digest": "662d78e4e5400976b8e0cd6a7751fd17d1c2b418e6bee1c3539a66327c5017a1"
+        }
+      ],
+      "checks": [
+        "14 existing editor/registry tests passed.",
+        "Independent mounted Space probe: baseline 4/4 passed, 4 passed and one intended assertion failed under the probe, exact restoration 4/4 passed.",
+        "65 lines of registry commentary removed while retaining regression rationale; independent TSX comparison confirmed identical executable output.",
+        "Independent final guide/module/README delta accepted. Public Pages external source-route link preserved; learning reader maps it locally."
+      ]
+    },
+    {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "8342f95c957a3cc1128edc41066b3cd95892ccb130207043ee58db718ac2a334",
       "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
@@ -4121,7 +4272,7 @@
       "path": "docs/guides/mobile-device-workspace.md",
       "documentDigest": "194d80cb4861314943734e486a30079113877b4f8f4cd822a5e3053b1394616b",
       "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
-      "kind": "guide",
+      "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read/rewrite of stale capture-only premise. Current managed/SSH helpers, sharing, human live control, lifetime, input vs display evidence; retain separate capture SDK example and corrected per-lane bounds/helper-secret distinction.",
       "limits": "Bounded source/caller review plus named synthetic tests; no real browser acquisition/launch, public-site navigation, physical device/app, SSH host operation, native package, Windows process tree or saturated-origin-pool proof. File hash identifies owner bytes, not whole-file implementation certification.",
@@ -4546,6 +4697,302 @@
       ]
     },
     {
+      "path": "docs/guides/responsive-ui.md",
+      "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
+      "sourceRevision": "1b2ffed8b9efd4e35d762c0193799e259da25781",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
+      "limits": "Contributor guidance and named source/fixture checks do not establish universal adoption, rendered contrast, physical keyboard/device/native behavior or provider execution.",
+      "sources": [
+        {
+          "path": "docs/ui/responsive-action-surfaces.txt",
+          "digest": "0da4a616b842650e5675b473b19f10c036e90f3f08c9b20b27a6437103ce1c9a"
+        },
+        {
+          "path": "docs/ui/responsive-surfaces.json",
+          "digest": "7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576"
+        },
+        {
+          "path": "packages/sdk/src/client/http.ts",
+          "digest": "8febfd4707f529b432ee1d15d9dbc51c8b225059cc212eb65d3d360a07ebe242"
+        },
+        {
+          "path": "packages/sdk/src/index.ts",
+          "digest": "2ff83371f2bc38e9a0926360ba37ed3499d252c078bf0716cf745ff2f05310aa"
+        },
+        {
+          "path": "packages/sdk/src/queries.ts",
+          "digest": "e5d8df704e29229b78af98abdcbcd69308369cb0bca098ea4fa6a2ef29c51615"
+        },
+        {
+          "path": "packages/sdk/src/query-core.ts",
+          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+        },
+        {
+          "path": "packages/sdk/src/query-domains/agentAdmin.ts",
+          "digest": "d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb"
+        },
+        {
+          "path": "packages/sdk/src/queryFactories.ts",
+          "digest": "669918ecc36831b6b77cf93fcecf5ea38263f3c2c25b45bbfaf739ecee0911c9"
+        },
+        {
+          "path": "packages/shared/package.json",
+          "digest": "bc3954dd7583762fbc25cb2e8cd9db3cd59b143f273a936b04dd27e1d0fc9389"
+        },
+        {
+          "path": "pnpm-lock.yaml",
+          "digest": "994fda4a2de5809e250b4c624ee64f4881fde3e6730c1ca904fd63ee87cc522d"
+        },
+        {
+          "path": "scripts/mobile-css-ratchet.mjs",
+          "digest": "fda86f326ff20d297ae799164c8ebeada155f55ea2560eabd39e8270ed7372c1"
+        },
+        {
+          "path": "scripts/responsive-surface-ratchet.mjs",
+          "digest": "21ff70650d5412e2db1f0652ff9330c9268e26ba3a101d4842f9e3d426f9c8d6"
+        },
+        {
+          "path": "src-server/routes/agents/agents.ts",
+          "digest": "b6701c278bc9b94380eae40ec35c1e757889f41fd72e8b0db8efc23eca51b4a0"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/runtime-http.ts",
+          "digest": "5ed41b4afb2f3f83d80cd8a0957d72427ffd76e6136a6d0feb7fab23e85acca9"
+        },
+        {
+          "path": "src-server/runtime/streaming/StreamPipeline.ts",
+          "digest": "cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2"
+        },
+        {
+          "path": "src-server/runtime/streaming/types.ts",
+          "digest": "31789bc824034a421a368940714ba41424538e715801c7770d5794ffccb3143f"
+        },
+        {
+          "path": "src-server/security/pairing-route-scopes.ts",
+          "digest": "e40791eccd466675ce5a70091ab3a55ff7baf31b0ad298dc4c1217b5bdb3b37e"
+        },
+        {
+          "path": "src-server/services/approvals/approval-registry.ts",
+          "digest": "3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff"
+        },
+        {
+          "path": "src-server/services/orchestration/event-bus.ts",
+          "digest": "e2a2fc5c1689bbed48617bede62d985ba9e645f413479cc49e03c5bb730e803e"
+        },
+        {
+          "path": "src-server/utils/logger.ts",
+          "digest": "d74d211202a1a38bd4caaa9814b6de202ac0c9420c521baecc8fdaff243197b1"
+        },
+        {
+          "path": "src-ui/src/components/Dialog.tsx",
+          "digest": "0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2"
+        },
+        {
+          "path": "src-ui/src/components/ResponsiveDialogSurface.tsx",
+          "digest": "954d7efd98f01ad9366a6d4b5e4cc2ad21e0c30c288c60766d7ea0c8ba8b14a8"
+        },
+        {
+          "path": "src-ui/src/components/header/ThemeToggle.tsx",
+          "digest": "5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f"
+        },
+        {
+          "path": "src-ui/src/hooks/useIsMobile.ts",
+          "digest": "6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd"
+        },
+        {
+          "path": "src-ui/src/hooks/useMobileVisualViewport.ts",
+          "digest": "5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e"
+        },
+        {
+          "path": "src-ui/src/index.css",
+          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+        },
+        {
+          "path": "src-ui/src/lib/accent-contrast.ts",
+          "digest": "c9c4251a0060c682da6b988f93761afcf25da60232da59e2f39995b72cdf40e0"
+        },
+        {
+          "path": "src-ui/src/lib/device-settings-store.ts",
+          "digest": "7a38734b965d9d54de83a801faf5e322224a18ca505de7b05c7bbd50e63366ed"
+        },
+        {
+          "path": "src-ui/src/main.tsx",
+          "digest": "0c2f607363f904f80e7ada1772224fb890f50ec9bb932486d0b9de7d8b305647"
+        },
+        {
+          "path": "src-ui/src/platform/PlatformProfileContext.tsx",
+          "digest": "69d1e522c214436378d6dd4322a23f5fb737aa530b6f44856292270502830d48"
+        },
+        {
+          "path": "src-ui/src/slashCommands/tools.ts",
+          "digest": "a44a9b6201815f334653b659c1b9be35af315ef9dfd897f34d728c51033d6f00"
+        },
+        {
+          "path": "src-ui/src/tokens.css",
+          "digest": "18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77"
+        },
+        {
+          "path": "src-ui/src/utils/logger.ts",
+          "digest": "268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076"
+        }
+      ],
+      "checks": [
+        "106 tests across five owner suites plus 13 final documentation-foundations tests passed.",
+        "Public UI documentation checked at its recorded upstream revision; installed 1.12.0 public manifest was inspected. The tracked lockfile binds dependency freshness; node_modules is not committed evidence.",
+        "Parent read all four revised documents and inspected query defaults, approval timeout and EventBus behavior. Connect publication wording is limited to this checkout."
+      ]
+    },
+    {
+      "path": "docs/guides/theming.md",
+      "documentDigest": "2b47b057ea4e538d6a825f10f12bfb60758eafcde3db56e7d3995c900361155e",
+      "sourceRevision": "1b2ffed8b9efd4e35d762c0193799e259da25781",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
+      "limits": "Contributor guidance and named source/fixture checks do not establish universal adoption, rendered contrast, physical keyboard/device/native behavior or provider execution.",
+      "sources": [
+        {
+          "path": "docs/ui/responsive-action-surfaces.txt",
+          "digest": "0da4a616b842650e5675b473b19f10c036e90f3f08c9b20b27a6437103ce1c9a"
+        },
+        {
+          "path": "docs/ui/responsive-surfaces.json",
+          "digest": "7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576"
+        },
+        {
+          "path": "packages/sdk/src/client/http.ts",
+          "digest": "8febfd4707f529b432ee1d15d9dbc51c8b225059cc212eb65d3d360a07ebe242"
+        },
+        {
+          "path": "packages/sdk/src/index.ts",
+          "digest": "2ff83371f2bc38e9a0926360ba37ed3499d252c078bf0716cf745ff2f05310aa"
+        },
+        {
+          "path": "packages/sdk/src/queries.ts",
+          "digest": "e5d8df704e29229b78af98abdcbcd69308369cb0bca098ea4fa6a2ef29c51615"
+        },
+        {
+          "path": "packages/sdk/src/query-core.ts",
+          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+        },
+        {
+          "path": "packages/sdk/src/query-domains/agentAdmin.ts",
+          "digest": "d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb"
+        },
+        {
+          "path": "packages/sdk/src/queryFactories.ts",
+          "digest": "669918ecc36831b6b77cf93fcecf5ea38263f3c2c25b45bbfaf739ecee0911c9"
+        },
+        {
+          "path": "packages/shared/package.json",
+          "digest": "bc3954dd7583762fbc25cb2e8cd9db3cd59b143f273a936b04dd27e1d0fc9389"
+        },
+        {
+          "path": "pnpm-lock.yaml",
+          "digest": "994fda4a2de5809e250b4c624ee64f4881fde3e6730c1ca904fd63ee87cc522d"
+        },
+        {
+          "path": "scripts/mobile-css-ratchet.mjs",
+          "digest": "fda86f326ff20d297ae799164c8ebeada155f55ea2560eabd39e8270ed7372c1"
+        },
+        {
+          "path": "scripts/responsive-surface-ratchet.mjs",
+          "digest": "21ff70650d5412e2db1f0652ff9330c9268e26ba3a101d4842f9e3d426f9c8d6"
+        },
+        {
+          "path": "src-server/routes/agents/agents.ts",
+          "digest": "b6701c278bc9b94380eae40ec35c1e757889f41fd72e8b0db8efc23eca51b4a0"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/runtime-http.ts",
+          "digest": "5ed41b4afb2f3f83d80cd8a0957d72427ffd76e6136a6d0feb7fab23e85acca9"
+        },
+        {
+          "path": "src-server/runtime/streaming/StreamPipeline.ts",
+          "digest": "cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2"
+        },
+        {
+          "path": "src-server/runtime/streaming/types.ts",
+          "digest": "31789bc824034a421a368940714ba41424538e715801c7770d5794ffccb3143f"
+        },
+        {
+          "path": "src-server/security/pairing-route-scopes.ts",
+          "digest": "e40791eccd466675ce5a70091ab3a55ff7baf31b0ad298dc4c1217b5bdb3b37e"
+        },
+        {
+          "path": "src-server/services/approvals/approval-registry.ts",
+          "digest": "3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff"
+        },
+        {
+          "path": "src-server/services/orchestration/event-bus.ts",
+          "digest": "e2a2fc5c1689bbed48617bede62d985ba9e645f413479cc49e03c5bb730e803e"
+        },
+        {
+          "path": "src-server/utils/logger.ts",
+          "digest": "d74d211202a1a38bd4caaa9814b6de202ac0c9420c521baecc8fdaff243197b1"
+        },
+        {
+          "path": "src-ui/src/components/Dialog.tsx",
+          "digest": "0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2"
+        },
+        {
+          "path": "src-ui/src/components/ResponsiveDialogSurface.tsx",
+          "digest": "954d7efd98f01ad9366a6d4b5e4cc2ad21e0c30c288c60766d7ea0c8ba8b14a8"
+        },
+        {
+          "path": "src-ui/src/components/header/ThemeToggle.tsx",
+          "digest": "5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f"
+        },
+        {
+          "path": "src-ui/src/hooks/useIsMobile.ts",
+          "digest": "6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd"
+        },
+        {
+          "path": "src-ui/src/hooks/useMobileVisualViewport.ts",
+          "digest": "5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e"
+        },
+        {
+          "path": "src-ui/src/index.css",
+          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+        },
+        {
+          "path": "src-ui/src/lib/accent-contrast.ts",
+          "digest": "c9c4251a0060c682da6b988f93761afcf25da60232da59e2f39995b72cdf40e0"
+        },
+        {
+          "path": "src-ui/src/lib/device-settings-store.ts",
+          "digest": "7a38734b965d9d54de83a801faf5e322224a18ca505de7b05c7bbd50e63366ed"
+        },
+        {
+          "path": "src-ui/src/main.tsx",
+          "digest": "0c2f607363f904f80e7ada1772224fb890f50ec9bb932486d0b9de7d8b305647"
+        },
+        {
+          "path": "src-ui/src/platform/PlatformProfileContext.tsx",
+          "digest": "69d1e522c214436378d6dd4322a23f5fb737aa530b6f44856292270502830d48"
+        },
+        {
+          "path": "src-ui/src/slashCommands/tools.ts",
+          "digest": "a44a9b6201815f334653b659c1b9be35af315ef9dfd897f34d728c51033d6f00"
+        },
+        {
+          "path": "src-ui/src/tokens.css",
+          "digest": "18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77"
+        },
+        {
+          "path": "src-ui/src/utils/logger.ts",
+          "digest": "268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076"
+        }
+      ],
+      "checks": [
+        "106 tests across five owner suites plus 13 final documentation-foundations tests passed.",
+        "Public UI documentation checked at its recorded upstream revision; installed 1.12.0 public manifest was inspected. The tracked lockfile binds dependency freshness; node_modules is not committed evidence.",
+        "Parent read all four revised documents and inspected query defaults, approval timeout and EventBus behavior. Connect publication wording is limited to this checkout."
+      ]
+    },
+    {
       "path": "docs/guides/web-push-notifications.md",
       "documentDigest": "7da253fb7cf4ee9e1be192223d28c94b3f8d279421c4a2c3f0671c7eb56184f1",
       "sourceRevision": "3dfbe2313b553587a26f8e53a48a807e4d620304",
@@ -4705,7 +5152,7 @@
       "path": "docs/guides/workspace-pane-authoring.md",
       "documentDigest": "cc6346405c70027fe34cff940fc4afb59e8dadb25888bcc21c5eb927719fe52d",
       "sourceRevision": "c413a094dc0878675b6444a5348ac04f82326764",
-      "kind": "guide",
+      "kind": "current",
       "state": "classified",
       "summary": "Full read for shared vocabulary; unchanged. Browser-specific lifecycle belongs to new Browser guide. No new SDK conformance certification.",
       "limits": "Bounded source/caller review plus named synthetic tests; no real browser acquisition/launch, public-site navigation, physical device/app, SSH host operation, native package, Windows process tree or saturated-origin-pool proof. File hash identifies owner bytes, not whole-file implementation certification.",
@@ -4922,6 +5369,302 @@
       "checks": [
         "Browser/Device source/caller review; 219 tests across eight files passed, historical bodies preserved.",
         "Parent inspected key profile/access/egress and lifecycle callers; three source headers corrected with identical emitted JavaScript."
+      ]
+    },
+    {
+      "path": "docs/patterns/backend.md",
+      "documentDigest": "eada32f4f9685b7e9c95de2547179246f23af2703d546ab402c6fc3cd0197225",
+      "sourceRevision": "1b2ffed8b9efd4e35d762c0193799e259da25781",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
+      "limits": "Contributor guidance and named source/fixture checks do not establish universal adoption, rendered contrast, physical keyboard/device/native behavior or provider execution.",
+      "sources": [
+        {
+          "path": "docs/ui/responsive-action-surfaces.txt",
+          "digest": "0da4a616b842650e5675b473b19f10c036e90f3f08c9b20b27a6437103ce1c9a"
+        },
+        {
+          "path": "docs/ui/responsive-surfaces.json",
+          "digest": "7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576"
+        },
+        {
+          "path": "packages/sdk/src/client/http.ts",
+          "digest": "8febfd4707f529b432ee1d15d9dbc51c8b225059cc212eb65d3d360a07ebe242"
+        },
+        {
+          "path": "packages/sdk/src/index.ts",
+          "digest": "2ff83371f2bc38e9a0926360ba37ed3499d252c078bf0716cf745ff2f05310aa"
+        },
+        {
+          "path": "packages/sdk/src/queries.ts",
+          "digest": "e5d8df704e29229b78af98abdcbcd69308369cb0bca098ea4fa6a2ef29c51615"
+        },
+        {
+          "path": "packages/sdk/src/query-core.ts",
+          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+        },
+        {
+          "path": "packages/sdk/src/query-domains/agentAdmin.ts",
+          "digest": "d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb"
+        },
+        {
+          "path": "packages/sdk/src/queryFactories.ts",
+          "digest": "669918ecc36831b6b77cf93fcecf5ea38263f3c2c25b45bbfaf739ecee0911c9"
+        },
+        {
+          "path": "packages/shared/package.json",
+          "digest": "bc3954dd7583762fbc25cb2e8cd9db3cd59b143f273a936b04dd27e1d0fc9389"
+        },
+        {
+          "path": "pnpm-lock.yaml",
+          "digest": "994fda4a2de5809e250b4c624ee64f4881fde3e6730c1ca904fd63ee87cc522d"
+        },
+        {
+          "path": "scripts/mobile-css-ratchet.mjs",
+          "digest": "fda86f326ff20d297ae799164c8ebeada155f55ea2560eabd39e8270ed7372c1"
+        },
+        {
+          "path": "scripts/responsive-surface-ratchet.mjs",
+          "digest": "21ff70650d5412e2db1f0652ff9330c9268e26ba3a101d4842f9e3d426f9c8d6"
+        },
+        {
+          "path": "src-server/routes/agents/agents.ts",
+          "digest": "b6701c278bc9b94380eae40ec35c1e757889f41fd72e8b0db8efc23eca51b4a0"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/runtime-http.ts",
+          "digest": "5ed41b4afb2f3f83d80cd8a0957d72427ffd76e6136a6d0feb7fab23e85acca9"
+        },
+        {
+          "path": "src-server/runtime/streaming/StreamPipeline.ts",
+          "digest": "cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2"
+        },
+        {
+          "path": "src-server/runtime/streaming/types.ts",
+          "digest": "31789bc824034a421a368940714ba41424538e715801c7770d5794ffccb3143f"
+        },
+        {
+          "path": "src-server/security/pairing-route-scopes.ts",
+          "digest": "e40791eccd466675ce5a70091ab3a55ff7baf31b0ad298dc4c1217b5bdb3b37e"
+        },
+        {
+          "path": "src-server/services/approvals/approval-registry.ts",
+          "digest": "3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff"
+        },
+        {
+          "path": "src-server/services/orchestration/event-bus.ts",
+          "digest": "e2a2fc5c1689bbed48617bede62d985ba9e645f413479cc49e03c5bb730e803e"
+        },
+        {
+          "path": "src-server/utils/logger.ts",
+          "digest": "d74d211202a1a38bd4caaa9814b6de202ac0c9420c521baecc8fdaff243197b1"
+        },
+        {
+          "path": "src-ui/src/components/Dialog.tsx",
+          "digest": "0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2"
+        },
+        {
+          "path": "src-ui/src/components/ResponsiveDialogSurface.tsx",
+          "digest": "954d7efd98f01ad9366a6d4b5e4cc2ad21e0c30c288c60766d7ea0c8ba8b14a8"
+        },
+        {
+          "path": "src-ui/src/components/header/ThemeToggle.tsx",
+          "digest": "5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f"
+        },
+        {
+          "path": "src-ui/src/hooks/useIsMobile.ts",
+          "digest": "6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd"
+        },
+        {
+          "path": "src-ui/src/hooks/useMobileVisualViewport.ts",
+          "digest": "5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e"
+        },
+        {
+          "path": "src-ui/src/index.css",
+          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+        },
+        {
+          "path": "src-ui/src/lib/accent-contrast.ts",
+          "digest": "c9c4251a0060c682da6b988f93761afcf25da60232da59e2f39995b72cdf40e0"
+        },
+        {
+          "path": "src-ui/src/lib/device-settings-store.ts",
+          "digest": "7a38734b965d9d54de83a801faf5e322224a18ca505de7b05c7bbd50e63366ed"
+        },
+        {
+          "path": "src-ui/src/main.tsx",
+          "digest": "0c2f607363f904f80e7ada1772224fb890f50ec9bb932486d0b9de7d8b305647"
+        },
+        {
+          "path": "src-ui/src/platform/PlatformProfileContext.tsx",
+          "digest": "69d1e522c214436378d6dd4322a23f5fb737aa530b6f44856292270502830d48"
+        },
+        {
+          "path": "src-ui/src/slashCommands/tools.ts",
+          "digest": "a44a9b6201815f334653b659c1b9be35af315ef9dfd897f34d728c51033d6f00"
+        },
+        {
+          "path": "src-ui/src/tokens.css",
+          "digest": "18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77"
+        },
+        {
+          "path": "src-ui/src/utils/logger.ts",
+          "digest": "268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076"
+        }
+      ],
+      "checks": [
+        "106 tests across five owner suites plus 13 final documentation-foundations tests passed.",
+        "Public UI documentation checked at its recorded upstream revision; installed 1.12.0 public manifest was inspected. The tracked lockfile binds dependency freshness; node_modules is not committed evidence.",
+        "Parent read all four revised documents and inspected query defaults, approval timeout and EventBus behavior. Connect publication wording is limited to this checkout."
+      ]
+    },
+    {
+      "path": "docs/patterns/frontend.md",
+      "documentDigest": "c9ab186f206220afa048246db4cb0dfbbd68b3c3cc0b756ebdbc500198135206",
+      "sourceRevision": "1b2ffed8b9efd4e35d762c0193799e259da25781",
+      "kind": "policy",
+      "state": "classified",
+      "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
+      "limits": "Contributor guidance and named source/fixture checks do not establish universal adoption, rendered contrast, physical keyboard/device/native behavior or provider execution.",
+      "sources": [
+        {
+          "path": "docs/ui/responsive-action-surfaces.txt",
+          "digest": "0da4a616b842650e5675b473b19f10c036e90f3f08c9b20b27a6437103ce1c9a"
+        },
+        {
+          "path": "docs/ui/responsive-surfaces.json",
+          "digest": "7487e817e5111ec1ad5d559659086d00a16f3800e21d5fff742937e27be02576"
+        },
+        {
+          "path": "packages/sdk/src/client/http.ts",
+          "digest": "8febfd4707f529b432ee1d15d9dbc51c8b225059cc212eb65d3d360a07ebe242"
+        },
+        {
+          "path": "packages/sdk/src/index.ts",
+          "digest": "2ff83371f2bc38e9a0926360ba37ed3499d252c078bf0716cf745ff2f05310aa"
+        },
+        {
+          "path": "packages/sdk/src/queries.ts",
+          "digest": "e5d8df704e29229b78af98abdcbcd69308369cb0bca098ea4fa6a2ef29c51615"
+        },
+        {
+          "path": "packages/sdk/src/query-core.ts",
+          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+        },
+        {
+          "path": "packages/sdk/src/query-domains/agentAdmin.ts",
+          "digest": "d17ef2aeb91c21d5cf1e207289bd2936b2896752d5254cea6b94a9c82aaf62fb"
+        },
+        {
+          "path": "packages/sdk/src/queryFactories.ts",
+          "digest": "669918ecc36831b6b77cf93fcecf5ea38263f3c2c25b45bbfaf739ecee0911c9"
+        },
+        {
+          "path": "packages/shared/package.json",
+          "digest": "bc3954dd7583762fbc25cb2e8cd9db3cd59b143f273a936b04dd27e1d0fc9389"
+        },
+        {
+          "path": "pnpm-lock.yaml",
+          "digest": "994fda4a2de5809e250b4c624ee64f4881fde3e6730c1ca904fd63ee87cc522d"
+        },
+        {
+          "path": "scripts/mobile-css-ratchet.mjs",
+          "digest": "fda86f326ff20d297ae799164c8ebeada155f55ea2560eabd39e8270ed7372c1"
+        },
+        {
+          "path": "scripts/responsive-surface-ratchet.mjs",
+          "digest": "21ff70650d5412e2db1f0652ff9330c9268e26ba3a101d4842f9e3d426f9c8d6"
+        },
+        {
+          "path": "src-server/routes/agents/agents.ts",
+          "digest": "b6701c278bc9b94380eae40ec35c1e757889f41fd72e8b0db8efc23eca51b4a0"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/runtime-http.ts",
+          "digest": "5ed41b4afb2f3f83d80cd8a0957d72427ffd76e6136a6d0feb7fab23e85acca9"
+        },
+        {
+          "path": "src-server/runtime/streaming/StreamPipeline.ts",
+          "digest": "cdf3e6786b92a321ffa13c413f25b8b7bf367436b389f7212492cb2eccf1c6f2"
+        },
+        {
+          "path": "src-server/runtime/streaming/types.ts",
+          "digest": "31789bc824034a421a368940714ba41424538e715801c7770d5794ffccb3143f"
+        },
+        {
+          "path": "src-server/security/pairing-route-scopes.ts",
+          "digest": "e40791eccd466675ce5a70091ab3a55ff7baf31b0ad298dc4c1217b5bdb3b37e"
+        },
+        {
+          "path": "src-server/services/approvals/approval-registry.ts",
+          "digest": "3b23285f102a3fa0d14e98f210bbba6ec2a98d8dbfa57421988a810d302d00ff"
+        },
+        {
+          "path": "src-server/services/orchestration/event-bus.ts",
+          "digest": "e2a2fc5c1689bbed48617bede62d985ba9e645f413479cc49e03c5bb730e803e"
+        },
+        {
+          "path": "src-server/utils/logger.ts",
+          "digest": "d74d211202a1a38bd4caaa9814b6de202ac0c9420c521baecc8fdaff243197b1"
+        },
+        {
+          "path": "src-ui/src/components/Dialog.tsx",
+          "digest": "0e52c3a21b2c7c989eb41ac5a2e2cb3897bddfa55f90cc0914aece0470242dd2"
+        },
+        {
+          "path": "src-ui/src/components/ResponsiveDialogSurface.tsx",
+          "digest": "954d7efd98f01ad9366a6d4b5e4cc2ad21e0c30c288c60766d7ea0c8ba8b14a8"
+        },
+        {
+          "path": "src-ui/src/components/header/ThemeToggle.tsx",
+          "digest": "5cd7fb99ff38e6e9a6bf1f572c2ed488604b341e85569767a836a580fba63e9f"
+        },
+        {
+          "path": "src-ui/src/hooks/useIsMobile.ts",
+          "digest": "6cedc0e8a70136acb36e40078106a880663ea10b9d5d7da97a503c9c39b20ddd"
+        },
+        {
+          "path": "src-ui/src/hooks/useMobileVisualViewport.ts",
+          "digest": "5bb1bd2e86eee7e46b6a4e2cc87a858c51884acde125aad363771df20783aa5e"
+        },
+        {
+          "path": "src-ui/src/index.css",
+          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+        },
+        {
+          "path": "src-ui/src/lib/accent-contrast.ts",
+          "digest": "c9c4251a0060c682da6b988f93761afcf25da60232da59e2f39995b72cdf40e0"
+        },
+        {
+          "path": "src-ui/src/lib/device-settings-store.ts",
+          "digest": "7a38734b965d9d54de83a801faf5e322224a18ca505de7b05c7bbd50e63366ed"
+        },
+        {
+          "path": "src-ui/src/main.tsx",
+          "digest": "0c2f607363f904f80e7ada1772224fb890f50ec9bb932486d0b9de7d8b305647"
+        },
+        {
+          "path": "src-ui/src/platform/PlatformProfileContext.tsx",
+          "digest": "69d1e522c214436378d6dd4322a23f5fb737aa530b6f44856292270502830d48"
+        },
+        {
+          "path": "src-ui/src/slashCommands/tools.ts",
+          "digest": "a44a9b6201815f334653b659c1b9be35af315ef9dfd897f34d728c51033d6f00"
+        },
+        {
+          "path": "src-ui/src/tokens.css",
+          "digest": "18a4c2aba3ab9229cac5298378cf7f300d85f528b8f70059d42b8161c6f9dd77"
+        },
+        {
+          "path": "src-ui/src/utils/logger.ts",
+          "digest": "268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076"
+        }
+      ],
+      "checks": [
+        "106 tests across five owner suites plus 13 final documentation-foundations tests passed.",
+        "Public UI documentation checked at its recorded upstream revision; installed 1.12.0 public manifest was inspected. The tracked lockfile binds dependency freshness; node_modules is not committed evidence.",
+        "Parent read all four revised documents and inspected query defaults, approval timeout and EventBus behavior. Connect publication wording is limited to this checkout."
       ]
     },
     {
@@ -5253,6 +5996,211 @@
         "Independent final source delta accepted at document digest 90f4afe3aac1b8133cfd0d25f1f625475a5bb4c11c00fbf2cd207d43a34dba2c.",
         "Session roundtrip diagnostic fixtures: 8 tests passed.",
         "Codex source/follower and request-inspection route selection: 40 tests across 3 files passed."
+      ]
+    },
+    {
+      "path": "docs/reference/station-docs.md",
+      "documentDigest": "463be37763c82f177d8c90bfabf774552e042efebf3dce7f6b73341eedc339f7",
+      "sourceRevision": "1b2ffed8b9efd4e35d762c0193799e259da25781",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts.",
+      "limits": "No live external-engine MCP delivery, plugin installation, provider execution, Fleet/device journey or repository-wide certification. Architecture topics have their own separate review scope.",
+      "sources": [
+        {
+          "path": "docs/learn/mcp-topics.json",
+          "digest": "e503d0ad447361bdedfecd35da6b1ac3c95b2cd3f95a93872146f02cef4d80e1"
+        },
+        {
+          "path": "packages/contracts/src/agent-plugin.ts",
+          "digest": "65c2a7246e4083f7297878671dced18226b95f16486e794860d3d1430176af23"
+        },
+        {
+          "path": "packages/contracts/src/engine-capability-matrix.ts",
+          "digest": "e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102"
+        },
+        {
+          "path": "packages/contracts/src/fleet-contribution.ts",
+          "digest": "6a898f68b1e2c9796bcc0c62ee3688a9880b8e5634c001185c0bbcbc4aa24445"
+        },
+        {
+          "path": "packages/contracts/src/plugin.ts",
+          "digest": "98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95"
+        },
+        {
+          "path": "packages/contracts/src/project-reference-integrity.ts",
+          "digest": "2c3bdd0c04c54bb4af6db209b7b81ab5fd0ebe26b150dc45d7c3c02e92ff4f0c"
+        },
+        {
+          "path": "packages/contracts/src/scheduler.ts",
+          "digest": "8d2dc7aaeeca2b4ea4a0763109edb7f792fb29ce6f6f1817c5a3e721cdc2e4f3"
+        },
+        {
+          "path": "packages/contracts/src/task-graph.ts",
+          "digest": "8def2bec3d9730b94f6dcae14233c64f3043a02d47e8abf5a004699fd09451b9"
+        },
+        {
+          "path": "packages/contracts/src/workspace-pane.ts",
+          "digest": "30d58ac97807dd5d51b6f8420186f4c5ad5cb110988c1f79a81745756dd504a9"
+        },
+        {
+          "path": "packages/sdk/src/hooks/context.ts",
+          "digest": "7b579f584b19684cdcadb54928c87f98e8ef47a088f1f66de48073d2d1fd6520"
+        },
+        {
+          "path": "packages/sdk/src/hooks/operations.ts",
+          "digest": "02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994"
+        },
+        {
+          "path": "packages/sdk/src/query-domains/chatRuntimeOrchestration.ts",
+          "digest": "45388fe166917a5b5a60189b62a3eeee1155d05c98ebe4a3434d61093c386022"
+        },
+        {
+          "path": "packages/shared/src/agent-plugin-manifest.ts",
+          "digest": "a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba"
+        },
+        {
+          "path": "packages/shared/src/build.ts",
+          "digest": "90d72c9c8b2868948b55576f9773b53aaad50f4b456218f8296e16d423cbea8f"
+        },
+        {
+          "path": "scripts/generate-station-docs.mjs",
+          "digest": "60b82c7fdc482d6d459b37e207217b040c93a233a0ca54d470765246aa1386c4"
+        },
+        {
+          "path": "scripts/lib/documentation-model.mjs",
+          "digest": "cbfd7235be50696a0289524232c6d2b1de5de03bff71f8e6edef38f6adcaf6b4"
+        },
+        {
+          "path": "src-server/domain/agent-registry.ts",
+          "digest": "9693e47fbbe5492489e40d56138b46983f6c4b34218c6d7101055c8d5edb0724"
+        },
+        {
+          "path": "src-server/providers/adapters/acp-adapter.ts",
+          "digest": "d7c6a65ba2a2874e7aabb850da93c493ea060a79874c6777721a0950ff860b4a"
+        },
+        {
+          "path": "src-server/routes/agents/enriched-agents.ts",
+          "digest": "c0183f5ded60c60935d7648fa1eaee2dbcdefe591e095f3b146fb9d2721a71a3"
+        },
+        {
+          "path": "src-server/routes/inference/fleet-inference.ts",
+          "digest": "63d107b638a0aebc99f58a191b37a68e68aab12da0e655e09019b58d42c0966e"
+        },
+        {
+          "path": "src-server/routes/plugins/plugin-validate-routes.ts",
+          "digest": "22e628993e930427de7679249466002699eb1819f8cfbe8728c12a27da9afdc4"
+        },
+        {
+          "path": "src-server/runtime/agents/runtime-default-agent.ts",
+          "digest": "1e8ca834f915e477e055a6bda36e08d6cc4375d9604345bd69ef726082596e9f"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/native-engine-adoption.ts",
+          "digest": "71a6a1afe8b8a3e5620945bc5f6b5b3775f172c7597e625ad915aab7110fdff0"
+        },
+        {
+          "path": "src-server/runtime/bootstrap/station-control-runtime-env.ts",
+          "digest": "958976bc63f37dfad74594f59cce183640b70daffb787f68d43d905dba05c6fb"
+        },
+        {
+          "path": "src-server/runtime/conversation/dispatch-model-policy.ts",
+          "digest": "9562011bd1c43af6905a6f843b90de6ae9a998dd011dbc24ed86121afb39620b"
+        },
+        {
+          "path": "src-server/services/agents/skill-service.ts",
+          "digest": "aa162377edd10a010b9688452bfbb63d64fe122726aae8a182b05a103ab74132"
+        },
+        {
+          "path": "src-server/services/connections/fleet-contribution-manifest.ts",
+          "digest": "b652110a8ae06e2a05b9274128160b5c698a51a0cfa0a68a66664d71e1de72a5"
+        },
+        {
+          "path": "src-server/services/inference/fleet-serve-receipt-log.ts",
+          "digest": "485c837417023935405deb8ca2d4f4b5479bf7ee5865e67fc3c5ac2ea9aeddea"
+        },
+        {
+          "path": "src-server/services/orchestration/flow-policy-sidecar.ts",
+          "digest": "437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44"
+        },
+        {
+          "path": "src-server/services/orchestration/orchestration-service.ts",
+          "digest": "a11490103701a1bbe3fd7d2bcb52318ac0e2911977ec15412bb21ba8b1e796a1"
+        },
+        {
+          "path": "src-server/services/orchestration/orchestration-session-state.ts",
+          "digest": "1343c8e3c719341bc22fa3ef7c91f98eb217d48b533fdb6918d73ae64ade9636"
+        },
+        {
+          "path": "src-server/services/orchestration/session-agent-resolution.ts",
+          "digest": "553a893df0e697f3248f1487ab4784eb3360c2e2fa15ac6cbb29de7d6471690d"
+        },
+        {
+          "path": "src-server/services/plugins/plugin-install-transaction.ts",
+          "digest": "bc81e514914c45793c0893f7ced2fc8dd0c16878e27b38d82d53fb83b25aa071"
+        },
+        {
+          "path": "src-server/services/plugins/plugin-permissions.ts",
+          "digest": "1f005f042138d70be5eddbfce2bd5df406c15f5b084cdad286c973a6df1916bf"
+        },
+        {
+          "path": "src-server/services/projects/task-dispatcher.ts",
+          "digest": "ae50a30b27da6b16cc22a0910af821e0f5d08c80b45b7c336c2935fb87ea0ce1"
+        },
+        {
+          "path": "src-server/services/projects/task-graph-service.ts",
+          "digest": "e9af18417b49b5bb9e87d2f2f780a12a84a7842e1eeb50ecf68c8d11fdf4b824"
+        },
+        {
+          "path": "src-server/services/projects/task-output-module.ts",
+          "digest": "8e548f679e27457b848fd88dffaf11bf4e54fa775c6c5bd614462599b8f7a4d4"
+        },
+        {
+          "path": "src-server/services/scheduling/builtin-scheduler-execution.ts",
+          "digest": "8285244d8cc76f2500ed6aacec1dc5589e05d3e1c55d79c0a349dcbc6bc5c76a"
+        },
+        {
+          "path": "src-server/tools/__tests__/station-docs-mcp-server.test.ts",
+          "digest": "6facaa3cc2c18757eef4bea954c08e2268474c836b605720ebd5fca66e013c33"
+        },
+        {
+          "path": "src-server/tools/station-browser-mcp-server.ts",
+          "digest": "52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66"
+        },
+        {
+          "path": "src-server/tools/station-control-platform-tools.ts",
+          "digest": "f12b72022cb6c78fed308c9a9c975398c734289aff768e608f0b8a51a119499d"
+        },
+        {
+          "path": "src-server/tools/station-docs-content.ts",
+          "digest": "ec33ef35edd77406a60b9410c2ddea57e12f8edde07587f82b549c40620f864b"
+        },
+        {
+          "path": "src-server/tools/station-docs-mcp-server.ts",
+          "digest": "6c3b7b2586bed5225ba1b32ddae94e61d5cc087083157d0f6e62d6ddf1490872"
+        },
+        {
+          "path": "src-server/tools/station-docs-server.ts",
+          "digest": "c76912b19734775f650634f5b97639c60168fe9995b61f927c0e35a62b3fb1ae"
+        },
+        {
+          "path": "src-ui/src/components/agent-selection-policy.ts",
+          "digest": "e96d360cff1e8f5c32f70c99687d240b6707b7a5d3de781f8f4227f796fded12"
+        },
+        {
+          "path": "src-ui/src/components/monitoring/FleetRoutingReceipts.tsx",
+          "digest": "6fbaad9aca8523ce87fab5a8ccb20f2c9da40ab7b70f4e5a6bf965dfac4089bd"
+        },
+        {
+          "path": "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
+          "digest": "5c2e758b958003e6c9dcc1e267ab344c18dd047bf30701d41b51fa0102aa2f61"
+        }
+      ],
+      "checks": [
+        "Independent review caught exhaustive built-in count and universal receipt claims; corrected follow-up accepted.",
+        "All topic IDs and 17 anchors preserved; focused MCP suite passed 27/27.",
+        "Integration regenerated 97 topics from the merged manual and separately reviewed Browser/Device module additions.",
+        "Reviewed generated delta adding only the Keyboard shortcuts architecture topic and branch link; all 16 manual topic bodies remain unchanged. Total compiled topics: 98."
       ]
     },
     {
@@ -5933,6 +6881,108 @@
       ]
     },
     {
+      "path": "packages/basis-pane/README.md",
+      "sourceRevision": "57980be1afd64ff365472c005a13fce3d5c76ced",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Full README read. Checked private source package exports, current connected host/action scope, full-versus-page view contract, portable resource ownership and actual Session inventory controls, AppBridge navigation and continuation merge behavior. Removed no-actions/no-links/page-replacement and universal browser-no-fetch overclaims.",
+      "limits": "No full protected-reader/server lifecycle audit, live MCP host, provider execution, physical native display, accessibility/visual proof or public package release. Protected authority belongs to the host; package source and tests are not grants.",
+      "documentDigest": "4424b387758f31609154e0c02ec47f10e350ec1d3f6b3b34f8807bc392ac90fa",
+      "sources": [
+        {
+          "path": "packages/basis-pane/package.json",
+          "digest": "315d779b3824c25c75d359878d51ca711b708fe0b5b7ce3cb925478f8d6a9e44"
+        },
+        {
+          "path": "packages/basis-pane/src/index.ts",
+          "digest": "90133677d78de04140686d22f413c5b417d7bc150cd57c6f7278623644d21196"
+        },
+        {
+          "path": "packages/basis-pane/src/workspace-basis-pane.ts",
+          "digest": "1800f79cced4103eec380529e471f868c4d3a007d278daae2a07c482166b0288"
+        },
+        {
+          "path": "packages/basis-pane/src/StationBasisPane.tsx",
+          "digest": "92d84a832150d68a8a98ed2cb4ea6d2f190be5da9d017b8df34c6add4b302a7f"
+        },
+        {
+          "path": "packages/basis-pane/src/task-basis-mcp-app.ts",
+          "digest": "9b629eef823a456c9128c2d356049dbd2cafeb324fa098c3188bc00337282018"
+        },
+        {
+          "path": "packages/basis-pane/src/session-inventory-mcp-app.ts",
+          "digest": "694d3ff3b4bcd4f88a310c185edcfaabb42b14ac3fe170e4c14204ab07c31966"
+        },
+        {
+          "path": "packages/basis-pane/src/session-inventory-mcp-app.browser.ts",
+          "digest": "3dd0e18c9a433d94a9c209303890c8f0574a1980d33dedbd9a2bec4c98308ca3"
+        },
+        {
+          "path": "packages/basis-pane/src/session-inventory-view.ts",
+          "digest": "1d4ec312f4812cfc38aa5671b4af632cc3d75d6e156055b1b51b1f092b091af2"
+        },
+        {
+          "path": "packages/contracts/src/task-basis-mcp.ts",
+          "digest": "e441fa4b24dc096a453b6641b061477a87c0ec9750478f5edecc1b77245c63e9"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx",
+          "digest": "f3b6189f6366ce62062c91c9fe5f5730b33ae21dde0386c036d4f6cb02739018"
+        },
+        {
+          "path": "src-server/tools/station-control-session-inventory-tools.ts",
+          "digest": "206be67fbdc13c6142a7d813a0e7c9ff44ca742ac887a8df2b41486687146e4e"
+        }
+      ],
+      "checks": [
+        "Full README read and targeted production caller/manifest review; no application behavior changes.",
+        "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+        "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+        "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+        "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries."
+      ]
+    },
+    {
+      "path": "packages/board-pane/README.md",
+      "sourceRevision": "57980be1afd64ff365472c005a13fce3d5c76ced",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Full README read. Corrected descriptor subpath ownership and obsolete injected component slots; verified private source exports, current WorkspacePaneHostContract alias, SDK error primitive, Project/standalone/preview descriptor and the actual core mounter and intent-routing implementation.",
+      "limits": "Boundary tests prove package import/shape rules, not absence of behavioral drift. No real Board execution, consent/provider operation, responsive visual/physical device proof or npm publication.",
+      "documentDigest": "1712fb54c56adde82bddae32ea9f49b9abb66d010905bd63f31ede3ec353d83b",
+      "sources": [
+        {
+          "path": "packages/board-pane/package.json",
+          "digest": "a2e6b74eda8422415c2112b5489f246b767ebc5c98aeb74ed64916433f536f1f"
+        },
+        {
+          "path": "packages/board-pane/src/index.ts",
+          "digest": "148438fd97b147f43826c33f74d6dc303420c011055d2f49fc81968dedb0b05f"
+        },
+        {
+          "path": "packages/board-pane/src/workspace-board-pane.ts",
+          "digest": "09a0a47a82bc052db0caef7d4a7758b91d5ecba4da75eeaa2c206df8bd7a3a7c"
+        },
+        {
+          "path": "packages/board-pane/src/ConsoleBoardPane.tsx",
+          "digest": "5812a74804763c37f70a7693826b7229cad98d6412e283fc21151ec9fb98ae80"
+        },
+        {
+          "path": "src-ui/src/views/board/BoardWorkspacePane.tsx",
+          "digest": "48c4933174dd69e1bac7bf8fdd8ed2f4f405be3a36a8a1570dc1ab201926248d"
+        }
+      ],
+      "checks": [
+        "Full README read and targeted production caller/manifest review; no application behavior changes.",
+        "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+        "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+        "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+        "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries."
+      ]
+    },
+    {
       "path": "packages/cli/CHANGELOG.md",
       "documentDigest": "8be3eb354dadb954c5655114d61869f75a16a6d7786f4bccc92de0dba8c1f555",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -6012,6 +7062,65 @@
       ]
     },
     {
+      "path": "packages/connect/README.md",
+      "sourceRevision": "57980be1afd64ff365472c005a13fce3d5c76ced",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Full README read. Added private-workspace and mixed dist/source export boundaries, declared build/stamp steps, core/React surface, actual storage fallback precedence, and explicit routing-grant custody. Retained transport authority limits and traced browser signaling/Pion/application-channel composition.",
+      "limits": "Connect root/health-probe dist outputs were absent before a package build in this fresh tree; no successful full connect build or installed-package import is claimed. Source/memory fixtures do not prove real browser/relay/native enrollment, restart custody, device transport or provider availability.",
+      "documentDigest": "bb7e7aa866c1f93426efe0d49a676c2cdc6669aad73d1e98e6683c5bfe2a5968",
+      "sources": [
+        {
+          "path": "packages/connect/package.json",
+          "digest": "93065beef4542eb9cd1cffc27af9c7b85389d709b8f909bf379ce4de5b05a666"
+        },
+        {
+          "path": "packages/connect/tsconfig.json",
+          "digest": "1dcde2ae94b6f60717ece7e76c02f9585a5193fc5fcace5bc62d6b5a02da2bdb"
+        },
+        {
+          "path": "packages/connect/src/index.ts",
+          "digest": "c46fe65eda516311cf60019300db2f6c026051350803afb975e1d860e486eef1"
+        },
+        {
+          "path": "packages/connect/src/core/ConnectionStore.ts",
+          "digest": "3931712cea64306a13dc222b21f9d4813d3740cc6fd45d837d1533530f0e5377"
+        },
+        {
+          "path": "packages/connect/src/core/storage.ts",
+          "digest": "a947a28e0b0ab938f342e846b26e7bc4fb6f887c3d67eddea32855de722230cd"
+        },
+        {
+          "path": "packages/connect/src/core/selfHostedBrowser.ts",
+          "digest": "fbe55581bca9b2e66fd3d21d76ad2dcb7f6fb744f4f453fb377b38013603489b"
+        },
+        {
+          "path": "packages/connect/src/core/brokerRouteEnrollment.ts",
+          "digest": "93c9f2a2d3a4dc37fd6de925b090db8e704780902d923e61ddbc7e3c74275824"
+        },
+        {
+          "path": "packages/connect/src/core/browserPionConnection.ts",
+          "digest": "0ff3cda00a1adfba4ecf297aa69aa34d2929cfab52513b8d6aeb91376b63286f"
+        },
+        {
+          "path": "packages/connect/src/core/applicationChannel.ts",
+          "digest": "340a746de265ada1eb052d6cee95b5d5459826a3e3bf904faac19f79d5a9332b"
+        },
+        {
+          "path": "src-ui/src/platform/native/stationProfileStorage.ts",
+          "digest": "63a70e008696ffb0628e38cec6f9a2847047303705652bdeac80683a1216d601"
+        }
+      ],
+      "checks": [
+        "Full README read and targeted production caller/manifest review; no application behavior changes.",
+        "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+        "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+        "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+        "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries."
+      ]
+    },
+    {
       "path": "packages/contracts/AGENTS.md",
       "sourceRevision": "e1e8339750ff5b7210254866bd2d853454efaf04",
       "kind": "policy",
@@ -6062,6 +7171,45 @@
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
         "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+      ]
+    },
+    {
+      "path": "packages/contracts/README.md",
+      "sourceRevision": "57980be1afd64ff365472c005a13fce3d5c76ced",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Full README read. Corrected types-only/no-runtime wording to reflect existing pure parsers, reducers and page builders; checked source-only distribution, direct domain imports and the distinction between structural parsing and authorization.",
+      "limits": "No exhaustive semantic or compatibility audit of all contract exports, external runtime matrix or npm publication proof. Existing pure helpers are described, not authorization to move new general-purpose services into contracts.",
+      "documentDigest": "4480def2cafbc901b67500e70198b8a8e5897784f0f33dc17fbdda12e3f5174e",
+      "sources": [
+        {
+          "path": "packages/contracts/package.json",
+          "digest": "be67e427665002a91848c74e6ab3e3d24703f4368b4a3177d380aafa4f95563f"
+        },
+        {
+          "path": "packages/contracts/src/index.ts",
+          "digest": "ec58f0f49b82828345bfda96f2183a8bf6ca7cdada9f109ca24edef5bf21ea9a"
+        },
+        {
+          "path": "packages/contracts/src/child-work.ts",
+          "digest": "e93f1bc3b6089d4a118a62f59a75ba45f1980648b22a72176a2037fe1b92abd8"
+        },
+        {
+          "path": "packages/contracts/src/live-surface.ts",
+          "digest": "9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626"
+        },
+        {
+          "path": "packages/contracts/src/task-basis-mcp.ts",
+          "digest": "e441fa4b24dc096a453b6641b061477a87c0ec9750478f5edecc1b77245c63e9"
+        }
+      ],
+      "checks": [
+        "Full README read and targeted production caller/manifest review; no application behavior changes.",
+        "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+        "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+        "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+        "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries."
       ]
     },
     {
@@ -6122,6 +7270,117 @@
       ]
     },
     {
+      "path": "packages/sdk/README.md",
+      "sourceRevision": "57980be1afd64ff365472c005a13fce3d5c76ced",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Full README read (including the original 556 lines). Checked source exports versus local dist output, exact authoring bundle input, host externalization, plugin install/approval boundaries, current chat/Dock/notification signatures, protected result APIs, opt-in Pane/voice surfaces and host theme/context requirements.",
+      "limits": "Scope is the README named surfaces and corrected examples, not every SDK export or the full SDK reference. No fresh npm installation/publication, full package build, live Agent/tool/voice execution, rendered visual/theme audit, real provider or native-device proof. Code-fence checks establish syntax only; the extracted authoring bundle uses preprovided dependencies.",
+      "documentDigest": "0ce44b447d082ea3851f694b49125d0a3a1beceacf03f79ffc72b53e57af47b8",
+      "sources": [
+        {
+          "path": "packages/sdk/package.json",
+          "digest": "47af8a80fddf80e9b52afb5eabd3bbd2f790a8e54fccee8289e7f9621ccbafb1"
+        },
+        {
+          "path": "packages/sdk/tsconfig.json",
+          "digest": "6178c809c220a4aeb4c07c45fa2c988172c8de8f308383719214db1baf741467"
+        },
+        {
+          "path": "packages/sdk/src/index.ts",
+          "digest": "2ff83371f2bc38e9a0926360ba37ed3499d252c078bf0716cf745ff2f05310aa"
+        },
+        {
+          "path": "packages/sdk/src/workspace-pane.ts",
+          "digest": "1706dcbb2ed329bd68039900289a4fe33308add126c86b140639a27842037013"
+        },
+        {
+          "path": "packages/sdk/src/hooks/context.ts",
+          "digest": "7b579f584b19684cdcadb54928c87f98e8ef47a088f1f66de48073d2d1fd6520"
+        },
+        {
+          "path": "packages/sdk/src/hooks/operations.ts",
+          "digest": "02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994"
+        },
+        {
+          "path": "packages/sdk/src/components/Button.tsx",
+          "digest": "04dddb6942c46db2822d0fb7e2e42088190140fe33fe2c824fe441f51c8a9758"
+        },
+        {
+          "path": "packages/sdk/src/components/Pill.tsx",
+          "digest": "3f62701819da0c75dc75d1a3ededcc043363253de5f7c0a83bde76a3fb693a33"
+        },
+        {
+          "path": "packages/sdk/src/api-agent-runtime.ts",
+          "digest": "f1e89d78c84ad0c285f88847ebd239b7ed688fb443de94e428652a8d796c837d"
+        },
+        {
+          "path": "packages/sdk/src/providers.tsx",
+          "digest": "c2e1919b3feade010b3e393920ae4852b88d71921cddfb9716e164049b9acf3b"
+        },
+        {
+          "path": "packages/sdk/src/task-tool-results.ts",
+          "digest": "62bc778329183b7aa6cac3c74a55a75e126f96bfa9a5d879a8cebdbe294c310d"
+        },
+        {
+          "path": "packages/sdk/src/client/task-tool-results.ts",
+          "digest": "d21a99b8e7ad444d7dabab2ed612fcfb12700f8686755024d0468f8d10ec26fb"
+        },
+        {
+          "path": "packages/sdk/src/voice/session-manager.ts",
+          "digest": "057b5c1b6c209986cd1ce528b79c1eea914a6b244adb8c6c344179b1c0a76bee"
+        },
+        {
+          "path": "packages/sdk/src/voice/session-registry.ts",
+          "digest": "c98c5a59aa639bd2043f21bbedbe727892ce37231ad9682c14553bd21e9f247c"
+        },
+        {
+          "path": "packages/shared/src/build.ts",
+          "digest": "90d72c9c8b2868948b55576f9773b53aaad50f4b456218f8296e16d423cbea8f"
+        },
+        {
+          "path": "packages/cli/src/commands/install.ts",
+          "digest": "582968d276da30e474d9bccfab32ad58b35fe9275b170ef1e48469d29922af18"
+        },
+        {
+          "path": "src-ui/src/core/SDKAdapter.tsx",
+          "digest": "6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb"
+        },
+        {
+          "path": "src-ui/src/core/pluginSharedRuntime.ts",
+          "digest": "041ac68827827014fd0f9d655efbf020879bde4cf0da8b99150e2a370c149833"
+        },
+        {
+          "path": "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
+          "digest": "5c2e758b958003e6c9dcc1e267ab344c18dd047bf30701d41b51fa0102aa2f61"
+        },
+        {
+          "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+          "digest": "b6602f6ccaacd181fcaa5fa8916f851d10aff6127c123494440ccb755256a91f"
+        },
+        {
+          "path": "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx",
+          "digest": "f3b6189f6366ce62062c91c9fe5f5730b33ae21dde0386c036d4f6cb02739018"
+        },
+        {
+          "path": "src-server/services/plugins/plugin-install-transaction.ts",
+          "digest": "bc81e514914c45793c0893f7ced2fc8dd0c16878e27b38d82d53fb83b25aa071"
+        },
+        {
+          "path": "src-server/routes/orchestration/tasks.ts",
+          "digest": "c0fd08d8117c48da9b7fbb30818699e860f59e36450f661f8cce825e065a6aac"
+        }
+      ],
+      "checks": [
+        "Full README read and targeted production caller/manifest review; no application behavior changes.",
+        "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+        "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+        "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+        "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries."
+      ]
+    },
+    {
       "path": "packages/shared/CHANGELOG.md",
       "documentDigest": "87b0e26e8c52fa13b6211c91ad017f11538997b0636486c530b301a8db15dd9c",
       "sourceRevision": "eec64aa6defda8dd84ffebbe430eea95b35aea3f",
@@ -6131,6 +7390,123 @@
       "limits": "Entries describe the named version and can differ from this checkout. A changelog entry is not a current installation or publication receipt.",
       "sources": [],
       "checks": []
+    },
+    {
+      "path": "packages/shared/README.md",
+      "sourceRevision": "57980be1afd64ff365472c005a13fce3d5c76ced",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Full README read. Checked explicit subpaths, .ts/.mjs export distinction, Node24 requirement, build entrypoint/mode/output and exact external allowlist, no-entrypoint result, manifest shell-build refusal, registry digest/signature helper scope and lack of install/activation authority.",
+      "limits": "No independent npm installation or registry publication, arbitrary loader compatibility, full package build or live plugin activation. Registry signing fixture does not establish real key custody.",
+      "documentDigest": "985b2108b9d66e7d483ee21e565106359b31b7d6a153cd15b974e996a4ec53eb",
+      "sources": [
+        {
+          "path": "packages/shared/package.json",
+          "digest": "bc3954dd7583762fbc25cb2e8cd9db3cd59b143f273a936b04dd27e1d0fc9389"
+        },
+        {
+          "path": "packages/shared/src/index.ts",
+          "digest": "61ae87e4180d5ee0fd0176ef8cf4b2279efcb998e9b1c4f241cf1e70681daca8"
+        },
+        {
+          "path": "packages/shared/src/build.ts",
+          "digest": "90d72c9c8b2868948b55576f9773b53aaad50f4b456218f8296e16d423cbea8f"
+        },
+        {
+          "path": "packages/shared/src/parsers.ts",
+          "digest": "c239e53a4ef3706906a4511520e716f1282619f855d34d298c3bab3f4e8aac0f"
+        },
+        {
+          "path": "packages/shared/src/plugin-tree-digest.ts",
+          "digest": "5baa06dfc3281276329da800df935dbf25f4c462e01fb9d5ea7dd2b9ed07376e"
+        },
+        {
+          "path": "packages/shared/src/plugin-registry-signature.ts",
+          "digest": "49bee9910d27cbe2112b9bf53287eedf254ba5df0da99785b74478ae51df2c8b"
+        }
+      ],
+      "checks": [
+        "Full README read and targeted production caller/manifest review; no application behavior changes.",
+        "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+        "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+        "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+        "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries."
+      ]
+    },
+    {
+      "path": "packaging/homebrew/README.md",
+      "sourceRevision": "57980be1afd64ff365472c005a13fce3d5c76ced",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Full README read. Corrected cask command arguments, v1/macOS requirement, renderer-versus-template role, local fixture key override and actual inert/explicit-command publish boundary without claiming protected environments or absent credentials.",
+      "limits": "No brew install/audit, actual tap publication, workflow execution, external approval/settings inspection or real signing-key custody proof. Probe uses an ephemeral synthetic signer and writes only disposable cask files.",
+      "documentDigest": "9cf434f48edc78f3d493f67ef05be246c82fc8e72b923df2311e69826b339f19",
+      "sources": [
+        {
+          "path": "scripts/ecosystem-manifest.mjs",
+          "digest": "1340e9cc0584d12b5b0e906f2b8b8525e574a32b189f12bfb217d4af0ac02319"
+        },
+        {
+          "path": "packaging/homebrew/Casks/station.rb.template",
+          "digest": "1fdb94c39e1c2e432de9da4e4090551445aa3bf69274f4e6dce9e93aa1cf7837"
+        },
+        {
+          "path": "config/release-manifest-keys.json",
+          "digest": "28b356665f581456dcddd64ae86ebf3bde1fb1ee12408c480b7a2fa68923f0c3"
+        },
+        {
+          "path": "scripts/ecosystem-publish-boundary.sh",
+          "digest": "5e742ed0cca5994877e7130124d4c28e7c5ec2a32bbdb5398fc1d356adcbd10a"
+        },
+        {
+          "path": ".github/workflows/ecosystem-packaging.yml",
+          "digest": "f3130e0859bdec881c626e8902fd0ae350958c20ddd35cc72cf95a607e55253f"
+        }
+      ],
+      "checks": [
+        "Full README read and targeted production caller/manifest review; no application behavior changes.",
+        "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+        "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+        "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+        "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries."
+      ]
+    },
+    {
+      "path": "packaging/manifest/README.md",
+      "sourceRevision": "57980be1afd64ff365472c005a13fce3d5c76ced",
+      "kind": "current",
+      "state": "source-reviewed",
+      "summary": "Full README read. Corrected opt-in installer selection, signed-envelope/pinned-key/channel policy, absence of origin separation or downloaded production trust key, existing-version versus freshness limits and operator-owned private-key/publication configuration.",
+      "limits": "install.sh was read, not executed. No release/attestation download, actual installation/upgrade, profile operation, live distribution or production signing-custody proof. The manifest/cask CLI fixture does not establish installer/platform behavior.",
+      "documentDigest": "974deb8f538d68d0aaa4c520419b01be05532899235c5f3cf2d3acbd87a9e84b",
+      "sources": [
+        {
+          "path": "install.sh",
+          "digest": "2b21a2c2ff4f1e6bff427ff0a2613c967b437170a3bafa213dae32bc2df21afb"
+        },
+        {
+          "path": "scripts/ecosystem-manifest.mjs",
+          "digest": "1340e9cc0584d12b5b0e906f2b8b8525e574a32b189f12bfb217d4af0ac02319"
+        },
+        {
+          "path": "config/release-manifest-keys.json",
+          "digest": "28b356665f581456dcddd64ae86ebf3bde1fb1ee12408c480b7a2fa68923f0c3"
+        },
+        {
+          "path": "scripts/ecosystem-publish-boundary.sh",
+          "digest": "5e742ed0cca5994877e7130124d4c28e7c5ec2a32bbdb5398fc1d356adcbd10a"
+        }
+      ],
+      "checks": [
+        "Full README read and targeted production caller/manifest review; no application behavior changes.",
+        "Focused package evidence: 96 tests across 13 files, exit 0 (25.11s); individual applicability and limits retained in handoff.",
+        "Extracted SDK authoring manifest/entrypoint: actual production/dev bundle helper controls exit 0, no dependency installation. Manifest/cask synthetic create/verify/render controls pass; tampered and v2-cask inputs refused, prior output preserved; install.sh not executed.",
+        "18 TS/TSX fences syntax-checked and 3 JSON fences parsed; source-export inventory checked with generated-dist prerequisites recorded separately.",
+        "Docs links exit 0 (396 Markdown files), repo hygiene exit 0, public contract-example gate exit 0 (10 admitted docs, not evidence for every package example). Veritas exit 0, 0 failures/0 warnings.",
+        "Parent independently reviewed all eight README deltas and spot-checked public hook return shapes, host dispatch and manifest-mode boundaries."
+      ]
     },
     {
       "path": "schemas/agent-plugins/1.0.0/UPSTREAM.md",
@@ -6405,7 +7781,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "9f0b2429e0c70e9e0193be17726de109cc6ded91a7e7741934c07380148c72ce"
+          "digest": "21dd64ca3380b64459274782ef55cfb9c52cc7255b9374b83582b783a803f24b"
         },
         {
           "path": "docs/guides/development.md",
@@ -6428,7 +7804,8 @@
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
         "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
         "Reviewed subsequent module-map delta: two source-reviewed workspace sections and relocation/qualification of OIDC; the instruction route and policy meaning are unchanged.",
-        "Reviewed Browser/Device owner additions and links; existing instruction routing and earlier bounded claims remain intact."
+        "Reviewed Browser/Device owner additions and links; existing instruction routing and earlier bounded claims remain intact.",
+        "Reviewed the architecture rewrite and added shortcut owner as routing dependencies; existing bounded purpose/claims preserved."
       ]
     },
     {
@@ -6519,7 +7896,7 @@
       "sources": [
         {
           "path": "docs/architecture/module-map.md",
-          "digest": "9f0b2429e0c70e9e0193be17726de109cc6ded91a7e7741934c07380148c72ce"
+          "digest": "21dd64ca3380b64459274782ef55cfb9c52cc7255b9374b83582b783a803f24b"
         },
         {
           "path": "docs/guides/testing.md",
@@ -6550,7 +7927,8 @@
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
         "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
         "Reviewed subsequent module-map delta: two source-reviewed workspace sections and relocation/qualification of OIDC; the instruction route and policy meaning are unchanged.",
-        "Reviewed Browser/Device owner additions and links; existing instruction routing and earlier bounded claims remain intact."
+        "Reviewed Browser/Device owner additions and links; existing instruction routing and earlier bounded claims remain intact.",
+        "Reviewed the architecture rewrite and added shortcut owner as routing dependencies; existing bounded purpose/claims preserved."
       ]
     },
     {

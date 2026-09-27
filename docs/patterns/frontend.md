@@ -168,8 +168,9 @@ and tokens do not prove computed contrast or phone interaction across the app.
 
 `packages/connect` owns saved Station connections, pairing, discovery and
 transport lifecycle; SDK requests consume the selected connection. A reachability
-candidate is not a trust grant. Connect is a private workspace package, not a
-published plugin dependency. Its [README](../../packages/connect/README.md) and
+candidate is not a trust grant. Connect is private in this checkout; use its
+owning Station integration rather than assuming current publication as a plugin
+dependency. Its [README](../../packages/connect/README.md) and
 [reference](../reference/connect.md) own supported host setup and hook shapes;
 copying an old provider snippet without its current credential/storage setup is
 not a complete integration.

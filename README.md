@@ -15,7 +15,7 @@ the work. A completed run and a passed review are separate facts.
 
 > **Status:** open source under active development (Apache-2.0). Run Station
 > from source on macOS or Linux, or try a Nightly desktop build.
-> A verified installer ships with the first stable release. See
+> The portable installer requires a published release in the selected ring. See
 > [Get Station](#get-station).
 
 ## Why Station
@@ -28,17 +28,17 @@ Station brings several parts of agent work into one workspace:
 - **Supported engines, one workspace** — run Station agents on a local or
   hosted model, or connect supported agent CLIs and compatible custom engines
   as External agents. Each engine keeps its own behavior and tool loop;
-  Station supplies the project context, the gates, and the record.
+  Station supplies project context, execution records, and configured workflow
+  integrations.
 - **Work that outlives a chat** — Projects, Tasks, Sessions, changed files,
-  artifacts, and receipts stay linked. Reopen a Task later with its workspace
-  binding and evidence intact.
+  artifacts, and receipts stay linked. Reopen a Task later with its recorded
+  workspace binding and evidence, then check the workspace's current availability.
 - **Your devices, your Station** — pair a phone, tablet, or laptop to your
   Station with scoped, revocable access, and delegate work to another
   computer you own over SSH.
 - **Local-first ownership** — Station data lives under `~/.station` by
-  default. Hosted Model connections, Engines, paired devices, remote
-  computers, and export endpoints carry your data only when you configure
-  and use them; desktop builds also check their release feed for updates.
+  default. Networked features have separate settings and destinations;
+  review those boundaries under [Data and privacy](#data-and-privacy).
 - **Built to extend** — plugins add layouts, agents, tools, knowledge,
   connections, skills, and work surfaces through the public SDK and extension
   contracts. Private core services are not part of that plugin API.
@@ -49,7 +49,7 @@ Station brings several parts of agent work into one workspace:
 | --- | --- |
 | Ship a code change you can stand behind | Open the repository as a Project, create a Task, pick an agent, and keep the commands that ran, their results, and the review receipts with the change. |
 | Keep a long piece of work alive | A Task spans as many Sessions as it needs. Follow it from a paired device and come back to the same context, files, and evidence. |
-| Use agents without a cloud account | Point a Station agent at a local model server. Inference stays on this machine, and every other data-carrying connection is one you add yourself. |
+| Use agents without a cloud account | A configured local model can provide inference without a cloud account. Tools, engines, and other enabled integrations retain their own network behavior. |
 | Coordinate several agents | Delegate bounded work from one agent to another, or run it on a remote computer over SSH with that machine's own agents, credentials, and workspace. |
 | Run Station on a server you control | Build the container image from this checkout, run it behind your own authenticated ingress, and pair devices with scoped, revocable access. |
 | Build a purpose-built work surface | Write a plugin using the public SDK: a review workbench, a release console, or a domain-specific layout. |
@@ -91,23 +91,27 @@ ring, the bootstrap below verifies the release's
 GitHub OIDC attestation and SHA-256 receipt before installing under
 `~/.station/installs/stable`, linking `station` into `~/.local/bin`, and
 opening the UI at `http://localhost:18000`. It requires Node.js 24.x, npm 10
-or newer, git, curl, tar, and an authenticated
-[GitHub CLI](https://cli.github.com/) session for the attestation check.
+or newer, curl, tar, and [GitHub CLI](https://cli.github.com/) with attestation
+verification support. The command below supplies a token from your authenticated
+GitHub CLI session to the installer's isolated verification environment.
 
 ```bash
 sh -c 'set -eu; file=$(mktemp "${TMPDIR:-/tmp}/station-install.XXXXXX"); trap '\''rm -f "$file"'\'' EXIT HUP INT TERM; curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh >"$file"; chmod 600 "$file"; GH_TOKEN=$(gh auth token) sh "$file"'
 ```
 
-Running the same command again upgrades in place. Set `STATION_CHANNEL=beta`
+Run the command again to install the selected release. The installer stages it
+before switching the current link.
+Set `STATION_CHANNEL=beta`
 for the beta ring, which uses `station-beta` and `http://localhost:28000`.
 [Getting started](docs/user/getting-started.md) covers channels, updates, and
 uninstall.
 
 ### Self-host with Docker
 
-The repository ships a `Dockerfile` and `docker-compose.yml`. Station serves
-its UI, API, and streaming from one origin on port 3000 and persists its home
-in a named volume. You can build the image from this checkout and select it
+The repository ships a `Dockerfile` and `docker-compose.yml`. The UI, HTTP API,
+and event streams share the exposed origin on port 3000; the home persists in a
+named volume. Voice has a separate WebSocket listener and is not exposed by
+that single-port mapping. You can build the image from this checkout and select it
 with `STATION_IMAGE`; Compose otherwise names `ghcr.io/kontourai/station:latest`.
 The existence of that default does not establish registry availability. The
 [deployment guide](docs/guides/deployment.md) covers the source build, binding
@@ -135,7 +139,7 @@ services and agent engines with their exact setup steps.
 | Area | Start here |
 | --- | --- |
 | Plugins and the SDK | [Build your first plugin](docs/guides/build-your-first-plugin.md), [plugin guide](docs/guides/plugins.md), [SDK reference](docs/reference/sdk.md), [runnable examples](examples/README.md) |
-| CLI | [CLI reference](docs/reference/cli.md); `npx @kontourai/station-cli@latest --help` runs the published client against any Station |
+| CLI | [CLI reference](docs/reference/cli.md) for target and credential setup; `npx @kontourai/station-cli@latest --help` shows the published client's help |
 | HTTP API and contracts | [API reference](docs/reference/api.md), [endpoint authorities](docs/reference/endpoints.md), [contracts](docs/reference/contracts.md) |
 | Integrating Station | [Integrating Station into your company or project](docs/guides/integrating-station.md) |
 | Architecture | [System overview and reading path](docs/architecture.md), [module interfaces and evidence](docs/architecture/module-map.md), [CONTEXT.md](CONTEXT.md), [design records](docs/design/README.md) |
@@ -173,12 +177,13 @@ manual and architecture sources.
 
 ## Data and privacy
 
-Station is self-hosted. It does not use data for cross-app or cross-site
-tracking. Your work leaves the device only when a user or operator configures a
-networked feature, such as a hosted Model connection, an Engine, a paired
-device, a remote computer, or an export endpoint, and uses it; desktop builds
-also contact their release feed to check for updates. See the
-[Station privacy policy](https://kontourai.io/privacy/station/).
+Networked features have their own settings and destinations: Model connections,
+Engines, remote computers, notification services, authentication providers, and
+telemetry exporters can exchange data outside the local home. Some configured
+features make startup or background requests; desktop builds also contact
+their release feed. Read the repository's [data-flow inventory and review limits](docs/privacy-policy.md)
+alongside the [public privacy policy](https://kontourai.io/privacy/station/).
+Generated store declarations are not proof that every data flow has been assessed.
 
 ## License
 

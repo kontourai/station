@@ -15,9 +15,11 @@ boundaries that deployments must preserve.
 
 ## Docker Production
 
-Station's container image has one public origin: its lifecycle UI proxy serves the UI,
-API, streaming, terminal/voice WebSockets, identity, and device pairing from
-port 3000. It runs as Node's unprivileged UID/GID `1000` and persists its home
+The default Compose mapping exposes port 3000. The lifecycle UI proxy serves
+the UI, HTTP API, event streams, identity and Device pairing through that origin.
+Dedicated terminal and voice listeners are separate; this proxy has no WebSocket
+upgrade bridge to them, and the default mapping does not publish their ports.
+The image runs as Node's unprivileged UID/GID `1000` and persists its home
 in the `station-data` volume.
 
 ```bash
@@ -208,8 +210,8 @@ verification before offering those guarantees to customers.
 
 For a complete optional Compose proxy profile, see [Public HTTPS ingress](../../deploy/public-ingress/README.md). It keeps the root deployment private unless explicitly applied and removes direct Station host ports.
 
-Terminate TLS in a reverse proxy that forwards the one public origin. Do not
-split UI and API onto separate origins:
+The following example terminates TLS for the UI and HTTP/SSE API through the
+lifecycle proxy. It does not expose the dedicated voice/terminal listeners:
 
 ```nginx
 server {
@@ -227,7 +229,14 @@ server {
 }
 ```
 
-WebSocket upgrade headers are required for voice (S2S) and terminal sessions.
+Upgrade headers alone do not route a request to another listener. In the current
+voice path, the client asks the backend for its voice port and connects to that
+port on the selected API host. A secure public page therefore needs a supported
+secure route to that listener; the single-port example above does not supply it.
+[#2769](https://github.com/kontourai/station/issues/2769) tracks a verified ingress
+contract and the adjacent terminal qualification. Preserve authentication,
+origin, scope and instance checks when designing that route.
+
 Station's browser-facing SSE routes send `X-Accel-Buffering: no` so nginx-family
 proxies deliver chat tokens and operational events immediately. Preserve that
 response header.

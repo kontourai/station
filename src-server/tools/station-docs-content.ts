@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '32faf7add5b8f162aed41974846e0b978be9e03a71d8b11224589b484747649b';
+  'ba144de258f3a0722478097c30bec0e0c39ce9dad01f2eabcf9bcb84a21fbc99';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -590,7 +590,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Navigation and work surfaces',
     summary:
       'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.',
-    body: 'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which interface owns navigation, and which owns the work behind a view?\n- Can a Pane be unavailable without losing its saved identity?\n- Which UI states are derived from the server versus retained on one Device?\n\nRead module topics with get_station_docs_topic:\n- architecture-destinationregistry: DestinationRegistry\n- architecture-unifiedsearchservice: UnifiedSearchService\n- architecture-workspacepanehostcontributions: WorkspacePaneHostContributions\n- architecture-workspacepanehostadmission: WorkspacePaneHostAdmission\n- architecture-workspacepanehostactions: WorkspacePaneHostActions\n- architecture-collaborativeeditorpane: CollaborativeEditorPane\n- architecture-mobiledevicehost: MobileDeviceHost\n- architecture-browsersessionservice: BrowserSessionService\n- architecture-shared-live-surface: Shared live surface\n- architecture-personal-work-board: Personal Work Board\n\nCanonical reading:\n- docs/guides/workspace-pane-authoring.md\n- docs/design/pane-host-contract.md\n- docs/guides/commands.md\n- docs/guides/responsive-ui.md\n- docs/user/work-board.md',
+    body: 'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which interface owns navigation, and which owns the work behind a view?\n- Can a Pane be unavailable without losing its saved identity?\n- Which UI states are derived from the server versus retained on one Device?\n\nRead module topics with get_station_docs_topic:\n- architecture-destinationregistry: DestinationRegistry\n- architecture-keyboard-shortcuts: Keyboard shortcuts\n- architecture-unifiedsearchservice: UnifiedSearchService\n- architecture-workspacepanehostcontributions: WorkspacePaneHostContributions\n- architecture-workspacepanehostadmission: WorkspacePaneHostAdmission\n- architecture-workspacepanehostactions: WorkspacePaneHostActions\n- architecture-collaborativeeditorpane: CollaborativeEditorPane\n- architecture-mobiledevicehost: MobileDeviceHost\n- architecture-browsersessionservice: BrowserSessionService\n- architecture-shared-live-surface: Shared live surface\n- architecture-personal-work-board: Personal Work Board\n\nCanonical reading:\n- docs/guides/workspace-pane-authoring.md\n- docs/design/pane-host-contract.md\n- docs/guides/commands.md\n- docs/guides/responsive-ui.md\n- docs/user/work-board.md',
     tags: ['architecture', 'surfaces'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -606,6 +606,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-surfaces',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'destinationregistry',
+  },
+  {
+    id: 'architecture-keyboard-shortcuts',
+    title: 'Keyboard shortcuts',
+    summary:
+      'Interface, composition, invariants, and documented evidence for Keyboard shortcuts.',
+    body: "Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## Keyboard shortcuts\n\n**Interface and owner.** [KeyboardShortcutsContext](../../src-ui/src/contexts/KeyboardShortcutsContext.tsx)\nowns registered handlers, priority, conditional dispatch and local binding\noverrides. `useKeyboardShortcuts` exposes registration/binding actions;\n`useShortcutRegistry` subscribes readers such as the settings list and palette.\nRegistration must not re-render registering components into a loop. A replaced\nhandler's identity and registry order remain observable even when its display\nmetadata is unchanged.\n\n**Persistence and dispatch.** [Shortcut preferences](../../src-ui/src/settings/shortcutPreferences.ts)\nuse the [device store](../../src-ui/src/lib/device-settings-store.ts), separately\nfor ordinary overrides and command skills. [Settings import/export](../../src-ui/src/views/settings/utils.ts)\ncarries those values. Dispatch checks disabled state, the registered `when`\nexpression and modal/input ownership before matching a chord; priority wins,\nthen registry order. Browser or OS interception remains outside that matcher.\n\n**Caller limits.** The [editor](../../src-ui/src/views/settings/KeyboardShortcutsSection.tsx)\nuses ID-derived context hints rather than the actual dispatch rule, and checks\nthe first matching enabled binding when offering replacement. Its captured\nSpace spelling also differs from the standard event key. The\n[user guide](../guides/keyboard-shortcuts.md) explains current behavior and links\n[#2767](https://github.com/kontourai/station/issues/2767) and\n[#2771](https://github.com/kontourai/station/issues/2771) for those corrections.\n\n**Evidence.** [Editor tests](../../src-ui/src/__tests__/KeyboardShortcutsSection.test.tsx)\nand [registry tests](../../src-ui/src/__tests__/KeyboardShortcutsContext.test.ts)\nexercise DOM events and synthetic handlers. The independent Space probe enters\nthrough the mounted editor and provider; it does not qualify physical keyboards\nor native-shell interception. Keep the modal-guard and registration-loop\nregression rationale when changing this owner.",
+    tags: ['architecture', 'surfaces', 'Keyboard shortcuts'],
+    parentId: 'architecture-surfaces',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'keyboard-shortcuts',
   },
   {
     id: 'architecture-unifiedsearchservice',

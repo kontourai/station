@@ -314,8 +314,9 @@ Voice REST control and audio transport are separate: startup attaches the
 voice WebSocket listener at the API server's port plus two, with its own
 credential/scope and browser-origin checks.
 
-The UI [queries the advertised voice port](../src-ui/src/hooks/voiceWsUrl.ts)
-and derives `ws:` or `wss:` from the selected endpoint. It does not add two to
+The [UI adapter](../src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts)
+queries the advertised voice port and [derives its URL](../src-ui/src/hooks/voiceWsUrl.ts)
+using `ws:` or `wss:` from the selected endpoint. It does not add two to
 the browser-visible UI port. The CLI's same-origin HTTP/SSE proxy and a single
 container port mapping do not establish reachability or TLS termination for
 that socket. Terminal has a similar dedicated-listener boundary. No networking
@@ -453,8 +454,9 @@ The public SDK exposes supported request helpers, query/mutation hooks, host
 context hooks and extension UI contracts. Examples include `useAgentsQuery`,
 `useAgentQuery` and `agentQueries`; they require their owning host/transport
 setup. Its [README](../packages/sdk/README.md), [reference](reference/sdk.md)
-and package exports own the current surface. Do not treat retired convenience
-hook names or server-private streaming routes as public SDK contracts.
+and package exports own the current surface. Host-context hooks and remote-query
+hooks have different return shapes and prerequisites; follow their declarations
+and current host integration.
 
 ### `packages/connect/` — `@kontourai/station-connect`
 

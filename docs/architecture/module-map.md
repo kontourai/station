@@ -26,6 +26,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
+| [Keyboard shortcuts](#keyboard-shortcuts) | Register actions, resolve local bindings, and dispatch only under current input and modal conditions. | `src-ui/src/contexts/KeyboardShortcutsContext.tsx` |
 | [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
 | [WorkspacePaneHostContributions](#workspacepanehostcontributions) | Bind package-level Pane-host actions and explicit Agent selection without treating Pane requirements as routing authority. | `src-server/services/plugins/workspace-pane-host-contributions.ts` |
 | [WorkspacePaneHostAdmission](#workspacepanehostadmission) | Admit one captured package action at the existing foreground invocation boundary. | `src-server/services/plugins/workspace-pane-host-admission.ts` |
@@ -215,6 +216,38 @@ Skill/server, or placeholder expansion in commands/URLs/headers.
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate exact-route owners, duplicate view owners, and duplicate sidebar or palette order slots. It never invokes a label or badge while composing or filtering; locale, branding, and attention state remain render-time inputs. A preview surface stays registered and routable while `getAdvertised` hides it until its named flag is enabled. `hiddenFromNav` removes only the sidebar affordance; route, palette, badge, and header callers remain independent projections. Parameterized Project, layout, task, Agent, connection, and Workspace Pane routes retain their domain parsers. Dynamic Workspace Panes retain their typed availability catalog and join the command palette after static registry projection rather than becoming unvalidated root-route contributions.
 
 **Seam, Implementation, callers, and tests.** The UI shell composes built-in descriptors. `routing.ts` consumes exact routes and semantic management ownership; `ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their ordered projections. Icons are a presentation Adapter keyed by the registry's finite icon vocabulary. Future trusted plugin surface contributions must enter at registry composition and pass the same validation; there is no mutable global `register()` operation or renderer callback in persisted plugin data. Contract coverage is `src-ui/src/app-shell/__tests__/destination-registry.test.ts` plus sidebar, palette, routing, and header suites. **Do not reintroduce:** component-local static destination arrays, route-to-sidebar switch statements, hard-coded badge copy outside the registry, mutable post-construction registration, or treating a contributed renderer declaration as navigation authority.
+
+## Keyboard shortcuts
+
+**Interface and owner.** [KeyboardShortcutsContext](../../src-ui/src/contexts/KeyboardShortcutsContext.tsx)
+owns registered handlers, priority, conditional dispatch and local binding
+overrides. `useKeyboardShortcuts` exposes registration/binding actions;
+`useShortcutRegistry` subscribes readers such as the settings list and palette.
+Registration must not re-render registering components into a loop. A replaced
+handler's identity and registry order remain observable even when its display
+metadata is unchanged.
+
+**Persistence and dispatch.** [Shortcut preferences](../../src-ui/src/settings/shortcutPreferences.ts)
+use the [device store](../../src-ui/src/lib/device-settings-store.ts), separately
+for ordinary overrides and command skills. [Settings import/export](../../src-ui/src/views/settings/utils.ts)
+carries those values. Dispatch checks disabled state, the registered `when`
+expression and modal/input ownership before matching a chord; priority wins,
+then registry order. Browser or OS interception remains outside that matcher.
+
+**Caller limits.** The [editor](../../src-ui/src/views/settings/KeyboardShortcutsSection.tsx)
+uses ID-derived context hints rather than the actual dispatch rule, and checks
+the first matching enabled binding when offering replacement. Its captured
+Space spelling also differs from the standard event key. The
+[user guide](../guides/keyboard-shortcuts.md) explains current behavior and links
+[#2767](https://github.com/kontourai/station/issues/2767) and
+[#2771](https://github.com/kontourai/station/issues/2771) for those corrections.
+
+**Evidence.** [Editor tests](../../src-ui/src/__tests__/KeyboardShortcutsSection.test.tsx)
+and [registry tests](../../src-ui/src/__tests__/KeyboardShortcutsContext.test.ts)
+exercise DOM events and synthetic handlers. The independent Space probe enters
+through the mounted editor and provider; it does not qualify physical keyboards
+or native-shell interception. Keep the modal-guard and registration-loop
+regression rationale when changing this owner.
 
 ## UnifiedSearchService
 
