@@ -180,7 +180,7 @@ export function createApplicationSessionRoutes(
         })
         .strict()
         .parse(await nativeInput(c));
-      return owner.nativeChallenge(c.req.raw, body);
+      return owner.nativeChallenge(c.req.raw, { publicKey: body.publicKey });
     }),
   );
   app.post('/native/exchange', (c) =>
