@@ -124,7 +124,10 @@ describe('buildPortableServerArchive target', () => {
     // archive would ship the host's native modules under another name.
     const host = `${process.platform}-${process.arch}`;
     const foreign = SUPPORTED_TARGETS.find((id) => id !== host) ?? '';
-    const [platform, arch] = foreign.split('-');
+    const [platform, arch] = foreign.split('-') as [
+      NodeJS.Platform,
+      NodeJS.Architecture,
+    ];
     const outputDir = join(makeTempDir('station-portable-cross-'), 'out');
     await expect(
       buildPortableServerArchive({
@@ -135,6 +138,8 @@ describe('buildPortableServerArchive target', () => {
         tag: 'v0.0.0',
         sha: '0'.repeat(40),
         createdAt: '2026-01-01T00:00:00.000Z',
+        // Optional at runtime; the JS signature's inferred type lists it.
+        nodeDistribution: undefined,
       }),
     ).rejects.toThrow(
       new RegExp(`cannot build the ${foreign} portable archive on ${host}`),
