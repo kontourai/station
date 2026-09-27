@@ -476,7 +476,7 @@ test('the Update route finds no source for a package without its own repository,
   const app = new Hono();
   registerPluginLifecycleRoutes(app, f.deps);
   const response = await app.request('/fixture/update', { method: 'POST' });
-  const body = await response.json();
+  const body = (await response.json()) as { error?: string };
   expect(response.status, JSON.stringify(body)).toBe(409);
   expect(body.error).toMatch(/no update source/);
   expect(resolveInstalledPluginRoot(f.plugins, 'fixture')!.packageRoot).toBe(
