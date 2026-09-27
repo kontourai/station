@@ -7,7 +7,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'vitest';
 import { APNS_ALERT_TEXT, parseAlertRequest } from '../src/apns-request.ts';
-import { resetProviderTokenCacheForTest } from '../src/apns-token.ts';
 import {
   type GatewayConfig,
   handleRequest,
@@ -117,7 +116,6 @@ async function post(cfg: GatewayConfig, value: unknown, key?: Key) {
   );
 }
 
-beforeEach(() => resetProviderTokenCacheForTest());
 let errors: string[] = [];
 const originalError = console.error;
 beforeEach(() => {

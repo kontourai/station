@@ -4,7 +4,6 @@ import {
   buildLiveActivityPayload,
   type LiveActivityRequest,
   livePriority,
-  MAX_APNS_PAYLOAD_BYTES,
   parseChannelRequest,
   parseLiveActivityRequest,
   payloadBytes,
@@ -282,8 +281,9 @@ test('caps the final APNs body at 4096 bytes', () => {
     'A'.repeat(128),
   );
   assert.ok(payloadBytes(largest), 'the largest valid request fits');
-  const over = { aps: { pad: 'x'.repeat(MAX_APNS_PAYLOAD_BYTES) } };
+  // Apple's documented limit, pinned as a literal so moving the constant fails.
+  const over = { a: 'x'.repeat(4096 - 7) };
   assert.equal(payloadBytes(over), null);
-  const exact = { a: 'x'.repeat(MAX_APNS_PAYLOAD_BYTES - 8) };
-  assert.equal(payloadBytes(exact)?.length, MAX_APNS_PAYLOAD_BYTES);
+  const exact = { a: 'x'.repeat(4096 - 8) };
+  assert.equal(payloadBytes(exact)?.length, 4096);
 });

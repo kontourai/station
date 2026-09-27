@@ -2,13 +2,10 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'vitest';
 import { ApnsSender } from '../src/apns.ts';
 import {
-  MAX_SWEEP_DELETES,
-  MAX_SWEEP_SUBREQUESTS,
   parseSweepScopes,
   type SweepScope,
   sweepChannels,
 } from '../src/apns-sweep.ts';
-import { resetProviderTokenCacheForTest } from '../src/apns-token.ts';
 import { UNRECORDED_GRACE_SECONDS } from '../src/channel-ledger.ts';
 import { sweep } from '../src/worker.ts';
 import {
@@ -122,7 +119,6 @@ afterEach(() => {
   console.error = originalError;
 });
 beforeEach(() => {
-  resetProviderTokenCacheForTest();
   errors = [];
   console.error = (...args: unknown[]) => {
     errors.push(args.join(' '));
@@ -236,9 +232,10 @@ test('a run stays within its subrequest and delete caps and leaves the rest', as
     before.apple +
     ledger.state.requests -
     before.ledger;
-  assert.ok(spent <= MAX_SWEEP_SUBREQUESTS, `spent ${spent}`);
-  assert.ok(capped.deleted <= MAX_SWEEP_DELETES, `deleted ${capped.deleted}`);
-  assert.equal(capped.deleted, MAX_SWEEP_DELETES);
+  // Literal ceilings: Cloudflare Free allows 50 subrequests per invocation,
+  // and the README documents 45 per run with 40 deletes inside them.
+  assert.ok(spent <= 45, `spent ${spent}`);
+  assert.equal(capped.deleted, 40);
   assert.ok(capped.deferred > 0);
   // Later runs finish the backlog.
   await run();
