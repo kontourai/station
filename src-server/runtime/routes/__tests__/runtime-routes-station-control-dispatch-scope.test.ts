@@ -629,9 +629,9 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
 
   test('an input reply, and a follow-up to a conversation that has no session yet', async () => {
     const { base } = await setup();
-    const reply = (threadId: string) => ({
+    const reply = (threadId: string, conversationId = threadId) => ({
       message: 'yes',
-      conversationId: threadId,
+      conversationId,
       target: { agent: 'writer', environment: { kind: 'current' } },
       expectedInputRequest: { threadId, requestId: 'r', requestEventId: 'e' },
     });
@@ -651,6 +651,15 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         '/api/orchestration/chat',
         as('bearer-exposed', 'op-caller-a')(),
         reply('op-thread-b'),
+      ),
+    ).toEqual({ status: 403, code: ASSURANCE });
+    // The reply's own thread decides, not the conversation the body names.
+    expect(
+      await send(
+        base,
+        '/api/orchestration/chat',
+        as('bearer-exposed', 'op-caller-a')(),
+        reply('op-thread-b', 'op-thread-a'),
       ),
     ).toEqual({ status: 403, code: ASSURANCE });
     // A conversation id with no session is a new session, in the scope the
