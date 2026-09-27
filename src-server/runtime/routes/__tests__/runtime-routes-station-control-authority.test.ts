@@ -42,6 +42,8 @@ const support = vi.hoisted(() => ({
   notificationService: undefined as unknown,
   /** Every command the real `/commands` route handed to the service. */
   dispatched: [] as string[],
+  /** What `configLoader.loadAppConfig` answers. */
+  appConfig: {} as Record<string, unknown>,
 }));
 
 vi.mock('../runtime-route-support.js', () => {
@@ -84,6 +86,7 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
     else process.env[HOSTED_ENV] = originalHosted;
     __resetStationControlMcpTokensForTests();
     support.dispatched.length = 0;
+    support.appConfig = {};
     for (const close of closers.splice(0)) await close();
   });
 
@@ -105,11 +108,18 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
       appConfig: {},
       configLoader: {
         getProjectHomeDir: () => homeDir,
-        loadAppConfig: () => ({}),
+        loadAppConfig: () => support.appConfig,
       },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
-      agentService: { listAgents: () => [] },
+      agentService: {
+        listAgents: () => [],
+        getAgent: async (slug: string) => ({
+          slug,
+          name: slug,
+          execution: { approvalMode: 'ask' },
+        }),
+      },
       agentMetadataMap: new Map(),
       agentFixedTokens: new Map(),
       agentTools: new Map(),
@@ -444,5 +454,30 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
       'steerTurn person-thread',
       'steerTurn x-thread',
     ]);
+  });
+
+  // #2377 slice C1: the production composition hands the Agent routes this
+  // Station's default, so clearing an Agent's own default over a Station
+  // default of `never` needs the full-access grant, which no agent holds.
+  test('slice C1: an Agent write that falls through to a Station default of never is refused without the grant', async () => {
+    const { base } = await setup();
+    const clear = async () => {
+      const response = await fetch(`${base}/agents/builder`, {
+        method: 'PUT',
+        headers: callerFor('op-claude', 'sdk-in-process'),
+        body: JSON.stringify({ execution: {} }),
+      });
+      return {
+        status: response.status,
+        code: ((await response.json()) as { code?: string }).code,
+      };
+    };
+    support.appConfig = { defaultApprovalMode: 'never' };
+    expect(await clear()).toEqual({
+      status: 403,
+      code: 'approval-full-access-not-granted',
+    });
+    support.appConfig = { defaultApprovalMode: 'ask' };
+    expect((await clear()).code).not.toBe('approval-full-access-not-granted');
   });
 });

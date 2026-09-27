@@ -21,6 +21,7 @@ import {
   StationEngineIsAppSettingError,
 } from '../../services/agents/agent-service.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
+import { effectiveDefaultPosture } from '../../services/orchestration/approval-posture.js';
 import { agentOps } from '../../telemetry/metrics.js';
 import { refuseUngrantedFullAccess } from '../orchestration/approval-authority.js';
 import {
@@ -107,6 +108,15 @@ export function createAgentRoutes(
    * finding is simply omitted.
    */
   getProjectSlugs?: () => string[] | Promise<string[]>,
+  /**
+   * #2377 slice C1: this Station's default approval posture
+   * (`AppConfig.defaultApprovalMode`), read per write. An Agent with no
+   * default of its own falls through to it, so a write that leaves the
+   * Agent's effective default at `never` needs the full-access grant. Absent
+   * (unit compositions): no Station layer. A read that throws counts as
+   * `never`.
+   */
+  resolveStationDefaultApprovalMode?: () => Promise<unknown>,
 ) {
   const app = new Hono();
 
@@ -280,6 +290,40 @@ export function createAgentRoutes(
   }
 
   /**
+   * #2436, widened by #2377 slice C1: a 403 when this write RAISES the
+   * Agent's effective default (its own, else the Station's,
+   * `effectiveDefaultPosture`) to full access and the request may not grant
+   * it. Clearing an Agent's own default over a Station default of `never`
+   * raises it as surely as saving `never`. `readPrevious` answers the
+   * Agent's own default before the write, read only when the result is
+   * `never`; absent for a create. An unreadable Agent counts as having none.
+   */
+  async function refuseRaisedAgentDefault(
+    c: Parameters<typeof refuseUngrantedFullAccess>[0],
+    next: unknown,
+    readPrevious?: () => Promise<unknown>,
+  ): Promise<Response | undefined> {
+    let station: unknown;
+    try {
+      station = await resolveStationDefaultApprovalMode?.();
+    } catch {
+      station = 'never';
+    }
+    if (effectiveDefaultPosture(next, station) !== 'never') return undefined;
+    if (readPrevious) {
+      let previous: unknown;
+      try {
+        previous = await readPrevious();
+      } catch {
+        previous = undefined;
+      }
+      if (effectiveDefaultPosture(previous, station) === 'never')
+        return undefined;
+    }
+    return refuseUngrantedFullAccess(c, ['never']);
+  }
+
+  /**
    * The status a failed Agent mutation deserves.
    *
    * 400 stays the default — a malformed or unacceptable body. A submitted
@@ -310,10 +354,13 @@ export function createAgentRoutes(
     try {
       const body = getBody(c);
       // #2436: an Agent whose default is full access starts every session
-      // there, so saving it needs the same authority as recording it.
-      const fullAccessRefused = refuseUngrantedFullAccess(c, [
+      // there, so saving it needs the same authority as recording it. #2377
+      // slice C1: that includes one left to fall through to a Station
+      // default of `never`.
+      const fullAccessRefused = await refuseRaisedAgentDefault(
+        c,
         agentDefaultApprovalMode(body),
-      ]);
+      );
       if (fullAccessRefused) return fullAccessRefused;
       const skillError = validateSkills(body.skills, skillService);
       if (skillError) {
@@ -452,18 +499,19 @@ export function createAgentRoutes(
     try {
       const slug = param(c, 'slug');
       const updates = getBody(c);
-      // #2436: only RAISING an Agent's default to full access needs the
-      // authority; an edit that leaves an existing full-access default as it
-      // is (a client resending the whole execution block) does not.
-      if (agentDefaultApprovalMode(updates) === 'never') {
-        const previous = await agentService
-          .getAgent(slug)
-          .then((spec) => agentDefaultApprovalMode(spec))
-          .catch(() => undefined);
-        if (previous !== 'never') {
-          const fullAccessRefused = refuseUngrantedFullAccess(c, ['never']);
-          if (fullAccessRefused) return fullAccessRefused;
-        }
+      // #2436: only RAISING an Agent's effective default to full access needs
+      // the authority; an edit that leaves an existing full-access default
+      // as it is (a client resending the whole execution block) does not. A
+      // body with an `execution` block replaces the Agent's own default
+      // (absent or `null` clears it); one without leaves it as it is.
+      if (Object.hasOwn(updates, 'execution')) {
+        const fullAccessRefused = await refuseRaisedAgentDefault(
+          c,
+          agentDefaultApprovalMode(updates),
+          async () =>
+            agentDefaultApprovalMode(await agentService.getAgent(slug)),
+        );
+        if (fullAccessRefused) return fullAccessRefused;
       }
       const skillError = validateSkills(updates.skills, skillService);
       if (skillError) {

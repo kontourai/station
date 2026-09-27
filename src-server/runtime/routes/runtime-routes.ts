@@ -2478,6 +2478,10 @@ export function configureRuntimeRoutes(
       // finding for an A1-preserved orphan.
       () =>
         context.projectService.listProjects().map((project) => project.slug),
+      // #2377 slice C1: an Agent write that leaves its effective default at
+      // `never` through this Station's default needs the full-access grant.
+      async () =>
+        (await context.configLoader.loadAppConfig()).defaultApprovalMode,
     ),
   );
   context.app.route(

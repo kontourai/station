@@ -463,20 +463,29 @@ A session spawned before this change has nothing recorded.
   - Since #2493, a session a member starts without the grant is confined,
     so that `never` runs inside the workspace (Codex's sandbox, or `auto` on
     Claude).
-  - #2377 slice C1 gates the one case where it would not. A Default pick
-    on a `host`-stamped session, whose Agent or Station default is `never`,
-    would run the engine at `never` unconfined. Recording it needs the
-    §4.8 grant, on every path that records a pick (`/commands`, and a pick
-    carried on `/chat`, `/chat/:id/continue` or a handoff).
-  - Such a session is one started by the operator or by a device holding
-    the grant. The decision is `ApprovalPosture.pickReachesFullAccess`.
+  - #2377 slice C1 gates the one case where it would not. A decision
+    governs every session of its conversation. A Default pick needs the §4.8
+    grant when any of those sessions is `host`-stamped and the Default
+    resolves to `never` for its Agent (its own default, then the
+    Station's). Such a session would run the engine at `never` unconfined.
+  - The check covers every path that records a pick: `/commands`, and a
+    pick carried on `/chat`, `/chat/:id/continue` or a handoff. On a handoff
+    it checks the conversation's existing sessions. The successor has no
+    stamp yet when the pick is checked. The decision is
+    `ApprovalPosture.pickReachesFullAccess`.
+  - A session added to the conversation later, for example by a handoff,
+    starts in its starter's own confinement. A recorded Default is not a
+    recorded `never`, so the successor gains no `host` from it.
 - **Write authority.** Saving `never` needs the same authority as §4.8.
   - Every Agent write from outside the server goes through `POST /agents` or
     `PUT /agents/:slug`: the editor, the SDK and CLI, and the Station-control
     MCP tools, whose schema does not accept `execution` at all.
-  - Only raising a default to `never` is gated. An edit that leaves an
-    existing `never` default as it is (a client resending the whole
-    `execution` block) is not.
+  - Only raising the Agent's effective default to `never` is gated: its own
+    default, else the Station's. Clearing an Agent's own default over a
+    Station default of `never` raises it too (#2377 slice C1), and so does
+    creating an Agent with no default there. An edit that leaves an
+    effective `never` as it is (a client resending the whole `execution`
+    block) is not gated.
   - Agents have no per-member edit rights. Any operate caller may edit any
     Agent, global or Project-scoped, so the gate is by device authority, not
     by Project membership.
