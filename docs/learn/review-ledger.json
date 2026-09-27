@@ -2371,7 +2371,7 @@
     },
     {
       "path": "docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "668debd7140960ce1c7f47e4ea14ee34c706f7af",
       "kind": "design",
       "state": "classified",
       "summary": "The 2026-07-05 split and sqlite-vec selection remain decision rationale. A new status note distinguishes historical single-store/single-personal-root descriptions from current registered roots, derived index, and coexisting legacy API, and routes operating instructions to the Knowledge guide.",
@@ -2380,7 +2380,7 @@
       "sources": [
         {
           "path": "docs/guides/knowledge.md",
-          "digest": "f1fe4aa463bd6ac4e7a32276eb8b6312d60f85ae5ee492cf4392fcc7e33d648e"
+          "digest": "edfb1166c6f54f0cd013489ba02c5ff663df0b061cd5eaf1adcd3c0f2884bb59"
         },
         {
           "path": "src-server/knowledge-index/sqlite-vec-index-provider.ts",
@@ -2400,7 +2400,8 @@
         "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
         "Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
         "Added bounded physical identity admission for Obsidian creates, explicit unrecoverable path-index limit, preserved ordinary empty-frontmatter notes, and linked graph walkthrough. Current store/index ownership remains unchanged.",
-        "Reviewed integration deltas: docs/guides/knowledge.md: Documented actual create-admission repair of an earlier interrupted transaction; duplicate-identity refusal does not publish the new create or repair the index. Existing public boundaries retained. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture."
+        "Reviewed integration deltas: docs/guides/knowledge.md: Documented actual create-admission repair of an earlier interrupted transaction; duplicate-identity refusal does not publish the new create or repair the index. Existing public boundaries retained. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture.",
+        "Reviewed the added distribution section in the canonical Knowledge guide. Historical store/index decision and its current-guide route remain accurate; no ADR prose change needed."
       ]
     },
     {
@@ -13897,8 +13898,8 @@
     },
     {
       "path": "docs/guides/knowledge.md",
-      "documentDigest": "f1fe4aa463bd6ac4e7a32276eb8b6312d60f85ae5ee492cf4392fcc7e33d648e",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "documentDigest": "edfb1166c6f54f0cd013489ba02c5ff663df0b061cd5eaf1adcd3c0f2884bb59",
+      "sourceRevision": "668debd7140960ce1c7f47e4ea14ee34c706f7af",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14027,6 +14028,10 @@
         {
           "path": "src-ui/src/views/settings/KnowledgeStoreSection.tsx",
           "digest": "86ed63496236d8e90a726c519057c5e1c8879fdbfb3c2787e398f6a00b89af71"
+        },
+        {
+          "path": "src-server/routes/knowledge/knowledge-store-routes.ts",
+          "digest": "1e7b77218a92d2ac4a44456910ccfaa277c4d45b1e9955e0ef497ac6cc958b90"
         }
       ],
       "checks": [
@@ -14042,7 +14047,8 @@
         "Reviewed comment-only owner correction; emitted JavaScript is unchanged and the existing behavioral review scope is preserved.",
         "Reviewed integration deltas: Documented actual create-admission repair of an earlier interrupted transaction; duplicate-identity refusal does not publish the new create or repair the index. Existing public boundaries retained. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
         "Formatter-only change; parsed media metadata is identical.",
-        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
+        "Reviewed Flow Agents 6.4.0 package files, catalog, manifest, install/update/status callers and separate Station runtime provider composition. The Kit alias and update passed in an isolated local candidate install; installer/catalog bytes match 6.4.0. Pinned upstream links record the distribution source; this does not claim a new registry release or universal compatibility."
       ]
     },
     {

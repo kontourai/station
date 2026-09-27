@@ -502,6 +502,47 @@ records still need an index before they are searchable. Run
 The current route composition has no record-change subscriber that automatically
 updates this index.
 
+## Where Knowledge Kit comes from
+
+Knowledge Kit ships inside the `@kontourai/flow-agents` npm package under
+`kits/knowledge/`. It is not a separately released npm package. Its
+[manifest](https://github.com/kontourai/flow-agents/blob/9696ff6844ca21f81d95efe0885f1bd43dbe02b1/kits/knowledge/kit.json)
+declares flows, adapters, provider entry points, tests and skills. The package
+release identifies the bundled Kit bytes; the manifest's `schema_version`
+identifies the manifest format. Neither should be treated as a promise that
+Station implements every addition to the store contract.
+
+There are three separate parts to an update:
+
+| Part | How it changes |
+| --- | --- |
+| Bundled Kit | Upgrade the pinned Flow Agents package to obtain that release's Kit. |
+| Workspace Kit copy | Run that version's `flow-agents kit install knowledge --dest <bundle-root> --update`; inspect `kit status knowledge --dest <bundle-root>` for the recorded and observed content hashes. |
+| Station adapters | Change and test Station's implementation of the published contract through the normal Station release process. A Flow Agents upgrade does not replace these adapters. |
+
+The [Kit installer](https://github.com/kontourai/flow-agents/blob/9696ff6844ca21f81d95efe0885f1bd43dbe02b1/src/cli/kit.ts)
+resolves `knowledge` through its bundled catalog. A first install uses the same
+command without `--update`. Use an explicit destination: it is a Flow Agents
+bundle root, not the directory holding your knowledge records. Installation
+copies the Kit and records its content hash; activation of agent/runtime
+projections is a separate operation. See the
+[Kit authoring and installation guide](https://github.com/kontourai/flow-agents/blob/9696ff6844ca21f81d95efe0885f1bd43dbe02b1/docs/kit-authoring-guide.md).
+
+Station's normal store path is **UI or agent → public SDK/API →
+KnowledgeStoreProvider → Station adapter → records and indexes**. The
+[runtime bootstrap](../../src-server/runtime/bootstrap/runtime-service-bootstrap.ts)
+creates the provider, and the
+[store routes](../../src-server/routes/knowledge/knowledge-store-routes.ts)
+call it. These requests do not launch the Flow Agents CLI. The Kit supplies
+the shared storage contract; Station owns request authorization, registered
+roots and its adapter behavior.
+
+A separate consumer can load an installed Kit's manifest-declared provider
+entry. That is how the [repository graph interoperability check](repository-knowledge-graph.md#kit-consumer-dogfood-and-release-boundary)
+reads Station's copied records. It does not make the Kit provider a Station
+runtime dependency. That check also records fixes still awaiting publication;
+a locally tested candidate is not a published release.
+
 ## Store formats and external edits
 
 The [default file adapter](../../src-server/knowledge-store/adapters/default-store.ts)
