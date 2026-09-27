@@ -312,6 +312,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Drives the changed-verification CLI through spawnSync against a real
   // fixture worktree to prove its dependency and selection behavior.
   'scripts/__tests__/changed-verification.test.ts',
+  // #2709: drives the sharded fast-checks CLI (plan identity via `git
+  // rev-parse`, the aggregator's exit status) as child processes against
+  // throwaway Git repositories, and plans one real selection through related
+  // discovery, which is itself a Vitest child. Single-shot spawns, no
+  // wall-clock assertion.
+  'scripts/__tests__/fast-checks-shard-cli.test.ts',
   // Builds a disposable diverged Git graph and runs real Git commands to
   // distinguish candidate-only changes from base-only and direct-push ranges.
   'scripts/__tests__/classify-ci-change.test.ts',

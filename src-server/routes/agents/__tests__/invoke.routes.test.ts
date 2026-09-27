@@ -836,7 +836,8 @@ describe('Invoke Routes', () => {
     expect(controlActions.add).toHaveBeenCalledWith(1, {
       tool: 'station-control_update_skill',
       outcome: 'failure',
-      reason: 'create failed',
+      // #2795: a fixed reason; free text never becomes a metric attribute.
+      reason: 'tool_threw',
     });
   });
 
@@ -891,7 +892,8 @@ describe('Invoke Routes', () => {
     expect(controlActions.add).toHaveBeenCalledWith(1, {
       tool: 'station-control_respond_to_task_request',
       outcome: 'failure',
-      reason: 'Delegated task request is not open',
+      // #2795: a fixed reason; free text never becomes a metric attribute.
+      reason: 'tool_failed',
     });
   });
 
@@ -1019,6 +1021,349 @@ describe('Invoke Routes', () => {
       if (previousBase === undefined) delete process.env.STATION_API_BASE;
       else process.env.STATION_API_BASE = previousBase;
     }
+  });
+
+  /**
+   * #2795 (catch s5-436): every station-control family's failure, from the
+   * REAL registered handler, through the REAL invoke route: a 500, failure
+   * telemetry, and the envelope's sentence as the error — never a 200 with
+   * success telemetry, and never the stringified JSON. `fetch` answers every
+   * Station request the way the station-control guard refuses it; the
+   * scheduler row answers an indeterminate manual run instead.
+   */
+  describe('station-control tool failures through the invoke route (#2795)', () => {
+    const GUARD_SENTENCE = 'This action needs a verified calling session.';
+    const guardRefusal = {
+      success: false,
+      code: 'station_control_caller_required',
+      error: GUARD_SENTENCE,
+    };
+    const INDETERMINATE_SENTENCE = 'Scheduler run may have started';
+    const indeterminate = {
+      success: false,
+      code: 'scheduler_run_indeterminate',
+      outcome: 'indeterminate',
+      error: INDETERMINATE_SENTENCE,
+      data: {
+        output: INDETERMINATE_SENTENCE,
+        receipt: {
+          outcome: 'indeterminate',
+          message: INDETERMINATE_SENTENCE,
+          runId: 'schedule:built-in:nightly:run-1',
+        },
+      },
+    };
+    type Row = {
+      family: string;
+      tool: string;
+      args: Record<string, unknown>;
+      /** `bound`: the tool-side check passes; `none`: it refuses. */
+      caller: 'bound' | 'none';
+      answer: { status: number; body: unknown };
+      sentence: string;
+      /** The typed code the agent reads (absent: the body carries none). */
+      code?: string;
+      /** The telemetry reason: the envelope's code, else the fixed one. */
+      reason: string;
+    };
+    const rows: Row[] = [
+      {
+        family: 'tool-side refusal (withToolSideRefusal)',
+        tool: 'disable_job',
+        args: { name: 'nightly' },
+        caller: 'none',
+        answer: { status: 200, body: { success: true } },
+        sentence: 'verified calling session',
+        code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
+      },
+      {
+        family: 'agent',
+        tool: 'delete_agent',
+        args: { slug: 'a' },
+        caller: 'bound',
+        answer: { status: 403, body: guardRefusal },
+        sentence: GUARD_SENTENCE,
+        code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
+      },
+      {
+        family: 'board',
+        tool: 'board_pin',
+        args: {
+          reference: { kind: 'session', id: 's' },
+          name: 'w',
+          block: { type: 'card', body: 'hello' },
+        },
+        caller: 'bound',
+        answer: { status: 403, body: guardRefusal },
+        sentence: GUARD_SENTENCE,
+        code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
+      },
+      {
+        family: 'catalog',
+        tool: 'install_skill',
+        args: { id: 'x' },
+        caller: 'bound',
+        answer: { status: 403, body: guardRefusal },
+        sentence: GUARD_SENTENCE,
+        code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
+      },
+      {
+        family: 'operations',
+        tool: 'disable_job',
+        args: { name: 'nightly' },
+        caller: 'bound',
+        answer: { status: 403, body: guardRefusal },
+        sentence: GUARD_SENTENCE,
+        code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
+      },
+      {
+        family: 'operations (indeterminate run)',
+        tool: 'run_job',
+        args: { name: 'nightly' },
+        caller: 'bound',
+        answer: { status: 409, body: indeterminate },
+        sentence: INDETERMINATE_SENTENCE,
+        code: 'scheduler_run_indeterminate',
+        reason: 'scheduler_run_indeterminate',
+      },
+      {
+        family: 'platform',
+        tool: 'list_plugins',
+        args: {},
+        caller: 'bound',
+        answer: { status: 403, body: guardRefusal },
+        sentence: GUARD_SENTENCE,
+        code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
+      },
+      {
+        family: 'delegation',
+        tool: 'respond_to_task_request',
+        args: { taskId: 'task-1', requestId: 'request-1', decision: 'accept' },
+        caller: 'bound',
+        answer: { status: 403, body: guardRefusal },
+        sentence: 'could not resolve the delegated task request',
+        code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
+      },
+      {
+        family: 'agent notification, no caller (notify_user)',
+        tool: 'notify_user',
+        args: { title: 'Build finished' },
+        caller: 'none',
+        answer: { status: 200, body: { status: 'sent' } },
+        sentence: 'verified calling session',
+        code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
+      },
+      {
+        family: 'agent notification, guard refusal (notify_user)',
+        tool: 'notify_user',
+        args: { title: 'Build finished' },
+        caller: 'bound',
+        answer: { status: 403, body: guardRefusal },
+        sentence: 'Tool call failed',
+        code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
+      },
+      {
+        family: 'platform guidance (install_plugin)',
+        tool: 'install_plugin',
+        args: { source: './my-plugin' },
+        caller: 'bound',
+        answer: { status: 200, body: { success: true } },
+        sentence: 'Station did not install ./my-plugin',
+        reason: 'tool_failed',
+      },
+      {
+        // The runtime's generic 500: no sentence, and a correlation id that
+        // must reach neither the HTTP error nor the metric attribute.
+        family: 'runtime internal error (forwarded envelope)',
+        tool: 'get_usage',
+        args: {},
+        caller: 'bound',
+        answer: {
+          status: 500,
+          body: {
+            success: false,
+            error: {
+              code: 'internal_error',
+              correlationId: 'corr-7f3a9c11-e2b4',
+            },
+          },
+        },
+        sentence: 'Tool call failed',
+        reason: 'internal_error',
+      },
+      {
+        // The runtime auth boundary's object error: its message is the
+        // sentence, its code the reason.
+        family: 'object error with a message (forwarded envelope)',
+        tool: 'get_usage',
+        args: {},
+        caller: 'bound',
+        answer: {
+          status: 403,
+          body: {
+            error: { code: 'insufficient_scope', message: 'Scope is missing.' },
+            success: false,
+          },
+        },
+        sentence: 'Scope is missing.',
+        reason: 'insufficient_scope',
+      },
+      {
+        // Upper-case codes are real tokens too (the knowledge routes'
+        // NO_EMBEDDER), not free text.
+        family: 'upper-case code (forwarded envelope)',
+        tool: 'get_usage',
+        args: {},
+        caller: 'bound',
+        answer: {
+          status: 400,
+          body: {
+            success: false,
+            code: 'NO_EMBEDDER',
+            error: 'No embedding provider is configured.',
+          },
+        },
+        sentence: 'No embedding provider is configured.',
+        reason: 'NO_EMBEDDER',
+      },
+      {
+        // A code that is not a bounded token never becomes the attribute.
+        family: 'free-text code (forwarded envelope)',
+        tool: 'get_usage',
+        args: {},
+        caller: 'bound',
+        answer: {
+          status: 409,
+          body: {
+            success: false,
+            code: 'Retry after request 8841 finishes',
+            error: 'Busy.',
+          },
+        },
+        sentence: 'Busy.',
+        reason: 'tool_failed',
+      },
+    ];
+
+    test.each(rows)('$family: $tool', async (row) => {
+      const { createStationControlMcpServer } = await import(
+        '../../../tools/station-control-mcp-server.js'
+      );
+      const { withStationControlCallerContext, stationControlCallerPrincipal } =
+        await import('../../../tools/station-control-shared.js');
+      const { LOCAL_OPERATOR_PRINCIPAL_ID } = await import(
+        '../../../services/identity/principal-resolver.js'
+      );
+      const handler = (
+        createStationControlMcpServer() as unknown as {
+          _registeredTools: Record<
+            string,
+            { handler: (args: unknown, extra?: unknown) => Promise<unknown> }
+          >;
+        }
+      )._registeredTools[row.tool]!.handler;
+      const previousBase = process.env.STATION_API_BASE;
+      process.env.STATION_API_BASE = 'http://127.0.0.1:65009';
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: unknown) => {
+          const url = String(input);
+          const respond = (body: unknown, status: number) =>
+            new Response(JSON.stringify(body), {
+              status,
+              headers: { 'content-type': 'application/json' },
+            });
+          if (url.endsWith('/.well-known/station/v1'))
+            return respond(
+              { environmentId: 'env-self', capabilities: {} },
+              200,
+            );
+          return respond(row.answer.body, row.answer.status);
+        }),
+      );
+      const execute = vi.fn((args: unknown) =>
+        withStationControlCallerContext(
+          {
+            token: undefined,
+            resolve: () =>
+              row.caller === 'bound'
+                ? {
+                    sessionId: 'claims-operator',
+                    assurance: 'bound' as const,
+                    principal: stationControlCallerPrincipal(
+                      LOCAL_OPERATOR_PRINCIPAL_ID,
+                      'session-owner',
+                    ),
+                  }
+                : null,
+          },
+          () => handler(args, {}),
+        ),
+      );
+      vi.mocked(controlActions.add).mockClear();
+      const toolName = `station-control_${row.tool}`;
+      try {
+        const ctx = createMockCtx({
+          agentTools: new Map([
+            [
+              'default',
+              [nativeControlTool({ name: 'stationControl_tool', execute })],
+            ],
+          ]),
+          getOriginalToolName: vi.fn((name: string) =>
+            name === 'stationControl_tool' ? toolName : name,
+          ),
+        });
+        const res = await createInvokeRoutes(ctx as any).request(
+          '/agents/station/tools/stationControl_tool',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(row.args),
+          },
+        );
+
+        expect(execute).toHaveBeenCalledTimes(1);
+        const toolResult = (await execute.mock.results[0]!.value) as {
+          isError?: boolean;
+          content: Array<{ text: string }>;
+        };
+        // The agent reads the whole envelope, typed code included.
+        expect(toolResult.isError).toBe(true);
+        if (row.code !== undefined)
+          expect(JSON.parse(toolResult.content[0]!.text)).toMatchObject({
+            code: row.code,
+          });
+        // The route answers a failure, in a sentence.
+        expect(res.status).toBe(500);
+        const body = (await json(res)) as { success: boolean; error: string };
+        expect(body.success).toBe(false);
+        expect(body.error).toContain(row.sentence);
+        expect(body.error.trim().startsWith('{')).toBe(false);
+        expect(body.error).not.toContain('corr-');
+        expect(controlActions.add).toHaveBeenCalledTimes(1);
+        const [, attributes] = vi.mocked(controlActions.add).mock.calls[0]!;
+        // A bounded code or the fixed reason: never free text or an id.
+        expect(attributes).toEqual({
+          tool: toolName,
+          outcome: 'failure',
+          reason: row.reason,
+        });
+      } finally {
+        vi.unstubAllGlobals();
+        if (previousBase === undefined) delete process.env.STATION_API_BASE;
+        else process.env.STATION_API_BASE = previousBase;
+      }
+    });
   });
 
   test('a station-control-named remote tool has no native-control exemption', async () => {
