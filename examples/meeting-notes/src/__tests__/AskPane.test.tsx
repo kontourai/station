@@ -37,11 +37,10 @@ const PROJECT_B_ROOT = {
   createdAt: '2026-01-01T00:00:00.000Z',
 };
 
-vi.mock('@kontourai/station-sdk', () => ({
-  isRelevantKnowledgeRoot: (
-    root: { scope: { kind: string; projectSlug?: string } },
-    project: string | null,
-  ) => root.scope.kind === 'personal' || root.scope.projectSlug === project,
+// Only the hooks are doubled; the real SDK root-relevance filter decides
+// which roots AskPane searches.
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   useApiBase: () => ({ apiBase: 'http://localhost:3141' }),
   useNavigation: () => ({ selectedProject: 'proj-a', navigate: navigateMock }),
   useKnowledgeRootsQuery: () => ({

@@ -5,7 +5,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import { AgentIcon } from '../components/icons/AgentIcon';
-import { BrandIcon, resolveBrandKey } from '../components/icons/BrandIcon';
+import { BrandIcon } from '../components/icons/BrandIcon';
 import { IntegrationGlyph } from '../components/icons/IntegrationGlyph';
 
 describe('IntegrationGlyph (issue #691)', () => {
@@ -61,7 +61,12 @@ describe('IntegrationGlyph (issue #691)', () => {
   ])(
     'does not mistake incidental brand-like text in %s for an engine',
     (name) => {
-      expect(resolveBrandKey(name)).toBeUndefined();
+      // Display names never participate: with no engine id, the name only
+      // supplies the initials fallback.
+      const { container } = render(<BrandIcon name={name} />);
+      expect(container.querySelector('[data-brand-key]')).toBeNull();
+      expect(container.querySelector('svg, img')).toBeNull();
+      expect(container.querySelector('.brand-icon__initials')).not.toBeNull();
     },
   );
 

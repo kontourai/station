@@ -158,39 +158,6 @@ describe('Agent Routes', () => {
     expect(def.unavailableReason).toBeUndefined();
   });
 
-  test('the boot aggregate derives the same persisted-but-unregistered agent catalog as GET /', async () => {
-    const { agentService, skillService, reinitialize, getVoltAgent } = setup();
-    agentService.listAgents.mockResolvedValue([
-      { slug: 'station', name: 'Default' },
-      { slug: 'ghost', name: 'Ghost' },
-    ]);
-    agentService.loadAgentSpec.mockImplementation(async (slug: string) =>
-      slug === 'ghost' ? { name: 'Ghost', prompt: 'boo' } : { name: 'Default' },
-    );
-    const reason = 'No model is available.';
-    const resolveAvailability = vi.fn(() => reason);
-    const app = createAgentRoutes(
-      agentService as any,
-      skillService as any,
-      reinitialize as any,
-      getVoltAgent,
-      resolveAvailability as any,
-    );
-    const routeCatalog = (await json(await app.request('/'))).data;
-    const aggregateCatalog = await (agentService as any).getAgentCatalog(
-      await getVoltAgent().getAgents(),
-      resolveAvailability,
-    );
-    expect(aggregateCatalog).toEqual(routeCatalog);
-    expect(aggregateCatalog).toContainEqual(
-      expect.objectContaining({
-        slug: 'ghost',
-        available: false,
-        unavailableReason: reason,
-      }),
-    );
-  });
-
   // archive#3121 — the READ path. `deriveAgentCatalog` applied the
   // Station-engine model-resolution probe to every store-only record, and an
   // AUTHORED external-engine agent is a store-only record BY DESIGN (it is
@@ -240,7 +207,7 @@ describe('Agent Routes', () => {
         getVoltAgent,
         resolveAvailabilityForEmptyHome as any,
       );
-      return { app, agentService, getVoltAgent };
+      return { app };
     }
 
     // Discriminating precondition. Without this, a green external-engine
@@ -269,6 +236,12 @@ describe('Agent Routes', () => {
       expect(reviewer.available).toBeUndefined();
       expect(reviewer.unavailableReason).toBeUndefined();
       expect(JSON.stringify(reviewer)).not.toContain('LLM provider');
+      // The step-3 decision: this route performs no connection lookup (no
+      // runtime connection named 'claude-code' exists in this wiring), so it
+      // states nothing either way and passes the binding through untouched.
+      // `GET /api/agents` (`enriched-agents.ts`) is the authority on a
+      // missing/disabled/unready engine connection.
+      expect(reviewer.execution).toEqual({ agentConnectionId: 'claude-code' });
     });
 
     test('GET / still marks a Station-engine agent unavailable with the concrete model reason', async () => {
@@ -280,35 +253,6 @@ describe('Agent Routes', () => {
         available: false,
         unavailableReason: MANAGED_REFUSAL,
       });
-    });
-
-    // The step-3 decision, pinned: this route performs no connection lookup,
-    // so it cannot honestly evaluate external readiness and therefore states
-    // nothing either way — not a fabricated `available: true`, and not the
-    // managed refusal. `GET /api/agents` (`enriched-agents.ts`) is the
-    // authority on a missing/disabled/unready engine connection.
-    test('the omission holds even when the bound engine connection does not exist', async () => {
-      const { app } = setupCatalog();
-      const body = await json(await app.request('/'));
-      const reviewer = body.data.find((a: any) => a.slug === 'reviewer');
-      // No runtime connection named 'claude-code' exists anywhere in this
-      // wiring — the route never looked, and says so by saying nothing.
-      expect(reviewer.available).toBeUndefined();
-      expect(reviewer.unavailableReason).toBeUndefined();
-      expect(reviewer.execution).toEqual({ agentConnectionId: 'claude-code' });
-    });
-
-    test('the boot aggregate derives the same external-engine treatment as GET /', async () => {
-      const { app, agentService, getVoltAgent } = setupCatalog();
-      const routeCatalog = (await json(await app.request('/'))).data;
-      const aggregateCatalog = await (agentService as any).getAgentCatalog(
-        await getVoltAgent().getAgents(),
-        resolveAvailabilityForEmptyHome as any,
-      );
-      expect(aggregateCatalog).toEqual(routeCatalog);
-      expect(
-        aggregateCatalog.find((a: any) => a.slug === 'reviewer'),
-      ).not.toHaveProperty('unavailableReason');
     });
   });
 

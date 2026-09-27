@@ -555,3 +555,36 @@ describe('#2323 S4 Reinstall from source on the plugin detail', () => {
     ).toContain('the folder is too large to compare');
   });
 });
+
+describe('held permissions on the plugin detail (archive#3815)', () => {
+  // A granted permission is by definition not "missing", so deriving its tier
+  // from the missing list rendered every held row as Trusted. The detail panel
+  // must read each held permission's REAL tier from the ids the payload carries.
+  test('each held permission shows its real tier, not a cautious default', () => {
+    const plugin = {
+      name: 'dock',
+      displayName: 'Dock Helper',
+      version: '1.0.0',
+      permissions: {
+        declared: ['navigation.dock', 'network.fetch'],
+        granted: ['navigation.dock', 'network.fetch'],
+        missing: [],
+      },
+    };
+    viewModel = baseViewModel({
+      plugins: [plugin],
+      filtered: [plugin],
+      items: [{ id: 'dock', name: 'Dock Helper' }],
+      selectedPlugin: 'dock',
+      selected: plugin,
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    const tiers = [
+      ...document.querySelectorAll(
+        '.plugin-permissions__row .plugin-permissions__tier',
+      ),
+    ].map((tier) => tier.textContent);
+    expect(tiers).toEqual(['Passive', 'Active']);
+  });
+});

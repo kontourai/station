@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   describePermission,
   PERMISSION_LABELS,
+  revokeNeedsConfirmation,
 } from '../permission-vocabulary.js';
 
 describe('permission vocabulary', () => {
@@ -50,4 +51,15 @@ describe('permission vocabulary', () => {
       expect(describePermission(retired)).toBe('Custom permission');
     },
   );
+
+  // Removing is always safe: it narrows what a plugin may do. What differs is
+  // the cost of changing your mind. A trusted grant can only be restored
+  // through the isolated host review page, so that removal asks first.
+  test.each([
+    ['trusted', true],
+    ['active', false],
+    ['passive', false],
+  ] as const)('revoking a grant at tier %s asks first: %s', (tier, asks) => {
+    expect(revokeNeedsConfirmation(tier)).toBe(asks);
+  });
 });

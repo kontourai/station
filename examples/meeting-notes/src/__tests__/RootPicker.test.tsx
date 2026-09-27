@@ -7,11 +7,10 @@ import { RootPicker } from '../RootPicker';
 
 const useKnowledgeRootsQueryMock = vi.fn();
 
-vi.mock('@kontourai/station-sdk', () => ({
-  isRelevantKnowledgeRoot: (
-    root: { scope: { kind: string; projectSlug?: string } },
-    project: string | null,
-  ) => root.scope.kind === 'personal' || root.scope.projectSlug === project,
+// Only the hooks are doubled; the real SDK root-relevance filter decides
+// which roots RootPicker offers.
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   useNavigation: () => ({ selectedProject: 'proj-a' }),
   useKnowledgeRootsQuery: () => useKnowledgeRootsQueryMock(),
 }));

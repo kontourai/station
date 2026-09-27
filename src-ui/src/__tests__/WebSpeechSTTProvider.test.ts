@@ -265,14 +265,22 @@ describe('WebSpeechSTTProvider', () => {
       expect(rec.abort).toHaveBeenCalled();
     });
 
-    it('clears subscribers so destroy does not cause further notifications', async () => {
+    it('clears subscribers so a late recognizer event notifies nobody', async () => {
       const p = await getProvider();
       const listener = vi.fn();
       p.subscribe(listener);
+      await startProvider(p);
+      const rec = lastRec!;
+      // The recognizer's handlers do reach subscribers while it is live...
+      rec._fireStart();
+      expect(listener).toHaveBeenCalled();
       listener.mockClear();
 
       p.destroy();
-      // No notifications after destroy
+      // ...and they stay bound after destroy, so an event the aborted
+      // recognizer still delivers must find no one to notify.
+      rec._fireStart();
+      rec._fireResult('late words');
       expect(listener).not.toHaveBeenCalled();
     });
   });
