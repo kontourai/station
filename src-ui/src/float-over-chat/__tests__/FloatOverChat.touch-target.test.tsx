@@ -204,7 +204,7 @@ test('every pill control renders at least 44x44 at rest, hovered, focused and pr
       const measure = async (state: string) => {
         for (const [index, control] of (await controls.all()).entries()) {
           const box = await control.boundingBox();
-          const label = `${viewport.width}px ${state} ${names[index]}`;
+          const label = `${viewport.width}px, ${state}: ${names[index]}`;
           if (box === null) failures.push(`${label}: not rendered`);
           else if (
             box.width < MIN_TOUCH_TARGET_PX ||
@@ -215,7 +215,12 @@ test('every pill control renders at least 44x44 at rest, hovered, focused and pr
       };
       await measure('at rest');
       for (const [index, control] of (await controls.all()).entries()) {
-        await control.hover();
+        // The raw pointer, not `locator.hover()`: a control that shrinks
+        // under the pointer never settles, and its actionability wait would
+        // time out instead of reporting the size.
+        const box = await control.boundingBox();
+        if (box === null) continue;
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
         await measure(`hovering "${names[index]}"`);
         await control.focus();
         await measure(`focusing "${names[index]}"`);
