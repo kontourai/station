@@ -59,3 +59,42 @@ export function namesAnotherStation(
 ): boolean {
   return environment !== undefined && environment.kind !== 'current';
 }
+
+/**
+ * What a foreground send (`/chat` and its siblings) aims at: an input reply
+ * names its thread; a conversation that already has a session is a
+ * follow-up; anything else starts a session, owned by the caller's owner,
+ * in the Project the body names.
+ */
+export function foregroundDispatchTarget(
+  scope: StationControlDispatchScope | undefined,
+  send: {
+    readonly ownerId: string | undefined;
+    readonly projectSlug?: string;
+    readonly conversationId?: string;
+    readonly inputReplyThreadId?: string;
+    readonly remote: boolean;
+  },
+): StationControlDispatchTargetRef | undefined {
+  const { remote } = send;
+  if (send.inputReplyThreadId !== undefined)
+    return { kind: 'thread', threadId: send.inputReplyThreadId, remote };
+  if (
+    send.conversationId !== undefined &&
+    scope?.conversationExists(send.conversationId) !== false
+  )
+    return {
+      kind: 'conversation',
+      conversationId: send.conversationId,
+      remote,
+    };
+  if (send.ownerId === undefined) return undefined;
+  return {
+    kind: 'new',
+    ownerId: send.ownerId,
+    ...(send.projectSlug !== undefined
+      ? { projectSlug: send.projectSlug }
+      : {}),
+    remote,
+  };
+}

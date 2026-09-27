@@ -151,6 +151,7 @@ import {
   requestedApprovalMode,
 } from './approval-authority.js';
 import {
+  foregroundDispatchTarget,
   namesAnotherStation,
   refuseOutOfScopeDispatch,
 } from './dispatch-scope.js';
@@ -1725,41 +1726,25 @@ export function createOrchestrationRoutes(
       const scopeRefused = refuseOutOfScopeDispatch(
         c,
         deps.stationControlDispatchScope,
-        (ownerId) => {
-          const remote =
-            namesAnotherStation(body.target.environment) ||
-            body.target.workspace?.kind === 'project-portable' ||
-            (!body.target.environment &&
-              projectSlug !== undefined &&
-              namesAnotherStation(
-                deps.projectDefaultEnvironment?.(projectSlug),
-              ));
-          if (body.expectedInputRequest)
-            return {
-              kind: 'thread',
-              threadId: body.expectedInputRequest.threadId,
-              remote,
-            };
-          if (
-            body.conversationId &&
-            deps.stationControlDispatchScope?.conversationExists(
-              body.conversationId,
-            ) !== false
-          )
-            return {
-              kind: 'conversation',
-              conversationId: body.conversationId,
-              remote,
-            };
-          return ownerId
-            ? {
-                kind: 'new',
-                ownerId,
-                ...(projectSlug !== undefined ? { projectSlug } : {}),
-                remote,
-              }
-            : undefined;
-        },
+        (ownerId) =>
+          foregroundDispatchTarget(deps.stationControlDispatchScope, {
+            ownerId,
+            ...(projectSlug !== undefined ? { projectSlug } : {}),
+            ...(body.conversationId
+              ? { conversationId: body.conversationId }
+              : {}),
+            ...(body.expectedInputRequest
+              ? { inputReplyThreadId: body.expectedInputRequest.threadId }
+              : {}),
+            remote:
+              namesAnotherStation(body.target.environment) ||
+              body.target.workspace?.kind === 'project-portable' ||
+              (!body.target.environment &&
+                projectSlug !== undefined &&
+                namesAnotherStation(
+                  deps.projectDefaultEnvironment?.(projectSlug),
+                )),
+          }),
       );
       if (scopeRefused) return scopeRefused;
       const { principal, userId, ownerAttribution, fullAccessGrant } =

@@ -266,7 +266,7 @@ const PERSON_ONLY: Pick<
  * as Station's own server code (the attestation), after the route's scope
  * check. Slice C2b moves the tool-side resolution server-side.
  */
-export const REMOTE_TARGET_ROUTES: readonly StationControlRoute[] = [
+const REMOTE_TARGET_ROUTES: readonly StationControlRoute[] = [
   get('/api/environments/ssh'),
   post('/api/environments/ssh/:id/connect'),
   get('/api/environments/peers/:environmentId/credential'),
