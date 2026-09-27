@@ -6673,13 +6673,21 @@ pub(crate) async fn station_native_relay_grant_renew(
         return Err("The selected saved Station is invalid.".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let context = AppNativeRedemptionContextProvider::new(app);
-        let proof_keys = NativeRelayProofKeyVault::new();
-        let http = UreqNativeBrokerTransport::new();
-        let grants = native_relay_grant_vault();
-        NativeRelaySignalService::new(&context, &proof_keys, &http, &grants, native_now_ms_or_zero)
+        with_native_relay_route_operation_lock(|| {
+            let context = AppNativeRedemptionContextProvider::new(app);
+            let proof_keys = NativeRelayProofKeyVault::new();
+            let http = UreqNativeBrokerTransport::new();
+            let grants = native_relay_grant_vault();
+            NativeRelaySignalService::new(
+                &context,
+                &proof_keys,
+                &http,
+                &grants,
+                native_now_ms_or_zero,
+            )
             .renew(&profile_name, expected_profile_revision)
             .map_err(|_| "Station could not renew the saved native relay route.".to_owned())
+        })
     })
     .await
     .map_err(|_| "Station could not renew the saved native relay route.".to_owned())?
