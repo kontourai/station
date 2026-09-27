@@ -24,10 +24,12 @@ configuration writer (`PUT /config/app`), schema, settings registry, and runtime
 application owner. Each profile selects the exact opaque `registryKey` exposed
 by its registry provider, a `signatures` value of `optional` or `required`, and a
 map of `trustedEd25519Keys`. Values are public Ed25519 SPKI PEMs. The
-configuration writer does not check the key format: the check lives where the
-policy identity is computed (`registryTrustPolicyIdentity`), which runs when a
-candidate is observed, admitted, or published as applied. A private-key PEM is
-therefore storable as a candidate and refuses at application, not at save.
+configuration schema checks the public-key PEM envelope before persistence, so
+a private-key PEM is refused at save. Cryptographic decoding and the Ed25519
+algorithm check live where the policy identity is computed
+(`registryTrustPolicyIdentity`), which runs when a candidate is observed,
+admitted, or published as applied. A syntactically accepted public-key envelope
+is not proof that its contents form a valid Ed25519 key.
 There are at most 16 profiles and 16 keys per profile. A registry cannot supply or install its own trust anchors.
 
 Profiles apply to their selected registry. An unrelated unsigned local source

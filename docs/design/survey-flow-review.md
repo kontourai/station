@@ -49,11 +49,17 @@ The project Flow API exposes three composition operations:
   opaque session reference and delegates attachment, evaluation, and resume to
   Flow Agents and Flow.
 
-Stale run heads, stale Survey snapshots, foreign subjects, projection-source
-mismatches, duplicate opaque references, and lifecycle mismatches fail closed in
-the owning public contracts. The same Flow definition and session projection can
-therefore be resumed from Station or any local harness using the same Flow Agents
-adapter. Domain integrations, including a synthetic tax-document harvest adapter,
+Station checks the envelope's Project binding and requires exactly one match
+when resolving an opaque review reference across known Project stores. Flow
+Agents, Survey and Flow own the run-head, snapshot, subject, projection-source
+and lifecycle checks. Per-Project route failures return 400; an absent review
+provider returns 503. The cross-Project queue separately reports unavailable
+Projects while retaining healthy results. A missing workspace or session file
+is an empty state, not a completed review.
+
+Other local harnesses can compose those same public adapters. That shared
+contract does not by itself establish a successful cross-harness continuation.
+Domain integrations, including a synthetic tax-document harvest adapter,
 produce ReviewItems; Station remains domain-neutral.
 
 The `station.survey_flow_review.*` metrics record counts with bounded outcome

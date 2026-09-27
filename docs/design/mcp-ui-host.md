@@ -161,7 +161,7 @@ The preferred tool shape is nested:
 ```
 
 Station also reads `_meta["ui/resourceUri"]` from existing Apps servers. When
-both forms exist, the nested value wins.
+both forms carry string values, the nested value wins.
 
 Visibility is enforced, not merely displayed:
 
@@ -204,10 +204,13 @@ connection, and returns byte-capped content. The resource content may declare:
 }
 ```
 
-Station ignores tool-level `csp` and `permissions`, as required by the Apps
-spec. It validates resource domains, admits only HTTPS origins, and builds a
-deny-by-default policy. Permissions are limited to the Apps extension's
-supported set.
+Station ignores tool-level `csp` and `permissions`. Policy construction filters
+source strings by secure URL scheme: HTTPS for resource, frame and base-URI
+sources, and HTTPS or WSS for connections. It emits restrictive defaults plus
+the declared sources. Scheme filtering is not a complete CSP source-expression
+validator or proof of effective browser egress containment. Keep that assurance
+separate from metadata acceptance. Permissions are limited to the supported
+Apps fields.
 
 Station retains a bounded `mcp-ui.dev` embedded-result fallback for deployed
 servers that put a `ui://` resource in a tool result instead of declaring it.
@@ -224,14 +227,16 @@ The web host follows the Apps sandbox-proxy lifecycle:
    `sandbox="allow-scripts allow-same-origin"`.
 3. The proxy sends `ui/notifications/sandbox-proxy-ready`.
 4. Station sends `ui/notifications/sandbox-resource-ready` with the raw HTML and
-   sanitized resource policy.
+   parsed resource policy.
 5. The proxy creates an inner opaque-origin frame with `sandbox="allow-scripts"`
    and injects the resource's deny-by-default CSP.
 6. The proxy forwards non-reserved Apps bridge messages between Station and the
    inner View.
 
-The proxy serves only `GET /mcp-ui/proxy`. It does not receive the MCP resource
-URI, read resources, proxy arbitrary URLs, store credentials, or execute tools.
+The MCP proxy endpoint serves `GET /mcp-ui/proxy`; the same dedicated listener
+also serves the fixed `/plugin-host/frame` bootstrap. Neither is a general
+asset server. The MCP proxy does not receive the resource URI, read resources,
+proxy arbitrary URLs, store credentials, or execute tools.
 The outer proxy response applies only a `frame-ancestors` CSP, bound to the
 configured Station UI origins. It deliberately applies no resource directives
 that could be inherited by its inner `srcdoc`; the resource-specific CSP is
@@ -239,8 +244,9 @@ applied inside the inner document.
 
 The two-frame boundary prevents untrusted app code from becoming the proxy
 WindowProxy that Station trusts. Messages are also pinned to the expected
-window source. The inner frame receives no same-origin access, navigation,
-popups, modals, or undeclared network access.
+window source. The inner frame receives no same-origin access, top-level
+navigation, popup or modal permissions. Network restrictions retain the policy
+validation limits described above.
 
 If the proxy cannot start or its origin is not distinct from Station, the host
 degrades to an opaque-origin static `srcdoc` render. It never grants
@@ -254,8 +260,8 @@ host supports the initialize lifecycle, tool input and result notifications,
 size changes, display-mode requests, resource reads, and guarded tool calls.
 
 All App requests cross the same server-side authorization boundary as other
-Station actions. Browser code never holds provider credentials or a direct MCP
-transport.
+Station actions. The host bridge does not expose its configured provider
+credentials or direct MCP transport to the App.
 
 ## Threat controls
 
@@ -263,7 +269,7 @@ transport.
 | --- | --- |
 | App reaches Station DOM, cookies, or storage | Different-origin proxy plus an opaque inner frame |
 | App impersonates the trusted proxy | Inner frame has a distinct `WindowProxy`; source checks pin messages |
-| Network exfiltration | Resource-specific, deny-by-default CSP |
+| Network exfiltration | Resource-specific CSP; effective restrictions require source-expression and browser validation |
 | Camera, microphone, location, or clipboard access | Allow only validated declared permissions |
 | Cross-server tool calls | Re-resolve the frame reference and pin `serverId` |
 | Model-only tool called by an App | Enforce Apps visibility on the server |
@@ -272,6 +278,9 @@ transport.
 | Huge or hanging content | Byte caps, request timeouts, and render bounds |
 
 ## Runtime surface
+
+Tool, integration and configuration routes below are relative to Station's API
+base. The proxy route belongs to its separate frame origin.
 
 - `GET /tools/mcp-ui/resolve?ref=...`: resolve a tool and its UI pointer.
 - `GET /tools/mcp-ui/resource?ref=...`: read its declared resource.

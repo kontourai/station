@@ -2963,6 +2963,11 @@ cycles or growing a second lifecycle authority.
   keeping the factory from importing its owner back through the facade. This
   dependency shape does not make an arbitrary MCP server trusted; connection
   admission and process custody remain separate responsibilities.
+  [MCP UI policy construction](../../packages/shared/src/mcp-ui-csp.ts) is a
+  separate browser-safe leaf. Its URL-scheme filtering is not full CSP
+  source-expression validation or proof of browser network containment; the
+  [MCP host design](../design/mcp-ui-host.md#resource-loading-and-policy) owns
+  those limits and the separate frame boundary.
 - **Foreground message dispatch.** [dispatchForeground](../../src-ui/src/lib/foregroundMessageDispatch.ts)
   maps target/model, staged attachments and the approval pick's compare-and-set
   basis into the SDK `sendExecutionMessage` call. Both direct chat and

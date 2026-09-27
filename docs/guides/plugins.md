@@ -22,7 +22,7 @@ scaffold, from `packages/shared/src/plugin-scaffold.ts`):
 my-plugin/
 ├── plugin.json              # Agent Plugins 1.0 manifest (required)
 ├── package.json             # Node package
-├── build.ts                 # Calls buildPlugin() from @kontourai/station-shared
+├── build.ts                 # Calls @kontourai/station-shared/build
 ├── src/
 │   ├── index.tsx            # UI entry point — exports a `components` map
 │   └── pane.css             # Imported by index.tsx; bundled to dist/bundle.css
@@ -83,7 +83,7 @@ An Agent Plugins manifest refuses the legacy `layout` and `layouts` fields.
 ### Legacy root manifest
 
 Station still loads a manifest without `$schema`, with its fields at the root.
-All fields:
+Common fields:
 
 ```json
 {
@@ -289,16 +289,18 @@ running provider has changed.
 
 The Registry page browses installable plugins from a JSON manifest.
 
-**Out of the box there is nothing to configure.** When `registryUrl` is unset,
+When `registryUrl` is unset,
 Station serves a bundled manifest at `examples/registry/default.json`, so a
-fresh install can browse and install working examples immediately. It lists the
-dependency-free starters, so installing one never needs the network:
+checkout or distribution carrying that catalog can browse its local examples
+without a separate registry account. These are templates, not preconfigured
+external services. Building a source plugin may still prepare npm dependencies
+and need registry access; a local catalog does not promise a network-free build.
 
 | Plugin | What it shows |
 |---|---|
 | `getting-started-starter` | Agents, chat dock control, navigation, toast feedback |
 | `coding-starter` | Two Workspace Panes with labelled code examples and an owner-qualified review action |
-| `knowledge-docs-starter` | Project knowledge ingestion and search |
+| `knowledge-docs-starter` | Static document/source UI and chat entry; no real intake or search |
 | `minimal-layout` | The smallest useful layout surface |
 | `demo-layout` | A tour of Station capabilities, no external services |
 | `smart-routing` | A provider plugin with no UI entrypoint |
@@ -513,17 +515,16 @@ tool metadata. Do not add a top-level `mcpApps` manifest field to a plugin; if a
 plugin depends on an MCP server or tool, keep using `tools.required` to express
 that installation requirement.
 
-Current MCP UI support is a guarded standalone layout target only. Station can
-resolve the MCP server/tool/UI-capability state and show clear invalid,
-missing-server, missing-tool, missing-resource, unsupported, and resolved
-states. Remote/resource URLs are treated as unsupported in this milestone; no
-iframe, postMessage bridge, resource proxy, or tool proxy is enabled. If an MCP
-layout declares `approvalPolicy`, Station displays it as a requested policy but
-does not enforce it until a bridge/tool proxy security model exists. This
-milestone also excludes chat tool-result rendering for MCP Apps and a
-`station mcp-ui` CLI harness. Telemetry covers server-side MCP UI ref
-resolution outcomes (`station.mcp_ui.resolve.total`); client-only render
-mount events are not captured in this milestone.
+Current MCP Apps support resolves the pinned integration/tool and declared
+`ui://` resource, loads bounded resource content, and uses a different-origin
+sandbox proxy for interactive rendering. The older embedded-result path is
+limited to read-only-pinned layouts. The host bridge and server apply different
+parts of `approvalPolicy`; a request-supplied policy is not independent proof
+of a person's approval. Resource policy is drawn from resource metadata, not
+tool-level policy. Secure-scheme filtering is not complete CSP source-expression
+validation or browser-egress assurance. See [MCP Apps in Station](../design/mcp-ui-host.md)
+for visibility, policy, transport custody and failure boundaries. A tool ref in
+this example illustrates syntax; that tool must actually advertise a UI resource.
 
 ## Entry Point (src/index.tsx)
 
@@ -563,12 +564,14 @@ export default Main;
   prefix the keys with the plugin name (`my-plugin-workspace`); two plugins
   exporting the same key would replace each other.
 - Components receive `LayoutComponentProps`: `{ layout, activeTab, onShowChat, onLaunchPrompt }`
-- Use any hook from `@kontourai/station-sdk`
+- In-process components use exported hooks from `@kontourai/station-sdk`;
+  isolated frames use the supported host-message contract rather than the
+  host's React context
 - `@tanstack/react-query` hooks share the host's QueryClient
 
 ## SDK Integration
 
-Import everything from `@kontourai/station-sdk`. Key hooks:
+Use the documented SDK root or owning subpath. Key root hooks:
 
 ### Agents & Chat
 
@@ -767,11 +770,14 @@ Call MCP tools directly from plugin UI using `callTool` from `@kontourai/station
 import { callTool } from '@kontourai/station-sdk';
 
 // callTool(agentSlug, toolName, args)
-const result = await callTool('my-plugin:assistant', 'search_files', { query: 'hello' });
-// result: { success: boolean, response: unknown, error?: string }
+const result = await callTool('assistant', 'search_files', { query: 'hello' });
+// The operation's response value; its shape depends on the tool.
 ```
 
 This calls `POST /agents/:slug/tools/:toolName` on the server (or dev server). The dev server proxies this to the connected MCP process.
+This imperative API requires the clean persisted Agent ID. Unlike
+`useSendToChat`, it does not accept a plugin-qualified reference. Failed
+operations throw; it does not return the outer `success`/`response` envelope.
 
 ### Server-Side Fetch Proxy
 
@@ -990,7 +996,9 @@ through the host approval UI so plugin code cannot silently elevate itself.
 
 ## Plugin Dependencies
 
-Plugins can declare dependencies on other plugins. The server resolves and installs them automatically.
+Plugins can declare dependencies on other plugins. The server resolves them
+recursively during the parent's reviewed installation; the declaration itself
+does not grant trusted permissions.
 
 ```json
 {
@@ -1035,6 +1043,12 @@ Plugins can declare dependencies on other plugins. The server resolves and insta
   offering approval; approving them does not expand the supported permission set.
   The Plugins and Registry install flows route each installed dependency through
   that existing host approval before claiming its providers are active.
+
+Physical cleanup depends on the installation format. The digest-bound legacy
+dependency path can remove owned trees under those conditions. Managed portable
+dependencies instead withdraw their selections while retaining code and data
+through the installation journal. Neither path gains deletion ownership over
+an independently installed dependency merely by referencing it.
 
 ## Installation Flow
 
@@ -1195,40 +1209,40 @@ operation. Preview and install the new source when a fresh decision is needed.
 The [installation lifecycle](../design/plugin-installation-lifecycle.md) owns
 retained recovery, reset, and reclamation details.
 
-### Registry supply-chain policy tracer
+### Applied registry trust policy
 
-Station now has a server-side policy and record seam for registry package
-signatures, exact source/version/content pins, and byte-identical
-last-known-good snapshots. It is deliberately not active in the Registry UI or
-installer yet: no configured registry currently supplies a package claim, and
-Station has no configured trusted signing-key source or explicit pin-update
-action. Enforcing a required-signature policy without those trust anchors would
-make every current Registry item uninstallable while claiming stronger safety.
+The local installer verifies registry claims under the host's applied
+`registryTrust` policy. Configuration is a candidate until successful runtime
+initialization or a full rebuild publishes it. A configured profile selects an
+exact registry key and trusted public Ed25519 keys; neither a registry entry nor
+an install request supplies host trust anchors. The default bundled catalog
+has no automatic publisher trust badge.
 
-The seam binds the canonical Agent Plugins 1.0.0 manifest schema target,
-`https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`, not legacy
-Station-only manifest contribution fields. That target identifies the published
-schema the registry claim says its root `plugin.json` uses; this tracer does not
-yet validate the manifest against that schema. Trust anchors
-come from local policy and never from the registry document being verified.
-The signature binds registry identity, registry source, package identity,
-version, source, and complete source-tree digest. A source/version change is
-refused under exact pinning unless a separately authorized pin update is
-present; an accepted provenance change explicitly requires the existing
-installer to invalidate/rebind grants before loading replacement code.
+A profile requires a corresponding package claim even when its signature mode
+is `optional`. Preview exposes an opaque `registryTrustRevision`; install
+consent echoes that observation, including dependency decisions. Verification
+binds registry, source, package/version and source-tree digest. The manifest is
+validated separately, and the built artifact has its own digest. A signature
+does not establish harmless code, a sandbox or reproducible builds.
 
-`RegistryLastKnownGoodStore` writes no live plugin tree. It archives one prior
-tree under the Station home, verifies the copy's complete tree digest, and can
-produce a second verified staging tree. Runtime rollback must feed that staging
-tree back through `installPluginFromSource` so the existing content lock,
-agents, integrations, grants, providers, configuration generation, and rollback
-receipts remain the only installation transaction. Until that integration is
-landed, signed installation, explicit pin updates, and user-triggered rollback
-are **NOT_AVAILABLE**.
+Managed retained recovery uses its journal-bound artifact, current policy and
+fresh consent. It does not fetch the original source or registry. Changed
+claims, signing principals or policy epochs require reviewed continuity; there
+is no general pin-update/migration or user-facing code-rollback operation here.
+`RegistryLastKnownGoodStore` remains a separate archive utility, not the owner
+of managed recovery. See [Applied registry trust policy](../design/registry-trust-policy.md)
+and [installation lifecycle](../design/plugin-installation-lifecycle.md) for
+refusals, retention and the legacy path's limits.
 
 ## Build System
 
 Layout plugins (with `entrypoint`) are built automatically by the server using esbuild. No custom build script needed.
+
+The shared builder owns dependency preparation. A managed Station workspace
+must already have its dependencies prepared with `npm run dependencies:ci`.
+For a standalone plugin, `ensurePluginDeps` runs a bounded npm installation
+with lifecycle scripts disabled, so registry access may be required before
+bundling. A dependency timeout is a failed build attempt, not a ready plugin.
 
 ### package.json
 
@@ -1283,9 +1297,11 @@ ranges against the public npm registry, and package publishing runs that check
 before building or publishing. A local workspace version is never substituted
 unless that range already resolves for an external author on public npm.
 
-`@kontourai/station-sdk` and `@kontourai/station-shared` are peer dependencies —
-the Station host provides them at runtime, and `buildPlugin` externalizes them
-rather than bundling them.
+The scaffold declares SDK/shared peer dependencies. The browser SDK root and
+its admitted client/voice entries are host-provided externals. The Node
+`@kontourai/station-shared/build` entry is build-time tooling; shared runtime
+helpers are not a blanket host external. Check the builder's actual allowlist
+before importing another subpath into browser code.
 
 ### Shared Modules (Externals)
 
@@ -1295,6 +1311,7 @@ These are provided by the host at runtime via `window.__station_ai_shared` and m
 |--------|-------|
 | `react`, `react/jsx-runtime`, `react/jsx-dev-runtime` | React runtime |
 | `@kontourai/station-sdk` | All SDK hooks and utilities |
+| `@kontourai/station-sdk/client`, `@kontourai/station-sdk/voice` | Admitted React-free client and voice runtime entries |
 | `@kontourai/station-components` | Shared UI components |
 | `@tanstack/react-query` | Shares host's QueryClient |
 | `dompurify` | HTML sanitization — host-loaded on demand (see below) |
@@ -1322,12 +1339,12 @@ await window.__station_ai_shared_ready();
 const sdk = window.__station_ai_shared['@kontourai/station-sdk'];
 ```
 
-The SDK barrel moved because it was published with a namespace import, which
-materializes every export whether or not the host app uses it — pinning 43
-app-unreached SDK modules into the entry chunk. Deferring it took ~22.8KB gzip
-out of first paint.
+The earlier SDK-barrel change reported 43 app-unreached modules and about
+22.8 KB gzip removed from first paint. Those figures describe that historical
+measurement, not the current bundle size. The maintained contract is the lazy
+readiness boundary above.
 
-The centralized build handles externalization automatically. If you use a custom `build.mjs`, externalize these modules and add the runtime shim (see `packages/shared/src/index.ts` for `RUNTIME_SHIM` and `SHARED_EXTERNALS`).
+The centralized build handles externalization automatically. If you use a custom `build.mjs`, externalize these modules and add the runtime shim (see `packages/shared/src/build.ts` for `RUNTIME_SHIM` and `SHARED_EXTERNALS`).
 
 ### Output
 
@@ -1388,8 +1405,10 @@ The dev server:
   - `POST /agents/:slug/tools/:toolName` — call a tool
   - `POST /api/plugins/fetch` — server-side fetch proxy
 
-Dependencies declared in `plugin.json` are auto-installed from
-`<STATION_HOME>/plugins/` on dev server start.
+The dev server reads installed dependencies from `<STATION_HOME>/plugins/` and
+starts the existing install command for a missing dependency with a resolved
+source. That is an installation attempt, not proof that consent, activation or
+dependency readiness completed before the preview starts.
 
 Direct `--host` or non-loopback HTTP exposure is not supported. For remote development, run `station plugin dev 4300` on the development host, forward it with `ssh -N -L 4300:127.0.0.1:4300 user@dev-host`, and open `http://127.0.0.1:4300` locally. The privileged file, MCP, fetch, and reload routes enforce the same exact loopback browser boundary.
 
@@ -1402,7 +1421,7 @@ npm run build   # tsx build.ts        — dist/bundle.js, production, no sourcem
 npm run dev     # tsx build.ts --dev  — dist/bundle-dev.js, inline sourcemaps
 ```
 
-Both run `buildPlugin()` from `@kontourai/station-shared`. These are one-shot
+Both run `buildPlugin()` from `@kontourai/station-shared/build`. These are one-shot
 builds — they do not watch or serve; use `station plugin dev` above for the
 watching preview server.
 
@@ -1443,6 +1462,10 @@ The module can export:
 - `operationalEvents.observe(input)` — handle one manifest-declared operational event with a stable idempotency key, attempt, host-selected projection, and abort signal
 
 Each request gets a correlation ID. Station exposes it to request hooks and returns it as the `x-station-correlation-id` response header. The `register()` context itself contains `pluginName`, `projectHomeDir`, `logger`, and config helpers.
+
+An incoming correlation header is reused when present. Station does not inject
+a newly generated ID into the plugin's request headers; use the lifecycle hook
+or response header for that host-generated value.
 
 ```js
 export const hooks = {
@@ -1543,7 +1566,10 @@ by plugin code.
 }
 ```
 
-Agent slugs are namespaced as `<plugin-name>:<agent-slug>` when installed.
+Installed Agent IDs remain clean and globally unique; the installer refuses an
+existing ID rather than adding a namespace prefix. Choose a unique ID if the
+scaffold's `assistant` is already owned. The `'<plugin>:<agent>'` form accepted
+by `useSendToChat` is an ownership-checked reference, not the stored Agent ID.
 
 ## Links
 

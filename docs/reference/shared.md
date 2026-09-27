@@ -987,6 +987,11 @@ credential-consent or sandbox boundary. Calling them can spawn configured
 processes or make network requests; the examples require caller-owned fixtures
 or explicitly configured integrations.
 
+The browser-safe `@kontourai/station-shared/mcp-ui-csp` leaf constructs resource
+policy separately from these Node transports. It filters URL schemes and emits
+directives; that alone is not complete CSP source-expression validation or
+browser network-containment proof. See the [MCP host boundary](../design/mcp-ui-host.md#resource-loading-and-policy).
+
 ### types
 
 ```ts

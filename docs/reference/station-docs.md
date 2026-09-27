@@ -267,6 +267,12 @@ connections, OpenTelemetry for configured observability, and MCP-UI for
 rendered tool resources. Each integration has its own supported mechanisms
 and prerequisites.
 
+MCP App frames have a separate resource-policy boundary. URL-scheme filtering
+does not by itself establish complete CSP source-expression validation or
+browser network containment. See [MCP Apps in Station](../design/mcp-ui-host.md)
+for the current construction and isolation limits; ordinary tool availability
+is not rendering qualification.
+
 ## Writing a plugin: manifest, Workspace Panes, SDK hooks, validation and install
 
 This topic introduces two Workspace Pane contribution shapes. A plugin folder

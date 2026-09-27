@@ -2864,6 +2864,12 @@ On the server, Station-control failures marked as MCP `isError` are read by the
 [raw invoke route](../../src-server/routes/agents/invoke-agent.ts); the shared
 MCP `callTool` helper still returns the protocol result for its caller to interpret.
 
+MCP App rendering is a separate [host boundary](../design/mcp-ui-host.md), with
+integration pinning, resource policy and frame isolation. Resource URL-scheme
+filtering is not complete CSP source-expression validation or a guarantee of
+effective browser network containment. An ordinary SDK tool call does not
+establish that rendering qualification.
+
 ## Utilities
 
 ### `ListenerManager`

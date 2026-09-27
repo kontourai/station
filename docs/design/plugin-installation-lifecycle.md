@@ -135,7 +135,10 @@ by startup or a catalog read.
 
 ## Local-first and hosted behavior
 
-Local installation works without a server or account. A hosted adapter may
+The local adapter requires no hosted control plane or registry account for a
+local source. The public Station CLI still sends install operations to the
+selected Station runtime; it is not a serverless installation command.
+A hosted adapter may
 replace artifact transport and installation-state persistence while preserving
 the same expected-revision, admission, retention and failure semantics. It
 must declare unsupported capabilities, such as stable snapshots or terminal
@@ -145,6 +148,12 @@ This change does not replicate authorization through a multi-writer cache,
 introduce last-write-wins grant synchronization, or publish a hosted adapter.
 Organization policy remains evaluated by its owning authority; offline local
 scope does not become authority for an enterprise-managed installation.
+
+Git-based update discovery uses the package's own repository metadata; an
+enclosing Station checkout is not its update source. Local registry-directory
+sources refuse Git metadata, using the shared metadata-name rule during source
+inspection/copying. These source checks do not grant execution or deletion
+authority. See the current [plugin guide](../guides/plugins.md).
 
 ## Bounded live state and durable retention
 

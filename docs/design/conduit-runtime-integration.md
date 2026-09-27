@@ -38,7 +38,10 @@ of every provider's execution or cancellation behavior.
 
 The committed [JSON evidence](../conformance/station-runtime-conformance.json)
 and [generated matrix](../conformance/station-runtime-conformance.md) are
-host-bound to exact framework versions in `pnpm-lock.yaml`. The
+labelled host-bound to exact framework versions in `pnpm-lock.yaml`. These
+portable probes exercise the Station projection and record the lockfile's host
+identities; they do not connect a model provider or execute an entire framework
+invocation. The
 [generator](../../scripts/generate-runtime-conformance.mjs) reads the root
 importer's locked versions. Run
 `npm run conduit:conformance:generate` after changing Conduit or a framework.
