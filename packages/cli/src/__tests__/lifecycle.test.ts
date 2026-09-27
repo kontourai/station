@@ -154,22 +154,22 @@ function getInstanceStatePath(instanceId: string, cwd = TEST_CWD): string {
  */
 function liveStateRecords(): Array<Record<string, any>> {
   return [
-    TEST_INSTANCE_STATE_DIR,
-    ...[
-      TEST_DEFAULT_HOME,
-      TEST_ALT_HOME,
-      TEST_SECOND_HOME,
-      TEST_ROOTED_HOME,
-    ].map(archiveStateDir),
-  ].flatMap((directory) =>
-    existsSync(directory)
-      ? readdirSync(directory)
-          .filter((entry) => entry.endsWith('.json'))
-          .map((entry) =>
-            JSON.parse(readFileSync(join(directory, entry), 'utf8')),
-          )
-      : [],
-  );
+    ...stateRecordsIn(TEST_INSTANCE_STATE_DIR),
+    ...stateRecordsIn(archiveStateDir(TEST_DEFAULT_HOME)),
+    ...stateRecordsIn(archiveStateDir(TEST_ALT_HOME)),
+    ...stateRecordsIn(archiveStateDir(TEST_SECOND_HOME)),
+    ...stateRecordsIn(archiveStateDir(TEST_ROOTED_HOME)),
+  ];
+}
+
+function stateRecordsIn(directory: string) {
+  return existsSync(directory)
+    ? readdirSync(directory)
+        .filter((entry) => entry.endsWith('.json'))
+        .map((entry) =>
+          JSON.parse(readFileSync(join(directory, entry), 'utf8')),
+        )
+    : [];
 }
 
 function readyLifecycleFetch(url: string | URL | Request): Promise<Response> {
