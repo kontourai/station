@@ -24,6 +24,15 @@ look complete.
 - **NOT_VERIFIED** means a trustworthy exact observation was unavailable. It is
   not a pass and does not authorize completion.
 
+**INFRASTRUCTURE_ERROR** separately identifies a runner/deadline failure; it
+is not a product assertion failure or a pass. The owner is
+[`product-law-gate.mjs`](../../scripts/product-law-gate.mjs), with
+[`product-laws.mjs`](../../scripts/lib/product-laws.mjs) and
+[`product-laws.json`](../../config/product-laws.json) defining the bounded set.
+The structured reporter must contain the exact selector once and passing; a
+file-level exit, skipped test or nearby title is insufficient. These selected
+laws do not prove every product invariant.
+
 Product-law observations inform verification; they do not create a second
 completion receipt. Follow the repository contribution guide for the current
 authoring and verification workflow.

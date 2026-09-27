@@ -4,7 +4,11 @@ This integration preview binds explicitly paired Stations to real Task-room
 identities. It supports durable preparation and live binding checks. It does not
 move a home, activate a target, resume Agents, or enable hosted tenant sharing.
 The [authority design](../design/channel-home-authority.md) owns the protocol and
-remaining execution requirements.
+remaining execution requirements. The mounted owner is
+[`home-authority-routes.ts`](../../src-server/routes/environments/home-authority-routes.ts),
+composed by [`runtime-routes.ts`](../../src-server/runtime/routes/runtime-routes.ts)
+with the optional external database. Private adapters below are distinct from
+that API; their existence does not enable target execution.
 
 ## Run separate Station identities
 
@@ -310,7 +314,7 @@ The personal-controller prototype exposes only these control-session endpoints:
 Every successful OBSERVATION carries execution-transfer and resume flags, and
 both are always false; a refusal carries only its `kind` and has no such
 flags, so it is not a place those flags could be true. A malformed body is
-refused with 400 before any authority runs, so a payload that can never
+refused with 400 before this route's control-session authority runs, so a payload that can never
 succeed is distinguishable from a 409 the caller can act on. There is no
 admission begin/finish endpoint, room writer, Agent launch or target
 activation in this slice.
