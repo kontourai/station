@@ -60,7 +60,7 @@ function validate(value: unknown): PluginSourceStagingData {
   };
 }
 
-export class PluginSourceStagingUnavailableError extends Error {
+class PluginSourceStagingUnavailableError extends Error {
   constructor(cause: unknown) {
     super(
       `Plugin source staging is unreadable (${PLUGIN_SOURCE_STAGING_FILE} in the Station home), so Station cannot tell whether this source must be installed without its git metadata. Repair that file, then retry.`,
