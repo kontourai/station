@@ -1,6 +1,6 @@
 import { readWithStallWatchdog } from '@kontourai/station-contracts/stall-watchdog';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
-import { ChatHttpError } from '../client/chatHttpError';
+import { ChatHttpError, isStationEnvelope } from '../client/chatHttpError';
 import { resolveApiBase } from '../query-core';
 import type {
   ChatAttachmentInput,
@@ -26,11 +26,16 @@ async function buildChatHttpError(response: Response): Promise<ChatHttpError> {
       body && typeof body.code === 'string' && body.code.length > 0
         ? body.code
         : undefined;
-    return new ChatHttpError(response.status, serverMessage, code);
+    return new ChatHttpError(
+      response.status,
+      serverMessage,
+      code,
+      isStationEnvelope(body),
+    );
   } catch {
     // Body isn't JSON (or is empty) — fall back to a generic status message
-    // rather than failing to construct an error at all.
-    return new ChatHttpError(response.status);
+    // rather than failing to construct an error at all. Not Station's answer.
+    return new ChatHttpError(response.status, undefined, undefined, false);
   }
 }
 

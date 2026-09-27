@@ -22,7 +22,7 @@ import {
   readEnvelopeFailure,
   StationHttpError,
 } from './api-error-message';
-import { ChatHttpError } from './chatHttpError';
+import { ChatHttpError, isStationEnvelope } from './chatHttpError';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 /**
  * #2436: an approval-posture decision a send carries (a pick made before the
@@ -121,6 +121,8 @@ export class ForegroundMessageIndeterminateError extends ChatHttpError {
             code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
           })
         : first,
+      // Only Station's own answer names this outcome with its detail.
+      true,
     );
     this.detail = (
       typeof first === 'number' ? third : second
@@ -140,6 +142,18 @@ type ExecutionErrorResponse = {
   session?: unknown;
 };
 
+/** A refused execution request, marked with whether Station answered it. */
+function chatRefusal(
+  response: Response,
+  body: unknown,
+  fallback: string,
+): ChatHttpError {
+  return new ChatHttpError(
+    envelopeError(response, body, fallback),
+    isStationEnvelope(body),
+  );
+}
+
 /**
  * The parsed body. A failure whose body is not JSON (a proxy's HTML 502)
  * throws a `ChatHttpError` with the status it arrived under (#2708); an
@@ -151,7 +165,7 @@ async function readExecutionBody(response: Response): Promise<unknown> {
   } catch (error) {
     if (!response.ok) {
       const failed = `Execution API error: ${response.status}`;
-      throw new ChatHttpError(envelopeError(response, undefined, failed));
+      throw chatRefusal(response, undefined, failed);
     }
     throw error;
   }
@@ -220,7 +234,7 @@ function readExecutionReceipt(
       throw providerTurnIdentityUnavailable(failure.message);
     }
     const failed = `Execution API error: ${response.status}`;
-    throw new ChatHttpError(envelopeError(response, result, failed));
+    throw chatRefusal(response, result, failed);
   }
   if (
     typeof result.data.providerTurnId !== 'string' ||
@@ -321,12 +335,10 @@ export async function getConversationHandoffStatus(
     code?: string;
   };
   if (!response.ok || !result.success || !result.data) {
-    throw new ChatHttpError(
-      envelopeError(
-        response,
-        result,
-        'Conversation handoff status is unavailable.',
-      ),
+    throw chatRefusal(
+      response,
+      result,
+      'Conversation handoff status is unavailable.',
     );
   }
   return result.data;
@@ -352,12 +364,10 @@ export async function reserveConversationContextBoundary(
     code?: string;
   };
   if (!response.ok || !result.success || !result.data)
-    throw new ChatHttpError(
-      envelopeError(
-        response,
-        result,
-        'Conversation context boundary is unavailable.',
-      ),
+    throw chatRefusal(
+      response,
+      result,
+      'Conversation context boundary is unavailable.',
     );
   return result.data;
 }
@@ -379,12 +389,10 @@ export async function getConversationContextBoundaryStatus(
     code?: string;
   };
   if (!response.ok || !result.success || !result.data)
-    throw new ChatHttpError(
-      envelopeError(
-        response,
-        result,
-        'Conversation context boundary is unavailable.',
-      ),
+    throw chatRefusal(
+      response,
+      result,
+      'Conversation context boundary is unavailable.',
     );
   return result.data;
 }
@@ -407,12 +415,10 @@ export async function cancelConversationContextBoundary(
     code?: string;
   };
   if (!response.ok || !result.success || !result.data)
-    throw new ChatHttpError(
-      envelopeError(
-        response,
-        result,
-        'Conversation context boundary cannot be cancelled.',
-      ),
+    throw chatRefusal(
+      response,
+      result,
+      'Conversation context boundary cannot be cancelled.',
     );
   return result.data;
 }

@@ -411,6 +411,44 @@ describe('#2708 A-3a fetchers keep what Station answered', () => {
     expect((error as TaskBasisRequestError).code).toBeUndefined();
   });
 
+  // #2708 A-3a review: a chat refusal says whether Station answered it, so
+  // a caller never treats a proxy's page as a definitive refusal.
+  it.each([
+    ['a Station refusal', () => jsonResponse(GUARD, 403), true],
+    ['a Station validation refusal', () => jsonResponse(VALIDATION, 400), true],
+    [
+      "the runtime's auth refusal",
+      () => jsonResponse({ error: { code: 'insufficient_scope' } }, 403),
+      true,
+    ],
+    ['a proxy HTML page', () => htmlResponse(403), false],
+    [
+      'JSON that is not an envelope',
+      () => jsonResponse({ message: 'Forbidden' }, 403),
+      false,
+    ],
+  ] as const)(
+    'execution: %s is marked stationEnvelope=%s',
+    async (_name, answer, expected) => {
+      for (const call of [
+        () => sendExecutionMessage(API, message),
+        () => getConversationHandoffStatus(API, 'c1', 'k1'),
+      ]) {
+        vi.mocked(fetch).mockResolvedValue(answer());
+        const error = await call().catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ChatHttpError);
+        expect((error as ChatHttpError).stationEnvelope).toBe(expected);
+      }
+    },
+  );
+
+  it('ChatHttpError positional form is a Station answer unless told not', () => {
+    expect(new ChatHttpError(400, 'no').stationEnvelope).toBe(true);
+    expect(
+      new ChatHttpError(403, undefined, undefined, false).stationEnvelope,
+    ).toBe(false);
+  });
+
   it('ChatHttpError keeps its positional form and is a StationHttpError', () => {
     const error = new ChatHttpError(409, 'busy', 'turn_in_progress');
 

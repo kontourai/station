@@ -453,6 +453,44 @@ describe('ConversationHandoffDialog', () => {
     expect(onDefiniteFailure).toHaveBeenCalledOnce();
   });
 
+  // #2708 A-3a review: a proxy's page keeps its status on the error, but it
+  // is not Station's answer — the handoff stays indeterminate and retained.
+  test.each([403, 502])(
+    'a proxy HTML %i from the real fetcher stays indeterminate',
+    async (status) => {
+      const actual = await vi.importActual<
+        typeof import('@kontourai/station-sdk/client')
+      >('@kontourai/station-sdk/client');
+      const previous = globalThis.fetch;
+      globalThis.fetch = (async () =>
+        new Response('<html>Bad gateway</html>', { status })) as typeof fetch;
+      let failure: unknown;
+      try {
+        failure = await actual
+          .handoffExecutionMessage('http://station.test', 'c1', {
+            idempotencyKey: 'k1',
+          } as never)
+          .catch((caught: unknown) => caught);
+      } finally {
+        globalThis.fetch = previous;
+      }
+      expect(failure).toMatchObject({ status, stationEnvelope: false });
+      handoffExecutionMessage.mockRejectedValueOnce(failure);
+      const { onDefiniteFailure } = renderDialog();
+      fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole('alert').textContent).toContain(
+          'final response',
+        ),
+      );
+      expect(onDefiniteFailure).not.toHaveBeenCalled();
+    },
+  );
+
   test('a failed provider turn still applies the Agent switch once and clears pending retry', async () => {
     handoffExecutionMessage.mockRejectedValueOnce(
       new TypeError('response lost'),

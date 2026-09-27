@@ -2426,7 +2426,8 @@ error the envelope helper made of the response, so they keep its status,
 `code` on the error and on its `envelope`, and keeps the refusal's `details`
 and `Retry-After`. `ChatHttpError`, thrown by the execution fetchers, now
 extends `StationHttpError`; `serverMessage` still holds the route's sentence,
-and `ForegroundMessageIndeterminateError` keeps its `detail` and fixed
+`stationEnvelope` is `false` when the body was not Station's answer (a proxy's
+HTML page keeps its status but proves nothing Station decided), and `ForegroundMessageIndeterminateError` keeps its `detail` and fixed
 `code`. Both still accept their positional constructor.
 `ProjectTaskRoomProtocolError` keeps the refusal's `status`, `code`, `details`
 and `Retry-After` when Station refused the request, and none of them for a

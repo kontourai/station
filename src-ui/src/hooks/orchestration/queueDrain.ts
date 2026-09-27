@@ -68,12 +68,15 @@ const RETRYABLE_REJECTION_CODES: ReadonlySet<string> = new Set([
  * loop (archive#3027). Discriminated on the SDK's typed
  * ChatHttpError seam (status + parsed body code), never on reason text.
  * Excluded from the drop, keeping the requeue path:
+ * - a response that is not Station's answer (a proxy's HTML 403 or 404,
+ *   #2708): it keeps its status but says nothing Station decided;
  * - indeterminate refusals: the turn MAY have started;
  * - 401 (re-pairing/auth recovery fixes it), 408/429 (timeout/backpressure);
  * - server-declared-retryable body codes (see RETRYABLE_REJECTION_CODES).
  */
 function isDefinitiveClientRejection(error: unknown): boolean {
   if (!(error instanceof ChatHttpError)) return false;
+  if (!error.stationEnvelope) return false;
   if (error.status < 400 || error.status >= 500) return false;
   if (error.status === 401 || error.status === 408 || error.status === 429) {
     return false;

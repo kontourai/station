@@ -16,8 +16,13 @@ bare `SyntaxError`; an unreadable 2xx is still a plain `Error`.
 - `ChatHttpError` now extends `StationHttpError`, so it carries `details` and
   `retryAfterMs` too, and a `catch` that tests `instanceof StationHttpError`
   first now also matches it. It gains a constructor that takes the
-  `StationHttpError` the client built; `(status, serverMessage, code)` still
-  works. `ForegroundMessageIndeterminateError` likewise gains a
+  `StationHttpError` the client built and whether the body was Station's
+  own answer; `(status, serverMessage, code)` still works, with an optional
+  fourth `stationEnvelope` argument (default `true`). The new
+  `stationEnvelope` field is `false` when the body was not Station's answer —
+  a proxy's HTML page, or JSON that is not an envelope — so a caller can
+  keep such a failure retryable instead of treating it as a definitive
+  refusal. `ForegroundMessageIndeterminateError` likewise gains a
   `(failure, detail)` form beside `(status, message, detail)`.
 - `ProjectTaskRoomProtocolError` gains optional `status`, `code`, `details`
   and `retryAfterMs`, set only when Station refused the request.

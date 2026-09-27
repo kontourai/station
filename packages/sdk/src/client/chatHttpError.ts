@@ -15,24 +15,58 @@ import { StationHttpError } from './api-error-message';
 export class ChatHttpError extends StationHttpError {
   readonly serverMessage?: string;
 
-  constructor(failure: StationHttpError);
-  constructor(status: number, serverMessage?: string, code?: string);
+  /**
+   * Whether the body parsed as Station's own answer (`isStationEnvelope`).
+   * A proxy or gateway page (an HTML 403 or 502) keeps its status but is
+   * `false`: it says nothing about what Station decided, so a caller must not
+   * treat it as a definitive refusal of the request (#2708).
+   */
+  readonly stationEnvelope: boolean;
+
+  constructor(failure: StationHttpError, stationEnvelope: boolean);
+  /** Built from a parsed Station answer unless `stationEnvelope` says not. */
   constructor(
-    first: number | StationHttpError,
+    status: number,
     serverMessage?: string,
     code?: string,
+    stationEnvelope?: boolean,
+  );
+  constructor(
+    first: number | StationHttpError,
+    second?: string | boolean,
+    code?: string,
+    stationEnvelope = true,
   ) {
     if (typeof first === 'number') {
+      const serverMessage = second as string | undefined;
       super(
         first,
         serverMessage ?? `HTTP ${first}`,
         code === undefined ? undefined : { code },
       );
       this.serverMessage = serverMessage;
+      this.stationEnvelope = stationEnvelope;
     } else {
       super(first.status, first.message, first);
       this.serverMessage = first.message;
+      this.stationEnvelope = second as boolean;
     }
     this.name = 'ChatHttpError';
   }
+}
+
+/**
+ * Whether a parsed body is Station's own answer: a route envelope (a boolean
+ * `success`) or the runtime's auth refusal (`{ error: { code } }`). Anything
+ * else — no JSON, or some other JSON — came from something in between.
+ */
+export function isStationEnvelope(body: unknown): boolean {
+  if (typeof body !== 'object' || body === null) return false;
+  const value = body as { success?: unknown; error?: unknown };
+  if (typeof value.success === 'boolean') return true;
+  return (
+    typeof value.error === 'object' &&
+    value.error !== null &&
+    typeof (value.error as { code?: unknown }).code === 'string'
+  );
 }

@@ -379,6 +379,76 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(afterFailure.unsentMessages).toBeUndefined();
   });
 
+  // #2708 A-3a review: only Station's own refusal is definitive. A proxy's
+  // page keeps its status on the error but must not drop the person's
+  // message; a 5xx is never definitive. Driven through the REAL execution
+  // fetcher so the flag the drain reads is the one the fetcher derives.
+  const html = (status: number) =>
+    new Response('<html>Forbidden</html>', {
+      status,
+      headers: { 'content-type': 'text/html' },
+    });
+  const envelope = (status: number, body: unknown) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+  test.each([
+    ['a proxy HTML 403', () => html(403), 'requeued'],
+    ['a proxy HTML 404', () => html(404), 'requeued'],
+    [
+      'a gateway JSON 403 that is not an envelope',
+      () => envelope(403, { message: 'Forbidden' }),
+      'requeued',
+    ],
+    ['a proxy HTML 502', () => html(502), 'requeued'],
+    [
+      'a Station 500 refusal',
+      () => envelope(500, { success: false, error: 'Station failed.' }),
+      'requeued',
+    ],
+    [
+      'a Station 400 refusal',
+      () =>
+        envelope(400, {
+          success: false,
+          error: 'Agent has no authored Agent definition.',
+        }),
+      'dropped',
+    ],
+  ] as const)(
+    '%s from the real fetcher is %s',
+    async (_name, answer, verdict) => {
+      const actual = await vi.importActual<
+        typeof import('@kontourai/station-sdk/client')
+      >('@kontourai/station-sdk/client');
+      vi.stubGlobal('fetch', async () => answer());
+      sendExecutionMessageMock.mockImplementationOnce(
+        (...args: Parameters<typeof actual.sendExecutionMessage>) =>
+          actual.sendExecutionMessage(...args),
+      );
+      activeChatsStore.updateChat(threadId, {
+        queuedMessages: ['queued message'],
+      });
+
+      drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.dynamicImportSettled();
+
+      expect(sendExecutionMessageMock).toHaveBeenCalledOnce();
+      const after = activeChatsStore.getSnapshot()[threadId];
+      if (verdict === 'dropped') {
+        expect(after.queuedMessages).toEqual([]);
+        expect(after.unsentMessages).toEqual([
+          expect.objectContaining({ content: 'queued message' }),
+        ]);
+      } else {
+        expect(after.queuedMessages).toEqual(['queued message']);
+        expect(after.unsentMessages).toBeUndefined();
+      }
+    },
+  );
+
   // Two drops accumulate — the second must not overwrite the first: each row
   // is a distinct piece of user text.
   test('a second permanent drop appends to the existing unsent records', async () => {

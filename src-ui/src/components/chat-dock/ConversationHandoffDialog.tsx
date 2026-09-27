@@ -281,7 +281,17 @@ export function ConversationHandoffDialog({
         typeof error === 'object' && error !== null
           ? (error as { outcome?: unknown }).outcome
           : undefined;
-      if (typeof status !== 'number' || outcome === 'indeterminate') {
+      // #2708: a proxy's page (an HTML 403 or 502) keeps its status but is
+      // not Station's answer, so it proves nothing about the handoff.
+      const stationAnswered =
+        typeof error === 'object' &&
+        error !== null &&
+        (error as { stationEnvelope?: unknown }).stationEnvelope !== false;
+      if (
+        typeof status !== 'number' ||
+        outcome === 'indeterminate' ||
+        !stationAnswered
+      ) {
         setState('indeterminate');
         setFeedback(
           'Station did not receive a final response. Check status or retry safely with the retained request.',
