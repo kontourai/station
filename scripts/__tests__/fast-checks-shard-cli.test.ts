@@ -33,6 +33,7 @@ import {
   vitestExecutionsForGroups,
 } from '../run-changed-verification.mjs';
 import { buildTestImpactManifest } from '../test-impact-manifest.mjs';
+import { listWorkspacePackageManifests } from '../workspace-dependency-provenance.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -992,5 +993,95 @@ describe('the plan command gives discovery the plan step budget (#2855)', () => 
     expect(status).toBe(0);
     expect(FAST_CHECKS_PLAN_BUDGET_MS).toBe(300_000);
     expect(seen).toEqual([5_000 + 300_000]);
+  });
+});
+
+describe('the selector CLI takes its discovery deadline from run-ci-fast (#2855 review M2)', () => {
+  test('with the deadline almost spent, the real CLI refuses discovery and writes an infrastructure_error receipt', {
+    timeout: 180_000,
+  }, () => {
+    // A disposable worktree with one changed script, so the selection has
+    // a related path and reaches discovery; the only way the refusal can
+    // happen is the CLI reading STATION_TEST_CHANGED_DEADLINE_AT.
+    const worktree = join(makeTempDir('station-changed-deadline-'), 'wt');
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync('git', args, {
+        cwd,
+        encoding: 'utf8',
+        windowsHide: true,
+      }).trim();
+    git(root, 'worktree', 'add', '--detach', worktree, 'HEAD');
+    let failure: unknown;
+    try {
+      // node_modules is a directory of links to the primary install, except
+      // workspace packages, which point at this worktree's own sources so
+      // the CLI's dependency-provenance preflight accepts it.
+      const workspace = new Map(
+        listWorkspacePackageManifests(worktree).map((entry) => [
+          entry.name,
+          entry.directory,
+        ]),
+      );
+      const modules = join(worktree, 'node_modules');
+      mkdirSync(modules);
+      for (const entry of readdirSync(join(root, 'node_modules'))) {
+        const scoped = [...workspace.keys()].filter((name) =>
+          name.startsWith(`${entry}/`),
+        );
+        if (!scoped.length) {
+          symlinkSync(join(root, 'node_modules', entry), join(modules, entry));
+          continue;
+        }
+        mkdirSync(join(modules, entry));
+        for (const member of readdirSync(join(root, 'node_modules', entry))) {
+          const name = `${entry}/${member}`;
+          symlinkSync(
+            workspace.get(name) ?? join(root, 'node_modules', entry, member),
+            join(modules, entry, member),
+          );
+        }
+      }
+      const changed = join(worktree, 'scripts/lib/module-entry.mjs');
+      writeFileSync(changed, `${readFileSync(changed, 'utf8')}\n`);
+
+      const env: Record<string, string | undefined> = {
+        ...process.env,
+        STATION_TEST_CHANGED_DEADLINE_AT: String(Date.now() + 10_000),
+      };
+      const result = spawnSync(
+        process.execPath,
+        ['scripts/run-changed-verification.mjs', '--base=HEAD'],
+        {
+          cwd: worktree,
+          encoding: 'utf8',
+          env,
+          timeout: 170_000,
+          windowsHide: true,
+        },
+      );
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(1);
+      const selection = JSON.parse(
+        readFileSync(
+          join(worktree, '.kontourai/test-impact/changed-selection.json'),
+          'utf8',
+        ),
+      );
+      expect(selection.receipt.status).toBe('infrastructure_error');
+      expect(selection.preparation).toMatchObject({
+        phase: 'related-discovery',
+        childStarted: false,
+      });
+      expect(selection.preparation.error).toContain(
+        'Related Vitest discovery refused: 0ms of its budget remain',
+      );
+    } catch (error) {
+      failure = error;
+    }
+    try {
+      git(root, 'worktree', 'remove', '--force', worktree);
+    } catch (cleanupError) {
+      if (failure === undefined) throw cleanupError;
+    }
+    if (failure !== undefined) throw failure;
   });
 });

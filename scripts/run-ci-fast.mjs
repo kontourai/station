@@ -19,6 +19,15 @@ export const FAST_BASE_ENV = 'STATION_CI_FAST_BASE';
  */
 export const CHANGED_DEADLINE_ENV = 'STATION_TEST_CHANGED_DEADLINE_AT';
 /**
+ * #2855: the share of the selector's allowance related discovery may use, so
+ * a slow discovery cannot starve the tests it selects. Discovery is a fixed
+ * graph build: 27-38s on hosted runners, up to 66s on a dev host at load
+ * 47-93. A quarter of the 680s allowance is 170s; after the selector's 30s
+ * reserve that is a 140s discovery timeout, ~3.7x the worst hosted and ~2x
+ * the worst loaded measurement, while the tests keep at least 510s.
+ */
+export const FAST_SELECTOR_DISCOVERY_SHARE = 0.25;
+/**
  * #2709: the required `fast-checks` check is an aggregator over a sharded
  * affected-test selection (scripts/fast-checks-shard.mjs) and a statics job.
  * The statics job runs this lane with the scope set to `statics`, which drops
@@ -332,9 +341,9 @@ export function runCiFast({
       remaining(startedAt, now) - (index === 0 ? FAST_STATIC_RESERVE_MS : 0);
     if (timeout <= 0)
       throw new CiFastInfrastructureError(CI_FAST_BUDGET_EXCEEDED_CAUSE);
-    // #2855: the selector learns the end of its allowance, so related
-    // discovery can use what is left of it instead of a fixed 60s. The
-    // statics need no deadline of their own.
+    // #2855: the selector learns when its related discovery must end: a
+    // pinned share of its allowance, instead of a fixed 60s. The statics need
+    // no deadline of their own.
     const status = execute(command, args, {
       cwd,
       timeout,
@@ -342,7 +351,10 @@ export function runCiFast({
         ? {
             env: {
               ...env,
-              [CHANGED_DEADLINE_ENV]: String(iterationStartedAt + timeout),
+              [CHANGED_DEADLINE_ENV]: String(
+                iterationStartedAt +
+                  Math.floor(timeout * FAST_SELECTOR_DISCOVERY_SHARE),
+              ),
             },
           }
         : {}),

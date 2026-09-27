@@ -85,10 +85,13 @@ const RELATED_DISCOVERY_LIMIT_BYTES = 1024 * 1024;
  * hosted runners whatever the diff; 48-66s on a dev host at load 47-93), so
  * a constant below every enclosing budget failed closed on a busy host with
  * no test run. The timeout is now derived from the caller's remaining budget:
- * max(floor, deadline - now - reserve).
+ * deadline - now - reserve.
  *
- * The floor is the old constant: a caller with no budget keeps exactly what
- * it had. The reserve is what the caller still needs after a discovery that
+ * The floor is the old constant. A caller with no budget keeps exactly that;
+ * a caller whose remaining budget is below it is refused before discovery
+ * starts, since a timeout the budget cannot cover would only let the
+ * enclosing kill win with nothing written. The reserve is what the caller
+ * still needs after a discovery that
  * used everything else: the child's settlement (grace then force, 5s each),
  * provenance collection and the selection receipt or plan write -- so a slow
  * discovery ends as this lane's own attributable infrastructure_error rather
@@ -151,6 +154,11 @@ export function parseRelatedTestDiscovery(result) {
   return parsed;
 }
 
+function withoutChangedDeadline(env) {
+  const { [CHANGED_DEADLINE_ENV]: _deadline, ...rest } = env;
+  return rest;
+}
+
 export async function runOwnedChangedCommand(
   command,
   args,
@@ -180,9 +188,10 @@ export async function runOwnedChangedCommand(
   try {
     execution = execute(command, args, spawn, processLabel, {
       cwd,
-      // Undefined inherits this process's environment, as before; a shard
-      // passes the request-bound environment (#2709).
-      ...(env ? { env } : {}),
+      // A shard passes the request-bound environment (#2709); otherwise the
+      // child inherits this process's. Either way the selector's discovery
+      // deadline (#2855) is its own, and no child inherits it.
+      env: withoutChangedDeadline(env ?? process.env),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -303,27 +312,28 @@ function assertDiscoveryTimeout(timeoutMs) {
 }
 
 /**
- * max(floor, deadline - now - reserve); the floor alone with no deadline. A
- * deadline that is not an integer, or that would allow more than the ci:fast
- * lane itself, is refused rather than clamped.
+ * deadline - now - reserve, or the floor alone with no deadline. A budget
+ * below the floor is refused before discovery starts, naming what is left;
+ * a deadline that is not an integer, or that would allow more than the
+ * ci:fast lane itself, is refused rather than clamped.
  */
 export function relatedDiscoveryTimeoutMs({ deadlineAt, now = Date.now } = {}) {
   if (deadlineAt === undefined) return RELATED_DISCOVERY_FLOOR_MS;
   if (!Number.isSafeInteger(deadlineAt))
     throw new Error('Related Vitest discovery deadline is invalid');
-  return assertDiscoveryTimeout(
-    Math.max(
-      RELATED_DISCOVERY_FLOOR_MS,
-      deadlineAt - now() - RELATED_DISCOVERY_RESERVE_MS,
-    ),
-  );
+  const remaining = deadlineAt - now() - RELATED_DISCOVERY_RESERVE_MS;
+  if (remaining < RELATED_DISCOVERY_FLOOR_MS)
+    throw new Error(
+      `Related Vitest discovery refused: ${Math.max(0, remaining)}ms of its budget remain after the ${RELATED_DISCOVERY_RESERVE_MS}ms reserve, below the ${RELATED_DISCOVERY_FLOOR_MS}ms minimum`,
+    );
+  return assertDiscoveryTimeout(remaining);
 }
 
 /** The selector's deadline from its environment, strictly parsed. */
 export function changedDeadlineFromEnv(env = process.env) {
   const value = env[CHANGED_DEADLINE_ENV];
   if (value === undefined || value === '') return undefined;
-  if (!/^[1-9][0-9]{0,15}$/.test(value))
+  if (!/^[1-9][0-9]{0,15}$/.test(value) || !Number.isSafeInteger(Number(value)))
     throw new Error(
       `${CHANGED_DEADLINE_ENV} must be an epoch-millisecond integer`,
     );

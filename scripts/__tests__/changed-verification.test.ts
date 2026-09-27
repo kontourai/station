@@ -2788,19 +2788,32 @@ describe('related discovery takes its timeout from the caller budget (#2855)', (
     expect(RELATED_DISCOVERY_RESERVE_MS).toBe(30_000);
   });
 
-  test('max(floor, deadline - now - reserve), and the floor alone with no deadline', () => {
+  test('deadline - now - reserve, and the floor alone with no deadline', () => {
     const now = () => 1_000;
     expect(relatedDiscoveryTimeoutMs()).toBe(60_000);
     expect(
       relatedDiscoveryTimeoutMs({ deadlineAt: 1_000 + 300_000, now }),
     ).toBe(270_000);
-    // Too little budget left: the floor holds; the caller's own deadline
-    // still bounds the run.
-    expect(relatedDiscoveryTimeoutMs({ deadlineAt: 1_000 + 40_000, now })).toBe(
+    // Exactly the floor after the reserve is still enough.
+    expect(relatedDiscoveryTimeoutMs({ deadlineAt: 1_000 + 90_000, now })).toBe(
       60_000,
     );
-    expect(relatedDiscoveryTimeoutMs({ deadlineAt: 0, now })).toBe(60_000);
   });
+
+  test.each([
+    ['one millisecond under the floor', 1_000 + 89_999, '59999ms'],
+    ['10s left', 1_000 + 10_000, '0ms'],
+    ['a deadline already past', 0, '0ms'],
+  ])(
+    'refuses a budget below the floor before starting: %s',
+    (_name, deadlineAt, left) => {
+      expect(() =>
+        relatedDiscoveryTimeoutMs({ deadlineAt, now: () => 1_000 }),
+      ).toThrow(
+        `Related Vitest discovery refused: ${left} of its budget remain after the 30000ms reserve, below the 60000ms minimum`,
+      );
+    },
+  );
 
   test('refuses a deadline that is not an integer or allows more than the ci:fast lane', () => {
     const now = () => 1_000;
@@ -2829,7 +2842,15 @@ describe('related discovery takes its timeout from the caller budget (#2855)', (
         STATION_TEST_CHANGED_DEADLINE_AT: '1700000000000',
       }),
     ).toBe(1_700_000_000_000);
-    for (const value of ['-1', '1e12', '12.5', ' 12', 'soon'])
+    // One past Number.MAX_SAFE_INTEGER: sixteen digits, yet not exact.
+    for (const value of [
+      '-1',
+      '1e12',
+      '12.5',
+      ' 12',
+      'soon',
+      '9007199254740993',
+    ])
       expect(
         () =>
           changedDeadlineFromEnv({ STATION_TEST_CHANGED_DEADLINE_AT: value }),
@@ -2994,5 +3015,103 @@ describe('related discovery takes its timeout from the caller budget (#2855)', (
     expect(timeouts[0]).toBeGreaterThan(260_000);
     // Slower than the old 60s cap, inside the budget: the plan completes.
     expect(plan.fileCount).toBeGreaterThan(0);
+  });
+});
+
+describe('an exhausted budget and the selector children (#2855 review)', () => {
+  function discoveryThatMustNotStart() {
+    return vi.fn(async () => {
+      throw new Error('discovery started despite an exhausted budget');
+    });
+  }
+  const refineNothing = (_root: string, paths: string[]) => ({
+    paths,
+    decisions: [],
+  });
+
+  test.each([
+    ['10s left', 1_000 + 10_000],
+    ['a deadline already past', 0],
+  ])(
+    'discovery with %s is refused, attributably, without starting a child',
+    async (_name, deadlineAt) => {
+      const run = discoveryThatMustNotStart();
+      await expect(
+        discoverRelatedTestFiles(
+          process.cwd(),
+          ['scripts/lib/module-entry.mjs'],
+          { run, refine: refineNothing, deadlineAt, now: () => 1_000 },
+        ),
+      ).rejects.toMatchObject({
+        phase: 'related-discovery',
+        childStarted: false,
+        message: expect.stringContaining(
+          'Related Vitest discovery refused: 0ms of its budget remain',
+        ),
+      });
+      expect(run).not.toHaveBeenCalled();
+    },
+  );
+
+  test('the unsharded selector writes an infrastructure_error receipt naming the remaining budget', async () => {
+    const run = discoveryThatMustNotStart();
+    const writeReceipt = vi.fn();
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: ['scripts/lib/module-entry.mjs'],
+      }),
+      collectProvenance: provenance,
+      writeReceipt,
+      discoveryDeadlineAt: Date.now() + 10_000,
+    });
+    expect(run).not.toHaveBeenCalled();
+    expect(result.receipt.terminal.status).toBe('infrastructure_error');
+    expect(result.preparation).toMatchObject({
+      phase: 'related-discovery',
+      error: expect.stringContaining('of its budget remain'),
+    });
+  });
+
+  test('no owned child inherits the selector discovery deadline', async () => {
+    const seen: Array<Record<string, string | undefined>> = [];
+    const execute = vi.fn(
+      (
+        _command,
+        _args,
+        _spawn,
+        _label,
+        options: { env: Record<string, string | undefined> },
+      ) => {
+        seen.push(options.env);
+        throw new Error('stop after capturing the spawn environment');
+      },
+    );
+    vi.stubEnv('STATION_TEST_CHANGED_DEADLINE_AT', '1700000000000');
+    try {
+      await runOwnedChangedCommand(process.execPath, ['-e', ''], {
+        cwd: process.cwd(),
+        execute,
+        processLabel: 'inherited environment',
+      });
+      await runOwnedChangedCommand(process.execPath, ['-e', ''], {
+        cwd: process.cwd(),
+        execute,
+        processLabel: 'explicit environment',
+        env: {
+          PATH: process.env.PATH,
+          STATION_TEST_CHANGED_DEADLINE_AT: '1700000000000',
+        },
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(seen).toHaveLength(2);
+    for (const env of seen) {
+      expect(env).not.toHaveProperty('STATION_TEST_CHANGED_DEADLINE_AT');
+      expect(env.PATH).toBe(process.env.PATH);
+    }
   });
 });

@@ -24,6 +24,7 @@ import {
   describeCiFastCommand,
   FAST_FEEDBACK_TIMEOUT_MS,
   FAST_SCOPE_ENV,
+  FAST_SELECTOR_DISCOVERY_SHARE,
   FAST_STATIC_COMMANDS,
   FAST_STATIC_RESERVE_MS,
   fastBase,
@@ -148,12 +149,14 @@ describe('bounded ci:fast runner', () => {
         return 0;
       },
     });
-    // 900s lane - 220s static reserve = the selector's 680s allowance.
+    // 900s lane - 220s static reserve = the selector's 680s allowance, of
+    // which related discovery may use a pinned quarter: 170s.
     expect(calls[0].env).toEqual({
       STATION_CI_FAST_BASE: 'base-sha',
-      [CHANGED_DEADLINE_ENV]: String(1_000 + 680_000),
+      [CHANGED_DEADLINE_ENV]: String(1_000 + 170_000),
     });
     expect(FAST_FEEDBACK_TIMEOUT_MS - FAST_STATIC_RESERVE_MS).toBe(680_000);
+    expect(FAST_SELECTOR_DISCOVERY_SHARE).toBe(0.25);
     for (const call of calls.slice(1)) expect(call.env).toBeUndefined();
     // The runner restates the name it cannot import; pin the two equal.
     expect(CHANGED_DEADLINE_ENV).toBe(SELECTOR_DEADLINE_ENV);
