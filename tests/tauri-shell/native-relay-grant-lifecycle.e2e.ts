@@ -298,19 +298,23 @@ async function startBroker(echoMode = false) {
     );
     let failRetirement = false;
     let dropNextRenewalResponse = false;
+    let renewalRequests = 0;
     const server = serve({
       fetch: async (request) => {
+        const renewalRequest =
+          new URL(request.url).pathname === '/broker/v1/native/grants/renew';
         if (
           failRetirement &&
           new URL(request.url).pathname === '/broker/v1/native/grants/retire'
         ) {
           return new Response('fixture retirement outage', { status: 503 });
         }
+        if (renewalRequest) renewalRequests += 1;
         const response = await app.fetch(request);
         if (
           dropNextRenewalResponse &&
           response.status === 200 &&
-          new URL(request.url).pathname === '/broker/v1/native/grants/renew'
+          renewalRequest
         ) {
           dropNextRenewalResponse = false;
           return new Response('injected lost renewal receipt', { status: 503 });
@@ -822,6 +826,9 @@ async function startBroker(echoMode = false) {
       },
       dropNextRenewalResponse: () => {
         dropNextRenewalResponse = true;
+      },
+      get renewalRequests() {
+        return renewalRequests;
       },
       get echoTurn() {
         return echoTurn;
@@ -1362,6 +1369,7 @@ async function main() {
     }
 
     const afterRedeem = await invoke<{
+      profileRevision?: number;
       grants?: Array<{
         metadata?: {
           expiresAt?: number;
@@ -1380,6 +1388,10 @@ async function main() {
     assert.ok(
       afterRedeem.ipcResult,
       afterRedeem.ipcError ?? 'post-redemption status IPC failed',
+    );
+    assert.equal(
+      afterRedeem.ipcResult.profileRevision,
+      expectedProfileRevision,
     );
     assert.equal(afterRedeem.ipcResult.grants?.length, 1);
     const recoveredRoute = afterRedeem.ipcResult.grants?.[0]?.metadata?.route;
@@ -1408,6 +1420,22 @@ async function main() {
       const initialExpiresAt =
         afterRedeem.ipcResult.grants?.[0]?.metadata?.expiresAt;
       assert.ok(initialExpiresAt, 'native grant expiry is missing');
+      const beforeStaleRenewal = broker.renewalRequests;
+      const staleRenewal = await invoke<unknown>(
+        fixture,
+        'station_native_relay_grant_renew',
+        {
+          profileName: route.name,
+          expectedProfileRevision: expectedProfileRevision + 1,
+        },
+      );
+      assert.equal(staleRenewal.ipcResult, undefined);
+      assert.match(staleRenewal.ipcError ?? '', /could not renew/i);
+      assert.equal(
+        broker.renewalRequests,
+        beforeStaleRenewal,
+        'stale profile revision reached broker renewal',
+      );
       broker.dropNextRenewalResponse();
       const lostRenewal = await invoke<unknown>(
         fixture,
@@ -1419,6 +1447,7 @@ async function main() {
       );
       assert.equal(lostRenewal.ipcResult, undefined);
       assert.match(lostRenewal.ipcError ?? '', /could not renew/i);
+      assert.equal(broker.renewalRequests, beforeStaleRenewal + 1);
       const recoveredRenewal = await invoke<{ expiresAt?: number }>(
         fixture,
         'station_native_relay_grant_renew',
@@ -1436,6 +1465,7 @@ async function main() {
         (recoveredRenewal.ipcResult.expiresAt ?? 0) > initialExpiresAt,
         'recovered native renewal did not extend the saved grant',
       );
+      assert.equal(broker.renewalRequests, beforeStaleRenewal + 2);
       lostRenewalResponseRecovered = true;
       assert.ok(echoBundle, 'test-only WebView echo bundle is missing');
       const echoTurn = broker.echoTurn;
