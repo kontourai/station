@@ -260,6 +260,16 @@ export class DirectWebDriver {
     });
   }
 
+  async executeAsync<T, A extends unknown[]>(
+    fn: (...args: [...A, (value: T) => void]) => void,
+    ...args: A
+  ) {
+    return await this.request<T>('POST', this.sessionPath('/execute/async'), {
+      script: `(${fn.toString()}).apply(null, arguments);`,
+      args,
+    });
+  }
+
   async refresh() {
     await this.request('POST', this.sessionPath('/refresh'), {});
   }
@@ -320,6 +330,18 @@ export class DirectWebDriver {
       'POST',
       this.sessionPath(`/element/${elementId}/click`),
       {},
+    );
+  }
+
+  /** W3C WebDriver keystrokes, so shell journeys use actual input events. */
+  async typeElement(elementId: string, value: string) {
+    await this.request(
+      'POST',
+      this.sessionPath(`/element/${elementId}/value`),
+      {
+        text: value,
+        value: [...value],
+      },
     );
   }
 
@@ -405,6 +427,17 @@ export interface TauriShellFixtureOptions {
    * under real host authority rather than a fixture's answer.
    */
   seedRemoteProfile?: boolean;
+  /** An inert saved broker route for native approval checks; no grant or trust. */
+  seedRelayRoute?: {
+    name: string;
+    endpoint: string;
+    brokerOrigin: string;
+    stationId: string;
+    enrollmentId: string;
+    clientInstanceId: string;
+  };
+  /** Use the real OS keyring for a specifically owned native custody proof. */
+  realCredentialStore?: boolean;
 }
 
 export async function startTauriShellFixture(
@@ -446,7 +479,25 @@ export async function startTauriShellFixture(
           schemaVersion: 1,
           revision: 0,
           defaultProfile: null,
-          profiles: [],
+          profiles: options.seedRelayRoute
+            ? [
+                {
+                  schemaVersion: 1,
+                  name: options.seedRelayRoute.name,
+                  endpoint: options.seedRelayRoute.endpoint,
+                  clientInstanceId: options.seedRelayRoute.clientInstanceId,
+                  relayRoute: {
+                    brokerOrigin: options.seedRelayRoute.brokerOrigin,
+                    stationId: options.seedRelayRoute.stationId,
+                    enrollmentId: options.seedRelayRoute.enrollmentId,
+                  },
+                  setupSource: 'manual',
+                  configurationState: 'unconfigured',
+                  createdAt: profileNow,
+                  updatedAt: profileNow,
+                },
+              ]
+            : [],
           projectProfiles: {},
         },
         null,
@@ -507,21 +558,24 @@ export async function startTauriShellFixture(
     { mode: 0o600 },
   );
   const appLog = createWriteStream(join(outputDir, 'app.log'), { flags: 'w' });
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    STATION_HOME: stationHome,
+    STATION_ROOT: stationRoot,
+    STATION_INSTANCE: instance,
+    STATION_PORT: String(serverPort),
+    STATION_UI_PORT: String(uiPort),
+    STATION_NODE: process.execPath,
+    STATION_DESKTOP_LOG_LEVEL: 'debug',
+    STATION_TAURI_E2E_MOCK_CREDENTIAL: '1',
+    TAURI_WEBDRIVER_PORT: String(driverPort),
+    ...options.env,
+  };
+  if (options.realCredentialStore)
+    delete childEnv.STATION_TAURI_E2E_MOCK_CREDENTIAL;
   const child = spawn(binary, [], {
     cwd: root,
-    env: {
-      ...process.env,
-      STATION_HOME: stationHome,
-      STATION_ROOT: stationRoot,
-      STATION_INSTANCE: instance,
-      STATION_PORT: String(serverPort),
-      STATION_UI_PORT: String(uiPort),
-      STATION_NODE: process.execPath,
-      STATION_DESKTOP_LOG_LEVEL: 'debug',
-      STATION_TAURI_E2E_MOCK_CREDENTIAL: '1',
-      TAURI_WEBDRIVER_PORT: String(driverPort),
-      ...options.env,
-    },
+    env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });

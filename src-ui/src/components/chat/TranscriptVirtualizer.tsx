@@ -20,6 +20,12 @@ interface TranscriptVirtualizerProps<Row extends VirtualTranscriptRow> {
   readonly renderRow: (row: Row) => ReactNode;
   /** The surface has elected to keep the transcript at its newest row. */
   readonly followTail?: boolean;
+  /**
+   * Tail-growth signal that re-requests the end while following. Row count
+   * alone cannot move it: a projected live turn grows its tail row's content
+   * without adding rows (`suppressStreamingRow`, #2594).
+   */
+  readonly followTick?: number | string;
   /** Monotonic scroll signal from the one owning transcript surface. */
   readonly anchorVersion?: number;
   /** Stable transcript-row key requested by a route or palette result. */
@@ -45,6 +51,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   scrollElement,
   renderRow,
   followTail = false,
+  followTick,
   anchorVersion = 0,
   revealRowId,
   restoreAnchor,
@@ -369,9 +376,10 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   // the reader slightly above the latest message. The parent turns this off
   // before a reader examines earlier content.
   useLayoutEffect(() => {
+    void followTick;
     if (!scrollReady || !followTail || rows.length === 0) return;
     virtualizerRef.current.scrollToIndex(rows.length - 1, { align: 'end' });
-  }, [followTail, rows.length, scrollReady]);
+  }, [followTail, rows.length, scrollReady, followTick]);
 
   return (
     <div

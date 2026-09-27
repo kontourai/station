@@ -3,20 +3,25 @@ import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RELEASE_RINGS } from './channel-ports.mjs';
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const SHA = /^[a-f0-9]{40}$/;
 const RELEASE = '(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)';
 // Schema v1 (stable/preview with a macOS cask) keeps its original grammar.
 const VERSION = new RegExp(`^${RELEASE}(-preview\\.([1-9][0-9]*))?$`);
-// Schema v2 is portable-only and adds the nightly channel. Each channel owns
-// exactly one version shape, so a payload cannot claim one ring while carrying
-// another ring's version.
-const CHANNEL_VERSION = {
-  stable: new RegExp(`^${RELEASE}$`),
-  preview: new RegExp(`^${RELEASE}-preview\\.([1-9][0-9]*)$`),
-  nightly: new RegExp(`^${RELEASE}-nightly\\.([1-9][0-9]*)$`),
-};
+// Schema v2 is portable-only and covers every installable ring in
+// config/channel-ports.json. Each ring owns exactly one version shape
+// (vX.Y.Z-<ring>.N for a prerelease ring, vX.Y.Z for the unlabelled one), so a
+// payload cannot claim one ring while carrying another ring's version.
+const CHANNEL_VERSION = Object.fromEntries(
+  Object.entries(RELEASE_RINGS).map(([ring, entry]) => [
+    ring,
+    new RegExp(
+      `^${RELEASE}${entry.prerelease ? `-${ring}\\.([1-9][0-9]*)` : ''}$`,
+    ),
+  ]),
+);
 const KEY_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const DEFAULT_KEY_TABLE = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -119,7 +124,7 @@ function validateCommonPayload(payload) {
     throw new Error('invalid publication timestamp');
 }
 
-// Schema v2: portable-only, stable | preview | nightly.
+// Schema v2: portable-only, every installable ring.
 function validatePayloadV2(payload) {
   if (!Object.hasOwn(CHANNEL_VERSION, payload.channel))
     throw new Error('invalid manifest channel');

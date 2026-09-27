@@ -136,10 +136,10 @@ describe('ChatMessageList', () => {
     expect(
       log.contains(screen.getByRole('button', { name: 'Earlier messages' })),
     ).toBe(true);
-    log.scrollTop = 0;
-    fireEvent.scroll(log);
-    expect(loadOlder).not.toHaveBeenCalled();
-    fireEvent.wheel(log);
+    // Any scroll movement counts, whatever the device: a keyboard or scrollbar
+    // scroll near the top loads, with no wheel/touch/pointer precursor needed.
+    // (50, not 0: the mount's own pin wrote 0, and its echo must not load.)
+    log.scrollTop = 50;
     fireEvent.scroll(log);
     expect(loadOlder).toHaveBeenCalledTimes(1);
     fireEvent.wheel(log);
@@ -627,6 +627,248 @@ describe('ChatMessageList', () => {
       />,
     );
     expect(screen.queryByText(/^via /)).toBeNull();
+  });
+
+  test('a projected open turn re-pins the tail as its content streams in', () => {
+    // #2594 projects a live turn into the transcript window and suppresses
+    // the streaming shell — the only scroll-follow trigger the shell's
+    // per-flush `onContentChange` used to provide. Pure-text streaming then
+    // grows one row's content without changing `messages.length`, so the
+    // row's own growth must re-pin a pinned transcript.
+    const base = {
+      ...resizeSession(),
+      id: 'projected-stream',
+      orchestrationSessionStarted: true,
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-1',
+      messages: [
+        { role: 'user' as const, content: 'hi', timestamp: 1 },
+        { role: 'assistant' as const, content: 'partial', timestamp: 2 },
+      ],
+    };
+    const view = render(
+      <ChatMessageList
+        activeSession={base}
+        suppressStreamingRow
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        renderOverride={(message) => <>{message.content}</>}
+      />,
+    );
+    const scroller = screen.getByRole('log');
+    let scrollHeight = 1_000;
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, get: () => 400 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+    });
+    // Pinned: the reader sits at the bottom as deltas arrive.
+    scroller.scrollTop = 1_000;
+    scrollHeight = 1_500;
+    view.rerender(
+      <ChatMessageList
+        activeSession={{
+          ...base,
+          messages: [
+            { role: 'user' as const, content: 'hi', timestamp: 1 },
+            {
+              role: 'assistant' as const,
+              content: 'partial answer with more streamed tokens',
+              timestamp: 2,
+            },
+          ],
+        }}
+        suppressStreamingRow
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        renderOverride={(message) => <>{message.content}</>}
+      />,
+    );
+    expect(scroller.scrollTop).toBe(1_500);
+  });
+
+  test('a reader scrolled up during projected streaming gets the scroll-to-bottom affordance back', () => {
+    const base = {
+      ...resizeSession(),
+      id: 'projected-stream-reader',
+      orchestrationSessionStarted: true,
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-1',
+      messages: [
+        { role: 'user' as const, content: 'hi', timestamp: 1 },
+        { role: 'assistant' as const, content: 'partial', timestamp: 2 },
+      ],
+    };
+    const view = render(
+      <ChatMessageList
+        activeSession={base}
+        suppressStreamingRow
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        renderOverride={(message) => <>{message.content}</>}
+      />,
+    );
+    const scroller = screen.getByRole('log');
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, get: () => 400 },
+      scrollHeight: { configurable: true, get: () => 1_000 },
+    });
+    scroller.scrollTop = 1_000;
+    // The reader scrolls up while the projected turn keeps streaming.
+    scroller.scrollTop = 200;
+    fireEvent.wheel(scroller);
+    fireEvent.scroll(scroller);
+    fireEvent.click(screen.getByRole('button', { name: 'Scroll to bottom' }));
+    expect(scroller.scrollTop).toBe(1_000);
+    // Follow resumes: the next projected delta re-pins without another click.
+    Object.defineProperty(scroller, 'scrollHeight', {
+      configurable: true,
+      get: () => 1_500,
+    });
+    view.rerender(
+      <ChatMessageList
+        activeSession={{
+          ...base,
+          messages: [
+            { role: 'user' as const, content: 'hi', timestamp: 1 },
+            {
+              role: 'assistant' as const,
+              content: 'partial answer with more streamed tokens',
+              timestamp: 2,
+            },
+          ],
+        }}
+        suppressStreamingRow
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        renderOverride={(message) => <>{message.content}</>}
+      />,
+    );
+    expect(scroller.scrollTop).toBe(1_500);
+  });
+
+  function projectedStreamSession(id: string) {
+    return {
+      ...resizeSession(),
+      id,
+      orchestrationSessionStarted: true,
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-1',
+      messages: [
+        { role: 'user' as const, content: 'hi', timestamp: 1 },
+        { role: 'assistant' as const, content: 'partial', timestamp: 2 },
+      ],
+    };
+  }
+
+  function renderProjectedStream(
+    session: ReturnType<typeof projectedStreamSession>,
+  ) {
+    return render(
+      <ChatMessageList
+        activeSession={session}
+        suppressStreamingRow
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        renderOverride={(message) => <>{message.content}</>}
+      />,
+    );
+  }
+
+  function growProjectedTail(
+    view: ReturnType<typeof render>,
+    session: ReturnType<typeof projectedStreamSession>,
+    content: string,
+  ) {
+    view.rerender(
+      <ChatMessageList
+        activeSession={{
+          ...session,
+          messages: [
+            { role: 'user' as const, content: 'hi', timestamp: 1 },
+            { role: 'assistant' as const, content, timestamp: 2 },
+          ],
+        }}
+        suppressStreamingRow
+        fontSize={14}
+        showReasoning={false}
+        showToolDetails={false}
+        renderOverride={(message) => <>{message.content}</>}
+      />,
+    );
+  }
+
+  test('scroll movement without a wheel precursor still stops the follow', () => {
+    // Keyboard scrolling and scrollbar drags dispatch `scroll` with no
+    // wheel/touch/pointer event before them. They are still the reader
+    // moving — the stream must not yank them back down.
+    const base = projectedStreamSession('projected-stream-noprecursor');
+    const view = renderProjectedStream(base);
+    const scroller = screen.getByRole('log');
+    let scrollHeight = 1_000;
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, get: () => 400 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+    });
+    scroller.scrollTop = 1_000;
+    scroller.scrollTop = 200;
+    fireEvent.scroll(scroller);
+    expect(
+      screen.getByRole('button', { name: 'Scroll to bottom' }),
+    ).toBeTruthy();
+    scrollHeight = 1_500;
+    growProjectedTail(view, base, 'partial answer with more streamed tokens');
+    expect(scroller.scrollTop).toBe(200);
+  });
+
+  test('our own pin writes do not read as reader movement', () => {
+    const base = projectedStreamSession('projected-stream-echo');
+    const view = renderProjectedStream(base);
+    const scroller = screen.getByRole('log');
+    let scrollHeight = 1_000;
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, get: () => 400 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+    });
+    scroller.scrollTop = 1_000;
+    scrollHeight = 1_500;
+    growProjectedTail(view, base, 'partial answer with more streamed tokens');
+    expect(scroller.scrollTop).toBe(1_500);
+    // The pin's own scroll echo lands on the write: no affordance appears.
+    fireEvent.scroll(scroller);
+    expect(
+      screen.queryByRole('button', { name: 'Scroll to bottom' }),
+    ).toBeNull();
+  });
+
+  test('scrolling back to the bottom resumes the follow', () => {
+    const base = projectedStreamSession('projected-stream-return');
+    const view = renderProjectedStream(base);
+    const scroller = screen.getByRole('log');
+    let scrollHeight = 1_000;
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, get: () => 400 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+    });
+    scroller.scrollTop = 1_000;
+    scroller.scrollTop = 200;
+    fireEvent.scroll(scroller);
+    expect(
+      screen.getByRole('button', { name: 'Scroll to bottom' }),
+    ).toBeTruthy();
+    // Back to the tail with no wheel precursor: pinned again, no button.
+    scroller.scrollTop = 1_000;
+    fireEvent.scroll(scroller);
+    expect(
+      screen.queryByRole('button', { name: 'Scroll to bottom' }),
+    ).toBeNull();
+    scrollHeight = 1_500;
+    growProjectedTail(view, base, 'partial answer with more streamed tokens');
+    expect(scroller.scrollTop).toBe(1_500);
   });
 
   // archive#3341: the per-message copy called `navigator.clipboard.writeText`

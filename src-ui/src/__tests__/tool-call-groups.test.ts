@@ -1,8 +1,8 @@
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { describe, expect, test } from 'vitest';
 import {
+  classifyToolCallRun,
   classifyToolName,
-  groupToolCallParts,
   isToolCallPart,
   type ToolCallGroup,
   type ToolCallLike,
@@ -11,6 +11,7 @@ import {
   isToolCallAwaitingApproval,
   toolCallPhase,
 } from '../components/chat/tool-call-labels';
+import { splitToolCallRuns } from '../components/chat/tool-call-runs';
 
 function toolCall(overrides: Partial<ToolCallLike> = {}): ToolCallLike {
   return {
@@ -23,8 +24,17 @@ function toolCall(overrides: Partial<ToolCallLike> = {}): ToolCallLike {
   };
 }
 
-function textPart(content: string): ToolCallLike {
-  return { type: 'text', content } as ToolCallLike;
+/**
+ * The production pipeline: `MessageContent`/`StreamingMessage` split parts
+ * into runs with `splitToolCallRuns`, and `ToolCallBatch` classifies the run
+ * it renders with `classifyToolCallRun`.
+ */
+function classifyFirstRun(parts: ToolCallLike[]): ToolCallGroup {
+  const [block] = splitToolCallRuns(parts);
+  if (block?.type !== 'tool-call-run') {
+    throw new Error('expected the parts to open with a tool-call run');
+  }
+  return classifyToolCallRun(block);
 }
 
 describe('isToolCallAwaitingApproval', () => {
@@ -112,63 +122,7 @@ describe('classifyToolName', () => {
   });
 });
 
-describe('groupToolCallParts', () => {
-  test('returns an empty array for undefined/empty input', () => {
-    expect(groupToolCallParts(undefined)).toEqual([]);
-    expect(groupToolCallParts(null)).toEqual([]);
-    expect(groupToolCallParts([])).toEqual([]);
-  });
-
-  test('groups consecutive tool calls into a single batch', () => {
-    const parts = [
-      toolCall({ toolCallId: 'a', toolName: 'Read' }),
-      toolCall({ toolCallId: 'b', toolName: 'Bash' }),
-      toolCall({ toolCallId: 'c', toolName: 'Bash' }),
-    ];
-    const blocks = groupToolCallParts(parts);
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].type).toBe('tool-call-group');
-    const group = blocks[0] as ToolCallGroup;
-    expect(group.calls).toHaveLength(3);
-    expect(group.calls.map((c) => c.index)).toEqual([0, 1, 2]);
-  });
-
-  test('does NOT merge tool calls separated by prose', () => {
-    const parts = [
-      toolCall({ toolCallId: 'a', toolName: 'Read' }),
-      textPart('Now let me run the tests.'),
-      toolCall({ toolCallId: 'b', toolName: 'Bash' }),
-    ];
-    const blocks = groupToolCallParts(parts);
-    expect(blocks.map((b) => b.type)).toEqual([
-      'tool-call-group',
-      'content-part',
-      'tool-call-group',
-    ]);
-    expect((blocks[0] as ToolCallGroup).calls).toHaveLength(1);
-    expect((blocks[2] as ToolCallGroup).calls).toHaveLength(1);
-  });
-
-  test('passes non-tool parts through unchanged, preserving order and index', () => {
-    const parts = [
-      textPart('intro'),
-      toolCall({ toolCallId: 'a' }),
-      { type: 'reasoning', content: 'thinking' } as ToolCallLike,
-    ];
-    const blocks = groupToolCallParts(parts);
-    expect(blocks[0]).toEqual({
-      type: 'content-part',
-      index: 0,
-      part: parts[0],
-    });
-    expect(blocks[1].type).toBe('tool-call-group');
-    expect(blocks[2]).toEqual({
-      type: 'content-part',
-      index: 2,
-      part: parts[2],
-    });
-  });
-
+describe('classifyToolCallRun', () => {
   test('mixed kinds summarize as "Read 2 files, ran 2 commands"', () => {
     const parts = [
       toolCall({
@@ -192,7 +146,7 @@ describe('groupToolCallParts', () => {
         args: { command: 'npm build' },
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.summary).toBe('Read 2 files, ran 2 commands');
     expect(group.aggregateSummary).toBe(group.summary);
   });
@@ -207,7 +161,7 @@ describe('groupToolCallParts', () => {
         args: { command: 'c' },
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.summary).toBe('Ran 3 commands');
   });
 
@@ -221,7 +175,7 @@ describe('groupToolCallParts', () => {
       toolCall({ toolCallId: 'b', toolName: 'Bash', args: { command: 'a' } }),
       toolCall({ toolCallId: 'c', toolName: 'Bash', args: { command: 'b' } }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.summary).toBe('Read 1 file, ran 2 commands');
   });
 
@@ -233,7 +187,7 @@ describe('groupToolCallParts', () => {
         args: { file_path: 'src/ApprovalModeChip.tsx' },
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.calls).toHaveLength(1);
     expect(group.summary).toBe('Read ApprovalModeChip.tsx');
     expect(group.inProgress).toBe(false);
@@ -249,7 +203,7 @@ describe('groupToolCallParts', () => {
         state: 'running',
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.inProgress).toBe(true);
     // Collapsed line updates to the current tool.
     expect(group.summary).toBe('Running npm test…');
@@ -272,7 +226,7 @@ describe('groupToolCallParts', () => {
         state: 'running',
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.summary).toBe('Running npm test…');
   });
 
@@ -293,7 +247,7 @@ describe('groupToolCallParts', () => {
         progressMessage: 'compiling',
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.summary).toBe('Running npm test…');
     expect(group.progressMessage).toBe('compiling');
     expect(group.failedCount).toBe(1);
@@ -317,7 +271,7 @@ describe('groupToolCallParts', () => {
         state: 'awaiting-approval',
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.awaitingApprovalCount).toBe(1);
     expect(group.summary).toBe('Read 1 file, edit 1 file');
     expect(group.aggregateSummary).toBe(group.summary);
@@ -344,7 +298,7 @@ describe('groupToolCallParts', () => {
         state: 'awaiting-approval',
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.inProgress).toBe(true);
     expect(group.summary).toBe('Read 1 file, edit 1 file');
     expect(group.summary).not.toContain('…');
@@ -367,7 +321,7 @@ describe('groupToolCallParts', () => {
         error: 'exit 1',
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.summary).toBe('Ran 2 commands');
     expect(group.failedCount).toBe(1);
   });
@@ -389,7 +343,7 @@ describe('groupToolCallParts', () => {
         approvalStatus: 'user-denied',
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(toolCallPhase(parts[1])).toBe('unresolved');
     expect(group.summary).toBe('Read 1 file, edit 1 file');
     expect(group.summary).not.toMatch(/edited/i);
@@ -411,7 +365,7 @@ describe('groupToolCallParts', () => {
         cancelled: true,
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.summary).toBe('Read 1 file, edit 1 file');
     expect(group.summary).not.toMatch(/edited/i);
   });
@@ -432,7 +386,7 @@ describe('groupToolCallParts', () => {
         progressMessage: 'still going',
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.progressMessage).toBe('still going');
     expect(group.summary).toBe('Running npm test…');
   });
@@ -446,7 +400,7 @@ describe('groupToolCallParts', () => {
         state: 'running',
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.summary).toBe('Running npm run build…');
   });
 
@@ -463,7 +417,7 @@ describe('groupToolCallParts', () => {
         state: 'unresolved',
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.summary).toBe('Run npm test');
     // Not running either: no ellipsis, no failure claim.
     expect(group.inProgress).toBe(false);
@@ -492,7 +446,7 @@ describe('groupToolCallParts', () => {
     ];
 
     test('takes the bare verb, never the past tense', () => {
-      const [group] = groupToolCallParts(unresolvedBatch()) as ToolCallGroup[];
+      const group = classifyFirstRun(unresolvedBatch());
       expect(group.summary).toBe('Run 2 commands');
       expect(group.unresolvedCount).toBe(1);
       // Not a failure claim either: nothing observed the tool fail.
@@ -500,11 +454,11 @@ describe('groupToolCallParts', () => {
     });
 
     test('counts every unresolved call in the run', () => {
-      const [group] = groupToolCallParts([
+      const group = classifyFirstRun([
         toolCall({ toolCallId: 'a', toolName: 'Bash', state: 'unresolved' }),
         toolCall({ toolCallId: 'b', toolName: 'Read', state: 'unresolved' }),
         toolCall({ toolCallId: 'c', toolName: 'Read', state: 'completed' }),
-      ]) as ToolCallGroup[];
+      ]);
       expect(group.unresolvedCount).toBe(2);
       expect(group.calls.map((call) => call.unresolved)).toEqual([
         true,
@@ -514,10 +468,10 @@ describe('groupToolCallParts', () => {
     });
 
     test('does not claim flight either when a sibling call is still running', () => {
-      const [group] = groupToolCallParts([
+      const group = classifyFirstRun([
         toolCall({ toolCallId: 'a', toolName: 'Bash', state: 'running' }),
         toolCall({ toolCallId: 'b', toolName: 'Bash', state: 'unresolved' }),
-      ]) as ToolCallGroup[];
+      ]);
       // "Running 2 commands…" would be as false for the unresolved call as
       // "Ran" was; the bare verb is the only form true of both, and the
       // ellipsis (which means "still going") is dropped with it.
@@ -529,10 +483,10 @@ describe('groupToolCallParts', () => {
     test('leaves an ordinary finished batch in the past tense', () => {
       // The discriminating control: the bare verb is conditional on an
       // unresolved call being present, not the new default.
-      const [group] = groupToolCallParts([
+      const group = classifyFirstRun([
         toolCall({ toolCallId: 'a', toolName: 'Bash', state: 'completed' }),
         toolCall({ toolCallId: 'b', toolName: 'Bash', state: 'completed' }),
-      ]) as ToolCallGroup[];
+      ]);
       expect(group.summary).toBe('Ran 2 commands');
       expect(group.unresolvedCount).toBe(0);
     });
@@ -599,15 +553,15 @@ describe('groupToolCallParts', () => {
       const assistant = messages.find(
         (message) => message.role === 'assistant',
       )!;
-      const [group] = groupToolCallParts(
+      const group = classifyFirstRun(
         assistant.parts as unknown as ToolCallLike[],
-      ) as ToolCallGroup[];
+      );
       expect(group.unresolvedCount).toBe(0);
       expect(group.summary).toBe('Ran npm test');
     });
 
     test('a mixed-kind batch takes the bare verb in every segment', () => {
-      const [group] = groupToolCallParts([
+      const group = classifyFirstRun([
         toolCall({
           toolCallId: 'a',
           toolName: 'Read',
@@ -626,7 +580,7 @@ describe('groupToolCallParts', () => {
           args: { command: 'npm test' },
           state: 'unresolved',
         }),
-      ]) as ToolCallGroup[];
+      ]);
       expect(group.summary).toBe('Read 2 files, run 1 command');
     });
   });
@@ -640,7 +594,7 @@ describe('groupToolCallParts', () => {
         args: { command: longCommand },
       }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.summary.startsWith('Ran ')).toBe(true);
     expect(group.summary.length).toBeLessThan(longCommand.length);
     expect(group.summary.endsWith('…')).toBe(true);
@@ -650,7 +604,7 @@ describe('groupToolCallParts', () => {
     const parts = [
       toolCall({ toolCallId: 'a', toolName: 'search_files', args: undefined }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.summary).toBe('Searched search files');
   });
 
@@ -659,7 +613,7 @@ describe('groupToolCallParts', () => {
       toolCall({ toolCallId: 'first-id' }),
       toolCall({ toolCallId: 'second-id' }),
     ];
-    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    const group = classifyFirstRun(parts);
     expect(group.key).toBe('tool-call-run:first-id');
   });
 });
