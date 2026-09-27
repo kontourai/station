@@ -121,8 +121,11 @@ describe('lifecycle state location through the real helpers (#2675)', () => {
     ).toBe(true);
 
     // `station stop --home=<home>` from a shell whose STATION_HOME is
-    // another home: the flag's home, not the environment's.
+    // another home, after the CLI bootstrap has written the default root
+    // into STATION_ROOT (it does, unless STATION_HOME names a raw home): the
+    // flag's home decides, not the environment.
     vi.stubEnv('STATION_HOME', makeTempDir('station-other-home-'));
+    vi.stubEnv('STATION_ROOT', makeTempDir('station-bootstrap-root-'));
     expect(
       lifecycle.isRunning({ instanceName: 'spelled', stateHome: home }),
     ).toBe(true);

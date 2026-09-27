@@ -382,8 +382,7 @@ async function loadLifecycleModule(
   // The real code-root and state-location resolvers, so the state location a
   // test exercises is the one the CLI derives: <cwd>/.station for a source
   // tree, and <root of the home>/state/<channel> for a prebuilt archive
-  // (#2675). An ambient STATION_ROOT would pin every home to one root, so it
-  // is dropped; each test home then derives its own.
+  // (#2675).
   const { resolveLifecycleCodeRoot, resolveLifecycleStateLocation } =
     await vi.importActual<typeof import('../commands/lifecycle-code-root.js')>(
       '../commands/lifecycle-code-root.js',
@@ -433,15 +432,12 @@ async function loadLifecycleModule(
       source: 'default' as const,
     };
   };
-  const resolveLifecycleState = (projectHome?: string) => {
-    const env = { ...process.env };
-    delete env.STATION_ROOT;
-    return resolveLifecycleStateLocation(
+  const resolveLifecycleState = (projectHome?: string) =>
+    resolveLifecycleStateLocation(
       codeRoot,
       projectHome ?? resolveLifecycleHomeTarget().projectHome,
-      env,
     );
-  };
+
   // A prebuilt archive's implicit id is the one the real resolver derives for
   // THIS root (#2675: channel, not path); the local copy above models only a
   // source checkout's path-hashed id.

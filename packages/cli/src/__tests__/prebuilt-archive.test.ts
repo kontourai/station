@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { resolveLifecycleInstanceId } from '../commands/helpers.js';
 import {
@@ -22,6 +22,7 @@ import {
 } from '../commands/lifecycle-code-root.js';
 
 const makeTempDir = trackTempDirs();
+afterEach(() => vi.unstubAllEnvs());
 
 // The exact shape scripts/lib/container-release-metadata.mjs writes (the
 // portable archive builder embeds it as .station-release.json).
@@ -97,7 +98,6 @@ describe('resolveLifecycleStateLocation', () => {
       resolveLifecycleStateLocation(
         codeRoot,
         join(stationRoot, 'instances', 'stable'),
-        {},
       ),
     ).toEqual({
       stateDir: join(stationRoot, 'state', 'stable'),
@@ -118,55 +118,44 @@ describe('resolveLifecycleStateLocation', () => {
       },
     });
     const stationRoot = makeTempDir('station-root-');
+    vi.stubEnv('STATION_CHANNEL', 'stable');
     expect(
       resolveLifecycleStateLocation(
         resolveLifecycleCodeRoot(root),
         join(stationRoot, 'instances', 'beta'),
-        { STATION_CHANNEL: 'stable' },
       ).stateDir,
     ).toBe(join(stationRoot, 'state', 'beta'));
   });
 
-  test('derives the root from the home the command resolved, however it was spelled', () => {
+  test("derives the root from the home's path alone, never the environment", () => {
     const codeRoot = resolveLifecycleCodeRoot(tree());
     const raw = makeTempDir('station-raw-home-');
     const rooted = join(makeTempDir('station-root-'), 'instances', 'stable');
-    const stateOf = (home: string, env: NodeJS.ProcessEnv) =>
-      resolveLifecycleStateLocation(codeRoot, home, env).stateDir;
-    for (const home of [raw, rooted]) {
-      // `STATION_HOME=<home> station start` and `station stop --home=<home>`
-      // (the ambient STATION_HOME then names some other home).
-      expect(stateOf(home, { STATION_HOME: home })).toBe(
-        stateOf(home, { STATION_HOME: '/some/other/home' }),
-      );
-      expect(stateOf(home, {})).toBe(stateOf(home, { STATION_HOME: home }));
-    }
+    const stateOf = (home: string) =>
+      resolveLifecycleStateLocation(codeRoot, home).stateDir;
     // A raw home (including a --temp-home) is its own root, so its state goes
     // with it; a channel home shares its root's.
-    expect(stateOf(raw, {})).toBe(join(raw, 'state', 'stable'));
-    expect(stateOf(rooted, {})).toBe(
-      join(rooted, '..', '..', 'state', 'stable'),
-    );
+    expect(stateOf(raw)).toBe(join(raw, 'state', 'stable'));
+    expect(stateOf(rooted)).toBe(join(rooted, '..', '..', 'state', 'stable'));
     // The default channel home's root is the user's ~/.station.
-    expect(
-      stateOf(join(homedir(), '.station', 'instances', 'stable'), {}),
-    ).toBe(join(homedir(), '.station', 'state', 'stable'));
-    // An explicit STATION_ROOT is the root, as for the runtime itself.
-    const explicit = makeTempDir('station-explicit-root-');
-    expect(stateOf(raw, { STATION_ROOT: explicit })).toBe(
-      join(explicit, 'state', 'stable'),
+    expect(stateOf(join(homedir(), '.station', 'instances', 'stable'))).toBe(
+      join(homedir(), '.station', 'state', 'stable'),
     );
+    // Whatever the ambient root and home say -- the CLI bootstrap writes the
+    // default root into STATION_ROOT unless STATION_HOME names a raw home, so
+    // they differ between `STATION_HOME=<home> station start` and
+    // `station stop --home=<home>` -- the answer for one home is one answer.
+    vi.stubEnv('STATION_ROOT', makeTempDir('station-ambient-root-'));
+    vi.stubEnv('STATION_HOME', makeTempDir('station-ambient-home-'));
+    expect(stateOf(raw)).toBe(join(raw, 'state', 'stable'));
+    expect(stateOf(rooted)).toBe(join(rooted, '..', '..', 'state', 'stable'));
   });
 
   test('keeps a source tree and an install.sh release tree exactly where they were', () => {
     for (const root of [tree({ git: true }), tree({ marker: null })]) {
       const codeRoot = resolveLifecycleCodeRoot(root);
       expect(codeRoot).toEqual({ kind: 'source', root });
-      expect(
-        resolveLifecycleStateLocation(codeRoot, '/any/home', {
-          STATION_ROOT: '/ignored',
-        }),
-      ).toEqual({
+      expect(resolveLifecycleStateLocation(codeRoot, '/any/home')).toEqual({
         stateDir: join(root, '.station'),
         instanceStateDir: join(root, '.station', 'instances'),
         buildCandidatesDir: join(root, '.station', 'build-candidates'),

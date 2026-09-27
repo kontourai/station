@@ -590,11 +590,8 @@ export async function collectDoctorReport(
         archive,
         runtimeDeps.processRuntime,
         // The doctor's home, so this is the directory `station stop` reads.
-        resolveLifecycleStateLocation(
-          archive,
-          runtimeDeps.projectHome,
-          runtimeDeps.env,
-        ).stateDir,
+        resolveLifecycleStateLocation(archive, runtimeDeps.projectHome)
+          .stateDir,
       )
     : sourceChecks;
 

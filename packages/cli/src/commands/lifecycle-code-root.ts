@@ -199,20 +199,23 @@ export function resolveLifecycleCodeRoot(root: string): LifecycleCodeRoot {
  * A source tree ignores the home: its state describes what the checkout
  * started, whatever home each instance used.
  *
- * A prebuilt archive's state lives in the Station root that home belongs to,
- * `<root>/state/<channel>/`, with the root derived exactly as a runtime of
- * that home derives it (`resolveStationRoot` with this home as
- * `STATION_HOME`): an explicit `STATION_ROOT`; else the root containing an
- * `<root>/instances/...` home; else a raw home is its own root. Deriving it
- * from the RESOLVED home, not from the ambient environment, is what makes
- * `STATION_HOME=/srv/st station start` and `station stop --home=/srv/st`
- * agree (#2675 B1 review). A `--temp-home` is a raw home, so its state lives
- * inside it and goes when it goes.
+ * A prebuilt archive's state lives in `<root>/state/<channel>/` of the
+ * Station root the home belongs to, decided by the home's path ALONE: a home
+ * at `<root>/instances/<leaf>` (or `instances/dev/<leaf>`) belongs to
+ * `<root>`, so the default channel home gives `~/.station`; any other home,
+ * including a `--temp-home`, is its own root, so its state lives inside it
+ * and goes when it goes.
+ *
+ * The environment is deliberately not consulted (#2675 B1 review). The
+ * ambient `STATION_ROOT` depends on how the home was spelled: the CLI
+ * bootstrap writes the default root into it unless `STATION_HOME` names a
+ * raw home, so `STATION_HOME=/srv/st station start` and `station stop
+ * --home=/srv/st` would otherwise read two different roots and lose the
+ * record.
  */
 export function resolveLifecycleStateLocation(
   codeRoot: LifecycleCodeRoot,
   projectHome: string,
-  env: NodeJS.ProcessEnv = process.env,
 ): LifecycleStateLocation {
   if (codeRoot.kind === 'source') {
     const stateDir = join(codeRoot.root, '.station');
@@ -224,7 +227,7 @@ export function resolveLifecycleStateLocation(
     };
   }
   const stateDir = join(
-    resolveStationRoot({ ...env, STATION_HOME: projectHome }),
+    resolveStationRoot({ STATION_HOME: projectHome }),
     'state',
     codeRoot.release.channel,
   );

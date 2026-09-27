@@ -269,7 +269,8 @@ export function resolveServiceInstanceId(
  * Where this CLI keeps lifecycle state for instances of `projectHome` — the
  * home the command resolved from its flags and environment. Every lifecycle
  * reader and writer goes through here (#2675). A source checkout ignores the
- * home; a prebuilt archive keeps state in the root that home belongs to, and
+ * home; a prebuilt archive keeps state in the root that home's path belongs
+ * to, and
  * without a home it takes the one a bare command targets (`STATION_HOME` or
  * the channel default), resolved only then.
  */
@@ -282,7 +283,6 @@ export function resolveLifecycleState(
     LIFECYCLE_CODE_ROOT.kind === 'source'
       ? CWD
       : (projectHome ?? resolveLifecycleHomeTarget({ env }).projectHome),
-    env,
   );
 }
 
