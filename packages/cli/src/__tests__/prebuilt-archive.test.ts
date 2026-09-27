@@ -16,7 +16,10 @@ import {
   PREBUILT_ARCHIVE_MARKER_CONTENT,
   PREBUILT_ARCHIVE_MARKER_FILENAME,
 } from '../commands/lifecycle.js';
-import { resolveLifecycleCodeRoot } from '../commands/lifecycle-code-root.js';
+import {
+  resolveLifecycleCodeRoot,
+  resolveLifecycleStateLocation,
+} from '../commands/lifecycle-code-root.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -76,22 +79,31 @@ describe('isPrebuiltArchiveRoot', () => {
 /**
  * #2675 B1: where lifecycle state lives. A source tree keeps it inside itself
  * (unchanged); a prebuilt archive, which the installer marks read-only and an
- * upgrade replaces with a sibling version directory, keeps it under
- * `<STATION_ROOT>/state/<channel>/` so every version of a channel shares it.
+ * upgrade replaces with a sibling version directory, keeps it in
+ * `<root>/state/<channel>/` of the Station root the instance's home belongs
+ * to, so every version of a channel shares it.
  */
-describe('resolveLifecycleCodeRoot', () => {
-  test("puts an archive's state under STATION_ROOT/state/<channel>, outside the archive", () => {
+describe('resolveLifecycleStateLocation', () => {
+  test("puts an archive's state in its home's Station root, outside the archive", () => {
     const root = tree();
     const stationRoot = makeTempDir('station-root-');
-    const codeRoot = resolveLifecycleCodeRoot(root, {
-      STATION_ROOT: stationRoot,
-    });
+    const codeRoot = resolveLifecycleCodeRoot(root);
     expect(codeRoot).toEqual({
       kind: 'prebuilt-archive',
       root,
       release: RELEASE,
+    });
+    expect(
+      resolveLifecycleStateLocation(
+        codeRoot,
+        join(stationRoot, 'instances', 'stable'),
+        {},
+      ),
+    ).toEqual({
       stateDir: join(stationRoot, 'state', 'stable'),
       instanceStateDir: join(stationRoot, 'state', 'stable', 'instances'),
+      buildCandidatesDir: null,
+      pidFile: null,
     });
   });
 
@@ -107,35 +119,54 @@ describe('resolveLifecycleCodeRoot', () => {
     });
     const stationRoot = makeTempDir('station-root-');
     expect(
-      resolveLifecycleCodeRoot(root, {
-        STATION_ROOT: stationRoot,
-        STATION_CHANNEL: 'stable',
-      }).stateDir,
+      resolveLifecycleStateLocation(
+        resolveLifecycleCodeRoot(root),
+        join(stationRoot, 'instances', 'beta'),
+        { STATION_CHANNEL: 'stable' },
+      ).stateDir,
     ).toBe(join(stationRoot, 'state', 'beta'));
   });
 
-  test('derives STATION_ROOT as the rest of Station does when it is unset', () => {
-    const root = tree();
-    const derivedRoot = makeTempDir('station-derived-root-');
-    // An instance-leaf STATION_HOME derives its containing root.
+  test('derives the root from the home the command resolved, however it was spelled', () => {
+    const codeRoot = resolveLifecycleCodeRoot(tree());
+    const raw = makeTempDir('station-raw-home-');
+    const rooted = join(makeTempDir('station-root-'), 'instances', 'stable');
+    const stateOf = (home: string, env: NodeJS.ProcessEnv) =>
+      resolveLifecycleStateLocation(codeRoot, home, env).stateDir;
+    for (const home of [raw, rooted]) {
+      // `STATION_HOME=<home> station start` and `station stop --home=<home>`
+      // (the ambient STATION_HOME then names some other home).
+      expect(stateOf(home, { STATION_HOME: home })).toBe(
+        stateOf(home, { STATION_HOME: '/some/other/home' }),
+      );
+      expect(stateOf(home, {})).toBe(stateOf(home, { STATION_HOME: home }));
+    }
+    // A raw home (including a --temp-home) is its own root, so its state goes
+    // with it; a channel home shares its root's.
+    expect(stateOf(raw, {})).toBe(join(raw, 'state', 'stable'));
+    expect(stateOf(rooted, {})).toBe(
+      join(rooted, '..', '..', 'state', 'stable'),
+    );
+    // The default channel home's root is the user's ~/.station.
     expect(
-      resolveLifecycleCodeRoot(root, {
-        STATION_HOME: join(derivedRoot, 'instances', 'stable'),
-      }).stateDir,
-    ).toBe(join(derivedRoot, 'state', 'stable'));
-    // Neither set: the user's ~/.station.
-    expect(resolveLifecycleCodeRoot(root, {}).stateDir).toBe(
-      join(homedir(), '.station', 'state', 'stable'),
+      stateOf(join(homedir(), '.station', 'instances', 'stable'), {}),
+    ).toBe(join(homedir(), '.station', 'state', 'stable'));
+    // An explicit STATION_ROOT is the root, as for the runtime itself.
+    const explicit = makeTempDir('station-explicit-root-');
+    expect(stateOf(raw, { STATION_ROOT: explicit })).toBe(
+      join(explicit, 'state', 'stable'),
     );
   });
 
   test('keeps a source tree and an install.sh release tree exactly where they were', () => {
     for (const root of [tree({ git: true }), tree({ marker: null })]) {
+      const codeRoot = resolveLifecycleCodeRoot(root);
+      expect(codeRoot).toEqual({ kind: 'source', root });
       expect(
-        resolveLifecycleCodeRoot(root, { STATION_ROOT: '/ignored' }),
+        resolveLifecycleStateLocation(codeRoot, '/any/home', {
+          STATION_ROOT: '/ignored',
+        }),
       ).toEqual({
-        kind: 'source',
-        root,
         stateDir: join(root, '.station'),
         instanceStateDir: join(root, '.station', 'instances'),
         buildCandidatesDir: join(root, '.station', 'build-candidates'),

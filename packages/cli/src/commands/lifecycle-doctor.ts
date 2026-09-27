@@ -25,7 +25,10 @@ import {
 } from '../lib/kontour-dependency-drift.js';
 import { CWD, LIFECYCLE_CODE_ROOT, PROJECT_HOME } from './helpers.js';
 import { collectInstanceStatus } from './lifecycle.js';
-import type { LifecycleCodeRoot } from './lifecycle-code-root.js';
+import {
+  type LifecycleCodeRoot,
+  resolveLifecycleStateLocation,
+} from './lifecycle-code-root.js';
 
 type DoctorCheckStatus = 'pass' | 'warn' | 'fail';
 
@@ -210,6 +213,7 @@ async function inspectSupervisorWedges(
     const status = await collectInstanceStatus(instanceId, {
       probeTimeoutMs: 1_000,
       reclaimStale: false,
+      projectHome,
     });
     if (
       status.found &&
@@ -360,6 +364,7 @@ export function prebuiltArchiveChecks(
   sourceChecks: readonly DoctorCheck[],
   archive: Extract<LifecycleCodeRoot, { kind: 'prebuilt-archive' }>,
   runtime: { version: string; execPath: string },
+  stateDir: string,
 ): DoctorCheck[] {
   const { release } = archive;
   return sourceChecks.flatMap((check): DoctorCheck[] => {
@@ -379,7 +384,7 @@ export function prebuiltArchiveChecks(
       {
         label: 'Prebuilt archive',
         status: 'pass',
-        detail: `${release.ref} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring, ${release.channel} channel) at ${archive.root}; lifecycle state in ${archive.stateDir}`,
+        detail: `${release.ref} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring, ${release.channel} channel) at ${archive.root}; lifecycle state in ${stateDir}`,
       },
     ];
   });
@@ -580,7 +585,17 @@ export async function collectDoctorReport(
     },
   ];
   const checks = archive
-    ? prebuiltArchiveChecks(sourceChecks, archive, runtimeDeps.processRuntime)
+    ? prebuiltArchiveChecks(
+        sourceChecks,
+        archive,
+        runtimeDeps.processRuntime,
+        // The doctor's home, so this is the directory `station stop` reads.
+        resolveLifecycleStateLocation(
+          archive,
+          runtimeDeps.projectHome,
+          runtimeDeps.env,
+        ).stateDir,
+      )
     : sourceChecks;
 
   const chatReady =

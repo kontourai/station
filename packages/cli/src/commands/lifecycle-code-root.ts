@@ -2,7 +2,8 @@
  * What kind of tree the CLI runs from, and where its lifecycle state lives
  * (#2675 slice B1). This is the ONE resolver for "where does lifecycle state
  * live": the instance records, the prior pid file and the build candidates
- * all derive from `resolveLifecycleCodeRoot`, never from their own `join`.
+ * all derive from `resolveLifecycleStateLocation`, never from their own
+ * `join`.
  * (The server's git self-update keeps reading `<gitRoot>/.station/`; it only
  * ever runs from a source checkout.)
  *
@@ -14,11 +15,11 @@
  * - A **prebuilt archive** is an immutable version directory: the installer
  *   (slice B2) marks it read-only, and an upgrade runs a different version
  *   directory of the same channel. Its state therefore lives outside it, in
- *   `<STATION_ROOT>/state/<channel>/`, shared by every version of that
- *   channel, so the new version's `stop` finds what the old one started.
- *   `STATION_ROOT` resolves as everywhere else (`resolveStationRoot`): the
- *   explicit root, else the root an explicit `STATION_HOME` derives, else
- *   `~/.station` (`%USERPROFILE%\.station` on Windows). The channel is the
+ *   `<STATION_ROOT>/state/<channel>/` of the root the instance's home belongs
+ *   to (see `resolveLifecycleStateLocation`), shared by every version of
+ *   that channel, so the new version's `stop` finds what the old one
+ *   started. The default home's root is `~/.station` (`%USERPROFILE%\.station`
+ *   on Windows). The channel is the
  *   runtime channel the archive's own `.station-release.json` names (the
  *   launcher refuses any other `STATION_CHANNEL`), so it never depends on
  *   the caller's environment agreeing.
@@ -159,62 +160,78 @@ export function isPrebuiltArchiveRoot(root: string): boolean {
   return readPrebuiltArchiveRelease(root) !== null;
 }
 
+/** What the CLI runs from. Where its state lives also depends on the home. */
 export type LifecycleCodeRoot =
-  | {
-      kind: 'source';
-      root: string;
-      /** The directory holding the state below. */
-      stateDir: string;
-      /** `<id>.json` instance records (owner-only 0700 directory). */
-      instanceStateDir: string;
-      /** Per-build candidate directories, promoted into the code root. */
-      buildCandidatesDir: string;
-      /**
-       * The pre-instance-record pid file, read only to adopt or reap a
-       * Station an old CLI started.
-       */
-      pidFile: string;
-    }
+  | { kind: 'source'; root: string }
   | {
       kind: 'prebuilt-archive';
       root: string;
       release: PackagedReleaseManifest;
-      stateDir: string;
-      instanceStateDir: string;
-      // No build candidates (an archive refuses to build before creating
-      // one) and no prior pid file (no CLI that wrote one ever ran here).
     };
 
-/** Where a prebuilt archive of `channel` keeps its lifecycle state. */
-function prebuiltArchiveStateDir(
-  channel: PackagedRuntimeChannel,
-  env: NodeJS.ProcessEnv = process.env,
-): string {
-  return join(resolveStationRoot(env), 'state', channel);
+export interface LifecycleStateLocation {
+  /** The directory holding the state below. */
+  stateDir: string;
+  /** `<id>.json` instance records (owner-only 0700 directory). */
+  instanceStateDir: string;
+  /**
+   * Per-build candidate directories, promoted into the code root. Null for
+   * an archive, which refuses to build before it would create one.
+   */
+  buildCandidatesDir: string | null;
+  /**
+   * The pre-instance-record pid file, read only to adopt or reap a Station an
+   * old CLI started. Null for an archive: no CLI that wrote one ran there.
+   */
+  pidFile: string | null;
 }
 
-export function resolveLifecycleCodeRoot(
-  root: string,
-  env: NodeJS.ProcessEnv = process.env,
-): LifecycleCodeRoot {
+export function resolveLifecycleCodeRoot(root: string): LifecycleCodeRoot {
   const release = readPrebuiltArchiveRelease(root);
-  if (release) {
-    const stateDir = prebuiltArchiveStateDir(release.channel, env);
+  return release
+    ? { kind: 'prebuilt-archive', root, release }
+    : { kind: 'source', root };
+}
+
+/**
+ * Where lifecycle state lives for an instance of `projectHome`.
+ *
+ * A source tree ignores the home: its state describes what the checkout
+ * started, whatever home each instance used.
+ *
+ * A prebuilt archive's state lives in the Station root that home belongs to,
+ * `<root>/state/<channel>/`, with the root derived exactly as a runtime of
+ * that home derives it (`resolveStationRoot` with this home as
+ * `STATION_HOME`): an explicit `STATION_ROOT`; else the root containing an
+ * `<root>/instances/...` home; else a raw home is its own root. Deriving it
+ * from the RESOLVED home, not from the ambient environment, is what makes
+ * `STATION_HOME=/srv/st station start` and `station stop --home=/srv/st`
+ * agree (#2675 B1 review). A `--temp-home` is a raw home, so its state lives
+ * inside it and goes when it goes.
+ */
+export function resolveLifecycleStateLocation(
+  codeRoot: LifecycleCodeRoot,
+  projectHome: string,
+  env: NodeJS.ProcessEnv = process.env,
+): LifecycleStateLocation {
+  if (codeRoot.kind === 'source') {
+    const stateDir = join(codeRoot.root, '.station');
     return {
-      kind: 'prebuilt-archive',
-      root,
-      release,
       stateDir,
       instanceStateDir: join(stateDir, 'instances'),
+      buildCandidatesDir: join(stateDir, 'build-candidates'),
+      pidFile: join(codeRoot.root, '.station.pids'),
     };
   }
-  const stateDir = join(root, '.station');
+  const stateDir = join(
+    resolveStationRoot({ ...env, STATION_HOME: projectHome }),
+    'state',
+    codeRoot.release.channel,
+  );
   return {
-    kind: 'source',
-    root,
     stateDir,
     instanceStateDir: join(stateDir, 'instances'),
-    buildCandidatesDir: join(stateDir, 'build-candidates'),
-    pidFile: join(root, '.station.pids'),
+    buildCandidatesDir: null,
+    pidFile: null,
   };
 }

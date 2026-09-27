@@ -40,14 +40,13 @@ function archiveCodeRoot() {
     join(root, PREBUILT_ARCHIVE_MARKER_FILENAME),
     PREBUILT_ARCHIVE_MARKER_CONTENT,
   );
-  const stationRoot = makeTempDir('station-doctor-root-');
-  return resolveLifecycleCodeRoot(root, { STATION_ROOT: stationRoot });
+  return resolveLifecycleCodeRoot(root);
 }
 
 function sourceCodeRoot() {
   const root = makeTempDir('station-doctor-checkout-');
   mkdirSync(join(root, '.git'));
-  return resolveLifecycleCodeRoot(root, {});
+  return resolveLifecycleCodeRoot(root);
 }
 
 /** A host with nothing on PATH: no node, npm, tsx, git or Rust. */
@@ -81,10 +80,13 @@ describe('doctor from a prebuilt archive (#2675)', () => {
     const inspectKontourDependencies = vi.fn(() => {
       throw new Error('ENOENT: no package.json');
     });
+    // The doctor's home is a channel home, so the state is its root's.
+    const stationRoot = makeTempDir('station-doctor-root-');
     const report = await collectDoctorReport(
       bareHostDeps({
         exec,
         inspectKontourDependencies,
+        projectHome: join(stationRoot, 'instances', 'stable'),
         codeRoot,
         repoRoot: codeRoot.root,
         processRuntime: { version: 'v24.11.1', execPath },
@@ -100,7 +102,7 @@ describe('doctor from a prebuilt archive (#2675)', () => {
       {
         label: 'Prebuilt archive',
         status: 'pass',
-        detail: `v0.0.0 (aaaaaaaaaaaa, stable ring, stable channel) at ${codeRoot.root}; lifecycle state in ${codeRoot.stateDir}`,
+        detail: `v0.0.0 (aaaaaaaaaaaa, stable ring, stable channel) at ${codeRoot.root}; lifecycle state in ${join(stationRoot, 'state', 'stable')}`,
       },
       { label: 'git', status: 'fail', detail: 'Not found' },
     ]);

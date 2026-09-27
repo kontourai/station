@@ -1243,7 +1243,11 @@ export async function runServiceCommand(
             servicePath: captureServicePath(run, fs),
             ...(priorInstance?.found
               ? {
-                  stopOwnedInstance: () => stop({ instanceName: instanceId }),
+                  stopOwnedInstance: () =>
+                    stop({
+                      instanceName: instanceId,
+                      stateHome: lifecycle.baseDir,
+                    }),
                 }
               : {}),
           })
@@ -1476,7 +1480,7 @@ export async function runServiceCommand(
     if (target.platform === 'darwin') uninstallLaunchd(target, { fs, run });
     else if (target.platform === 'linux') uninstallSystemd(target, { fs, run });
     else uninstallWindowsService(target, { fs, run });
-    stop({ instanceName: instanceId });
+    stop({ instanceName: instanceId, stateHome: lifecycle.baseDir });
     fs.rmSync(manifestPath, { force: true });
     console.log(
       existing

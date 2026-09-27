@@ -353,10 +353,15 @@ async function bootAndProbe({ launcher, nextLauncher, env, home, release }) {
       home,
       START_TIMEOUT_MS,
     );
-    const stopEphemeral = /Stop with: station (stop --instance=\S+)/.exec(
-      ephemeral,
-    )?.[1];
-    if (!stopEphemeral) fail('station start --temp-home named no stop command');
+    // An archive keeps a --temp-home instance's record inside that home
+    // (#2675), so the printed stop command names it.
+    const stopEphemeral =
+      /Stop with: station (stop --home=\S+ --instance=\S+)/.exec(
+        ephemeral,
+      )?.[1];
+    if (!stopEphemeral) {
+      fail('station start --temp-home named no stop command with its home');
+    }
     runLauncher(launcher, stopEphemeral.split(' '), lifecycleEnv, home);
     await waitUntilClosed([serverPort, uiPort]);
     // `stop` leaves the temporary home itself behind; the smoke owns it.
@@ -368,6 +373,20 @@ async function bootAndProbe({ launcher, nextLauncher, env, home, release }) {
     }
     // A recursive delete driven by parsed output: only ever the shape the
     // lifecycle creates (<tmp>/station/dev-home-*), never anything else.
+    // Its lifecycle state lived in the temporary home, which is its own
+    // Station root, and stop removed the record.
+    const temporaryState = join(
+      temporaryHome,
+      'state',
+      release.channel,
+      'instances',
+    );
+    if (!existsSync(temporaryState)) {
+      fail(`no lifecycle state in the temporary home: ${temporaryState}`);
+    }
+    if (readdirSync(temporaryState).some((entry) => entry.endsWith('.json'))) {
+      fail(`stop left a lifecycle record in ${temporaryState}`);
+    }
     const ownedHome = realpathSync(temporaryHome);
     if (
       !basename(ownedHome).startsWith('dev-home-') ||

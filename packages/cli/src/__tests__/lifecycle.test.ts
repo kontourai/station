@@ -74,15 +74,24 @@ const TEST_ALT_HOME = join(TEST_ROOT, 'alt-home');
 const TEST_SECOND_HOME = join(TEST_ROOT, 'second-home');
 const TEST_PIDFILE = join(TEST_CWD, '.station.pids');
 const TEST_INSTANCE_STATE_DIR = join(TEST_CWD, '.station', 'instances');
-// The STATION_ROOT a prebuilt-archive fixture resolves its lifecycle state
-// under (#2675), so no test ever touches the real ~/.station.
+// A Station root whose `instances/stable` is a channel home, as installed
+// Stations use; the other test homes are raw directories that root
+// themselves. Either way no test touches the real ~/.station (#2675).
 const TEST_STATION_ROOT = join(TEST_ROOT, 'station-root');
-const TEST_ARCHIVE_INSTANCE_STATE_DIR = join(
-  TEST_STATION_ROOT,
-  'state',
-  'stable',
-  'instances',
-);
+const TEST_ROOTED_HOME = join(TEST_STATION_ROOT, 'instances', 'stable');
+
+/**
+ * Where a prebuilt archive keeps records for instances of `home`: the
+ * `state/stable/instances` of the Station root that home belongs to.
+ */
+function archiveStateDir(home: string): string {
+  return join(
+    resolveStationRoot({ STATION_HOME: home }),
+    'state',
+    'stable',
+    'instances',
+  );
+}
 const PROCESS_INTEGRATION_TEST_TIMEOUT_MS = 15_000;
 
 function normalizeInstanceName(value: string): string {
@@ -141,18 +150,25 @@ function getInstanceStatePath(instanceId: string, cwd = TEST_CWD): string {
 /**
  * Every instance record the fixture lifecycle has written: a source tree's
  * (`<cwd>/.station/instances`) and a prebuilt archive's
- * (`<STATION_ROOT>/state/<channel>/instances`, #2675).
+ * (`<root of the instance's home>/state/<channel>/instances`, #2675).
  */
 function liveStateRecords(): Array<Record<string, any>> {
-  return [TEST_INSTANCE_STATE_DIR, TEST_ARCHIVE_INSTANCE_STATE_DIR].flatMap(
-    (directory) =>
-      existsSync(directory)
-        ? readdirSync(directory)
-            .filter((entry) => entry.endsWith('.json'))
-            .map((entry) =>
-              JSON.parse(readFileSync(join(directory, entry), 'utf8')),
-            )
-        : [],
+  return [
+    TEST_INSTANCE_STATE_DIR,
+    ...[
+      TEST_DEFAULT_HOME,
+      TEST_ALT_HOME,
+      TEST_SECOND_HOME,
+      TEST_ROOTED_HOME,
+    ].map(archiveStateDir),
+  ].flatMap((directory) =>
+    existsSync(directory)
+      ? readdirSync(directory)
+          .filter((entry) => entry.endsWith('.json'))
+          .map((entry) =>
+            JSON.parse(readFileSync(join(directory, entry), 'utf8')),
+          )
+      : [],
   );
 }
 
@@ -363,16 +379,69 @@ async function loadLifecycleModule(
     });
   }
 
-  // The real code-root resolver, so the state location a test exercises is
-  // the one the CLI derives: <cwd>/.station for a source tree, and
-  // <STATION_ROOT>/state/<channel> for a prebuilt archive (#2675).
-  const { resolveLifecycleCodeRoot } = await vi.importActual<
-    typeof import('../commands/lifecycle-code-root.js')
-  >('../commands/lifecycle-code-root.js');
-  const codeRoot = resolveLifecycleCodeRoot(options.cwd ?? TEST_CWD, {
-    ...process.env,
-    STATION_ROOT: TEST_STATION_ROOT,
-  });
+  // The real code-root and state-location resolvers, so the state location a
+  // test exercises is the one the CLI derives: <cwd>/.station for a source
+  // tree, and <root of the home>/state/<channel> for a prebuilt archive
+  // (#2675). An ambient STATION_ROOT would pin every home to one root, so it
+  // is dropped; each test home then derives its own.
+  const { resolveLifecycleCodeRoot, resolveLifecycleStateLocation } =
+    await vi.importActual<typeof import('../commands/lifecycle-code-root.js')>(
+      '../commands/lifecycle-code-root.js',
+    );
+  const codeRoot = resolveLifecycleCodeRoot(options.cwd ?? TEST_CWD);
+  const resolveLifecycleHomeTarget = ({
+    baseDir,
+    env,
+    tempHome,
+  }: {
+    baseDir?: string;
+    env?: NodeJS.ProcessEnv;
+    tempHome?: boolean;
+  } = {}) => {
+    const resolvedEnv = env ?? process.env;
+
+    if (tempHome) {
+      const projectHome = mkdtempSync(join(tmpdir(), 'station-dev-home-'));
+      return {
+        isDefaultHome: false,
+        projectHome,
+        source: '--temp-home' as const,
+      };
+    }
+
+    if (baseDir) {
+      const projectHome = resolve(baseDir);
+      return {
+        isDefaultHome: projectHome === TEST_DEFAULT_HOME,
+        projectHome,
+        source: '--base' as const,
+      };
+    }
+
+    if (resolvedEnv.STATION_HOME) {
+      const projectHome = resolve(resolvedEnv.STATION_HOME);
+      return {
+        isDefaultHome: projectHome === TEST_DEFAULT_HOME,
+        projectHome,
+        source: 'env' as const,
+      };
+    }
+
+    return {
+      isDefaultHome: true,
+      projectHome: TEST_DEFAULT_HOME,
+      source: 'default' as const,
+    };
+  };
+  const resolveLifecycleState = (projectHome?: string) => {
+    const env = { ...process.env };
+    delete env.STATION_ROOT;
+    return resolveLifecycleStateLocation(
+      codeRoot,
+      projectHome ?? resolveLifecycleHomeTarget().projectHome,
+      env,
+    );
+  };
   // A prebuilt archive's implicit id is the one the real resolver derives for
   // THIS root (#2675: channel, not path); the local copy above models only a
   // source checkout's path-hashed id.
@@ -391,14 +460,15 @@ async function loadLifecycleModule(
     DEFAULT_PROJECT_HOME: TEST_DEFAULT_HOME,
     DEFAULT_SERVER_PORT: 3141,
     DEFAULT_UI_PORT: 3000,
-    INSTANCE_STATE_DIR: codeRoot.instanceStateDir,
     LIFECYCLE_CODE_ROOT: codeRoot,
-    PIDFILE: codeRoot.kind === 'source' ? codeRoot.pidFile : null,
     PLUGINS_DIR: join(TEST_DEFAULT_HOME, 'plugins'),
     PROJECT_HOME: TEST_DEFAULT_HOME,
     extractPluginName: () => '',
-    getInstanceStatePath: (instanceId: string) =>
-      join(codeRoot.instanceStateDir, `${instanceId}.json`),
+    getInstanceStatePath: (instanceId: string, projectHome?: string) =>
+      join(
+        resolveLifecycleState(projectHome).instanceStateDir,
+        `${instanceId}.json`,
+      ),
     isGitUrl: () => false,
     lookupDepInRegistries: () => null,
     normalizeHomePath:
@@ -406,50 +476,8 @@ async function loadLifecycleModule(
     normalizeInstanceName,
     parseGitSource: () => ({ branch: 'main', url: '' }),
     readManifest: vi.fn(),
-    resolveLifecycleHomeTarget: ({
-      baseDir,
-      env,
-      tempHome,
-    }: {
-      baseDir?: string;
-      env?: NodeJS.ProcessEnv;
-      tempHome?: boolean;
-    } = {}) => {
-      const resolvedEnv = env ?? process.env;
-
-      if (tempHome) {
-        const projectHome = mkdtempSync(join(tmpdir(), 'station-dev-home-'));
-        return {
-          isDefaultHome: false,
-          projectHome,
-          source: '--temp-home' as const,
-        };
-      }
-
-      if (baseDir) {
-        const projectHome = resolve(baseDir);
-        return {
-          isDefaultHome: projectHome === TEST_DEFAULT_HOME,
-          projectHome,
-          source: '--base' as const,
-        };
-      }
-
-      if (resolvedEnv.STATION_HOME) {
-        const projectHome = resolve(resolvedEnv.STATION_HOME);
-        return {
-          isDefaultHome: projectHome === TEST_DEFAULT_HOME,
-          projectHome,
-          source: 'env' as const,
-        };
-      }
-
-      return {
-        isDefaultHome: true,
-        projectHome: TEST_DEFAULT_HOME,
-        source: 'default' as const,
-      };
-    },
+    resolveLifecycleHomeTarget,
+    resolveLifecycleState,
     resolveLifecycleInstanceId: (
       identity: Parameters<typeof resolveInstanceId>[0] = {},
     ) =>
@@ -7783,8 +7811,11 @@ describe('lifecycle build + restart ergonomics', () => {
 
   it("keeps a prebuilt archive's shared build when stopping a --temp-home instance", async () => {
     ensurePrebuiltArchive();
+    // A bare `stop` searches the default home's root (the suite's setup may
+    // export a STATION_HOME of its own).
+    vi.stubEnv('STATION_HOME', '');
     const statePath = writeInstanceState({
-      stateDir: TEST_ARCHIVE_INSTANCE_STATE_DIR,
+      stateDir: archiveStateDir(TEST_DEFAULT_HOME),
       instanceName: 'ephemeral',
       homeSource: '--temp-home',
       serverPid: 41001,
@@ -8382,9 +8413,8 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     return spawn;
   }
 
-  it('starts and stops from a read-only archive, keeping state under STATION_ROOT/state/<channel>', async () => {
-    ensurePrebuiltArchive();
-    ensureDir(TEST_ALT_HOME);
+  /** Processes that stay alive until `killProcessTree` runs. */
+  function killableProcesses() {
     let alive = true;
     const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
       _pid: number,
@@ -8396,15 +8426,25 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     const killProcessTree = vi.fn(() => {
       alive = false;
     });
+    return { killProcessTree, killSpy };
+  }
+
+  it("starts and stops from a read-only archive, keeping state in the home's Station root", async () => {
+    ensurePrebuiltArchive();
+    ensureDir(TEST_ALT_HOME);
+    const { killProcessTree, killSpy } = killableProcesses();
     const spawn = readyStartMocks([41311, 41312]);
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(() => ''), spawn },
       netConnectMock: makeReadyTcpConnectMock(),
       platformOverrides: { killProcessTree, sleepSync: vi.fn() },
     });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const before = treeListing(TEST_CWD);
     const restoreWritable = makeReadOnly(TEST_CWD);
-    const statePath = join(TEST_ARCHIVE_INSTANCE_STATE_DIR, 'archive-a.json');
+    // TEST_ALT_HOME is a raw directory, so it is its own Station root.
+    const stateDir = join(TEST_ALT_HOME, 'state', 'stable', 'instances');
+    const statePath = join(stateDir, 'archive-a.json');
 
     try {
       await lifecycle.start({
@@ -8420,38 +8460,78 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
         uiPid: 41312,
       });
       if (process.platform !== 'win32') {
-        expect(statSync(TEST_ARCHIVE_INSTANCE_STATE_DIR).mode & 0o777).toBe(
-          0o700,
-        );
+        expect(statSync(stateDir).mode & 0o777).toBe(0o700);
       }
+      // The printed stop command names the home: a bare `station stop` would
+      // search the default home's root, which holds no record of this one.
+      expect(log.mock.calls.map(([line]) => String(line))).toContain(
+        `\n  Stop with: station stop --home=${TEST_ALT_HOME} --instance=archive-a`,
+      );
+      expect(lifecycle.isRunning({ instanceName: 'archive-a' })).toBe(false);
 
-      lifecycle.stop({ instanceName: 'archive-a' });
+      lifecycle.stop({ instanceName: 'archive-a', stateHome: TEST_ALT_HOME });
       expect(killProcessTree).toHaveBeenCalled();
       expect(existsSync(statePath)).toBe(false);
       expect(treeListing(TEST_CWD)).toEqual(before);
     } finally {
       restoreWritable();
+      log.mockRestore();
       killSpy.mockRestore();
     }
+  });
+
+  it('finds the same records whether the home came from STATION_HOME or a flag', async () => {
+    ensurePrebuiltArchive();
+    for (const home of [TEST_ALT_HOME, TEST_ROOTED_HOME]) {
+      ensureDir(home);
+      const { killProcessTree, killSpy } = killableProcesses();
+      const spawn = readyStartMocks([41331, 41332]);
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => ''), spawn },
+        netConnectMock: makeReadyTcpConnectMock(),
+        platformOverrides: { killProcessTree, sleepSync: vi.fn() },
+      });
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        // `STATION_HOME=<home> station start`
+        vi.stubEnv('STATION_HOME', home);
+        await lifecycle.start({
+          instanceName: 'spelled',
+          serverPort: 3282,
+          uiPort: 5314,
+        });
+        expect(existsSync(join(archiveStateDir(home), 'spelled.json'))).toBe(
+          true,
+        );
+        vi.unstubAllEnvs();
+        // `station stop --home=<home>` (the CLI passes its home as stateHome)
+        expect(
+          lifecycle.isRunning({ instanceName: 'spelled', stateHome: home }),
+        ).toBe(true);
+        lifecycle.stop({ instanceName: 'spelled', stateHome: home });
+        expect(killProcessTree).toHaveBeenCalled();
+        expect(readdirSync(archiveStateDir(home))).toEqual([]);
+      } finally {
+        vi.unstubAllEnvs();
+        log.mockRestore();
+        killSpy.mockRestore();
+      }
+    }
+    // A home under <root>/instances shares that root's state; a raw home is
+    // its own root.
+    expect(archiveStateDir(TEST_ROOTED_HOME)).toBe(
+      join(TEST_STATION_ROOT, 'state', 'stable', 'instances'),
+    );
   });
 
   it('a second version directory of the channel sees and stops what the first one started', async () => {
     ensurePrebuiltArchive();
     ensureSecondVersion();
     ensureDir(TEST_ALT_HOME);
-    let alive = true;
-    const killSpy = vi.spyOn(process, 'kill').mockImplementation(((
-      _pid: number,
-      signal?: NodeJS.Signals | number,
-    ) => {
-      if (signal === 0 && !alive) throw new Error('gone');
-      return true;
-    }) as typeof process.kill);
-    const killProcessTree = vi.fn(() => {
-      alive = false;
-    });
+    const { killProcessTree, killSpy } = killableProcesses();
     // No --instance: the implicit id for this home and these ports.
     const target = { baseDir: TEST_ALT_HOME, serverPort: 3272, uiPort: 5304 };
+    const stateDir = archiveStateDir(TEST_ALT_HOME);
 
     try {
       const firstSpawn = readyStartMocks([41321, 41322]);
@@ -8461,7 +8541,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
         platformOverrides: { killProcessTree, sleepSync: vi.fn() },
       });
       await first.lifecycle.start(target);
-      const [record] = readdirSync(TEST_ARCHIVE_INSTANCE_STATE_DIR);
+      const [record] = readdirSync(stateDir);
       expect(record).toMatch(/^instance-[0-9a-f]{12}\.json$/);
       const instanceId = record!.slice(0, -'.json'.length);
 
@@ -8480,15 +8560,18 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       expect(
         log.mock.calls.some(([line]) =>
           String(line).includes(
-            `Already running\n  UI:   http://localhost:5304\n  Stop: station stop --instance=${instanceId}`,
+            `Already running\n  UI:   http://localhost:5304\n  Stop: station stop --home=${TEST_ALT_HOME} --instance=${instanceId}`,
           ),
         ),
       ).toBe(true);
       log.mockRestore();
 
-      second.lifecycle.stop({ instanceName: instanceId });
+      second.lifecycle.stop({
+        instanceName: instanceId,
+        stateHome: TEST_ALT_HOME,
+      });
       expect(killProcessTree).toHaveBeenCalled();
-      expect(readdirSync(TEST_ARCHIVE_INSTANCE_STATE_DIR)).toEqual([]);
+      expect(readdirSync(stateDir)).toEqual([]);
       expect(existsSync(join(TEST_CWD, '.station'))).toBe(false);
       expect(existsSync(join(SECOND_VERSION, '.station'))).toBe(false);
     } finally {
@@ -8498,6 +8581,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
 
   it('refuses station upgrade precisely, before touching git or an installer', async () => {
     ensurePrebuiltArchive();
+    vi.stubEnv('STATION_HOME', TEST_ROOTED_HOME);
     const execSync = vi.fn(() => '');
     const execFileSync = vi.fn(() => '');
     const { lifecycle } = await loadLifecycleModule({

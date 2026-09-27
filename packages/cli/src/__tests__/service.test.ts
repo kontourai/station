@@ -1272,7 +1272,10 @@ describe('station service dispatch', () => {
     expect(stopWindowsService).not.toHaveBeenCalled();
     // uninstall retains its explicit lifecycle cleanup; idempotent `stop`
     // itself did not invoke the Windows platform Adapter above.
-    expect(stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: baseDir,
+    });
     expect(uninstallWindowsService).toHaveBeenCalledOnce();
   });
 
@@ -1348,7 +1351,10 @@ describe('station service dispatch', () => {
       expect.objectContaining({ label: 'io.kontourai.station.service-test' }),
       expect.any(Object),
     );
-    expect(stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: baseDir,
+    });
   });
 
   test('reports active or enabled registrations without a manifest as unhealthy orphans', async () => {
@@ -2739,7 +2745,10 @@ describe('station service dispatch', () => {
       platform: 'darwin',
     });
     expect(uninstallLaunchd).toHaveBeenCalledOnce();
-    expect(stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: baseDir,
+    });
   });
 
   test('starts an installed service and prints its post-action JSON status', async () => {

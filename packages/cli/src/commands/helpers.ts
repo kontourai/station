@@ -12,7 +12,9 @@ import {
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import {
   type LifecycleCodeRoot,
+  type LifecycleStateLocation,
   resolveLifecycleCodeRoot,
+  resolveLifecycleStateLocation,
 } from './lifecycle-code-root.js';
 
 function defaultRuntimeContext(env: NodeJS.ProcessEnv = process.env) {
@@ -44,13 +46,9 @@ export const PROJECT_HOME = resolve(
 export const PLUGINS_DIR = join(PROJECT_HOME, 'plugins');
 export const AGENTS_DIR = join(PROJECT_HOME, 'agents');
 export const CWD = process.cwd();
-/** This process's code root and where its lifecycle state lives (#2675). */
+/** What this process runs from: a source tree or a prebuilt archive (#2675). */
 export const LIFECYCLE_CODE_ROOT: LifecycleCodeRoot =
   resolveLifecycleCodeRoot(CWD);
-/** The legacy pid file; null for a prebuilt archive, which never had one. */
-export const PIDFILE: string | null =
-  LIFECYCLE_CODE_ROOT.kind === 'source' ? LIFECYCLE_CODE_ROOT.pidFile : null;
-export const INSTANCE_STATE_DIR = LIFECYCLE_CODE_ROOT.instanceStateDir;
 
 /**
  * The directory `station` was invoked from, before the launcher `cd`s into
@@ -267,11 +265,35 @@ export function resolveServiceInstanceId(
   return resolveLifecycleInstanceId(options);
 }
 
+/**
+ * Where this CLI keeps lifecycle state for instances of `projectHome` — the
+ * home the command resolved from its flags and environment. Every lifecycle
+ * reader and writer goes through here (#2675). A source checkout ignores the
+ * home; a prebuilt archive keeps state in the root that home belongs to, and
+ * without a home it takes the one a bare command targets (`STATION_HOME` or
+ * the channel default), resolved only then.
+ */
+export function resolveLifecycleState(
+  projectHome?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): LifecycleStateLocation {
+  return resolveLifecycleStateLocation(
+    LIFECYCLE_CODE_ROOT,
+    LIFECYCLE_CODE_ROOT.kind === 'source'
+      ? CWD
+      : (projectHome ?? resolveLifecycleHomeTarget({ env }).projectHome),
+    env,
+  );
+}
+
 export function getInstanceStatePath(
   instanceId: string,
-  codeRoot: LifecycleCodeRoot = LIFECYCLE_CODE_ROOT,
+  projectHome?: string,
 ): string {
-  return join(codeRoot.instanceStateDir, `${instanceId}.json`);
+  return join(
+    resolveLifecycleState(projectHome).instanceStateDir,
+    `${instanceId}.json`,
+  );
 }
 
 export function readManifest(dir = CWD): PluginManifest {
