@@ -36,10 +36,28 @@ vi.mock('../../../contexts/active-chats-store', () => ({
   },
 }));
 
-import {
-  applyOrchestrationSnapshot,
-  buildOrchestrationSnapshotSyncPlan,
-} from '../snapshotHandlers';
+import { applyOrchestrationSnapshot } from '../snapshotHandlers';
+
+/**
+ * Applies an ordinary (non-reconnect) snapshot without child work to `seed`
+ * through the real entry point and returns the one `updateChat` write per
+ * thread it made.
+ */
+function applyOrdinarySnapshot(
+  payload: Parameters<typeof applyOrchestrationSnapshot>[0],
+  seed?: Record<string, any>,
+): Record<string, any> {
+  if (seed) chats = seed;
+  updateChat.mockClear();
+  applyOrchestrationSnapshot(payload, { apiBase: 'http://api' });
+  // These cases carry no child work, so the status sync is the only writer and
+  // makes one write per thread (child-work reconciliation may legitimately
+  // write a thread again). A map keyed by thread would hide a second write, so
+  // refuse duplicates before collapsing the calls.
+  const threadIds = updateChat.mock.calls.map(([threadId]) => threadId);
+  expect(threadIds).toEqual([...new Set(threadIds)]);
+  return Object.fromEntries(updateChat.mock.calls);
+}
 
 describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)', () => {
   beforeEach(() => {
@@ -287,13 +305,6 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
       },
       { apiBase: 'http://api' },
     );
-    expect(rehydrateChatSession).not.toHaveBeenCalled();
-  });
-
-  test('omitting options entirely (pre-#1225 call shape) never triggers a refetch', () => {
-    applyOrchestrationSnapshot({
-      sessions: [{ provider: 'claude', threadId: 'thread-1', status: 'idle' }],
-    });
     expect(rehydrateChatSession).not.toHaveBeenCalled();
   });
 
@@ -569,75 +580,58 @@ describe('station#1301 slice 1: OrchestrationSnapshotPayload widening is behavio
   });
 
   // The type widened in `types.ts` (`delegation`/`createdAt`/`lastEventAt`)
-  // is declare-only for `buildOrchestrationSnapshotSyncPlan` — it reads none
+  // is declare-only for the chat-status sync plan — it reads none
   // of those fields. This pins that a payload carrying them (as every real
   // wire payload now does, archive#1301 §1.3) folds into the EXACT same
   // `updateChat` call as a payload that omits them (the pre-widening shape),
   // so the new fields cannot silently perturb the existing chat-status sync.
   test('a session carrying the new fields updates the chat identically to one without them', () => {
-    applyOrchestrationSnapshot({
-      sessions: [
-        {
-          provider: 'claude',
-          threadId: 'thread-1',
-          status: 'running',
-          hasActiveTurn: true,
-          delegation: { taskId: 'thread-1' },
-          createdAt: '2026-07-29T00:00:00.000Z',
-          lastEventAt: '2026-07-29T00:05:00.000Z',
-        },
-      ],
+    const seed = () => ({
+      'thread-1': {
+        provider: 'claude',
+        agentSlug: 'claude-code',
+        conversationId: 'thread-1',
+        orchestrationSessionStarted: true,
+      },
     });
-    const withNewFields = updateChat.mock.calls.at(-1);
-
-    updateChat.mockClear();
-    chats['thread-1'] = {
-      provider: 'claude',
-      agentSlug: 'claude-code',
-      conversationId: 'thread-1',
-      orchestrationSessionStarted: true,
-    };
-    applyOrchestrationSnapshot({
-      sessions: [
-        {
-          provider: 'claude',
-          threadId: 'thread-1',
-          status: 'running',
-          hasActiveTurn: true,
-        },
-      ],
-    });
-    const withoutNewFields = updateChat.mock.calls.at(-1);
-
-    expect(withNewFields).toEqual(withoutNewFields);
-  });
-
-  test('a session with only the new fields and no delegation.parentTaskId still never triggers a reconnect refetch', () => {
-    applyOrchestrationSnapshot(
+    const withNewFields = applyOrdinarySnapshot(
       {
         sessions: [
           {
             provider: 'claude',
             threadId: 'thread-1',
-            status: 'idle',
+            status: 'running',
+            hasActiveTurn: true,
             delegation: { taskId: 'thread-1' },
             createdAt: '2026-07-29T00:00:00.000Z',
+            lastEventAt: '2026-07-29T00:05:00.000Z',
           },
         ],
       },
-      { apiBase: 'http://api' },
+      seed(),
     );
-    expect(rehydrateChatSession).not.toHaveBeenCalled();
+    const withoutNewFields = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'running',
+            hasActiveTurn: true,
+          },
+        ],
+      },
+      seed(),
+    );
+
+    // Both runs must actually write, or undefined would equal undefined.
+    expect(Object.keys(withNewFields)).toEqual(['thread-1']);
+    expect(Object.keys(withoutNewFields)).toEqual(['thread-1']);
+    expect(withNewFields).toEqual(withoutNewFields);
   });
 
   test('model acknowledgment preserves newer controls but collapses both requests when controls match', () => {
-    chats['thread-1'] = {
-      ...chats['thread-1'],
-      requestedModel: 'B',
-      requestedModelSource: 'session override',
-      requestedProviderOptions: { effort: 'low' },
-    };
-    const stale = buildOrchestrationSnapshotSyncPlan(
+    const stale = applyOrdinarySnapshot(
       {
         sessions: [
           {
@@ -649,23 +643,25 @@ describe('station#1301 slice 1: OrchestrationSnapshotPayload widening is behavio
           },
         ],
       },
-      chats,
+      {
+        'thread-1': {
+          ...chats['thread-1'],
+          requestedModel: 'B',
+          requestedModelSource: 'session override',
+          requestedProviderOptions: { effort: 'low' },
+        },
+      },
     );
-    expect(stale.sessionUpdates[0]?.updates).toMatchObject({
+    expect(stale['thread-1']).toMatchObject({
       requestedModel: undefined,
       modelSource: 'session override',
     });
-    expect(stale.sessionUpdates[0]?.updates).not.toHaveProperty(
-      'requestedProviderOptions',
-    );
+    expect(stale['thread-1']).not.toHaveProperty('requestedProviderOptions');
+    expect(chats['thread-1'].requestedProviderOptions).toEqual({
+      effort: 'low',
+    });
 
-    chats['thread-1'] = {
-      ...chats['thread-1'],
-      requestedModel: 'B',
-      requestedModelSource: 'session override',
-      requestedProviderOptions: { effort: 'low' },
-    };
-    const matching = buildOrchestrationSnapshotSyncPlan(
+    const matching = applyOrdinarySnapshot(
       {
         sessions: [
           {
@@ -677,24 +673,25 @@ describe('station#1301 slice 1: OrchestrationSnapshotPayload widening is behavio
           },
         ],
       },
-      chats,
+      {
+        'thread-1': {
+          ...chats['thread-1'],
+          requestedModel: 'B',
+          requestedModelSource: 'session override',
+          requestedProviderOptions: { effort: 'low' },
+        },
+      },
     );
-    expect(matching.sessionUpdates[0]?.updates).toMatchObject({
+    expect(matching['thread-1']).toMatchObject({
       requestedModel: undefined,
       requestedProviderOptions: undefined,
       modelSource: 'session override',
     });
+    expect(matching['thread-1']).toHaveProperty('requestedProviderOptions');
   });
 
   test('an authoritative default report collapses an explicit default request', () => {
-    chats['thread-1'] = {
-      ...chats['thread-1'],
-      model: 'old-override',
-      defaultModel: 'engine-default',
-      requestedModel: null,
-      requestedModelSource: 'agent default',
-    };
-    const plan = buildOrchestrationSnapshotSyncPlan(
+    const updates = applyOrdinarySnapshot(
       {
         sessions: [
           {
@@ -705,59 +702,311 @@ describe('station#1301 slice 1: OrchestrationSnapshotPayload widening is behavio
           },
         ],
       },
-      chats,
+      {
+        'thread-1': {
+          ...chats['thread-1'],
+          model: 'old-override',
+          defaultModel: 'engine-default',
+          requestedModel: null,
+          requestedModelSource: 'agent default',
+        },
+      },
     );
-    expect(plan.sessionUpdates[0]?.updates).toMatchObject({
+    expect(updates['thread-1']).toMatchObject({
       model: 'engine-default',
       requestedModel: undefined,
     });
+    expect(chats['thread-1'].requestedModel).toBeUndefined();
   });
 
   test('a late duplicate A report cannot erase the next B request', () => {
-    chats['thread-1'] = {
-      ...chats['thread-1'],
-      requestedModel: 'A',
-      requestedModelSource: 'session override',
-      requestedProviderOptions: { effort: 'high' },
+    const reportA = {
+      sessions: [
+        {
+          provider: 'claude' as const,
+          threadId: 'thread-1',
+          status: 'idle',
+          effectiveModel: 'A',
+          effectiveModelOptions: { effort: 'high' },
+        },
+      ],
     };
-    const acknowledgedA = buildOrchestrationSnapshotSyncPlan(
-      {
-        sessions: [
-          {
-            provider: 'claude',
-            threadId: 'thread-1',
-            status: 'idle',
-            effectiveModel: 'A',
-            effectiveModelOptions: { effort: 'high' },
-          },
-        ],
+    applyOrdinarySnapshot(reportA, {
+      'thread-1': {
+        ...chats['thread-1'],
+        requestedModel: 'A',
+        requestedModelSource: 'session override',
+        requestedProviderOptions: { effort: 'high' },
       },
-      chats,
-    );
+    });
+    // The store now holds A's acknowledgement; the operator then picks B.
     chats['thread-1'] = {
       ...chats['thread-1'],
-      ...acknowledgedA.sessionUpdates[0]?.updates,
       requestedModel: 'B',
       requestedModelSource: 'session override',
       requestedProviderOptions: { effort: 'low' },
     };
-    const plan = buildOrchestrationSnapshotSyncPlan(
+
+    const updates = applyOrdinarySnapshot(reportA);
+    expect(updates['thread-1']).not.toHaveProperty('requestedModel');
+    expect(chats['thread-1'].requestedModel).toBe('B');
+  });
+});
+
+describe('applyOrchestrationSnapshot chat-status sync', () => {
+  beforeEach(() => {
+    rehydrateChatSession.mockClear();
+    chats = {};
+  });
+
+  test('snapshot rehydration prefers a runtime-reported model over a legacy requested selector', () => {
+    const updates = applyOrdinarySnapshot(
       {
         sessions: [
           {
             provider: 'claude',
-            threadId: 'thread-1',
-            status: 'idle',
-            effectiveModel: 'A',
+            threadId: 'thread-fable',
+            status: 'ready',
+            effectiveModel: 'claude-fable-5[1m]',
+            reportedModel: 'claude-fable-5',
+          },
+        ],
+      },
+      { 'thread-fable': {} },
+    );
+
+    expect(Object.keys(updates)).toEqual(['thread-fable']);
+    expect(updates['thread-fable']).toMatchObject({
+      model: 'claude-fable-5',
+      orchestrationModel: 'claude-fable-5',
+    });
+  });
+
+  test('snapshot updates the reported model without eroding a pending picker request', () => {
+    const updates = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-live',
+            status: 'ready',
+            reportedModel: 'reported-model',
+          },
+        ],
+      },
+      {
+        'thread-live': {
+          requestedModel: 'picker-model',
+          providerOptions: { effort: 'high' },
+        },
+      },
+    );
+
+    expect(updates['thread-live']).toMatchObject({ model: 'reported-model' });
+    // The sync does not write requestedModel at all until the report matches.
+    expect(updates['thread-live']).not.toHaveProperty('requestedModel');
+    expect(chats['thread-live'].requestedModel).toBe('picker-model');
+  });
+
+  test('matching reported model collapses the acknowledged picker request', () => {
+    const updates = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-live',
+            status: 'ready',
+            reportedModel: 'picker-model',
+          },
+        ],
+      },
+      { 'thread-live': { requestedModel: 'picker-model' } },
+    );
+    expect(updates['thread-live']).toMatchObject({
+      model: 'picker-model',
+      requestedModel: undefined,
+      requestedModelSource: undefined,
+    });
+    expect(updates['thread-live']).toHaveProperty('requestedModel');
+  });
+
+  test('snapshot running status with no open turn does not re-strand the chat (archive#1034)', () => {
+    const idleChat = {
+      provider: 'claude',
+      orchestrationSessionStarted: true,
+      orchestrationStatus: 'idle',
+    };
+    const byThread = applyOrdinarySnapshot(
+      {
+        sessions: [
+          // Process alive, turn finished — the reconnect case that used to
+          // reintroduce the stuck "Working…" shell (archive#1005's second channel).
+          {
+            provider: 'claude',
+            threadId: 'thread-a',
+            status: 'running',
+            hasActiveTurn: false,
+          },
+          // Genuinely mid-turn: unchanged behavior.
+          {
+            provider: 'claude',
+            threadId: 'thread-b',
+            status: 'running',
+            hasActiveTurn: true,
+          },
+          // Legacy payload without the fold: unchanged behavior.
+          { provider: 'claude', threadId: 'thread-c', status: 'running' },
+        ],
+      },
+      {
+        'thread-a': { ...idleChat },
+        'thread-b': { ...idleChat },
+        'thread-c': { ...idleChat },
+      },
+    );
+
+    expect(byThread['thread-a']).toMatchObject({
+      orchestrationStatus: 'idle',
+      status: 'idle',
+      orchestrationTurnOpen: false,
+    });
+    expect(byThread['thread-b']).toMatchObject({
+      orchestrationStatus: 'running',
+      status: 'sending',
+      orchestrationTurnOpen: true,
+    });
+    expect(byThread['thread-c']).toMatchObject({
+      orchestrationStatus: 'running',
+      status: 'sending',
+    });
+    // Legacy payload without hasActiveTurn: the display fields keep the
+    // conservative archive#1034 defaults, but the long-lived fold is NOT seeded —
+    // persisting the assumption would let an attach-only 'running' re-engage
+    // the shell with nothing ever clearing it (archive#1076 closure round).
+    expect(byThread['thread-c']).not.toHaveProperty('orchestrationTurnOpen');
+  });
+
+  // archive#1076: the snapshot reseeds the client turn fold even when the provider
+  // process status is NOT 'running' — a reconnect during an in-turn approval
+  // projects status 'ready' with hasActiveTurn true, and the next live
+  // 'running' state-change must be able to re-engage the shell.
+  test('snapshot reseeds orchestrationTurnOpen during an in-turn approval reconnect (archive#1076)', () => {
+    const updates = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-approval',
+            status: 'ready',
+            hasActiveTurn: true,
+          },
+        ],
+      },
+      {
+        'thread-approval': {
+          provider: 'claude',
+          orchestrationSessionStarted: true,
+          orchestrationStatus: 'awaiting-approval',
+        },
+      },
+    );
+    expect(updates['thread-approval']).toMatchObject({
+      orchestrationTurnOpen: true,
+    });
+  });
+
+  test('keeps live sessions and marks exited orchestration chats, never a bedrock one', () => {
+    applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-live',
+            status: 'running',
+            model: 'sonnet',
+            effectiveModel: 'opus',
             effectiveModelOptions: { effort: 'high' },
           },
         ],
       },
-      chats,
+      {
+        'thread-live': {
+          provider: 'claude',
+          orchestrationSessionStarted: true,
+          orchestrationStatus: 'running',
+        },
+        'thread-exited': {
+          provider: 'claude',
+          orchestrationSessionStarted: true,
+          orchestrationStatus: 'running',
+        },
+        'thread-bedrock': {
+          provider: 'bedrock',
+          orchestrationSessionStarted: true,
+          orchestrationStatus: 'running',
+        },
+      },
     );
-    expect(plan.sessionUpdates[0]?.updates).not.toHaveProperty(
-      'requestedModel',
+
+    expect(updateChat.mock.calls).toEqual([
+      [
+        'thread-live',
+        {
+          provider: 'claude',
+          model: 'opus',
+          providerOptions: { effort: 'high' },
+          orchestrationProvider: 'claude',
+          orchestrationModel: 'opus',
+          orchestrationSessionStarted: true,
+          orchestrationStatus: 'running',
+          status: 'sending',
+        },
+      ],
+      [
+        'thread-exited',
+        {
+          orchestrationSessionStarted: false,
+          orchestrationStatus: 'exited',
+          orchestrationTurnOpen: false,
+          status: 'idle',
+          isProcessingStep: false,
+          streamingMessage: undefined,
+        },
+      ],
+    ]);
+  });
+
+  test('snapshot model reset replaces stale controls while preserving approval state', () => {
+    const updates = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-reset',
+            status: 'ready',
+            model: 'opus',
+            effectiveModel: 'opus',
+            effectiveModelOptions: {},
+          },
+        ],
+      },
+      {
+        'thread-reset': {
+          provider: 'claude',
+          providerOptions: {
+            approvalMode: 'never',
+            effort: 'high',
+            fastMode: true,
+          },
+          orchestrationSessionStarted: true,
+          orchestrationStatus: 'ready',
+        },
+      },
     );
+
+    expect(updates['thread-reset'].providerOptions).toEqual({
+      approvalMode: 'never',
+    });
   });
 });
 
