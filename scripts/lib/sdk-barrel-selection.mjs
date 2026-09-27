@@ -260,7 +260,10 @@ function collectModuleReferences(path, source) {
   const file = parse(path, source);
   const references = [];
   let opaque = false;
-  const add = (specifier, names) => references.push({ specifier, names });
+  // `dynamic`: loaded only when the code runs (import(), require, a mock),
+  // not when the module itself is evaluated.
+  const add = (specifier, names, dynamic = false) =>
+    references.push({ specifier, names, dynamic });
   // Mock detection keys on the literal `vi.<method>(...)`. A file that
   // aliases vi, imports vitest as a namespace or default, or uses `vi` any
   // other way (`vi['importActual']`, passing it to a helper) can mock or
@@ -349,7 +352,7 @@ function collectModuleReferences(path, source) {
         if (specifier !== null) {
           if (isFactoryMock(node))
             factoryMocks.push({ specifier, factory: node.arguments[1] });
-          else add(specifier, null);
+          else add(specifier, null, true);
         }
         // A computed specifier can name any module; vitest cannot follow it
         // either, but this module does not guess.
@@ -380,7 +383,7 @@ function collectModuleReferences(path, source) {
         (name) => name === 'arguments' || tainted.has(name),
       )
     )
-      add(specifier, null);
+      add(specifier, null, true);
   return { references, opaque, viEscapes };
 }
 
@@ -925,6 +928,25 @@ export function buildSdkImportGraph({ sources, fileSet, sdkExports }) {
     return nameCache.get(key);
   };
 
+  /**
+   * What evaluating one SDK module loads: its static SDK targets, and
+   * whether it also loads a module outside the SDK (whose evaluation this
+   * graph cannot read) or one it cannot resolve.
+   */
+  const staticLoads = (path, collected) => {
+    const result = { targets: new Set(), external: false, unresolved: false };
+    for (const reference of collected.references) {
+      if (reference.dynamic) continue;
+      const target = resolveFrom(path, reference.specifier);
+      if (target === null) result.external = true;
+      else if (target === UNKNOWN) result.unresolved = true;
+      else result.targets.add(target);
+    }
+    if (collected.opaque) result.unresolved = true;
+    return result;
+  };
+  const loads = new Map();
+
   // edges: path -> [{ target, names }] ; opaque: files depending on all SDK.
   const edges = new Map();
   const opaque = new Set();
@@ -937,6 +959,7 @@ export function buildSdkImportGraph({ sources, fileSet, sdkExports }) {
       continue;
     }
     const fileEdges = [];
+    if (isSdkPath(path)) loads.set(path, staticLoads(path, collected));
     for (const reference of collected.references) {
       const target = resolveFrom(path, reference.specifier);
       if (target === null) continue;
@@ -966,6 +989,8 @@ export function buildSdkImportGraph({ sources, fileSet, sdkExports }) {
     resolveBarrelName,
     resolveSpecifier: resolveFrom,
     exportsOf,
+    loads,
+    staticLoads,
   };
 }
 
@@ -1206,6 +1231,175 @@ export function loadSdkImportGraph(root, { readFile = readFileSync } = {}) {
     fileSet: sdkFiles,
     sdkExports: sdkPackage.exports ?? {},
   });
+}
+
+/**
+ * Why a changed module's import changes can alter what a barrel load
+ * evaluates, or null when they cannot (#2782).
+ *
+ * An added or removed import only moves an edge between modules a barrel
+ * load evaluates anyway, and the move cannot be observed, when:
+ * - an added target was already barrel-reachable at the base, and a removed
+ *   target is still barrel-reachable at the head (static imports only: a
+ *   dynamic import() is not evaluated with the module), so the set of
+ *   evaluated modules is unchanged;
+ * - every module the target loads, transitively, is readable SDK source
+ *   with no top-level side effect and no load of a module outside the SDK,
+ *   so evaluating that closure earlier or later reorders no effect;
+ * - that closure contains neither the changed module nor any module that
+ *   loads it, so the reorder cannot reach a module that is mid-evaluation
+ *   (no import cycle, hence no read of an uninitialised binding).
+ * Anything unresolvable, unreadable or outside the SDK keeps the old answer.
+ */
+function importChangeBlocker(context, path, baseSource, head) {
+  const { graph } = context;
+  const targetsOf = (source) => {
+    const collected = collectModuleReferences(path, source);
+    const targets = new Set();
+    for (const reference of collected.references) {
+      const target = graph.resolveSpecifier(path, reference.specifier);
+      if (target === null) targets.add(`external:${reference.specifier}`);
+      else targets.add(target);
+    }
+    return { targets, opaque: collected.opaque };
+  };
+  const before = targetsOf(baseSource);
+  const after = targetsOf(head);
+  if (before.opaque !== after.opaque) return 'a computed import changed';
+  const added = [...after.targets].filter((t) => !before.targets.has(t));
+  const removed = [...before.targets].filter((t) => !after.targets.has(t));
+  for (const target of [...added, ...removed]) {
+    if (target === UNKNOWN) return 'an import does not resolve';
+    if (target.startsWith('external:'))
+      return `${target.slice('external:'.length)} is outside the SDK`;
+  }
+  for (const target of added)
+    if (!context.baseReachable().has(target))
+      return `added import ${target} is not barrel-reachable at the base`;
+  for (const target of removed)
+    if (!context.headReachable().has(target))
+      return `removed import ${target} is no longer barrel-reachable`;
+  const loaders = context.loadersOf(path);
+  for (const target of [...added, ...removed])
+    for (const module of context.closureOf(target)) {
+      const loads = graph.loads.get(module);
+      if (!loads || !graph.sources.has(module))
+        return `${module}, loaded by ${target}, is unreadable`;
+      if (loaders.has(module))
+        return `${target} loads ${module}, which loads ${path} (a cycle)`;
+      if (loads.unresolved)
+        return `${module}, loaded by ${target}, has an unresolvable import`;
+      if (loads.external)
+        return `${module}, loaded by ${target}, loads a module outside the SDK`;
+      if (topLevelSideEffect(module, graph.sources.get(module)))
+        return `${module}, loaded by ${target}, has a top-level side effect`;
+    }
+  return null;
+}
+
+/**
+ * Lazily computed reachability shared by every candidate of one refinement.
+ * `baseSources` maps each changed SDK file to its base content (null when
+ * absent there); null for the whole map means the changed set is unknown.
+ */
+function importChangeContext(graph, baseSources) {
+  const closure = (starts, next) => {
+    const seen = new Set();
+    const queue = [...starts];
+    while (queue.length) {
+      const module = queue.pop();
+      if (seen.has(module)) continue;
+      seen.add(module);
+      for (const target of next(module)) queue.push(target);
+    }
+    return seen;
+  };
+  const headTargets = (module) => graph.loads.get(module)?.targets ?? [];
+  let base;
+  let headReach;
+  const closures = new Map();
+  const loaders = new Map();
+  return {
+    graph,
+    baseReachable() {
+      if (base === undefined) {
+        if (baseSources === null) base = new Set();
+        else {
+          const absent = new Set(
+            [...baseSources]
+              .filter(([, source]) => source === null)
+              .map(([p]) => p),
+          );
+          const baseTargets = (module) => {
+            if (absent.has(module)) return [];
+            const source = baseSources.get(module);
+            const targets =
+              source === undefined
+                ? headTargets(module)
+                : graph.staticLoads(
+                    module,
+                    collectModuleReferences(module, source),
+                  ).targets;
+            return [...targets].filter((target) => !absent.has(target));
+          };
+          base = closure(
+            [...graph.barrels].filter((barrel) => !absent.has(barrel)),
+            baseTargets,
+          );
+        }
+      }
+      return base;
+    },
+    headReachable() {
+      headReach ??= closure(graph.barrels, headTargets);
+      return headReach;
+    },
+    closureOf(target) {
+      if (!closures.has(target))
+        closures.set(target, closure([target], headTargets));
+      return closures.get(target);
+    },
+    loadersOf(path) {
+      if (!loaders.has(path)) {
+        const reverse = new Map();
+        for (const [module, { targets }] of graph.loads)
+          for (const target of targets) {
+            if (!reverse.has(target)) reverse.set(target, []);
+            reverse.get(target).push(module);
+          }
+        loaders.set(
+          path,
+          closure([path], (module) => reverse.get(module) ?? []),
+        );
+      }
+      return loaders.get(path);
+    },
+  };
+}
+
+/**
+ * Every SDK source file that differs from `base` in the working tree:
+ * tracked changes (committed, staged or not) and untracked files.
+ */
+function changedSdkFiles(root, base) {
+  const split = (output) => output.split('\0').filter(Boolean);
+  return [
+    ...new Set([
+      ...split(
+        git(root, ['diff', '--name-only', '-z', base, '--', SDK_SOURCE_PREFIX]),
+      ),
+      ...split(
+        git(root, [
+          'ls-files',
+          '-z',
+          '--others',
+          '--exclude-standard',
+          '--',
+          SDK_SOURCE_PREFIX,
+        ]),
+      ),
+    ]),
+  ].filter((path) => CODE_FILE.test(path));
 }
 
 /** Runtime module specifiers a module loads, as a comparable key. */
@@ -1574,7 +1768,7 @@ function topLevelUseOf(graph, changed) {
 }
 
 /** One changed module's disposition: refined with seeds, or whole-barrel. */
-function decideCandidate(root, base, path, graph, readBase) {
+function decideCandidate(root, base, path, graph, readBase, importContext) {
   const whole = (reason) => ({ disposition: 'whole-barrel', reason });
   const head = graph.sources.get(path);
   let baseSource;
@@ -1606,8 +1800,11 @@ function decideCandidate(root, base, path, graph, readBase) {
     baseSource !== null &&
     baseSource !== undefined &&
     runtimeImportKey(path, baseSource) !== runtimeImportKey(path, head)
-  )
-    return whole('runtime imports differ from the base');
+  ) {
+    const blocker = importChangeBlocker(importContext, path, baseSource, head);
+    if (blocker)
+      return whole(`runtime imports differ from the base: ${blocker}`);
+  }
   const use = topLevelUseOf(graph, path);
   if (use)
     return whole(
@@ -1636,12 +1833,16 @@ function decideCandidate(root, base, path, graph, readBase) {
  * @param {string} [options.base] the merge base the diff was taken from
  * @param {(root: string) => ReturnType<typeof buildSdkImportGraph>} [options.loadGraph]
  * @param {(root: string, base: string, path: string) => string | null} [options.readBase]
+ * @param {string[]} [options.changedSdkPaths] every SDK file that differs
+ *   from the base (default: the candidates when `readBase` is injected,
+ *   otherwise asked of git); their base content decides what a barrel load
+ *   reached at the base.
  * @returns {{ paths: string[], decisions: Array<{ path: string, disposition: 'refined' | 'whole-barrel', seeds?: number, reason?: string }> }}
  */
 export function refineSdkBarrelRelatedPaths(
   root,
   relatedPaths,
-  { base, loadGraph = loadSdkImportGraph, readBase } = {},
+  { base, loadGraph = loadSdkImportGraph, readBase, changedSdkPaths } = {},
 ) {
   const candidates = relatedPaths.filter(
     (path) => isSdkSourceModule(path) && !SDK_BARREL_PATHS.includes(path),
@@ -1665,13 +1866,25 @@ export function refineSdkBarrelRelatedPaths(
     }
     return { paths: [...paths].sort(), decisions };
   }
-  // Without an injected reader, read every candidate at the base at once.
+  // Without an injected reader, read every candidate — and every other
+  // changed SDK file, for base reachability — at the base at once.
+  let changed = changedSdkPaths ?? (readBase ? candidates : undefined);
+  let changedFailure;
+  if (changed === undefined)
+    try {
+      changed = changedSdkFiles(root, base);
+    } catch (error) {
+      changedFailure = error;
+      changed = [];
+    }
   let readCandidate = readBase;
   if (!readCandidate) {
     let contents;
     let failure;
     try {
-      contents = readAllAtBase(root, base, candidates);
+      contents = readAllAtBase(root, base, [
+        ...new Set([...candidates, ...changed]),
+      ]);
     } catch (error) {
       failure = error;
     }
@@ -1680,10 +1893,31 @@ export function refineSdkBarrelRelatedPaths(
       return contents.get(path);
     };
   }
+  // Base content of every changed SDK file; null when that set is unknown.
+  let baseSources = null;
+  if (!changedFailure)
+    try {
+      baseSources = new Map(
+        [...new Set([...candidates, ...changed])].map((path) => [
+          path,
+          readCandidate(root, base, path) ?? null,
+        ]),
+      );
+    } catch {
+      baseSources = null;
+    }
+  const importContext = importChangeContext(graph, baseSources);
   for (const path of candidates) {
     let decision;
     try {
-      decision = decideCandidate(root, base, path, graph, readCandidate);
+      decision = decideCandidate(
+        root,
+        base,
+        path,
+        graph,
+        readCandidate,
+        importContext,
+      );
     } catch (error) {
       // Refinement only narrows. An internal failure for one path selects
       // MORE (plain related selection), never fails the lane.

@@ -498,30 +498,228 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
         readBase: () => baseSource,
       });
 
+    // #2782: an import change is refinable only when it moves an edge
+    // between modules a barrel load evaluates anyway, and moving it cannot
+    // be observed. Extra client modules, all barrel-reachable through the
+    // client barrel unless noted.
+    const IMPORT_FIXTURE = {
+      [CLIENT_BARREL]: `${SDK_SOURCES[CLIENT_BARREL]}\nexport * from './impure';\nexport * from './wrapper';\nexport * from './loops-back';\nexport * from './outside';\nexport * from './ghost-loader';`,
+      'packages/sdk/src/client/impure.ts':
+        'export const registry = new Registry();',
+      'packages/sdk/src/client/wrapper.ts':
+        "import { registry } from './impure';\nexport const wrapped = () => registry;",
+      'packages/sdk/src/client/loops-back.ts':
+        "import { listJobs } from './scheduler';\nexport const again = () => listJobs;",
+      'packages/sdk/src/client/outside.ts':
+        "import { z } from 'zod';\nexport const schema = () => z;",
+      'packages/sdk/src/client/ghost-loader.ts':
+        "import { ghost } from './ghost';\nexport const g = () => ghost;",
+      // Barrel-unreachable: only ever imported dynamically, or by nobody.
+      'packages/sdk/src/client/lazy.ts': 'export const lazy = 1;',
+      'packages/sdk/src/client/fresh.ts': 'export const fresh = 1;',
+      [BOARD]: `${SDK_SOURCES[BOARD]}\nexport const later = () => import('./lazy');`,
+    };
+    const decideImports = (
+      head: string,
+      base: string,
+      { overrides = {}, changed, baseOf = {} } = {} as {
+        overrides?: Record<string, string>;
+        changed?: string[];
+        baseOf?: Record<string, string | null>;
+      },
+    ) => {
+      const sources = new Map(
+        Object.entries({
+          ...SDK_SOURCES,
+          ...OUTSIDE_SOURCES,
+          ...IMPORT_FIXTURE,
+          ...overrides,
+          [SCHEDULER]: head,
+        }),
+      );
+      const graph = buildSdkImportGraph({
+        sources,
+        // ghost.ts exists (so it resolves) but is never read.
+        fileSet: [...sources.keys(), 'packages/sdk/src/client/ghost.ts'].filter(
+          (path) => path.startsWith('packages/sdk/'),
+        ),
+        sdkExports: {
+          '.': './src/index.ts',
+          './client': './src/client/index.ts',
+        },
+      });
+      return refineSdkBarrelRelatedPaths('/repo', [SCHEDULER], {
+        base: 'merge-base',
+        loadGraph: () => graph,
+        changedSdkPaths: changed,
+        readBase: (_root: string, _base: string, path: string) =>
+          path === SCHEDULER
+            ? base
+            : path in baseOf
+              ? baseOf[path]
+              : (sources.get(path) ?? null),
+      }).decisions[0];
+    };
+    const withImport = (line: string) => `${line}\n${SDK_SOURCES[SCHEDULER]}`;
+
     test.each([
       [
-        'adds an import of a side-effecting module',
-        `import { voiceSessionAdapterRegistry } from '../voice/session-registry';\n${SDK_SOURCES[SCHEDULER]}`,
+        'adds an import of a pure, barrel-reachable module',
+        withImport("import { fetchBoard } from './board';"),
         SDK_SOURCES[SCHEDULER],
+        null,
+      ],
+      [
+        'removes an import of a module still barrel-reachable',
+        SDK_SOURCES[SCHEDULER],
+        withImport("import { getBoard } from './board';"),
+        null,
+      ],
+      [
+        'adds a type-only import (erased)',
+        withImport("import type { Unused } from './fresh';"),
+        SDK_SOURCES[SCHEDULER],
+        null,
+      ],
+      [
+        'adds an import of a reachable module with a top-level side effect',
+        withImport("import { registry } from './impure';"),
+        SDK_SOURCES[SCHEDULER],
+        /client\/impure\.ts, loaded by .*impure\.ts, has a top-level side effect/,
+      ],
+      [
+        'adds an import whose closure holds a side effect',
+        withImport("import { wrapped } from './wrapper';"),
+        SDK_SOURCES[SCHEDULER],
+        /client\/impure\.ts, loaded by .*wrapper\.ts, has a top-level side effect/,
+      ],
+      [
+        'adds an import of a module that is not barrel-reachable',
+        withImport("import { fresh } from './fresh';"),
+        SDK_SOURCES[SCHEDULER],
+        /fresh\.ts is not barrel-reachable at the base/,
+      ],
+      [
+        'adds a static import of a module only ever loaded dynamically',
+        withImport("import { lazy } from './lazy';"),
+        SDK_SOURCES[SCHEDULER],
+        /lazy\.ts is not barrel-reachable at the base/,
       ],
       [
         'adds a barrel self-import (a cycle)',
-        `import { fetchBoard } from '../index';\n${SDK_SOURCES[SCHEDULER]}`,
+        withImport("import { fetchBoard } from '../index';"),
         SDK_SOURCES[SCHEDULER],
+        /loads .*scheduler\.ts \(a cycle\)|which loads .*scheduler\.ts/,
       ],
       [
-        'removes an import',
+        'adds an import of a module that loads it back (a cycle)',
+        withImport("import { again } from './loops-back';"),
         SDK_SOURCES[SCHEDULER],
-        `import { getBoard } from './board';\n${SDK_SOURCES[SCHEDULER]}`,
+        /a cycle/,
       ],
-    ])(
-      'a change that %s keeps whole-barrel selection',
-      (_label, head, base) => {
-        const result = decide({ [SCHEDULER]: head }, base);
-        expect(result.paths).toEqual([SCHEDULER]);
-        expect(result.decisions[0].reason).toMatch(/runtime imports differ/);
-      },
-    );
+      [
+        'adds an import whose closure loads a module outside the SDK',
+        withImport("import { schema } from './outside';"),
+        SDK_SOURCES[SCHEDULER],
+        /outside\.ts, loaded by .*, loads a module outside the SDK/,
+      ],
+      [
+        'adds an import of a module outside the SDK',
+        withImport("import { z } from 'zod';"),
+        SDK_SOURCES[SCHEDULER],
+        /zod is outside the SDK/,
+      ],
+      [
+        'adds an import whose closure is unreadable',
+        withImport("import { g } from './ghost-loader';"),
+        SDK_SOURCES[SCHEDULER],
+        /ghost\.ts, loaded by .*ghost-loader\.ts, is unreadable/,
+      ],
+      [
+        'removes the only import of a module (no longer reachable)',
+        SDK_SOURCES[SCHEDULER],
+        withImport("import { fresh } from './fresh';"),
+        /removed import .*fresh\.ts is no longer barrel-reachable/,
+      ],
+      [
+        'adds an unresolvable import',
+        withImport("import { nothing } from './missing';"),
+        SDK_SOURCES[SCHEDULER],
+        /does not resolve/,
+      ],
+    ])('a change that %s', (_label, head, base, blocker) => {
+      const decision = decideImports(head, base);
+      if (blocker === null) expect(decision.disposition).toBe('refined');
+      else {
+        expect(decision.disposition).toBe('whole-barrel');
+        expect(decision.reason).toMatch(
+          /^runtime imports differ from the base: /,
+        );
+        expect(decision.reason).toMatch(blocker);
+      }
+    });
+
+    test('reachability is judged at the BASE: a target another changed file just exposed is new', () => {
+      // At the head the client barrel re-exports fresh.ts, so it is
+      // reachable there; at the base it was not.
+      const head = withImport("import { fresh } from './fresh';");
+      const barrelHead = `${IMPORT_FIXTURE[CLIENT_BARREL]}\nexport * from './fresh';`;
+      const decision = decideImports(head, SDK_SOURCES[SCHEDULER], {
+        overrides: { [CLIENT_BARREL]: barrelHead },
+        changed: [SCHEDULER, CLIENT_BARREL],
+        baseOf: { [CLIENT_BARREL]: IMPORT_FIXTURE[CLIENT_BARREL] },
+      });
+      expect(decision.reason).toMatch(
+        /fresh\.ts is not barrel-reachable at the base/,
+      );
+      // Control: when the barrel already exported it at the base, it refines.
+      expect(
+        decideImports(head, SDK_SOURCES[SCHEDULER], {
+          overrides: { [CLIENT_BARREL]: barrelHead },
+          changed: [SCHEDULER, CLIENT_BARREL],
+          baseOf: { [CLIENT_BARREL]: barrelHead },
+        }).disposition,
+      ).toBe('refined');
+    });
+
+    test('a target added in the same change (absent at the base) is new', () => {
+      const decision = decideImports(
+        withImport("import { fresh } from './fresh';"),
+        SDK_SOURCES[SCHEDULER],
+        {
+          overrides: {
+            [CLIENT_BARREL]: `${IMPORT_FIXTURE[CLIENT_BARREL]}\nexport * from './fresh';`,
+          },
+          changed: [SCHEDULER, 'packages/sdk/src/client/fresh.ts'],
+          baseOf: { 'packages/sdk/src/client/fresh.ts': null },
+        },
+      );
+      expect(decision.reason).toMatch(
+        /fresh\.ts is not barrel-reachable at the base/,
+      );
+    });
+
+    test('an unreadable changed set keeps whole-barrel for any added import', () => {
+      const head = withImport("import { fetchBoard } from './board';");
+      const graph = fixtureGraph({ [SCHEDULER]: head });
+      const decide = (boardBase: () => string) =>
+        refineSdkBarrelRelatedPaths('/repo', [SCHEDULER], {
+          base: 'merge-base',
+          loadGraph: () => graph,
+          changedSdkPaths: [SCHEDULER, BOARD],
+          readBase: (_root: string, _base: string, path: string) =>
+            path === SCHEDULER ? SDK_SOURCES[SCHEDULER] : boardBase(),
+        }).decisions[0];
+      // The candidate's own base read succeeds; another changed file's does
+      // not, so base reachability is unknown and the added edge stays whole.
+      expect(
+        decide(() => {
+          throw new Error('git cannot read the base');
+        }).reason,
+      ).toMatch(/board\.ts is not barrel-reachable at the base/);
+      // Control: readable, the same change refines.
+      expect(decide(() => SDK_SOURCES[BOARD]).disposition).toBe('refined');
+    });
 
     test('the same imports, edited body: still refined (control)', () => {
       const result = decide(
