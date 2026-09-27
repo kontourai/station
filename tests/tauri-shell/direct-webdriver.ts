@@ -39,6 +39,7 @@ export type TauriShellFixture = {
   remotePort: number;
   stationHome: string;
   stationRoot: string;
+  cleanupReceipt: TauriShellFixtureCleanupReceipt | undefined;
   stop(): Promise<void>;
 };
 
@@ -442,6 +443,7 @@ export async function stopTauriShellFixtureResources(input: {
   try {
     await input.driver.close();
   } catch (error) {
+    driverCloseError = error instanceof Error ? error.message : String(error);
     errors.push(error);
   }
   try {
@@ -770,6 +772,7 @@ export async function startTauriShellFixture(
     });
     throw error;
   }
+  let cleanupReceipt: TauriShellFixtureCleanupReceipt | undefined;
   return {
     binary,
     blockedPort,
@@ -778,11 +781,17 @@ export async function startTauriShellFixture(
     remotePort,
     stationHome,
     stationRoot,
+    get cleanupReceipt() {
+      return cleanupReceipt;
+    },
     stop: createMemoizedTauriShellFixtureStop({
       driver,
       execution,
       appLog,
       stationRoot,
+      onReceipt: (receipt) => {
+        cleanupReceipt = receipt;
+      },
     }),
   };
 }

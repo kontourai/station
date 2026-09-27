@@ -871,8 +871,8 @@ async function runNativeEchoInMainWebView(
     const done = arguments[arguments.length - 1];
     const input = arguments[0];
     const stateKey = arguments[1];
-    if (navigator.webdriver !== true || !window.__TAURI_INTERNALS__?.invoke) {
-      done({ started: false, error: 'main_webview_test_authority_missing' });
+    if (!window.__TAURI_INTERNALS__?.invoke) {
+      done({ started: false, error: 'main_webview_tauri_ipc_missing' });
       return;
     }
     if (Object.hasOwn(window, stateKey)) {
@@ -1691,6 +1691,10 @@ async function main() {
       try {
         await fixture?.stop();
       } finally {
+        if (NATIVE_ECHO_LANE && fixture?.cleanupReceipt)
+          console.log(
+            `STATION_TAURI_SHELL_FIXTURE_STOP ${JSON.stringify(fixture.cleanupReceipt)}`,
+          );
         try {
           await broker.stop();
         } finally {
