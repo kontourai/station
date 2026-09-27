@@ -245,7 +245,10 @@ describe('git metadata in a proposed local install (#2719)', () => {
 
   test('a proposal dismissed between preview and install still installs as previewed, without git metadata', async () => {
     const root = tempDir('station-proposed-dismissed-');
-    const source = proposedCheckout(root);
+    // Only a top-level `.git`: the digest never reads it, so only the
+    // staging mode the preview recorded can keep it out.
+    const source = checkout(root, { gitfile: true });
+    expect(gitMetadataEntries(source)).toEqual(['.git']);
     const { pluginsDir, proposals, preview, installFrom } = harness(root);
     const { proposal } = await proposals.propose({
       kind: 'install',
@@ -263,6 +266,7 @@ describe('git metadata in a proposed local install (#2719)', () => {
     });
 
     expect(gitMetadataEntries(join(pluginsDir, 'checkout-plugin'))).toEqual([]);
+    expect(existsSync(join(pluginsDir, 'checkout-plugin', '.git'))).toBe(false);
   });
 
   test('a source proposed after an ordinary preview is refused until previewed again', async () => {
