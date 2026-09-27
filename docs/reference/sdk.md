@@ -6,6 +6,12 @@ documented SDK subpaths.
 
 The SDK wraps core app contexts and exposes them through stable React hooks, UI components, typed API functions, and extension registries. Plugins never import from internal app packages directly.
 
+The [package export map](../../packages/sdk/package.json) owns importable
+subpaths; a source file or Station's internal bundler alias is not a public
+entry point. Exports select TypeScript/TSX source and host components may also
+need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
+for source distribution and a checked authoring example.
+
 ---
 
 ## Setup
@@ -36,7 +42,9 @@ and default-Agent migration remain separately tracked by #1372.
 <SDKProvider value={sdkContextValue}>
   <YourPlugin />
 </SDKProvider>
+```
 
+```tsx
 // Compatibility wrapper for an explicitly supplied legacy context:
 <LayoutProvider sdk={sdkContextValue} layout={layoutConfig}>
   <YourWorkspacePlugin />
@@ -47,7 +55,37 @@ and default-Agent migration remain separately tracked by #1372.
 
 ## Hooks
 
-All hooks must be called inside a component tree wrapped by `SDKProvider`.
+Use hooks inside the host's React provider tree. Query hooks return a React
+Query result, with values in `data` and separate loading/error state; they do
+not return the data array itself. A hook being exported also does not prove
+that the default Station host supplies its optional context.
+
+### Default host bindings and custom hosts
+
+The [default SDK adapter](../../src-ui/src/core/SDKAdapter.tsx) is delivered
+through [the plugin Pane boundary](../../src-ui/src/workspace-panes/PluginWorkspacePaneSDKBoundary.tsx).
+`SDKProvider` forwards the supplied value without filling missing slots.
+
+| Surface | Current default Station binding |
+| --- | --- |
+| Agents, navigation, toast, auth | Bound host contexts |
+| Layout list/detail | Bound list and selected-layout projection |
+| `useApiBase` | Returns `{ apiBase }`, not a string |
+| Create/send/open chat | Bound host callbacks; see their UI identity/async distinctions below |
+| `useActiveChatActions(id)` | Forwards the host's unbound store-actions object; the supplied id is not bound to those actions |
+| `useConversations(agentSlug?)` | Forwards the adapter's captured list; the argument is not forwarded to the core query |
+| `useConfig`, `useConversation`, `useConversationMessages`, `useActiveChatState` | Corresponding methods are not supplied; calling them through this adapter fails |
+| Model, stats, workflow and keyboard contexts; slash-command/tool-approval hook slots | Not supplied by this adapter |
+
+The unbound hooks remain exported custom-host contracts, not deprecated or
+removed APIs. A custom `SDKProvider` may implement their slots. Default plugin
+examples should use an available query or bound host action instead; do not
+interpret an unavailable hook as empty data. Query alternatives still require
+the host Query Client and the server's normal access policy.
+
+The default-host gaps and their caller-level acceptance criteria are tracked
+in [#2780](https://github.com/kontourai/station/issues/2780). That recommendation
+does not require every custom host to provide every optional slot.
 
 ### Scoped coding file mention queries
 
@@ -131,21 +169,25 @@ not supply an Agent prefix or a default execution binding; the former
 
 ### Layout Hooks
 
-#### `useLayouts(): LayoutConfig[]`
+#### `useLayouts()`
 
-Returns all layouts.
+Returns the host's layout list. Station's default adapter supplies the current
+bound/selected Project's layout query data, not every layout in the installation.
 
 ---
 
 ### Project Hooks
 
-#### `useProjects(): Project[]`
+#### `useProjects()`
 
-Returns all projects.
+Returns the same query result as `useProjectsQuery()`, including its authorized
+personal/member view union in `data`.
 
-#### `useProject(slug: string): Project | undefined`
+#### `useProject(slug: string)`
 
-Returns a single project by slug.
+Returns the `useProjectQuery(slug)` result, not a Project directly. This legacy
+full-configuration query does not accept member-only views; use the explicit
+Project view API described below for guests.
 
 ---
 
@@ -153,15 +195,18 @@ Returns a single project by slug.
 
 #### `useConversations(agentSlug?: string): Conversation[]`
 
-Returns conversations, optionally filtered by agent.
+Calls the host's supplied conversation-list function. The current Station
+adapter captures that list without forwarding this argument; use
+`useConversationsQuery(agentSlug)` when an explicit Agent query is required.
 
 #### `useConversation(conversationId: string): Conversation | undefined`
 
-Returns a single conversation.
+Custom-host slot for one conversation. It is not bound by the current Station
+adapter; export presence is not a working default read path.
 
 #### `useConversationMessages(conversationId: string): Message[]`
 
-Returns messages for a conversation.
+Custom-host message slot, currently unbound in Station's default adapter.
 
 ---
 
@@ -169,28 +214,39 @@ Returns messages for a conversation.
 
 #### `useCreateChatSession(): (agentSlug: string, name: string) => string`
 
-Returns a function that creates a new chat session. Returns the session ID.
+Returns a host function that creates a local Dock entry and its UI ID. It does
+not itself start provider execution or establish a durable server Session.
 
 ```tsx
 const createSession = useCreateChatSession();
 const sessionId = createSession('my-agent', 'My Agent');
 ```
 
-#### `useOpenConversation(): (conversationId: string) => string`
+#### `useOpenConversation()`
 
-Returns a function that opens an existing conversation in the chat dock. Returns the session ID.
+The default callback requires `conversationId`, `agentSlug` and `agentName`;
+it also accepts optional Project/execution/hydration context and returns
+`Promise<string | null>`. A null result means message hydration failed. Opening
+a Dock entry is not proof that continuation is authorized; use canonical
+conversation resolution and current server execution evidence, not mutable
+Agent defaults, when a host supplies that context.
 
-#### `useSendMessage(): (sessionId: string, agentSlug: string, conversationId: string | undefined, message: string) => void`
+#### `useSendMessage()`
 
-Returns a function to send a message to an active chat session.
+Returns the host's asynchronous callback. Its first four arguments are the
+local Dock entry ID, canonical Agent ID, optional conversation ID and content;
+the host also accepts attachments and other current send context. A send can
+queue or refuse work; awaiting it is not a receipt of provider completion.
 
 #### `useActiveChatActions(sessionId: string)`
 
-Returns actions for a specific chat session (stop, clear, etc.).
+Calls the host action slot. The default adapter currently forwards unbound
+store actions rather than binding the supplied ID; do not assume a stable
+per-session stop/clear interface from this compatibility wrapper.
 
 #### `useActiveChatState(sessionId: string)`
 
-Returns the current state of a specific chat session (loading, messages, etc.).
+Custom-host state slot; currently unbound in Station's default adapter.
 
 #### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
@@ -236,7 +292,7 @@ const { isOpen, toggle } = useDockState();
 Returns the current auth state.
 
 ```ts
-{
+type AuthStateExcerpt = {
   status: 'valid' | 'expiring' | 'expired' | 'missing' | 'not-configured' | 'loading';
   user: { alias: string; name?: string; title?: string; email?: string; profileUrl?: string } | null;
   expiresAt: Date | null;
@@ -246,36 +302,38 @@ Returns the current auth state.
 }
 ```
 
-#### `useConfig(): AppConfig`
+#### `useConfig()`
 
-Returns the full app configuration.
+Custom-host configuration slot, currently unbound in the default adapter.
+`useConfigQuery()` is the explicit server-read query surface.
 
-#### `useApiBase(): string`
+#### `useApiBase(): { apiBase: string }`
 
-Returns the current API base URL.
+Returns the current host's API-base object. `useSDK().apiBase` is the string
+projection; do not interpolate the whole object into a URL.
 
 ---
 
 ### Connection Hooks
 
-#### `usePairedDevicesQuery(apiBase?: string): PairedDevice[]`
+#### `usePairedDevicesQuery(apiBase?: string)`
 
-Reads the current inbound paired-device identity registry from
+Returns a query whose data is the current inbound paired-device registry from
 `GET /api/pairing/devices`. Device names are current read-time values; do not
 copy them into session or event records. An authorization or response failure
 is a query error, not an empty device list.
 
-#### `useConnectionsQuery(): ConnectionConfig[]`
+#### `useConnectionsQuery()`
 
 Returns the merged Connections list used by the Connections hub. The result includes both model and runtime rows from `GET /api/connections`.
 
-#### `useModelConnectionsQuery(): ConnectionConfig[]`
+#### `useModelConnectionsQuery()`
 
 Returns model/provider-backed connections from `GET /api/connections/models`.
 
 Use this when you need provider readiness, editable provider config, or provider-scoped `config.modelOptions`.
 
-#### `useRuntimeConnectionsQuery(): ConnectionConfig[]`
+#### `useRuntimeConnectionsQuery()`
 
 Returns runtime connection rows from `GET /api/connections/runtimes`.
 
@@ -298,11 +356,11 @@ const visibleModels =
     : (codexRuntime?.runtimeCatalog?.builtInModels ?? []);
 ```
 
-#### `useContributedModelManifestQuery(): FleetContributionManifest`
+#### `useContributedModelManifestQuery()`
 
 Reads `GET /api/connections/model-inventory`, which since station#1398 slice 2 returns the **contributed-subset manifest** (`station.fleet-contribution/v1`) behind the `inference:invoke` pairing scope — not the full `station.model-inventory/v2` launchable inventory it used to return. Renamed from `useLaunchableModelInventoryQuery` deliberately: a silent re-type under the old name would have compiled everywhere while meaning something else. The non-React `fetchContributedModelManifest()` export returns the same body. A client paired with a `read-only`, `standard`, or `delegation` preset now receives 403; re-pair with the `inference` preset. Connection save, delete, health-test, and smoke mutations invalidate the query automatically.
 
-#### `useAgentConnectionQuery(id: EngineConnectionId): AgentConnectionView | null`
+#### `useAgentConnectionQuery(id: EngineConnectionId)`
 
 Returns a single connection from `GET /api/connections/:id`.
 
@@ -322,13 +380,14 @@ The writable payload stays on the existing editable fields (`name`, `enabled`, `
 
 ### Model Hooks
 
-#### `useModels(): Model[]`
+#### `useModels()`
 
-Returns all configured models.
+Custom-host model-list slot, currently unbound by the default adapter.
 
-#### `useAvailableModels(): Model[]`
+#### `useAvailableModels()`
 
-Returns models available for the current user/layout.
+Custom-host model-availability slot, also unbound by the default adapter. The
+explicit model query surfaces below are separate from these compatibility hooks.
 
 ---
 
@@ -372,10 +431,14 @@ Types: `'info' | 'success' | 'warning' | 'error'`. The object form takes one
 
 #### `useNotifications()`
 
-Higher-level wrapper over `useToast`.
+Returns immediate-toast `notify` plus server-backed `schedule` and `dismiss`
+methods. The example uses only `notify`; it does not create an inbox, push or
+scheduled notification. Server methods still require the host's transport and
+request authorization. `dismiss` currently awaits `fetch` without checking its
+HTTP status, so its resolved promise is not proof of successful deletion.
 
 ```ts
-{ notify: (message: string, options?: { type?, duration? }) => void }
+type Notifications = ReturnType<typeof useNotifications>;
 ```
 
 ```tsx
@@ -383,7 +446,7 @@ const { notify } = useNotifications();
 notify('Saved!', { type: 'success' });
 ```
 
-#### `useNotificationPreferencesQuery(apiBase?: string): NotificationPreferencesV1`
+#### `useNotificationPreferencesQuery(apiBase?: string)`
 
 Reads `GET /api/notifications/preferences`: how far notifications may
 interrupt beyond the inbox (agent notification level, quiet hours,
@@ -409,6 +472,9 @@ from `@kontourai/station-contracts/notification-preferences`.
 
 ### Slash Command Hooks
 
+These optional custom-host slots are not bound by the default Station adapter;
+calling either hook there throws.
+
 #### `useSlashCommands(): SlashCommand[]`
 
 Returns all registered slash commands.
@@ -421,6 +487,9 @@ Returns the handler function for processing slash command input.
 
 ### Tool Approval Hook
 
+The default Station adapter does not supply this optional hook slot. A custom
+host must supply it before use; exporting the hook does not grant tool approval.
+
 #### `useToolApproval()`
 
 Returns the tool approval state and actions (approve/reject pending tool calls).
@@ -428,6 +497,9 @@ Returns the tool approval state and actions (approve/reject pending tool calls).
 ---
 
 ### Stats Hooks
+
+These require an optional stats context absent from the default Station
+adapter. Use the query APIs when appropriate for that host.
 
 #### `useStats()`
 
@@ -440,6 +512,9 @@ Returns stats for a specific conversation.
 ---
 
 ### Keyboard Hooks
+
+These require optional host slots absent from the default Station adapter.
+The following registration example describes a custom host that supplies them.
 
 #### `useKeyboardShortcut(key: string, callback: () => void, deps?: any[]): void`
 
@@ -457,6 +532,10 @@ Returns all registered keyboard shortcuts.
 
 ### Workflow Hooks
 
+`useWorkflows` requires the optional workflows context, which the default
+Station adapter does not supply. `useAgentWorkflowsQuery` is a separate query
+API rather than that context hook.
+
 #### `useWorkflows(agentSlug?: string): Workflow[]`
 
 Returns workflows, optionally filtered by agent.
@@ -469,9 +548,11 @@ Returns a query whose `data` is the agent's `WorkflowMetadata[]`.
 
 ### Utility Hooks
 
-#### `useSDK(): { apiBase: string }`
+#### `useSDK()`
 
-Returns raw SDK context. Prefer specific hooks over this.
+Returns `{ apiBase, pluginName, getPluginHeaders }`, not the entire provider
+context. `pluginName` may be empty; header attribution is not an authorization
+grant. Prefer scoped client operations for protected data.
 
 #### `useUserLookup(alias: string | null): { data: any; loading: boolean; error: string | null }`
 
@@ -554,7 +635,9 @@ Fetches tools for an agent. Disabled when `agentSlug` is undefined.
 
 ### `useModelsQuery(config?)`
 
-Fetches available Bedrock models.
+Fetches the model catalogue from `GET /api/models` under the `model-catalog`
+cache key. Do not treat this legacy catalogue as every engine's live model list;
+connection-specific model catalogues have their own queries.
 
 ### `useModelCapabilitiesEnvelopeQuery(config?)`
 
@@ -562,12 +645,9 @@ Fetches the Bedrock model-capability catalogue with its provenance:
 `{ capabilities, source: 'bedrock', complete }`. `complete: false` means the
 catalogue could not be read, so `capabilities` is unknown rather than empty.
 
-Available for any consumer that decides whether a model supports something —
-the list-only hook below cannot express "not queryable". Nothing reads it yet:
-#3344's `useModelImageSupport` answers the per-model question from the list
-view, where an unmatched row is already `'unknown'`. This hook is what a
-consumer needs to tell an EMPTY catalogue (no AWS credentials, nothing knowable
-about any model) from a complete one that genuinely lists no match.
+Use the envelope when the distinction between a complete empty catalogue and
+unavailable enumeration matters. The list-only hook below cannot express
+"not queryable"; `complete: false` is not evidence that a model is unsupported.
 
 ### `useModelCapabilitiesQuery(config?)`
 
@@ -726,9 +806,12 @@ unverified identity. Mutations are neither saved nor hydrated from these snapsho
 This does not make connection evidence a substitute for account authentication or
 qualify every legacy query, mutation, draft or queue path.
 
-`@kontourai/station-sdk/boot` exports `fetchBootPayloadAt(apiBase)` and
-`seedBootPayloadGuarded(queryClient, payload, startedAt, isCurrent)`. Capture the
-origin and request authority before fetching; the guard must verify both that
+The internal [boot module](../../packages/sdk/src/boot.ts) implements
+`fetchBootPayloadAt(apiBase)` and
+`seedBootPayloadGuarded(queryClient, payload, startedAt, isCurrent)` for Station's
+host. `/boot` is not in the package export map; external consumers must not
+infer an importable subpath from this source file. The host captures the
+origin and request authority before fetching; its guard verifies both that
 captured authority and the destination client. Seeding checks it before every
 cache write and preserves newer individual reads. The ambient legacy boot helper
 remains available for existing callers; it is not the multi-home host path.
@@ -832,27 +915,11 @@ Fetches git log for a working directory. Default count: 5. Disabled when `workin
 
 Fetches ACP slash commands for an ACP-backed agent. Disabled when `agentSlug` is null/undefined.
 
-### `useModelCapabilitiesEnvelopeQuery(config?)`
-
-Fetches the Bedrock model-capability catalogue with its provenance:
-`{ capabilities, source: 'bedrock', complete }`. `complete: false` means the
-catalogue could not be read, so `capabilities` is unknown rather than empty.
-
-Available for any consumer that decides whether a model supports something —
-the list-only hook below cannot express "not queryable". Nothing reads it yet:
-#3344's `useModelImageSupport` answers the per-model question from the list
-view, where an unmatched row is already `'unknown'`. This hook is what a
-consumer needs to tell an EMPTY catalogue (no AWS credentials, nothing knowable
-about any model) from a complete one that genuinely lists no match.
-
-### `useModelCapabilitiesQuery(config?)`
-
-List-only view over `useModelCapabilitiesEnvelopeQuery`, sharing its cache
-entry. Cannot express "not queryable".
-
 ### `useAgentInvokeMutation(agentSlug: string)`
 
-Fire-and-forget agent invocation mutation. Returns a `useMutation` result.
+Agent invocation mutation returning a `useMutation` result. Use its completion
+and error state; `mutate` being non-awaiting does not make effects fire-and-forget
+or authorize an automatic retry.
 
 ```tsx
 const { mutate } = useAgentInvokeMutation('my-agent');
@@ -861,7 +928,10 @@ mutate('Summarize this document');
 
 ### `useInvokeAgent<T>(agentSlug, content, options?, config?)`
 
-Invokes an agent and caches the result. Cache key: `['invoke', agentSlug, content, options]`.
+Invokes an agent from a query function and caches the result. Cache key:
+`['invoke', agentSlug, content, options]`. This is effectful, not an inert read;
+query lifecycle/refetch policy can invoke it again. Prefer an explicit mutation
+for a user action rather than treating this helper as an exactly-once command.
 
 ```tsx
 const { data, isLoading } = useInvokeAgent('my-agent', 'Summarize this', { schema: MySchema });
@@ -925,7 +995,11 @@ through the root SDK barrel.
 
 ### `sendMessage(agentSlug, content, options?): Promise<any>`
 
-Sends a message to an agent (non-streaming).
+Posts to the framework's `/agents/:id/text` route and returns its JSON response.
+This is not the canonical orchestration chat/Session API and does not dispatch
+an arbitrary external-engine Agent. Use the bound chat actions or the
+[Session API](./session-api.md) for that workflow. Request authorization,
+available runtime Agents and provider configuration still apply.
 
 ```ts
 interface SendMessageOptions {
@@ -942,7 +1016,11 @@ const result = await sendMessage('my-agent', 'Hello', { conversationId: 'abc' })
 
 ### `streamMessage(agentSlug, content, options?): Promise<void>`
 
-Streams a response from an agent.
+Posts to the framework's `/agents/:id/stream` route. `onChunk` receives decoded
+transport chunks, including SSE framing; the helper does not parse them into
+message text or canonical Session events. Transport chunk boundaries are not
+event boundaries. `onComplete` means the response body ended, not that a
+canonical turn-completion receipt was observed.
 
 ```ts
 interface StreamMessageOptions extends SendMessageOptions {
@@ -954,14 +1032,20 @@ interface StreamMessageOptions extends SendMessageOptions {
 
 ```ts
 await streamMessage('my-agent', 'Explain this', {
-  onChunk: (chunk) => setOutput(prev => prev + chunk),
-  onComplete: () => setDone(true),
+  onChunk: (chunk) => rawStreamParser.feed(chunk),
+  onComplete: () => rawStreamParser.end(),
 });
 ```
 
+`rawStreamParser` is caller-supplied and must understand the framework's event
+format. For Station's user-facing chat, prefer its canonical Session stream.
+
 ### `invokeAgent(agentSlug, content, options?): Promise<any>`
 
-Invokes an agent silently (no user confirmation). Supports structured output via `schema`.
+Invokes an Agent without creating a Dock entry. Supports structured output via
+`schema`; runtime permissions and provider/approval behavior still apply. An
+indeterminate invocation error means work may have started and is not a safe
+automatic-retry signal.
 
 ```ts
 const result = await invokeAgent('my-agent', 'Extract data', { schema: MyZodSchema });
@@ -989,7 +1073,9 @@ const result = await invoke({ prompt: 'What is 2+2?', schema: NumberSchema });
 
 ### `callTool(agentSlug, toolName, toolArgs?): Promise<any>`
 
-Calls an MCP tool directly on an agent. No server-side transform.
+Calls the Agent tool route and unwraps its operation response. Server policy,
+tool routing and response handling still apply; this is not a policy bypass or
+a guarantee that the provider's raw wire payload is returned unchanged.
 
 ```ts
 const data = await callTool('my-agent', 'get_account', { id: '123' });
@@ -999,9 +1085,13 @@ const data = await callTool('my-agent', 'get_account', { id: '123' });
 
 Fetches app configuration imperatively.
 
-### `createChatSession(agentSlug: string, name: string): string`
+### `createChatSession(agentSlug: string, sessionId: string, title?: string): Promise<void>`
 
-Creates a new chat session and returns the session ID.
+This exported compatibility function currently rejects with
+`createChatSession must be implemented by core app`. The default shared runtime
+does not replace it. Use the bound `useCreateChatSession` or `useLaunchChat`
+host action for the Dock; do not present this export as a working imperative
+Session-creation API.
 
 ### `fetchAvailableLayouts(): Promise<any[]>`
 
@@ -1408,18 +1498,19 @@ The server obtains the claim and signing policy from host owners and returns
 `registry-trust-refused` with a closed reason when the review or continuity no
 longer matches. See [registry trust policy](../design/registry-trust-policy.md).
 
-`consent` is required (station#4288). It is the operator's decision, taken from
+`consent` is required (archive#4288). It records the operator's decision from
 the preview they read: the permission set the preview derived, the digest of
 the bytes it staged, and the dependency ids it resolved. The server re-derives
-all three from its own staged copy and refuses — before writing anything — when
-they disagree.
+the current requirements and compares the approval with its staged copy,
+refusing when they disagree.
+Source acquisition and scratch staging can already have occurred; refusal is
+not a promise that no filesystem work happened.
 
-What that does and does not buy: it makes the install a decision about specific
-bytes, and it puts the question before the write. It is not an authorization
-boundary. The digest is a documented deterministic walk of the tree, so a
-caller can compute one without previewing, and every other value is readable
-from `POST /api/plugins/preview` — any client holding a Station credential can
-assemble a well-formed `consent` with nobody in the loop.
+The consent body binds reviewed bytes and revisions, but by itself does not
+prove that a person read the preview. Request authorization and trusted
+host-owned approval are separate checks; an arbitrary Station credential is
+not sufficient for every lifecycle operation. A recorded trusted grant also
+does not prove runtime activation: inspect reconciliation and current status.
 
 ```tsx
 const { mutate } = usePluginInstallMutation();
@@ -1566,7 +1657,9 @@ Imperative helper for polling agent readiness during post-install bootstrap flow
 
 ## Components
 
-Unstyled (inline styles only) UI primitives that respect the app's CSS variables.
+Host-themed UI components. Styling varies by component: inline styles, CSS
+assets and host variables can all participate. Importing a component does not
+install the Station theme or prove a layout/accessibility result.
 
 ### `Button`
 
@@ -1607,6 +1700,9 @@ interface PillProps extends React.HTMLAttributes<HTMLSpanElement> {
 
 ```tsx
 <Spinner size="sm" />   // size: 'sm' | 'md' | 'lg', default: 'md'
+```
+
+```tsx
 <Spinner color="#fff" />
 ```
 
@@ -1731,7 +1827,7 @@ Manages per-tab URL hash state for layout plugins with multiple tabs. Persists s
 Must be called inside `LayoutNavigationProvider`.
 
 ```ts
-{
+type LayoutNavigationExcerpt = {
   getTabState: (tabId: string) => string;
   setTabState: (tabId: string, state: string) => void;
   clearTabState: (tabId: string) => void;
@@ -1742,34 +1838,23 @@ Must be called inside `LayoutNavigationProvider`.
 
 ## Agent Resolver
 
-Utilities for working with agent slugs.
-
-### `resolveAgentName(agentName: string, layout?: LayoutConfig): string`
-
-Resolves a short agent name to a fully-qualified `namespace:name` slug using layout context. Returns the name unchanged if it already contains `:` or no match is found.
+The current exported helper is `getAgentDisplayName(id, agents?)`. It looks up
+an exact canonical Agent ID and falls back to that ID. It does not parse a
+namespace, infer a Layout prefix or choose an execution target.
 
 ```ts
-resolveAgentName('my-agent'); // → 'sa-agent:my-agent' (if in layout context)
-resolveAgentName('sa-agent:my-agent'); // → 'sa-agent:my-agent' (unchanged)
+import { getAgentDisplayName } from '@kontourai/station-sdk';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+
+const id = agentId('my-agent');
+getAgentDisplayName(id, [{ slug: id, name: 'My Agent' }]); // 'My Agent'
+getAgentDisplayName(id, []);                            // 'my-agent'
 ```
 
-### `parseAgentSlug(slug: string): { namespace?: string; name: string }`
-
-Splits a slug into namespace and name.
-
-```ts
-parseAgentSlug('sa-agent:my-agent'); // → { namespace: 'sa-agent', name: 'my-agent' }
-parseAgentSlug('my-agent');          // → { name: 'my-agent' }
-```
-
-### `isLayoutAgent(slug: string): boolean`
-
-Returns `true` if the slug is namespace-qualified.
-
-```ts
-isLayoutAgent('sa-agent:my-agent'); // true
-isLayoutAgent('my-agent');          // false
-```
+The previously documented `resolveAgentName`, `parseAgentSlug` and
+`isLayoutAgent` functions are not current SDK exports. Plugin-qualified input
+accepted by `useSendToChat` has its own explicit parser/contract; a colon in an
+arbitrary ID is not evidence of plugin ownership.
 
 ---
 
@@ -1779,7 +1864,7 @@ Registries and interfaces for STT/TTS providers. Providers register themselves o
 
 ### `voiceRegistry`
 
-```ts
+```text
 voiceRegistry.registerSTT(provider: STTProvider): void
 voiceRegistry.registerTTS(provider: TTSProvider): void
 voiceRegistry.unregisterSTT(id: string): void
@@ -2053,7 +2138,7 @@ For plugins that contribute ambient message context (e.g. timezone, location).
 
 ### `contextRegistry`
 
-```ts
+```text
 contextRegistry.register(provider: MessageContextProvider): void
 contextRegistry.unregister(id: string): void
 contextRegistry.getAll(): MessageContextProvider[]
@@ -2257,7 +2342,7 @@ agentQueries.stats(agentSlug, conversationId)        // GET /agents/:slug/conver
 
 Query factory for knowledge operations.
 
-```ts
+```text
 knowledgeQueries.list(projectSlug, namespace?)       // GET /api/projects/:slug/knowledge
 knowledgeQueries.search(projectSlug, query, ns?)     // POST /api/projects/:slug/knowledge/search
 knowledgeQueries.namespaces(projectSlug)             // GET /api/projects/:slug/knowledge/namespaces
@@ -2430,7 +2515,13 @@ Core types re-exported from `@kontourai/station-contracts/*` plus SDK-specific t
 
 ### Core contract types
 
-`AgentSpec`, `AgentSummary` (SDK), `AgentMetadata`, `AgentUIConfig`, `AgentGuardrails`, `AgentTools`, `AgentQuickPrompt`, `LayoutConfig`, `LayoutDefinition`, `LayoutTab`, `LayoutAction`, `LayoutPrompt`, `PluginManifest`, `SlashCommand`, `SlashCommandParam`, `ToolDef`, `ToolMetadata`, `ToolPermissions`, `ToolCallResponse`, `ConversationStats`
+Representative SDK re-exports include `AgentSpec`, `AgentMetadata`,
+`AgentUIConfig`, `AgentGuardrails`, `AgentTools`, `AgentQuickPrompt`,
+`LayoutDefinition`, `LayoutTab`, `LayoutSkill`, `PluginManifest`,
+`SlashCommand`, `SlashCommandParam`, `ToolDef`, `ToolMetadata`, `ToolPermissions`,
+`ToolCallResponse` and `ConversationStats`. Import other domain types, such as
+`LayoutConfig` and `LayoutAction`, from their owning contract subpath rather
+than assuming the SDK re-exports them.
 
 ### SDK-specific types
 
@@ -2441,7 +2532,7 @@ interface AgentSummary {
   prompt?: string;
   model?: string;
   region?: string;
-  source?: 'local' | 'acp';
+  source?: AgentSource; // legacy compatibility label, not an engine discriminator
   guardrails?: AgentGuardrails;
   tools?: AgentTools;
   ui?: AgentUIConfig;
@@ -2489,14 +2580,8 @@ interface Conversation {
 /** @deprecated Alias of `SDKNavigation`, what `useNavigation()` returns. */
 type NavigationState = SDKNavigation;
 
-interface InvokeOptions {
-  conversationId?: string;
-  userId?: string;
-  model?: string;
-  tools?: string[];
-  maxSteps?: number;
-  signal?: AbortSignal;
-}
+// The root export selects the prompt-based invoke API type shown above.
+type InvokeOptions = import('@kontourai/station-sdk').InvokeOptions;
 
 interface InvokeResult {
   success: boolean;
@@ -2507,8 +2592,8 @@ interface InvokeResult {
 
 interface LayoutComponentProps {
   agent?: AgentSummary;
-  layout?: LayoutConfig;
-  activeTab?: WorkspaceTab;
+  layout?: LayoutDefinition;
+  activeTab?: LayoutTab;
   onLaunchPrompt?: (prompt: AgentQuickPrompt) => void;
   onLaunchWorkflow?: (workflowId: string) => void;
   onShowChat?: () => void;
@@ -2516,7 +2601,7 @@ interface LayoutComponentProps {
   onSendToChat?: (text: string, agent?: string) => void;
 }
 
-type WorkspaceComponent = (props: LayoutComponentProps) => ReactElement;
+type LayoutComponent = (props: LayoutComponentProps) => ReactElement;
 type EventHandler<T = any> = (event: T) => void;
 ```
 # Host transport binding lifetime
@@ -2847,8 +2932,9 @@ message.
 through the same rules: a complete identity triple is required, optional
 `shaSource` and `devicePresentation` metadata is dropped when malformed, and
 the 503 `identity_unavailable` branch surfaces as a `StationHttpError` with
-its status preserved. Every export is re-exported from
-`@kontourai/station-sdk` and `@kontourai/station-sdk/queries`.
+its status preserved. Both functions are re-exported from
+the root `@kontourai/station-sdk` entry. `src/queries.ts` is an internal barrel;
+`@kontourai/station-sdk/queries` is not an exported package subpath.
 
 `useCoreUpdateStatusQuery(apiBase, config?, scope?)` accepts an optional third
 `CoreUpdateStatusScope` argument: `{ scopeKey?, assertCurrent? }`. When

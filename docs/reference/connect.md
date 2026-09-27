@@ -2,7 +2,12 @@
 
 Multi-device connectivity package. Handles stable Station identity, host-
 confirmed one-time device pairing, scoped credential storage, revocation, and
-connection persistence. Framework-agnostic core with optional React bindings.
+connection persistence. The source contains a framework-agnostic core and React
+bindings; the package root exports both. This is a private workspace package,
+not a separately published installation contract. The root and `/health-probe`
+exports require the package build; other declared subpaths point to TypeScript
+source. See the [package README](../../packages/connect/README.md) and
+[export map](../../packages/connect/package.json).
 
 For how this pairing relationship differs from an SSH environment's
 delegated-execution relationship — direction, trust model, and what persists
@@ -15,7 +20,8 @@ where — see
 
 ### `SavedConnection`
 
-A persisted server connection entry.
+A persisted server connection entry. This excerpt shows the main fields; import
+the canonical type for host-injected, broker-route and recovery metadata.
 
 ```ts
 interface SavedConnection {
@@ -25,6 +31,8 @@ interface SavedConnection {
   url: string; // compatibility alias for the selected endpoint
   endpoints: AccessEndpoint[];
   selectedEndpointId: string;
+  accessMethods: EnvironmentAccessMethod[];
+  selectedAccessMethodId: string;
   environmentId: string | null;
   authProtocolVersion: number | null;
   credentialRef: CredentialRef; // lookup reference, never bearer material
@@ -72,8 +80,9 @@ uses bounded exponential retry with jitter, cancels when the environment or
 subscriber set changes, and wakes on browser online/visibility signals. The
 last verified profile/session data may remain visible during a transient
 outage, but it is explicitly stale and read-only. The SDK rejects mutations
-before `fetch` while stale and keeps no outbox, so blocked changes are never
-silently replayed after recovery.
+before `fetch` while stale. This health coordinator does not queue mutations.
+Station's separate chat outbound queue has its own admission and replay rules;
+this is not a promise that the whole application has no queue.
 
 ### `ConnectionSupervisor`
 
@@ -128,7 +137,7 @@ interface StorageAdapter {
 ### `ConnectionStatus`
 
 ```ts
-type ConnectionStatus = 'connected' | 'connecting' | 'error';
+type ConnectionStatus = 'connected' | 'connecting' | 'error' | 'idle';
 ```
 
 ### `ConnectionCandidate`
@@ -182,8 +191,12 @@ separate from profile `localStorage`. They survive reloads in the same tab but
 are discarded with the tab session. This remains a conservative advanced
 fallback, not an OS keychain: same-origin script can read it. Same-origin web
 pairing does not use this adapter; the server places the device credential in a
-persistent `HttpOnly` cookie that JavaScript cannot read. Native clients should
-inject a keychain-backed `StorageAdapter`.
+persistent `HttpOnly` cookie that JavaScript cannot read. Supplying `storage`
+without `credentialStorage` makes that custom adapter the credential fallback
+too; pass both explicitly when they need different custody. Station's native
+host owns credentials and supplies authenticated transport plus secret-free
+profile state. A renderer-readable keychain adapter would not preserve that
+host-only boundary.
 
 ---
 
@@ -192,12 +205,16 @@ inject a keychain-backed `StorageAdapter`.
 Framework-agnostic store for managing saved connections. Compatible with React's `useSyncExternalStore` via the `subscribe` method.
 
 ```ts
-import { ConnectionStore } from '@kontourai/station-connect';
+import {
+  ConnectionStore,
+  LocalStorageAdapter,
+  SessionStorageAdapter,
+} from '@kontourai/station-connect';
 
 const store = new ConnectionStore({
-  storage?: StorageAdapter,   // default: defaultStorage
-  credentialStorage?: StorageAdapter, // default: session storage
-  storageKey?: string,        // default: 'station-connect-connections'
+  storage: new LocalStorageAdapter(),
+  credentialStorage: new SessionStorageAdapter(),
+  storageKey: 'my-host-connections',
 });
 ```
 
@@ -209,23 +226,34 @@ query string, or ordinary connection-profile localStorage record.
 
 #### `getAll(): SavedConnection[]`
 
-Returns all saved connections. Result is referentially stable between writes (cached).
+Returns the composed connection list, including a host-injected entry when it
+has not been folded into its matching saved profile. Injected entries are not
+persisted. The result is cached between invalidations.
 
 #### `getActive(): SavedConnection | null`
 
-Returns the currently active connection, or the first connection if no active ID is set.
+Returns the resolved usable active connection. Resolution considers explicit
+selection, host-injected selection, matching mobile/default and managed-loopback
+profiles, then a non-broker saved fallback. It can return `null`; an unprepared
+broker route is not automatically activated.
 
 #### `add(name: string, url: string): SavedConnection`
 
-Adds a new connection and activates it. If a connection with the same URL already exists, activates it instead and returns the existing entry.
+Adds a new connection, selecting it when no active ID exists. If a non-broker
+connection with the same URL already exists, activates and returns that entry.
+Call `setActive` explicitly when the new connection should replace a selection.
 
 #### `remove(id: string): void`
 
-Removes a connection by ID. If it was active, the first remaining connection becomes active.
+Removes a saved connection and its saved credential. If it was active, selection
+falls back to the first remaining non-broker saved profile, then the normal
+host-aware active-resolution rules.
 
-#### `update(id: string, changes: Partial<Pick<SavedConnection, 'name' | 'url'>>): void`
+#### `update(id: string, changes: Partial<Pick<SavedConnection, 'name' | 'url' | 'sshForward'>>): void`
 
-Updates the name or URL of an existing connection.
+Updates supported profile fields. A URL change for a verified environment
+stages an endpoint candidate for proof and confirmation. A broker route's URL
+cannot be replaced this way; it requires a new invitation.
 
 #### `reconcileHandshake(id, handshake): SavedConnection | null`
 
@@ -316,15 +344,17 @@ credential. When
 the Station endpoint is the browser's own origin, the server returns only safe
 device/environment metadata and stores that credential in a host-only,
 persistent `HttpOnly` `SameSite=Strict` cookie. Closing and reopening the phone
-browser therefore keeps the device paired without exposing a token to
-JavaScript. Cross-origin and native clients retain explicit bearer delivery.
+browser can therefore retain the pairing while that cookie remains present,
+valid and unrevoked. Cross-origin and native exchanges support bearer delivery;
+Station's native host captures and holds it outside the WebView.
 Expired, denied, cancelled, altered, replayed, and unconfirmed offers are
 rejected.
 
 Use the paired-device inventory in the same host panel to revoke one device.
 Revocation is checked by the shared HTTP/SSE/WebSocket credential verifier and
-takes effect immediately without rotating the operator credential or revoking
-other devices. Ordinary paired credentials cannot administer pairing offers or
+denies subsequent authenticated admission/delivery without rotating the operator
+credential or revoking other devices. It does not recall data already delivered
+or guarantee cancellation of effects already dispatched. Ordinary paired credentials cannot administer pairing offers or
 revoke other devices. The native desktop’s local grant, minted using proof of
 Station-home possession, can manage pairing within its current scope. Browser
 launcher grants do not inherit that authority. `station environment credential rotate` rotates operator
@@ -464,14 +494,27 @@ function useConnectionStatus(options: UseConnectionStatusOptions): ConnectionSta
 
 ```ts
 interface UseConnectionStatusOptions {
-  checkHealth: (url: string) => Promise<boolean>;
+  checkHealth: (url: string, credential?: string) => Promise<boolean>;
+  probeEndpoint?: (
+    url: string,
+    credential: string | undefined,
+    expectedEnvironmentId: string | null,
+    signal: AbortSignal,
+    brokerRoute?: NonNullable<SavedConnection['brokerRoute']>,
+  ) => Promise<ConnectionHealthCheckResult>;
   pollInterval?: number; // ms, default: 10_000
 }
 
 interface ConnectionStatusResult {
-  status: ConnectionStatus;   // 'connected' | 'connecting' | 'error'
+  status: ConnectionStatus;
   checking: boolean;          // true while a check is in flight
   reason: ConnectionFailureReason | null;
+  failureStreak: number;
+  failureWindows: ReadonlyArray<{
+    start: string;
+    end: string;
+    reason: ConnectionFailureReason;
+  }>;
   blocked: boolean;           // true on a terminal failure (e.g. authentication-failed);
                                // the automatic retry ladder is paused until recheck(),
                                // a credential change, or the browser regaining network
@@ -483,21 +526,26 @@ interface ConnectionStatusResult {
 
 ```tsx
 const { status, recheck } = useConnectionStatus({
-  checkHealth: async (url) => {
-    const res = await fetch(`${url}/api/health`).catch(() => null);
-    return res?.ok ?? false;
-  },
+  checkHealth: hostCheckHealth,
+  probeEndpoint: hostProbeEndpoint,
   pollInterval: 15_000,
 });
 ```
 
-Resets to `'connecting'` whenever the active URL changes.
+The two callbacks above are supplied by the embedding host; they are not
+package exports. The host must preserve selected-connection authentication,
+identity checks, cancellation and failure reasons. Station's own caller uses
+authenticated `/api/system/status`, not an unauthenticated `/api/health`
+endpoint. See [the host health adapter](../../src-ui/src/lib/serverHealth.ts).
 
 ---
 
 ### `useHostUrl(options)`
 
-Detects the device's LAN IP via `RTCPeerConnection` ICE candidates and returns a host URL suitable for QR display. Falls back to `localhost` if detection fails or times out (3 s).
+Attempts to derive an address from `RTCPeerConnection` ICE candidates and
+returns a URL hint. Falls back to `localhost` if detection fails or times out
+(3 s). This does not prove that a Station server is listening or reachable,
+and a URL hint is not a pairing offer accepted by `QRScanner`.
 
 **signature**
 
@@ -526,7 +574,7 @@ const { hostUrl, isDetecting } = useHostUrl({ port: 3141 });
 
 return isDetecting
   ? <span>Detecting IP…</span>
-  : <QRDisplay url={hostUrl} />;
+  : <span>Candidate address: {hostUrl}</span>;
 ```
 
 ---
@@ -588,9 +636,9 @@ guessed subnet or probe a hard-coded port. Manual address and pairing-code
 entry remain available under Advanced connection options.
 
 The former `useNetworkDiscovery` and `DiscoveredServer` exports remain as
-deprecated source-compatibility adapters in `0.4.x`. The hook now reads the
-same registered providers and never performs its former browser subnet scan;
-move callers to `useConnectionCandidates` before the next major release.
+deprecated source-compatibility adapters. The hook reads the same registered
+providers and does not perform its former browser subnet scan. New callers
+should use `useConnectionCandidates`.
 
 ---
 
@@ -601,14 +649,15 @@ move callers to `useConnectionCandidates` before the next major release.
 Full-featured modal for managing connections. Includes one-time host/device
 pairing, manual endpoint add, and provider-backed connection suggestions.
 
-**props**
+**selected props**
 
 ```ts
 interface ConnectionManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  checkHealth: (url: string) => Promise<boolean>;
-  initialPanel?: 'list' | 'add' | 'pair-device' | 'pair-host' | 'discover';
+  checkHealth: (url: string, credential?: string) => Promise<ConnectionHealthCheckResult>;
+  initialPanel?: 'list' | 'add' | 'request-access' | 'pair-device' | 'pair-code' | 'pair-host' | 'devices' | 'discover';
+  initialPairingPayload?: string;
 }
 ```
 
@@ -620,12 +669,15 @@ Must be rendered inside `ConnectionsProvider`.
 <ConnectionManagerModal
   isOpen={showModal}
   onClose={() => setShowModal(false)}
-  checkHealth={async (url) => {
-    const res = await fetch(`${url}/api/health`).catch(() => null);
-    return res?.ok ?? false;
-  }}
+  checkHealth={hostCheckConnectionHealth}
 />
 ```
+
+`hostCheckConnectionHealth` is the host's authenticated adapter. Prefer a
+structured failure reason to a bare `false`; credential refusal and an
+unreachable server need different recovery. See the
+[complete prop contract](../../packages/connect/src/react/ConnectionManagerModal.tsx)
+for compatibility checks and native-host integration options.
 
 ---
 
@@ -648,8 +700,11 @@ interface QRDisplayProps {
 **example**
 
 ```tsx
-<QRDisplay url="http://192.168.1.42:3141" size={200} label="Scan to connect" />
+<QRDisplay url={pairingPayload} size={200} label="Scan pairing invitation" />
 ```
+
+Here `pairingPayload` is the short-lived offer returned by the host's pairing
+flow. Displaying a raw address as a QR code does not create such an offer.
 
 ---
 
@@ -666,6 +721,7 @@ connection modal always exposes the accessible manual-code fallback.
 interface QRScannerProps {
   onScan: (payload: string) => void;
   onCancel: () => void;
+  onManualEntry?: () => void;
 }
 ```
 
@@ -682,18 +738,22 @@ interface QRScannerProps {
 
 ### `ConnectionStatusDot`
 
-A small colored circle indicating connection status.
+A small status indicator. Pairing/repair states use a triangle; the remaining
+states use a circle. Hosts should also show an accessible label and remedy.
 
 **props**
 
 ```ts
 interface ConnectionStatusDotProps {
-  status: ConnectionStatus; // 'connected' | 'connecting' | 'error'
+  status: ConnectionIndicatorState;
   size?: number;            // px, default: 8
 }
 ```
 
-Colors: `connected` → green (`#22c55e`), `connecting` → yellow (`#eab308`), `error` → red (`#ef4444`).
+`ConnectionIndicatorState` includes `connected` (green), `connecting` and
+`busy` (yellow), `error` (red), `idle` (gray), and `needs-credential`,
+`awaiting-approval`, `needs-repair` (amber). The two `needs-*` states use the
+triangle. This richer UI state is distinct from `ConnectionStatus`.
 
 **example**
 

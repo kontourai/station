@@ -3,15 +3,18 @@
 There are two paths to a working plugin, and which one you can use depends on
 what you have:
 
-- **[Start from npm](#start-from-npm)** — nothing but npm and the published
-  `@kontourai/station-sdk` / `@kontourai/station-shared` packages. Use this if
-  you do not have a Station checkout.
+- **[Start from npm](#start-from-npm)** — Node 24, npm, a TypeScript-aware build
+  runner and compatible `@kontourai/station-sdk` / `@kontourai/station-shared`
+  packages. Use this if you do not have a Station checkout.
 - **[Scaffold with the CLI](#choose-a-template)** — the published Station CLI
   creates a template and runs the watching dev server. A checkout's `./station`
   launcher is an equivalent source-development path.
 
-Both produce the same artifact: a `plugin.json` manifest and a
-`dist/bundle.js` built by `buildPlugin()`.
+The Pane examples produce a `plugin.json` manifest and a `dist/bundle.js`
+built by `buildPlugin()`. A provider-only plugin can omit a UI entrypoint and
+bundle. The commands below describe the source contract; they are not evidence
+that a particular registry version is published or that an installed plugin
+has been approved and activated.
 
 For a portable Workspace Pane declaration, also read
 [Author Workspace Pane Contributions](./workspace-pane-authoring.md). It
@@ -35,8 +38,9 @@ npm install -D tsx @types/react
 mkdir src
 ```
 
-`tsx` is required, not optional: both packages ship TypeScript source, and Node
-will not strip types for files under `node_modules`.
+This example uses `tsx` because the packages expose TypeScript source and Node
+does not strip types under `node_modules`. Other source-aware build runners can
+serve that role. Use Node 24, as required by the shared package's engine range.
 
 Write the manifest Station reads, `plugin.json`. It is an
 [Agent Plugins 1.0](https://agent-plugins.org) manifest; Station's own fields
@@ -118,9 +122,6 @@ npm run build
 ```
 
 ```text
-  dist/bundle.js  3.6kb
-
-⚡ Done in 23ms
 Built /path/to/hello-station/dist/bundle.js
 ```
 
@@ -130,32 +131,31 @@ one-shot builds; the watching preview server is CLI-only (see
 
 ### Load it into Station
 
-The simplest way is the CLI, which does the whole sequence for you — it
-previews the source, prints what installing it would require, and asks:
+Use a compatible Station CLI to preview the source, review the requested
+permissions and dependencies, and submit the resulting approval:
 
 ```bash
-npx @kontourai/station-cli@latest plugin install "$PWD"
+station plugin install "$PWD"
 ```
 
-Over HTTP it is two calls, because an install carries the approval a preview
-produced (station#4288) and `POST /api/plugins/install` refuses without one:
+The CLI permits a local path only for an active local or loopback target. A
+remote target requires a Git URL; a shared filesystem path does not bypass that
+rule. Configure the selected Station and its credential through the CLI's
+normal connection flow.
 
-```bash
-curl -X POST http://localhost:3141/api/plugins/preview \
-  -H 'Content-Type: application/json' \
-  -d "{\"source\": \"$PWD\"}"
-# → read `permissions` and `contentDigest`, then:
-curl -X POST http://localhost:3141/api/plugins/install \
-  -H 'Content-Type: application/json' \
-  -d "{\"source\": \"$PWD\", \"consent\": {\"permissions\": [], \"contentDigest\": \"sha256:…\", \"dependencies\": []}}"
-```
+The HTTP flow uses authenticated `POST /api/plugins/preview`, followed by
+`POST /api/plugins/install` carrying the reviewed permissions, content digest,
+grant revision and dependency approvals. Do not substitute empty permission
+lists or a placeholder digest. See the SDK's
+[complete consent example](../reference/sdk.md#useplugininstallmutation) for the
+request shape; the server rechecks requirements against the submitted approval.
 
-The CLI uses the selected saved Station and its OS-keyring credential. Station
-copies the plugin to `<STATION_HOME>/plugins/<name>/`, rebuilds it, and
-registers its Workspace Pane, which you can then add to a Project with
-**Add pane**. Passive permissions are auto-granted, active ones named in the approval
-are recorded against the installed tree, and trusted ones come back as
-`pendingConsent` for a separate host-owned review. See
+Installation stages and builds content and records grants. Passive permissions
+are auto-granted; reviewed active permissions are bound to the installed tree.
+Trusted permissions remain pending for separate host-owned review. Approval
+does not itself prove runtime activation: reconciliation can withhold plugin
+content when grants or bytes do not match. Once admitted, a Workspace Pane can
+be added to a Project through **Add pane**. See
 [plugins.md](./plugins.md#installation-flow) for the rest of the plugin HTTP
 API.
 
@@ -233,7 +233,9 @@ station plugin install ./hello-pane
 station plugin install .
 ```
 
-Local paths are resolved from the directory where Station was invoked. Use `./hello-pane` from its parent or bare `.` from inside the plugin directory.
+Local paths are resolved from the directory where Station was invoked. Use
+`./hello-pane` from its parent or bare `.` from inside the plugin directory,
+with an active-local or loopback target. Use a Git URL for a remote target.
 
 If you are working from a Station checkout and want to test the repository's
 registry fixture too, point its source launcher at the bundled local manifest:
@@ -258,7 +260,9 @@ claimed from this local proof.
 
 ## Add Server Logic
 
-Provider-style plugins can expose request-scoped server routes through `serverModule`:
+Provider-style plugins can declare server routes through `serverModule`.
+This is a legacy Station manifest excerpt; in an Agent Plugins 1.0 manifest,
+put the Station fields under `extensions["io.kontourai.station"]` as above:
 
 ```json
 {
@@ -296,6 +300,12 @@ export function register(app, context) {
 ```
 
 Routes are mounted under `/api/plugins/<plugin-name>/...`. The registration context gives you `pluginName`, `projectHomeDir`, `logger`, and config helpers; request correlation IDs are available in request hooks and on the `x-station-correlation-id` header.
+
+Loading `serverModule` requires the trusted `plugin.server` grant; registering
+providers requires `providers.register`. Both need the separate host-owned
+review and successful reconciliation. This Node server extension is trusted
+code, not a sandbox. Declaring it or successfully building a UI bundle does not
+prove that its routes or providers have been loaded.
 
 ## What To Copy Next
 

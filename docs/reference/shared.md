@@ -1,16 +1,26 @@
 # @kontourai/station-shared
 
-Compatibility type re-exports plus explicit helper subpaths. Canonical API/domain ownership now lives in `@kontourai/station-contracts`; `@kontourai/station-shared` root remains for compatibility type exports, while runtime helpers live on dedicated subpaths used across `src-server`, `packages/sdk`, and `packages/cli`.
+Compatibility re-exports and runtime helpers. Canonical API/domain ownership
+lives in `@kontourai/station-contracts`. The shared root also exports selected
+validation, guidance, portability and redaction helpers; it is not a type-only
+or universally browser-safe barrel. Prefer each helper's explicit subpath.
 
 New code should import stable cross-package types from the owning `@kontourai/station-contracts/*` module directly. The type sections below describe compatibility re-exports that remain available from `shared` while older call sites converge.
 
 If you need a server-only provider interface such as `IBrandingProvider`, `IAuthProvider`, or `ILLMProvider`, do not add it to `shared`. Those belong in the focused `src-server/providers/*` modules instead.
 
 For runtime helpers, use explicit subpaths:
+
 - `@kontourai/station-shared/parsers`
 - `@kontourai/station-shared/build`
 - `@kontourai/station-shared/git`
 - `@kontourai/station-shared/mcp`
+
+The [export map](../../packages/shared/package.json) selects source files, mostly
+`.ts` with a few `.mjs` Node leaves, and declares Node 24.x. See the
+[package README](../../packages/shared/README.md) for distribution and build
+requirements. The type excerpts below are not exhaustive replacements for their
+owning declarations; import the canonical type rather than copying an interface.
 
 ---
 
@@ -18,7 +28,11 @@ For runtime helpers, use explicit subpaths:
 
 ### `PluginManifest`
 
-Describes a plugin's identity, capabilities, and structure. Read from `plugin.json` at the plugin root.
+Describes Station's normalized/legacy plugin shape. An Agent Plugins 1.0 file
+stores Station-specific declarations under its owned extension namespace; the
+raw portable document is not this interface. The host's format-aware manifest
+owner validates and normalizes it; `readPluginManifest` below is only a legacy
+JSON reader. See [plugin contracts](../../packages/contracts/src/plugin.ts).
 
 ```ts
 interface PluginManifest {
@@ -28,6 +42,9 @@ interface PluginManifest {
   displayName?: string;
   description?: string;
   entrypoint?: string;
+  serverModule?: string;
+  workspacePanes?: WorkspacePaneDescriptor[];
+  workspacePaneHost?: WorkspacePaneHostContributionV1;
   capabilities?: string[];
   permissions?: string[];
   agents?: Array<{ slug: string; source: string }>;
@@ -49,6 +66,7 @@ interface PluginProviderEntry {
 interface PluginDependency {
   id: string;
   source?: string;
+  version?: string; // exact opaque version, or '*'
 }
 ```
 
@@ -107,7 +125,10 @@ interface AgentSpec {
   icon?: string;
   model?: string;
   region?: string;
-  maxTurns?: number;
+  project?: string;
+  execution?: AgentExecutionConfig;
+  delegation?: AgentDelegationPolicy;
+  maxSteps?: number;
   guardrails?: AgentGuardrails;
   streaming?: {
     useNewPipeline?: boolean;
@@ -132,6 +153,7 @@ interface AgentTools {
   available?: string[];
   autoApprove?: string[];
   unattendedAutoApprove?: string[];
+  browser?: boolean;
 }
 
 interface SlashCommand {
@@ -168,12 +190,14 @@ Lightweight agent summary returned by list endpoints.
 
 ```ts
 interface AgentMetadata {
-  slug: string;
+  slug: AgentId;
   name: string;
   model?: string;
   updatedAt: string;
   description?: string;
   plugin?: string;
+  project?: string;
+  execution?: AgentExecutionConfig;
   ui?: AgentUIConfig;
   workflowWarnings?: string[];
 }
@@ -185,7 +209,9 @@ interface AgentMetadata {
 
 ### `ToolDef`
 
-Full tool definition loaded from `tool.json`. Describes how to launch and connect to an MCP server.
+Tool/integration configuration, ordinarily read from `integration.json` by the
+helper below. The excerpt describes transport configuration, not permission to
+launch a process or access a network endpoint.
 
 ```ts
 interface ToolDef {
@@ -250,7 +276,8 @@ Full layout definition for project-scoped layouts.
 ```ts
 interface LayoutConfig {
   id: string;
-  projectSlug: string;
+  projectSlug?: string;
+  owner?: LayoutOwner;
   type: string;
   name: string;
   slug: string;
@@ -274,10 +301,11 @@ interface LayoutDefinition {
   description?: string;
   plugin?: string;
   requiredProviders?: string[];
-  availableAgents?: string[];
-  defaultAgent?: string;
+  availableAgents?: AgentId[];
+  defaultAgent?: AgentId;
   tabs: LayoutTab[];
   actions?: LayoutAction[];
+  globalSkills?: LayoutSkill[];
 }
 ```
 
@@ -287,11 +315,11 @@ interface LayoutDefinition {
 interface LayoutTab {
   id: string;
   label: string;
-  component: string;
+  component: string | LayoutComponentRef;
   icon?: string;
   description?: string;
   actions?: LayoutAction[];
-  prompts?: LayoutAction[];
+  skills?: LayoutAction[];
 }
 ```
 
@@ -302,19 +330,19 @@ interface LayoutAction {
   type: 'prompt' | 'inline-prompt' | 'external' | 'internal';
   label: string;
   icon?: string;
-  agent?: string;
+  agent?: AgentId;
   data: string;
 }
 ```
 
-### `LayoutPrompt`
+### `LayoutSkill`
 
 ```ts
-interface LayoutPrompt {
+interface LayoutSkill {
   id: string;
   label: string;
   prompt: string;
-  agent?: string;
+  agent?: AgentId;
 }
 ```
 
@@ -324,7 +352,8 @@ interface LayoutPrompt {
 interface LayoutMetadata {
   id: string;
   slug: string;
-  projectSlug: string;
+  projectSlug?: string;
+  owner?: LayoutOwner;
   type: string;
   name: string;
   icon?: string;
@@ -379,9 +408,13 @@ interface KnowledgeDocumentMeta {
   id: string;
   filename: string;
   namespace: string;
-  source: 'upload' | 'directory-scan';
+  path: string;
+  source: 'upload' | 'directory-scan' | 'sync';
   chunkCount: number;
+  contentHash?: string;
   createdAt: string;
+  updatedAt?: string;
+  metadata?: Record<string, any>;
   eventId?: string;
   eventSubject?: string;
   enhancedFrom?: string;
@@ -410,7 +443,7 @@ interface ProjectConfig {
   defaultEmbeddingModel?: string;
   similarityThreshold?: number;
   topK?: number;
-  agents?: string[];
+  agents?: AgentId[];
   knowledgeNamespaces?: KnowledgeNamespaceConfig[];
   createdAt: string;
   updatedAt: string;
@@ -517,37 +550,64 @@ Re-exported from `@kontourai/station-contracts/scheduler` for compatibility.
 
 ```ts
 interface SchedulerJob {
-  target: string;
-  schedule: string;
+  name: string;
+  provider: string;
+  prompt: string;
+  cron?: string;
+  schedule?: SchedulerSchedule;
+  agent?: string;
   enabled: boolean;
+  retryCount?: number;
+  retryDelaySecs?: number;
   lastRun?: string;
   nextRun?: string;
 }
 
 interface SchedulerLogEntry {
-  runAt: string;
-  status: 'success' | 'error';
-  outputPath?: string;
+  id: string;
+  job: string;
+  startedAt: string;
+  completedAt?: string;
+  success: boolean;
+  durationSecs?: number;
+  output?: string;
   error?: string;
+  state?: 'running' | 'completed' | 'failed' | 'indeterminate';
 }
 
 interface SchedulerEvent {
-  type: string;
-  target: string;
-  timestamp: string;
+  event: 'job.started' | 'job.completed' | 'job.failed' | 'job.retrying'
+    | 'job.deferred' | 'job.missed' | 'monitor.observed' | 'monitor.actionable'
+    | 'monitor.blocked' | 'monitor.terminal' | 'monitor.restarted' | 'monitor.resolved';
+  job: string;
+  provider?: string;
+  id?: string;
+  reason?: 'scheduler_concurrency_limit';
+  disposition?: SchedulerDeferralDisposition;
 }
 
 interface SchedulerProviderStats {
-  totalJobs: number;
-  enabledJobs: number;
-  lastRunAt?: string;
+  jobs: Array<{
+    name: string;
+    total: number;
+    successes: number;
+    failures: number;
+    success_rate: number;
+  }>;
 }
 
 interface SchedulerProviderStatus {
   running: boolean;
-  provider: string;
+  jobCount: number;
+  lastTickAt?: string | null;
+  healthy?: boolean;
 }
 ```
+
+These excerpts omit monitor and additional execution fields. Import
+`SchedulerSchedule`, `SchedulerDeferralDisposition` and the complete records
+from [the scheduler contract](../../packages/contracts/src/scheduler.ts).
+An event shape or a configured job is not evidence that a provider executed it.
 
 ---
 
@@ -586,7 +646,7 @@ Top-level application configuration (`app.json`).
 
 ```ts
 interface AppConfig {
-  region: string;
+  region?: string;
   defaultModel: string;
   invokeModel: string;
   structureModel: string;
@@ -688,7 +748,8 @@ enum AgentSwitchState {
 
 ## provider interfaces
 
-Contracts that plugins implement to provide auth, user identity, registry, and prerequisite checking.
+Provider-facing data shapes. These are not the server provider factory or
+registration interfaces; those remain at the owning server boundary.
 
 ```ts
 interface RegistryItem {
@@ -750,8 +811,9 @@ interface Prerequisite {
 }
 ```
 
-`not-configured` means Station has no authentication provider. It is an
-expected explicit state, not a successful authentication verdict.
+`not-configured` is an explicit provider-status value, not a successful request
+authentication verdict. These legacy status/display shapes do not establish a
+Device grant, deployment account session or Project membership.
 
 ---
 
@@ -759,7 +821,9 @@ expected explicit state, not a successful authentication verdict.
 
 ### `readPluginManifest(dir: string): PluginManifest`
 
-Reads and parses `plugin.json` from the given directory. Throws if the file does not exist.
+Reads JSON from `plugin.json`. Missing files and invalid JSON throw. This helper
+returns a typed cast; it does not validate the schema, normalize Agent Plugins
+namespaces, approve code or perform installation admission.
 
 ```ts
 import { readPluginManifest } from '@kontourai/station-shared/parsers';
@@ -780,13 +844,18 @@ const tool = readIntegrationDef('/project/.station/integrations', 'my-mcp-server
 
 Reads an agent JSON file at the given path.
 
-### `readLayoutConfig(path: string): LayoutConfig`
+### `readLayoutConfig(path: string): LayoutDefinition`
 
-Reads a layout JSON file at the given path.
+Reads a file-based layout JSON document. Like the other simple readers, it
+parses JSON rather than proving the declared type. It is not a project-owned
+`LayoutConfig` record with persisted ownership/timestamps.
 
 ### `resolvePluginIntegrations(pluginDir: string, toolsDir: string): Map<string, ToolDef>`
 
-Walks all agents declared in a plugin's manifest, collects their `mcpServers` references, and returns a map of `toolId → ToolDef` by reading from `toolsDir`. Silently skips missing integration definitions.
+Walks the legacy/root `agents` declaration, collects `mcpServers` references,
+and reads a map of `toolId → ToolDef`. Missing Agent files are skipped;
+integration read/parse failures are swallowed. An empty result is therefore not
+proof of a complete valid inventory. It does not normalize portable manifests.
 
 ```ts
 const tools = resolvePluginIntegrations('/path/to/plugin', '/project/.station/integrations');
@@ -806,7 +875,13 @@ const ids = listIntegrationIds('/project/.station/integrations');
 
 ### `copyPluginIntegrations(pluginDir: string, projectIntegrationsDir: string): string[]`
 
-Copies integration configs from `<pluginDir>/integrations/` into `projectIntegrationsDir`. Skips integrations that already exist. Returns the list of copied integration IDs.
+Copies validated integration trees from `<pluginDir>/integrations/` into the
+destination. It rejects symlinks, credential-bearing embedded configuration,
+unsafe executable tokens and an existing target not owned by this plugin.
+An existing plugin-owned target is replaced using staged rollback handling;
+it is not silently skipped. The returned IDs describe copied files, not live
+MCP connections or permission grants. Use the host installation path for live
+plugin lifecycle and consent.
 
 ```ts
 const copied = copyPluginIntegrations('/path/to/plugin', '/project/.station/integrations');
@@ -826,7 +901,18 @@ Throws if not inside a git repository.
 
 ### `buildPlugin(pluginDir: string, mode?: 'production' | 'dev'): Promise<BuildResult>`
 
-Builds a plugin. Workspace plugins (with entrypoint) use esbuild JS API directly. Provider-only plugins fall back to `build.mjs` / `build.sh` / `npm run build`. Installs npm dependencies first and symlinks `@kontourai/station-shared` as a peer.
+Builds a declared entrypoint with esbuild into `dist/bundle.js`, or
+`dist/bundle-dev.js` with inline sourcemaps in dev mode. A missing entrypoint
+returns `{ built: false }`; there is no fallback to `build.mjs`, `build.sh` or
+arbitrary package scripts. `manifest.build` is refused by the host.
+
+The [builder](../../packages/shared/src/build.ts) owns containment and dependency
+preparation. Managed workspace builds require the managed dependency setup;
+standalone plugins use the helper's constrained npm preparation. This can write
+dependencies and outputs. Its exact external allowlist includes root SDK and
+the SDK client/voice entries, not every SDK subpath. A build does not install,
+authorize or activate a plugin. `--dev` in the example build file selects one
+build; it is not a watcher.
 
 ```ts
 interface BuildResult {
@@ -845,7 +931,11 @@ if (result.built) console.log('bundle at', result.bundlePath);
 
 ## mcp helpers
 
-Located in `@kontourai/station-shared/mcp` (re-exported from the package root).
+Located in `@kontourai/station-shared/mcp`, not re-exported from the package root.
+These low-level Node connection helpers are not Station's installation,
+credential-consent or sandbox boundary. Calling them can spawn configured
+processes or make network requests; the examples require caller-owned fixtures
+or explicitly configured integrations.
 
 ### types
 
@@ -859,16 +949,23 @@ interface MCPToolInfo {
 }
 
 interface MCPConnection {
-  client: Client;       // @modelcontextprotocol/sdk Client
+  client: Client;       // @modelcontextprotocol/client
   serverId: string;
   tools: MCPToolInfo[];
+  negotiation: MCPNegotiation;
   close: () => Promise<void>;
+  disconnect: () => Promise<void>;
+  isUsable?: () => boolean;
 }
 
 interface MCPManagerOptions {
   onStatus?: (serverId: string, status: 'connected' | 'failed', error?: string) => void;
 }
 ```
+
+The options excerpt omits optional transport, authentication-provider and
+negotiation callbacks. Import the canonical type from the MCP subpath when
+implementing those hooks.
 
 ### `connectMCP(def: ToolDef, opts?: MCPManagerOptions): Promise<MCPConnection>`
 
@@ -929,11 +1026,11 @@ await manager.closeAll();
 
 | method | description |
 |---|---|
-| `connectAll(defs: ToolDef[]): Promise<void>` | Connects to all `kind: 'mcp'` defs. Failures are reported via `onStatus`, not thrown. |
+| `connectAll(defs: ToolDef[]): Promise<void>` | Attempts all `kind: 'mcp'` defs with `Promise.allSettled`. Completion does not prove every connection succeeded; connection status callbacks and the retained pool must be inspected. |
 | `listTools(): MCPToolInfo[]` | Returns all tools across all active connections. |
 | `callTool(prefixedName: string, args?): Promise<any>` | Routes a call to the owning connection. Throws if tool not found. |
 | `getConnection(serverId: string): MCPConnection \| undefined` | Returns the connection for a specific server. |
-| `closeAll(): Promise<void>` | Closes all connections and clears the pool. |
+| `closeAll(): Promise<void>` | Resets local connection custody and clears the pool only after settlement. Throws a custody error when cleanup has not settled. |
 
 **transport selection**
 

@@ -6,10 +6,16 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 
 ## Ownership rules
 
-- Put stable cross-package types here.
+- This package owns stable cross-package types and constants. Existing domain
+  modules also expose pure boundary parsers, reducers and projection/page helpers;
+  those are executable code, not evidence that a request is authorized.
 - Keep module boundaries domain-oriented: `agent`, `auth`, `catalog`, `config`, `knowledge`, `layout`, `notification`, `orchestration`, `plugin`, `project`, `provider`, `runtime`, `runtime-events`, `scheduler`, `tool`.
-- Do not put runtime helpers, parsers, build helpers, or Node-only utilities here.
-- Use `@kontourai/station-shared` root only for compatibility re-exports. Runtime helpers belong on explicit subpaths such as `@kontourai/station-shared/parsers`, `@kontourai/station-shared/build`, and `@kontourai/station-shared/git`.
+- Keep service implementations, filesystem/network operations, build helpers and
+  Node-only utilities outside this contract boundary. This inventory describes
+  the current pure helpers; it is not a proposal to move general runtime services here.
+- The `@kontourai/station-shared` root retains compatibility re-exports and
+  selected helpers. Prefer explicit helper subpaths such as
+  `@kontourai/station-shared/parsers`, `/build` and `/git`.
 - Server-only provider interfaces do not belong here. Keep those in `src-server/providers/provider-interfaces.ts` or `src-server/providers/llm/model-provider-types.ts`.
 
 ## Modules
@@ -28,7 +34,6 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
 | `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
-| `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/registry-trust` | Candidate registry policies, bounded applied identity/epoch shapes, and untrusted signed-package claim shapes |
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/connection-proof` | Transport-only Station/enrollment/client/SDP bindings and independently approved signing-key trust; never account or Project grants |
@@ -77,6 +82,10 @@ running set. A missing `children` view still means the server made no
 child-work report for that row; clients retain their existing state.
 
 ## Import examples
+
+The [package export map](../../packages/contracts/package.json) is the available
+subpath inventory. It selects TypeScript source. A contract declaration or parser
+does not establish implementation, deployment, access, or a completed live journey.
 
 ```ts
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
