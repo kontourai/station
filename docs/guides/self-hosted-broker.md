@@ -1,6 +1,19 @@
 # Self-hosted routing broker
 
-Status: bounded source implementation for local qualification. This is not a public listener or a production hosting recommendation.
+The broker matches clients with a Station connector. It carries signaling;
+the verified peer connection carries encrypted application traffic. The broker
+CLI binds only to loopback. Running it is not a public deployment or a complete
+collaboration setup.
+
+Keep these three approvals separate:
+
+1. A broker invitation grants signaling access for an exact Station and client.
+2. Independently approved Station signing trust authenticates the endpoint.
+3. Device and account/Project grants authorize application requests there.
+
+The [local lab](local-collaboration-lab.md) composes these owners for bounded
+acceptance. [Connections](connections.md) explains the current browser and
+native user journeys.
 
 The current private-file custody implementation is POSIX-only. Windows startup refuses with `self_hosted_broker_private_custody_unavailable_on_windows` until the broker adopts an audited DACL owner; it never falls back to unchecked Windows paths.
 
@@ -28,9 +41,10 @@ This tranche provisions one operator-owned routing credential for one Station an
 
 ## Native routing grant foundation (v2)
 
-The broker database upgrades additively from schema v2 through v4. Native
-invitation and grant metadata lives in separate tables, and native connection
-offers live in their own v4 table; existing browser v1 wire records, Origin
+The broker database currently writes schema v6 and accepts the known v1–v5
+schemas for additive migration. Native invitation and grant metadata lives in
+separate v3 tables, connection offers in v4, consumed request proofs in v5,
+and grant-renewal receipts in v6. Existing browser v1 wire records, Origin
 checks, owner tables, and signaling behavior are unchanged. A native surface is
 discriminated as `station-native` and binds the app identifier, one of the
 actual `dev`, `stable`, `beta`, or `nightly` channels, a client instance UUID,
@@ -75,9 +89,12 @@ Renewal grace is proof-only: `open` and `read` remain unavailable after grant
 expiry, and revocation, withdrawal, or a replaced Station generation makes a
 receipt unusable. Grants not renewed within seven days need operator
 re-issuance.
-The Rust keyring host does not yet produce these request proofs, and no
-packaged native client enables these routes; the typed TypeScript signer seam
-and renewal API remain protocol scaffolding and server-side tests only.
+Rust has private-key signing and fixed-path HTTP helpers for these request
+proofs, including retained cleanup and renewal state. The ordinary Tauri
+command table exposes key approval and grant-custody commands, but does not
+wire the native redemption service or native application-route selection.
+These helpers and the TypeScript signer seam are implementation foundations,
+not a working native application connection.
 Native invitations and grants are retired with their Station
 routing generation. V1 redemption rejects v2
 invitations, and native-v2 redemption rejects v1 invitations. This foundation
@@ -92,6 +109,8 @@ supplies a native offer adapter bound to one exact surface. Before that callback
 can allocate a peer, it checks the offer's Station key thumbprint and generation
 against current approved Station trust. The production Pion runtime does not
 register this adapter, and its ordinary `poll()` never reads native offers.
+It does poll the separate native signing-key candidate lane; that lane helps
+approve endpoint trust and does not carry native application traffic.
 Native signalling therefore does not enable application ingress, encrypted
 application traffic, or native UI onboarding. Several native installations can
 hold separate grants; connector fan-out across multiple native surfaces remains
@@ -99,7 +118,10 @@ future work.
 
 Connection offers use a caller-chosen client ID and nonce, expire after 30 seconds, and remain replay tombstones for five minutes. Each Station may hold 32 live offers and the broker 1024. Offer and answer SDP are capped at 128 KiB; the opaque Station proof uses its owning 4 KiB contract limit. A connection accepts one answer. Withdrawal and a newer routing generation invalidate pending work without changing Station signing-key trust. Lease renewal uses an explicit revision CAS.
 
-The service binds only to loopback. TLS termination, reverse-proxy hardening, public deployment, production connector lifecycle, and application transport remain later integration work under #1963.
+The service binds only to loopback. Public TLS termination, reverse-proxy
+hardening, and deployment qualification remain separate operator work under
+#1963. The opt-in connector lifecycle and protected application transport are
+implemented below; their existence does not qualify a public deployment.
 
 ## Connector lifecycle library
 
@@ -233,8 +255,29 @@ signing key retires already admitted peers; client trust approval remains an
 independent operation. Withdrawn routing credentials require deliberate
 reprovisioning as described above.
 
-This source configuration does not complete browser profile UI, fresh relay-only
-Device enrollment, native packaging or managed service operations. Existing
-Device/account prerequisites still apply. The separate-process transport lab
-qualifies the transport composition; normal operator entrypoint acceptance is
-recorded separately.
+The browser has saved-route, TURN, and fresh account/Device enrollment UI;
+the lab's separate `--station-ui` profile exercises that journey. This server
+configuration does not itself approve a client, enroll its Device, or grant
+Project access. Native route selection, packaging, and managed service
+operations remain separate work. Transport-lab evidence and normal operator
+entrypoint evidence must name the configuration and revision actually tested.
+
+## Follow the implementation
+
+- [Broker CLI](../../scripts/self-hosted-broker.ts) and
+  [service](../../src-server/services/connections/self-hosted-broker-service.ts)
+  own private configuration, loopback binding, persisted grants, and signaling.
+- [Wire contracts](../../packages/contracts/src/self-hosted-broker.ts) define
+  versioned browser/native fields and limits.
+- [Connector](../../src-server/services/connections/self-hosted-broker-connector.ts),
+  [Pion composition](../../src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts),
+  and [lifecycle](../../src-server/runtime/bootstrap/self-hosted-broker-runtime.ts)
+  own registration, peer admission, and shutdown.
+- [Normal entrypoint](../../src-server/index.ts) consumes the
+  [private connector configuration](../../src-server/runtime/bootstrap/self-hosted-connector-config.ts).
+  [Offline identity initialization](../../scripts/self-hosted-connector-identity.ts)
+  owns its home lease, schema admission, and public descriptor output.
+- [Native proof signing](../../src-desktop/src/native_relay_proof_key.rs),
+  [redemption/request helpers](../../src-desktop/src/native_relay_redemption.rs),
+  and the [registered native commands](../../src-desktop/src/lib.rs) distinguish
+  implemented Rust foundations from the commands available to the application.

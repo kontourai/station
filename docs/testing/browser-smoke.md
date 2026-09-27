@@ -5,18 +5,39 @@ Station instance with a temporary home and dynamically allocated loopback-only
 API/UI ports. It cannot share state or ports with an always-on dogfood
 environment on the same host.
 
-The normative manifest is `PR_BROWSER_SMOKE_CONTRACT` in
-`tests/e2e-manifest.mjs`. Its three journeys cover:
+The normative manifest is
+[`PR_BROWSER_SMOKE_CONTRACT`](../../tests/e2e-manifest.mjs). Its seven selected
+specs cover these journeys:
 
-1. production-built shell startup, CSP, and connection-recovery navigation;
-2. live project and connected-agent CRUD through the isolated server; and
-3. canonical chat transcript, tool activity, and tool approval behavior.
+| Spec | Journey |
+| --- | --- |
+| `connect-modal` | Manual connection consent, keyboard access, and saved hosts |
+| `connect-remote-auth-recovery` | Phone-sized connection access and authentication recovery before protected bootstrap |
+| `csp-shell` | Production-built shell startup, CSP, and connection-recovery navigation |
+| `ui-crud-smoke` | Project and connected-Agent CRUD through the isolated server |
+| `orchestration-chat-flow` | Transcript, tool activity, and approval UI driven by synthetic canonical events |
+| `cross-runtime-chat-switching` | Deterministic provider continuity and mobile layout containment, including the required 320/390/412-pixel switcher observations |
+| `pr-smoke-live-chat-send` | A real orchestration HTTP dispatch and rendered reply from a local Ollama-compatible fixture server |
 
-Each selected spec also monitors browser page errors, console errors, failed
-document/fetch/XHR/script/stylesheet requests, and HTTP 5xx responses. The lane
-runs with one worker, zero retries, and a ten-minute execution budget. A failure
-blocks the lane and must be fixed; retrying until green is not the flake policy.
-CI retains the HTML report, traces, and failure screenshots for 14 days.
+The last journey tests Station's request and rendering path; the fixture returns
+fixed text and does not run a model or contact a provider. A phone-sized browser
+viewport is not physical-phone evidence.
+
+[`monitorBrowserHealth`](../../tests/helpers/browser-health.ts) catches page
+errors, application console errors, HTTP 5xx responses, and selected failed
+resource requests where a test installs it and calls `assertHealthy()`. It
+excludes ordinary HTTP 4xx console reports, aborted requests, and failed
+`/events` requests. It is not a global fixture: the two connection specs do not
+use it, and the cross-runtime spec uses it for one test. Read each journey's
+own assertions before treating the lane as general browser-health coverage.
+
+The runner uses one worker and zero Playwright retries. The
+[required CI step](../../.github/workflows/ci.yml) has a ten-minute timeout;
+the local command does not impose that aggregate deadline. Test-specific
+timeouts and bounded retries through product controls still apply. A failure
+blocks the lane; rerunning until green is not the flake policy. CI attempts to
+retain reports, traces, and failure screenshots for 14 days, but artifact
+upload is allowed to fail without changing the test verdict.
 
 ## Verification and flake checks
 

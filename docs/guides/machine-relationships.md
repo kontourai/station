@@ -1,8 +1,8 @@
 # Computer relationships: pairing vs. remote work
 
 Station's Connections hub has one **Add computer** entry point. It routes to
-device pairing, remote work over SSH, or native saved broker-route preparation
-based on what the user wants to do. The flows differ in **direction**
+device pairing, an ordinary Station address, remote work over SSH, or native
+saved broker-route preparation based on what the user wants to do. The flows differ in **direction**
 (who reaches whom), **trust model**, and **what becomes possible afterward**.
 This guide explains those relationships; [Connections](connections.md) owns the
 current setup steps.
@@ -30,14 +30,20 @@ an SSH tunnel is another transport for those authenticated requests.
 Delegating a task posts the canonical Environment + Agent target to the remote
 Station's delegation API over the selected authenticated route — the work runs on that machine, with *that machine's*
 own agents, credentials, and workspace, and it persists in *that machine's*
-own event store. This is genuine read-write execution, not a read-only
-window onto it.
+own event store. The remote Agent can use tools and change its workspace
+within that Station's grants, confinement, and approval policy.
 
 The remote sessions that show up in the home work list are a **read-only
 visibility layer** over the second relationship — not a third kind of
-access. The read-only-ness belongs to the view, not to the delegation
-itself; a delegated task is exactly as read-write as running it locally
-would be, it just runs somewhere else.
+access. The list does not control the work. The remote Station owns execution
+and applies its own policy to the delegated request.
+
+The current SSH creator calls the server's environment probe and create APIs.
+It saves an SSH host alias, remote project path, and optional remote Station
+port. SSH user, SSH port, and key selection come from the server machine's
+OpenSSH configuration. This works through the server; it is not the retained
+native SSH-launcher API. An ordinary saved Station address is a connection
+profile, not an SSH execution environment or a new grant.
 
 **Save an encrypted broker route** — on native Desktop, **Add computer** can
 save a Station address, broker address, and exact Station enrollment. A separate
@@ -53,14 +59,14 @@ remaining native transport boundary.
 | | Direction | Trust model | What it unlocks | Persistence |
 |---|---|---|---|---|
 | **Paired device** | Device → this Station (the other device drives this Station) | A scoped, revocable device credential. Station never stores the device's private key. | That device can control this Station, within its actual granted scopes. | State lives on this Station. The paired device reaches it; it is not a copy of it. |
-| **Remote computer (SSH)** | This Station → remote Station (delegated execution) | SSH authenticates and forwards the connection; protected Station APIs still require a separately enrolled scoped credential. Station uses your system SSH agent rather than copying its key. | This Station can run delegated tasks on that machine, using that machine's own agents, credentials, and workspace. | Execution and its event-store record live on the **remote** machine — persistence follows execution, not the Station that requested it. |
-| **Remote session (home work list)** | Read-only view of an SSH-delegated session | The same authenticated peer credential over the connected SSH tunnel; forwarding alone grants no read authority. | Visibility into work already running remotely — not a way to start or drive it from here. | The session's authoritative record stays on the remote machine; the home list reflects it, it does not hold a second copy. |
+| **Remote computer (SSH)** | This Station → remote Station (delegated execution) | OpenSSH uses the configured agent or key file to authenticate the tunnel; protected Station APIs still require a separately enrolled scoped credential. | This Station can run delegated tasks on that machine, using that machine's own agents, credentials, and workspace. | Execution and its event-store record live on the **remote** machine — persistence follows execution, not the Station that requested it. |
+| **Remote session (home work list)** | Read-only view of sessions on a connected remote Station, including work started there independently | The same authenticated peer credential over the connected SSH tunnel; forwarding alone grants no read authority. | Visibility into remote work; this list does not start or control it. | The session's authoritative record stays on the remote machine; the home list reflects it. |
 
 ## A third thing that is not delegation: fleet inference
 
-Station#1398 adds a relationship that looks like delegation and is
-deliberately the opposite of it. If you mark a local model connection as
-**contributed to your fleet**, another Station of yours holding an
+Fleet inference, introduced in archive#1398, shares a contributed model
+connection. That connection can use a local or hosted provider. Another
+Station holding an
 `inference:invoke` credential can ask this machine to generate tokens on that
 model.
 
@@ -71,13 +77,17 @@ The distinction is exactly the one the table above draws, inverted:
 | **Delegated task** (enrolled remote Station) | On the remote machine | The remote machine's tools, credentials, workspace | The remote machine's event store |
 | **Fleet inference** | On the *asking* machine | The asking machine's tools, files, workspace | The asking machine — the serving machine keeps only its own serve-side record of what it generated |
 
-Only token generation moves. The serving Station never creates a session,
-never runs a tool, never touches a file, and never sees your workspace — the
-route accepts a list of messages and returns text. "Let my laptop use my
-workstation's GPU" is the whole of it, which is why it has its own pairing
-scope (`inference:invoke`) rather than riding `orchestration:operate`: that
-scope would let the borrowing machine run agents here, and borrowing a GPU
-must not imply that.
+Only text generation moves. The serving path does not create an Agent Session
+or run tools, and it does not receive filesystem access to the caller's
+workspace. It does receive the submitted message text, which can contain code
+or other workspace content; the configured provider processes that text. The
+serving Station also writes a bounded serve receipt. A local GPU is one use
+case, but a contributed hosted connection can incur provider charges.
+
+The separate `inference:invoke` scope authorizes this completion API.
+`orchestration:operate` alone does not, and an inference grant does not grant
+Agent execution. A credential holding `inference:invoke` is refused permission
+to change `fleetContribution` through the application configuration route.
 
 Both sides are opt-in, separately. Nothing is contributed until the serving
 machine's operator turns contribution on *and* names the connections; no
@@ -89,11 +99,10 @@ route contract.
 
 ## Why "delegated work is read-only" is a common but wrong conclusion
 
-The home work list's remote-session cards are read-only by design — they're
-a dashboard, not a remote control. It's easy to generalize that into
-"delegating work only gives you a read-only view," but that's backwards: the
-delegated work itself is full read-write execution on the target machine.
-The list is read-only; the execution it is showing you is not.
+The home work list's remote-session cards show remote state. Delegation is a
+separate request that can start an Agent and modify files on the target,
+subject to its policy. Read-only presentation does not reduce that execution
+authority, and the existence of a remote card does not grant it.
 
 ## Project sharing is a separate relationship
 
@@ -127,6 +136,18 @@ remain separate acceptance work.
 
 ## See also
 
+- [Add computer](../../src-ui/src/views/connections-hub/AddMachineModal.tsx)
+  and [SSH creator](../../src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx)
+  — the actual UI dispatch and server-owned probe/create calls.
+- [Remote session reader](../../src-server/services/ssh/remote-session-reader.ts)
+  — authenticated reads, two-second per-peer deadline, bounded fan-out, and
+  separate unavailable/authentication-required results.
+- [Delegation caller](../../src-server/tools/station-control-delegation.ts)
+  — remote target admission and authenticated request forwarding.
+- [Fleet completion service](../../src-server/services/inference/fleet-inference-service.ts),
+  [routes and receipt policy](../../src-server/routes/inference/fleet-inference.ts),
+  and [runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
+  — generation without tools and the separately stored serve receipt.
 - [docs/reference/connect.md](../reference/connect.md) — device pairing protocol, offers, credentials, revocation.
 - Connections hub → **Add computer** — the single entry point that asks which
   relationship you want, then opens the matching flow.

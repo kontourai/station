@@ -21,9 +21,10 @@ The technical behavior below accompanies the shorter
 When Home offers **Start your first task**, it appears only after the durable
 first-run decision is completed and Station has confirmed a real Project. The
 action opens that Project's ordinary Task form; it does not create a second
-onboarding task type. After creation, Station validates and correlates the
-exact existing Task and Project, then
-requests the ordinary Task dispatcher once. If the Agent is deferred or
+onboarding task type. In Starter mode, submitting the form calls the Starter
+launch API with a saved operation identity. The server checks readiness,
+creates or retrieves the exact Task idempotently, binds it to the Starter,
+then requests the ordinary Task dispatcher once. If the Agent is deferred or
 unavailable, Station creates no Task and shows the recoverable readiness reason;
 retrying reuses the same project-scoped launch identity. After a launch starts,
 a response loss or indeterminate dispatch is **NOT_VERIFIED** — Station never
@@ -118,6 +119,7 @@ direct chat instead.
 | --- | --- | --- |
 | First-run choice and saving optional answers | [FirstRunHomeChapter](../../src-ui/src/components/first-run/FirstRunHomeChapter.tsx), [AboutYouStep](../../src-ui/src/components/first-run/AboutYouStep.tsx) | [First-run tests](../../src-ui/src/components/first-run/__tests__/FirstRunHomeChapter.test.tsx), [answer tests](../../src-ui/src/components/first-run/__tests__/AboutYouStep.test.tsx) |
 | Catalog, readiness, dispatch, and replay | [StarterRegistry](../../src-server/services/starter-work/starter-registry.ts) | [Registry tests](../../src-server/services/starter-work/__tests__/starter-registry.test.ts) |
+| Task form, saved retry identity, and exact Task navigation | [ProjectTasksSection](../../src-ui/src/views/project-page/ProjectTasksSection.tsx), [operation store](../../src-ui/src/lib/starter-work-operation-store.ts) | [Task-section tests](../../src-ui/src/__tests__/ProjectTasksSection.test.tsx) |
 | Durable one-time binding and operation state | [StarterWorkModule](../../src-server/services/starter-work/starter-work-module.ts) | [Module tests](../../src-server/services/starter-work/__tests__/starter-work-module.test.ts) |
 | Continuation through the existing adoption command | [Starter Session owner](../../src-server/services/starter-work/starter-session-owner.ts) | [Session-owner tests](../../src-server/services/starter-work/__tests__/starter-session-owner.test.ts) |
 | Approval and review observations | [Owner adapter](../../src-server/services/starter-work/starter-owner-adapter.ts) | [Owner-adapter tests](../../src-server/services/starter-work/__tests__/starter-owner-adapter.test.ts) |

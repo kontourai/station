@@ -1,10 +1,11 @@
 # Free local collaboration lab
 
-> Status: transport/enrollment and real local-account/member scenarios are
-> implemented. The optional encrypted account diagnostic also exercises an
-> explicitly account-bound Device. Shared content, UI, compute and plugin
-> integration remains under
-> [#1985](https://github.com/kontourai/station/issues/1985) and its feature owners.
+The lab has separate security, local-account, encrypted transport, and browser
+UI profiles. They test different boundaries; a pass in one does not establish
+the others. The browser UI profile includes fresh account/Device enrollment
+and shared-work navigation. Compute, plugin integration, physical two-person
+use, and native delivery still need their own acceptance evidence under
+[#1985](https://github.com/kontourai/station/issues/1985) and its feature owners.
 
 Use this lab to test the [connection broker's confidentiality boundary](../design/connection-broker.md)
 with local software. It needs the repository's pinned Node/dependency setup and
@@ -115,9 +116,11 @@ unrelated listener in the CLI acceptance test.
 
 Run `--check=all` to execute both available stages. They currently use separate
 pairs of disposable homes; the report names each stage under `scenarios` and
-marks unselected stages `not-run`. The full command still exits 3 because approved
-Device/content access, compute/plugin integration, the production relay adapter
-and real-human/native/network acceptance are not complete. The account stage
+marks unselected stages `not-run`. The full command still exits 3 because it
+does not include approved Device/content access, compute/plugin integration,
+relay transport, or real-human/native/network acceptance. Its
+`fullScenario.missing` list describes this runner's coverage, not a current
+inventory of unimplemented product features. The account stage
 uses direct loopback HTTP. The separate `--application-accounts` browser
 transport profile below exercises the landed continuation contract through an
 encrypted application channel.
@@ -136,8 +139,8 @@ npm run lab:collaboration -- --check=all
 ```
 
 `--keep` retains the disposable home and prints its path. `--check=all` runs the
-available security checks, records missing capabilities and exits **3** until
-the full scenario exists. Failures exit **1**, retain private `failure.txt`
+available security and account checks, records its remaining acceptance scope,
+and exits **3**. Failures exit **1**, retain private `failure.txt`
 diagnostics, and never print assertion payloads that could contain fixture
 credentials. Successful security-only runs without `--keep` remove their own
 temporary state. Retained homes contain disposable private keys and credentials;
@@ -162,7 +165,7 @@ Prerequisites are the repository's dependencies, OpenSSL, a local Docker engine
 at its default local socket/pipe, and Playwright's Chromium installation:
 
 ```bash
-npm exec -- playwright install chromium
+npm run install:playwright
 npm run lab:browser-transport
 npm run lab:browser-transport -- --keep
 ```
@@ -464,8 +467,9 @@ has run through the Node UDP peer and the Pion adapter with browser TURN over
 UDP and TCP. It does not prove the rendered guest UI, native or remote delivery,
 legacy unbound personal-Device collaboration, Tailscale-bound account identity,
 offered compute/plugins, public broker deployment, or hostile-process isolation.
-The production connector remains disabled until those separately owned
-boundaries qualify.
+The normal connector is opt-in through `STATION_BROKER_CONFIG_FILE`; this lab
+does not enable it in an existing Station. Its current configuration and
+lifecycle are documented in [Self-hosted broker](self-hosted-broker.md).
 
 ### Full collaboration
 
@@ -569,11 +573,13 @@ The Station operator must separately list each recipient Origin in
 bounded maximum of 16). Broker issuance cannot expand Station application
 authority. The current desktop saved-route UI remains a metadata/trust readout;
 native grant custody does not by itself make a route selectable or prove a real
-Tauri connection. The browser route picker currently uses local ICE host
-candidates and has no remote TURN setup. Its source-level fresh-account Device
-ceremony requires provider support and explicit operator approval, but the
-positive joined ordinary-UI browser journey has not yet passed this lab.
-Browser and native onboarding UI/runtime evidence are tracked
+Tauri connection. The browser Broker routes form accepts an optional TURN URL,
+username, and credential when accepting an invitation, and **Configure TURN**
+updates a saved route. Those credentials use a separate browser-origin and
+route-bound IndexedDB store. Without TURN configuration the browser can use
+host candidates; internet reachability is not implied. The `--station-ui`
+profile above drives the fresh-account Device ceremony through the rendered UI,
+including explicit operator approval. Browser and native evidence are tracked
 separately under [#2388](https://github.com/kontourai/station/issues/2388).
 
 The broker receives signaling only. The separate TURN recording relay observes
@@ -582,9 +588,11 @@ absence of a plaintext marker alone is not encryption evidence. Cleanup joins th
 broker process, Pion peers, full Station, browser, recording relay and owned Coturn
 container, and reports failures instead of claiming unconfirmed cleanup.
 
-`selfHostedBroker.status: "passed"` means this local composition passed. It is not
-fresh guest onboarding: the account fixture begins with an approved test Device,
-then exercises the account-bound grant. It does not prove installed native clients,
+`selfHostedBroker.status: "passed"` means the selected local composition passed.
+The ordinary account/protocol mode starts with an approved test Device and
+then exercises the account-bound grant. The separate `--station-ui` mode covers
+fresh enrollment but does not run the full revocation matrix. Neither proves
+installed native clients,
 real humans, remote-host deployment, compute/plugin isolation, or a production
 rollout. Those remain separate acceptance requirements. The original direct
 transport profiles retain their certificate-substitution controls; this broker
@@ -622,3 +630,20 @@ markers. Source revisions, dirty state, fixture and binary hashes are recorded;
 an uncommitted-source diagnostic is not an exact-release receipt. A synthetic
 pre-approved Device remains a fixture prerequisite and does not qualify fresh
 collaborator enrollment, native clients or real humans.
+
+## Follow the implementation
+
+- [Local lab command](../../scripts/local-collaboration-lab.ts) owns stage
+  selection, incomplete-scenario reporting, exit status, and retained diagnostics.
+- [Browser transport command](../../scripts/browser-transport-lab.ts) owns
+  the transport/protocol/UI modes and their separate observations.
+- [Broker routes form](../../src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx),
+  [TURN custody](../../src-ui/src/lib/browserRelayTurnCustody.ts), and
+  [browser route runtime](../../src-ui/src/lib/browserRelayRouteRuntime.ts)
+  own saved browser routes and connection setup.
+- [Self-hosted connector configuration](../../src-server/runtime/bootstrap/self-hosted-connector-config.ts)
+  supplies the explicit normal-runtime opt-in.
+
+The dated version and revision receipts above describe earlier runs. Reviewing
+these source owners does not repeat the lab or establish a current transport,
+cloud, remote-host, or physical-device pass.
