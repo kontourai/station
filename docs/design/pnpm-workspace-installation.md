@@ -1,9 +1,13 @@
 # pnpm workspace installation
 
-> Status: implementation proposal; local evidence and hosted delivery remain
-> separate. [Issue #516](https://github.com/kontourai/station/issues/516) owns the
-> migration and worktree disk problem. Check its linked pull requests for live
-> status. The [development guide](../guides/development.md) owns setup commands.
+> **Reading status: implemented installation design with a delivery checklist.**
+> [Workspace settings](../../pnpm-workspace.yaml), the
+> [managed installer](../../scripts/dependency-lifecycle.mjs), and
+> [lock reader](../../scripts/lib/pnpm-lockfile.mjs) implement the pnpm boundary.
+> The checklist below records the required evidence; it is not a new proof of
+> every platform, relocated artifact, disk-saving measurement, or hosted release.
+> [Issue #516](https://github.com/kontourai/station/issues/516) retains the migration
+> history. The [development guide](../guides/development.md) owns setup commands.
 
 ## Problem
 

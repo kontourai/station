@@ -1,5 +1,13 @@
 # Design: Instance Registry (`<STATION_HOME>/instances.json`)
 
+> **Reading status: current storage contract with recorded race evidence.**
+> [Shared registry](../../packages/shared/src/instance-registry.ts),
+> [CLI lifecycle](../../packages/cli/src/commands/lifecycle.ts),
+> [service management](../../packages/cli/src/commands/service.ts), and the
+> [Desktop bridge](../../src-server/tools/instance-registry-bridge.ts) are the
+> implementation owners. The historical race and platform claims below need
+> their own evidence; current owner links alone do not re-prove them.
+
 > Status: **landed and wired for durable services and Desktop sidecars**. The module
 > (`packages/shared/src/instance-registry.ts`, published as
 > `@kontourai/station-shared/instance-registry`) is built and tested — including
@@ -95,8 +103,10 @@ The cross-concept topology and authority boundary is defined in
   path's counterpart to `claimInstanceEntry`.
 - `entryOwnedByLiveProcess(entry, selfPid?)` — the liveness-ownership
   predicate the claim guard uses, exported for pre-checks.
-- `findRunning(home?)` — read-only; the subset of instances whose `pid` is set
-  and alive (`process.kill(pid, 0)`).
+- `findRunning(home?)` — read-only; excludes records without a numeric pid,
+  processes proven dead, and recorded birth fingerprints proven to belong to
+  a reused pid. Unknown liveness or a failed birth lookup retains the record;
+  the result is not proof that every returned process is running.
 
 ### The `component` field on `GET /api/system/instance`
 
@@ -208,10 +218,13 @@ Two disclosed limits of the discipline (verified by probe, not assumed):
   **The one-owner invariant** this registry serves: every server process has
   exactly one owner that assigned its identity, port, and data dir, enforced
   at the layer native to each surface — the OS-level single-instance lock for
-  the Desktop app (#3045), this registry plus the shared-home warning (and a
-  planned same-home refuse) for the CLI, and the home-scoped sidecar claim as
-  the cross-surface floor. Producers never adopt or delete an entry another
-  surface owns.
+  the Desktop app (#3045), the CLI's shared-home start check, and the home-scoped
+  sidecar claim. The CLI now refuses a new start when its registry observations
+  find another live instance on that home. Existing co-located restarts and
+  explicit `--allow-shared-home` bypass that check; failed registry reads can
+  leave the collision set empty. This is a guarded launch policy, not a global
+  proof that two writers cannot coexist. Producers use ownership checks before
+  adopting or deleting another surface's entry.
 - **Manifest migration bridge.** On the pre-registry bridge (no registry entry
   yet) `station service install` seeds the registry's origins from the existing
   `<home>/service/*.json` manifest and re-validates them; the manifest is now a
@@ -240,6 +253,6 @@ not a naming collision to "fix":
 | Owner | `station start`/`station stop` (CLI lifecycle) | `station service install` (durable service), Desktop's shared-registry bridge (desktop-owned sidecar), and — since station#2904 slice 2 — `station start`/`stop` themselves (types `'inline'`/`'worktree'`) |
 | Purpose | "Which PID/port did *this checkout* start, so I can stop it?" | "What instances exist under *this home*, across checkouts?" |
 
-A future slice may derive one from the other, or keep them independent
-producers of overlapping information — that design is deferred until the
-registry has actual producers/consumers wired (see the non-goals above).
+Both mechanisms now have real producers and consumers. Deriving one from the
+other remains a separate design choice; neither file can simply replace the
+other without preserving those callers' ownership and recovery behavior.

@@ -6,6 +6,15 @@ implemented; current behaviour is owned by [the CLI reference](../reference/cli.
 is retained only as historical rationale and must not be used as release or
 publication evidence.
 
+The counts, package sizes, private-repository assumptions, npm installation
+steps, and open questions below describe the original proposal. Current
+[package metadata](../../packages/cli/package.json),
+[bundle configuration](../../packages/cli/esbuild.config.mjs), and
+[portable installer](../../install.sh) have changed since those measurements.
+The CLI now declares a native keyring dependency as well as its optional
+esbuild peer; portable installs use the managed dependency runner. Read the
+[CLI reference](../reference/cli.md) for supported commands and prerequisites.
+
 ## The premise was wrong
 
 The working assumption behind marking `packages/cli` `private: true` was that

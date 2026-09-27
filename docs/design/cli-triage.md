@@ -1,5 +1,13 @@
 # Design: bounded guided triage
 
+> **Reading status: current diagnostic-command contract.** The
+> [CLI registration](../../packages/cli/src/cli.ts),
+> [triage command](../../packages/cli/src/commands/triage.ts), and
+> [shared redactor](../../packages/shared/src/redaction.ts) own this path.
+> The configured launch flags and local artifact tests do not establish how
+> every installed agent version enforces its sandbox, or guarantee that
+> arbitrary sensitive prose can be detected.
+
 `station triage` is a diagnostic hand-off, not a repair command. It creates a
 fresh UUID directory below the one app-owned root,
 `$STATION_ROOT/cache/triage/<uuid>`, with directory mode `0700` and files mode
@@ -13,8 +21,9 @@ comes from the existing distribution seam; packaged builds retain their stamped
 version/channel/source SHA while a checkout is always identified as development
 source. Target facts come from the existing saved-Station resolver and opaque
 credential-status seam. Values pass through the shared deep redactor and fixed
-count, text, and serialized-byte limits. Absolute paths, URLs, and secret-like
-content are therefore not durable triage data.
+count, text, and serialized-byte limits. Recognized absolute paths, URLs, and
+secret patterns are replaced before persistence. Redaction is pattern-based;
+review the artifacts before sharing them.
 
 The checkout launcher injects the source doctor collector through
 `CliDependencies`. The command module never imports lifecycle or server code,
