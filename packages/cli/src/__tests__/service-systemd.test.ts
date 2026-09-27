@@ -115,7 +115,8 @@ describe('systemd service backend', () => {
       repoPath: `${installRoot}/current`,
     });
     expect(readFileSync(manifest.unitPath, 'utf8')).toContain(
-      `ExecStart="${installRoot}/current/runtime/bin/node" "${installRoot}/current/bin/station.mjs" "service" "run"`,
+      // #2675 D: through the fixed launcher, which runs the active version.
+      `ExecStart="${installRoot}/current/runtime/bin/node" "${installRoot}/runtime/station-launcher.mjs" "service" "run"`,
     );
     // A caller that predates slice C installs from source.
     const source = installSystemd('agent', {
@@ -161,7 +162,7 @@ describe('systemd service backend', () => {
     expect(manifest.unitName).not.toContain('dogfood');
     expect(unit).toContain('Restart=always');
     expect(unit).toContain('RestartSec=5');
-    expect(unit).toContain('TimeoutStopSec=75');
+    expect(unit).toContain('TimeoutStopSec=150');
     expect(unit).toContain('KillMode=mixed');
     expect(unit).toContain('NoNewPrivileges=true');
     expect(unit).toContain('PrivateTmp=true');

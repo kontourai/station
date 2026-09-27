@@ -3156,6 +3156,11 @@ describe('what an installed service runs (#2675 slice C)', () => {
     const version = join(installRoot, 'versions', '1.2.3');
     mkdirSync(join(version, 'runtime', 'bin'), { recursive: true });
     writeFileSync(join(version, 'runtime', 'bin', 'node'), '');
+    mkdirSync(join(version, 'bin'), { recursive: true });
+    writeFileSync(
+      join(version, 'bin', 'station-launcher.mjs'),
+      '// launcher v1\n',
+    );
     writeFileSync(
       join(version, '.station-prebuilt-archive'),
       'station-prebuilt-archive-v1\n',
@@ -3215,6 +3220,13 @@ describe('what an installed service runs (#2675 slice C)', () => {
       join(current, 'runtime', 'bin'),
     );
     expect(input.servicePath).not.toContain(version);
+    // #2675 D: the fixed launcher the unit runs was copied out of the version.
+    expect(
+      nodeFs.readFileSync(
+        join(installRoot, 'runtime', 'station-launcher.mjs'),
+        'utf8',
+      ),
+    ).toBe('// launcher v1\n');
   });
 
   test('refuses to install from an inactive installer version, before touching the backend', async () => {

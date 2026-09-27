@@ -4349,6 +4349,10 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   // makes that server refuse its own core update (#2674).
   const serviceManaged = serverEnv.STATION_SERVICE_MANAGED;
   delete serverEnv.STATION_SERVICE_MANAGED;
+  // The fixed launcher's context (#2675 D) likewise: it tells the server
+  // where to queue an update request, which only the supervised server may.
+  const serviceLauncher = serverEnv.STATION_SERVICE_LAUNCHER;
+  delete serverEnv.STATION_SERVICE_LAUNCHER;
   // The desktop addresses this to its own sidecar; a server started from a
   // desktop terminal must still log to its stdout log file (#2327).
   delete serverEnv.STATION_STDOUT_LOGS;
@@ -4382,6 +4386,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   if (opts.supervisorPid !== undefined) {
     serverEnv.STATION_SUPERVISOR_PID = String(opts.supervisorPid);
     if (serviceManaged === '1') serverEnv.STATION_SERVICE_MANAGED = '1';
+    if (serviceLauncher) serverEnv.STATION_SERVICE_LAUNCHER = serviceLauncher;
   }
   if (opts.lifecycleJournal) {
     serverEnv.STATION_LIFECYCLE_JOURNAL = opts.lifecycleJournal;
@@ -4467,6 +4472,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           // The UI child is never supervised by the server's parent watchdog.
           delete uiEnv.STATION_SUPERVISOR_PID;
           delete uiEnv.STATION_SERVICE_MANAGED;
+          delete uiEnv.STATION_SERVICE_LAUNCHER;
           return uiEnv;
         })(),
       },

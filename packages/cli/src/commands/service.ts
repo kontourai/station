@@ -48,6 +48,7 @@ import {
   stopLaunchd,
   uninstallLaunchd,
 } from './service-launchd.js';
+import { installServiceLauncher } from './service-launcher-link.js';
 import {
   collectServicePathCandidates,
   inspectServicePathDrift,
@@ -1271,6 +1272,15 @@ export async function runServiceCommand(
       fs,
       platform,
     });
+    // An installer-owned archive's unit runs the fixed launcher (#2675 D),
+    // which must be in place before the backend loads the unit.
+    if (
+      location.kind === 'archive' &&
+      location.installRoot !== undefined &&
+      platform !== 'win32'
+    ) {
+      installServiceLauncher(fs, location.installRoot, location.repoPath);
+    }
     // A backend reinstall has an owned prior supervisor. Retain its verified
     // boot identity and require readiness to observe a different one after
     // the backend has stopped and replaced it.

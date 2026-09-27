@@ -567,6 +567,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // refusal path exits non-zero and names the remedy.
   'scripts/__tests__/backlog-priority-policy.test.ts',
   'scripts/__tests__/install-script.test.ts',
+  // #2675 D: runs the real fixed service launcher as a process, with real
+  // versioned child processes, against throwaway install roots and homes.
+  'scripts/__tests__/service-launcher.test.ts',
+  // #2675 D: installs two fixture archives with the real install.sh and runs
+  // the real launcher, whose child stages with install.sh again.
+  'scripts/__tests__/service-launcher-e2e.test.ts',
   'scripts/__tests__/installer-tool-output-parsing.test.ts',
   'scripts/__tests__/local-verification.test.ts',
   'scripts/__tests__/native-release-config.test.ts',
