@@ -11,7 +11,6 @@ import {
   PAIRING_SCOPE_CODING_EXEC,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import { isAgentOriginatedRequest } from '../runtime/mcp/station-control-caller.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
@@ -153,7 +152,6 @@ export function isFullAccessGrant(value: unknown): value is FullAccessGrant {
  * with the same 403 as `refuseUngrantedFullAccess`.
  */
 export class FullAccessNotGrantedError extends Error {
-  readonly code = APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE;
   constructor() {
     super('This request may not give an agent full access.');
     this.name = 'FullAccessNotGrantedError';
