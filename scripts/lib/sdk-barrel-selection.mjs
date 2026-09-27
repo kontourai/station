@@ -1330,8 +1330,9 @@ function importChangeContext(graph, baseSources) {
               .filter(([, source]) => source === null)
               .map(([p]) => p),
           );
+          // A file absent at the base is never a target there, so it is
+          // never reached and its own edges never read.
           const baseTargets = (module) => {
-            if (absent.has(module)) return [];
             const source = baseSources.get(module);
             const targets =
               source === undefined
