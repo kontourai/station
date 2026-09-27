@@ -1989,7 +1989,10 @@ describe('persistent runner policy', () => {
     // GitHub function names are case-insensitive: `Always()` is valid.
     const findings = persistentRunnerPolicyFindings(
       primaryCiJobFixture('manual-completion-diagnostics', (job) => {
-        job.if = String(job.if).replace('always()', 'Always()');
+        // The only status function, so nothing else can satisfy the rule.
+        job.if =
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          "${{ Always() && github.event_name == 'workflow_dispatch' }}";
       }),
     );
     expect(
