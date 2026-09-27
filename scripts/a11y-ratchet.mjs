@@ -29,6 +29,8 @@ const BASELINE_PATH = join(ROOT, 'scripts/a11y-baseline.json');
 const BIOME_CONFIG_PATH = join(ROOT, 'biome.json');
 const PACKAGE_JSON_PATH = join(ROOT, 'package.json');
 
+const LINT_ROOT_PATTERN = /^[A-Za-z0-9_.][A-Za-z0-9_./-]*$/;
+
 /**
  * The ratchet measures exactly what `lint:check` lints, so its roots are read
  * from that script rather than restated here. `lint:check` names explicit
@@ -42,7 +44,15 @@ export function lintCheckRoots(packageJsonText) {
   const script = JSON.parse(packageJsonText)?.scripts?.['lint:check'];
   const [tool, verb, ...roots] =
     typeof script === 'string' ? script.trim().split(/\s+/) : [];
-  if (tool !== 'biome' || verb !== 'check' || roots.length === 0) {
+  // Roots are plain paths. A flag (`--write`, `--diagnostic-level=error`) or a
+  // shell operator (`&&`, `|`) after the roots would otherwise be handed to
+  // `biome lint` as a root, rewriting the tree or quieting the a11y warnings.
+  if (
+    tool !== 'biome' ||
+    verb !== 'check' ||
+    roots.length === 0 ||
+    !roots.every((root) => LINT_ROOT_PATTERN.test(root))
+  ) {
     throw new Error(
       `package.json lint:check must be "biome check <roots...>"; found ${JSON.stringify(script)}`,
     );

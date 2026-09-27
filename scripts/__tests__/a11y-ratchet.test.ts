@@ -104,7 +104,15 @@ describe('lint scope', () => {
     expect(
       lintCheckRoots('{"scripts":{"lint:check":"biome check src-ui/ tests/"}}'),
     ).toEqual(['src-ui/', 'tests/']);
-    for (const script of ['eslint src-ui/', 'biome check', undefined]) {
+    for (const script of [
+      'eslint src-ui/',
+      'biome check',
+      undefined,
+      'biome check --diagnostic-level=error src-ui/',
+      'biome check --write src-ui/',
+      'biome check src-ui/ && tsc',
+      'biome check src-ui/ | tee lint.log',
+    ]) {
       expect(() =>
         lintCheckRoots(JSON.stringify({ scripts: { 'lint:check': script } })),
       ).toThrow('lint:check must be "biome check <roots...>"');

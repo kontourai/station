@@ -1473,6 +1473,14 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
     for (const lane of DOCS_TRUTH_GATE_LANES) {
       expect(root.scripts).toHaveProperty(lane.script);
     }
+    // These two scripts regenerate their output and exit 0 without --check,
+    // which would turn docs:truth:gate from a drift check into a writer.
+    expect(root.scripts['docs:index:check']).toBe(
+      'node scripts/docs-index.mjs --check',
+    );
+    expect(root.scripts['docs:issue-lifecycle:check']).toBe(
+      'node scripts/generate-issue-lifecycle-reference.mjs --check',
+    );
     // lint:check's roots exclude .github/, so this lane is the only formatter
     // check of the label manifest.
     expect(root.scripts['docs:truth:biome']).toContain(
