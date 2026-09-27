@@ -17,6 +17,25 @@ describe('Station Conduit framework projection', () => {
   );
 
   it.each(['strands', 'voltagent'] as const)(
+    'declares stop as approximated for %s, because Station projects it from after-invocation',
+    (framework) => {
+      // An honesty label, not an implementation detail: Conduit's
+      // createConformanceReport reads `capabilities()` into the published
+      // docs/conformance/station-runtime-conformance.{json,md} matrix. IAgentHooks
+      // has no native stop hook, so claiming 'native' would overstate it.
+      const { lifecycle } =
+        createStationFrameworkConduitAdapter(framework).capabilities();
+      expect(lifecycle).toEqual({
+        'session-start': 'unavailable',
+        'before-model': 'unavailable',
+        'before-tool': 'native',
+        'after-tool': 'native',
+        stop: 'approximated',
+      });
+    },
+  );
+
+  it.each(['strands', 'voltagent'] as const)(
     'projects only the phases Station hooks deliver for %s',
     async (framework) => {
       const adapter = createStationFrameworkConduitAdapter(framework);
