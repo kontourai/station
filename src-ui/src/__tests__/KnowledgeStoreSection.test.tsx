@@ -145,10 +145,13 @@ describe('KnowledgeStoreSection', () => {
     expect(refetch).toHaveBeenCalled();
   });
 
-  // #2708: a refused create shows the server's reason from the error the
-  // REAL knowledge fetcher throws, not "Validation failed: storeRoot …".
-  test('a refused store create shows the server reason, not the field key', async () => {
-    const { createKnowledgeRoot } = await import(
+  // #2708: a refused create shows the error the REAL knowledge fetcher throws
+  // for the route's own failure body. `POST /api/knowledge/roots` answers a
+  // plain string `error` and no validation `details`
+  // (`knowledge-store-routes.ts`), so the view shows that sentence; the
+  // fetcher's error keeps the status.
+  test('a refused store create shows the route reason', async () => {
+    const { createKnowledgeRoot, StationHttpError } = await import(
       '@kontourai/station-sdk/client'
     );
     vi.stubGlobal(
@@ -157,13 +160,7 @@ describe('KnowledgeStoreSection', () => {
         new Response(
           JSON.stringify({
             success: false,
-            error: 'Validation failed',
-            details: {
-              formErrors: [],
-              fieldErrors: {
-                storeRoot: ['Choose a folder inside your home directory.'],
-              },
-            },
+            error: 'Unknown adapterId: kit-missing-store',
           }),
           { status: 400, headers: { 'content-type': 'application/json' } },
         ),
@@ -171,17 +168,18 @@ describe('KnowledgeStoreSection', () => {
     );
     createRootError = await createKnowledgeRoot('http://localhost', {
       scope: { kind: 'personal' },
-      adapterId: 'kit-default-store',
+      adapterId: 'kit-missing-store',
     }).catch((caught: unknown) => caught);
-    createRootIsError = true;
     vi.unstubAllGlobals();
+    expect(createRootError).toBeInstanceOf(StationHttpError);
+    expect(createRootError).toMatchObject({ status: 400 });
+    createRootIsError = true;
 
     render(<KnowledgeStoreSection />);
 
     expect(
-      screen.getAllByText('Choose a folder inside your home directory.').length,
+      screen.getAllByText('Unknown adapterId: kit-missing-store').length,
     ).toBeGreaterThan(0);
-    expect(screen.queryByText(/Validation failed/)).toBeNull();
   });
 
   test('empty state: creates the default personal knowledge store on click', () => {

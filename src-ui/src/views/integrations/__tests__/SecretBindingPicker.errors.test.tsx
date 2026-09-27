@@ -33,28 +33,23 @@ afterEach(() => {
 });
 
 /**
- * #2708: a validation refusal's thrown message is field-qualified for CLI and
- * agent readers. This surface shows the server's reason, never the schema key.
- * The error is the one the REAL secret-bindings fetcher throws for the shared
- * validation middleware's body, so a fetcher that dropped `details` fails here.
+ * #2708: the load failure the picker shows is the error the REAL
+ * secret-bindings fetcher throws for the route's own failure body. The route
+ * (`src-server/routes/secret-bindings.ts`) answers a plain string `error` and
+ * no validation `details`, so what the picker shows is that sentence; the
+ * fetcher's error keeps the status it arrived under.
  */
 describe('SecretBindingPicker load failure', () => {
-  test('shows the server reason, not the field key or the validation prefix', async () => {
+  test('shows the route reason and keeps the status on the error', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
         new Response(
           JSON.stringify({
             success: false,
-            error: 'Validation failed',
-            details: {
-              formErrors: [],
-              fieldErrors: {
-                expectedRevision: ['Expected a non-negative integer.'],
-              },
-            },
+            error: 'Secret binding consumer service unavailable.',
           }),
-          { status: 400, headers: { 'content-type': 'application/json' } },
+          { status: 503, headers: { 'content-type': 'application/json' } },
         ),
       ),
     );
@@ -62,6 +57,7 @@ describe('SecretBindingPicker load failure', () => {
       (caught: unknown) => caught,
     );
     expect(query.error).toBeInstanceOf(StationHttpError);
+    expect(query.error).toMatchObject({ status: 503 });
 
     render(
       <SecretBindingPicker
@@ -70,11 +66,8 @@ describe('SecretBindingPicker load failure', () => {
         requireSave={false}
       />,
     );
-    const alert = screen.getByRole('alert');
-    expect(alert.textContent).toContain(
-      'Binding configuration could not be loaded: Expected a non-negative integer.',
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Binding configuration could not be loaded: Secret binding consumer service unavailable.',
     );
-    expect(alert.textContent).not.toContain('expectedRevision');
-    expect(alert.textContent).not.toContain('Validation failed');
   });
 });
