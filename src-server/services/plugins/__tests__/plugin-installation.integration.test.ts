@@ -19,6 +19,7 @@ import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { Client } from '@modelcontextprotocol/client';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import {
   listProviders,
@@ -58,6 +59,7 @@ import { readPluginManifestFile } from '../plugin-manifest-loader.js';
 import { grantPermissions } from '../plugin-permissions.js';
 import { installPluginDependency } from '../plugin-source.js';
 
+const tempDir = trackTempDirs();
 const homes: string[] = [],
   stores: EventStore[] = [],
   processes: ChildProcess[] = [],
@@ -450,8 +452,7 @@ test.each([false, true])(
 test('the Update route finds no source for a package without its own repository, even inside another checkout', async () => {
   const f = fixture();
   // A distinct plugin the enclosing checkout's origin points at.
-  const decoy = mkdtempSync(join(tmpdir(), 'station-enclosing-origin-'));
-  homes.push(decoy);
+  const decoy = tempDir('station-enclosing-origin-');
   writeFileSync(
     join(decoy, 'plugin.json'),
     JSON.stringify({

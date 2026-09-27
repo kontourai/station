@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import { replacePluginProvidersForSource } from '../../../providers/registries/registry.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -35,6 +36,7 @@ import { execGitSync } from '../../../utils/git-exec.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 
 const cleanupDirs: string[] = [];
+const tempDir = trackTempDirs();
 const packageStores: EventStore[] = [];
 function logger() {
   return {
@@ -434,8 +436,7 @@ describe('managed dependency graph uses canonical lifecycle owners', () => {
 test('a legacy parent’s local portable dependency with a root .git installs as its preview staged it, without the repository', async () => {
   // No registry: the legacy parent names the portable child by a relative
   // source, and the child is a git checkout at its root.
-  const root = mkdtempSync(join(tmpdir(), 'station-legacy-portable-git-'));
-  cleanupDirs.push(root);
+  const root = tempDir('station-legacy-portable-git-');
   mkdirSync(join(root, 'plugins'));
   const parent = join(root, 'parent-source');
   const child = join(root, 'child-source');
