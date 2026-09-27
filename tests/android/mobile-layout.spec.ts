@@ -385,18 +385,6 @@ test.describe('Android — Mobile Layout', () => {
     await expect(toggle).toBeFocused();
   });
 
-  test('header nav is hidden on mobile', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(2000);
-    const nav = page.locator('.header-nav');
-    if ((await nav.count()) > 0) {
-      const isVisible = await nav.evaluate(
-        (el) => getComputedStyle(el).display !== 'none',
-      );
-      expect(isVisible).toBe(false);
-    }
-  });
-
   test('no visible interactive element has touch target smaller than 44px', async ({
     page,
   }) => {

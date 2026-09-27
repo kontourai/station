@@ -19,7 +19,7 @@ function descriptionFor(reason: CodingEvidencePaneUnavailableReason): string {
  * renderer's lookup to `['capability-unavailable']` restored the exact pre-fix
  * defect with every test green.
  */
-describe('coding evidence unavailable copy (station#3158)', () => {
+describe('coding evidence unavailable copy (archive#3158)', () => {
   test('an unreachable capability is not described as a grant problem', () => {
     const copy = descriptionFor('capability-unavailable');
     expect(copy).toContain('cannot reach');

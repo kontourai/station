@@ -85,7 +85,7 @@ beforeEach(() => {
  * nothing). The bar-only height is the other half of the mechanism: hiding
  * the body is what leaves the desktop `height: auto` sizing the dock to it.
  */
-test('a collapsed bottom dock’s non-chat body is hidden by the shared collapsed rule', async () => {
+test('a collapsed bottom dock’s non-chat body is hidden and the dock ends at its bar', async () => {
   render(
     <KeyboardShortcutsProvider>
       <NavigationProvider>
