@@ -88,9 +88,9 @@ const THIS_FILE = 'src-ui/src/__tests__/region-surface-boundary.test.ts';
 
 /**
  * Every identifier the legacy docked-Home path's files (#1384 C1, #928
- * C2a/C2b) exported or every string they rendered: the
- * placement control and its context, the away state and its derivation, the
- * occupant table and picker, the mobile occupant-switch seams. Bare
+ * C2a/C2b) exported or every string they rendered: the placement control and
+ * its context, the away state and its derivation, the occupant table and
+ * picker, the mobile occupant-switch seams. Bare
  * `occupant` is NOT here — it is the region model's own word for what a
  * region holds.
  */
