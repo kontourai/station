@@ -26,6 +26,29 @@ export interface SkillsEnvelope<T> {
 }
 
 /**
+ * The parsed envelope. A failure whose body is not JSON (a proxy's HTML 502)
+ * still throws the envelope helper's `StationHttpError` with the status it
+ * arrived under (#2708); an unreadable 2xx is a protocol failure and rethrows
+ * the parse error, as it always did.
+ */
+async function readSkillsEnvelope<T>(
+  response: Response,
+): Promise<SkillsEnvelope<T>> {
+  try {
+    return (await response.json()) as SkillsEnvelope<T>;
+  } catch (error) {
+    if (!response.ok) {
+      throw envelopeError(
+        response,
+        undefined,
+        `Request failed with HTTP ${response.status}`,
+      );
+    }
+    throw error;
+  }
+}
+
+/**
  * `GET /api/skills` — the CLI's `skills list` route
  * (`packages/cli/src/commands/core.ts`, `resourceSpecs.skills.collectionPath`).
  * No SDK hook calls this route today (the SDK's `useSkillsQuery` calls
@@ -37,7 +60,7 @@ export async function fetchInstalledSkills(
   opts?: ClientRequestOptions,
 ): Promise<unknown> {
   const response = await getJson(`${apiBase}/api/skills`, opts);
-  const result = (await response.json()) as SkillsEnvelope<unknown>;
+  const result = await readSkillsEnvelope<unknown>(response);
   if (!result.success) {
     throw envelopeError(
       response,
@@ -57,7 +80,7 @@ export async function fetchSystemSkills(
   opts?: ClientRequestOptions,
 ): Promise<any[]> {
   const response = await getJson(`${apiBase}/api/system/skills`, opts);
-  const result = (await response.json()) as SkillsEnvelope<any[]>;
+  const result = await readSkillsEnvelope<any[]>(response);
   if (!result.success) {
     throw envelopeError(
       response,
@@ -78,7 +101,7 @@ export async function fetchRegistrySkills(
   opts?: ClientRequestOptions,
 ): Promise<any[]> {
   const response = await getJson(`${apiBase}/api/registry/skills`, opts);
-  const result = (await response.json()) as SkillsEnvelope<any[]>;
+  const result = await readSkillsEnvelope<any[]>(response);
   if (!result.success) {
     throw envelopeError(
       response,
@@ -106,7 +129,7 @@ export async function installRegistrySkill(
     opts,
     { id },
   );
-  const result = (await response.json()) as SkillsEnvelope<unknown>;
+  const result = await readSkillsEnvelope<unknown>(response);
   if (!result.success) {
     throw envelopeError(response, result, 'Install failed');
   }
@@ -163,7 +186,7 @@ export async function fetchSkillDetail(
     `${apiBase}${skillPath(nameOrLegacyId)}`,
     opts,
   );
-  const result = (await response.json()) as SkillsEnvelope<any>;
+  const result = await readSkillsEnvelope<any>(response);
   if (!result.success) {
     throw envelopeError(response, result, 'Failed to load skill');
   }
@@ -203,7 +226,7 @@ export async function createLocalSkill(
     opts,
     input,
   );
-  const result = (await response.json()) as SkillsEnvelope<unknown>;
+  const result = await readSkillsEnvelope<unknown>(response);
   if (!result.success) {
     throw envelopeError(response, result, 'Create failed');
   }
@@ -223,7 +246,7 @@ export async function updateLocalSkill(
     opts,
     updates,
   );
-  const result = (await response.json()) as SkillsEnvelope<unknown>;
+  const result = await readSkillsEnvelope<unknown>(response);
   if (!result.success) {
     throw envelopeError(response, result, 'Update failed');
   }
@@ -246,7 +269,7 @@ export async function trackSkillRun(
     'POST',
     opts,
   );
-  const result = (await response.json()) as SkillsEnvelope<SkillUsageResult>;
+  const result = await readSkillsEnvelope<SkillUsageResult>(response);
   if (!result.success || !result.data) {
     throw envelopeError(
       response,
@@ -270,7 +293,7 @@ export async function recordSkillOutcome(
     opts,
     { outcome },
   );
-  const result = (await response.json()) as SkillsEnvelope<SkillUsageResult>;
+  const result = await readSkillsEnvelope<SkillUsageResult>(response);
   if (!result.success || !result.data) {
     throw envelopeError(
       response,
@@ -297,7 +320,7 @@ export async function importSkills(
     opts,
     { files },
   );
-  const result = (await response.json()) as SkillsEnvelope<SkillImportResult>;
+  const result = await readSkillsEnvelope<SkillImportResult>(response);
   if (!result.success || !result.data) {
     throw envelopeError(
       response,

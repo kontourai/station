@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getAgent } from '../client/agents';
+import { parseRetryAfterMs } from '../client/api-error-message';
 import { confirmCheckpointRestore } from '../client/checkpoint-restore';
 import {
   listAgentConversationPage,
@@ -679,9 +680,12 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
   /**
    * #2708 A-1: every station-control family fetcher this slice moved onto the
    * envelope helper keeps what the helper keeps. The two bodies are the shapes
-   * the real writers produce: the shared zod middleware's validation refusal
+   * two real writers produce: the shared zod middleware's validation refusal
    * (`schema-validation.ts`) and the station-control authority guard's typed
-   * refusal (`stationControlRefusalBody`). The server-driven counterpart is
+   * refusal (`stationControlRefusalBody`). Not every route in these families
+   * validates through the middleware (knowledge roots and secret bindings
+   * answer a plain string); these rows pin the fetcher contract whatever the
+   * route sends. The server-driven counterpart is
    * `station-control-authority-guard.routes.test.ts` (F2).
    */
   const API = 'http://example.test';
@@ -797,6 +801,86 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
       message: 'Knowledge API error: 502',
     });
   });
+
+  // #2708 A-1 review: a failure whose body is not JSON (a proxy's HTML 502)
+  // keeps its status, as knowledge and scheduler already did.
+  const nonJson = (status: number) =>
+    new Response('<html>Bad gateway</html>', {
+      status,
+      headers: { 'content-type': 'text/html' },
+    });
+  it.each([
+    ['skills: fetchSystemSkills', () => fetchSystemSkills(API)],
+    ['skills: installRegistrySkill', () => installRegistrySkill(API, 'x')],
+    [
+      'skills: createLocalSkill',
+      () => createLocalSkill(API, { name: 'x', body: 'b' }),
+    ],
+    [
+      'secret bindings: createSecretBinding',
+      () => createSecretBinding(API, { id: 'b', name: 'B', authRef: 'env:X' }),
+    ],
+  ] as const)('%s: a non-JSON 502 keeps its status', async (_name, call) => {
+    vi.mocked(fetch).mockResolvedValue(nonJson(502));
+
+    await expect(call()).rejects.toMatchObject({
+      name: 'StationHttpError',
+      status: 502,
+    });
+
+    // An unreadable 2xx is a protocol failure: no failure status to carry.
+    vi.mocked(fetch).mockResolvedValue(nonJson(200));
+    const protocol = await call().catch((caught: unknown) => caught);
+    expect(protocol).toBeInstanceOf(SyntaxError);
+  });
+
+  it('plugins: a refused collection read keeps Retry-After and details', async () => {
+    const details = { formErrors: ['Slow down.'], fieldErrors: {} };
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({ success: false, error: 'Too many requests', details }),
+        {
+          status: 429,
+          headers: { 'content-type': 'application/json', 'retry-after': '7' },
+        },
+      ),
+    );
+
+    await expect(listPlugins(API)).rejects.toMatchObject({
+      status: 429,
+      retryAfterMs: 7000,
+      details,
+    });
+  });
+
+  // plugins.ts keeps a temporary copy of the Retry-After rule until it can
+  // import the helper (#2782). Held to the helper's answers, so the copy
+  // cannot drift.
+  it.each([
+    ['7'],
+    [' 7 '],
+    ['0'],
+    [''],
+    ['0x10'],
+    ['1e3'],
+    ['-1'],
+    ['Wed, 21 Oct 2026 07:28:00 GMT'],
+  ])(
+    'plugins: Retry-After %j reads as parseRetryAfterMs does',
+    async (header) => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response(JSON.stringify({ success: false, error: 'no' }), {
+          status: 429,
+          headers: { 'retry-after': header },
+        }),
+      );
+
+      const error = (await listPlugins(API).catch(
+        (caught: unknown) => caught,
+      )) as { retryAfterMs?: number };
+      expect(error.retryAfterMs).toBe(parseRetryAfterMs(header));
+    },
+  );
 
   // `list_plugins` relays `PluginCollectionHttpError.envelope` whole, so the
   // code has to be ON the envelope, not only on the error.
