@@ -5,10 +5,6 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { JSON_SCHEMA, load } from 'js-yaml';
-import {
-  FAST_CHECKS_PART_JOBS,
-  FAST_CHECKS_SHARD_COUNT,
-} from './lib/fast-checks-shards.mjs';
 
 /**
  * This is intentionally a canonical YAML subset, not a general YAML parser.
@@ -418,122 +414,11 @@ export function findVerdictBearingContinueOnError(workflowText) {
   return offenders;
 }
 
-/** The admission guard of every fast-checks part job that needs `classify`. */
 export const REQUIRED_FAST_CHECKS_CONDITION =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal reviewed GitHub Actions predicate.
   "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
 
-/**
- * The required `fast-checks` aggregator's guard (#2709): the same event
- * clause as its parts, under `always()` WITHOUT `!cancelled()`. A skipped
- * required check reports success, so an aggregator that skipped itself on a
- * cancelled run would let that run read green; running instead fails it on
- * the cancelled parts.
- */
-export const REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION =
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal reviewed GitHub Actions predicate.
-  "${{ always() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}";
-
-/** The aggregator's base-controlled half: every part job must have succeeded. */
-/**
- * The aggregator's base-controlled half: every part job must have succeeded.
- * Its `true)` arm is the TRANSITIONAL legacy branch (#2709): a candidate
- * without scripts/fast-checks-shard.mjs ran its whole unsharded ci:fast in
- * fast-checks-plan, so that job and fast-checks-statics must succeed and the
- * shards must have skipped. Only the exact outputs 'true'/'false' choose a
- * branch. Remove the arm, and the LEGACY constants below, with ci.yml's
- * detection step once open pull requests have merged main.
- */
-export const FAST_CHECKS_PART_RESULTS_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
-LEGACY="$(echo "$NEEDS" | jq -r '.["fast-checks-plan"].outputs.legacy // ""')"
-case "$LEGACY" in
-  false)
-    echo "$NEEDS" | jq -e '[to_entries[] | select(.key != "classify")] | length == ${FAST_CHECKS_PART_JOBS.length} and all(.value.result == "success")' > /dev/null
-    ;;
-  true)
-    echo "::warning::legacy candidate: fast-checks ran unsharded in fast-checks-plan"
-    echo "$NEEDS" | jq -e '.["fast-checks-plan"].result == "success" and .["fast-checks-statics"].result == "success" and .["fast-checks-shard"].result == "skipped"' > /dev/null
-    ;;
-  *)
-    echo "::error::fast-checks-plan reported no valid legacy mode"
-    exit 1
-    ;;
-esac
-`;
-export const FAST_CHECKS_LEGACY_DETECT_RUN = `if [ -f scripts/fast-checks-shard.mjs ]; then
-  echo "legacy=false" >> "$GITHUB_OUTPUT"
-else
-  echo "::warning::candidate predates the sharded fast-checks lane; running its unsharded ci:fast (merge main to shard)"
-  echo "legacy=true" >> "$GITHUB_OUTPUT"
-fi
-`;
-// biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-export const FAST_CHECKS_LEGACY_OUTPUT = '${{ steps.mode.outputs.legacy }}';
-export const FAST_CHECKS_LEGACY_STEP_IF =
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-  "${{ steps.mode.outputs.legacy == 'true' }}";
-export const FAST_CHECKS_PLANNED_STEP_IF =
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-  "${{ steps.mode.outputs.legacy == 'false' }}";
-export const FAST_CHECKS_SHARD_IF =
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-  "${{ needs.fast-checks-plan.outputs.legacy == 'false' }}";
-export const FAST_CHECKS_AGGREGATE_STEP_IF =
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-  "${{ needs.fast-checks-plan.outputs.legacy != 'true' }}";
-export const FAST_CHECKS_AGGREGATE_RUN =
-  'node scripts/fast-checks-shard.mjs aggregate --plan-dir="$RUNNER_TEMP/fast-checks-plan" --receipts-dir="$RUNNER_TEMP/fast-checks-receipts"';
-export const FAST_CHECKS_PLAN_RUN =
-  'npm run fast-checks:shard -- plan --out="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json"';
-export const FAST_CHECKS_SLICE_RUN = `node scripts/fast-checks-shard.mjs slice --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/${FAST_CHECKS_SHARD_COUNT}"`;
-export const FAST_CHECKS_SHARD_RUN = `npm run fast-checks:shard -- run --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --shard="$SHARD/${FAST_CHECKS_SHARD_COUNT}" --receipt=".kontourai/fast-checks/fast-checks-shard-receipt.json"`;
-const FAST_CHECKS_AGGREGATE_NEEDS = ['classify', ...FAST_CHECKS_PART_JOBS];
-
-function needsList(job) {
-  return typeof job?.needs === 'string' ? [job.needs] : job?.needs;
-}
-
-function sameList(left, right) {
-  return (
-    Array.isArray(left) &&
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
-  );
-}
-
-/**
- * A job- or step-level continue-on-error, except on a diagnostics-only
- * artifact upload (the same exemption as findVerdictBearingContinueOnError).
- * The plan and receipt uploads are verdict-bearing and checked by name.
- */
-function swallowsFailure(job) {
-  return (
-    job?.['continue-on-error'] !== undefined ||
-    (Array.isArray(job?.steps) &&
-      job.steps.some(
-        (step) =>
-          step?.['continue-on-error'] !== undefined &&
-          !(
-            typeof step?.uses === 'string' &&
-            step.uses.startsWith('actions/upload-artifact@') &&
-            step.run === undefined &&
-            !VERDICT_BEARING_UPLOADS.includes(step.name)
-          ),
-      ))
-  );
-}
-const VERDICT_BEARING_UPLOADS = Object.freeze([
-  'Upload fast-checks plan',
-  'Upload fast-checks shard receipt',
-]);
-
-/**
- * Validates the actual required check and the jobs it vouches for, not a
- * similarly named optional lane (#2709): the `fast-checks` aggregator must
- * require the plan, every shard and the statics job, fail on anything but
- * their success, and verify the shard receipts; the browser smoke must run
- * unconditionally inside fast-checks-statics.
- */
+/** Validates the actual required job, not a similarly named optional lane. */
 export function collectRequiredBrowserSmokeFindings(workflowText) {
   let document;
   try {
@@ -544,125 +429,21 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
   } catch {
     return ['Required browser smoke needs an unambiguous workflow document.'];
   }
-  const jobs = document?.jobs ?? {};
-  const job = jobs['fast-checks'];
+  const job = document?.jobs?.['fast-checks'];
   if (!job) return ['Required browser smoke must run inside fast-checks.'];
   const findings = [];
-  const steps = (candidate) =>
-    Array.isArray(candidate?.steps) ? candidate.steps : [];
-
-  if (
-    job.if !== REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION ||
-    swallowsFailure(job)
-  )
+  if (job.if !== REQUIRED_FAST_CHECKS_CONDITION || job['continue-on-error'])
     findings.push(
       'Required fast-checks must admit PR and merge candidates without swallowing failures.',
     );
-  if (!sameList(needsList(job), FAST_CHECKS_AGGREGATE_NEEDS))
+  const needs = typeof job.needs === 'string' ? [job.needs] : job.needs;
+  if (!Array.isArray(needs) || needs.length !== 1 || needs[0] !== 'classify')
     findings.push(
       'Required fast-checks must not depend on optional or manual completion jobs.',
     );
-  const [partResults] = steps(job);
-  const aggregate = steps(job).filter(
-    (step) => step?.run === FAST_CHECKS_AGGREGATE_RUN,
-  );
-  if (
-    partResults?.run !== FAST_CHECKS_PART_RESULTS_RUN ||
-    partResults.if !== undefined ||
-    aggregate.length !== 1 ||
-    aggregate[0].if !== FAST_CHECKS_AGGREGATE_STEP_IF
-  )
-    findings.push(
-      'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
-    );
-
-  for (const partId of ['fast-checks-plan', 'fast-checks-statics']) {
-    const part = jobs[partId];
-    if (
-      !part ||
-      part.if !== REQUIRED_FAST_CHECKS_CONDITION ||
-      swallowsFailure(part) ||
-      !sameList(needsList(part), ['classify'])
-    )
-      findings.push(
-        `Required ${partId} must admit PR and merge candidates without swallowing failures.`,
-      );
-  }
-  const plan = jobs['fast-checks-plan'];
-  const planSteps = steps(plan);
-  const planned = planSteps.filter(
-    (step) => step?.run === FAST_CHECKS_PLAN_RUN,
-  );
-  const planUpload = planSteps.find(
-    (step) => step?.name === 'Upload fast-checks plan',
-  );
-  if (
-    planned.length !== 1 ||
-    planned[0].if !== FAST_CHECKS_PLANNED_STEP_IF ||
-    planUpload?.if !== FAST_CHECKS_PLANNED_STEP_IF
-  )
-    findings.push('fast-checks-plan must compute the plan exactly once.');
-  // TRANSITIONAL (#2709): the legacy path must run the candidate's WHOLE
-  // lane, never less, and only when the detection says so.
-  const detect = planSteps.findIndex(
-    (step) => step?.run === FAST_CHECKS_LEGACY_DETECT_RUN,
-  );
-  const legacyLane = planSteps.filter(
-    (step) => step?.run === 'npm run ci:fast',
-  );
-  if (
-    detect < 0 ||
-    planSteps[detect].id !== 'mode' ||
-    planSteps[detect].if !== undefined ||
-    detect >
-      planSteps.findIndex((step) => step?.run === 'npm run dependencies:ci') ||
-    JSON.stringify(plan?.outputs) !==
-      JSON.stringify({ legacy: FAST_CHECKS_LEGACY_OUTPUT }) ||
-    legacyLane.length !== 1 ||
-    legacyLane[0].if !== FAST_CHECKS_LEGACY_STEP_IF ||
-    legacyLane[0].env?.STATION_CI_FAST_SCOPE !== undefined
-  )
-    findings.push(
-      'fast-checks-plan must run the whole unsharded ci:fast lane exactly when the candidate lacks the sharded lane.',
-    );
-
-  const shard = jobs['fast-checks-shard'];
-  const matrix = shard?.strategy?.matrix?.shard;
-  if (
-    !shard ||
-    shard.if !== FAST_CHECKS_SHARD_IF ||
-    swallowsFailure(shard) ||
-    !sameList(needsList(shard), ['fast-checks-plan']) ||
-    shard.strategy?.['fail-fast'] !== false ||
-    !sameList(
-      matrix,
-      Array.from({ length: FAST_CHECKS_SHARD_COUNT }, (_, index) => index + 1),
-    )
-  )
-    findings.push(
-      `fast-checks-shard must run all ${FAST_CHECKS_SHARD_COUNT} shards after the plan without swallowing failures.`,
-    );
-  const shardRuns = steps(shard).filter(
-    (step) => step?.run === FAST_CHECKS_SHARD_RUN,
-  );
-  const receiptUpload = steps(shard).find(
-    (step) => step?.name === 'Upload fast-checks shard receipt',
-  );
-  if (
-    shardRuns.length !== 1 ||
-    shardRuns[0].if !== undefined ||
-    steps(shard).filter((step) => step?.run === FAST_CHECKS_SLICE_RUN)
-      .length !== 1 ||
-    receiptUpload?.if !== 'always()' ||
-    receiptUpload?.with?.['if-no-files-found'] !== 'error'
-  )
-    findings.push(
-      'fast-checks-shard must run its slice unconditionally and always upload its receipt.',
-    );
-
-  const statics = jobs['fast-checks-statics'];
-  const smoke = steps(statics).filter(
-    (step) => step?.name === 'Verify critical browser journeys before merge',
+  const steps = Array.isArray(job.steps) ? job.steps : [];
+  const smoke = steps.filter(
+    (step) => step.name === 'Verify critical browser journeys before merge',
   );
   if (
     smoke.length !== 1 ||
@@ -671,16 +452,7 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
     smoke[0]['continue-on-error']
   )
     findings.push(
-      'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks-statics.',
-    );
-  const lane = steps(statics).filter((step) => step?.run === 'npm run ci:fast');
-  if (
-    lane.length !== 1 ||
-    lane[0].if !== undefined ||
-    lane[0].env?.STATION_CI_FAST_SCOPE !== 'statics'
-  )
-    findings.push(
-      'fast-checks-statics must run the statics-only ci:fast lane once, unconditionally.',
+      'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks.',
     );
   return findings;
 }
