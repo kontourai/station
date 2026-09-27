@@ -45,6 +45,10 @@ import {
   STATION_HOME_SCHEMA_FILE,
   STATION_HOME_SCHEMA_VERSION,
 } from './station-home-schema.js';
+import {
+  isLiveStationHomeRoot,
+  STATION_HOME_SQLITE_STORES,
+} from './station-home-store-registry.js';
 
 export const STATION_HOME_BACKUP_SCHEMA = 'station.home-backup/v1' as const;
 export const STATION_HOME_BACKUP_MANIFEST = 'station-home-backup.json';
@@ -137,18 +141,10 @@ export const DEFAULT_STATION_HOME_BACKUP_MAX_BYTES = 20 * 1024 * 1024 * 1024;
 export const DEFAULT_STATION_HOME_BACKUP_MAX_FILE_BYTES =
   2 * 1024 * 1024 * 1024;
 
-const TRANSIENT_ROOTS = new Set([
-  'instances.json',
-  'logs',
-  'monitoring',
-  // station#3217: a store quarantined for corruption is preserved for
-  // recovery, not carried into every future backup. `isTransient` only
-  // inspects `segments[0]`, which is why the quarantine is a top-level root
-  // rather than `data/quarantine/`.
-  'quarantine',
-  'service',
-  'tmp',
-]);
+// The top-level entries a backup leaves out are the store registry's `live`
+// roots (instances.json, logs, monitoring, quarantine, service, tmp). The
+// quarantine (station#3217) is top level because `isTransient` only inspects
+// `segments[0]`.
 const SQLITE_TRANSIENT_SUFFIXES = ['-journal', '-shm', '-wal'];
 // A corruption marker describes a database AT A MOMENT, and collectFiles
 // already refuses to archive an unhealthy *.sqlite — so every archived home
@@ -187,6 +183,8 @@ export interface StationHomeBackupOptions {
   afterPublish?: () => void;
   /** Private synchronization seam for lifecycle fault proofs. */
   lifecycleHooks?: StationHomeLifecycleHooks;
+  /** Private fault seam: copies one file into the staging tree. */
+  copyFile?: (source: string, target: string) => void;
 }
 
 export interface StationHomeRestoreOptions {
@@ -356,7 +354,7 @@ function canonicalLimits(options: {
 
 function isTransient(segments: readonly string[]): boolean {
   if (segments.length === 0) return false;
-  if (TRANSIENT_ROOTS.has(segments[0])) return true;
+  if (isLiveStationHomeRoot(segments[0])) return true;
   const name = segments.at(-1) ?? '';
   return (
     name === SQLITE_CORRUPTION_MARKER_FILE ||
@@ -461,6 +459,30 @@ function sqliteIsHealthy(path: string, checkpoint: boolean): boolean {
   return openAndCheckSqliteIntegrity(path, { checkpoint }).kind === 'ok';
 }
 
+const REGISTERED_SQLITE_STORES = new Set(
+  STATION_HOME_SQLITE_STORES.map((segments) => JSON.stringify(segments)),
+);
+
+/**
+ * Whether a home file is a SQLite database to checkpoint and verify before
+ * its bytes are recorded. A backup never copies `-wal`/`-shm` sidecars, so a
+ * WAL-mode database whose newest commits are still in its WAL would be
+ * archived without them: every `*.sqlite`, every store the registry names
+ * (the knowledge index is a `.db`), and any database that has a WAL beside it
+ * right now is checkpointed first.
+ */
+function isSqliteStoreEntry(
+  path: string,
+  segments: readonly string[],
+): boolean {
+  const name = segments.at(-1) ?? '';
+  return (
+    name.endsWith('.sqlite') ||
+    REGISTERED_SQLITE_STORES.has(JSON.stringify(segments)) ||
+    existsSync(`${path}-wal`)
+  );
+}
+
 function collectFiles(
   homeDir: string,
   limits: ReturnType<typeof canonicalLimits>,
@@ -491,7 +513,7 @@ function collectFiles(
       // checkpoint is deliberately before the authoritative lstat/size/hash
       // snapshot: otherwise the manifest can bind pre-checkpoint metadata to
       // post-checkpoint bytes and a healthy backup becomes self-inconsistent.
-      if (entry.name.endsWith('.sqlite')) {
+      if (isSqliteStoreEntry(path, segments)) {
         if (!sqliteIsHealthy(path, checkpointSqlite))
           fail(`SQLite integrity check failed at ${segments.join('/')}`);
         stats = lstatSync(path);
@@ -713,7 +735,10 @@ export function createStationHomeBackup(
       const source = pathFor(homeDir, file.path);
       const target = pathFor(contentRoot, file.path);
       mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
-      copyFileSync(source, target, constants.COPYFILE_EXCL);
+      (
+        options.copyFile ??
+        ((from, to) => copyFileSync(from, to, constants.COPYFILE_EXCL))
+      )(source, target);
       if (process.platform !== 'win32') chmodSync(target, file.mode);
       const copied = lstatSync(target);
       if (
@@ -913,5 +938,131 @@ export function readStationHomeBackupManifest(
   } catch (error) {
     if (error instanceof StationHomeArchiveError) throw error;
     fail('backup manifest could not be validated', error);
+  }
+}
+
+export interface StationHomeUpdateBackupOptions
+  extends Pick<
+    StationHomeBackupOptions,
+    'maxFiles' | 'maxBytes' | 'maxFileBytes' | 'lifecycleHooks' | 'copyFile'
+  > {
+  homeDir: string;
+  /** Outside the home; one per update (install root's runtime/update-backups/<id>). */
+  backupDir: string;
+}
+
+/**
+ * The snapshot a supervised update takes of a stopped home before its trial
+ * (#2675 slice D): every `state` entry of the store registry, which includes
+ * `.station-home-schema.json`, and none of the `live` ones. It is the same
+ * archive `station home backup` writes, published by one rename.
+ *
+ * Taken ONCE per update. An existing backup is validated and kept, never
+ * replaced: a launcher that restarts after a trial began is looking at a home
+ * the trial may already have written, and a second snapshot would make that
+ * the state a rollback restores.
+ */
+export function createStationHomeUpdateBackup(
+  options: StationHomeUpdateBackupOptions,
+): StationHomeBackupResult & { reused: boolean } {
+  const backupDir = resolve(options.backupDir);
+  if (existsSync(backupDir)) {
+    return {
+      backupDir,
+      manifest: readStationHomeBackupManifest(backupDir, options),
+      reused: true,
+    };
+  }
+  return {
+    ...createStationHomeBackup({ ...options, outputDir: backupDir }),
+    reused: false,
+  };
+}
+
+export interface StationHomeUpdateRestoreOptions
+  extends Pick<
+    StationHomeRestoreOptions,
+    'maxFiles' | 'maxBytes' | 'maxFileBytes' | 'lifecycleHooks'
+  > {
+  homeDir: string;
+  backupDir: string;
+  /** Private fault seam: runs after the state entries are removed. */
+  afterRemove?: () => void;
+}
+
+/**
+ * Puts a home back to an update backup IN PLACE (#2675 slice D): every
+ * top-level entry that is not `live` is removed, then every file the backup
+ * holds is copied back and verified against its hash. `live` entries (the
+ * service manifests, the process registry, logs) are never touched, which is
+ * why this is not `restoreStationHomeBackup`: that one swaps the whole home
+ * directory for the backup and would drop them.
+ *
+ * Idempotent, so a rollback interrupted at any point is finished by running
+ * it again: the backup is only read, and each run starts by removing whatever
+ * a previous run (or the trial) left in the state entries.
+ */
+export function restoreStationHomeUpdateBackup(
+  options: StationHomeUpdateRestoreOptions,
+): { manifest: StationHomeBackupManifest } {
+  const limits = canonicalLimits(options);
+  const homeDir = canonicalStationHome(options.homeDir);
+  const backupDir = realpathSync(resolve(options.backupDir));
+  assertExternalPath(homeDir, backupDir);
+  const manifest = validateBackupDirectory(backupDir, limits);
+  // A backup written under another registry may hold an entry that is live
+  // now; live entries are this home's, so it is left as it is.
+  const restorable = manifest.files.filter((file) => !isTransient(file.path));
+  let release: () => void;
+  try {
+    release = acquireStationHomeMaintenanceLease(
+      homeDir,
+      options.lifecycleHooks,
+    ).release;
+  } catch (error) {
+    fail(
+      'Station home must be inactive before restore; stop every instance and retry',
+      error,
+    );
+  }
+  try {
+    const homeStats = lstatSync(homeDir);
+    if (!homeStats.isDirectory() || homeStats.isSymbolicLink())
+      fail('Station home must be a regular directory');
+    for (const name of readdirSync(homeDir)) {
+      if (isLiveStationHomeRoot(name)) continue;
+      rmSync(join(homeDir, name), { recursive: true, force: true });
+    }
+    fsyncDirectorySync(homeDir);
+    options.afterRemove?.();
+    const contentRoot = join(backupDir, 'home');
+    for (const file of restorable) {
+      const source = pathFor(contentRoot, file.path);
+      const target = pathFor(homeDir, file.path);
+      mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+      copyFileSync(source, target, constants.COPYFILE_EXCL);
+      if (process.platform !== 'win32') chmodSync(target, file.mode);
+      syncFile(target);
+    }
+    const restored = collectFiles(homeDir, limits, false);
+    if (
+      restored.length !== restorable.length ||
+      restored.some((file, index) => {
+        const expected = restorable[index];
+        return (
+          !expected ||
+          JSON.stringify(file.path) !== JSON.stringify(expected.path) ||
+          file.sha256 !== expected.sha256
+        );
+      })
+    )
+      fail('restored home does not match the validated backup');
+    syncDirectoryTree(homeDir);
+    return { manifest };
+  } catch (error) {
+    if (error instanceof StationHomeArchiveError) throw error;
+    fail('update backup could not be restored', error);
+  } finally {
+    release();
   }
 }

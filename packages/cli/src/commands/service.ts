@@ -71,6 +71,7 @@ import {
   systemdStatus,
   uninstallSystemd,
 } from './service-systemd.js';
+import { runServiceUpdateHome } from './service-update-home.js';
 import {
   assertWindowsServiceExecutionTrusted,
   installWindowsService,
@@ -1103,9 +1104,15 @@ export async function runServiceCommand(
     throw new Error(`Station user services are unsupported on ${platform}`);
   }
   if (
-    !['install', 'start', 'status', 'stop', 'uninstall', 'run'].includes(
-      action ?? '',
-    )
+    ![
+      'install',
+      'start',
+      'status',
+      'stop',
+      'uninstall',
+      'run',
+      'update-home',
+    ].includes(action ?? '')
   ) {
     throw new Error(
       'Usage: station service <install|start|status|stop|uninstall|run> [flags]',
@@ -1113,6 +1120,11 @@ export async function runServiceCommand(
   }
   if (lifecycle.homeSource === '--temp-home') {
     throw new Error('--temp-home cannot be used with service commands');
+  }
+  if (action === 'update-home') {
+    // The launcher's home snapshot (#2675 D). It touches no service backend.
+    runServiceUpdateHome(args.slice(1), lifecycle.baseDir);
+    return;
   }
 
   const fs = dependencies.fs ?? nodeFs;
