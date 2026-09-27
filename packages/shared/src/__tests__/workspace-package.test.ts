@@ -691,8 +691,8 @@ describe('restored workspace verification', { timeout: 30000 }, () => {
     bytes[0] ^= 1;
     chmodSync(path, 0o600);
     writeFileSync(path, bytes);
-    // The flipped pack header hides every indexed object from the isolated
-    // object check, which is the refusal this test is named for.
+    // The corrupted pack header leaves the indexed objects unresolvable, so
+    // the isolated object check is what refuses.
     expect(f.verify).toThrow('Invalid staged object');
     expect(readFileSync(path)).toEqual(bytes);
   });
