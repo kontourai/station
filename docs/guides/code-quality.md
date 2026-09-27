@@ -1,5 +1,10 @@
 # Code Quality & Push Workflow
 
+This guide states contributor requirements and explains the checks that support
+them. A gate's existence, a timing estimate or a source rule is not proof that
+all product behavior is covered. Use the actual command result and its revision
+when reporting evidence; dated incidents below explain why rules were added.
+
 ## Repo git hooks
 
 Station ships its own hooks in `.githooks/`, version-controlled so they travel
@@ -11,20 +16,23 @@ npm run dependencies:ci       # fresh, lockfile-exact checkout
 npm run dependencies:install  # refresh an existing developer checkout
 ```
 
-Both commands install with npm lifecycle scripts disabled, then run only the
-reviewed lifecycle allowlist, pnpm's explicit patch configuration, and Git-hook
-setup. To repair hook setup alone:
+Both commands use pinned pnpm with dependency lifecycle scripts disabled,
+then apply the reviewed lifecycle allowlist, patch configuration and Git-hook
+setup. `npm run` is the script interface, not an instruction to run raw npm
+installs. To repair hook setup alone:
 
 ```bash
 npm run hooks:install    # git config core.hooksPath .githooks
 ```
 
 `npm run gate:for [-- <paths...>]` prints which of the scoped checks below a
-change surface feeds, using the hook's own scope deciders — ask it before
-writing to know what a change will owe.
+change surface feeds, using the hook's scope deciders. Run it before editing;
+its output selects evidence and prints guidance but does not execute those
+checks or grant permission to publish.
 
-The pre-push hook runs eight checks, in this order (the hook file,
-`.githooks/pre-push`, is the source of truth if this table drifts):
+The pre-push hook runs eight checks, in this order. Costs in this table are
+historical measurements, not deadlines or guarantees on the current host. The hook file,
+`.githooks/pre-push`, is the source of truth if this table drifts:
 
 | Check | Cost | Refuses |
 | --- | --- | --- |
@@ -33,7 +41,7 @@ The pre-push hook runs eight checks, in this order (the hook file,
 | `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a prepared exact-main baseline when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
 | `node scripts/check-prepush-static-gates.mjs` | ~7s, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208) |
 | `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
-| `npm run veritas:readiness` | ~15s idle, ~35s typical | a Veritas FAIL line: a missing required artifact, an unsynced AI instruction file, a stale protected-standards attestation, or a failing routed evidence-check. It cannot be path-scoped — its rules read repository state and run repository-wide commands rather than a diff — and it runs after the governance proof because it re-executes it. It is not redundant with that proof: the proof evaluates three of the nine repo-standards rules, readiness evaluates all nine plus the protected-standards attestation |
+| `npm run veritas:readiness` | ~15s idle, ~35s typical | a Veritas FAIL line: a missing required artifact, an unsynced AI instruction file, a stale protected-standards attestation, or a failing routed evidence-check. The invocation is unconditional here, while Veritas uses changed scope to select rules and routed checks. Selected commands may inspect repository-wide state. Readiness also evaluates standards and protected-policy authority; it is not identical to the governance proof |
 | `node scripts/check-prepush-typecheck.mjs` | ~50-90s (51s wall measured end to end, preconditions included; station#4273 recorded 82s for the aggregate alone), and only when the push changes a `.ts`/`.tsx`/`.mts`/`.cts` source, any `tsconfig`, a manifest, or a patch | any of the `typecheck:*` lanes. `ci:fast` already runs the same aggregate pre-merge, so this moves the finding to the author rather than a CI cycle later |
 | `node scripts/commit-message-gate.mjs --prepush-stdin` | instant | a commit subject in the push range that breaks the conventional grammar the forthcoming deploy-ledger changelog (station#4572) will generate from |
 
@@ -77,11 +85,10 @@ queue.
 
 ### What the entry-bundle ceiling is for
 
-It is a forcing function for reuse, not an accounting exercise. The entry
-bundle is what a browser downloads, parses and executes before a user sees
-anything — paid on every cold load, by every user, on whatever connection and
-device they have. It is the one number in this repo that converts directly
-into someone else's waiting, which is why it is gated at all.
+The entry bundle contributes to cold-load download, parse and execution cost.
+Actual waiting also depends on caches, connection speed, device and other work;
+bundle bytes alone are not a latency measurement. The ceiling makes growth
+visible while reuse and lazy loading are still practical choices.
 
 The ceiling makes that cost visible at the moment an addition is made, while
 reuse is still cheap to choose. When it reds, the question to ask first is not
@@ -178,26 +185,56 @@ Use `npm run gate:for -- <paths>` before editing, run its focused checks, then
 the merge queue verifies the latest-main composition. The [testing guide](testing.md)
 owns the full schedule and promotion-completion requirements.
 
+Documentation coverage is split across those paths. `ci:fast` includes CLI-doc
+parity and content checks, but not the whole `docs:truth:gate`. The separate
+**Repository source scans** job runs on same-repository pull requests and
+includes strict review-ledger freshness; it is currently non-required. The
+required merge-queue regression runs static verification, whose bootstrap
+includes the full documentation truth gate. A source-only edit can therefore
+leave `fast-checks` green while its recorded documentation review needs refresh.
+Use the existing documentation gate when the change affects those claims;
+do not infer semantic review from CI status alone.
+
 ## Biome Lint
 
-Auto-fix safe issues: `npx biome lint src-server/ src-ui/ packages/ --write --unsafe`
+Start with a scoped read-only check:
+
+```bash
+npm exec -- biome check <affected-paths>
+```
+
+Use `--write` for supported safe fixes, then inspect the diff and rerun the
+read-only check. `--unsafe` explicitly enables potentially unsafe fixes; it is
+not a synonym for safe autofix. Do not accept dependency-array, API or behavior
+changes solely because a formatter proposed them.
 
 Common gotchas:
-- `noUnusedImports` — SDK uses `react-jsx` transform, so `import React` is NOT needed. If you see `'React' refers to a UMD global`, the tsconfig is wrong, not the import.
+- `noUnusedImports` — JSX-transform and type imports depend on the owning tsconfig; inspect that configuration and actual runtime usage before removing an import.
 - `useExhaustiveDependencies` — verify deps are correct before accepting auto-fix.
 - `noUnusedVariables` / `noUnusedFunctionParameters` — prefix with `_` if intentionally unused.
 
 ## Route Typing
 
-All Hono route handlers use helpers from `src-server/routes/schemas/schemas.ts`:
+The schema-middleware route family uses helpers exported from
+`src-server/routes/schemas/schemas.ts`:
 - `getBody(c)` instead of `c.get('body')` — avoids Hono's `unknown` return type
 - `param(c, 'name')` instead of `c.req.param('name')` — returns `string` (throws 400 if missing)
 
-Always import from schemas. Never use raw `c.get('body')` or `c.req.param()`.
+Use those helpers when the route's schema middleware owns that body/parameter
+contract. Existing routes also parse bounded requests and parameters directly;
+this is not universal adoption. Do not replace an owner's validation or typed
+refusal with a helper name alone. Follow its real route and caller tests.
 
 ## Clean Core
 
-The core must remain vendor-neutral and free of organization-specific references. No hardcoded company domains, internal tool names, employee identifiers, or proprietary service URLs should appear in source code, configs, or comments. Before pushing, scan the diff for anything that couples the core to a specific organization and remove it. Default implementations should work for any user out of the box.
+Keep private organization assumptions out of general product behavior: employee
+identifiers, customer endpoints and internal tool names must not become
+unconfigurable defaults. Named engine adapters, public product endpoints and
+explicit integration contracts legitimately identify their owners; isolate
+those dependencies at their configured boundary rather than claiming the core
+contains no vendor names. Inspect the diff for private data and accidental
+coupling. A default implementation still needs its declared prerequisites;
+“works for every user out of the box” is not a verification result.
 
 ## Smell: a default that decides
 
@@ -313,4 +350,11 @@ it. A `catch` that returns a clean zero has decided on evidence it does not have
 
 ## Push & Monitor
 
-Push to all configured remotes (`git remote -v` to list). After pushing, use `gh` (if available) to monitor CI pipeline status until all workflows pass.
+Push only the branch and remote authorized for the task, after its required
+local checks. A configured remote is not publication permission. Do not bypass
+pre-push checks. Follow [AGENTS.md](../../AGENTS.md) for the merge queue and
+current handoff rules; do not manually merge or arm another lane's pull request.
+Inspect the actual CI/queue outcome once and investigate a reported failure.
+Do not poll, repeatedly rerun a failed job, or infer success from silence.
+Focused checks remain diagnostic; the hosted exact-revision completion receipt
+has its separate scope in [testing](testing.md).
