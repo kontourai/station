@@ -27,8 +27,8 @@
  * No migration: no archive has been released, so no archive-root state
  * exists anywhere to carry over.
  */
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import {
   STATION_RELEASE_RINGS,
   type StationReleaseRing,
@@ -158,6 +158,59 @@ function readPrebuiltArchiveRelease(
 /** A prebuilt archive: marker, valid release provenance, and no checkout. */
 export function isPrebuiltArchiveRoot(root: string): boolean {
   return readPrebuiltArchiveRelease(root) !== null;
+}
+
+/**
+ * install.sh claims an install root with this marker, with exactly this
+ * content (INSTALL_ROOT_MARKER / INSTALL_ROOT_SIGNATURE there).
+ */
+export const INSTALL_ROOT_MARKER_FILENAME = '.station-portable-install-root';
+export const INSTALL_ROOT_MARKER_CONTENT = 'station-portable-install-root-v1\n';
+
+export interface InstallerOwnedArchiveFs {
+  lstatSync: (path: string) => { isSymbolicLink(): boolean };
+  readFileSync: (path: string, encoding: 'utf8') => string;
+  realpathSync: (path: string) => string;
+}
+
+/**
+ * The install root when `root` (a prebuilt archive's physical path) is the
+ * version install.sh made active: `<installRoot>/versions/<version>`, in a
+ * root carrying the installer's marker, whose `current` link resolves to
+ * `root`. Null for any other archive copy (#2675 slice C).
+ *
+ * A service unit for such a version runs `<installRoot>/current`, so an
+ * upgrade flips `current` without rewriting the unit and a pruned version
+ * directory never breaks it.
+ */
+export function resolveInstallerOwnedArchiveInstallRoot(
+  root: string,
+  fs: InstallerOwnedArchiveFs = {
+    lstatSync,
+    readFileSync: (path, encoding) => readFileSync(path, encoding),
+    realpathSync: (path) => realpathSync(path),
+  },
+): string | null {
+  const versions = dirname(root);
+  if (basename(versions) !== 'versions') return null;
+  const installRoot = dirname(versions);
+  try {
+    if (
+      fs.readFileSync(
+        join(installRoot, INSTALL_ROOT_MARKER_FILENAME),
+        'utf8',
+      ) !== INSTALL_ROOT_MARKER_CONTENT
+    ) {
+      return null;
+    }
+    const current = join(installRoot, 'current');
+    if (!fs.lstatSync(current).isSymbolicLink()) return null;
+    return fs.realpathSync(current) === fs.realpathSync(root)
+      ? installRoot
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /** What the CLI runs from. Where its state lives also depends on the home. */

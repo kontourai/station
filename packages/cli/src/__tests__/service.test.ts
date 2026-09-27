@@ -3117,3 +3117,172 @@ describe('service reads archive lifecycle state from the service home', () => {
     }
   });
 });
+
+describe('what an installed service runs (#2675 slice C)', () => {
+  beforeEach(() => {
+    // Earlier tests in this file leave their own systemd doubles behind.
+    systemdRegistration.mockReset();
+    systemdRegistration.mockImplementation((instanceId) => ({
+      platform: 'linux',
+      unitName: `station-${instanceId}.service`,
+      unitPath: `/tmp/station-${instanceId}.service`,
+    }));
+    installSystemd.mockReset();
+    installSystemd.mockImplementation((instanceId, input) => ({
+      host: input.lifecycle.host,
+      installedAt: '',
+      instanceId,
+      kind: input.kind,
+      nodePath: input.nodePath,
+      platform: 'linux',
+      repoPath: input.repoPath,
+      serverPort: input.lifecycle.serverPort,
+      uiPort: input.lifecycle.uiPort,
+      unitName: `station-${instanceId}.service`,
+      unitPath: `/tmp/station-${instanceId}.service`,
+    }));
+    systemdStatus.mockReset();
+    systemdStatus.mockReturnValue({
+      active: true,
+      enabled: true,
+      present: true,
+    });
+  });
+
+  /** install.sh's layout: `<installRoot>/versions/<v>`, marker, `current`. */
+  function installerArchive() {
+    const root = makeTempDir('station-service-archive-install-');
+    const installRoot = join(root, 'installs', 'stable');
+    const version = join(installRoot, 'versions', '1.2.3');
+    mkdirSync(join(version, 'runtime', 'bin'), { recursive: true });
+    writeFileSync(join(version, 'runtime', 'bin', 'node'), '');
+    writeFileSync(
+      join(version, '.station-prebuilt-archive'),
+      'station-prebuilt-archive-v1\n',
+    );
+    writeFileSync(
+      join(version, '.station-release.json'),
+      JSON.stringify({
+        schemaVersion: 2,
+        sha: 'a'.repeat(40),
+        ref: 'v1.2.3',
+        createdAt: '2026-09-26T00:00:00.000Z',
+        channel: 'stable',
+        releaseChannel: 'stable',
+        prerelease: false,
+      }),
+    );
+    writeFileSync(
+      join(installRoot, '.station-portable-install-root'),
+      'station-portable-install-root-v1\n',
+    );
+    nodeFs.symlinkSync(version, join(installRoot, 'current'));
+    return {
+      installRoot: nodeFs.realpathSync(installRoot),
+      version: nodeFs.realpathSync(version),
+    };
+  }
+
+  test('an installer-owned archive version installs a unit that runs current, with current on its PATH', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { resolveLifecycleCodeRoot } = await import(
+      '../commands/lifecycle-code-root.js'
+    );
+    const { installRoot, version } = installerArchive();
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
+
+    await runServiceCommand(['install'], lifecycle(baseDir), {
+      codeRoot: resolveLifecycleCodeRoot(version),
+      fs: serviceFs,
+      platform: 'linux',
+      run,
+    });
+
+    const current = join(installRoot, 'current');
+    expect(installSystemd).toHaveBeenCalledWith(
+      'service-test',
+      expect.objectContaining({
+        kind: 'archive',
+        installRoot,
+        nodePath: join(current, 'runtime', 'bin', 'node'),
+        repoPath: current,
+      }),
+    );
+    const [, input] = installSystemd.mock.calls[0];
+    expect(input.servicePath.split(':')[0]).toBe(
+      join(current, 'runtime', 'bin'),
+    );
+    expect(input.servicePath).not.toContain(version);
+  });
+
+  test('a source checkout installs from its physical path with the resolved Node.js, as before', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { resolveLifecycleCodeRoot } = await import(
+      '../commands/lifecycle-code-root.js'
+    );
+    const checkout = makeTempDir('station-service-checkout-');
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
+
+    await runServiceCommand(['install'], lifecycle(baseDir), {
+      codeRoot: resolveLifecycleCodeRoot(checkout),
+      fs: serviceFs,
+      platform: 'linux',
+      run,
+    });
+
+    const [, input] = installSystemd.mock.calls[0];
+    expect(input).toMatchObject({
+      kind: 'source',
+      nodePath: '/usr/bin/node',
+      repoPath: nodeFs.realpathSync(checkout),
+    });
+    expect(input).not.toHaveProperty('installRoot');
+    expect(input.servicePath.split(':')[0]).toBe('/usr/bin');
+  });
+
+  test.each([
+    { name: 'an unknown kind', fields: { kind: 'container' } },
+    {
+      name: 'an install root on a source service',
+      fields: { kind: 'source', installRoot: '/srv/installs/stable' },
+    },
+    {
+      name: 'an install root that is not a path',
+      fields: { kind: 'archive', installRoot: 7 },
+    },
+  ])('rejects a manifest with $name', async ({ fields }) => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const baseDir = makeTempDir('station-service-test-');
+    const serviceDir = join(baseDir, 'service');
+    mkdirSync(serviceDir, { recursive: true, mode: 0o700 });
+    const manifestPath = join(serviceDir, 'service-test.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        host: '127.0.0.1',
+        installedAt: '2026-07-21T12:00:00.000Z',
+        instanceId: 'service-test',
+        nodePath: '/usr/bin/node',
+        platform: 'linux',
+        repoPath: '/srv/station',
+        serverPort: 3242,
+        uiPort: 5274,
+        unitName: 'station-service-test.service',
+        unitPath: '/tmp/station-service-test.service',
+        ...fields,
+      }),
+      { mode: 0o600 },
+    );
+    await expect(
+      runServiceCommand(['status'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'linux',
+        run: vi.fn(() => ({ status: 0, stdout: '' })),
+      }),
+    ).rejects.toThrow(`Invalid Station service manifest: ${manifestPath}`);
+  });
+});
