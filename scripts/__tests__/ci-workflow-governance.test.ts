@@ -6,24 +6,82 @@ import {
   collectCiWorkflowGovernanceFindings,
   collectPrimaryCiWorkflowTriggerFindings,
   collectRequiredBrowserSmokeFindings,
+  FAST_CHECKS_AGGREGATE_RUN,
+  FAST_CHECKS_PART_RESULTS_RUN,
+  FAST_CHECKS_PLAN_RUN,
+  FAST_CHECKS_SHARD_RUN,
+  FAST_CHECKS_SLICE_RUN,
   findNamedWorkflowStep,
+  REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
   REQUIRED_FAST_CHECKS_CONDITION,
 } from '../ci-workflow-governance.mjs';
 
 const primaryTriggers =
   'on:\n  push:\n    branches: [main]\n  pull_request:\n    branches: [main]\n  merge_group:\n    branches: [main]\n    types: [checks_requested]\n  workflow_dispatch:\n';
 
+/** A multi-line run body as a YAML block scalar at `indent` spaces. */
+function block(text: string, indent: number) {
+  const pad = ' '.repeat(indent);
+  return `|\n${text
+    .trimEnd()
+    .split('\n')
+    .map((line) => `${pad}${line}`)
+    .join('\n')}`;
+}
+
+// The same shape as ci.yml (#2709): plan, shards, statics, and the required
+// fast-checks aggregator over them. Single-quoted YAML scalars keep the
+// double-quoted shell arguments literal.
 const cleanWorkflow = `
 ${primaryTriggers}
 jobs:
-  fast-checks:
+  fast-checks-plan:
+    needs: classify
+    if: ${REQUIRED_FAST_CHECKS_CONDITION}
+    steps:
+      - name: Plan the affected-test selection
+        run: '${FAST_CHECKS_PLAN_RUN}'
+      - name: Upload fast-checks plan
+        uses: actions/upload-artifact@v7
+  fast-checks-shard:
+    needs: fast-checks-plan
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - name: Resolve fast-checks shard slice
+        run: '${FAST_CHECKS_SLICE_RUN}'
+      - name: Run fast-checks shard
+        run: '${FAST_CHECKS_SHARD_RUN}'
+      - name: Upload fast-checks shard receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          if-no-files-found: error
+  fast-checks-statics:
     needs: classify
     if: ${REQUIRED_FAST_CHECKS_CONDITION}
     steps:
       - name: Run fast CI
+        env:
+          STATION_CI_FAST_SCOPE: statics
         run: npm run ci:fast
       - name: Verify critical browser journeys before merge
         run: npm run test:e2e:pr-smoke
+      - name: Upload bounded fast-feedback diagnostics
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+  fast-checks:
+    needs: [classify, fast-checks-plan, fast-checks-shard, fast-checks-statics]
+    if: ${REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION}
+    steps:
+      - name: Require every fast-checks part job to succeed
+        run: ${block(FAST_CHECKS_PART_RESULTS_RUN, 10)}
+      - name: Verify fast-checks shard receipts
+        run: '${FAST_CHECKS_AGGREGATE_RUN}'
+  completion:
+    steps:
       - name: Run connected agents
         run: npm run test:connected-agents
       - name: Veritas readiness evidence
@@ -250,7 +308,10 @@ describe('primary CI workflow governance', () => {
       'utf8',
     );
     const classify = parsedJob(workflow, 'classify');
-    const fastChecks = parsedJob(workflow, 'fast-checks');
+    // #2709: the statics job carries the former fast-checks steps; the
+    // required `fast-checks` id is the aggregator over it and the shards.
+    const fastChecks = parsedJob(workflow, 'fast-checks-statics');
+    const aggregate = parsedJob(workflow, 'fast-checks');
     const fullRegression = parsedJob(workflow, 'full-regression');
     expect(parsedJob(workflow, 'browser-smoke')).toBeUndefined();
 
@@ -275,12 +336,29 @@ describe('primary CI workflow governance', () => {
     expect(fastChecks?.['timeout-minutes']).toBe(
       FAST_CHECKS_JOB_TIMEOUT_MINUTES,
     );
-    expect(fastChecks?.concurrency).toEqual({
+    expect(aggregate?.concurrency).toEqual({
       group:
         // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
         'ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}',
       'cancel-in-progress': true,
     });
+    // Every part job keys its own group on the head sha (#1445), and each
+    // shard on its index, so no leg or part cancels another's run.
+    for (const [id, prefix] of [
+      ['fast-checks-statics', 'ci-fast-statics-'],
+      ['fast-checks-plan', 'ci-fast-plan-'],
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
+      ['fast-checks-shard', 'ci-fast-shard-${{ matrix.shard }}-'],
+    ]) {
+      const group = String(
+        (parsedJob(workflow, id)?.concurrency as { group?: string })?.group,
+      );
+      expect(group.startsWith(prefix), id).toBe(true);
+      expect(group, id).toContain(
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
+        '${{ github.event.pull_request.head.sha || github.sha }}',
+      );
+    }
     const forkSmoke = parsedJob(workflow, 'fork-smoke');
     expect(forkSmoke?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
@@ -368,7 +446,7 @@ describe('primary CI workflow governance', () => {
       'utf8',
     );
     const decoy = workflow.replace(
-      `if: ${REQUIRED_FAST_CHECKS_CONDITION}`,
+      `if: ${REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION}`,
       "if: false # github.event_name == 'pull_request_target'",
     );
 
@@ -558,8 +636,104 @@ describe('required browser evidence cannot silently disappear', () => {
       (text: string) => text.replace(REQUIRED_FAST_CHECKS_CONDITION, 'false'),
     ],
   ])('rejects %s before the workflow can claim green', (_name, mutate) => {
+    const mutated = mutate(cleanWorkflow);
+    expect(mutated).not.toBe(cleanWorkflow);
+    expect(collectRequiredBrowserSmokeFindings(mutated)).not.toEqual([]);
+  });
+});
+
+describe('the required fast-checks aggregator cannot pass over a missing part (#2709)', () => {
+  test('accepts the checked-in workflow and the fixture', () => {
+    expect(collectRequiredBrowserSmokeFindings(cleanWorkflow)).toEqual([]);
     expect(
-      collectRequiredBrowserSmokeFindings(mutate(cleanWorkflow)),
-    ).not.toEqual([]);
+      collectRequiredBrowserSmokeFindings(
+        readFileSync('.github/workflows/ci.yml', 'utf8'),
+      ),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [
+      'an aggregator that skips itself on a cancelled run',
+      REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
+      REQUIRED_FAST_CHECKS_CONDITION,
+      'Required fast-checks must admit PR and merge candidates without swallowing failures.',
+    ],
+    [
+      'an aggregator that does not wait for the shards',
+      'needs: [classify, fast-checks-plan, fast-checks-shard, fast-checks-statics]',
+      'needs: [classify, fast-checks-plan, fast-checks-statics]',
+      'Required fast-checks must not depend on optional or manual completion jobs.',
+    ],
+    [
+      'a part-result check that accepts any result',
+      'all(.value.result == "success")',
+      'all(.value.result != "")',
+      'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
+    ],
+    [
+      'an aggregator that never reads the receipts',
+      `run: '${FAST_CHECKS_AGGREGATE_RUN}'`,
+      'run: echo receipts',
+      'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
+    ],
+    [
+      'a conditional receipt verification',
+      `        run: '${FAST_CHECKS_AGGREGATE_RUN}'`,
+      `        if: success()\n        run: '${FAST_CHECKS_AGGREGATE_RUN}'`,
+      'Required fast-checks must fail unless every part job succeeded and every shard receipt verifies.',
+    ],
+    [
+      'a dropped shard',
+      'shard: [1, 2, 3, 4]',
+      'shard: [1, 2, 3]',
+      'fast-checks-shard must run all 4 shards after the plan without swallowing failures.',
+    ],
+    [
+      'fail-fast shards',
+      'fail-fast: false',
+      'fail-fast: true',
+      'fast-checks-shard must run all 4 shards after the plan without swallowing failures.',
+    ],
+    [
+      'a shard admitted without a successful plan',
+      '  fast-checks-shard:\n    needs: fast-checks-plan\n',
+      '  fast-checks-shard:\n    needs: fast-checks-plan\n    if: always()\n',
+      'fast-checks-shard must run all 4 shards after the plan without swallowing failures.',
+    ],
+    [
+      'a swallowed receipt upload',
+      '      - name: Upload fast-checks shard receipt\n',
+      '      - name: Upload fast-checks shard receipt\n        continue-on-error: true\n',
+      'fast-checks-shard must run all 4 shards after the plan without swallowing failures.',
+    ],
+    [
+      'a receipt uploaded only on success',
+      '        if: always()\n        uses: actions/upload-artifact@v7',
+      '        uses: actions/upload-artifact@v7',
+      'fast-checks-shard must run its slice unconditionally and always upload its receipt.',
+    ],
+    [
+      'a statics job that also swallows its lane',
+      '        run: npm run ci:fast\n',
+      '        continue-on-error: true\n        run: npm run ci:fast\n',
+      'Required fast-checks-statics must admit PR and merge candidates without swallowing failures.',
+    ],
+    [
+      'a statics lane that is not scoped to statics',
+      'STATION_CI_FAST_SCOPE: statics',
+      'STATION_CI_FAST_SCOPE: all',
+      'fast-checks-statics must run the statics-only ci:fast lane once, unconditionally.',
+    ],
+    [
+      'a plan that is never computed',
+      `run: '${FAST_CHECKS_PLAN_RUN}'`,
+      'run: echo planned',
+      'fast-checks-plan must compute the plan exactly once.',
+    ],
+  ])('rejects %s', (_name, target, replacement, expected) => {
+    const mutated = cleanWorkflow.replace(target, replacement);
+    expect(mutated).not.toBe(cleanWorkflow);
+    expect(collectRequiredBrowserSmokeFindings(mutated)).toContain(expected);
   });
 });

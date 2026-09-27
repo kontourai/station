@@ -30,6 +30,10 @@ import {
   CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES,
   incompleteDiagnosticReasons,
 } from './lib/changed-verification-diagnostics.mjs';
+import {
+  FAST_CHECKS_PLAN_KIND,
+  FAST_CHECKS_SHARD_COUNT,
+} from './lib/fast-checks-shards.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   captureOwnedProcessOutput,
@@ -767,6 +771,15 @@ function parseVitestReport(contents, { root = process.cwd() } = {}) {
   return parsed;
 }
 
+/**
+ * @param {string} root
+ * @param {{ tests: Array<{ path: string }>; relatedPaths: string[] }} selection
+ * @param {{
+ *   discoverRelated?: (root: string, relatedPaths: string[]) => Promise<string[]>;
+ *   partition?: typeof partitionVitestResourceSubset;
+ *   vitestPath?: string;
+ * }} [options]
+ */
 export async function planChangedVitestExecutions(
   root,
   selection,
@@ -777,6 +790,27 @@ export async function planChangedVitestExecutions(
   } = {},
 ) {
   const vitest = vitestPath ?? resolve(root, 'node_modules/vitest/vitest.mjs');
+  const planned = await planChangedVitestGroups(root, selection, {
+    discoverRelated,
+    partition,
+  });
+  return planned
+    ? vitestExecutionsForGroups(planned.groups, { kind: planned.kind, vitest })
+    : [];
+}
+
+/**
+ * The selected suites, by resource group in canonical order (empty groups
+ * omitted), or null when related discovery matched nothing.
+ */
+export async function planChangedVitestGroups(
+  root,
+  selection,
+  {
+    discoverRelated = discoverRelatedTestFiles,
+    partition = partitionVitestResourceSubset,
+  } = {},
+) {
   const relatedTests = selection.relatedPaths.length
     ? await discoverRelated(root, selection.relatedPaths)
     : [];
@@ -791,7 +825,7 @@ export async function planChangedVitestExecutions(
   // throw is the fail-closed guard for a selection that was supposed to hold
   // files. Only a related-path selection can land here: an explicit test
   // target always contributes its own path.
-  if (candidates.length === 0 && selection.relatedPaths.length > 0) return [];
+  if (candidates.length === 0 && selection.relatedPaths.length > 0) return null;
   const selected = validateSelectedTestFiles(root, candidates);
   const groups = partition(selected, { root });
   const kind = selection.relatedPaths.length
@@ -799,8 +833,30 @@ export async function planChangedVitestExecutions(
       ? 'combined'
       : 'related'
     : 'explicit';
+  return {
+    kind,
+    groups: VITEST_CORPUS_GROUPS.flatMap((group) => {
+      const files = groupFiles(groups, group.name);
+      return files.length
+        ? [{ resourceGroup: group.name, files: [...files] }]
+        : [];
+    }),
+  };
+}
+
+/**
+ * One Vitest invocation per non-empty resource group, in canonical group
+ * order, each with that group's own worker bound. The unsharded plan and a
+ * fast-checks shard (#2709) both build their commands here, so a shard runs a
+ * file under exactly the resource profile the unsharded lane would.
+ */
+export function vitestExecutionsForGroups(groups, { kind, vitest }) {
+  const byName = new Map(groups.map((group) => [group.resourceGroup, group]));
+  for (const name of byName.keys())
+    if (!VITEST_CORPUS_GROUPS.some((group) => group.name === name))
+      throw new Error(`unknown Vitest resource group '${name}'`);
   return VITEST_CORPUS_GROUPS.flatMap((group) => {
-    const files = groupFiles(groups, group.name);
+    const files = byName.get(group.name)?.files ?? [];
     if (!files.length) return [];
     return [
       {
@@ -826,6 +882,7 @@ async function runVitest(
     beforeCleanup = () => {},
     discoverRelated,
     partition,
+    planned,
     readReport = readFileSync,
     vitestPath,
   } = {},
@@ -837,15 +894,19 @@ async function runVitest(
   let relatedDiscoveryCount;
   const discover = discoverRelated ?? discoverRelatedTestFiles;
   try {
-    plannedExecutions = await planChangedVitestExecutions(root, selection, {
-      discoverRelated: async (discoveryRoot, relatedPaths) => {
-        const files = await discover(discoveryRoot, relatedPaths);
-        relatedDiscoveryCount = files.length;
-        return files;
-      },
-      ...(partition ? { partition } : {}),
-      vitestPath,
-    });
+    // A fast-checks shard (#2709) arrives with its commands already planned
+    // from the shared plan artifact; discovery ran once, in the plan job.
+    plannedExecutions =
+      planned ??
+      (await planChangedVitestExecutions(root, selection, {
+        discoverRelated: async (discoveryRoot, relatedPaths) => {
+          const files = await discover(discoveryRoot, relatedPaths);
+          relatedDiscoveryCount = files.length;
+          return files;
+        },
+        ...(partition ? { partition } : {}),
+        vitestPath,
+      }));
   } catch (error) {
     return {
       executions: [],
@@ -1343,6 +1404,92 @@ export async function runRepresentativeNarrowDiffFixture({
   }
 }
 
+/**
+ * The selection half of the lane, before any child process: the diff, the
+ * manifest routing and its escalations, product-law routing, and the subset
+ * that is actually executed. Shared by the unsharded lane and the fast-checks
+ * plan (#2709), so both select exactly the same suites.
+ */
+export function prepareChangedSelection(
+  base,
+  {
+    root = process.cwd(),
+    changedPathsFn = changedPaths,
+    pathExists = existsSync,
+  } = {},
+) {
+  const changed = changedPathsFn({ root, base });
+  // The derived manifest adds the path-read pin edges (#1807): a test that
+  // reads a source file's text has no import edge to it, so neither the graph
+  // fallback nor `vitest related` would schedule it here.
+  const escalated = escalateUnavailableExplicitTests(
+    escalateUnavailableRelatedPaths(
+      selectChangedVerification(
+        changed.paths,
+        buildTestImpactManifest({ root }),
+      ),
+      {
+        root,
+        pathExists,
+      },
+    ),
+    { root, pathExists },
+  );
+  const productLawRouting = withProductLawDispositions(
+    escalated,
+    root,
+    changed.paths,
+  );
+  const selection = productLawRouting.selection;
+  // Broad import expansion remains deferred. Explicit, existing test targets
+  // still provide bounded diagnostic failures; passing them cannot complete
+  // the deferred obligations. Never truncate a selection into a green claim.
+  const executionSelection =
+    selection.lanes.length === 0
+      ? selection
+      : {
+          ...selection,
+          relatedPaths: [],
+          tests:
+            selection.tests.length <= 32
+              ? selection.tests.filter((entry) =>
+                  pathExists(resolve(root, entry.path)),
+                )
+              : [],
+        };
+  return { changed, selection, productLawRouting, executionSelection };
+}
+
+/**
+ * Related paths a plan left without any suite. An empty discovery escalates
+ * even when explicit tests keep the plan non-empty (#2176), except for a path
+ * an edge names exactly (`ownedRelatedPaths`).
+ */
+function uncoveredRelatedPaths(executionSelection, outcome) {
+  const owned = new Set(executionSelection.ownedRelatedPaths ?? []);
+  return outcome.emptySelection === true
+    ? executionSelection.relatedPaths
+    : outcome.relatedDiscoveryEmpty === true
+      ? executionSelection.relatedPaths.filter((path) => !owned.has(path))
+      : [];
+}
+
+/**
+ * One verdict rule for the unsharded lane and every fast-checks shard. An
+ * infrastructure or parser fault outranks a test failure, which outranks a
+ * deferral; an undeferred run that executed nothing is a parser error.
+ */
+export function changedVerificationStatus({ counts, executed, deferred }) {
+  const childFailed = executed.some(
+    (execution) => execution.exitCode !== 0 && !execution.infrastructureError,
+  );
+  if (counts.infrastructureErrors > 0) return 'infrastructure_error';
+  if (counts.parserErrors > 0 || (!deferred && counts.executed === 0))
+    return 'parser_error';
+  if (counts.failed > 0 || childFailed) return 'failed';
+  return deferred ? 'provisional' : 'completed';
+}
+
 export async function runChangedVerification(
   args,
   {
@@ -1364,29 +1511,13 @@ export async function runChangedVerification(
   // node_modules link and create a receipt for the wrong source tree.
   assertDependencyProvenance({ cwd: root });
   const { base, explain } = parseChangedArgs(args);
-  const changed = changedPathsFn({ root, base });
-  // The derived manifest adds the path-read pin edges (#1807): a test that
-  // reads a source file's text has no import edge to it, so neither the graph
-  // fallback nor `vitest related` would schedule it here.
-  let selection = escalateUnavailableExplicitTests(
-    escalateUnavailableRelatedPaths(
-      selectChangedVerification(
-        changed.paths,
-        buildTestImpactManifest({ root }),
-      ),
-      {
-        root,
-        pathExists,
-      },
-    ),
-    { root, pathExists },
-  );
-  const productLawRouting = withProductLawDispositions(
-    selection,
+  const prepared = prepareChangedSelection(base, {
     root,
-    changed.paths,
-  );
-  selection = productLawRouting.selection;
+    changedPathsFn,
+    pathExists,
+  });
+  const { changed, productLawRouting, executionSelection } = prepared;
+  let { selection } = prepared;
   // Capture the request identity before any child process can modify outputs.
   const before = collectProvenance({ cwd: root });
   const request = createVerificationRequest('test-changed', before);
@@ -1402,22 +1533,6 @@ export async function runChangedVerification(
     nextCommands: nextCommands(selection),
     executed: [],
   };
-  // Broad import expansion remains deferred. Explicit, existing test targets
-  // still provide bounded diagnostic failures; passing them cannot complete
-  // the deferred obligations. Never truncate a selection into a green claim.
-  const executionSelection =
-    selection.lanes.length === 0
-      ? selection
-      : {
-          ...selection,
-          relatedPaths: [],
-          tests:
-            selection.tests.length <= 32
-              ? selection.tests.filter((entry) =>
-                  pathExists(resolve(root, entry.path)),
-                )
-              : [],
-        };
   if (
     !explain &&
     (executionSelection.tests.length || executionSelection.relatedPaths.length)
@@ -1480,13 +1595,7 @@ export async function runChangedVerification(
     // when discovery returns nothing for the whole set; a diff where one path
     // has importers and another has none is not detected. A per-path answer
     // would cost one Vitest graph build per changed file.
-    const owned = new Set(executionSelection.ownedRelatedPaths ?? []);
-    const uncovered =
-      vitestOutcome.emptySelection === true
-        ? executionSelection.relatedPaths
-        : vitestOutcome.relatedDiscoveryEmpty === true
-          ? executionSelection.relatedPaths.filter((path) => !owned.has(path))
-          : [];
+    const uncovered = uncoveredRelatedPaths(executionSelection, vitestOutcome);
     if (uncovered.length > 0 && !vitestOutcome.preparation) {
       result.emptyRelatedSelection = {
         relatedPaths: [...uncovered].sort(),
@@ -1507,23 +1616,11 @@ export async function runChangedVerification(
   // `provisional` -- and run-ci-fast reads its exit 3 as a deferred selection
   // and carries on, so a data-only diff does not red fast-checks while its
   // receipt still names the obligation (#1757).
-  const deferred = explain || selection.lanes.length > 0;
-  const failed = counts.failed > 0;
-  const childFailed = result.executed.some(
-    (execution) => execution.exitCode !== 0 && !execution.infrastructureError,
-  );
-  const infrastructureError = counts.infrastructureErrors > 0;
-  const parserError =
-    counts.parserErrors > 0 || (!deferred && counts.executed === 0);
-  const status = infrastructureError
-    ? 'infrastructure_error'
-    : parserError
-      ? 'parser_error'
-      : failed || childFailed
-        ? 'failed'
-        : deferred
-          ? 'provisional'
-          : 'completed';
+  const status = changedVerificationStatus({
+    counts,
+    executed: result.executed,
+    deferred: explain || selection.lanes.length > 0,
+  });
   const receiptExitCode =
     status === 'provisional'
       ? null
@@ -1576,6 +1673,157 @@ export async function runChangedVerification(
           : 1,
   };
 }
+/**
+ * #2709: the fast-checks plan. Selection, related discovery, resource
+ * partitioning and the empty-discovery escalation run exactly as the
+ * unsharded lane runs them, once, and stop before any test executes. A
+ * discovery or planning fault throws: no plan is written, and the required
+ * aggregator fails on the missing plan.
+ */
+export async function planChangedVerificationShards(
+  base,
+  {
+    root = process.cwd(),
+    run = runOwnedChangedCommand,
+    changedPathsFn = changedPaths,
+    discoverRelatedFiles,
+    resourcePartition = partitionVitestResourceSubset,
+    assertDependencyProvenance = assertWorkspacePackageProvenance,
+    pathExists = existsSync,
+    signal,
+    headSha = git(root, ['rev-parse', 'HEAD']).trim(),
+    shardCount = FAST_CHECKS_SHARD_COUNT,
+  } = {},
+) {
+  assertDependencyProvenance({ cwd: root });
+  const prepared = prepareChangedSelection(base, {
+    root,
+    changedPathsFn,
+    pathExists,
+  });
+  const { changed, productLawRouting, executionSelection } = prepared;
+  let { selection } = prepared;
+  let groups = [];
+  let emptyRelatedSelection;
+  if (
+    executionSelection.tests.length ||
+    executionSelection.relatedPaths.length
+  ) {
+    let relatedDiscoveryCount;
+    const discover =
+      discoverRelatedFiles ??
+      ((rootPath, paths, options) =>
+        discoverRelatedTestFiles(rootPath, paths, { ...options, run, signal }));
+    const planned = await planChangedVitestGroups(root, executionSelection, {
+      discoverRelated: async (discoveryRoot, relatedPaths) => {
+        const files = await discover(discoveryRoot, relatedPaths, {
+          base: changed.mergeBase,
+        });
+        relatedDiscoveryCount = files.length;
+        return files;
+      },
+      partition: resourcePartition,
+    });
+    groups = planned?.groups ?? [];
+    const uncovered = uncoveredRelatedPaths(executionSelection, {
+      emptySelection: groups.length === 0,
+      relatedDiscoveryEmpty: relatedDiscoveryCount === 0,
+    });
+    if (uncovered.length > 0) {
+      emptyRelatedSelection = {
+        relatedPaths: [...uncovered].sort(),
+        remedy: EMPTY_RELATED_SELECTION_REMEDY,
+      };
+      selection = escalateEmptyRelatedSelection(selection, uncovered);
+    }
+  }
+  return {
+    schemaVersion: 1,
+    kind: FAST_CHECKS_PLAN_KIND,
+    base,
+    mergeBase: changed.mergeBase,
+    headSha,
+    shardCount,
+    changedPathCount: changed.paths.length,
+    deferredLanes: selection.lanes,
+    escalated: selection.escalated,
+    productLaws: productLawRouting.productLaws,
+    ...(emptyRelatedSelection ? { emptyRelatedSelection } : {}),
+    groups,
+    fileCount: groups.reduce((total, group) => total + group.files.length, 0),
+  };
+}
+
+/**
+ * Runs one shard's slice of a validated plan through the same execution loop
+ * and verdict rule as the unsharded lane. The plan's deferral carries over:
+ * a deferred plan makes a passing shard `provisional`, as the selector's exit
+ * 3 does for ci:fast.
+ */
+/**
+ * @param {{ deferredLanes: unknown[] }} plan
+ * @param {{ groups: Array<{ resourceGroup: string; files: string[] }>; files: string[] }} slice
+ * @param {{
+ *   root?: string;
+ *   run?: (command: string, args: string[], options: any) => Promise<any>;
+ *   vitestPath?: string;
+ *   readReport?: typeof readFileSync;
+ *   signal?: AbortSignal;
+ * }} [options]
+ */
+export async function runChangedVerificationShard(
+  plan,
+  slice,
+  {
+    root = process.cwd(),
+    run = runOwnedChangedCommand,
+    vitestPath,
+    readReport,
+    signal,
+  } = {},
+) {
+  const vitest = vitestPath ?? resolve(root, 'node_modules/vitest/vitest.mjs');
+  validateSelectedTestFiles(root, slice.files);
+  const planned = vitestExecutionsForGroups(slice.groups, {
+    kind: 'shard',
+    vitest,
+  });
+  const outcome = await runVitest(
+    root,
+    run,
+    { signal },
+    { planned, ...(readReport ? { readReport } : {}) },
+  );
+  const counts = countsFor(outcome.executions, outcome.preparation);
+  const status = changedVerificationStatus({
+    counts,
+    executed: outcome.executions,
+    deferred:
+      plan.deferredLanes.length > 0 ||
+      outcome.executions.some((execution) => execution.empty),
+  });
+  return {
+    status,
+    counts,
+    ...(outcome.preparation
+      ? {
+          preparation: {
+            phase: outcome.preparation.phase,
+            error: outcome.preparation.error,
+          },
+        }
+      : {}),
+    executions: outcome.executions.map((execution) => ({
+      resourceGroup: execution.resourceGroup,
+      exitCode: execution.exitCode,
+      infrastructureError: execution.infrastructureError === true,
+      ...(execution.error ? { error: execution.error } : {}),
+      ...(execution.empty ? { empty: true } : {}),
+      ...(execution.failedTests ? { failedTests: execution.failedTests } : {}),
+    })),
+  };
+}
+
 if (invokedDirectly(import.meta.url)) {
   const controller = new AbortController();
   const unregister = ['SIGINT', 'SIGTERM'].map((name) =>
