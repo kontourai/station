@@ -55,6 +55,12 @@ describe('execution target contract', () => {
         | 'transport'
       >
     >().toBeNever();
+    // An index-signature field (e.g. `Record<string, unknown>`) widens the key
+    // set to `string`, absorbing every literal and turning the Extract above
+    // into `never` whatever leaks. The receipt's keys must stay a finite set.
+    expectTypeOf<string>().not.toMatchTypeOf<
+      ReceiptKeys<ExecutionResolutionReceipt>
+    >();
     // The walker must actually descend: these nested keys are real today.
     expectTypeOf<'connectionId'>().toMatchTypeOf<
       ReceiptKeys<ExecutionResolutionReceipt>
