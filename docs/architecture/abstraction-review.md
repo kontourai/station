@@ -303,6 +303,38 @@ inventory, while nearby tests exercise its library or scan the workflow text.
 and requires a regression through both real assembly and validation commands.
 This is a local caller failure, not an observed hosted release attempt.
 
+### Public configuration and runtime enforcement must agree
+
+The Agent contract exposes `guardrails.maxSteps`, but the file schema rejects
+it; Strands also does not apply the configured step cap. [#2846](https://github.com/kontourai/station/issues/2846)
+tracks a single admitted shape and engine-specific enforcement evidence.
+Retained quick prompts have no current UI consumer ([#2847](https://github.com/kontourai/station/issues/2847)),
+and invalid date/time format JSON can reach prompt expansion before failing
+([#2848](https://github.com/kontourai/station/issues/2848)). The
+[configuration reference](../reference/config.md) describes those current limits.
+
+### Shared CLI safeguards need to cover each caller
+
+The Operate shell's event stream bypasses the authenticated SDK transport even
+though its initial Session read uses it. A real caller against a synthetic
+protected HTTP service reproduced the missing credential and HTTP 401;
+[#2845](https://github.com/kontourai/station/issues/2845) tracks the correction.
+Home reset has a separate source-confirmed gap: it skips the home instance
+registry and does not take the backup/restore maintenance lease before archiving
+([#2849](https://github.com/kontourai/station/issues/2849)). No live home reset
+was attempted. Both belong in the existing owners, with actual-caller tests,
+rather than another parallel transport or lifecycle abstraction.
+
+### Successful persistence does not establish usable presentation
+
+Actual Task captures saved shared revisions but exposed a 176×32-pixel editor
+and clipped headings ([#2844](https://github.com/kontourai/station/issues/2844)).
+The Connections view's selected hover state also reduced measured label contrast
+to 1.38:1 ([#2843](https://github.com/kontourai/station/issues/2843)). The
+[walkthroughs](../learn/walkthroughs.md) retain the observed appearance and
+distinguish real persisted state from sample connection responses. Fixes need
+browser evidence alongside their state/contract tests.
+
 ### Examples need the same caller contracts as the product
 
 The standalone sessions MCP reader hides failed unauthenticated reads behind

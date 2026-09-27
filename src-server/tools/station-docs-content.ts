@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '0b1d197ebc4fa1f8aa15c955b5ae70938f8c697124798eb08f9b48b88e167ddb';
+  '0aa0006ad874c2560e15b097302f7fa2a7482684fabd0dd9fe82ee32f8ee39e9';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -866,7 +866,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Knowledge and learning',
     summary:
       'How source material is stored, indexed, retrieved, and reviewed without confusing an observation with permission to modify its source.',
-    body: 'How source material is stored, indexed, retrieved, and reviewed without confusing an observation with permission to modify its source.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which content is the source of truth, and which is a rebuildable index?\n- What happens when an embedding or graph provider is unavailable?\n- Who decides whether a proposed learning is accepted?\n\nRead module topics with get_station_docs_topic:\n- architecture-knowledgestoreprovider: KnowledgeStoreProvider\n- architecture-sqlitevecindexprovider: SqliteVecIndexProvider\n- architecture-knowledgefiletransactions: KnowledgeFileTransactions\n- architecture-knowledgesourceobservation: KnowledgeSourceObservation\n- architecture-learningreviewprojection: LearningReviewProjection\n\nCanonical reading:\n- docs/guides/knowledge.md\n- docs/plans/1364-owner-source-observation--grounding.md\n- examples/knowledge-library/README.md\n- examples/meeting-notes/README.md',
+    body: 'How source material is stored, indexed, retrieved, and reviewed without confusing an observation with permission to modify its source.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which content is the source of truth, and which is a rebuildable index?\n- What happens when an embedding or graph provider is unavailable?\n- Who decides whether a proposed learning is accepted?\n\nRead module topics with get_station_docs_topic:\n- architecture-knowledgestoreprovider: KnowledgeStoreProvider\n- architecture-sqlitevecindexprovider: SqliteVecIndexProvider\n- architecture-knowledgefiletransactions: KnowledgeFileTransactions\n- architecture-knowledgesourceobservation: KnowledgeSourceObservation\n- architecture-learningreviewprojection: LearningReviewProjection\n\nCanonical reading:\n- docs/guides/knowledge.md\n- docs/learn/walkthroughs.md#explore-repository-knowledge\n- docs/guides/repository-knowledge-graph.md\n- docs/plans/1364-owner-source-observation--grounding.md\n- examples/knowledge-library/README.md\n- examples/meeting-notes/README.md',
     tags: ['architecture', 'knowledge'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',

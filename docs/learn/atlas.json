@@ -143,6 +143,8 @@
       "summary": "How source material is stored, indexed, retrieved, and reviewed without confusing an observation with permission to modify its source.",
       "docs": [
         "docs/guides/knowledge.md",
+        "docs/learn/walkthroughs.md#explore-repository-knowledge",
+        "docs/guides/repository-knowledge-graph.md",
         "docs/plans/1364-owner-source-observation--grounding.md",
         "examples/knowledge-library/README.md",
         "examples/meeting-notes/README.md"

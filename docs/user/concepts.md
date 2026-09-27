@@ -27,6 +27,9 @@ diagnosis requires them.
 Station names the concrete engine when that distinction matters. Protocols such
 as ACP are connection details, not agent types users need to choose.
 
+The reserved Agent named **Station** is a separate role. Its name does not tell
+you which engine runs it; that engine is selected in Station settings.
+
 Concrete examples:
 
 - **Local model:** a local model service is the Model connection, one of its
@@ -90,10 +93,12 @@ terminal pane states why it cannot open. Agent execution does not use
 
 ## Local-First Data
 
-Station stores its data under `~/.station` by default. A hosted model service,
-an Engine, a paired device, or a remote computer receives data only when you
-configure it and use a feature that needs it. Observability data leaves the
-machine only when an operator configures an export endpoint.
+Station stores its data under `~/.station` by default. Model services, Engines,
+paired devices, remote computers and other configured integrations can exchange
+data outside that directory. Some make startup or background requests; desktop
+builds also contact their release feed. Observability export requires a configured
+endpoint. See [data flows and review limits](../privacy-policy.md) for the
+distinction between declared settings and verified behavior.
 
 ## Next
 

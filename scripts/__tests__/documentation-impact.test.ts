@@ -1,15 +1,9 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   collectDocumentationChanges,
   documentationCatchUp,
@@ -17,7 +11,7 @@ import {
   readDocumentationImpact,
 } from '../documentation-impact.mjs';
 
-const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 const ledger = (records: unknown[]) => ({ version: 1, records });
 const record = (path: string, sources: string[]) => ({
@@ -38,8 +32,7 @@ function git(root: string, args: string[]) {
   });
 }
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'station-doc-impact-'));
-  roots.push(root);
+  const root = makeTempDir('station-doc-impact-');
   const write = (path: string, text: string) => {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), text);
@@ -117,10 +110,6 @@ function fixture() {
   ]);
   return { root, write, base, records };
 }
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
 
 describe('documentation impact', () => {
   it('follows recorded dependencies through documents, terminates cycles and keeps unknown coverage explicit', () => {

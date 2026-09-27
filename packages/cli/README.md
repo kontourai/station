@@ -1,9 +1,8 @@
 # @kontourai/station-cli
 
-Station is Kontour's local-first agent workspace: you direct agent work, and
-the gate verdicts, evidence, and trust state stay in the same context as the
-work. A Station is the process that holds all of that — on your laptop, a home
-server, or another machine on your tailnet.
+Station is Kontour's local-first agent workspace. It keeps execution history
+and configured workflow evidence beside the work, on your laptop, a home
+server, or another machine you connect to. A completed run is not a passed gate.
 
 This package is the **client** CLI for those Stations. It is a terminal front end
 for Stations that are already running: chat with agents, read and interrupt
@@ -52,16 +51,20 @@ for the entry-point and build boundaries.
 build channel and source revision; the source launcher reports
 `development source checkout` without a revision.
 
-## Sixty seconds to a working setup
+## Connect to a Station
 
 Choose a Station you can reach. Setup saves it on this device, performs pairing
 when needed, and deliberately selects the default Station.
 
 ```bash
 npx @kontourai/station-cli@latest setup existing box-b https://box-b.tailnet.ts.net --pair
-# or use Kontour's hosted Station
+# or select the configured hosted endpoint
 npx @kontourai/station-cli@latest setup hosted
 ```
+
+`setup hosted` pairs with the fixed endpoint `https://station.kontourai.io`.
+That command's existence does not establish service availability or your access
+to it. Use `setup existing` for an endpoint you choose.
 
 The CLI registers a device request and waits. An operator approves it **on the
 host** (`station environment access approve <request-id>` there, with the
@@ -113,7 +116,7 @@ $ station stations list
 * = default Station.
 ```
 
-Every command that talks to a Station resolves its target in this order:
+Commands using the shared target resolver select a Station in this order:
 
 | | Source | Example |
 |---|---|---|
@@ -145,10 +148,15 @@ file. With both available,
 select one explicitly. No available agent still
 leaves portable artifacts successfully. The bundled triage command does not
 collect local host filesystem diagnostics or run the source-only doctor report.
-Problem text stays local unless `--search-issues` (or the equivalent TTY
-confirmation) explicitly authorizes a fixed, read-only Station issue search.
-Successful agent output is bounded and re-redacted into local `diagnosis.md`
-and `issue-draft.md`; triage has no GitHub write or repair operation.
+`--search-issues` (or the equivalent TTY confirmation) authorizes a fixed,
+read-only Station issue search. Launching an agent separately makes the run files
+available to that agent and its configured model service; use `--context-only`
+to collect without launching one. The first 64 KiB of agent stdout is re-redacted
+into local `diagnosis.md` and `issue-draft.md`, including after an unsuccessful
+exit. Live stdout is forwarded before redaction and stderr is inherited directly.
+Stored-artifact redaction does not protect terminal output. Triage has no GitHub
+write or repair operation; its mode flags are requests to the installed agent,
+not independent proof of that agent's enforcement.
 
 The versioned store lives at `$STATION_ROOT/config/profiles.json` (default
 `~/.station/config/profiles.json`) and is shared with native Desktop. It
@@ -174,8 +182,9 @@ SDK-backed requests give up after 30 seconds. Override with
 orchestration and approval events and live monitoring — have no overall
 deadline. Chat sends a bounded JSON acceptance request, then observes the turn
 on a separate event stream. Knowledge reindexing and migration also opt out of
-the request deadline. The current checkpoint-restore command bypasses the
-shared client and cannot authenticate to a protected Station; see the reference.
+the request deadline. The current checkpoint-restore and Operate event-stream
+paths bypass the shared credential client and cannot authenticate to a protected
+Station; see the reference.
 
 ## What this CLI does not do
 

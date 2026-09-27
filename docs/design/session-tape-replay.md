@@ -88,7 +88,9 @@ animations settle before a rendered observation; indefinite activity pulses
 do not block it.
 
 Export redacts content by default. Content-preserving export is explicit;
-redacted tapes preserve structure but cannot prove original text layout.
+redacted tapes retain protocol fields, replace identity values with pseudonyms,
+and mask content while preserving whitespace. They cannot prove original text
+layout or guarantee removal of arbitrary sensitive text placed in protocol fields.
 Replay forms, sends, feedback, and Task actions cannot mutate the source
 conversation. Replaying a snapshot does not modify live chats or background
 tasks.
@@ -145,7 +147,7 @@ Adapter mappings, same Station event:
 | --- | --- |
 | Claude | `Query.streamInput` (additive) |
 | Codex | app-server `turn/steer` `{ threadId, input, expectedTurnId }` (additive; does not emit a Codex `turn/started`) |
-| Kiro / KAS | ACP extension **method** `_session/steer` (additive; not a notification) |
+| Kiro | ACP extension **method** `_session/steer` when the command, arguments or reported agent name match Kiro (additive; not a notification) |
 | Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`). `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
 | Any other ACP | Cancel + re-prompt fallback: `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive). Also the fallback when the native method returns JSON-RPC -32601. |
 

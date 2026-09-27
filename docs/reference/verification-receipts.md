@@ -476,7 +476,9 @@ handoffs retained and eligible, live `launching`/`coordinating` handoffs, retry
 claims, request/output/completion fence counts (including `fenced` and
 `recoveryPending` where recorded), ownership-loss records, and scan health.
 Corrupt or incomplete records are skipped and counted; paths, request keys,
-errors, and output are never included in this aggregate.
+errors, and output are never included in this aggregate. Directory-read errors
+currently produce an empty collection without a separate error count. Treat
+zero counts as observed inventory, not proof that every directory was readable.
 
 The terminal-handoff GC policy is explicit: terminal handoffs are eligible only
 after a 7-day TTL and only beyond the
@@ -508,8 +510,8 @@ is non-actionable until a complete inventory is available.
 | Canonical receipts and referenced evidence | immutable while referenced | not cleanup candidates; broader history pruning requires a separate explicit policy |
 | Finished coordinator leases | coordinator-owned bounded metadata policy | active, fenced, and recovery-pending leases remain protected |
 
-`node scripts/run-verification.mjs artifact-gc` is the only automatic-artifact
-cleanup surface. It is deliberately **not** run by `status`, `submit-status`,
+`node scripts/run-verification.mjs artifact-gc` is the explicit orphan-artifact
+cleanup command. It is deliberately **not** run by `status`, `submit-status`,
 or normal verification. The command examines at most 256 local records and
 removes at most 32 records older than 24 hours. A truncated scan processes only
 that bounded prefix and reports `truncated: true`; every candidate still
@@ -531,9 +533,9 @@ successor at the canonical path is never removed. Canonical receipts and their
 `.commit.json` records are never cleanup candidates; broader history pruning
 remains an explicit future policy.
 
-The command prints only aggregate `scanned`, `removed`, `retained`,
-`truncated`, and `ambiguous` metrics. It does not expose request keys or raw
-verification output.
+Delete mode prints aggregate counts and an empty candidate list, without raw
+verification output. Preview modes below also identify eligible paths, which
+can contain request keys.
 
 Use `artifact-gc --dry-run` for a non-mutating bounded candidate report, or
 `artifact-gc --explain` for the same report when auditing policy. Each candidate

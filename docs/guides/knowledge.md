@@ -50,6 +50,10 @@ Station also retains the older per-Project document/namespace API through
 providers. It is not the same interface as the store/index routes described
 here; the migration section explains how their data is related.
 
+For a concrete example, [browse Station's repository graph](repository-knowledge-graph.md)
+or see [the captured Knowledge Library](../learn/walkthroughs.md#explore-repository-knowledge).
+That journey uses canonical records and links without an embedding service.
+
 [KnowledgeStoreProvider](../../src-server/knowledge-store/knowledge-store-provider.ts)
 owns registered roots and adapters. [Runtime route composition](../../src-server/runtime/routes/runtime-routes.ts)
 selects `sqlite-vec` for the store index, while

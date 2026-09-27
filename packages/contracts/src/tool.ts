@@ -178,13 +178,6 @@ export const EXECUTION_MODE = {
   EXTERNAL: 'external',
   STATION: 'station',
 } as const;
-/**
- * Read-compat for persisted `agent.json` `execution.runtimeOptions.executionMode`
- * values (and remote-Station payloads) predating the Phase-B value rename
- * (`'runtime'` -> `'external'`, `'provider-managed'` -> `'station'`). Never
- * used to rewrite the value on disk — read-time normalization only.
- */
-
 export type ConnectionCapability =
   | 'llm'
   | 'embedding'

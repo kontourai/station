@@ -77,7 +77,8 @@ console.log(root.id);
 JS
 ```
 
-Use the returned ID explicitly. Preview is the default; only `--apply` writes:
+Use the returned ID explicitly. Preview is the default; only `--apply` submits
+record creation and link requests. Store reads can still refresh derived caches:
 
 ```sh
 node --import tsx examples/repository-knowledge-graph/ingest.mjs --input=/tmp/station-knowledge-graph.json --api-base=http://127.0.0.1:43521 --root=root:project-repository-graph
@@ -86,7 +87,8 @@ node --import tsx examples/repository-knowledge-graph/ingest.mjs --input=/tmp/st
 ```
 
 The importer refuses default ports, non-loopback origins, personal roots and
-roots containing records owned by another writer. Use one importer/writer for
+roots containing records without this example's provenance marker. That marker
+is a consistency check, not authenticated writer identity. Use one importer/writer for
 this dedicated root. The API has no bulk transaction: an interrupted run can
 leave a partial snapshot. Rerunning the identical export reads existing records,
 refuses differences, and creates only missing IDs. It then checks every canonical

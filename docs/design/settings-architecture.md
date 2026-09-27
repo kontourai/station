@@ -40,12 +40,12 @@ written down (§4.1) and audited against every existing surface. Remaining
 longer-term architecture: the naming/cross-links slice (#5) and the
 plumbing-debt slice (#6).
 
-**Two of slice 3's surfaced fields have since moved.** `knowledgeStores` is
-`userFacing: false` and no longer rendered: its own registry description says
-turning it on changes nothing today, so the row was a control that persisted
-and did nothing. It stays settable through `station config set` until a
-consumer gates on it. `defaultChatFontSize` and `workspaceCheckpoints` went
-the other way and gained Station-configuration rows.
+**Some fields have since moved.** `knowledgeStores` is `userFacing: false`
+and has no Settings row, but it has a current consumer: personal startup can
+register the read-only `root:conversations` Knowledge root. Ordinary Knowledge
+routes do not depend on it, and disabling it does not remove an existing root.
+The earlier description of the flag as inert is obsolete.
+`defaultChatFontSize` and `workspaceCheckpoints` gained Station-configuration rows.
 
 ## 1. The problem
 
@@ -192,19 +192,18 @@ tool servers. The hub is close to right already; the revamp only renames the thr
 
 ## 4. Mechanism: the settings registry
 
-One declarative registry (the §2 registry pattern, adapted) is the single source of truth:
+The registry records each setting's descriptor and presentation. For example,
+the current AWS region entry is:
 
 ```ts
 defineSetting({
-  key: 'logLevel',
-  scope: 'station',            // station | defaults | device | (entity scopes stay in their own contracts)
-  schema: z.enum(['debug', 'info', 'warn', 'error']),
-  default: 'info',
-  label: 'Log level',
-  help: 'Station writes server log entries at this severity and above, and drops quieter ones.',
-  description: '…',
-  envFallback: 'STATION_LOG_LEVEL',   // optional: env var consulted when nothing is stored
-  secret: false,
+  key: 'region',
+  scope: 'defaults',
+  descriptor: { kind: 'string', pattern: '^[a-z]{2}-[a-z]+-[0-9]{1}$' },
+  label: 'AWS region',
+  help: 'Station picks this AWS region for Bedrock models when an agent does not name its own.',
+  description: 'Default AWS region for Bedrock (e.g. us-east-1).',
+  envFallback: 'AWS_REGION',
 })
 ```
 
@@ -224,8 +223,9 @@ first renders it.
 encoding) and remains what `views/settings/registry-row.tsx` renders and what
 `settings-catalog.ts` searches. Four keys nothing reads — `gitRemote`,
 `defaultEmbeddingProvider`, `defaultEmbeddingModel`, `defaultVectorDbProvider`
-— are `userFacing: false` for the same reason `knowledgeStores` is: a row for
-a key nothing reads is a control that persists and does nothing. Their `help`
+— are `userFacing: false`: a row for a key nothing reads is a control that
+persists and does nothing. Unlike those keys, `knowledgeStores` has the startup
+consumer described above. Their `help`
 sentences say exactly that rather than describing behavior that does not
 exist.
 
@@ -482,7 +482,8 @@ slice.
 now exposes exactly two behaviors by scope: the Station + Defaults server
 document is drafted behind Save/Discard (including `logLevel`), while This
 device controls persist immediately through the versioned envelope. The
-log-level-only revision key and queue UI were removed. All legacy raw device
+separate log-level draft and queue UI were removed; the server write still uses
+the revisioned endpoint described above. The enumerated legacy device
 preference keys migrate read-old/write-new/delete-old through the envelope;
 theme and accent retain read-only pre-React compatibility reads so first paint
 survives an upgrade before the migration constructor runs. An exact static
