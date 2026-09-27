@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -89,7 +90,7 @@ afterEach(async () => {
 });
 
 describe('managed dependency graph uses canonical lifecycle owners', () => {
-  async function fixture(cycle = false) {
+  async function fixture(cycle = false, shapeChild?: (child: string) => void) {
     const root = mkdtempSync(join(tmpdir(), 'station-managed-dependency-'));
     cleanupDirs.push(root);
     mkdirSync(join(root, 'plugins'));
@@ -125,6 +126,7 @@ describe('managed dependency graph uses canonical lifecycle owners', () => {
       JSON.stringify({ name: 'Child', prompt: 'Child agent' }),
     );
     writePlugin(leaf, portable('leaf', {}));
+    shapeChild?.(child);
     const sources: Record<string, string> = {
       child,
       leaf,
@@ -228,6 +230,33 @@ describe('managed dependency graph uses canonical lifecycle owners', () => {
     expect(readFileSync(join(child.dataRoot!, 'state'), 'utf8')).toBe(
       'preserve child',
     );
+  });
+
+  test('stages a portable dependency the way its preview did, leaving every .git entry out', async () => {
+    // A sibling that is its own checkout, with nested repository metadata:
+    // the preview approved it staged in dependency mode, so the install must
+    // stage it the same way (not fail closed, not carry the metadata in).
+    const f = await fixture(false, (child) => {
+      mkdirSync(join(child, '.Git'), { recursive: true });
+      writeFileSync(join(child, '.Git', 'HEAD'), 'ref: refs/heads/main\n');
+      mkdirSync(join(child, 'vendor', '.git'), { recursive: true });
+      writeFileSync(join(child, 'vendor', '.git', 'HEAD'), 'x\n');
+      writeFileSync(join(child, 'vendor', 'kept.txt'), 'kept\n');
+    });
+    await installPluginFromSource(f.parent, [], f.installDeps, {
+      consent: f.consent,
+    });
+    const child = resolveInstalledPluginRoot(
+      f.installDeps.pluginsDir,
+      'child',
+    )!;
+    expect(
+      readFileSync(join(child.packageRoot, 'vendor', 'kept.txt'), 'utf8'),
+    ).toBe('kept\n');
+    const gitLike = (dir: string) =>
+      readdirSync(dir).filter((entry) => /^\.git[. ]*$/i.test(entry));
+    expect(gitLike(child.packageRoot)).toEqual([]);
+    expect(gitLike(join(child.packageRoot, 'vendor'))).toEqual([]);
   });
 
   test('late parent withdrawal failure compensates the nested graph with fresh child admissions', async () => {

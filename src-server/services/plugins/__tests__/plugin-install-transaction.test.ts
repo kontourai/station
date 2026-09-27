@@ -6130,6 +6130,8 @@ describe('plugin install consent gate (station#4288)', () => {
 
     test.each([
       ['a .git-suffixed path', 'shared-providers.git'],
+      ['an upper-case .GIT-suffixed path', 'shared-providers.GIT'],
+      ['a .git. path (Windows trailing dot)', 'shared-providers.git.'],
       ['a #branch', 'shared-providers#main'],
     ])('refuses %s as a local dependency source', async (_label, name) => {
       const root = trackedTempDir('station-plugin-dependency-');
@@ -6153,6 +6155,39 @@ describe('plugin install consent gate (station#4288)', () => {
       ).rejects.toThrow(/local source must be a plain directory/);
       expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
     });
+
+    test.each([['.GIT'], ['.Git'], ['.git.']])(
+      'installs a checkout dependency without its %s metadata entry',
+      async (name) => {
+        const root = trackedTempDir('station-plugin-dependency-');
+        const packages = join(root, 'packages');
+        const dependencySource = writeProviderDependency(
+          packages,
+          'shared-providers',
+        );
+        mkdirSync(join(dependencySource, name), { recursive: true });
+        writeFileSync(join(dependencySource, name, 'HEAD'), 'ref: x\n');
+        mkdirSync(join(dependencySource, 'vendor', name), { recursive: true });
+        const parentSource = join(packages, 'enterprise-layout');
+        writePlugin(parentSource, {
+          name: 'enterprise-layout',
+          version: '1.0.0',
+          dependencies: [
+            { id: 'shared-providers', source: '../shared-providers' },
+          ],
+        });
+
+        await installPluginFromSource(parentSource, [], deps(root), {
+          consent: await approvedParent(parentSource, dependencySource, root),
+        });
+        const installed = join(root, 'plugins', 'shared-providers');
+        expect(existsSync(join(installed, 'plugin.json'))).toBe(true);
+        const gitLike = (dir: string) =>
+          readdirSync(dir).filter((entry) => /^\.git[. ]*$/i.test(entry));
+        expect(gitLike(installed)).toEqual([]);
+        expect(gitLike(join(installed, 'vendor'))).toEqual([]);
+      },
+    );
 
     test('installs a working checkout dependency as a plain tree with every .git entry left out', async () => {
       const root = trackedTempDir('station-plugin-dependency-');

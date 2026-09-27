@@ -174,13 +174,23 @@ export async function copyPluginTree(
   // Every `.git` entry at any depth (directory, gitfile or link): the copy is
   // a plain tree, so nothing later can act on repository metadata in it.
   if (options.excludeGitMetadata)
-    filters.push((path) => basename(path) !== '.git');
+    filters.push((path) => !isGitMetadataName(basename(path)));
   await cp(source, target, {
     ...PLUGIN_TREE_COPY,
     ...(filters.length > 0
       ? { filter: (path: string) => filters.every((keep) => keep(path)) }
       : {}),
   });
+}
+
+/**
+ * A name git — or the filesystem under it — may resolve as `.git`: compared
+ * case-insensitively (APFS, NTFS and FAT resolve `.GIT` to `.git`), and with
+ * trailing dots and spaces ignored (Win32 path normalization strips them).
+ * Over-matching only leaves an oddly named entry out of a dependency copy.
+ */
+export function isGitMetadataName(name: string): boolean {
+  return /^\.git[. ]*$/i.test(name);
 }
 
 function isCopyableTreeEntry(path: string): boolean {

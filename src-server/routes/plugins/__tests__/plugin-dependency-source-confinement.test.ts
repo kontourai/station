@@ -15,6 +15,7 @@ import {
   mkdirSync,
   readdirSync,
   realpathSync,
+  renameSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -275,6 +276,34 @@ describe('POST /preview confines plugin dependency sources', () => {
       expect(outcome.body.dependencies).toEqual([
         expect.objectContaining({ id: 'shared-dep', status: 'will-install' }),
       ]);
+    },
+  );
+
+  test.each([['.GIT'], ['.Git']])(
+    'leaves a %s repository out of a staged dependency, so preview reads no git state',
+    async (name) => {
+      const { root, packages, dependency, writeParent } = layout();
+      const checkout = writePlugin(join(packages, 'shared-dep'), {
+        ...dependency,
+        description: 'checkout dependency',
+      });
+      commitRepo(checkout);
+      execGitSync(
+        [
+          'remote',
+          'add',
+          'origin',
+          'https://git.example.test/secret-origin.git',
+        ],
+        { cwd: checkout },
+      );
+      renameSync(join(checkout, '.git'), join(checkout, name));
+      const outcome = await preview(root, writeParent('../shared-dep'));
+      expect(outcome.status, outcome.text).toBe(200);
+      expect(outcome.body.dependencies).toEqual([
+        expect.objectContaining({ id: 'shared-dep', status: 'will-install' }),
+      ]);
+      expect(outcome.text).not.toContain('secret-origin');
     },
   );
 });

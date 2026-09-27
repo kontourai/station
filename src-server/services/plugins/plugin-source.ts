@@ -228,7 +228,10 @@ export function resolvePluginDependencySource(
       `Plugin dependency '${dependency.id}' ${kind} source escapes its allowed package root`,
     );
   const source = resolve(parentSourceDir, dependency.source);
-  if (dependency.source.includes('#') || /\.git$/i.test(basename(source))) {
+  if (
+    dependency.source.includes('#') ||
+    /\.git[. ]*$/i.test(basename(source))
+  ) {
     throw new Error(
       `Plugin dependency '${dependency.id}' local source must be a plain directory; name a git repository by its remote URL`,
     );
