@@ -5720,6 +5720,8 @@ export async function executeExecutionTargetMessage(
       approvalKnobSupported(pick.provider)
         ? orchestrationService.recordApprovalModeDecision(pick)
         : undefined,
+    approvalPickReachesFullAccess: (_access: EnvironmentAccess, input) =>
+      orchestrationService.approvalPickReachesFullAccess(input),
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
       const command = { type: 'sendTurn' as const, input: turnInput };
       const dispatchContext = dispatchContextForAuthority(

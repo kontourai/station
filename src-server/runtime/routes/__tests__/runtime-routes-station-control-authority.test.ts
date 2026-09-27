@@ -22,6 +22,7 @@ import {
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../../services/orchestration/session-project-identity.js';
 import {
   __resetStationControlStdioCallerCredentialForTests,
   api,
@@ -34,12 +35,29 @@ import {
 } from '../../../utils/internal-api-token.js';
 import {
   __resetStationControlMcpTokensForTests,
+  mintStationControlMcpHeaderAuth,
   mintStationControlMcpToken,
 } from '../../mcp/station-control-mcp-token.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
 const support = vi.hoisted(() => ({
   notificationService: undefined as unknown,
+  /** Every command the real `/commands` route handed to the service. */
+  dispatched: [] as string[],
+  /** What `configLoader.loadAppConfig` answers. */
+  appConfig: {} as Record<string, unknown>,
+  /**
+   * The session-record Project each session started in; `null` for none.
+   * Unlisted sessions started in `project-a`.
+   */
+  projects: new Map<string, string | null>(),
+  /** Sessions that run unconfined (`host`). */
+  hostThreads: new Set<string>(),
+  /**
+   * Sessions that started before the Project id stamp: only a slug, which
+   * resolves now (`slug-lookup`) and so grants no Project authority.
+   */
+  slugOnly: new Map<string, string>(),
 }));
 
 vi.mock('../runtime-route-support.js', () => {
@@ -81,6 +99,11 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
     if (originalHosted === undefined) delete process.env[HOSTED_ENV];
     else process.env[HOSTED_ENV] = originalHosted;
     __resetStationControlMcpTokensForTests();
+    support.dispatched.length = 0;
+    support.appConfig = {};
+    support.projects.clear();
+    support.hostThreads.clear();
+    support.slugOnly.clear();
     for (const close of closers.splice(0)) await close();
   });
 
@@ -102,11 +125,18 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
       appConfig: {},
       configLoader: {
         getProjectHomeDir: () => homeDir,
-        loadAppConfig: () => ({}),
+        loadAppConfig: () => support.appConfig,
       },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
-      agentService: { listAgents: () => [] },
+      agentService: {
+        listAgents: () => [],
+        getAgent: async (slug: string) => ({
+          slug,
+          name: slug,
+          execution: { approvalMode: 'ask' },
+        }),
+      },
       agentMetadataMap: new Map(),
       agentFixedTokens: new Map(),
       agentTools: new Map(),
@@ -136,12 +166,36 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
                 }
               : undefined,
         canUserReadSession: () => true,
+        // The real `/commands` route's hand-off: "reached the service".
+        dispatchWithReceipt: async (command: {
+          type: string;
+          threadId?: string;
+          sourceThreadId?: string;
+        }) => {
+          support.dispatched.push(
+            `${command.type} ${command.threadId ?? command.sourceThreadId}`,
+          );
+          return { receipt: { commandId: 'c', status: 'accepted' } };
+        },
         // The start record of the calling session: its agent, and a
         // model-written delegation root that must choose nothing.
-        firstStartedMetadataOfThread: () => undefined,
+        firstStartedMetadataOfThread: (threadId: string) => {
+          const slug = support.slugOnly.get(threadId);
+          if (slug) return { projectSlug: slug };
+          const project = support.projects.has(threadId)
+            ? support.projects.get(threadId)
+            : 'project-a';
+          return project
+            ? { [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: project }
+            : undefined;
+        },
+        sessionRunsHost: (threadId: string) =>
+          support.hostThreads.has(threadId),
       }),
       storageAdapter: deepStub({
-        getProject: () => {
+        // The slug a pre-stamp session recorded still names project-a now.
+        getProject: (slug: string) => {
+          if (slug === 'project-a-slug') return { id: 'project-a' };
           throw new Error('no project');
         },
       }),
@@ -321,5 +375,194 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
     } finally {
       delete process.env.STATION_API_BASE;
     }
+  });
+
+  // #2377 slice C1 (owner decision recorded on the issue): `steerTurn` and
+  // `adoptSession` on `/commands` reach only threads in the caller's scope,
+  // read by the production composition from the same records as the
+  // caller's own session: owner (`op-` threads are the operator's, `person-`
+  // another person's, anything else has none), session-record Project
+  // (`support.projects`, default `project-a`) and confinement
+  // (`support.hostThreads`).
+  test('slice C1: steer and adopt stay in the caller’s owner, Project and confinement', async () => {
+    const { base } = await setup();
+    support.projects.set('op-thread-b', 'project-b');
+    support.projects.set('op-thread-none', null);
+    support.hostThreads.add('op-thread-host');
+    support.hostThreads.add('person-thread-host');
+    support.slugOnly.set('op-thread-slug', 'project-a-slug');
+    const bodyFor = (type: 'steerTurn' | 'adoptSession', threadId: string) =>
+      type === 'steerTurn'
+        ? { type, threadId, input: 'also check the tests' }
+        : { type, sourceThreadId: threadId };
+    const bearer = () => callerFor('op-codex', 'url-token');
+    const delegated = () =>
+      internal({
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: mintStationControlMcpHeaderAuth(
+          4321,
+          'op-acp',
+        ).token,
+      });
+    const cases: Array<[string, () => Record<string, string>, string, string]> =
+      [
+        // Same owner, same Project: allowed at every assurance.
+        ['bearer own', bearer, 'op-thread', 'passed-guard'],
+        ['delegated own', delegated, 'op-thread', 'passed-guard'],
+        [
+          'bound person own',
+          () => callerFor('person-claude', 'sdk-in-process'),
+          'person-thread',
+          'passed-guard',
+        ],
+        // Same owner, another Project, or a Project that is no session record.
+        [
+          'bearer other Project',
+          bearer,
+          'op-thread-b',
+          'station_control_assurance_insufficient',
+        ],
+        [
+          'bearer no Project',
+          bearer,
+          'op-thread-none',
+          'station_control_assurance_insufficient',
+        ],
+        // Its slug names the caller's Project now, but a slug lookup is not
+        // the record Station stamped at its start.
+        [
+          'bearer slug-lookup Project',
+          bearer,
+          'op-thread-slug',
+          'station_control_assurance_insufficient',
+        ],
+        // A host thread needs a bound caller.
+        [
+          'bearer host',
+          bearer,
+          'op-thread-host',
+          'station_control_assurance_insufficient',
+        ],
+        [
+          'delegated host',
+          delegated,
+          'op-thread-host',
+          'station_control_assurance_insufficient',
+        ],
+        [
+          'bound person host',
+          () => callerFor('person-claude', 'sdk-in-process'),
+          'person-thread-host',
+          'passed-guard',
+        ],
+        // Another owner's thread, or one with no recorded owner.
+        [
+          'bearer other owner',
+          bearer,
+          'person-thread',
+          'station_control_assurance_insufficient',
+        ],
+        [
+          'bearer ownerless',
+          bearer,
+          'x-thread',
+          'station_control_assurance_insufficient',
+        ],
+        [
+          'bound person other owner',
+          () => callerFor('person-claude', 'sdk-in-process'),
+          'op-thread',
+          'station_control_role_required',
+        ],
+        [
+          'bearer person other owner',
+          () => callerFor('person-codex', 'url-token'),
+          'op-thread',
+          'station_control_role_required',
+        ],
+        // The bound operator keeps the operator's reach (decision 3).
+        [
+          'bound op other owner, host',
+          () => callerFor('op-claude', 'sdk-in-process'),
+          'person-thread-host',
+          'passed-guard',
+        ],
+        // No caller at all.
+        [
+          'raw token',
+          () => internal(),
+          'op-thread',
+          'station_control_caller_required',
+        ],
+      ];
+    for (const type of ['steerTurn', 'adoptSession'] as const) {
+      support.dispatched.length = 0;
+      // Minted per request: a new mint for a session replaces its last token.
+      for (const [label, headers, threadId, expected] of cases)
+        expect([
+          type,
+          label,
+          await outcome(
+            base,
+            'POST',
+            '/api/orchestration/commands',
+            headers(),
+            bodyFor(type, threadId),
+          ),
+        ]).toEqual([type, label, expected]);
+      // The admitted commands reached the service through the real route;
+      // the refused ones never did.
+      expect(support.dispatched).toEqual(
+        cases
+          .filter(([, , , expected]) => expected === 'passed-guard')
+          .map(([, , threadId]) => `${type} ${threadId}`),
+      );
+    }
+
+    // The operator's UI is never an internal request: it steers any thread,
+    // host and other Project included, and the route hands it on.
+    support.dispatched.length = 0;
+    for (const threadId of ['op-thread-host', 'person-thread', 'op-thread-b'])
+      expect(
+        await outcome(
+          base,
+          'POST',
+          '/api/orchestration/commands',
+          {
+            'content-type': 'application/json',
+            authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+          },
+          bodyFor('steerTurn', threadId),
+        ),
+      ).toBe('passed-guard');
+    expect(support.dispatched).toEqual([
+      'steerTurn op-thread-host',
+      'steerTurn person-thread',
+      'steerTurn op-thread-b',
+    ]);
+  });
+
+  // #2377 slice C1: the production composition hands the Agent routes this
+  // Station's default, so clearing an Agent's own default over a Station
+  // default of `never` needs the full-access grant, which no agent holds.
+  test('slice C1: an Agent write that falls through to a Station default of never is refused without the grant', async () => {
+    const { base } = await setup();
+    const clear = async () => {
+      const response = await fetch(`${base}/agents/builder`, {
+        method: 'PUT',
+        headers: callerFor('op-claude', 'sdk-in-process'),
+        body: JSON.stringify({ execution: {} }),
+      });
+      return {
+        status: response.status,
+        code: ((await response.json()) as { code?: string }).code,
+      };
+    };
+    support.appConfig = { defaultApprovalMode: 'never' };
+    expect(await clear()).toEqual({
+      status: 403,
+      code: 'approval-full-access-not-granted',
+    });
+    support.appConfig = { defaultApprovalMode: 'ask' };
+    expect((await clear()).code).not.toBe('approval-full-access-not-granted');
   });
 });
