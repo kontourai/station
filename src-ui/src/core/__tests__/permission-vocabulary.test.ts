@@ -59,7 +59,7 @@ describe('permission vocabulary', () => {
     ['trusted', true],
     ['active', false],
     ['passive', false],
-  ] as const)('removing a %s grant asks first: %s', (tier, asks) => {
+  ] as const)('revoking a grant at tier %s asks first: %s', (tier, asks) => {
     expect(revokeNeedsConfirmation(tier)).toBe(asks);
   });
 });
