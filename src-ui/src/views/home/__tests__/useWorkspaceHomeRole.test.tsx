@@ -103,6 +103,7 @@ function harness() {
 afterEach(() => {
   registrySeam.subscribers = [];
   vi.unstubAllGlobals();
+  window.localStorage.clear();
 });
 
 test('a cached granted status does not survive the server failing to affirm it — the floor projects', async () => {
@@ -169,5 +170,29 @@ test('revocation transitions to the floor optimistically, before the wire answer
 
   await waitFor(() =>
     expect(rendered.result.current.status).toEqual({ state: 'none' }),
+  );
+});
+
+test('a grant planted in localStorage — the self-grant attack — cannot stand in for the server status', async () => {
+  // Before the re-scope the grant lived at this key, where same-origin plugin
+  // code could write it. The server says no grant exists; that answer wins.
+  window.localStorage.setItem(
+    'station:workspace-home-role',
+    JSON.stringify(grant),
+  );
+  _setApiBase('http://station.test');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, status: { state: 'none' } }),
+    })),
+  );
+  const { wrapper } = harness();
+  const rendered = renderHook(() => useWorkspaceHomeRoleStatus(), { wrapper });
+
+  await waitFor(() =>
+    expect(rendered.result.current).toEqual({ state: 'none' }),
   );
 });
