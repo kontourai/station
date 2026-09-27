@@ -106,6 +106,26 @@ function clearPendingIntent(apiBase: string, conversationId: string): void {
   }
 }
 
+/**
+ * Did Station definitively refuse the handoff? Only a response Station itself
+ * answered, and not an indeterminate one, clears the retained request. A
+ * failure with no status never reached an answer, and a proxy's page (an
+ * HTML 403 or 502) keeps its status but is not Station's answer (#2708).
+ */
+function isDefiniteHandoffFailure(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { status, outcome, stationEnvelope } = error as {
+    status?: unknown;
+    outcome?: unknown;
+    stationEnvelope?: unknown;
+  };
+  return (
+    typeof status === 'number' &&
+    outcome !== 'indeterminate' &&
+    stationEnvelope !== false
+  );
+}
+
 export function ConversationHandoffDialog({
   apiBase,
   conversationId,
@@ -273,25 +293,7 @@ export function ConversationHandoffDialog({
         );
       }
     } catch (error) {
-      const status =
-        typeof error === 'object' && error !== null
-          ? (error as { status?: unknown }).status
-          : undefined;
-      const outcome =
-        typeof error === 'object' && error !== null
-          ? (error as { outcome?: unknown }).outcome
-          : undefined;
-      // #2708: a proxy's page (an HTML 403 or 502) keeps its status but is
-      // not Station's answer, so it proves nothing about the handoff.
-      const stationAnswered =
-        typeof error === 'object' &&
-        error !== null &&
-        (error as { stationEnvelope?: unknown }).stationEnvelope !== false;
-      if (
-        typeof status !== 'number' ||
-        outcome === 'indeterminate' ||
-        !stationAnswered
-      ) {
+      if (!isDefiniteHandoffFailure(error)) {
         setState('indeterminate');
         setFeedback(
           'Station did not receive a final response. Check status or retry safely with the retained request.',
