@@ -58,6 +58,10 @@ describe('install.sh generated blocks', () => {
       /^(?:(?:export|readonly)\s+)?RELEASE_RINGS_JSON=/,
       /^(?:(?:export|readonly)\s+)?INSTALLABLE_RUNTIME_CHANNELS=/,
       /^channel_constants\s*\(\s*\)/,
+      /^(?:(?:export|readonly)\s+)?PORTABLE_SERVER_TARGETS_JSON=/,
+      /^(?:(?:export|readonly)\s+)?PINNED_NODE_VERSION=/,
+      /^(?:(?:export|readonly)\s+)?PINNED_NODE_ORIGIN=/,
+      /^pinned_node_distribution\s*\(\s*\)/,
     ]) {
       expect(lines.filter((line) => definition.test(line))).toHaveLength(1);
     }
@@ -88,6 +92,38 @@ describe('install.sh generated blocks', () => {
     );
   });
 
+  it('projects the pinned Node.js distributions and archive targets into install.sh', () => {
+    const script = readFileSync(INSTALL_SCRIPT_PATH, 'utf8');
+    const runtime = JSON.parse(
+      readFileSync(
+        join(root, 'config/portable-server-node-runtime.json'),
+        'utf8',
+      ),
+    );
+    expect(script).toContain(`PINNED_NODE_VERSION='${runtime.version}'\n`);
+    expect(script).toContain(`PINNED_NODE_ORIGIN='${runtime.origin}'\n`);
+    // Every POSIX target, and only those: Windows installs via install.ps1.
+    for (const id of ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64'])
+      expect(script).toContain(
+        [
+          `    ${id})`,
+          `      pinned_node_file='${runtime.distributions[id].file}'`,
+          `      pinned_node_sha256=${runtime.distributions[id].sha256}`,
+          '      ;;',
+        ].join('\n'),
+      );
+    expect(script).not.toContain('win32-x64)');
+    expect(script).toContain(
+      `PORTABLE_SERVER_TARGETS_JSON='${JSON.stringify([
+        { os: 'darwin', arch: 'arm64', format: 'tar.gz' },
+        { os: 'darwin', arch: 'x64', format: 'tar.gz' },
+        { os: 'linux', arch: 'arm64', format: 'tar.gz' },
+        { os: 'linux', arch: 'x64', format: 'tar.gz' },
+        { os: 'win32', arch: 'x64', format: 'zip' },
+      ])}'`,
+    );
+  });
+
   it.each([
     [
       'a hand-edited channel port',
@@ -98,6 +134,16 @@ describe('install.sh generated blocks', () => {
       'a hand-edited ring table',
       '"nightly":{"runtimeChannel":"nightly","prerelease":true}',
       '"nightly":{"runtimeChannel":"beta","prerelease":true}',
+    ],
+    [
+      'a hand-edited Node.js pin',
+      'pinned_node_sha256=bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057',
+      'pinned_node_sha256=bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6058',
+    ],
+    [
+      'a hand-edited archive target',
+      '{"os":"win32","arch":"x64","format":"zip"}',
+      '{"os":"win32","arch":"x64","format":"tar.gz"}',
     ],
     [
       'a hand-edited signing key',
@@ -152,12 +198,15 @@ describe('install-script:check as a process', () => {
     const copy = makeTempDir('station-install-check-');
     mkdirSync(join(copy, 'scripts/lib'), { recursive: true });
     mkdirSync(join(copy, 'config'));
+    mkdirSync(join(copy, 'packages/shared/src'), { recursive: true });
     for (const file of [
       'scripts/install-script-generated.mjs',
       'scripts/channel-ports.mjs',
       'scripts/lib/module-entry.mjs',
       'config/channel-ports.json',
       'config/release-manifest-keys.json',
+      'config/portable-server-node-runtime.json',
+      'packages/shared/src/portable-server-targets.mjs',
     ]) {
       copyFileSync(join(root, file), join(copy, file));
     }

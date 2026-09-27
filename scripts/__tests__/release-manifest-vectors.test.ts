@@ -139,6 +139,12 @@ type Vector = {
   expected: Outcome;
   /** The shared verifier's outcome where it deliberately differs. */
   sharedExpected?: Outcome;
+  /**
+   * install.sh's outcome where it differs from the shared verifier's. It
+   * keeps schema 1 as the source-release fallback for stable/preview (the
+   * shared API is schema 2 only), and validates it as the signer does.
+   */
+  installExpected?: Outcome;
 };
 
 const VECTORS: Vector[] = [
@@ -335,12 +341,14 @@ const VECTORS: Vector[] = [
     envelope: () => release({ ...platformPayload(STABLE), schemaVersion: 1 }),
     expected: 'manifest payload has an unexpected shape',
     sharedExpected: 'unsupported manifest schema',
+    installExpected: 'manifest payload has an unexpected shape',
   },
   {
     name: 'a valid schema 1 envelope',
     envelope: () => release(V1_PAYLOAD),
     expected: 'accept',
     sharedExpected: 'unsupported manifest schema',
+    installExpected: 'accept',
   },
   {
     name: 'an unknown schema',
@@ -435,31 +443,109 @@ function sharedOutcome(
   }
 }
 
-describe('release manifest golden vectors (#2675)', () => {
-  it.each(VECTORS)('$name', ({ envelope, expected, sharedExpected }) => {
-    const dir = makeTempDir('station-release-manifest-vectors-');
-    const keysPath = join(dir, 'keys.json');
-    writeFileSync(keysPath, JSON.stringify(KEYS));
-    const value = envelope();
-    const manifestPath = join(dir, 'manifest.json');
-    writeFileSync(manifestPath, JSON.stringify(value));
+const installer = join(root, 'install.sh');
+const RUNTIME_CHANNEL: Record<string, string> = {
+  stable: 'stable',
+  preview: 'beta',
+  nightly: 'nightly',
+};
 
-    const signer = run([
-      'verify',
-      '--manifest',
-      manifestPath,
-      '--keys',
-      keysPath,
-    ]);
-    if (expected === 'accept') {
-      expect(signer.status, signer.stderr).toBe(0);
-      expect(JSON.parse(signer.stdout)).toEqual(value.payload);
-    } else {
-      expect(signer.status).toBe(1);
-      expect(signer.stderr.trim()).toBe(expected);
-    }
-    expect(sharedOutcome(value)).toBe(sharedExpected ?? expected);
+/**
+ * install.sh's decision, from the real script with `keys` in place of its
+ * generated pinned table (the only line that differs). It verifies for the
+ * ring the payload names, like sharedOutcome. Its verifier prints a line on
+ * success, before it selects this host's archive, and its reason on failure.
+ * A fake curl serves the manifest at an HTTPS URL (so no test-only flag
+ * relaxes the artifact URL policy under test) and refuses every other
+ * download, so nothing past verification runs.
+ */
+function installOutcome(
+  dir: string,
+  envelope: Record<string, unknown>,
+  keys: unknown = KEYS,
+): Outcome {
+  const script = join(dir, 'install-pinned.sh');
+  const pristine = readFileSync(installer, 'utf8');
+  const pinned = /^PINNED_MANIFEST_SIGNING_KEYS='[^'\n]*'$/m;
+  expect(pristine).toMatch(pinned);
+  writeFileSync(
+    script,
+    pristine.replace(
+      pinned,
+      `PINNED_MANIFEST_SIGNING_KEYS='${JSON.stringify(keys)}'`,
+    ),
+  );
+  const manifestPath = join(dir, 'install-manifest.json');
+  writeFileSync(manifestPath, JSON.stringify(envelope));
+  const fakeBin = join(dir, 'fake-bin');
+  mkdirSync(fakeBin, { recursive: true });
+  const manifestUrl = 'https://station-vectors.invalid/manifest.json';
+  writeFileSync(
+    join(fakeBin, 'curl'),
+    [
+      '#!/bin/sh',
+      'output=; url=',
+      'while [ "$#" -gt 0 ]; do',
+      '  case "$1" in -o) output="$2"; shift 2 ;; --) shift ;; -*) shift ;; *) url="$1"; shift ;; esac',
+      'done',
+      `[ "$url" = '${manifestUrl}' ] || { echo "fixture curl refuses $url" >&2; exit 22; }`,
+      `cp '${manifestPath}' "$output"`,
+      '',
+    ].join('\n'),
+    { mode: 0o755 },
+  );
+  const channel = (envelope.payload as { channel?: unknown } | undefined)
+    ?.channel;
+  const ring = typeof channel === 'string' ? channel : 'nightly';
+  const result = spawnSync('sh', [script], {
+    encoding: 'utf8',
+    windowsHide: true,
+    env: {
+      PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
+      HOME: join(dir, 'home'),
+      TMPDIR: dir,
+      STATION_CHANNEL: RUNTIME_CHANNEL[ring] ?? 'nightly',
+      STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl,
+      STATION_INSTALL_NO_START: '1',
+    },
   });
+  if (result.stdout.includes('Verified the signed release manifest'))
+    return 'accept';
+  const reason = /^Station manifest verification: (.*)$/m.exec(result.stderr);
+  return reason ? reason[1] : `no verdict: ${result.stderr}`;
+}
+
+describe('release manifest golden vectors (#2675)', () => {
+  it.each(VECTORS)(
+    '$name',
+    ({ envelope, expected, sharedExpected, installExpected }) => {
+      const dir = makeTempDir('station-release-manifest-vectors-');
+      const keysPath = join(dir, 'keys.json');
+      writeFileSync(keysPath, JSON.stringify(KEYS));
+      const value = envelope();
+      const manifestPath = join(dir, 'manifest.json');
+      writeFileSync(manifestPath, JSON.stringify(value));
+
+      const signer = run([
+        'verify',
+        '--manifest',
+        manifestPath,
+        '--keys',
+        keysPath,
+      ]);
+      if (expected === 'accept') {
+        expect(signer.status, signer.stderr).toBe(0);
+        expect(JSON.parse(signer.stdout)).toEqual(value.payload);
+      } else {
+        expect(signer.status).toBe(1);
+        expect(signer.stderr.trim()).toBe(expected);
+      }
+      expect(sharedOutcome(value)).toBe(sharedExpected ?? expected);
+      expect(installOutcome(dir, value)).toBe(
+        installExpected ?? sharedExpected ?? expected,
+      );
+    },
+  );
 
   it('covers every target, and zip exactly on win32', () => {
     // Pinned independently of the shared table the verifiers read.
@@ -544,6 +630,23 @@ describe('release manifest signer CLI (#2675)', () => {
       ],
     };
     expect(sharedOutcome(envelope, goldenKeys)).toBe('accept');
+    // install.sh derives the same bytes: it accepts the golden signature,
+    // and refuses it once one signed byte changes.
+    expect(installOutcome(dir, envelope, goldenKeys)).toBe('accept');
+    expect(
+      installOutcome(
+        dir,
+        {
+          ...envelope,
+          payload: {
+            ...envelope.payload,
+            version: '0.7.0-nightly.13',
+            releaseTag: 'v0.7.0-nightly.13',
+          },
+        },
+        goldenKeys,
+      ),
+    ).toBe('manifest signature did not verify');
   });
 
   it('refuses to sign a v2 payload that breaks the schema', () => {
