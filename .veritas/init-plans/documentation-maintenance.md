@@ -1,15 +1,18 @@
-# Documentation maintenance policy proposal
+# Documentation maintenance policy
 
-Status: tested proposal; **not active policy**. The protected Repo Map,
-Standards, authority and attestations are unchanged. The accompanying
-[additions](documentation-maintenance-additions.json) are the exact proposed
-entries, not a replacement configuration or an executable migration.
+Status: **owner-approved and applied in this audit branch**, 2026-09-27.
+Brian approved activation after reviewing this tested proposal. The approval
+reference is `conversation:2026-09-27:station-documentation-maintenance-approved`;
+the policy-change attestation binds the resulting protected hashes. Authority
+settings and existing checks are preserved. The accompanying
+[additions](documentation-maintenance-additions.json) record the applied delta,
+not a replacement configuration or an executable migration.
 
-## Proposed behavior
+## Active behavior
 
-Add `documentation-truth`, running the existing `npm run docs:truth:gate`, to
-both default and required evidence IDs. Preserve all existing checks and
-authority. Add the explanatory `documentation-source-currentness` rule at
+`documentation-truth`, running the existing `npm run docs:truth:gate`, is in
+both default and required evidence IDs. Existing checks and authority remain.
+The explanatory `documentation-source-currentness` rule is at
 Guide, linking the [audit skill](../../.agents/skills/documentation-audit/SKILL.md)
 and [maintenance guide](../../docs/guides/documentation.md).
 
@@ -36,7 +39,7 @@ unmapped code has no documentation impact.
 The required merge-queue regression already reaches `docsTruth` through static
 verification. Ordinary `ci:fast` does not universally run it. The separate
 same-repository PR source-scan job checks freshness, but it is not a required
-check and does not run for every fork or merge-group event. The proposal brings
+check and does not run for every fork or merge-group event. This policy brings
 that feedback into required local/CI readiness without adding another validator.
 
 Default selection alone is insufficient. The first trial selected and ran the
@@ -46,7 +49,7 @@ reports an independent required-evidence failure.
 
 The frozen upstream CI graph now splits fast checks into plan, test shards and
 statics. The statics job still invokes Veritas readiness; the required
-`fast-checks` job aggregates those results. This proposal therefore applies
+`fast-checks` job aggregates those results. This policy therefore applies
 through that existing call, without adding a parallel CI gate.
 
 ## Executed controls
@@ -107,12 +110,20 @@ about 0.3 seconds in this trial; the other checks cover distinct contracts.
 
 These are local observations under concurrent host load, not a hosted upper
 bound. The 15-minute `ci:fast` budget and 220-second static reserve are unchanged.
-Before activation, review current CI headroom and run the final integrated
-revision's fast lane. Do not remove checks or increase budgets to hide a failure.
+The pre-activation integrated checks and measured cost are recorded below.
+Future changes must preserve CI headroom; do not remove checks or increase
+budgets to hide a failure.
 
 Activation changes protected hashes and adds required evidence. Under
-[GOVERNANCE.md](../GOVERNANCE.md), it needs genuine owner review and the existing
-policy-change attestation process. Apply the additive entries to current
-configuration, preserve unrelated policy, and retain the real approval reference.
-This draft supplies catch/control evidence for that decision; it grants no
-authority to attest on the owner's behalf.
+[GOVERNANCE.md](../GOVERNANCE.md), it requires genuine owner review and the existing
+policy-change attestation process. This activation applied only the reviewed
+additive entries, preserved unrelated policy, and retained the real approval reference.
+The owner approved that exact activation in the conversation on 2026-09-27.
+The preceding trials remain candidate evidence, including their expected
+authority refusals; they are not relabeled as active-policy passes.
+
+Before activation, the final candidate at `d2cf36b34` selected and passed the
+documentation check in 35.679 seconds; total readiness took 108.81 seconds and
+retained only the unapproved-policy refusal and its derived warning. Normal
+`ci:fast` passed on macOS, and `verify:static` passed on Linux at that revision.
+Those are local revision-bound receipts, not hosted regression or deployment.

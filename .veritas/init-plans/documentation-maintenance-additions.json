@@ -1,5 +1,5 @@
 {
-  "status": "proposal-not-active",
+  "status": "applied-owner-approved",
   "evidenceCheck": {
     "id": "documentation-truth",
     "command": "npm run docs:truth:gate",

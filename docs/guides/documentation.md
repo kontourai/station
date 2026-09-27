@@ -90,6 +90,12 @@ the module map can select many topics. Periodic audits still need to look for
 missing relationships. Run `docs:truth:gate` after reviewing and updating the
 ledger; the impact report does not change evidence or grant approval.
 
+Veritas selects this command as required `documentation-truth` evidence,
+including for source-only changes. A stale recorded review blocks readiness;
+unmapped dependencies and prose accuracy still require review. The
+[activation record](../../.veritas/init-plans/documentation-maintenance.md)
+retains the owner approval and failure/restoration controls.
+
 ## Make the application learnable
 
 The reading path is product purpose → system overview → subsystem or user

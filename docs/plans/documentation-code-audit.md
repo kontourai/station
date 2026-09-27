@@ -1,7 +1,7 @@
 # Documentation and architecture audit
 
-Status: source audit complete; follow-up proposals and protected policy activation
-remain separate. Baseline:
+Status: source audit complete; documentation maintenance policy activated with
+owner approval. Follow-up product proposals remain separate. Baseline:
 `ff2d743b4e45605d0a8500bd15ca4e1a86185ca6` (2026-09-26); upstream changes
 reviewed through `f3954615e965964aefc9a70a251a714433754f0c`.
 This is the audit record, not a deployment receipt. GitHub owns live delivery
@@ -298,8 +298,8 @@ new, unpublished reader, not evidence of a released Station vulnerability.
   agent instructions, and repository skills. The broader scope caught two
   moved route references and a malformed citation in the meeting-notes README.
 - Root agent guidance routes feature changes through the maintenance guide and
-  audit skill. Existing Protected Standards remain unchanged; a new Veritas
-  requirement remains the proposal below.
+  audit skill. The initial proposal became the owner-approved required
+  documentation evidence check described below.
 - Initial comment cleanup retains security/history constraints. The streaming
   pipeline and documentation aggregate have identical emitted executable code
   before and after comment removal.
@@ -343,13 +343,13 @@ estimated complexity score.
 
 ## Veritas adoption
 
-The [tested policy proposal](../../.veritas/init-plans/documentation-maintenance.md)
+The [policy activation record](../../.veritas/init-plans/documentation-maintenance.md)
 contains the exact additive configuration, a recorded-source drift catch,
-restoration controls, costs, and the remaining protected-policy activation step.
+restoration controls, costs, and the owner-approved activation.
 The trial showed that default evidence alone only warns; required evidence
-produces the intended blocking result. It has not been activated.
+produces the intended blocking result. The owner approved activation on 2026-09-27.
 
-Proposed guidance: when a feature changes a user journey or contract, name its
+The guidance is: when a feature changes a user journey or contract, name its
 documentation owner, update affected diagrams/READMEs/examples, or give a
 specific source-backed reason no documentation changed. Route that guidance
 through the existing `gate:for` and Veritas path-guidance mechanism, with the
@@ -375,15 +375,15 @@ human authority, duplicate Veritas's evaluator, or weaken existing checks.
   READMEs and examples. The generated library owns the current inventory and
   module counts. Each record retains its own evidence limits.
 - Implemented: shared reader/MCP generation, source-impact and catch-up reports,
-  an audit skill, source-bound screenshots and short clips, and a tested Veritas
-  policy proposal. Proposed product improvements live in linked GitHub issues.
+  an audit skill, source-bound screenshots and short clips, and the required
+  Veritas documentation check. Proposed product improvements live in linked GitHub issues.
 - Verification: at `d2cf36b34`, `ci:fast` passed on macOS and `verify:static`
   passed on an isolated Linux worktree with Node 24.18.0. The Linux run needed
   the CI-pinned actionlint and matching ShellCheck installed first. Earlier
   queue timeouts and failed prerequisite/type checks remain separate receipts.
   Later proposal-only edits need their own documentation checks; these local
   results do not represent hosted regression, deployment or physical-device proof.
-- Separate owner work: protected Veritas promotion, Knowledge Kit publication,
+- Separate owner work: Knowledge Kit publication,
   privacy inventory completeness and legal/store approval. The audit does not
   establish live provider behavior, physical-platform results, hosted deployment,
   every possible code path, or the absence of further defects.

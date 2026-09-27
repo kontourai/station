@@ -35,6 +35,7 @@ own runtime locations. Neither path is protected policy source.
 
 - `style-standard` (required, default): runs `npm run lint:check`.
 - `repo-governance` (required, default): Veritas artifacts, AI instruction wiring, CI/report wiring, pinned workflow actions.
+- `documentation-truth` (required, default): runs `npm run docs:truth:gate`, including strict recorded document/source freshness. Unknown dependencies and semantic accuracy still need review.
 - `verification-policy` (default): runs the executable selector-first verification-policy gate, so public lane wiring and agent guidance cannot drift silently. It is default-enforced, not a required evidence family.
 - `architecture-boundaries` / `ui-data-access` / `runtime-contracts`: candidate or advisory proof-family inventory entries. Their current selection and blocking status must be read from the Repo Map
   and proof-family inventory. Declaration alone does not establish an executed
@@ -111,8 +112,8 @@ The review ledger records document purpose separately from source review.
 
 `docs:truth:gate` already includes the strict ledger freshness test through
 `docs:foundations:test`. It runs in static verification and therefore the
-required merge-queue/full-regression paths. It is not currently a fixed
-`ci:fast` invariant or a default Veritas evidence check. The separate
+required merge-queue/full-regression paths. It is also selected as required
+Veritas evidence, including through `ci:fast`'s readiness call. The separate
 same-repository PR source-scan job also checks freshness, but is not a required
 status check. A normal reader build can mark stale reviews `needs-review`;
 the strict check refuses them. None of these mechanisms proves the semantics
@@ -120,10 +121,11 @@ of a prose claim or covers source dependencies absent from the ledger.
 
 Hosted `fast-checks` now aggregates an affected-test plan, four shards, and
 `fast-checks-statics`. The statics job runs `ci:fast` with the explicit statics
-scope and includes its Veritas readiness call; sharding does not add the full
-documentation gate to that fixed list. A default Veritas documentation check
-would therefore be a new enforcement point and still needs the existing
-governance process below.
+scope and includes its Veritas readiness call. The required documentation
+evidence is unioned with default, routed or explicitly selected checks; it
+does not depend on a documentation file appearing in the changed paths.
+See the [activation record](init-plans/documentation-maintenance.md) for
+owner approval, catch/control evidence and measured cost.
 
 New gate proposals remain proposals until implemented, exercised on known-bad
 and benign cases, and admitted through the existing governance process.

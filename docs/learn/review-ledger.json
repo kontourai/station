@@ -111,7 +111,7 @@
         }
       ],
       "checks": [
-        "npm run changesets:check — 71 retained changesets form a valid release plan.",
+        "npm run changesets:check \u2014 71 retained changesets form a valid release plan.",
         "Reviewed source changes: Reviewed the hosted statics scope addition: local default still runs selector plus statics; hosted plan/shards own the selection and statics omits only that duplicated selector. Changeset validation remains in the static command list."
       ]
     },
@@ -1073,12 +1073,12 @@
     },
     {
       "path": ".veritas/README.md",
-      "documentDigest": "28b9c081d160d05598880b01180cf8143b67b8f969f5ea459b243ae2bbd0fbfd",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "documentDigest": "edd1930dc10255d28023964b4c749edee17275673d3513afa9c3a7973c63a32e",
+      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
       "kind": "current",
       "state": "source-reviewed",
-      "summary": "Current repository Veritas integration and protected-policy/evidence boundaries. Full 87-line baseline read. Actual repository configuration, installed Veritas 1.7.4 public docs/schema, hook wiring and generated-path contracts inspected. Proposal schema checked only; no protected configuration, authority or attestation changed.",
-      "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release, real provider/device or protected-policy activation in this tranche.",
+      "summary": "Current repository Veritas integration and protected-policy/evidence boundaries. Full 87-line baseline read. Actual repository configuration, installed Veritas 1.7.4 public docs/schema, hook wiring and generated-path contracts inspected. Reviewed the approved documentation evidence activation and policy-change attestation; authority settings remain unchanged.",
+      "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
       "sources": [
         {
           "path": ".agents/skills/documentation-audit/SKILL.md",
@@ -1122,19 +1122,19 @@
         },
         {
           "path": ".veritas/repo-map.json",
-          "digest": "f1dd60bb2296cf6110575a655f8b36e61d7f0d731c2c7dcae053b4ae73bac15c"
+          "digest": "fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4"
         },
         {
           "path": ".veritas/repo-standards/default.repo-standards.json",
-          "digest": "866a3d291c31a03467fe312c3131718862816604f0bdc350afada28488b011db"
+          "digest": "739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46"
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "0c6e318f2ddbc4a6e0066f5d74fb6f7fce622cef67cab40a036e3aaa394865e5"
+          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "4c323c8b9ff1aef8cd0489bb391fc6de83cff255692458fe358d136d3681a851"
+          "digest": "ea617f5b50620ffa33c700ce3702e7b2f6f38fb01e2aed8c1c6c86b94efe9d5b"
         },
         {
           "path": "package.json",
@@ -1247,26 +1247,40 @@
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
         "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
         "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
-        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate."
+        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
       ]
     },
     {
       "path": ".veritas/init-plans/documentation-maintenance.md",
-      "documentDigest": "0a264b9139b33fcc0364bfa5b72126ecb2ad0c590016de1166f9ebd87ec0bf8f",
-      "sourceRevision": "db0aba406478897be8b61fe938275dc2bbeaf12a",
+      "documentDigest": "f478d577f97a71cdbee0b47a392032092b99f8413d1d1ef4bd3ac93b610bb5a1",
+      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
       "kind": "design",
       "state": "classified",
-      "summary": "Tested additive proposal, catch/restoration results, optional-versus-required distinction and remaining owner activation. All underlying candidate runs retained their separate protected-hash refusal.",
-      "limits": "Purpose and recorded evidence reviewed; no policy activation, exhaustive semantic certification or live provider/device proof.",
+      "summary": "Owner-approved additive documentation policy activation, catch/restoration results, required-evidence selection and cost. Historical candidate runs retain their separate protected-hash refusals.",
+      "limits": "Purpose and recorded evidence reviewed; no exhaustive semantic certification or live provider/device proof; policy activation is limited to the approved additions in this branch.",
       "sources": [
         {
           "path": ".veritas/init-plans/documentation-maintenance-additions.json",
-          "digest": "1d6e82db92b59840fc88181edecb174ac6dd006abe25f5ecef2e82d381afdc75"
+          "digest": "4007fa4a0c45fdb1b9a4a8a3b79cfb1ba0fb6d9fb988ee9c7e5d159cdec07168"
+        },
+        {
+          "path": ".veritas/repo-map.json",
+          "digest": "fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4"
+        },
+        {
+          "path": ".veritas/repo-standards/default.repo-standards.json",
+          "digest": "739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46"
+        },
+        {
+          "path": ".veritas/attestations/HEAD",
+          "digest": "509a9ed1d454af138d096f874c8fe21ce9e76cb34982654b06a62778d622bb41"
         }
       ],
       "checks": [
         "Proposal reviewed against actual override trial receipts: default-only failure warned; required candidate caught recorded drift, exact restoration removed that evidence failure. Protected policy remained unchanged.",
-        "Reviewed frozen CI selection and the tested required-check proposal plus impact guidance. It remains explicitly inactive pending protected-policy approval."
+        "Reviewed frozen CI selection and the tested required-check proposal plus impact guidance. It remains explicitly inactive pending protected-policy approval.",
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
       ]
     },
     {
@@ -1999,7 +2013,7 @@
     {
       "path": "docs/README.md",
       "documentDigest": "376eb72a923e3650381d57db7299752695bb6ec297d6a47fd5077930c06e0382",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read every audience route and index description against its canonical document and the explicit public Pages allowlist. Current, design, history and generated content are separated.",
@@ -2011,7 +2025,7 @@
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "0c6e318f2ddbc4a6e0066f5d74fb6f7fce622cef67cab40a036e3aaa394865e5"
+          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
         },
         {
           "path": "docs/learn/README.md",
@@ -2241,7 +2255,8 @@
         "Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
         "Reviewed navigation link to the captured application walkthrough; underlying feature statements unchanged.",
         "Final entry-point review followed the affected canonical module/contract owners; no matching hash or file count was used as semantic proof.",
-        "Reviewed integration deltas: Reviewed clearer purpose-first navigation and canonical learning path; retained scope and evidence distinctions. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. docs/learn/README.md: Reviewed navigation wording and explicit source/evidence limits; graph and capture routes use canonical owners. docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained."
+        "Reviewed integration deltas: Reviewed clearer purpose-first navigation and canonical learning path; retained scope and evidence distinctions. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. docs/learn/README.md: Reviewed navigation wording and explicit source/evidence limits; graph and capture routes use canonical owners. docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained.",
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
       ]
     },
     {
@@ -3509,7 +3524,7 @@
     {
       "path": "docs/architecture/abstraction-review.md",
       "documentDigest": "30885eb7874a50f0f96011945c475fc7d6e25d8ed074da307a8106f2342ada44",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
@@ -3537,7 +3552,7 @@
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "0c6e318f2ddbc4a6e0066f5d74fb6f7fce622cef67cab40a036e3aaa394865e5"
+          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
         },
         {
           "path": "docs/guides/keyboard-shortcuts.md",
@@ -3670,7 +3685,8 @@
         "Updated notification suppression as a historical finding fixed by shared policy; retained physical/timing limits and linked GitHub evidence.",
         "Added source/actual-caller findings #2843 through #2849 with distinct evidence limits, suggested owner fixes and same-PR documentation acceptance.",
         "Reviewed integration deltas: Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
-        "Bound the curated findings to the code and canonical explanations already reviewed and linked by this document; issue status remains external."
+        "Bound the curated findings to the code and canonical explanations already reviewed and linked by this document; issue status remains external.",
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
       ]
     },
     {
@@ -5370,7 +5386,7 @@
         "Reviewed comment-only owner correction; emitted JavaScript is unchanged and the existing behavioral review scope is preserved.",
         "Source-reviewed policy-construction and host callers; synthetic intercepted Chromium probe is not live remote exfiltration or broad containment proof.",
         "Native renewal section: independent source/caller review and prior focused 24-test renewal receipt; renderer supervision is distinct from host credential custody and application access.",
-        "Reviewed integration deltas: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged. src-server/providers/registries/json-manifest-registry.ts: Uses shared endsAsGitName folding for local source admission; registry additionally scans top-level names for Git metadata variants. Plugin source Git metadata reads use explicit own repository arguments. Current plugins guide343/1147 describes this restriction; no generic filesystem sandbox claim. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged. src-desktop/src/lib.rs: Frozen delta registers station_native_relay_grant_renew in the main Tauri command table. Existing reviewed capability, startup, tray, open-browser, push and credential boundaries otherwise unchanged by this delta. packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. packages/shared/src/mcp-ui-csp.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d."
+        "Reviewed integration deltas: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged. src-server/providers/registries/json-manifest-registry.ts: Uses shared endsAsGitName folding for local source admission; registry additionally scans top-level names for Git metadata variants. Plugin source Git metadata reads use explicit own repository arguments. Current plugins guide343/1147 describes this restriction; no generic filesystem sandbox claim. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged. src-desktop/src/lib.rs: Frozen delta registers station_native_relay_grant_renew in the main Tauri command table. Existing reviewed capability, startup, tray, open-browser, push and credential boundaries otherwise unchanged by this delta. packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. packages/shared/src/mcp-ui-csp.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d."
       ]
     },
     {
@@ -6042,7 +6058,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed full documented-claim review from management/view callers through token store, owner reauthorization, rate budgets, content/channel arbitration and standalone UI. Corrected token-memory/reload limits, network-origin admission, restricted contextInjection, block clipping disclosure, fourteen projected fields and store downgrade pruning. Corrected two matching source comments without changing parsed programs.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "packages/contracts/src/answer-share-channel.ts",
@@ -6600,7 +6616,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed full documented-claim review, building on the nine-guide controller review: paired identity/preparation/advance and private control authority, guarded durable SQLite, room source seals, snapshot digests, session-start/task-dispatch barriers and completed-dispatch recovery. Current narrower operations remain distinct from required distributed leases, target activation, cross-host writer fencing and provider continuation. No prose correction required.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "packages/contracts/src/environment-security.ts",
@@ -6835,7 +6851,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed full preparation, template, enrollment and target-observation claim review through shared provider composition, CLI/SDK callers and SSH worker probe. Checked bounded non-atomic inventory, explicit false transfer/resume flags, AWS template resource/access/persistence choices and GCP inventory-only scope. Clarified existing deployment authentication versus unimplemented Cloud IAM enrollment and template credential passing.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "packages/cli/src/commands/cloud-target.ts",
@@ -7036,7 +7052,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "src-server/domain/config-loader-app.ts",
@@ -7424,7 +7440,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed schema/read/publish/lock and production producer/consumer claim review. Distinguished minimal optional metadata validation, adoption/protected-type ordering, atomic rename versus writer locking and post-rename failure, Windows ACL/fsync limits and exact two-child test scope. Corrected Desktop service ownership reporting without automatic attachment; retained separate CLI state and conservative liveness boundaries.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
@@ -7940,7 +7956,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current capability, permission, platform-adapter and host-caller claims. Corrected extra typed host subscriptions, dev pairing schemes, distinct closed open-browser route, second-launch background exception and updater ownership. Added Desktop native-grant maintenance boundary while preserving disabled native application transport and dated external platform survey.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "scripts/native-platform-boundary.mjs",
@@ -8029,7 +8045,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed full documented protocol/caller review of registration, per-principal projection, sealed payloads and phone pinning, FCM/APNs lifecycle, bounded retry/queue/replay behavior, native tap routes and desktop feed ownership. Corrected gateway state/kinds, iOS18 implementation floor, soft queue cap, scoped sweep recovery, historical Rust/watch conclusions and implemented Kotlin CI. All provisioning and physical delivery receipts remain historical.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": ".github/workflows/desktop-rust.yml",
@@ -8661,7 +8677,7 @@
       "checks": [
         "Entire original document read; actual owner/caller inspection for named corrections. Classification does not certify every body claim.",
         "289 tests across 9 focused files passed; expected negative fixtures emitted errors without test failure.",
-        "Reviewed integration deltas: src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged."
+        "Reviewed integration deltas: src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged."
       ]
     },
     {
@@ -9522,7 +9538,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed full coordination/deadline/lock/outcome claim review against module and actual service adapter/status callers. Checked same/opposing desired state, initial versus post-effect timeout custody and cleanup failure. Corrected service status additional scheduling/PATH observations without changing lifecycle authority.",
-      "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+      "limits": "Source review of this document\u2019s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
       "sources": [
         {
           "path": "packages/cli/src/__tests__/station-instance-reconciler.test.ts",
@@ -10962,11 +10978,11 @@
     {
       "path": "docs/guides/code-quality.md",
       "documentDigest": "26dd41e32a4e40337afd4f3dee0d9423aa027cd07f54735b7c591d2e853787e4",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Contributor quality and publication requirements with current hook composition. Full 316-line baseline read. Hook ordering, readiness selection, lane composition, route-helper adoption and actual raw-parameter route inspected. Requirements distinguished from execution proof; historical cost observations not remeasured. Follow-up: Push & Monitor delta only: separates merge-queue arm/confirm/stop from following task-required CI evidence to its outcome.",
-      "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release, real provider/device or protected-policy activation in this tranche.",
+      "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
       "sources": [
         {
           "path": ".agents/skills/documentation-audit/SKILL.md",
@@ -11010,11 +11026,11 @@
         },
         {
           "path": ".veritas/repo-map.json",
-          "digest": "f1dd60bb2296cf6110575a655f8b36e61d7f0d731c2c7dcae053b4ae73bac15c"
+          "digest": "fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4"
         },
         {
           "path": ".veritas/repo-standards/default.repo-standards.json",
-          "digest": "866a3d291c31a03467fe312c3131718862816604f0bdc350afada28488b011db"
+          "digest": "739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46"
         },
         {
           "path": "AGENTS.md",
@@ -11022,7 +11038,7 @@
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "0c6e318f2ddbc4a6e0066f5d74fb6f7fce622cef67cab40a036e3aaa394865e5"
+          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
         },
         {
           "path": "docs/guides/testing.md",
@@ -11030,7 +11046,7 @@
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "4c323c8b9ff1aef8cd0489bb391fc6de83cff255692458fe358d136d3681a851"
+          "digest": "ea617f5b50620ffa33c700ce3702e7b2f6f38fb01e2aed8c1c6c86b94efe9d5b"
         },
         {
           "path": "package.json",
@@ -11142,7 +11158,8 @@
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
         "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
         "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
-        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate."
+        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
       ]
     },
     {
@@ -12960,11 +12977,11 @@
     {
       "path": "docs/guides/development.md",
       "documentDigest": "d2fe6a32adfcfba50a1601ef305814949d971ddb31a3527af849db47d15a733a",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Checkout setup and contributor workflow, with normative boundaries routed to owners. Full 415-line baseline read. Dependency lifecycle, workspace/package contract, command ownership, verification paths and plugin workflow boundaries checked. No installs outside managed setup, plugin installation, runtime/service control, native build or publication performed.",
-      "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release, real provider/device or protected-policy activation in this tranche.",
+      "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
       "sources": [
         {
           "path": ".agents/skills/documentation-audit/SKILL.md",
@@ -13012,19 +13029,19 @@
         },
         {
           "path": ".veritas/repo-map.json",
-          "digest": "f1dd60bb2296cf6110575a655f8b36e61d7f0d731c2c7dcae053b4ae73bac15c"
+          "digest": "fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4"
         },
         {
           "path": ".veritas/repo-standards/default.repo-standards.json",
-          "digest": "866a3d291c31a03467fe312c3131718862816604f0bdc350afada28488b011db"
+          "digest": "739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46"
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "0c6e318f2ddbc4a6e0066f5d74fb6f7fce622cef67cab40a036e3aaa394865e5"
+          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "4c323c8b9ff1aef8cd0489bb391fc6de83cff255692458fe358d136d3681a851"
+          "digest": "ea617f5b50620ffa33c700ce3702e7b2f6f38fb01e2aed8c1c6c86b94efe9d5b"
         },
         {
           "path": "package.json",
@@ -13161,7 +13178,8 @@
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
         "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
         "Reviewed integration deltas: .github/workflows/portable-server-archives.yml: Adds diagnostics and stop-hint helpers to both workflow path filters; build/smoke matrix and publication authority unchanged. Native release guide already distinguishes qualification from publication. docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries. scripts/lib/portable-server-archive.mjs: Passes explicit platform/arch into the shared stager and refuses a build target unlike the host before downloading/writing. Native release guide was corrected in b761343b3 and root now states that limitation.",
-        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate."
+        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
       ]
     },
     {
@@ -13218,18 +13236,32 @@
     },
     {
       "path": "docs/guides/documentation.md",
-      "documentDigest": "0c6e318f2ddbc4a6e0066f5d74fb6f7fce622cef67cab40a036e3aaa394865e5",
-      "sourceRevision": "db0aba406478897be8b61fe938275dc2bbeaf12a",
+      "documentDigest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b",
+      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
       "kind": "policy",
       "state": "classified",
       "summary": "Reviewed the audit, source-evidence, comment, editorial, and GitHub follow-through workflow.",
       "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
-      "sources": [],
+      "sources": [
+        {
+          "path": ".veritas/repo-map.json",
+          "digest": "fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4"
+        },
+        {
+          "path": ".veritas/repo-standards/default.repo-standards.json",
+          "digest": "739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46"
+        },
+        {
+          "path": ".veritas/attestations/HEAD",
+          "digest": "509a9ed1d454af138d096f874c8fe21ce9e76cb34982654b06a62778d622bb41"
+        }
+      ],
       "checks": [
         "Independently reviewed anchor-check guidance, including local/current-revision scope, historical external links, parser behavior, and semantic-review limits.",
         "Reviewed added guidance to inspect pinned dependency defaults; factory mocks do not establish persisted or emitted fields.",
         "Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed.",
-        "Final type repair independently reviewed: scripts typecheck passed (367 compiled files; existing 56 deferred), impact/media/browser selection passed 22 tests, and corrected native-element browser callbacks passed all seven reader tests. Earlier type and callback failures remain separate receipts."
+        "Final type repair independently reviewed: scripts typecheck passed (367 compiled files; existing 56 deferred), impact/media/browser selection passed 22 tests, and corrected native-element browser callbacks passed all seven reader tests. Earlier type and callback failures remain separate receipts.",
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
       ]
     },
     {
@@ -13734,7 +13766,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -13758,7 +13790,7 @@
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "0c6e318f2ddbc4a6e0066f5d74fb6f7fce622cef67cab40a036e3aaa394865e5"
+          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
         },
         {
           "path": "docs/guides/plugins.md",
@@ -13809,7 +13841,8 @@
         "Source/caller review on 2026-09-27 completed for the whole document, separating implemented behavior, policy requirements and historical evidence. Current root document bytes at 45fcdd5230b0b5e5028e469864ab70693e6088b0 matched the lane before this prose correction; reviewed implementation remains the frozen 6fa523e4d5b5a265a9e545edcbba6f5602193bef integration.",
         "EXECUTED: git diff --check passed. No production behavior changed. No new live audit, hosted job, browser suite, dependency installation, cloud deployment or price refresh was run for this tranche.",
         "NOT_EXECUTED: gate:for could not spawn its shell (EAGAIN, host process capacity); retained the failure and avoided process-heavy verification. Parent owns final combined documentation/readiness checks. Existing tests were inspected for their actual assertions and limits, not reported as newly executed.",
-        "Reviewed integration deltas: docs/reference/api.md: Integrated frozen upstream Agent effective-default admission and current inheritance/clear-to-never authority condition; source/caller review, not new live execution. docs/reference/sdk.md: Integrated typed Project/plugin HTTP errors, Retry-After and optional grantsUnavailable constructor contract; added accurate MCP policy construction limits."
+        "Reviewed integration deltas: docs/reference/api.md: Integrated frozen upstream Agent effective-default admission and current inheritance/clear-to-never authority condition; source/caller review, not new live execution. docs/reference/sdk.md: Integrated typed Project/plugin HTTP errors, Retry-After and optional grantsUnavailable constructor contract; added accurate MCP policy construction limits.",
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
       ]
     },
     {
@@ -18397,11 +18430,11 @@
     {
       "path": "docs/guides/testing.md",
       "documentDigest": "1109abb2dbedb62e3b5f5407e87a0949adbac2ffb04e1cb1292e2b2173259e87",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
-      "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release, real provider/device or protected-policy activation in this tranche.",
+      "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
       "sources": [
         {
           "path": ".agents/skills/documentation-audit/SKILL.md",
@@ -18445,19 +18478,19 @@
         },
         {
           "path": ".veritas/repo-map.json",
-          "digest": "f1dd60bb2296cf6110575a655f8b36e61d7f0d731c2c7dcae053b4ae73bac15c"
+          "digest": "fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4"
         },
         {
           "path": ".veritas/repo-standards/default.repo-standards.json",
-          "digest": "866a3d291c31a03467fe312c3131718862816604f0bdc350afada28488b011db"
+          "digest": "739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46"
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "0c6e318f2ddbc4a6e0066f5d74fb6f7fce622cef67cab40a036e3aaa394865e5"
+          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "4c323c8b9ff1aef8cd0489bb391fc6de83cff255692458fe358d136d3681a851"
+          "digest": "ea617f5b50620ffa33c700ce3702e7b2f6f38fb01e2aed8c1c6c86b94efe9d5b"
         },
         {
           "path": "package.json",
@@ -18570,7 +18603,8 @@
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
         "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
         "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
-        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate."
+        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
       ]
     },
     {
@@ -20028,18 +20062,19 @@
     },
     {
       "path": "docs/plans/documentation-code-audit.md",
-      "documentDigest": "4c323c8b9ff1aef8cd0489bb391fc6de83cff255692458fe358d136d3681a851",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "documentDigest": "ea617f5b50620ffa33c700ce3702e7b2f6f38fb01e2aed8c1c6c86b94efe9d5b",
+      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
       "kind": "policy",
       "state": "classified",
-      "summary": "Audit scope, initial corrections, evidence limits and completion requirements. Updated route to the tested governance proposal; remaining corpus and comment reviews stay explicit.",
-      "limits": "Purpose and recorded evidence reviewed; no policy activation, exhaustive semantic certification or live provider/device proof.",
+      "summary": "Completed source audit scope, executed verification limits, linked follow-up work and owner-approved documentation policy activation in this branch.",
+      "limits": "Purpose and recorded evidence reviewed; no exhaustive semantic certification or live provider/device proof; policy activation is limited to the approved additions in this branch.",
       "sources": [],
       "checks": [
         "Proposal reviewed against actual override trial receipts: default-only failure warned; required candidate caught recorded drift, exact restoration removed that evidence failure. Protected policy remained unchanged.",
         "Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
         "Reviewed integration deltas: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
-        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate."
+        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
       ]
     },
     {
@@ -20239,7 +20274,7 @@
         "agent-plugin:validators:gate passes byte reproduction, exit 0; 407 Markdown local paths/rendered anchors pass; git diff --check passes.",
         "Veritas readiness veritas-1790521820225: 0 failures, 0 warnings. One Markdown file committed; no runtime or shared-ledger mutation.",
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
-        "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged."
+        "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged."
       ]
     },
     {
@@ -21051,7 +21086,7 @@
         "Full API:37 JSON/JSONC/TS fences parse;12 verbatim request examples pass actual exported request schemas, including Agent/Board/plugin/job/invoke/review bodies. No request dispatched.",
         "Final API links:407 Markdown files pass. Veritas1790527139317:0 failures0 warnings.37 syntax fences pass;12 request examples pass actual schemas using node --import tsx. Plain node invocation first failed import resolution before schema execution; no endpoint dispatched. git diff --check passed.",
         "Removed orphaned compatibility comment after source search confirmed the execution-mode normalization helper is absent; type declarations unchanged.",
-        "Reviewed integration deltas: Integrated frozen upstream Agent effective-default admission and current inheritance/clear-to-never authority condition; source/caller review, not new live execution. packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/tools/station-control-delegation.ts: Wires approvalPickReachesFullAccess into delegation; no transport, home-transfer, target activation or Project import authority added. src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged. src-server/services/plugins/plugin-update-check.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged."
+        "Reviewed integration deltas: Integrated frozen upstream Agent effective-default admission and current inheritance/clear-to-never authority condition; source/caller review, not new live execution. packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/tools/station-control-delegation.ts: Wires approvalPickReachesFullAccess into delegation; no transport, home-transfer, target activation or Project import authority added. src-server/routes/plugins/plugin-lifecycle-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged. src-server/services/plugins/plugin-update-check.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged."
       ]
     },
     {
@@ -25753,7 +25788,7 @@
       ],
       "checks": [
         "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
-        "Reviewed integration deltas: src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged."
+        "Reviewed integration deltas: src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable\u2192empty observation is unchanged."
       ]
     },
     {
@@ -27309,7 +27344,7 @@
         }
       ],
       "checks": [
-        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
         "Added explicit ./ to valid local links so the separate source-path scanner does not misread them as repository-root paths; destinations unchanged."
       ]
     },
@@ -27328,7 +27363,7 @@
         }
       ],
       "checks": [
-        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
         "Reviewed integration deltas: src-server/services/connections/pion-peer/README.md: Reviewed native-contract corrections to Go toolchain admission, local lab TURN scope, application message bounds, provenance and per-channel failure; no production transport qualification inferred."
       ]
     },
@@ -27347,7 +27382,7 @@
         }
       ],
       "checks": [
-        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation."
+        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation."
       ]
     },
     {
@@ -28092,7 +28127,7 @@
         }
       ],
       "checks": [
-        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+        "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
         "Root upstream delta review: ELF floor reader extracted to elf-symbol-floor.mjs; no install-time libc selection was added.",
         "Root upstream delta review: Removed unused npm resolver test; Linux prebuild compatibility claim remains source-only.",
         "Preserved the full ancillary correction and the independently reviewed #2813 follow-up link.",
@@ -28146,7 +28181,7 @@
         }
       ],
       "checks": [
-        "Prior review receipt (not rerun here): At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+        "Prior review receipt (not rerun here): At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
         "Executed before frozen merge: 191 tests/10 files PASS in 62.69s: native-update-feed, publish-mobile-feed-transaction, release-cohort, verify-release-cohort, windows-nightly, ios-channel-icons, macos-notarized-artifacts, macos-build-only-artifact, macos-build-only-cleanup, CoreUpdateLaunchCheck. Fixture/process boundaries only; relevant tested owners unchanged by frozen merge.",
         "Executed at merged frozen source: 24 tests/3 files PASS in 8.92s: nativeRelayGrantRenewalAdapter, nativeRelayGrantRenewalSupervisor, RelayRouteProfiles. Injected native boundaries; no native shell.",
         "Executed: docs:links:check PASS 415 Markdown files; git diff --check PASS. Final doctor wording only refines plain prose and adds no links.",
@@ -28507,7 +28542,7 @@
         }
       ],
       "checks": [
-        "Prior review receipt (not rerun here): At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+        "Prior review receipt (not rerun here): At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
         "Prior review receipt (not rerun here): Root upstream delta review: Added Notification Service signing/validation; icon generation/copy steps remain owned by the same helpers.",
         "Prior review receipt (not rerun here): Root upstream delta review: Intel macOS pnpm setup fallback changed, not icon-generation ownership.",
         "Executed before frozen merge: 191 tests/10 files PASS in 62.69s: native-update-feed, publish-mobile-feed-transaction, release-cohort, verify-release-cohort, windows-nightly, ios-channel-icons, macos-notarized-artifacts, macos-build-only-artifact, macos-build-only-cleanup, CoreUpdateLaunchCheck. Fixture/process boundaries only; relevant tested owners unchanged by frozen merge.",
@@ -28684,7 +28719,7 @@
         }
       ],
       "checks": [
-        "Prior accepted evidence, not rerun in this tranche: At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+        "Prior accepted evidence, not rerun in this tranche: At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL\u2192fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
         "REASONED: full document read and remaining documented protocol/admission/recovery claims traced through the listed production owners and callers; existing source hashes matched the prior accepted records before scoped corrections.",
         "EXECUTED: docs links passed 412 Markdown files; reference gate passed 266 maintained documents; MCP check passed 99 shipped topics; safe lab --help output and focused Biome passed.",
         "EXECUTED: docs:truth:gate ran all 13 lanes; 12 passed, foundations had 163 tests pass and one inherited stale ledger failure at .agents/skills/deslop/SKILL.md. No unreviewed metadata was refreshed to conceal it. Root owns combined ledger integration and final check.",
