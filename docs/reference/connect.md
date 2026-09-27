@@ -348,7 +348,10 @@ one-time challenge, selected scope and expiry. The interactive UI defaults to
 also offers **Read-only** (`orchestration:read`). `station:interactive` is a
 legacy marker migrated to the historical default grant, not the new UI's
 scope string. HTTPS is accepted; the offer service also accepts local/private
-HTTP endpoints. Browser camera and mixed-content restrictions still apply. The
+HTTP endpoints. The current in-app QR decoder is narrower: it accepts HTTPS or
+strict-loopback HTTP, and rejects a nonloopback LAN HTTP offer even if the server
+created it. Use a reachable HTTPS endpoint for that scan flow. Browser camera
+and mixed-content restrictions still apply. The
 QR contains that offer only—never a bearer credential. A 10-character manual
 code plus the Station address is available when camera access is unavailable.
 
@@ -366,10 +369,12 @@ Expired, denied, cancelled, altered, replayed, and unconfirmed offers are
 rejected.
 
 Use the paired-device inventory in the same host panel to revoke one device.
-Revocation is checked by the shared HTTP/SSE/WebSocket credential verifier and
-denies subsequent authenticated admission/delivery without rotating the operator
-credential or revoking other devices. It does not recall data already delivered
-or guarantee cancellation of effects already dispatched. Ordinary paired
+Revocation makes the credential fail subsequent authenticated HTTP, SSE and
+remote WebSocket admission without rotating the operator credential or revoking
+other devices. Existing streams have their own revalidation boundaries; this is
+not a guarantee that revocation closes every already admitted socket. It does
+not recall data already delivered or guarantee cancellation of effects already
+dispatched. Ordinary paired
 credentials cannot create pairing offers or revoke other devices. A device
 explicitly granted `access:approve` can list and decide pending requests; that
 does not grant device-inventory or offer-management access. The native desktop's
@@ -401,9 +406,12 @@ session without serializing credential material into the connection store.
 Removes the saved credential and returns a remote Station to the
 credential-required state.
 
-#### `setActive(id: string): void`
+#### `setActive(id: string): boolean`
 
-Sets the active connection and stamps `lastConnected` with the current timestamp.
+Selects a saved direct connection and stamps `lastConnected`; returns `false`
+for an unknown ID or a broker route. Selecting the injected host entry clears
+the saved active pointer and returns `true`. Broker routes use the React host's
+asynchronous preparation path before the store marks them active.
 
 #### `subscribe(fn: () => void): () => void`
 
@@ -416,7 +424,9 @@ unsub(); // cleanup
 
 #### `migrate(legacyKey: string): void`
 
-One-time migration helper. Reads a URL stored under a legacy single-URL key, imports it as a connection, and removes the old key.
+Reads a URL stored under a legacy single-URL key and imports it when no saved
+entry has the same URL. It retains the legacy key, so repeated calls do not
+delete the old client's fallback or duplicate the same entry.
 
 ```ts
 store.migrate('project-station-api-base');
@@ -482,7 +492,7 @@ const {
   addConnection,      // (name, url) => SavedConnection
   removeConnection,   // (id) => void
   updateConnection,   // (id, changes) => void
-  setActiveConnection,// (id) => void
+  setActiveConnection,// (id) => Promise<void>; host transport preparation can reject
   setApiBase,         // (url) => void — upsert by URL and activate
   resetToDefault,     // () => void — activate or create the defaultUrl connection
   isCustom,           // boolean — true when active URL !== defaultUrl
@@ -649,7 +659,7 @@ interface UseConnectionCandidatesResult {
 ```
 
 Candidate URLs are reduced to HTTP/HTTPS origins. URLs containing credentials,
-invalid names, and malformed results are discarded. HTTPS tailnet candidates
+invalid names, and malformed results are discarded. Tailnet candidates
 rank ahead of LAN and desktop-host hints, and duplicate origins collapse to one
 suggestion. A failing provider is isolated from healthy providers.
 
@@ -707,6 +717,17 @@ structured failure reason to a bare `false`; credential refusal and an
 unreachable server need different recovery. See the
 [complete prop contract](../../packages/connect/src/react/ConnectionManagerModal.tsx)
 for compatibility checks and native-host integration options.
+
+The [store](../../packages/connect/src/core/ConnectionStore.ts),
+[profile normalizer](../../packages/connect/src/core/connectionProfile.ts), and
+[React context](../../packages/connect/src/react/ConnectionsContext.tsx) own
+selection and migration. A broker profile has no direct HTTP endpoints and
+requires the host's `prepareActiveConnection` callback; failed preparation does
+not select it. The native host's
+[pairing transport](../../src-ui/src/platform/native/pairingTransport.ts) and
+[profile storage](../../src-ui/src/platform/native/stationProfileStorage.ts)
+own its credential custody. These source boundaries do not prove a completed
+pairing or reconnection on a physical device.
 
 ---
 
