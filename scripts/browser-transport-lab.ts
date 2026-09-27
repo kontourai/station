@@ -191,6 +191,7 @@ const turnFixture = createTurnFixture({
   password,
   signal: abort.signal,
   failAfterCreate: args.includes('--fail-after-create'),
+  lifetimeSeconds: twoStationIsolation ? 300 : 120,
 });
 let turnUdpPort: number | undefined;
 let turnTcpPort: number | undefined;
@@ -1560,10 +1561,37 @@ async function runTwoStationIsolation(input: {
     );
     assert.equal(firstStillReadable.status, 200);
     input.secondBroker.revokeClientGrant(connected.routingGrantId);
-    await assert.rejects(
-      page.evaluate(browserBrokerReconnect),
-      /broker_request_refused_401|Failed to fetch/,
-    );
+    let revokedGrantHttp401 = false;
+    const observeRevokedResponse = (
+      response: import('@playwright/test').Response,
+    ) => {
+      const url = new URL(response.url());
+      if (
+        url.origin === input.secondBroker.brokerOrigin &&
+        url.pathname.startsWith('/broker/') &&
+        response.status() === 401
+      )
+        revokedGrantHttp401 = true;
+    };
+    page.on('response', observeRevokedResponse);
+    try {
+      await assert.rejects(
+        page.evaluate(browserBrokerReconnect),
+        /broker_request_refused_401|Failed to fetch/,
+      );
+      assert.equal(
+        revokedGrantHttp401,
+        true,
+        'Revoked B grant must receive an actual broker HTTP 401',
+      );
+      assert.equal(
+        (await input.secondBroker.readLease()).state,
+        'online',
+        'B connector lease must remain online after client-grant revocation',
+      );
+    } finally {
+      page.off('response', observeRevokedResponse);
+    }
     assert.equal(
       (await input.firstPage.evaluate(browserBrokerReadStatus)).state,
       'online',
@@ -1926,6 +1954,7 @@ try {
     relayRoot,
     'forward',
     peerAdapter === 'pion' ? 'tcp' : 'udp',
+    { lifetimeMs: twoStationIsolation ? 300_000 : 120_000 },
   );
   const approved = await identity('approved-station');
   const approvedSecond = twoStationIsolation

@@ -510,6 +510,8 @@ The second broker is provisioned immediately before its Station starts, so its
 short bootstrap lease does not expire during the first Station's account
 matrix. Cleanup stops the grouped Stations before releasing their shared
 listener lease, then stops both brokers and the owned TURN fixture.
+The two-Station mode bounds TURN and blind recorder lifetime at five minutes;
+the existing single-Station modes retain their two-minute fixture defaults.
 
 These are synthetic local actors with fixture-approved Devices. This mode does
 not prove real two-human or remote-machine use, native account continuation,
