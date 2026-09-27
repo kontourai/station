@@ -7,7 +7,7 @@ import type { CodingEvidencePaneUnavailableReason } from '@kontourai/station-con
  * tell a capability this Station cannot reach — nothing they can grant their
  * way out of — from a Pane that simply is not granted one it can (archive#3158).
  */
-export const CODING_EVIDENCE_UNAVAILABLE_DESCRIPTIONS: Record<
+const CODING_EVIDENCE_UNAVAILABLE_DESCRIPTIONS: Record<
   CodingEvidencePaneUnavailableReason,
   string
 > = {

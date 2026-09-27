@@ -123,7 +123,6 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'scripts/__tests__/repo-guardrail-source.test.ts',
   'scripts/__tests__/screenshot-diff.test.ts',
   'scripts/__tests__/tauri-webdriver-boundary.test.ts',
-  'scripts/__tests__/trust-bundle-claim-prose.test.ts',
   'scripts/__tests__/verification-lanes.test.ts',
   'scripts/__tests__/verification-reporter.test.ts',
   'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',

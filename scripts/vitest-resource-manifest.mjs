@@ -956,6 +956,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/chatFeedback.geometry.test.tsx',
   // #2260: owns Chromium for actual mobile close-target geometry and hit testing.
   'src-ui/src/__tests__/ProjectSidebarHeader.mobileCloseGeometry.test.tsx',
+  // Owns Chromium to measure the legacy action-row wrap and touch-target
+  // floor against the real index.css cascade at a phone viewport.
+  'src-ui/src/__tests__/legacy-action-row.touch-target.test.ts',
   // #90 D9: owns Chromium to measure the float pill's cascade-resolved
   // control sizes at rest, hovered, focused and pressed.
   'src-ui/src/float-over-chat/__tests__/FloatOverChat.touch-target.test.tsx',
@@ -1065,6 +1068,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Same shape: launches a real Chromium to measure the setup-import
   // stepper's heading action at the 640px breakpoint.
   'src-ui/src/components/setup/__tests__/ExistingSetupImportStepper.test.tsx',
+  // #765 C1 and the collapsed bottom dock: both render the real region host in
+  // jsdom, then launch a real Chromium to lay that DOM out against index.css —
+  // whether the dock body scrolls inside the shell, and whether a collapsed
+  // bottom dock is its bar alone. A rule-text scan could not see an override.
+  'src-ui/src/app-shell/__tests__/ActivityRegionShell.dock-body.test.tsx',
+  'src-ui/src/app-shell/__tests__/CollapsedRegionDockBody.test.tsx',
   // Runs the full-regression phase driver CLI and real npm children, including
   // one it must kill at a deadline.
   'scripts/__tests__/run-full-regression-phases.test.ts',

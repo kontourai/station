@@ -1,7 +1,7 @@
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import type { NavigationView } from '../types';
 
-export type ManagementDestinationId =
+type ManagementDestinationId =
   | 'agents'
   | 'guidance'
   | 'registry'
