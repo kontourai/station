@@ -1134,7 +1134,7 @@
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "5473cfc426233f2c96a05204b1a586b40e9e12d787aa0fd70d29dfc198fce1cc"
+          "digest": "4c323c8b9ff1aef8cd0489bb391fc6de83cff255692458fe358d136d3681a851"
         },
         {
           "path": "package.json",
@@ -1246,7 +1246,8 @@
         "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
         "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
-        "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries."
+        "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
+        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate."
       ]
     },
     {
@@ -11029,7 +11030,7 @@
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "5473cfc426233f2c96a05204b1a586b40e9e12d787aa0fd70d29dfc198fce1cc"
+          "digest": "4c323c8b9ff1aef8cd0489bb391fc6de83cff255692458fe358d136d3681a851"
         },
         {
           "path": "package.json",
@@ -11140,7 +11141,8 @@
         "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
         "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
-        "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries."
+        "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
+        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate."
       ]
     },
     {
@@ -13022,7 +13024,7 @@
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "5473cfc426233f2c96a05204b1a586b40e9e12d787aa0fd70d29dfc198fce1cc"
+          "digest": "4c323c8b9ff1aef8cd0489bb391fc6de83cff255692458fe358d136d3681a851"
         },
         {
           "path": "package.json",
@@ -13158,7 +13160,8 @@
         "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
         "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
-        "Reviewed integration deltas: .github/workflows/portable-server-archives.yml: Adds diagnostics and stop-hint helpers to both workflow path filters; build/smoke matrix and publication authority unchanged. Native release guide already distinguishes qualification from publication. docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries. scripts/lib/portable-server-archive.mjs: Passes explicit platform/arch into the shared stager and refuses a build target unlike the host before downloading/writing. Native release guide was corrected in b761343b3 and root now states that limitation."
+        "Reviewed integration deltas: .github/workflows/portable-server-archives.yml: Adds diagnostics and stop-hint helpers to both workflow path filters; build/smoke matrix and publication authority unchanged. Native release guide already distinguishes qualification from publication. docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries. scripts/lib/portable-server-archive.mjs: Passes explicit platform/arch into the shared stager and refuses a build target unlike the host before downloading/writing. Native release guide was corrected in b761343b3 and root now states that limitation.",
+        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate."
       ]
     },
     {
@@ -18454,7 +18457,7 @@
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "5473cfc426233f2c96a05204b1a586b40e9e12d787aa0fd70d29dfc198fce1cc"
+          "digest": "4c323c8b9ff1aef8cd0489bb391fc6de83cff255692458fe358d136d3681a851"
         },
         {
           "path": "package.json",
@@ -18566,7 +18569,8 @@
         "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
         "Reviewed source changes: Added impact/catch-up guidance and explicit unknown-coverage handling; no new approval authority or semantic certification. Replaced stale version label and missing generated-evidence guide reference only. Protected standards, authority and attestations remain unchanged. Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed. Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
-        "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries."
+        "Reviewed integration deltas: docs/plans/documentation-code-audit.md: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
+        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate."
       ]
     },
     {
@@ -19393,7 +19397,7 @@
         },
         {
           "path": "docs/learn/index.html",
-          "digest": "71b2481e03e5c2de05d969458d515e1fdf8ae8505952dc94c8a7f1a7e41f2abb"
+          "digest": "0cd31011be9559d7355000fa8a51507517f4eb7dd8a30b2fee31c7c3972c878b"
         },
         {
           "path": "docs/learn/atlas.css",
@@ -19413,7 +19417,8 @@
         "After the manual browser caught the invalid overview hash, all seven real-reader tests passed with explicit sidebar and brand return-to-overview actions.",
         "Scripts typecheck repair: declared real input/topic contracts, return catchUp as part of the result shape, type parsed CLI output, execute DOM observations in the browser context without changing the Node type environment, and let a missing media document fail the assertion. No evidence bypass or policy change.",
         "Bound the reviewed reader template, styles and diagram controls as explicit impact dependencies, in addition to renderer and browser tests.",
-        "Final type repair independently reviewed: scripts typecheck passed (367 compiled files; existing 56 deferred), impact/media/browser selection passed 22 tests, and corrected native-element browser callbacks passed all seven reader tests. Earlier type and callback failures remain separate receipts."
+        "Final type repair independently reviewed: scripts typecheck passed (367 compiled files; existing 56 deferred), impact/media/browser selection passed 22 tests, and corrected native-element browser callbacks passed all seven reader tests. Earlier type and callback failures remain separate receipts.",
+        "Updated preview link label to audit and evidence; target and navigation behavior are unchanged."
       ]
     },
     {
@@ -20023,7 +20028,7 @@
     },
     {
       "path": "docs/plans/documentation-code-audit.md",
-      "documentDigest": "5473cfc426233f2c96a05204b1a586b40e9e12d787aa0fd70d29dfc198fce1cc",
+      "documentDigest": "4c323c8b9ff1aef8cd0489bb391fc6de83cff255692458fe358d136d3681a851",
       "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
       "kind": "policy",
       "state": "classified",
@@ -20033,7 +20038,8 @@
       "checks": [
         "Proposal reviewed against actual override trial receipts: default-only failure warned; required candidate caught recorded drift, exact restoration removed that evidence failure. Protected policy remained unchanged.",
         "Repaired the abstraction-review anchor after the FCM finding became a dated resolved-policy discrepancy; task scope and proof boundaries unchanged.",
-        "Reviewed integration deltas: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries."
+        "Reviewed integration deltas: Replaced obsolete initial progress text with the completed claim-review scope and explicit pending final verification, protected promotion, publication and legal boundaries.",
+        "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate."
       ]
     },
     {

@@ -1,6 +1,7 @@
 # Documentation and architecture audit
 
-Status: final integration and verification. Baseline:
+Status: source audit complete; follow-up proposals and protected policy activation
+remain separate. Baseline:
 `ff2d743b4e45605d0a8500bd15ca4e1a86185ca6` (2026-09-26); upstream changes
 reviewed through `f3954615e965964aefc9a70a251a714433754f0c`.
 This is the audit record, not a deployment receipt. GitHub owns live delivery
@@ -371,14 +372,17 @@ human authority, duplicate Veritas's evaluator, or weaken existing checks.
 
 - Reviewed: all tracked Markdown dispositions, current documented claims and
   canonical reading routes, module interfaces, diagrams, affected comments,
-  READMEs and examples. The library grew from 388 to 415 Markdown files and
-  now includes 74 module sections. Each record retains its own evidence limits.
+  READMEs and examples. The generated library owns the current inventory and
+  module counts. Each record retains its own evidence limits.
 - Implemented: shared reader/MCP generation, source-impact and catch-up reports,
   an audit skill, source-bound screenshots and short clips, and a tested Veritas
   policy proposal. Proposed product improvements live in linked GitHub issues.
-- Final verification: combined checks and reader acceptance must bind to the
-  final integrated revision. Earlier focused results remain their own receipts;
-  failed or timed-out checks are not counted as passes.
+- Verification: at `d2cf36b34`, `ci:fast` passed on macOS and `verify:static`
+  passed on an isolated Linux worktree with Node 24.18.0. The Linux run needed
+  the CI-pinned actionlint and matching ShellCheck installed first. Earlier
+  queue timeouts and failed prerequisite/type checks remain separate receipts.
+  Later proposal-only edits need their own documentation checks; these local
+  results do not represent hosted regression, deployment or physical-device proof.
 - Separate owner work: protected Veritas promotion, Knowledge Kit publication,
   privacy inventory completeness and legal/store approval. The audit does not
   establish live provider behavior, physical-platform results, hosted deployment,
