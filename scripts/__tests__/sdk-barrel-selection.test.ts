@@ -1441,6 +1441,48 @@ describe('topLevelSideEffect', () => {
       `unary ${operator} on an imported value`,
       `import { v } from './v';\nexport const r = ${operator}v;`,
     ]),
+    // Coercion reaches an import nested anywhere in the operand.
+    [
+      'an import nested in an array in a template span',
+      `import { items } from './s';\nexport const s = \`${span('[items]')}\`;`,
+    ],
+    [
+      'an import nested in an array under +',
+      "import { items } from './s';\nexport const s = [items] + '';",
+    ],
+    [
+      'an import in a conditional in a template span',
+      `import { items } from './s';\nconst c = true;\nexport const s = \`${span('c ? items : 0')}\`;`,
+    ],
+    [
+      'an import nested in an object under unary -',
+      "import { items } from './s';\nexport const s = -{ a: items };",
+    ],
+    // Property keys are converted with ToPropertyKey.
+    [
+      'an import as an element-access key on a local',
+      "import { items } from './s';\nconst o = {};\nexport const s = o[items];",
+    ],
+    [
+      'an import as an element-access key on a literal',
+      "import { items } from './s';\nexport const s = [1][items];",
+    ],
+    [
+      'an import nested in an element-access key',
+      "import { items } from './s';\nconst o = {};\nexport const s = o[[items]];",
+    ],
+    [
+      'an import as a computed object-literal key',
+      "import { items } from './s';\nexport const s = { [items]: 1 };",
+    ],
+    [
+      'an import as a computed class method name',
+      "import { items } from './s';\nexport class C { [items]() {} }",
+    ],
+    [
+      'an import as a computed static field name',
+      "import { items } from './s';\nexport class C { static [items] = 1; }",
+    ],
     [
       'coercing a local alias of an imported value',
       `import { v } from './v';\nconst alias = v;\nexport const r = \`${span('alias')}\`;`,

@@ -556,7 +556,9 @@ function pureClassMembers(node, imported) {
     if (
       member.name &&
       ts.isComputedPropertyName(member.name) &&
-      !pureExpression(member.name.expression, imported)
+      // A computed key is converted to a property key (ToPropertyKey).
+      (mentionsImported(member.name.expression, imported) ||
+        !pureExpression(member.name.expression, imported))
     )
       return false;
     if (
@@ -568,6 +570,20 @@ function pureClassMembers(node, imported) {
       return false;
   }
   return true;
+}
+
+/**
+ * Whether an imported value (or a local alias of one) appears ANYWHERE in
+ * `node`. Used where the engine coerces the whole operand (ToPrimitive,
+ * ToNumber, ToString) or converts it to a property key (ToPropertyKey): a
+ * nested `[items]`, `cond ? items : 0` or `{ a: items }` still reaches the
+ * imported value's toString/valueOf. Over-approximates on purpose — a
+ * mention inside a function literal counts too.
+ */
+function mentionsImported(node, imported) {
+  for (const name of referencedIdentifiers(node))
+    if (imported.has(name)) return true;
+  return false;
 }
 
 /** The identifier an access chain starts from (`a` in `a.b[c]!`), if any. */
@@ -631,7 +647,7 @@ function pureExpression(node, imported = new Set()) {
   if (ts.isTemplateExpression(node))
     return node.templateSpans.every(
       (span) =>
-        !readsImported(span.expression, imported) &&
+        !mentionsImported(span.expression, imported) &&
         pureExpression(span.expression, imported),
     );
   if (
@@ -655,7 +671,7 @@ function pureExpression(node, imported = new Set()) {
       node.operator !== ts.SyntaxKind.MinusMinusToken &&
       // `+x`, `-x`, `~x` coerce to a number (valueOf/toString); `!x` does not.
       (node.operator === ts.SyntaxKind.ExclamationToken ||
-        !readsImported(node.operand, imported)) &&
+        !mentionsImported(node.operand, imported)) &&
       pureExpression(node.operand, imported)
     );
   if (ts.isBinaryExpression(node))
@@ -665,8 +681,8 @@ function pureExpression(node, imported = new Set()) {
       // relational, loose equality, bitwise, `in`'s key) or run its code
       // (`instanceof`'s Symbol.hasInstance, `in`'s proxy trap).
       (NON_COERCING_OPERATORS.has(node.operatorToken.kind) ||
-        (!readsImported(node.left, imported) &&
-          !readsImported(node.right, imported))) &&
+        (!mentionsImported(node.left, imported) &&
+          !mentionsImported(node.right, imported))) &&
       pureExpression(node.left, imported) &&
       pureExpression(node.right, imported)
     );
@@ -684,6 +700,8 @@ function pureExpression(node, imported = new Set()) {
   if (ts.isElementAccessExpression(node))
     return (
       !readsImported(node.expression, imported) &&
+      // The key is converted with ToPropertyKey.
+      !mentionsImported(node.argumentExpression, imported) &&
       pureExpression(node.expression, imported) &&
       pureExpression(node.argumentExpression, imported)
     );
@@ -697,7 +715,9 @@ function pureExpression(node, imported = new Set()) {
       if (
         property.name &&
         ts.isComputedPropertyName(property.name) &&
-        !pureExpression(property.name.expression, imported)
+        // A computed key is converted with ToPropertyKey.
+        (mentionsImported(property.name.expression, imported) ||
+          !pureExpression(property.name.expression, imported))
       )
         return false;
       if (ts.isPropertyAssignment(property))
