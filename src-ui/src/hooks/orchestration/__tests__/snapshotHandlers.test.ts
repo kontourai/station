@@ -39,8 +39,9 @@ vi.mock('../../../contexts/active-chats-store', () => ({
 import { applyOrchestrationSnapshot } from '../snapshotHandlers';
 
 /**
- * Applies an ordinary (non-reconnect) snapshot to `seed` through the real
- * entry point and returns the one `updateChat` write per thread it made.
+ * Applies an ordinary (non-reconnect) snapshot without child work to `seed`
+ * through the real entry point and returns the one `updateChat` write per
+ * thread it made.
  */
 function applyOrdinarySnapshot(
   payload: Parameters<typeof applyOrchestrationSnapshot>[0],
@@ -49,8 +50,10 @@ function applyOrdinarySnapshot(
   if (seed) chats = seed;
   updateChat.mockClear();
   applyOrchestrationSnapshot(payload, { apiBase: 'http://api' });
-  // The owner makes ONE write per thread; a map keyed by thread would hide a
-  // second write, so refuse duplicates before collapsing the calls.
+  // These cases carry no child work, so the status sync is the only writer and
+  // makes one write per thread (child-work reconciliation may legitimately
+  // write a thread again). A map keyed by thread would hide a second write, so
+  // refuse duplicates before collapsing the calls.
   const threadIds = updateChat.mock.calls.map(([threadId]) => threadId);
   expect(threadIds).toEqual([...new Set(threadIds)]);
   return Object.fromEntries(updateChat.mock.calls);
