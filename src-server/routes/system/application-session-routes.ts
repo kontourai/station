@@ -1,4 +1,8 @@
-import { ACCOUNT_AUTHENTICATION_FAILURE_HEADER } from '@kontourai/station-contracts/application-session';
+import {
+  ACCOUNT_AUTHENTICATION_FAILURE_HEADER,
+  APPLICATION_SESSION_NATIVE_BASE_PATH,
+  APPLICATION_SESSION_NATIVE_VERSION,
+} from '@kontourai/station-contracts/application-session';
 import { type Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod/v3';
@@ -19,7 +23,14 @@ export function createApplicationSessionRoutes(
   });
   // No account/Device admission has happened for these public control routes
   // yet, so the body owner's Request replacement cannot lose verified proof.
-  app.use('*', bodyLimit({ maxSize: 16 * 1024 }));
+  const ordinaryBodyLimit = bodyLimit({ maxSize: 16 * 1024 });
+  app.use('*', (c, next) =>
+    new URL(c.req.url).pathname.startsWith(
+      `${APPLICATION_SESSION_NATIVE_BASE_PATH}/`,
+    )
+      ? next()
+      : ordinaryBodyLimit(c, next),
+  );
   const attempts = new RuntimeAuthFailureLimiter({
     maxFailures: 10,
     maxTrackedPeers: 1000,
@@ -29,6 +40,33 @@ export function createApplicationSessionRoutes(
     if (new TextEncoder().encode(text).byteLength > 16 * 1024)
       throw new z.ZodError([]);
     return JSON.parse(text) as unknown;
+  };
+  // Hono's bodyLimit replaces Request identity after buffering. Native Pion
+  // provenance is intentionally attached to that exact Request, so bound the
+  // native body without replacing it or copying its authority to a clone.
+  const nativeInput = async (c: Context) => {
+    const reader = c.req.raw.body?.getReader();
+    if (!reader) throw new z.ZodError([]);
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    let size = 0;
+    let text = '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > 16 * 1024) {
+          await reader.cancel();
+          throw new z.ZodError([]);
+        }
+        text += decoder.decode(value, { stream: true });
+      }
+      text += decoder.decode();
+      return JSON.parse(text) as unknown;
+    } catch (error) {
+      if (error instanceof TypeError) throw new SyntaxError('Invalid UTF-8');
+      throw error;
+    }
   };
   const run = async (
     c: Context,
@@ -131,6 +169,39 @@ export function createApplicationSessionRoutes(
       });
       const result = await owner.establish(c.req.raw, body, login);
       return result;
+    }),
+  );
+  app.post('/native/challenge', (c) =>
+    run(c, async (owner) => {
+      const body = z
+        .object({
+          version: z.literal(APPLICATION_SESSION_NATIVE_VERSION),
+          publicKey: z.unknown(),
+        })
+        .strict()
+        .parse(await nativeInput(c));
+      return owner.nativeChallenge(c.req.raw, body);
+    }),
+  );
+  app.post('/native/exchange', (c) =>
+    run(c, async (owner) => {
+      const body = z
+        .object({
+          version: z.literal(APPLICATION_SESSION_NATIVE_VERSION),
+          challengeId: z.string(),
+          credentials: z.record(z.unknown()),
+          proof: z.string().max(4096),
+        })
+        .strict()
+        .parse(await nativeInput(c));
+      const key = c.req.header('Authorization') ?? '<absent>';
+      const retryAfter = attempts.retryAfterSeconds(key);
+      if (retryAfter !== undefined) {
+        c.header('Retry-After', String(retryAfter));
+        throw new ApplicationSessionRefusal('rate_limited');
+      }
+      attempts.recordFailure(key);
+      return owner.establishNative(c.req.raw, body);
     }),
   );
   app.post('/renew', (c) => run(c, (owner) => owner.renew(c.req.raw)));

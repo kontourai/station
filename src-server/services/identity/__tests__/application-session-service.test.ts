@@ -10,6 +10,8 @@ import {
   APPLICATION_SESSION_NATIVE_PROOF_HEADER,
   APPLICATION_SESSION_NATIVE_PROOF_TYPE,
   APPLICATION_SESSION_NATIVE_VERSION,
+  type NativeApplicationSessionChallengeV1,
+  type NativeApplicationSessionContinuationV1,
 } from '@kontourai/station-contracts/application-session';
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import {
@@ -31,10 +33,16 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createApplicationSessionRoutes } from '../../../routes/system/application-session-routes.js';
 import { parseSecureDeviceSessionCookie } from '../../../runtime/bootstrap/runtime-http.js';
 import { openPrivateSqlite } from '../../../utils/private-sqlite.js';
-import { VirtualApplicationIngress } from '../../connections/virtual-application.js';
+import {
+  readVerifiedNativeVirtualApplicationRequest,
+  VirtualApplicationIngress,
+} from '../../connections/virtual-application.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { createApplicationSessionRuntime } from '../application-session-runtime.js';
-import type { VerifiedNativeApplicationRequest } from '../application-session-service.js';
+import type {
+  ReadVerifiedNativeApplicationRequest,
+  VerifiedNativeApplicationRequest,
+} from '../application-session-service.js';
 import { loadLocalAccounts } from '../local-account-runtime.js';
 
 const origin = 'https://station.example.test';
@@ -144,7 +152,12 @@ afterEach(async () => {
   for (const close of cleanup.splice(0)) await close();
 });
 
-async function harness(options: { now?: () => number } = {}) {
+async function harness(
+  options: {
+    now?: () => number;
+    nativeReader?: ReadVerifiedNativeApplicationRequest;
+  } = {},
+) {
   const home = await mkdtemp(join(tmpdir(), 'station-application-session-'));
   await mkdir(join(home, 'security'), { mode: 0o700 });
   let pairing = new DevicePairingService({
@@ -181,7 +194,8 @@ async function harness(options: { now?: () => number } = {}) {
       ? { ...identified, principalBinding: nativeAccountBinding }
       : identified;
   };
-  const readNativeRequest = () => nativeFacts;
+  const readNativeRequest = (request: Request) =>
+    options.nativeReader ? options.nativeReader(request) : nativeFacts;
   const configuration = {
     publicOrigin: origin,
     allowedBrowserOrigins: [alternateOrigin],
@@ -461,6 +475,126 @@ async function nativeContinuationFixture() {
 }
 
 describe('native application-session continuation service seam', () => {
+  test('uses verified virtual ingress for provider login and protected account read', async () => {
+    const h = await harness({
+      nativeReader: readVerifiedNativeVirtualApplicationRequest,
+    });
+    await nativeAccount(h);
+    const key = await nativeKey();
+    const directNative = await h
+      .application()
+      .request(`${origin}${APPLICATION_SESSION_NATIVE_CHALLENGE_PATH}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${h.device.credential}` },
+        body: JSON.stringify({
+          version: APPLICATION_SESSION_NATIVE_VERSION,
+          publicKey: key.publicKey,
+        }),
+      });
+    expect(directNative.status).toBe(401);
+    const peer = new AbortController();
+    const ingress = new VirtualApplicationIngress(origin, undefined, () => ({
+      stationId,
+      connectionEnrollmentId: 'e'.repeat(43),
+      routingGeneration: 1,
+      connectionId: 'native-connection-1',
+      stationOrigin: origin,
+      surface: nativeSurface,
+      signal: peer.signal,
+      isCurrent: () => !peer.signal.aborted,
+    }));
+    ingress.bind({ fetch: (request) => h.application().fetch(request) });
+    const virtual = ingress.activate();
+    try {
+      const challengeResponse = await virtual.fetch(
+        new Request(`${origin}${APPLICATION_SESSION_NATIVE_CHALLENGE_PATH}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${h.device.credential}` },
+          body: JSON.stringify({
+            version: APPLICATION_SESSION_NATIVE_VERSION,
+            publicKey: key.publicKey,
+          }),
+        }),
+      );
+      expect(
+        challengeResponse.status,
+        await challengeResponse.clone().text(),
+      ).toBe(200);
+      const challenge = (
+        (await challengeResponse.json()) as {
+          data: NativeApplicationSessionChallengeV1;
+        }
+      ).data;
+      const credentials = { username: 'alice', password: h.password };
+      const proof = await signNativeProof(key.privateKey, {
+        version: APPLICATION_SESSION_NATIVE_VERSION,
+        purpose: 'exchange',
+        aud: challenge.target.audience,
+        stationId,
+        surface: challenge.target.surface,
+        deviceId: challenge.deviceId,
+        nonce: challenge.nonce,
+        method: 'POST',
+        path: APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
+        challengeIdHash: nativeHash(challenge.challengeId),
+        credentialsHash: nativeHash(JSON.stringify(credentials)),
+        jti: randomUUID(),
+        iat: Math.floor(Date.now() / 1000),
+      });
+      const exchange = await virtual.fetch(
+        new Request(`${origin}${APPLICATION_SESSION_NATIVE_EXCHANGE_PATH}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${h.device.credential}` },
+          body: JSON.stringify({
+            version: APPLICATION_SESSION_NATIVE_VERSION,
+            challengeId: challenge.challengeId,
+            credentials,
+            proof,
+          }),
+        }),
+      );
+      expect(exchange.status).toBe(200);
+      const continuation = (
+        (await exchange.json()) as {
+          data: NativeApplicationSessionContinuationV1;
+        }
+      ).data;
+      const requestProof = await signNativeProof(key.privateKey, {
+        version: APPLICATION_SESSION_NATIVE_VERSION,
+        purpose: 'request',
+        aud: continuation.target.audience,
+        stationId,
+        surface: continuation.target.surface,
+        deviceId: continuation.deviceId,
+        nonce: continuation.nonce,
+        method: 'GET',
+        path: '/resource',
+        credentialHash: nativeHash(continuation.credential),
+        jti: randomUUID(),
+        iat: Math.floor(Date.now() / 1000),
+      });
+      const protectedRead = await virtual.fetch(
+        new Request(`${origin}/resource`, {
+          headers: {
+            Authorization: `Bearer ${h.device.credential}`,
+            [APPLICATION_SESSION_NATIVE_HEADER]: continuation.credential,
+            [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: requestProof,
+          },
+        }),
+      );
+      expect(protectedRead.status).toBe(200);
+      expect(
+        ((await protectedRead.json()) as { principal: { id: string } })
+          .principal.id,
+      ).toMatch(/^human:deployment:/);
+      peer.abort();
+      expect(
+        (await virtual.fetch(new Request(`${origin}/resource`))).status,
+      ).toBe(403);
+    } finally {
+      ingress.stop();
+    }
+  });
   test('binds exchange to provider login, the verified Station surface, Device and independent proof key', async () => {
     const f = await nativeContinuationFixture();
     expect(f.continuation.target).toEqual({
@@ -562,9 +696,14 @@ describe('native application-session continuation service seam', () => {
     expect((await f.h.sessions().authenticateNative(request)).kind).toBe(
       'authenticated',
     );
+    // Runtime delivery revalidates the same Request, including fresh provider
+    // and Device state, without consuming its one-use proof a second time.
     expect((await f.h.sessions().authenticateNative(request)).kind).toBe(
-      'invalid',
+      'authenticated',
     );
+    expect(
+      (await f.h.sessions().authenticateNative(new Request(request))).kind,
+    ).toBe('invalid');
 
     const revokedDeviceId = f.h.device.device.id;
     f.h.pairing.revokeDevice(revokedDeviceId, 'operator-credential');

@@ -3,6 +3,8 @@ import {
   ACCOUNT_AUTHENTICATION_FAILURE_HEADER,
   APPLICATION_SESSION_BASE_PATH,
   APPLICATION_SESSION_HEADER,
+  APPLICATION_SESSION_NATIVE_HEADER,
+  APPLICATION_SESSION_NATIVE_PROOF_HEADER,
   APPLICATION_SESSION_PROOF_HEADER,
 } from '@kontourai/station-contracts/application-session';
 import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
@@ -514,7 +516,9 @@ function configureRuntimeSecurity(
       !security.deploymentAuthentication &&
       !accountOperation &&
       (c.req.raw.headers.has(APPLICATION_SESSION_HEADER) ||
-        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER))
+        c.req.raw.headers.has(APPLICATION_SESSION_PROOF_HEADER) ||
+        c.req.raw.headers.has(APPLICATION_SESSION_NATIVE_HEADER) ||
+        c.req.raw.headers.has(APPLICATION_SESSION_NATIVE_PROOF_HEADER))
     ) {
       c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
       return c.json(

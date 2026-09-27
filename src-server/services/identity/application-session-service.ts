@@ -203,6 +203,7 @@ export class ApplicationSessionRefusal extends Error {
 /** Account proof augments an existing approved Device credential; it never grants Device scope. */
 export class ApplicationSessionService {
   private readonly admitted = new WeakMap<Request, string>();
+  private readonly nativeAdmitted = new WeakMap<Request, string>();
   private closed = false;
   constructor(
     private readonly db: DatabaseSync,
@@ -565,9 +566,21 @@ export class ApplicationSessionService {
         subject: record.subject,
         principalId: record.principalId,
       });
-      const jti = await this.nativeProof(request, signed, record, 'request', {
-        credential: token,
-      });
+      const fingerprint = digest(
+        JSON.stringify([
+          token,
+          signed,
+          request.method,
+          request.url,
+          request.headers.get('Authorization'),
+        ]),
+      );
+      const firstAdmission = this.nativeAdmitted.get(request) !== fingerprint;
+      const jti = firstAdmission
+        ? await this.nativeProof(request, signed, record, 'request', {
+            credential: token,
+          })
+        : undefined;
       const account = await this.nativeAccount(
         record.providerSessionId,
         request.signal,
@@ -595,26 +608,29 @@ export class ApplicationSessionService {
       });
       if (current.expiresAt <= this.now())
         throw new ApplicationSessionRefusal('invalid');
-      this.transaction(() => {
-        if (this.closed || request.signal.aborted)
-          throw new ApplicationSessionRefusal('unavailable');
-        this.prune();
-        const count = this.db
-          .prepare(
-            'SELECT count(*) AS n FROM application_session_native_proofs',
-          )
-          .get()?.n;
-        if (typeof count !== 'number' || count >= 100_000)
-          throw new ApplicationSessionRefusal('unavailable');
-        if (
-          this.db
+      if (firstAdmission) {
+        this.transaction(() => {
+          if (this.closed || request.signal.aborted)
+            throw new ApplicationSessionRefusal('unavailable');
+          this.prune();
+          const count = this.db
             .prepare(
-              'INSERT OR IGNORE INTO application_session_native_proofs VALUES (?,?,?)',
+              'SELECT count(*) AS n FROM application_session_native_proofs',
             )
-            .run(hash, jti, this.now() + 120_000).changes !== 1
-        )
-          throw new ApplicationSessionRefusal('invalid');
-      });
+            .get()?.n;
+          if (typeof count !== 'number' || count >= 100_000)
+            throw new ApplicationSessionRefusal('unavailable');
+          if (
+            this.db
+              .prepare(
+                'INSERT OR IGNORE INTO application_session_native_proofs VALUES (?,?,?)',
+              )
+              .run(hash, jti, this.now() + 120_000).changes !== 1
+          )
+            throw new ApplicationSessionRefusal('invalid');
+        });
+        this.nativeAdmitted.set(request, fingerprint);
+      }
       return {
         ...account,
         session: {
