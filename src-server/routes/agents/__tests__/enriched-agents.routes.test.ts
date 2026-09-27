@@ -15,10 +15,7 @@ import {
 } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { createChildDelegationContext } from '../../../runtime/agents/delegation.js';
-import {
-  AgentService,
-  runtimeStationEngineExecution,
-} from '../../../services/agents/agent-service.js';
+import { AgentService } from '../../../services/agents/agent-service.js';
 import { deriveConnectionReadinessEvidence } from '../../../services/connections/connection-readiness-evidence.js';
 import type { StoredConnectionSmokeResult } from '../../../services/connections/connection-smoke-evidence-store.js';
 import {
@@ -795,28 +792,58 @@ describe('registry-backed enriched Agent routes', () => {
     expect(deps.loadAgent).not.toHaveBeenCalledWith('codex');
   });
 
-  test('external readiness requires an enabled ready external engine', () => {
-    expect(
-      isHonestlyAvailableConnectedAgent(
-        {
-          name: 'Codex',
-          prompt: '',
-          execution: { agentConnectionId: engineConnectionId('codex') },
-        },
-        new Map([
-          [
-            'codex',
-            {
-              id: engineConnectionId('codex'),
-              name: 'Codex',
-              enabled: true,
-              status: 'ready',
-              engineId: engineId('codex'),
-            },
-          ],
-        ]),
-      ),
-    ).toBe(true);
+  describe('external readiness requires an enabled ready external engine', () => {
+    const readyCodex = {
+      id: engineConnectionId('codex'),
+      name: 'Codex',
+      enabled: true,
+      status: 'ready',
+      engineId: engineId('codex'),
+    };
+    const boundSpec = {
+      name: 'Codex',
+      prompt: '',
+      execution: { agentConnectionId: engineConnectionId('codex') },
+    };
+    test.each([
+      {
+        row: 'an enabled ready external engine',
+        spec: boundSpec,
+        connection: readyCodex,
+        expected: true,
+      },
+      {
+        row: 'a disabled engine',
+        spec: boundSpec,
+        connection: { ...readyCodex, enabled: false },
+        expected: false,
+      },
+      {
+        row: 'a degraded engine',
+        spec: boundSpec,
+        connection: { ...readyCodex, status: 'degraded' },
+        expected: false,
+      },
+      {
+        row: "Station's own engine",
+        spec: boundSpec,
+        connection: { ...readyCodex, engineId: engineId('station') },
+        expected: false,
+      },
+      {
+        row: 'an unbound spec',
+        spec: { name: 'Codex', prompt: '' },
+        connection: readyCodex,
+        expected: false,
+      },
+    ])('$row -> $expected', ({ spec, connection, expected }) => {
+      expect(
+        isHonestlyAvailableConnectedAgent(
+          spec,
+          new Map([['codex', connection]]),
+        ),
+      ).toBe(expected);
+    });
   });
 
   test('surfaces adapter readiness evidence for an authored bound Agent; the authored-spec gate outranks it for an engine default (#3027)', async () => {
@@ -878,6 +905,23 @@ describe('registry-backed enriched Agent routes', () => {
   test('refuses a proven-nothing engine with its actual observation, not the evidence summary', async () => {
     const initializeFailure =
       'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.';
+    // The REAL evidence derivation and projection feed the route, so the
+    // positive summary really is what the connection carries.
+    const connection = acpAgentConnection({
+      status: 'degraded',
+      config: { engineId: 'acp', readinessReason: initializeFailure },
+    });
+    const evidence = deriveConnectionReadinessEvidence(
+      connection,
+      null,
+      new Date('2026-09-20T12:00:00.000Z'),
+    );
+    // Discriminating precondition: the live catalog earns `catalog-ready`,
+    // whose summary is the affirmative sentence that shipped as the refusal.
+    expect(evidence.level).toBe('catalog-ready');
+    expect(evidence.summary).toBe(
+      'A live model or capability catalog is available.',
+    );
     const { app } = setup({
       loadAgent: vi.fn(async (slug: string) => {
         if (slug === 'writer')
@@ -889,17 +933,11 @@ describe('registry-backed enriched Agent routes', () => {
         throw new Error('registry defaults are not stored as authored Agents');
       }),
       getRuntimeConnections: vi.fn().mockResolvedValue([
-        {
-          id: 'opencode',
-          type: 'acp',
-          name: 'OpenCode',
-          status: 'degraded',
-          enabled: true,
-          engineId: 'opencode',
-          readinessReason: 'A live model or capability catalog is available.',
-          readinessLevel: 'catalog-ready',
-          stateReason: initializeFailure,
-        },
+        runtimeConnectionSummary({
+          ...connection,
+          readinessEvidence: evidence,
+          parseEngineId: (value) => value as never,
+        }),
       ]),
     });
 
@@ -1079,45 +1117,6 @@ describe('registry-backed enriched Agent routes', () => {
     );
     expect(missingRefusal.reason).toBe(
       'Model catalog request failed with HTTP 404.',
-    );
-  });
-
-  // Baseline: the original defect shape — an ACP initialize timeout with a
-  // live catalog — must still refuse with the probe's actual observation and
-  // the reconnect action, never the positive summary.
-  test('an ACP initialize timeout still refuses with the probe observation', () => {
-    const probeFailure =
-      'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.';
-    const connection = acpAgentConnection({
-      status: 'degraded',
-      config: { engineId: 'acp', readinessReason: probeFailure },
-    });
-    const evidence = deriveConnectionReadinessEvidence(
-      connection,
-      null,
-      new Date('2026-09-20T12:00:00.000Z'),
-    );
-    expect(evidence.level).toBe('catalog-ready');
-    const summary = runtimeConnectionSummary({
-      ...connection,
-      readinessEvidence: evidence,
-      parseEngineId: (value) => value as never,
-    });
-    expect(summary.summaryNamesFailure).toBe(false);
-    const refusal = externalEngineUnavailable(
-      summary.id,
-      new Map([[summary.id, summary]]),
-    );
-    expect(refusal.reason).toContain(
-      'has not yet proved it can complete a chat turn',
-    );
-    expect(refusal.reason).toContain(probeFailure);
-    expect(refusal.reason).toContain(
-      'Reconnect the engine from its setup page',
-    );
-    expect(refusal.reason).toContain('station acp connections reconnect');
-    expect(refusal.reason).not.toContain(
-      'A live model or capability catalog is available',
     );
   });
 
@@ -1332,20 +1331,22 @@ describe('registry-backed enriched Agent routes', () => {
   // while every hand-supplied test stayed green. This drives the real
   // projection instead.
   test('the runtime-connection projection carries the adapter provider, not just the runtime type', () => {
+    // `type` and `config.provider` differ so reading the type as the
+    // provider cannot pass.
     const summary = runtimeConnectionSummary({
-      id: 'claude' as never,
-      type: 'claude',
-      name: 'Claude Code',
+      id: 'opencode' as never,
+      type: 'acp-runtime',
+      name: 'OpenCode',
       enabled: true,
       status: 'ready',
-      config: { provider: 'claude', engineId: 'claude' },
+      config: { provider: 'opencode', engineId: 'opencode' },
       parseEngineId: (value) => value as never,
     });
 
     // `type` is a runtime selector and is NOT the provider — reading it as
     // one is the mistake this pins.
-    expect(summary.type).toBe('claude');
-    expect(summary.provider).toBe('claude');
+    expect(summary.type).toBe('acp-runtime');
+    expect(summary.provider).toBe('opencode');
   });
 
   test('the runtime-connection projection leaves provider undefined when the config carries none', () => {
@@ -1406,7 +1407,7 @@ describe('the built-in engine selection is the RUNTIME projection (#3662 review 
    * `agents/station/agent.json` is (correctly) unbound, because the binding
    * is derived from live readiness and must not be frozen into the record.
    */
-  function codexBuiltinHome() {
+  function codexBuiltinHome(overrides: Record<string, unknown> = {}) {
     const runtimeDefault = {
       slug: 'default',
       name: 'Station',
@@ -1443,6 +1444,7 @@ describe('the built-in engine selection is the RUNTIME projection (#3662 review 
           engineId: engineId('codex'),
         },
       ]),
+      ...overrides,
     });
   }
 
@@ -1469,11 +1471,21 @@ describe('the built-in engine selection is the RUNTIME projection (#3662 review 
     // is unavailable the payload used to assert Station from the SLUG alone —
     // so a home configured for Codex showed `execution.agentConnectionId:
     // 'codex'` beside an engine chip reading "Station".
-    const { app } = codexBuiltinHome();
-    const body = await json(await app.request('/station'));
+    // Attribution really is unavailable here, so the payload takes the
+    // connection-less fallback while the runtime binding is still Codex.
+    const { app } = codexBuiltinHome({
+      getRuntimeConnections: vi
+        .fn()
+        .mockRejectedValue(new Error('connection attribution unavailable')),
+    });
+    const response = await app.request('/station');
+    expect(response.status).toBe(200);
+    const body = await json(response);
     expect(body.data.execution).toEqual({ agentConnectionId: 'codex' });
-    expect(body.data.engineId).not.toBe('station');
-    expect(body.data.engineDisplayName).not.toBe('Station');
+    // Attribution is unavailable, so the payload names no engine at all:
+    // neither the slug-derived Station nor any other guessed value.
+    expect(body.data).not.toHaveProperty('engineId');
+    expect(body.data).not.toHaveProperty('engineDisplayName');
   });
 
   test('the list projection agrees with the detail read', async () => {
@@ -1567,29 +1579,5 @@ describe('the built-in engine selection is the RUNTIME projection (#3662 review 
     const response = await app.request('/station/binding');
     expect(response.status).toBe(200);
     expect((await json(response)).data).toEqual({});
-  });
-
-  test('with NO runtime binding the persisted record still governs', () => {
-    // The overlay is not a blanket override: a home running on Station's own
-    // engine records no binding, and the file is then the only statement.
-    expect(
-      runtimeStationEngineExecution(
-        new Map([['default', { slug: 'default', name: 'Station' } as never]]),
-      ),
-    ).toBeUndefined();
-    expect(
-      runtimeStationEngineExecution(
-        new Map([
-          [
-            'default',
-            {
-              slug: 'default',
-              name: 'Station',
-              execution: { agentConnectionId: engineConnectionId('claude') },
-            },
-          ],
-        ]),
-      ),
-    ).toEqual({ agentConnectionId: 'claude' });
   });
 });

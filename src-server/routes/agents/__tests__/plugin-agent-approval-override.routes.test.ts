@@ -201,14 +201,15 @@ test('a full-access default the plugin ships is ignored; its stricter one applie
   expect(await (await fixture('auto')).effectiveDefault()).toBe('auto');
 });
 
-test("the operator's full-access default on that plugin Agent is honoured, and the plugin's own value stays the plugin's", async () => {
+// The plugin file staying the plugin's is proven where the plugin ships a
+// different value (`fixture('ask')` below): with `never` on both sides a
+// copied choice would be indistinguishable.
+test("the operator's full-access default on that plugin Agent is honoured and recorded outside the plugin's directory", async () => {
   const f = await fixture('never');
   const saved = await f.setDefault(f.operator.credential, 'never');
   expect(saved.status).toBe(200);
   expect(saved.body.data.execution.approvalMode).toBe('never');
   expect(await f.effectiveDefault()).toBe('never');
-  // The operator's choice is not written into the plugin's agent.json.
-  expect(f.declaredOnDisk()).toBe('never');
   const store = JSON.parse(
     readFileSync(join(f.home, 'agent-approval-overrides.json'), 'utf-8'),
   );
