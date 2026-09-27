@@ -839,7 +839,7 @@ describe('runtime-provider-resolution', () => {
     'a chain-mode Bedrock binding fails closed when $name',
     async ({ spec, modelCatalog, message }) => {
       const binding = resolveManagedModelBinding(spec as any, {
-        appConfig: {},
+        appConfig: {} as any,
         listProviderConnections: () =>
           [
             {

@@ -5,13 +5,14 @@ import { mapStrandsStreamEvent } from '../strands-stream-events.js';
 // carries the same raw output shape the VoltAgent path emits, so the shared UI
 // handler (extractUIBlocks) finds a render_component `uiBlock`.
 describe('mapStrandsStreamEvent tool-result output normalization', () => {
-  const toolResultOutput = (content: unknown) =>
-    (
-      mapStrandsStreamEvent({
-        type: 'toolResultEvent',
-        result: { toolUseId: 'call-1', content },
-      } as never) as { output: unknown }
-    ).output;
+  const toolResultOutput = (content: unknown) => {
+    const chunk = mapStrandsStreamEvent({
+      type: 'toolResultEvent',
+      result: { toolUseId: 'call-1', content },
+    } as never);
+    expect(chunk?.type).toBe('tool-result');
+    return chunk?.type === 'tool-result' ? chunk.output : undefined;
+  };
 
   test('unwraps a lone JsonBlock to its raw object (so uiBlock is findable)', () => {
     expect(
