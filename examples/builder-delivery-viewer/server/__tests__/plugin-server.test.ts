@@ -117,7 +117,7 @@ function app(home: string) {
   });
   return instance;
 }
-/** Every path under `root` with its type, size, and mtime. */
+/** Every path under `root` with a directory flag, size, and mtime. */
 function treeSnapshot(root: string): string[] {
   return readdirSync(root, { recursive: true, encoding: 'utf8' })
     .sort()
