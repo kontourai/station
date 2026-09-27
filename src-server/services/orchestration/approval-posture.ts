@@ -75,6 +75,19 @@ function concrete(mode: unknown): ApprovalMode | undefined {
     : undefined;
 }
 
+/**
+ * The default posture below a decision: the Agent's own, then this
+ * Station's (#2436 §4.9). `ApprovalPosture` applies it at a start and for a
+ * Default pick; an Agent write reads it to see what the write leaves in
+ * force (#2377 slice C1).
+ */
+export function effectiveDefaultPosture(
+  agentDefault: unknown,
+  stationDefault: unknown,
+): ApprovalMode | undefined {
+  return concrete(agentDefault) ?? concrete(stationDefault);
+}
+
 /** Strictness order of the concrete postures: lower is stricter. */
 const STRICTNESS: Readonly<Record<string, number>> = {
   ask: 0,
@@ -242,7 +255,10 @@ export class ApprovalPosture {
         ? concrete(await this.deps.resolveAgentDefault?.(input.agentSlug))
         : undefined;
     if (agent) return agent;
-    return concrete(await this.deps.resolveStationDefault?.());
+    return effectiveDefaultPosture(
+      undefined,
+      await this.deps.resolveStationDefault?.(),
+    );
   }
 
   /**
@@ -301,6 +317,50 @@ export class ApprovalPosture {
   }
 
   /**
+   * #2377 slice C1: whether recording `pick` on `threadId` would run an
+   * engine at `never` unconfined, which is what full access means here.
+   *
+   * - `never` itself: recording it makes the conversation `host`
+   *   (`recordedFullAccess`).
+   * - A Default: a decision governs every session of the conversation
+   *   (`decision` reads the whole lineage), so each is checked, not only the
+   *   one the pick names. Once recorded, each session's confinement is its
+   *   start `stamp` again, and the Default resolves for it as `resolve`
+   *   applies it (its own Agent, `resolveDefaultPick`). Full access when any
+   *   `host`-stamped session resolves to `never`. On `workspace` sessions the
+   *   same Default runs confined, which the owner decided a member may pick
+   *   without a grant (2026-09-23, fork 1). A session added later starts in
+   *   its own starter's confinement (`startConfinement`), and a Default is
+   *   not a recorded `never`, so it inherits no `host`.
+   * - Ask and Auto: never.
+   *
+   * `startOf` reads a session's start stamp and Agent; `agentSlug` stands in
+   * for a named thread that has no session yet.
+   */
+  async pickReachesFullAccess(input: {
+    threadId: string;
+    pick: ApprovalMode;
+    agentSlug?: string;
+    startOf: (threadId: string) => { stamp: unknown; agentSlug?: string };
+  }): Promise<boolean> {
+    if (input.pick === 'never') return true;
+    if (input.pick !== 'connection-default') return false;
+    for (const threadId of new Set(this.conversationThreads(input.threadId))) {
+      const start = input.startOf(threadId);
+      if (start.stamp !== 'host') continue;
+      const agentSlug =
+        start.agentSlug ??
+        (threadId === input.threadId ? input.agentSlug : undefined);
+      const resolved = await this.resolveDefaultPick({
+        threadId,
+        ...(agentSlug ? { agentSlug } : {}),
+      });
+      if (resolved === 'never') return true;
+    }
+    return false;
+  }
+
+  /**
    * #2409: a Default pick resolved to something the engine will actually
    * apply. An absent mode is a no-op for both adapters (Claude calls no
    * `setPermissionMode`; Codex omits its knobs and keeps the previous pair),
@@ -316,32 +376,6 @@ export class ApprovalPosture {
    *    then names it, so the chip does not claim more than happened.
    * 3. Else nothing: the engine's own configuration IS the default.
    */
-  /**
-   * #2377 slice C1: whether recording `pick` on `threadId` would run its
-   * engine at `never` unconfined, which is what full access means here.
-   *
-   * - `never` itself: recording it makes the conversation `host`
-   *   (`recordedFullAccess`).
-   * - A Default: once recorded, the conversation's confinement is its start
-   *   `stamp` again, and the Default resolves as `resolve` applies it
-   *   (`resolveDefaultPick`). Full access only when the stamp is `host` and
-   *   the resolution is `never`. On a `workspace` session the same Default
-   *   runs confined, which the owner decided a member may pick without a
-   *   grant (2026-09-23, fork 1).
-   * - Ask and Auto: never.
-   */
-  async pickReachesFullAccess(input: {
-    threadId: string;
-    pick: ApprovalMode;
-    agentSlug?: string;
-    stamp: unknown;
-  }): Promise<boolean> {
-    if (input.pick === 'never') return true;
-    if (input.pick !== 'connection-default' || input.stamp !== 'host')
-      return false;
-    return (await this.resolveDefaultPick(input)) === 'never';
-  }
-
   private async resolveDefaultPick(input: {
     threadId: string;
     agentSlug?: string;
