@@ -357,6 +357,7 @@ export function changedDeadlineFromEnv(env = process.env) {
  * @param {number} [options.timeoutMs] an explicit timeout; overrides deadlineAt
  * @param {number} [options.deadlineAt] the caller's budget end (epoch ms)
  * @param {() => number} [options.now]
+ * @param {(timeoutMs: number) => void} [options.onTimeout] told the timeout the child runs under
  */
 export async function discoverRelatedTestFiles(
   root,
@@ -378,6 +379,7 @@ export async function discoverRelatedTestFiles(
     timeoutMs,
     deadlineAt,
     now = Date.now,
+    onTimeout = () => {},
   } = {},
 ) {
   if (!Array.isArray(relatedPaths) || relatedPaths.length === 0)
@@ -393,6 +395,7 @@ export async function discoverRelatedTestFiles(
     // Derived here, after refinement, so the child gets what is actually left.
     const childTimeoutMs =
       timeoutMs ?? relatedDiscoveryTimeoutMs({ deadlineAt, now });
+    onTimeout(childTimeoutMs);
     result = await run(
       process.execPath,
       [
@@ -1784,7 +1787,7 @@ function prepareCiFastExecution({ cwd, env }) {
  *   root?: string;
  *   run?: typeof runOwnedChangedCommand;
  *   changedPathsFn?: typeof changedPaths;
- *   discoverRelatedFiles?: (root: string, relatedPaths: string[], options?: { base?: string }) => Promise<string[]>;
+ *   discoverRelatedFiles?: (root: string, relatedPaths: string[], options?: { base?: string; onTimeout?: (timeoutMs: number) => void }) => Promise<string[]>;
  *   resourcePartition?: typeof partitionVitestResourceSubset;
  *   assertDependencyProvenance?: (options: { cwd: string }) => unknown;
  *   pathExists?: typeof existsSync;
@@ -1792,6 +1795,7 @@ function prepareCiFastExecution({ cwd, env }) {
  *   discoveryDeadlineAt?: number;
  *   headSha?: string;
  *   shardCount?: number;
+ *   now?: () => number;
  * }} [options]
  */
 export async function planChangedVerificationShards(
@@ -1808,6 +1812,7 @@ export async function planChangedVerificationShards(
     discoveryDeadlineAt,
     headSha = git(root, ['rev-parse', 'HEAD']).trim(),
     shardCount = FAST_CHECKS_SHARD_COUNT,
+    now = Date.now,
   } = {},
 ) {
   assertDependencyProvenance({ cwd: root });
@@ -1820,6 +1825,7 @@ export async function planChangedVerificationShards(
   let { selection } = prepared;
   let groups = [];
   let emptyRelatedSelection;
+  let relatedDiscovery;
   if (
     executionSelection.tests.length ||
     executionSelection.relatedPaths.length
@@ -1836,9 +1842,23 @@ export async function planChangedVerificationShards(
         }));
     const planned = await planChangedVitestGroups(root, executionSelection, {
       discoverRelated: async (discoveryRoot, relatedPaths) => {
+        const startedAt = now();
+        let timeoutMilliseconds;
         const files = await discover(discoveryRoot, relatedPaths, {
           base: changed.mergeBase,
+          onTimeout: (value) => {
+            timeoutMilliseconds = value;
+          },
         });
+        // #2803: discovery now runs on far more pull requests. Record its
+        // cost in every plan, so the hosted margin is measured per run rather
+        // than argued; #2855 derives the timeout from the budget, so record
+        // the timeout the child actually ran under (absent when no child
+        // started, e.g. refinement found nothing to discover).
+        relatedDiscovery = {
+          milliseconds: now() - startedAt,
+          ...(timeoutMilliseconds === undefined ? {} : { timeoutMilliseconds }),
+        };
         relatedDiscoveryCount = files.length;
         return files;
       },
@@ -1869,6 +1889,7 @@ export async function planChangedVerificationShards(
     escalated: selection.escalated,
     productLaws: productLawRouting.productLaws,
     ...(emptyRelatedSelection ? { emptyRelatedSelection } : {}),
+    ...(relatedDiscovery ? { relatedDiscovery } : {}),
     groups,
     fileCount: groups.reduce((total, group) => total + group.files.length, 0),
   };

@@ -1087,3 +1087,70 @@ describe('the selector CLI takes its discovery deadline from run-ci-fast (#2855 
     if (failure !== undefined) throw failure;
   });
 });
+
+describe('the plan records its related-discovery cost (#2803)', () => {
+  test('a plan that ran discovery records its duration and the timeout its child ran under, and one that did not records nothing', async () => {
+    let clock = 1_000;
+    const plan = await planChangedVerificationShards('HEAD', {
+      root,
+      headSha: 'c'.repeat(40),
+      assertDependencyProvenance: () => ({
+        repositoryRoot: root,
+        packages: [],
+      }),
+      changedPathsFn: () => ({
+        mergeBase: 'HEAD',
+        paths: ['scripts/lib/fast-checks-shards.mjs'],
+      }),
+      now: () => clock,
+      // As the real discovery does: report the derived timeout, then run.
+      discoverRelatedFiles: async (_root, _paths, options) => {
+        options?.onTimeout?.(265_000);
+        clock += 34_200;
+        return ['scripts/__tests__/fast-checks-shards.test.ts'];
+      },
+    });
+    expect(plan.relatedDiscovery).toEqual({
+      milliseconds: 34_200,
+      timeoutMilliseconds: 265_000,
+    });
+    const explicit = await planChangedVerificationShards('HEAD', {
+      root,
+      headSha: 'c'.repeat(40),
+      assertDependencyProvenance: () => ({
+        repositoryRoot: root,
+        packages: [],
+      }),
+      changedPathsFn: () => ({
+        mergeBase: 'HEAD',
+        paths: ['scripts/__tests__/fast-checks-shards.test.ts'],
+      }),
+      discoverRelatedFiles: async () => {
+        throw new Error('an explicit-only plan must not run discovery');
+      },
+    });
+    expect(explicit.relatedDiscovery).toBeUndefined();
+  });
+
+  test('the plan command reports that cost', async () => {
+    const { directory, head } = repository();
+    const lines: string[] = [];
+    const status = await runFastChecksShardCli(['plan', '--out=plan.json'], {
+      cwd: directory,
+      env: { STATION_CI_FAST_BASE: 'HEAD' },
+      report: (message) => lines.push(message),
+      error: () => {},
+      planShards: async () => ({
+        ...planFor(head, ['a/a.test.ts']),
+        relatedDiscovery: {
+          milliseconds: 34_200,
+          timeoutMilliseconds: 265_000,
+        },
+      }),
+    });
+    expect(status).toBe(0);
+    expect(lines.join('')).toContain(
+      '[fast-checks] related discovery: 34.2s of its 265.0s timeout\n',
+    );
+  });
+});

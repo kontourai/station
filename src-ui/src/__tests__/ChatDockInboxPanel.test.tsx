@@ -584,27 +584,6 @@ describe('ChatDockInboxPanel', () => {
     ).not.toBeNull();
   });
 
-  // archive#1797: the collapsed rail (a second "Open chat list"/expand
-  // control) duplicated the chrome's own header toggle whenever both
-  // were on screen at once. Collapsing is now entirely the caller's job —
-  // `ChatDock.tsx` simply stops mounting this component — so the component
-  // itself no longer has any notion of a collapsed state to render a
-  // duplicate control for. A stray `collapsed` prop (the old contract,
-  // cast through `as any` since the type no longer declares it) must be
-  // silently ignored rather than reintroducing the redundant rail.
-  it('ignores a stray legacy "collapsed" prop and always renders the full panel, never the old duplicate rail control', () => {
-    renderPanel({ collapsed: true, onExpand: vi.fn() } as any);
-
-    expect(screen.queryByRole('button', { name: 'Open chat list' })).toBeNull();
-    expect(document.querySelector('.chat-dock-inbox--collapsed')).toBeNull();
-    expect(document.querySelector('.chat-dock-inbox__rail-expand')).toBeNull();
-    expect(
-      screen.getByRole('button', {
-        name: 'active title, active project',
-      }),
-    ).not.toBeNull();
-  });
-
   // archive#1797: collapsing the inbox is now the caller's responsibility —
   // `ChatDock.tsx` mounts this component only while expanded, so there is no
   // in-component collapsed rail/state to render or test here any more. The

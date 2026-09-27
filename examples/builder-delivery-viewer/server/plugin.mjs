@@ -377,5 +377,4 @@ export function register(app, context) {
   });
 }
 
-export const __test__ = { safeSlug, confined, session, sessionsFor };
 export default { register };

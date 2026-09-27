@@ -42,13 +42,24 @@ describe('setup import routes', () => {
       ],
     };
     const module = {
+      apply: vi.fn(async () => receipt),
       receipt: vi.fn(async () => receipt),
       rollback: vi.fn(async () => receipt),
     };
+    const witnessId = '7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
     const app = createSetupImportRoutes(module as never, {
       operatorIdentityForRequest: () => 'operator',
     });
 
+    await expect(
+      (
+        await app.request('/previews/preview-1/apply', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ witnessId }),
+        })
+      ).json(),
+    ).resolves.toEqual({ success: true, data: receipt });
     await expect(
       (await app.request('/receipts/receipt-1')).json(),
     ).resolves.toEqual({
@@ -60,6 +71,10 @@ describe('setup import routes', () => {
         await app.request('/receipts/receipt-1/rollback', { method: 'POST' })
       ).json(),
     ).resolves.toEqual({ success: true, data: receipt });
+    expect(module.apply).toHaveBeenCalledWith({
+      previewId: 'preview-1',
+      witnessId,
+    });
     expect(module.receipt).toHaveBeenCalledWith('receipt-1');
     expect(module.rollback).toHaveBeenCalledWith('receipt-1');
   });

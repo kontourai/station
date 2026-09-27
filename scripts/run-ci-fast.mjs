@@ -147,6 +147,24 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // nightly full-regression gate, so #1795 could register the `open` verb
   // and land red on main, discovered by the next Nightly a day later.
   Object.freeze(['npm', Object.freeze(['run', 'docs:cli-parity:check'])]),
+  // #2803: docs are no longer a whole-diff deferral, and these two were
+  // composed only by verify:static (the merge queue and Nightly), which is
+  // how #2797 reached the queue with a broken doc reference. Both read every
+  // live doc against the repository, so a code change that breaks a doc
+  // fails here too. ~1s each (measured at load ~65).
+  Object.freeze(['npm', Object.freeze(['run', 'docs:reference:gate'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'docs:links:check'])]),
+  // #2803 review: once docs/** paths complete in fast-checks, these three
+  // docs:truth:gate members must run here too, or a doc edit they reject
+  // (a vendor name in the public pages, a hand-edited generated reference)
+  // reports completed and fails only in the queue. Node builtins and
+  // `git ls-files`, no build; ~0.2-2.7s each (measured at load ~80).
+  Object.freeze(['npm', Object.freeze(['run', 'docs:public:hygiene'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'docs:issue-lifecycle:check'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'docs:public:contract-examples']),
+  ]),
   // PRECONDITION for the typecheck aggregate below, same shape as
   // `build:connect`: the Basis MCP app bundles are git-ignored build output
   // that `typecheck:basis-pane`, `typecheck:server-tests`, and `typecheck:ui`

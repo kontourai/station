@@ -145,6 +145,13 @@ async function planCommand({ out }, { cwd, env, report, planShards, now }) {
         ? `; deferred to ${plan.deferredLanes.map((lane) => lane.id).join(', ')}\n`
         : '\n'),
   );
+  if (plan.relatedDiscovery)
+    report(
+      `[fast-checks] related discovery: ${(plan.relatedDiscovery.milliseconds / 1000).toFixed(1)}s` +
+        (plan.relatedDiscovery.timeoutMilliseconds === undefined
+          ? '\n'
+          : ` of its ${(plan.relatedDiscovery.timeoutMilliseconds / 1000).toFixed(1)}s timeout\n`),
+    );
   return 0;
 }
 
