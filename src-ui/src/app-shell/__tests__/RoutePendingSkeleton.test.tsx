@@ -182,7 +182,6 @@ describe('routePendingShape — read off the destination’s own frame', () => {
       // spec alone classifies part of the route wrongly.
       expect(shapeOf({ type: 'guidance', tab: 'commands' })).toBe('region');
       expect(shapeOf({ type: 'guidance', tab: 'skills' })).toBe('split-pane');
-      expect(shapeOf({ type: 'guidance', tab: 'skills' })).toBe('split-pane');
     });
 
     test('and from the session memory when the URL does not say', () => {
