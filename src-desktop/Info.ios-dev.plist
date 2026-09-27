@@ -16,5 +16,9 @@
   <key>NSAppTransportSecurity</key>
   <dict><key>NSAllowsLocalNetworking</key><true/></dict>
   <key>ITSAppUsesNonExemptEncryption</key><false/>
+  <!-- Agent-activity Live Activities (#2513). Development builds only until
+       release signing carries push (slice D adds them to Info.ios.plist). -->
+  <key>NSSupportsLiveActivities</key><true/>
+  <key>NSSupportsLiveActivitiesFrequentUpdates</key><true/>
 </dict>
 </plist>

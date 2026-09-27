@@ -13,7 +13,11 @@ import { ReasoningHandler } from '../streaming/handlers/ReasoningHandler.js';
 import { ToolCallHandler } from '../streaming/handlers/ToolCallHandler.js';
 import type { InjectableStream } from '../streaming/InjectableStream.js';
 import { StreamPipeline } from '../streaming/StreamPipeline.js';
-import { isAutoApproved } from '../tools/tool-executor.js';
+import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
+import {
+  isAutoApproved,
+  isIntrinsicStationEngineGrant,
+} from '../tools/tool-executor.js';
 
 /**
  * Create elicitation callback for tool approval
@@ -33,6 +37,13 @@ export function createElicitationCallback(
   injectableStream: InjectableStream,
   logger: any,
   getConversationId: () => string | undefined = () => undefined,
+  /**
+   * #2589: set when this stream is the Station-agent adapter's relay for an
+   * orchestration thread. The adapter republishes each tool-approval request
+   * below as that thread's `request.opened`, so the approval is on the
+   * agent-activity card; the stamp says so on the registry twin.
+   */
+  orchestrationThreadId?: string,
 ) {
   const autoApprove = agentSpec?.tools?.autoApprove || [];
 
@@ -51,7 +62,13 @@ export function createElicitationCallback(
         ? isAutoApproved(toolMapping.original, autoApprove)
         : false;
 
-      if (isApproved || isApprovedOriginal) {
+      // #2584: the built-in's bounded-write tools, by exact loader identity.
+      const isIntrinsic = isIntrinsicStationEngineGrant(
+        toolName,
+        toolNameMapping as ReadonlyMap<string, MCPToolNameMappingEntry>,
+      );
+
+      if (isApproved || isApprovedOriginal || isIntrinsic) {
         logger.info('[Elicitation] Auto-approved, returning true immediately', {
           toolName,
           originalName: toolMapping?.original,
@@ -89,10 +106,15 @@ export function createElicitationCallback(
       } as unknown as any);
 
       // Wait for user approval
+      const conversationId = getConversationId();
       return approvalRegistry.register(approvalId, {
         metadata: {
           agentName: agentSpec.name,
-          conversationId: getConversationId(),
+          conversationId,
+          // Only for the relayed conversation itself.
+          ...(orchestrationThreadId && orchestrationThreadId === conversationId
+            ? { orchestrationThreadId }
+            : {}),
           description:
             typeof request.toolDescription === 'string'
               ? request.toolDescription

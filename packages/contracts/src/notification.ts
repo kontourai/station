@@ -1,3 +1,5 @@
+import type { SurfaceId } from './presence.js';
+
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
 export type NotificationStatus =
   | 'pending'
@@ -62,3 +64,133 @@ export const BLOCKING_NOTIFICATION_CATEGORIES = {
 
 export type BlockingNotificationCategory =
   (typeof BLOCKING_NOTIFICATION_CATEGORIES)[keyof typeof BLOCKING_NOTIFICATION_CATEGORIES];
+
+/**
+ * Unified notification envelope (#2582 / #2583).
+ *
+ * Stored at `Notification.metadata.envelope`, never as a new top-level
+ * column: the server's store validator rejects unknown top-level keys and the
+ * store fails closed on an invalid document, so a new column would make every
+ * previous build refuse the whole file. Records without an envelope keep
+ * working; readers must treat a missing or malformed envelope as "legacy".
+ *
+ * Reads are lenient and writes are strict (both parsers live in
+ * `@kontourai/station-shared/notification-envelope`; this package carries
+ * shapes and constants only). A v1 reader ignores keys it does not know, so a
+ * newer build may ADD optional fields without bumping `v`; any change an older
+ * reader would misread (a new urgency, a changed meaning) bumps `v`, and an
+ * unknown `v` reads as a legacy record.
+ */
+export type NotificationUrgency = 'info' | 'attention' | 'done' | 'failed';
+
+export const NOTIFICATION_URGENCIES: readonly NotificationUrgency[] = [
+  'info',
+  'attention',
+  'done',
+  'failed',
+];
+
+export const NOTIFICATION_TITLE_MAX = 80;
+export const NOTIFICATION_BODY_MAX = 300;
+export const NOTIFICATION_DEDUPE_KEY_MAX = 64;
+/** An agent dedupe key is 1..NOTIFICATION_DEDUPE_KEY_MAX characters from `[A-Za-z0-9._:-]`. */
+export const NOTIFICATION_DEDUPE_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
+export const NOTIFICATION_LINK_MAX = 512;
+
+/** Assurance of the verified station-control caller that sent the notification. */
+export type NotificationAgentAssurance =
+  | 'bound'
+  | 'delegated-custody'
+  | 'bearer-exposed';
+
+export type NotificationSource =
+  | {
+      kind: 'agent';
+      sessionId: string;
+      projectId?: string;
+      agent?: string;
+      conversationId?: string;
+      assurance: NotificationAgentAssurance;
+    }
+  | { kind: 'system'; subsystem: string }
+  | { kind: 'provider'; providerId: string }
+  /**
+   * Read-side only: a v1 source whose `kind` this build does not know (a
+   * newer build wrote it). Readers fail closed on it — the envelope is read
+   * as `interrupt: 'silent'` — and writers never produce it.
+   */
+  | { kind: 'unknown'; observedKind: string };
+
+export type NotificationAudience =
+  | { kind: 'owner' }
+  | { kind: 'session-readers'; sessionId: string }
+  /** Reserved for future accounts; no resolver produces surfaces for it yet. */
+  | { kind: 'principal'; principalId: string };
+
+export type NotificationTarget =
+  | { kind: 'session'; sessionId: string }
+  /** Same-origin relative Station path (e.g. `/sessions/abc`). */
+  | { kind: 'path'; path: string };
+
+export type NotificationInterrupt = 'default' | 'silent';
+
+/**
+ * The delivery surface a read/dismiss marker names. Owned by
+ * `@kontourai/station-contracts/presence`; re-exported so notification
+ * imports keep working.
+ */
+export type { SurfaceId } from './presence.js';
+
+export interface NotificationEnvelopeV1 {
+  v: 1;
+  source: NotificationSource;
+  audience: NotificationAudience;
+  urgency: NotificationUrgency;
+  target?: NotificationTarget;
+  interrupt: NotificationInterrupt;
+  /**
+   * Set only by the service (`markRead` / `dismiss`), never by a producer.
+   * First surface wins; later reads never overwrite these.
+   */
+  readAt?: string;
+  readBy?: SurfaceId;
+  dismissedAt?: string;
+  dismissedBy?: SurfaceId;
+}
+
+/** Categories agent notifications are stored under, one per urgency. */
+export const AGENT_NOTIFICATION_CATEGORIES = {
+  info: 'agent-info',
+  attention: 'agent-attention',
+  done: 'agent-done',
+  failed: 'agent-failed',
+} as const satisfies Record<NotificationUrgency, string>;
+
+export type AgentNotificationCategory =
+  (typeof AGENT_NOTIFICATION_CATEGORIES)[NotificationUrgency];
+
+/** What the `notify_user` station-control tool accepts from an agent. */
+export interface NotifyUserRequest {
+  title: string;
+  body?: string;
+  urgency: NotificationUrgency;
+  dedupeKey?: string;
+  /** Relative Station path; defaults to the calling session. */
+  link?: string;
+}
+
+export type NotifyUserStatus =
+  | 'sent'
+  | 'updated'
+  | 'deduped'
+  | 'muted'
+  | 'rate_limited'
+  | 'unavailable'
+  | 'caller-required';
+
+/** Never carries device or delivery counts. */
+export interface NotifyUserResult {
+  status: NotifyUserStatus;
+  notificationId?: string;
+  retryAfterSec?: number;
+}

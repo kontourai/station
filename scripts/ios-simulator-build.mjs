@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import {
   closeSync,
   constants,
+  existsSync,
   fstatSync,
   mkdtempSync,
   openSync,
@@ -12,12 +13,30 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const ENTITLEMENTS = 'station_iOS/StationSimulator.entitlements';
-const FLAGS = [
+// The app extensions a spec may carry (ensure-ios-agent-activity-extension
+// .mjs): the Live Activity widget (#2513) and the Notification Service
+// Extension (#2590). Each holds only the keychain group the app shares.
+const EXTENSIONS = [
+  {
+    target: 'StationAgentActivity',
+    suffix: 'AgentActivity',
+    label: 'Live Activity',
+    entitlements: 'station_iOS/StationAgentActivitySimulator.entitlements',
+  },
+  {
+    target: 'StationNotificationService',
+    suffix: 'NotificationService',
+    label: 'Notification Service',
+    entitlements:
+      'station_iOS/StationNotificationServiceSimulator.entitlements',
+  },
+];
+const sectionFlags = (entitlements) => [
   '-Xlinker',
   '-sectcreate',
   '-Xlinker',
@@ -25,7 +44,7 @@ const FLAGS = [
   '-Xlinker',
   '__entitlements',
   '-Xlinker',
-  `"$(PROJECT_DIR)/${ENTITLEMENTS}"`,
+  `"$(PROJECT_DIR)/${entitlements}"`,
 ];
 const runCommand = (command, args, options = {}) =>
   execFileSync(command, args, {
@@ -39,7 +58,10 @@ const readConfig = (root) =>
     readFileSync(join(root, 'src-desktop/tauri.ios.dev.conf.json'), 'utf8'),
   );
 
-export function simulatorEntitlements(identifier) {
+export function simulatorEntitlements(
+  identifier,
+  { agentActivity = false } = {},
+) {
   if (
     typeof identifier !== 'string' ||
     !/^io\.kontourai\.station\.dev\.[a-z0-9.-]+$/.test(identifier)
@@ -49,13 +71,52 @@ export function simulatorEntitlements(identifier) {
     );
   return {
     'application-identifier': identifier,
-    'keychain-access-groups': [identifier],
+    // The default group first; the second is shared with the widget.
+    'keychain-access-groups': agentActivity
+      ? [identifier, `${identifier}.agentactivity`]
+      : [identifier],
   };
+}
+
+/** An extension's rights: only the group the app shares with it. */
+export function simulatorExtensionEntitlements(identifier, suffix) {
+  const app = simulatorEntitlements(identifier, { agentActivity: true });
+  return {
+    'application-identifier': `${identifier}.${suffix}`,
+    'keychain-access-groups': [app['keychain-access-groups'][1]],
+  };
+}
+
+/** The widget extension's rights: only the group the app shares with it. */
+export function simulatorAgentActivityEntitlements(identifier) {
+  return simulatorExtensionEntitlements(identifier, 'AgentActivity');
+}
+
+const entitlementsXml = (entitlements) =>
+  `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>application-identifier</key><string>${entitlements['application-identifier']}</string><key>keychain-access-groups</key><array>${entitlements['keychain-access-groups'].map((group) => `<string>${group}</string>`).join('')}</array></dict></plist>\n`;
+
+function addSectionFlags(target, entitlements) {
+  const key = 'OTHER_LDFLAGS[sdk=iphonesimulator*]';
+  const expected = sectionFlags(entitlements);
+  const flags = target.settings.base[key] ?? ['$(inherited)'];
+  if (
+    !Array.isArray(flags) ||
+    !flags.every((value) => typeof value === 'string')
+  )
+    throw new Error(
+      'Unsupported simulator linker settings; preserve and review the existing flags.',
+    );
+  const prepared =
+    JSON.stringify(flags.slice(-expected.length)) === JSON.stringify(expected);
+  if (!prepared && flags.includes('__entitlements'))
+    throw new Error(
+      'An unrelated simulator entitlement section is already configured.',
+    );
+  target.settings.base[key] = prepared ? flags : [...flags, ...expected];
 }
 
 export function prepareIosSimulator({ root = ROOT, run = runCommand } = {}) {
   const config = readConfig(root);
-  const entitlements = simulatorEntitlements(config.identifier);
   const apple = join(root, 'src-desktop/gen/apple');
   const path = join(apple, 'project.yml');
   const project = YAML.parse(readFileSync(path, 'utf8'));
@@ -66,26 +127,35 @@ export function prepareIosSimulator({ root = ROOT, run = runCommand } = {}) {
     !target.settings?.base
   )
     throw new Error('Expected the generated Station iOS application target.');
-  const key = 'OTHER_LDFLAGS[sdk=iphonesimulator*]';
-  const flags = target.settings.base[key] ?? ['$(inherited)'];
-  if (
-    !Array.isArray(flags) ||
-    !flags.every((value) => typeof value === 'string')
-  )
-    throw new Error(
-      'Unsupported simulator linker settings; preserve and review the existing flags.',
-    );
-  const prepared =
-    JSON.stringify(flags.slice(-FLAGS.length)) === JSON.stringify(FLAGS);
-  if (!prepared && flags.includes('__entitlements'))
-    throw new Error(
-      'An unrelated simulator entitlement section is already configured.',
-    );
-  target.settings.base[key] = prepared ? flags : [...flags, ...FLAGS];
+  const extensions = EXTENSIONS.flatMap((spec) => {
+    const extension = project.targets?.[spec.target];
+    if (extension === undefined) return [];
+    if (extension?.type !== 'app-extension' || !extension.settings?.base)
+      throw new Error(`Expected the ${spec.label} app-extension target.`);
+    return [{ spec, extension }];
+  });
+  const agentActivity = extensions.length > 0;
+  const entitlements = simulatorEntitlements(config.identifier, {
+    agentActivity,
+  });
   // iOS rights belong in this simulator-only Mach-O section. Putting them in
   // the macOS code signature can prevent the simulator process from launching.
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>application-identifier</key><string>${entitlements['application-identifier']}</string><key>keychain-access-groups</key><array><string>${config.identifier}</string></array></dict></plist>\n`;
-  writeFileSync(join(apple, ENTITLEMENTS), xml, { mode: 0o600 });
+  addSectionFlags(target, ENTITLEMENTS);
+  writeFileSync(join(apple, ENTITLEMENTS), entitlementsXml(entitlements), {
+    mode: 0o600,
+  });
+  for (const { spec, extension } of extensions) {
+    // The extension's bundle id must extend the app's development identity.
+    extension.settings.base.STATION_APP_BUNDLE_IDENTIFIER = config.identifier;
+    addSectionFlags(extension, spec.entitlements);
+    writeFileSync(
+      join(apple, spec.entitlements),
+      entitlementsXml(
+        simulatorExtensionEntitlements(config.identifier, spec.suffix),
+      ),
+      { mode: 0o600 },
+    );
+  }
   writeFileSync(path, YAML.stringify(project));
   run('xcodegen', ['generate', '--spec', path, '--project', apple]);
 }
@@ -124,12 +194,37 @@ export function readSimulatorEntitlementSection(executable, loadCommands) {
   }
 }
 
+function verifyEntitlementSection(executable, expected, run, message) {
+  const bytes = readSimulatorEntitlementSection(
+    executable,
+    run('xcrun', ['otool', '-l', executable]),
+  );
+  const temporary = mkdtempSync(
+    join(tmpdir(), 'station-simulator-verification-'),
+  );
+  try {
+    const path = join(temporary, 'entitlements.plist');
+    writeFileSync(path, bytes, { mode: 0o600 });
+    const actual = JSON.parse(
+      run('plutil', ['-convert', 'json', '-o', '-', path]),
+    );
+    if (
+      Object.keys(actual).length !== 2 ||
+      actual['application-identifier'] !== expected['application-identifier'] ||
+      JSON.stringify(actual['keychain-access-groups']) !==
+        JSON.stringify(expected['keychain-access-groups'])
+    )
+      throw new Error(message);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
 export function verifyIosSimulator(
   archive,
   { root = ROOT, run = runCommand } = {},
 ) {
   const config = readConfig(root);
-  const expected = simulatorEntitlements(config.identifier);
   // Archive metadata contains a Date, so extract the JSON-compatible record.
   const archived = JSON.parse(
     run('plutil', [
@@ -189,30 +284,47 @@ export function verifyIosSimulator(
     throw new Error(
       'Simulator pairing association does not match its development identity.',
     );
-  const bytes = readSimulatorEntitlementSection(
+  const embedded = EXTENSIONS.map((spec) => ({
+    spec,
+    appex: join(app, 'PlugIns', `${spec.target}.appex`),
+  })).filter(({ appex }) => existsSync(appex));
+  const agentActivity = embedded.length > 0;
+  verifyEntitlementSection(
     executable,
-    run('xcrun', ['otool', '-l', executable]),
+    simulatorEntitlements(config.identifier, { agentActivity }),
+    run,
+    'The built simulator app is missing its private keychain identity.',
   );
-  const temporary = mkdtempSync(
-    join(tmpdir(), 'station-simulator-verification-'),
-  );
-  try {
-    const path = join(temporary, 'entitlements.plist');
-    writeFileSync(path, bytes, { mode: 0o600 });
-    const actual = JSON.parse(
-      run('plutil', ['-convert', 'json', '-o', '-', path]),
+  for (const { spec, appex } of embedded) {
+    const extensionInfo = JSON.parse(
+      run('plutil', ['-convert', 'json', '-o', '-', join(appex, 'Info.plist')]),
+    );
+    const expected = simulatorExtensionEntitlements(
+      config.identifier,
+      spec.suffix,
     );
     if (
-      Object.keys(actual).length !== 2 ||
-      actual['application-identifier'] !== expected['application-identifier'] ||
-      JSON.stringify(actual['keychain-access-groups']) !==
-        JSON.stringify(expected['keychain-access-groups'])
+      extensionInfo.CFBundleIdentifier !== expected['application-identifier'] ||
+      extensionInfo.CFBundleExecutable !== spec.target
     )
       throw new Error(
-        'The built simulator app is missing its private keychain identity.',
+        `The ${spec.label} extension does not extend the development identity.`,
       );
-  } finally {
-    rmSync(temporary, { recursive: true, force: true });
+    verifyEntitlementSection(
+      join(appex, spec.target),
+      expected,
+      run,
+      `The built ${spec.label} extension is missing its shared keychain group.`,
+    );
+    // Nested code is sealed before the app that contains it.
+    run('codesign', [
+      '--force',
+      '--sign',
+      '-',
+      '--identifier',
+      expected['application-identifier'],
+      appex,
+    ]);
   }
   // Seal resources with an ordinary local signature, without iOS rights in
   // that macOS signature. The simulator reads those rights from __TEXT above.
@@ -228,10 +340,7 @@ export function verifyIosSimulator(
   return app;
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   if (process.platform !== 'darwin')
     throw new Error('iOS simulator builds require macOS and Xcode.');
   if (process.argv[2] === 'prepare') prepareIosSimulator();

@@ -4,6 +4,10 @@ import {
   isAuthorityObservation,
 } from '@kontourai/station-contracts/authority-observation';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
+import type {
+  BrowserPaneAccessView,
+  BrowserSessionView,
+} from '@kontourai/station-contracts/workspace-browser-pane';
 import type { Route } from '@playwright/test';
 
 /** Explicit optional shell reads; keep each envelope aligned with its route owner. */
@@ -139,6 +143,31 @@ export function shellAuthorityObservation(
 const CONVERSATION_PULL_REQUESTS = '/api/conversation-pull-requests/';
 const FIXTURE_OBSERVED_AT = '2026-07-13T00:00:00Z';
 
+/**
+ * The chat's browser float (#2444/#2467, `FloatOverChatHost.tsx`) reads the
+ * caller's standing for the chat's Project, then that Project's browser
+ * sessions, on every chat that mounts with auto-float on (the default).
+ *
+ * Modelled for the `default` Project only, the one the shared chat shell
+ * declares (`chat-shell-fixture.ts`: id `default`, slug `default`); any other
+ * slug stays unmodelled so the audit names it. The envelopes are the routes'
+ * own (`src-server/routes/browser.ts`, `GET /projects/:projectSlug/access`
+ * and `GET /sessions`). These fixtures' caller is the local operator (see
+ * `shellAuthorityObservation`), so access answers `role: 'operator'`,
+ * `operator: true` and principal key `operator` (`principalKeyFor` in
+ * `browser-session-registry.ts`). No browser has been acquired in a
+ * fixture, so `browser` is `not-ready`; and nobody has started a browser
+ * session, so the session list is empty — the decided state, not a stand-in.
+ */
+const DEFAULT_PROJECT_BROWSER_ACCESS: BrowserPaneAccessView = {
+  projectId: 'default',
+  role: 'operator',
+  principalKey: 'operator',
+  operator: true,
+  browser: 'not-ready',
+};
+const DEFAULT_PROJECT_BROWSER_SESSIONS: BrowserSessionView[] = [];
+
 export async function fulfillStationShellRead(
   route: Route,
   options: { environmentId?: string; deviceId?: string } = {},
@@ -228,6 +257,35 @@ export async function fulfillStationShellRead(
       body: JSON.stringify({
         success: false,
         error: 'Client storage key is not an execution Session',
+      }),
+    });
+    return true;
+  }
+  if (
+    request.method() === 'GET' &&
+    path === '/api/browser/projects/default/access'
+  ) {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        data: DEFAULT_PROJECT_BROWSER_ACCESS,
+      }),
+    });
+    return true;
+  }
+  if (
+    request.method() === 'GET' &&
+    path === '/api/browser/sessions' &&
+    new URL(request.url()).searchParams.get('projectSlug') === 'default'
+  ) {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        data: DEFAULT_PROJECT_BROWSER_SESSIONS,
       }),
     });
     return true;

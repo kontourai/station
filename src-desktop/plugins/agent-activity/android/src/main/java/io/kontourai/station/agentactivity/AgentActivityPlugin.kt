@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import android.webkit.WebView
 import androidx.core.app.NotificationManagerCompat
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
@@ -15,6 +16,7 @@ import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
+import org.json.JSONObject
 
 @InvokeArg
 class ConfigureArgs {
@@ -25,6 +27,9 @@ class ConfigureArgs {
   var ongoingEnabled: Boolean = true
 }
 
+/** Fired (no payload) when a card tap arrives while the app runs; call `take_launch_route`. */
+internal const val LAUNCH_ROUTE_EVENT = "launchRoute"
+
 @InvokeArg
 class ClearArgs {
   var registrationId: String? = null
@@ -33,11 +38,66 @@ class ClearArgs {
 /**
  * The WebView's handle on native agent activity. Receipt and rendering do
  * not go through here — AgentMessagingService handles pushes with no
- * WebView — so this only registers identity and reports capability.
+ * WebView — so this registers identity, reports capability, and hands the
+ * web layer the session a card tap asked to open.
  */
 @TauriPlugin
 class AgentActivityPlugin(private val activity: Activity) : Plugin(activity) {
   private val context get() = activity.applicationContext
+
+  /** The latest card tap's route, until the web layer takes it. */
+  private var launchRoute: SessionRoute? = null
+
+  override fun load(webView: WebView) {
+    // A tap that cold-started the app: the web layer takes it once ready.
+    adoptRoute(activity.intent)
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    // A tap while the app is running: say so, the web layer then takes it.
+    if (adoptRoute(intent)) trigger(LAUNCH_ROUTE_EVENT, JSObject())
+  }
+
+  /**
+   * Keeps a card tap's route. Only an intent shaped like the launch intents
+   * AgentNotifications posts (ACTION_MAIN, no data, not relaunched from
+   * Recents) is considered, and only by redeeming its tap nonce: extras
+   * another app supplies name no issued nonce, and a nonce is redeemed once,
+   * so the original launch intent Android restores after process death
+   * opens nothing again. The extra is also removed, which only helps within
+   * this process.
+   */
+  private fun adoptRoute(intent: Intent?): Boolean {
+    if (intent == null) return false
+    val nonce = intent.getStringExtra(EXTRA_TAP) ?: return false
+    intent.removeExtra(EXTRA_TAP)
+    val shaped = isCardTapIntent(
+      intent.action,
+      intent.data != null,
+      (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+    )
+    if (!shaped) return false
+    launchRoute = AgentNotifications.redeemTap(context, nonce) ?: return false
+    return true
+  }
+
+  /** Returns and clears the pending route: `{ route: null }` when there is none. */
+  @Command
+  fun takeLaunchRoute(invoke: Invoke) {
+    val route = launchRoute
+    launchRoute = null
+    val result = JSObject()
+    if (route == null) {
+      result.put("route", JSONObject.NULL)
+    } else {
+      val value = JSObject()
+      value.put("stationId", route.stationId)
+      value.put("sessionId", route.sessionId)
+      route.projectSlug?.let { value.put("projectSlug", it) }
+      result.put("route", value)
+    }
+    invoke.resolve(result)
+  }
 
   private fun firebaseConfigured() = FirebaseApp.getApps(context).isNotEmpty()
 

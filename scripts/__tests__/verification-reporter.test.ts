@@ -40,6 +40,7 @@ import {
   sweepVerificationArtifactOrphans,
   verifyVerificationArtifacts,
 } from '../lib/verification-reporter.mjs';
+import { CI_FAST_BUDGET_EXCEEDED_CAUSE } from '../run-ci-fast.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
 function privateKeyMarker(position: 'BEGIN' | 'END', kind: string): string {
@@ -886,7 +887,7 @@ describe('verification reporter', () => {
     for (const seed of [
       `${'x'.repeat(18)} {"apiKey":"SECRETVALUE0123456789","b":"c"}`,
       needsTwoPasses,
-      'ci:fast exceeded its 12-minute feedback budget',
+      CI_FAST_BUDGET_EXCEEDED_CAUSE,
     ]) {
       const once = normalizeDeclaredCause(seed) as string;
       expect(normalizeDeclaredCause(once)).toBe(once);

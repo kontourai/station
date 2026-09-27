@@ -1,4 +1,7 @@
-import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
+import type {
+  ConversationTurnActivity,
+  OrchestrationSessionSummary,
+} from '@kontourai/station-contracts/orchestration';
 import { sessionAttentionDisposition } from '@kontourai/station-contracts/session-attention';
 import { describe, expect, test } from 'vitest';
 import {
@@ -59,6 +62,50 @@ describe('the four shapes where the raw state and the fold disagree', () => {
     expect(orchestrationLifecycleLabel(idle)).toBe('Ready');
     expect(sessionStatusWord(idle)).toBe('Ready');
     expect(sessionStatusWord(idle)).not.toBe('Running');
+  });
+
+  test('reported child work keeps a completed or ready parent Running without reviving closed or failed sessions', () => {
+    const conversationActivity: ConversationTurnActivity = {
+      conversationId: 'thread-1',
+      currentThreadId: 'thread-1',
+      asOfSequence: 9,
+      runningChildWork: { count: 1, producers: ['engine-subagent'] },
+    };
+    expect(
+      orchestrationLifecycleLabel(
+        session({
+          lifecycleState: 'completed',
+          hasActiveTurn: false,
+          conversationActivity,
+        }),
+      ),
+    ).toBe('Running');
+    expect(
+      orchestrationLifecycleLabel(
+        session({
+          lifecycleState: 'running',
+          hasActiveTurn: false,
+          conversationActivity,
+        }),
+      ),
+    ).toBe('Running');
+    expect(
+      orchestrationLifecycleLabel(
+        session({
+          lifecycleState: 'completed',
+          status: 'closed',
+          conversationActivity,
+        }),
+      ),
+    ).toBe('Completed');
+    expect(
+      orchestrationLifecycleLabel(
+        session({
+          lifecycleState: 'failed',
+          conversationActivity,
+        }),
+      ),
+    ).toBe('Failed');
   });
 
   test('a pending review outranks a live turn — Needs attention, never Running', () => {

@@ -73,23 +73,13 @@ afterEach(() => {
 });
 
 describe('station-control browser tools', () => {
-  test('the eleven tools are registered with concise descriptions', () => {
+  // The registered name set is pinned on the real server in
+  // station-browser-mcp-server.test.ts; this file owns description length.
+  test('every browser tool description stays concise', () => {
     const registered = tools();
-    expect([...registered.keys()].sort()).toEqual([
-      'browser_click',
-      'browser_evaluate',
-      'browser_navigate',
-      'browser_open',
-      'browser_press',
-      'browser_resize',
-      'browser_scroll',
-      'browser_snapshot',
-      'browser_status',
-      'browser_type',
-      'browser_wait_for',
-    ]);
-    for (const tool of registered.values())
-      expect(tool.description.length).toBeLessThan(260);
+    expect(registered.size).toBeGreaterThan(0);
+    for (const [name, tool] of registered)
+      expect(tool.description.length, name).toBeLessThan(260);
   });
 
   test.each([
@@ -100,13 +90,18 @@ describe('station-control browser tools', () => {
       'caller-not-bound',
     ],
     [
-      'an inferred principal',
+      // No derivation produces one today; the consumer must still refuse a
+      // principal not marked eligible rather than assume every one is.
+      'a principal not eligible to elevate',
       {
         ...good,
-        principal: stationControlCallerPrincipal(
-          'human:local:operator',
-          'ownerless-single-operator',
-        ),
+        principal: Object.freeze({
+          ...stationControlCallerPrincipal(
+            'human:local:operator',
+            'session-owner',
+          ),
+          elevationEligible: false,
+        }),
       },
       'principal-unverified',
     ],

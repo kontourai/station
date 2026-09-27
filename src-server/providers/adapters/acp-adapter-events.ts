@@ -34,6 +34,10 @@ import type {
 } from '../adapter-shape.js';
 import { observeInboundExtensionNotification } from '../extension-notification-observe.js';
 import type { AcpToolUpdateSupervisor } from './acp-tool-update-supervisor.js';
+import {
+  type ParagraphBoundaryState,
+  withParagraphBreak,
+} from './paragraph-boundary.js';
 
 /**
  * Last-known adapter session state a mapper switch case can mutate directly
@@ -48,6 +52,8 @@ import type { AcpToolUpdateSupervisor } from './acp-tool-update-supervisor.js';
  * no-ops.
  */
 export interface AcpMapperState {
+  /** Paragraph breaks between the agent's messages within a turn. */
+  textBoundary?: ParagraphBoundaryState;
   currentModeId?: string;
   configOptions?: unknown[];
   slashCommands?: Array<{
@@ -233,8 +239,21 @@ export function mapAcpSessionUpdate(
 
   switch (update.sessionUpdate) {
     case 'agent_message_chunk': {
-      const delta = renderAcpContentBlockAsText(update.content);
-      if (delta === undefined) return;
+      const rendered = renderAcpContentBlockAsText(update.content);
+      if (rendered === undefined) return;
+      // "A change in `messageId` indicates a new message has started" (ACP
+      // schema): open a paragraph there. Without a messageId the boundary is
+      // invisible and the text is kept exactly as the agent sent it.
+      let delta = rendered;
+      if (update.messageId && ctx.state) {
+        ctx.state.textBoundary ??= {};
+        delta = withParagraphBreak(
+          ctx.state.textBoundary,
+          ctx.activeTurnId ?? threadId,
+          update.messageId,
+          rendered,
+        );
+      }
       ctx.publish({
         eventId: crypto.randomUUID(),
         provider: 'acp',

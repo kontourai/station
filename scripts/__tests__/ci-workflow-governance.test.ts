@@ -1,27 +1,20 @@
 import { readFileSync } from 'node:fs';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
+import { FAST_CHECKS_JOB_TIMEOUT_MINUTES } from '../actionlint-gate.mjs';
 import {
   collectCiWorkflowGovernanceFindings,
-  collectPostMergeDetectorWorkflowFindings,
   collectPrimaryCiWorkflowTriggerFindings,
   collectRequiredBrowserSmokeFindings,
   findNamedWorkflowStep,
   REQUIRED_FAST_CHECKS_CONDITION,
-  workflowExecutionScope,
 } from '../ci-workflow-governance.mjs';
 
-const cleanWorkflow = `
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  merge_group:
-    branches: [main]
-    types: [checks_requested]
-  workflow_dispatch:
+const primaryTriggers =
+  'on:\n  push:\n    branches: [main]\n  pull_request:\n    branches: [main]\n  merge_group:\n    branches: [main]\n    types: [checks_requested]\n  workflow_dispatch:\n';
 
+const cleanWorkflow = `
+${primaryTriggers}
 jobs:
   fast-checks:
     needs: classify
@@ -51,13 +44,6 @@ jobs:
             exit 2
           fi
 `;
-
-const cleanPostMergeWorkflow = cleanWorkflow
-  .replace('  pull_request:\n    branches: [main]\n', '')
-  .replace(
-    '  merge_group:\n    branches: [main]\n    types: [checks_requested]\n',
-    '',
-  );
 
 function findingsFor(workflow: string) {
   return collectCiWorkflowGovernanceFindings({
@@ -246,34 +232,16 @@ describe('primary CI workflow governance', () => {
     );
   });
 
-  test('keeps Secret Scan on candidate pull requests and documents its evidence boundary', () => {
-    const secretScan = readFileSync(
-      new URL('../../.github/workflows/secret-scan.yml', import.meta.url),
-      'utf8',
-    );
-    const localProtocol = readFileSync(
-      new URL('../../docs/strategy/local-merge-readiness.md', import.meta.url),
-      'utf8',
-    );
-    const governanceSource = readFileSync(
-      new URL('../ci-workflow-governance.mjs', import.meta.url),
-      'utf8',
-    );
+  test('keeps Secret Scan on candidate pull requests to main', () => {
+    const secretScan = load(
+      readFileSync(
+        new URL('../../.github/workflows/secret-scan.yml', import.meta.url),
+        'utf8',
+      ),
+      { schema: JSON_SCHEMA },
+    ) as { on?: { pull_request?: { branches?: unknown } | null } };
 
-    expect(workflowExecutionScope(secretScan)).toBe('pull-request');
-    expect(collectPostMergeDetectorWorkflowFindings(secretScan)).toContain(
-      'Post-merge detector workflow must not trigger on pull_request.',
-    );
-    expect(localProtocol).toContain(
-      'Secret Scan scans all Git history reachable from',
-    );
-    expect(localProtocol).toContain(
-      'a red may come from pre-existing\n> reachable history',
-    );
-    expect(localProtocol).toContain(
-      'does not replace the rest of merge-readiness evidence',
-    );
-    expect(governanceSource).not.toContain('Primary PR CI');
+    expect(secretScan.on?.pull_request?.branches).toEqual(['main']);
   });
 
   test('runs bounded PR feedback while reserving the heavy completion gate for main', () => {
@@ -300,7 +268,13 @@ describe('primary CI workflow governance', () => {
       "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
     );
     expect(fastChecks?.['runs-on']).toBe('ubuntu-22.04');
-    expect(fastChecks?.['timeout-minutes']).toBe(45);
+    // The fence is the gate's constant, not a second literal (#2577: this pin
+    // stayed at 45 when the fence moved). ci-workflow-contract.test.ts proves
+    // the value covers the ci:fast budget plus the job's bounded steps; this
+    // keeps ci.yml and the actionlint-gate constant from drifting apart.
+    expect(fastChecks?.['timeout-minutes']).toBe(
+      FAST_CHECKS_JOB_TIMEOUT_MINUTES,
+    );
     expect(fastChecks?.concurrency).toEqual({
       group:
         // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
@@ -388,130 +362,147 @@ describe('primary CI workflow governance', () => {
     );
   });
 
-  test('rejects a parsed false PR-feedback guard despite a comment decoy', () => {
+  test('rejects a parsed false fast-checks guard despite a comment decoy', () => {
     const workflow = readFileSync(
       new URL('../../.github/workflows/ci.yml', import.meta.url),
       'utf8',
-    ).replace(
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      "if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
+    );
+    const decoy = workflow.replace(
+      `if: ${REQUIRED_FAST_CHECKS_CONDITION}`,
       "if: false # github.event_name == 'pull_request_target'",
     );
 
-    expect(workflow).toContain("github.event_name == 'pull_request_target'");
-    expect(parsedJob(workflow, 'fast-checks')?.if).toBe(false);
-    expect(parsedJob(workflow, 'fast-checks')?.if).not.toBe(
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      "${{ always() && !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
+    expect(decoy).not.toBe(workflow);
+    expect(findingsFor(workflow)).toEqual([]);
+    expect(findingsFor(decoy)).toContain(
+      'Required fast-checks must admit PR and merge candidates without swallowing failures.',
     );
   });
+});
 
-  test('identifies a workflow that evaluates pull-request candidates', () => {
-    expect(
-      workflowExecutionScope(
-        'on:\n  push:\n    branches: [main]\n  pull_request:\n    branches: [main]\n  workflow_dispatch:\n',
-      ),
-    ).toBe('pull-request');
-  });
+describe('primary CI trigger declaration parser', () => {
+  const unsupported = [
+    'Primary CI workflow must declare supported top-level triggers.',
+  ];
+  const withTriggers = (triggers: string) => {
+    const workflow = cleanWorkflow.replace(primaryTriggers, triggers);
+    if (triggers !== primaryTriggers && workflow === cleanWorkflow)
+      throw new Error('trigger fixture did not replace the canonical block');
+    return workflow;
+  };
+  const candidateTriggers =
+    '  pull_request:\n    branches: [main]\n  merge_group:\n    branches: [main]\n    types: [checks_requested]\n  workflow_dispatch:\n';
 
-  test('accepts one canonical top-level on declaration', () => {
+  test('accepts the canonical declaration, inline comments, block sequences, and an empty dispatch mapping', () => {
     expect(
-      collectPostMergeDetectorWorkflowFindings(cleanPostMergeWorkflow),
+      collectPrimaryCiWorkflowTriggerFindings(withTriggers(primaryTriggers)),
     ).toEqual([]);
-  });
-
-  const workflowWithTriggers = (triggers: string) =>
-    cleanPostMergeWorkflow.replace(
-      'on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n',
-      triggers,
-    );
-
-  test.each([
-    ['inline pull_request', 'on:[push,pull_request]'],
-    ['scalar pull_request', 'on: pull_request'],
-    ['sequence pull_request', 'on:\n  - push\n  - pull_request'],
-    [
-      'quoted top-level on key',
-      '"on":\n  push:\n    branches: [main]\n  workflow_dispatch:\n',
-    ],
-    [
-      'quoted inline event',
-      'on:\n  "push":\n    branches: [main]\n  workflow_dispatch:\n',
-    ],
-    ['empty trigger list', 'on: []'],
-    ['missing push trigger', 'on:\n  workflow_dispatch:\n'],
-    ['missing manual trigger', 'on:\n  push:\n    branches: [main]\n'],
-    [
-      'push excluding main',
-      'on:\n  push:\n    branches: [release]\n  workflow_dispatch:\n',
-    ],
-    [
-      'push including an extra branch',
-      'on:\n  push:\n    branches: [main, release]\n  workflow_dispatch:\n',
-    ],
-    [
-      'push with duplicate main branch',
-      'on:\n  push:\n    branches: [main, main]\n  workflow_dispatch:\n',
-    ],
-    [
-      'push branches-ignore main',
-      'on:\n  push:\n    branches-ignore: [main]\n  workflow_dispatch:\n',
-    ],
-    ['tags-only push', 'on:\n  push:\n    tags: [v*]\n  workflow_dispatch:\n'],
-    [
-      'duplicate top-level on declaration with scalar pull request',
-      'on:\n  push:\n    branches: [main]\n  workflow_dispatch:\non:\n  pull_request:\n',
-    ],
-    [
-      'duplicate top-level on declaration with inline pull request',
-      'on:\n  push:\n    branches: [main]\n  workflow_dispatch:\non:[pull_request]\n',
-    ],
-    [
-      'duplicate quoted top-level on declaration with scalar pull request',
-      'on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n"on": pull_request\n',
-    ],
-    [
-      'duplicate push mapping with last main branch',
-      'on:\n  push:\n    branches: [release]\n  push:\n    branches: [main]\n  workflow_dispatch:\n',
-    ],
-  ])('rejects %s in the post-merge detector boundary', (_name, triggers) => {
     expect(
-      collectPostMergeDetectorWorkflowFindings(workflowWithTriggers(triggers)),
-    ).not.toEqual([]);
-  });
-
-  test.each([
-    '"on":\n  push:\n    branches: [main]\n  workflow_dispatch:\n',
-    'on:\n  "push":\n    branches: [main]\n  workflow_dispatch:\n',
-    'on: [push, workflow_dispatch]',
-    'on:\n  push:\n    branches: [main]\n  workflow_dispatch:\non:\n  pull_request:\n',
-    'on:\n  push:\n    branches: [main]\n  workflow_dispatch:\non:[pull_request]\n',
-    'on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n"on": pull_request\n',
-    'on:\n  push:\n    branches: [release]\n  push:\n    branches: [main]\n  workflow_dispatch:\n',
-  ])('rejects unsupported trigger syntax with a stable finding', (triggers) => {
-    expect(
-      collectPostMergeDetectorWorkflowFindings(workflowWithTriggers(triggers)),
-    ).toEqual([
-      'Post-merge detector workflow must declare supported top-level triggers.',
-    ]);
-  });
-
-  test('accepts canonical inline comments and workflow_dispatch mapping', () => {
-    expect(
-      collectPostMergeDetectorWorkflowFindings(
-        workflowWithTriggers(
-          'on: # operational detector\n  push: # main only\n    branches: [main] # required\n  workflow_dispatch: {}\n',
+      collectPrimaryCiWorkflowTriggerFindings(
+        withTriggers(
+          'on: # candidate and main\n  push: # main only\n    branches: # required\n      - main # only\n  pull_request:\n    branches: [main]\n  merge_group:\n    branches: [main]\n    types: [checks_requested]\n  workflow_dispatch: {}\n',
         ),
       ),
     ).toEqual([]);
   });
 
+  test.each([
+    [
+      'inline event list',
+      'on: [push, pull_request, merge_group, workflow_dispatch]',
+    ],
+    ['scalar event', 'on: pull_request'],
+    ['event sequence', 'on:\n  - push\n  - pull_request'],
+    ['empty event list', 'on: []'],
+    ['double-quoted top-level on key', `"on":\n${primaryTriggers.slice(4)}`],
+    ['single-quoted top-level on key', `'on':\n${primaryTriggers.slice(4)}`],
+    [
+      'quoted event key',
+      `on:\n  "push":\n    branches: [main]\n${candidateTriggers}`,
+    ],
+    [
+      'duplicate top-level on declaration with a mapping',
+      `${primaryTriggers}on:\n  pull_request:\n`,
+    ],
+    [
+      'duplicate top-level on declaration with an inline list',
+      `${primaryTriggers}on:[pull_request]\n`,
+    ],
+    [
+      'duplicate quoted top-level on declaration with a scalar',
+      `${primaryTriggers}"on": pull_request\n`,
+    ],
+    [
+      'duplicate push mapping whose last branch is main',
+      `on:\n  push:\n    branches: [release]\n  push:\n    branches: [main]\n${candidateTriggers}`,
+    ],
+    [
+      'push branches-ignore main',
+      `on:\n  push:\n    branches-ignore: [main]\n${candidateTriggers}`,
+    ],
+    ['tags-only push', `on:\n  push:\n    tags: [v*]\n${candidateTriggers}`],
+    ['push without a branch filter', `on:\n  push:\n${candidateTriggers}`],
+    [
+      'types filter on push',
+      `on:\n  push:\n    branches: [main]\n    types: [created]\n${candidateTriggers}`,
+    ],
+    [
+      'unsupported event',
+      `on:\n  push:\n    branches: [main]\n  schedule:\n${candidateTriggers}`,
+    ],
+  ])('rejects %s as an unsupported trigger declaration', (_name, triggers) => {
+    expect(
+      collectPrimaryCiWorkflowTriggerFindings(withTriggers(triggers)),
+    ).toEqual(unsupported);
+  });
+
+  test.each([
+    [
+      'missing push',
+      `on:\n${candidateTriggers}`,
+      'Primary CI workflow must trigger on pushes to main.',
+    ],
+    [
+      'push excluding main',
+      `on:\n  push:\n    branches: [release]\n${candidateTriggers}`,
+      'Primary CI workflow must trigger on pushes to main.',
+    ],
+    [
+      'push including an extra branch',
+      `on:\n  push:\n    branches: [main, release]\n${candidateTriggers}`,
+      'Primary CI workflow must trigger on pushes to main.',
+    ],
+    [
+      'push with a duplicate main branch',
+      `on:\n  push:\n    branches: [main, main]\n${candidateTriggers}`,
+      'Primary CI workflow must trigger on pushes to main.',
+    ],
+    [
+      'pull request including an extra branch',
+      primaryTriggers.replace(
+        '  pull_request:\n    branches: [main]',
+        '  pull_request:\n    branches: [main, release]',
+      ),
+      'Primary CI workflow must trigger on pull requests to main.',
+    ],
+    [
+      'missing manual trigger',
+      primaryTriggers.replace('  workflow_dispatch:\n', ''),
+      'Primary CI workflow must support workflow_dispatch.',
+    ],
+  ])('rejects %s with its own finding', (_name, triggers, expected) => {
+    expect(
+      collectPrimaryCiWorkflowTriggerFindings(withTriggers(triggers)),
+    ).toEqual([expected]);
+  });
+
   test('ignores a pull_request decoy inside a run block', () => {
-    const decoy = cleanPostMergeWorkflow.replace(
-      'run: npm run ci:fast',
-      'run: |\n          echo pull_request:',
-    );
-    expect(collectPostMergeDetectorWorkflowFindings(decoy)).toEqual([]);
+    const decoy = withTriggers(
+      primaryTriggers.replace('  pull_request:\n    branches: [main]\n', ''),
+    ).replace('run: npm run ci:fast', 'run: |\n          echo pull_request:');
+    expect(collectPrimaryCiWorkflowTriggerFindings(decoy)).toEqual([
+      'Primary CI workflow must trigger on pull requests to main.',
+    ]);
   });
 });
 

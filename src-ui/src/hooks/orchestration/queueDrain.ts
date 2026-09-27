@@ -227,7 +227,10 @@ export function drainQueuedMessageOnTurnCompleted(
   }
   if (
     // A popped head that has not been dispatched yet: a second request in
-    // that window must not pop the next message too.
+    // that window must not pop the next message too. This is a per-tab guard;
+    // two tabs holding copies of the same local queue can still dispatch
+    // twice. A shared durable send claim is needed before calling that case
+    // exactly once across devices (#2530).
     chat?.queueDrainSettling ||
     // #2309: an AUTOMATIC drain does not send while the server shows a turn
     // live (a turn started elsewhere, or this chat's own send awaiting its

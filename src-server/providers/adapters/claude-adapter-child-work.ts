@@ -96,6 +96,7 @@ export interface ClaudeChildWorkContext {
   record: ClaudeChildWorkRecord;
   publish: (event: CanonicalRuntimeEvent) => void;
   createdAt: string;
+  onBackgroundChildSettling?: () => void;
 }
 
 function stateOf(record: ClaudeChildWorkRecord): ClaudeChildWorkState {
@@ -425,6 +426,8 @@ function settle(
   } = {},
 ): void {
   const existing = itemFor(context.record, childId);
+  if (existing?.status === 'running' && existing.backgrounded)
+    context.onBackgroundChildSettling?.();
   // The identity a settle carries is everything this child is known by, so
   // a client that missed the listing (a reconnect mid-run) can still
   // attribute and announce the outcome.

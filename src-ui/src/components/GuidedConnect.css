@@ -35,6 +35,15 @@
   line-height: 1.25;
 }
 
+.guided-connect__notice {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--warning-border, var(--border-primary));
+  border-radius: 8px;
+  background: var(--warning-bg, var(--bg-secondary));
+  color: var(--text-primary);
+  text-align: left;
+}
 .guided-connect__description {
   margin: 0;
   font-size: 15px;

@@ -38,6 +38,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
 import { collectRequiredBrowserSmokeFindings } from './ci-workflow-governance.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -280,7 +281,9 @@ const MAX_PHYSICAL_HOST_CAPACITY_JOB_TIMEOUT_MINUTES = Math.floor(
 );
 const DESKTOP_WIN_HOST_ID = 'desktop-win';
 const FAST_FEEDBACK_LEASE_WEIGHT = 1;
-export const FAST_CHECKS_JOB_TIMEOUT_MINUTES = 45;
+// Matches ci.yml's fast-checks fence; raised 45 -> 55 with the fifteen-minute
+// ci:fast budget (#2577).
+export const FAST_CHECKS_JOB_TIMEOUT_MINUTES = 55;
 const MAX_NON_FAST_DESKTOP_WIN_LEASE_WEIGHT = 9;
 const REQUIRED_CAPACITY_INPUTS = [
   'coordination-root',
@@ -302,6 +305,9 @@ const FORK_SMOKE_JOB = Object.freeze({
 });
 const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
 const FORK_SMOKE_CONDITION = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository }}`;
+// #2176: the whole-tree source scans run for same-repository pull requests
+// only. A fork candidate never reaches it (fork-smoke owns forks).
+const REPO_SCANS_CONDITION = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}`;
 const PULL_REQUEST_TARGET = 'pull_request_target';
 const MERGE_GROUP = 'merge_group';
 const MERGE_GROUP_TYPES = ['checks_requested'];
@@ -311,12 +317,23 @@ const CI_ROUTER_PR_TARGET_TYPES = [
   'reopened',
   'edited',
 ];
+const UI_BUNDLE_DELTA_JOB = 'ui-bundle-delta';
+const UI_BUNDLE_DELTA_CONDITION = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository }}`;
+const UI_BUNDLE_DELTA_STEP = Object.freeze({
+  name: 'Report UI entry bundle delta',
+  run: 'node scripts/ui-bundle-delta-report.mjs',
+  base: `\${{ github.event.pull_request.base.sha }}`,
+});
+const UI_BUNDLE_DELTA_CHECKOUT_REPOSITORY = `\${{ github.event.pull_request.head.repo.full_name }}`;
+const UI_BUNDLE_DELTA_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}`;
 const PRIMARY_ROUTER_JOBS = new Set([
   'classify',
   'fast-checks',
   'fork-smoke',
+  UI_BUNDLE_DELTA_JOB,
   'full-regression',
   'manual-completion-diagnostics',
+  'repo-scans',
 ]);
 const FAST_CHECKOUT_REPOSITORY = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`;
 const FAST_CHECKOUT_REF = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}`;
@@ -397,6 +414,86 @@ const WINDOWS_PR_EVIDENCE_PATHS =
  */
 export const PNPM_SETUP_ACTION =
   'pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b';
+/**
+ * #2675: pnpm/setup installs only pnpm's native single-executable build, and
+ * for pnpm v11 it refuses Intel macOS ("does not provide a working binary for
+ * Intel macOS (darwin-x64) due to an upstream Node.js SEA bug"). A job that
+ * can land on an Intel macOS runner therefore skips pnpm/setup there, behind
+ * exactly this guard, and provisions the same pinned version from the npm
+ * registry's pure-JS `pnpm` package with the one reviewed step below. Every
+ * other runner keeps pnpm/setup. The step is pinned verbatim so its copies
+ * cannot drift apart: `npm pack` fetches exactly packageManager's version and
+ * verifies the tarball against the registry's integrity, runs no lifecycle
+ * scripts, and the unpacked manifest must name that exact version. The
+ * dependency lifecycle runner then re-checks the version before it installs.
+ */
+export const PNPM_SETUP_NATIVE_GUARD =
+  "runner.os != 'macOS' || runner.arch != 'X64'";
+export const PNPM_JS_SETUP_STEP = Object.freeze({
+  name: 'Setup pinned pnpm from its JS package (Intel macOS)',
+  if: "runner.os == 'macOS' && runner.arch == 'X64'",
+  shell: 'bash',
+  run: `set -euo pipefail
+manager="$(node -p "require('./package.json').packageManager")"
+if [[ ! "$manager" =~ ^pnpm@[0-9]+\\.[0-9]+\\.[0-9]+$ ]]; then
+  echo "packageManager must pin an exact pnpm version, got: $manager" >&2
+  exit 1
+fi
+prefix="$RUNNER_TEMP/pnpm-js"
+mkdir -p "$prefix/bin"
+npm pack "$manager" --pack-destination "$prefix" --ignore-scripts
+tar -xzf "$prefix/pnpm-\${manager#pnpm@}.tgz" -C "$prefix"
+test "$(node -p 'const p = require(process.argv[1]); p.name + "@" + p.version' "$prefix/package/package.json")" = "$manager"
+chmod +x "$prefix/package/bin/pnpm.mjs"
+ln -s ../package/bin/pnpm.mjs "$prefix/bin/pnpm"
+echo "$prefix/bin" >> "$GITHUB_PATH"
+`,
+});
+// GitHub-hosted x64 macOS images: the -intel images, macos-13 and the -large
+// images. Apple silicon images (macos-15, macos-*-xlarge) are not listed.
+const INTEL_MACOS_RUNNER_LABEL =
+  /^macos-(?:\d+-intel|13|(?:\d+|latest)-large)$/;
+const INTEL_MACOS_PNPM_MESSAGE = `a job that can run on Intel macOS must guard pnpm/setup with exactly \`if: ${PNPM_SETUP_NATIVE_GUARD}\` and include the reviewed '${PNPM_JS_SETUP_STEP.name}' step`;
+const PNPM_JS_SETUP_DRIFT_MESSAGE = `'${PNPM_JS_SETUP_STEP.name}' must match PNPM_JS_SETUP_STEP exactly`;
+
+function isExactPnpmJsSetup(step) {
+  return (
+    JSON.stringify(Object.keys(step ?? {}).sort()) ===
+      JSON.stringify(Object.keys(PNPM_JS_SETUP_STEP).sort()) &&
+    Object.entries(PNPM_JS_SETUP_STEP).every(
+      ([key, value]) => step[key] === value,
+    )
+  );
+}
+
+function intelMacosPnpmFindings(file, jobId, job) {
+  const steps = job?.steps ?? [];
+  const findings = steps
+    .filter(
+      (step) =>
+        step?.name === PNPM_JS_SETUP_STEP.name && !isExactPnpmJsSetup(step),
+    )
+    .map(() => ({ file, jobId, message: PNPM_JS_SETUP_DRIFT_MESSAGE }));
+  const nativeSetups = steps.filter(
+    (step) =>
+      typeof step?.uses === 'string' &&
+      step.uses.toLowerCase().startsWith('pnpm/setup@'),
+  );
+  const { labels } = resolvedRunnerLabels(job);
+  if (
+    nativeSetups.length > 0 &&
+    labels.some(
+      (label) =>
+        typeof label === 'string' && INTEL_MACOS_RUNNER_LABEL.test(label),
+    ) &&
+    !(
+      nativeSetups.every((step) => step.if === PNPM_SETUP_NATIVE_GUARD) &&
+      steps.some(isExactPnpmJsSetup)
+    )
+  )
+    findings.push({ file, jobId, message: INTEL_MACOS_PNPM_MESSAGE });
+  return findings;
+}
 const DEPENDENCY_REVIEW_CANDIDATE_GUARD = `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`;
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
 const DEPENDENCY_REVIEW_MERGE_GROUP_GUARD = `\${{ github.event_name == 'merge_group' }}`;
@@ -445,6 +542,7 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/gallery-pr-check.yml',
   '.github/workflows/install-smoke.yml',
   '.github/workflows/merge-queue-regression.yml',
+  '.github/workflows/portable-server-archives.yml',
   '.github/workflows/security-analysis.yml',
   '.github/workflows/windows-pr-verification.yml',
 ]);
@@ -615,6 +713,55 @@ const MERGE_QUEUE_REGRESSION_WORKFLOW =
  * artifact holds what the candidate rendered and nothing the token can reach.
  */
 const GALLERY_PR_WORKFLOW = '.github/workflows/gallery-pr-check.yml';
+/**
+ * #2675: the portable server archive check uploads the archive it built and
+ * smoked, so a reviewer can run the exact bytes. The one admitted upload is
+ * pinned exactly: the archive and its descriptor from the runner's temp
+ * output, never a workspace path or hidden files, and never from a fork's
+ * pull request.
+ */
+const PORTABLE_SERVER_ARCHIVES_WORKFLOW =
+  '.github/workflows/portable-server-archives.yml';
+const PORTABLE_SERVER_ARCHIVES_JOB = 'archive';
+const PORTABLE_SERVER_ARCHIVE_UPLOAD = Object.freeze({
+  name: 'Upload the archive and its descriptor',
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  if: "${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}",
+  uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+  with: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    name: 'station-server-${{ matrix.target }}',
+    path:
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      '${{ runner.temp }}/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}\n' +
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      '${{ runner.temp }}/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}.json\n',
+    'if-no-files-found': 'error',
+    'retention-days': 7,
+  },
+});
+
+function isExactPortableServerArchiveUpload(file, jobId, step) {
+  if (
+    file !== PORTABLE_SERVER_ARCHIVES_WORKFLOW ||
+    jobId !== PORTABLE_SERVER_ARCHIVES_JOB
+  )
+    return false;
+  const expected = PORTABLE_SERVER_ARCHIVE_UPLOAD;
+  const sameKeys = (actual, wanted) =>
+    JSON.stringify(Object.keys(actual ?? {}).sort()) ===
+    JSON.stringify(Object.keys(wanted).sort());
+  return (
+    sameKeys(step, expected) &&
+    step.name === expected.name &&
+    step.if === expected.if &&
+    step.uses === expected.uses &&
+    sameKeys(step.with, expected.with) &&
+    Object.entries(expected.with).every(
+      ([key, value]) => step.with[key] === value,
+    )
+  );
+}
 const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
 echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null
@@ -1159,6 +1306,7 @@ export function persistentRunnerPolicyFindings(workflows) {
         continue;
       }
       findings.push(...persistentJobPolicyFindings(file, jobId, document, job));
+      findings.push(...intelMacosPnpmFindings(file, jobId, job));
     }
     findings.push(...candidatePullRequestWorkflowFindings(file, document));
     findings.push(...primaryCiRouterFindings(file, document));
@@ -1223,6 +1371,141 @@ function isExactWindowsPrEvidenceUpload(file, jobId, step) {
     step.with['include-hidden-files'] === true &&
     step.with['if-no-files-found'] === 'warn'
   );
+}
+
+/**
+ * #1703: the report-only bundle delta job runs same-repository PR head code
+ * (the same trust fast-checks already extends) on a hosted runner with
+ * read-only contents and no credentials. It must stay report-only: no
+ * continue-on-error hiding a verdict, and exactly one reviewed command.
+ */
+function uiBundleDeltaJobFindings(file, job) {
+  const jobId = UI_BUNDLE_DELTA_JOB;
+  const finding = (message) => ({ file, jobId, message });
+  const findings = [];
+  if (job.if !== UI_BUNDLE_DELTA_CONDITION)
+    findings.push(
+      finding(
+        'ui-bundle-delta must use the exact same-repository pull_request_target guard (no merge_group)',
+      ),
+    );
+  if (!hasOnlyReadContentsPermission(job.permissions))
+    findings.push(
+      finding(
+        'ui-bundle-delta must declare only permissions: { contents: read }',
+      ),
+    );
+  if (job['runs-on'] !== 'ubuntu-22.04')
+    findings.push(
+      finding('ui-bundle-delta must run on a hosted ubuntu-22.04 image'),
+    );
+  if (
+    typeof job.concurrency?.group !== 'string' ||
+    !job.concurrency.group.includes('github.event.pull_request.head.sha')
+  )
+    findings.push(
+      finding(
+        'ui-bundle-delta concurrency must key on the pull-request head sha',
+      ),
+    );
+  if (
+    job['continue-on-error'] !== undefined ||
+    (job.steps ?? []).some((step) => step?.['continue-on-error'] !== undefined)
+  )
+    findings.push(
+      finding(
+        'ui-bundle-delta is report-only by exiting zero, never by continue-on-error',
+      ),
+    );
+  const checkouts = checkoutSteps(job);
+  const checkout = checkouts[0];
+  if (
+    checkouts.length !== 1 ||
+    checkout?.with?.['persist-credentials'] !== false ||
+    checkout?.with?.['fetch-depth'] !== 0
+  )
+    findings.push(
+      finding(
+        'ui-bundle-delta must check out once, with full history and persist-credentials: false',
+      ),
+    );
+  if (
+    checkout?.with?.repository !== UI_BUNDLE_DELTA_CHECKOUT_REPOSITORY ||
+    checkout?.with?.ref !== UI_BUNDLE_DELTA_CHECKOUT_REF
+  )
+    findings.push(
+      finding(
+        'ui-bundle-delta must check out exactly the pull-request head repository and sha',
+      ),
+    );
+  const report = (job.steps ?? []).find(
+    (step) => step?.name === UI_BUNDLE_DELTA_STEP.name,
+  );
+  if (report?.env?.STATION_UI_BUNDLE_DELTA_BASE !== UI_BUNDLE_DELTA_STEP.base)
+    findings.push(
+      finding('ui-bundle-delta must measure against the pull-request base sha'),
+    );
+  findings.push(
+    ...unapprovedActionFindings(file, jobId, job, [
+      'actions/checkout@',
+      'actions/setup-node@',
+    ]),
+    ...unapprovedShellFindings(file, jobId, job, [
+      { name: UI_BUNDLE_DELTA_STEP.name, run: UI_BUNDLE_DELTA_STEP.run },
+    ]),
+  );
+  return findings;
+}
+
+const CI_CREDENTIAL_MESSAGE =
+  'ci.yml jobs must not reference secrets, the GitHub token, or the whole github context';
+
+/** Every string value in a parsed workflow node, keys excluded. */
+function workflowStrings(value) {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(workflowStrings);
+  if (value && typeof value === 'object')
+    return Object.values(value).flatMap(workflowStrings);
+  return [];
+}
+
+/**
+ * A `${{ }}` expression that can yield a credential: `secrets.*`, the token
+ * by dot or index (`github.token`, `github['token']`), or the whole github
+ * context, which contains the token (`toJSON(github)`, any bare `github`
+ * that is not immediately dereferenced with `.` or `[`).
+ */
+export function expressionReadsCredential(expression) {
+  return (
+    /\bsecrets\b/i.test(expression) ||
+    /\bgithub\s*\.\s*token\b/i.test(expression) ||
+    /\bgithub\s*\[\s*['"]\s*token\s*['"]\s*\]/i.test(expression) ||
+    /(?<![\w./'"-])github(?![\w-]|\s*[.[])/i.test(expression)
+  );
+}
+
+function referencesCredential(job) {
+  return (
+    containsSecretReference(job) ||
+    workflowStrings(job).some((text) =>
+      Array.from(text.matchAll(/\$\{\{([\s\S]*?)\}\}/g)).some(([, body]) =>
+        expressionReadsCredential(body),
+      ),
+    )
+  );
+}
+
+/**
+ * `baseControlledPrWorkflowFindings` exempts ci.yml, so its generic "must not
+ * expose secrets" rule never covered this workflow, several of whose jobs run
+ * pull-request head code under pull_request_target. No job here needs a
+ * credential, so the rule applies to every job rather than guessing which
+ * ones run head code.
+ */
+function ciCredentialFindings(file, jobs) {
+  return Object.entries(jobs)
+    .filter(([, job]) => referencesCredential(job))
+    .map(([jobId]) => ({ file, jobId, message: CI_CREDENTIAL_MESSAGE }));
 }
 
 function forkSmokeIsolationFindings(file, job) {
@@ -1565,11 +1848,116 @@ function isPinnedPnpmSetup(step) {
     step?.uses === PNPM_SETUP_ACTION &&
     step?.name === 'Setup pinned pnpm' &&
     Object.keys(step).every(
-      (key) => key === 'name' || key === 'uses' || key === 'with',
+      (key) =>
+        key === 'name' ||
+        key === 'uses' ||
+        key === 'with' ||
+        // Only the Intel macOS exclusion; see PNPM_SETUP_NATIVE_GUARD.
+        (key === 'if' && step.if === PNPM_SETUP_NATIVE_GUARD),
     ) &&
     Object.keys(step.with ?? {}).join(',') === 'install' &&
     step.with.install === false
   );
+}
+
+/**
+ * #2176: `repo-scans` runs the candidate's own tests, as fast-checks does,
+ * so what it may do is pinned here rather than trusted: the exact
+ * same-repository guard, read-only contents, exactly one checkout — the
+ * pinned action, fetching exactly the pull request's head from its own
+ * repository with no credentials left behind — the pinned setup actions,
+ * exactly two commands (the dependency install and `npm run test:repo-scans`)
+ * and no `continue-on-error` anywhere, so a failed scan fails the check.
+ * It does not review what those commands run; the candidate's tests are
+ * candidate code, as in fast-checks.
+ */
+const REPO_SCANS_CHECKOUT_WITH = Object.freeze({
+  'fetch-depth': 1,
+  'persist-credentials': false,
+  repository: `\${{ github.event.pull_request.head.repo.full_name }}`,
+  ref: `\${{ github.event.pull_request.head.sha }}`,
+});
+
+function repoScansFindings(file, job) {
+  const findings = [];
+  const jobId = 'repo-scans';
+  if (job.if !== REPO_SCANS_CONDITION)
+    findings.push({
+      file,
+      jobId,
+      message:
+        'repo-scans must use the exact same-repository pull_request_target guard',
+    });
+  if (!hasOnlyReadContentsPermission(job.permissions))
+    findings.push({
+      file,
+      jobId,
+      message: 'repo-scans must declare only permissions: { contents: read }',
+    });
+  // A red scan must be a red check: `continue-on-error` on the job or any
+  // step would report a failed scan as success.
+  if (
+    job['continue-on-error'] !== undefined ||
+    (job.steps ?? []).some((step) => step?.['continue-on-error'] !== undefined)
+  )
+    findings.push({
+      file,
+      jobId,
+      message: 'repo-scans must not set continue-on-error on the job or a step',
+    });
+  // A skipped scan step leaves a green job: the step that runs the scans must
+  // be exactly { name, run } — no `if:`, no `env:`, no `working-directory:`.
+  const scanSteps = (job.steps ?? []).filter(
+    (step) => step?.run === 'npm run test:repo-scans',
+  );
+  if (
+    scanSteps.length !== 1 ||
+    JSON.stringify(Object.keys(scanSteps[0]).sort()) !==
+      JSON.stringify(['name', 'run'])
+  )
+    findings.push({
+      file,
+      jobId,
+      message:
+        'repo-scans must run npm run test:repo-scans in exactly one unconditional { name, run } step',
+    });
+  const checkouts = (job.steps ?? []).filter(
+    (step) =>
+      typeof step?.uses === 'string' &&
+      step.uses.startsWith('actions/checkout'),
+  );
+  const [checkout] = checkouts;
+  if (
+    checkouts.length !== 1 ||
+    checkout.uses !== CHECKOUT_ACTION ||
+    JSON.stringify(
+      Object.entries(checkout.with ?? {}).sort(([a], [b]) =>
+        a.localeCompare(b),
+      ),
+    ) !==
+      JSON.stringify(
+        Object.entries(REPO_SCANS_CHECKOUT_WITH).sort(([a], [b]) =>
+          a.localeCompare(b),
+        ),
+      )
+  )
+    findings.push({
+      file,
+      jobId,
+      message:
+        'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    });
+  findings.push(
+    ...unapprovedActionFindings(file, jobId, job, [
+      CHECKOUT_ACTION,
+      SETUP_NODE_ACTION,
+    ]),
+    ...unapprovedShellFindings(file, jobId, job, [
+      { name: undefined, run: 'npm run dependencies:ci' },
+      { name: 'Run repository source scans', run: 'npm run test:repo-scans' },
+    ]),
+  );
+  return findings;
 }
 
 function unapprovedActionFindings(file, jobId, job, allowedPrefixes) {
@@ -1879,8 +2267,12 @@ function primaryCiRouterFindings(file, document) {
       });
   }
 
+  findings.push(...ciCredentialFindings(file, jobs));
+
   const fast = jobs['fast-checks'];
   const fork = jobs['fork-smoke'];
+  const scans = jobs['repo-scans'];
+  if (scans) findings.push(...repoScansFindings(file, scans));
   if (fast) {
     if (!hasExactSameRepositoryFastChecksGuard(file, 'fast-checks', fast.if))
       findings.push({
@@ -1969,6 +2361,8 @@ function primaryCiRouterFindings(file, document) {
       ]),
     );
   }
+  if (jobs[UI_BUNDLE_DELTA_JOB])
+    findings.push(...uiBundleDeltaJobFindings(file, jobs[UI_BUNDLE_DELTA_JOB]));
   if (fork) {
     findings.push(...forkSmokeIsolationFindings(file, fork));
     if (
@@ -2163,6 +2557,7 @@ function baseControlledPrWorkflowFindings(file, document) {
           step.uses.startsWith('actions/upload-artifact@')
         ) &&
         !isExactWindowsPrEvidenceUpload(file, jobId, step) &&
+        !isExactPortableServerArchiveUpload(file, jobId, step) &&
         !isReviewedCacheRestore(file, jobId, step) &&
         !(
           file === SECURITY_ANALYSIS_WORKFLOW &&
@@ -2573,6 +2968,6 @@ function main() {
   return 0;
 }
 
-if (process.argv[1]?.endsWith('actionlint-gate.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   process.exit(main());
 }

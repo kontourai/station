@@ -91,7 +91,11 @@ Time-window pruning must use observed event timestamps, not ingest filenames.
 Collapsed payloads should construct their bodies only after expansion. Browser
 geometry requires the real component, styles, and normal user actions; CSS-text
 checks cannot prove that a target is visible or clickable. Helpers used only by
-tests cannot establish that their intended caller still exists.
+tests cannot establish that their intended caller still exists. Each contract
+has one primary test owner at the strongest boundary; a second layer needs its
+own distinct risk, such as a transport or lifecycle failure the owner cannot
+reach. Prefer extending a table-driven case or shared fixture over adding a
+near-duplicate test.
 
 The fixture guard rejects the narrow `if (stored) { expect(...) }` pattern when
 `stored` is a localStorage observation and there is no alternative assertion.
@@ -214,7 +218,7 @@ coordinator exposes active leases and capacity through
 `node scripts/run-verification.mjs status`, and prints bounded summaries whose
 redacted raw output is digest-addressed under `.kontourai/verification-output/`.
 
-Run `npm run ci:fast` for bounded (twelve-minute) per-push feedback after focused
+Run `npm run ci:fast` for bounded (fifteen-minute) per-push feedback after focused
 evidence: it runs base-pinned affected Vitest tests followed by fixed bounded
 invariants, not the global static/build chain or full corpus.
 Ordinary pull requests use focused evidence plus `npm run ci:fast`.
@@ -273,6 +277,13 @@ npm run test:e2e:product -- --spec=tests/foo.spec.ts          # focused spec wit
 npm run test:e2e:product -- --spec=tests/foo.spec.ts --grep='delegated work'  # focused test name
 npm run test:connected-agents         # focused connected-agents server suite
 ```
+
+New or materially changed test files state their measured wall cost in the
+pull request (the `test:focused` duration line is the receipt). A file that
+needs seconds must name the contract no cheaper layer proves; prefer splitting
+by owner boundary over widening a slow file. Weighted capacity planning and
+the resource manifest stay the scheduling authority — this disclosure is
+review evidence, not a separate budget system.
 
 ### Pre-push orchestration transfer gate
 
@@ -343,7 +354,9 @@ screenshot bucket replaces stale green evidence truthfully. CI artifacts cannot
 modify a checkout themselves: run `npm run sync:e2e:latest` (or pass
 `-- --run-id <id>` / `-- --status <conclusion>`) to download and validate the
 latest compatible completed CI Extended artifact. Never paste the directory's
-image bytes or broad logs into agent context.
+image bytes or broad logs into agent context. For a change that alters rendered
+UI, inspected before/after screenshots belong in the pull request body itself;
+CI artifacts, logs, or local files alone do not establish a visual claim.
 
 The Windows portable floor is deliberately not named or treated as
 `test:full`. It combines the physically proven pre-push tier with the portable
@@ -892,7 +905,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
 
-`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. `lint:check`, `proof:repo-governance`, and `veritas:readiness` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached `main` unobserved while that Nightly was itself red. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
+`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, **typecheck**, and readiness invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. Readiness owns the configured `proof:repo-governance` and `lint:check` evidence checks, so their standalone commands stay out of this lane; `verification:policy:gate` remains direct because readiness reports it only as an optional diagnostic. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
 
 `full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:
 - `browser-prerequisite` — 20-unit host reservation; 1-minute execution deadline.
@@ -940,7 +953,7 @@ set (defined in `scripts/lib/verification-receipt.mjs`): receipt
 See `docs/reference/verification-receipts.md` for the field-by-field table.
 
 `ci:fast` is bounded diagnostic feedback, not completion evidence: it has a
-twelve-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default
+fifteen-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default
 `origin/main`) in its request identity, runs the affected selection before a
 fixed bounded static invariant set. A selector exit 3 is reported as a
 diagnostic defer after those invariants, never completion evidence; the
@@ -999,6 +1012,15 @@ and fix it at source rather than requeueing until green. If the same failure
 appears on unrelated candidates, main itself is red, so fix main first. Flaky
 tests go through the quarantine policy below.
 
+Queue operations have three standing rules. Never `gh pr update-branch` a
+bot-owned pull request (dependency or release automation): your push replaces
+the bot as the triggering actor and breaks author-scoped exemptions, so let the
+bot rebase or re-cut instead. Before re-arming after a red candidate, confirm
+the queue candidate's tree (`potentialMergeCommit`) actually contains the pushed
+change; arming within seconds of a push can build the previous candidate. A
+`DIRTY` merge state with a clean `git merge origin/main` is GitHub's recompute,
+not a real conflict: merge, re-verify, push, and arm again.
+
 ### Real-time waits in tests
 
 A test that waits a fixed amount of real time and then asserts passes on an
@@ -1052,7 +1074,12 @@ escape valve: `QUARANTINED_VITEST_FILES` in `scripts/vitest-resource-manifest.mj
 commit* both passed and failed it. A test that fails every time is a defect to
 fix or revert, never a quarantine entry. Diagnose first; quarantine is for the
 window between a diagnosed flake and its fix, not for a red lane nobody has
-read.
+read. Reproduce in the failing shard's file order first, then the file alone:
+an order-only failure is shared-state leakage from an earlier file, not a
+property of the failing test. `npm run test:prepush:repeat` supplies the
+twenty-attempt pass-rate receipt for an isolation A/B, and on a shared host the
+[shared-host flake triage](../strategy/multi-agent-delivery-protocol.md#4-shared-host-flake-triage-before-diagnosing-anything)
+ladder comes before any diagnosis of the test itself.
 
 **What it does.** The merge-queue shards pass `--exclude-quarantined`, which
 drops the listed files from every queue corpus group. Nightly's canonical

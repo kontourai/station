@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stationTempRoot } from '@kontourai/station-shared/temp-dir';
 import { installNodeHttpCompatibility } from './packages/shared/src/node-http-compat.mjs';
@@ -51,6 +52,50 @@ const suppliedRunRoot = process.env.STATION_VITEST_RUN_ROOT;
 const runRoot =
   suppliedRunRoot ?? join(stationTempRoot(), `vitest-orphan-${process.pid}`);
 mkdirSync(runRoot, { recursive: true });
+
+/**
+ * Point the OS temp dir itself at the run root (#2534).
+ *
+ * #2538 moved 13 leak-prone suites to `trackTempDirs()` (which removes in an
+ * after-hook) and froze everything else with a per-file ratchet
+ * (`scripts/test-temp-dir-ratchet.mjs`) — frozen, not fixed: ~1,982 raw
+ * `mkdtemp`/`mkdtempSync` calls remain across ~760 files, and an aliased
+ * import or a `promisify(mkdtemp)` adds calls the ratchet cannot even see.
+ * Every one of those resolves its base directory through `os.tmpdir()`,
+ * which reads `TMPDIR` (`TEMP`/`TMP` on Windows) fresh on every call. Setting
+ * those here, before any test file's own code runs, routes every raw call
+ * into the run root without migrating a single one: nothing the ratchet
+ * counts changes, but nothing it counts can reach the shared per-user temp
+ * dir either. `globalSetup`'s teardown removes the run root wholesale (or
+ * the day-old sweep reclaims it if teardown loses the race), so anything a
+ * raw call drops inside is cleaned up the same way a tracked directory is.
+ *
+ * This runs inside the worker itself — a `setupFiles` mutation of its own
+ * `process.env`, not a value vitest has to propagate across the fork/thread
+ * boundary from `globalSetup` — so it applies regardless of pool.
+ * (Empirically checked: `os.tmpdir()` read from inside a test body equals
+ * this `runRoot` under the default `forks` pool.)
+ *
+ * Capture the real ambient temp dir FIRST, and only if nothing has already
+ * (a pooled worker reuses this file across every test file it runs, so on
+ * the second file `tmpdir()` would otherwise read back the redirected value
+ * from the first). A couple of suites build a real AF_UNIX socket path under
+ * `tmpdir()` and cannot use this run root at all: a macOS `sockaddr_un` caps
+ * the whole path at 104 bytes, and `<run root>/<their own mkdtemp
+ * prefix+suffix>/<socket file>` already overruns that on its own, before the
+ * run root's `station/vitest-XXXXXX` nesting is even added. Those suites
+ * (`task-room-acceptance-control.test.ts`,
+ * `plugin-special-files-lifecycle.test.ts`) opt out via
+ * `STATION_VITEST_HOST_TMPDIR` and build their socket path under the real
+ * temp dir instead, same as before this change — they already register their
+ * own cleanup, so nothing leaks there either.
+ */
+if (!process.env.STATION_VITEST_HOST_TMPDIR) {
+  process.env.STATION_VITEST_HOST_TMPDIR = tmpdir();
+}
+process.env.TMPDIR = runRoot;
+process.env.TEMP = runRoot;
+process.env.TMP = runRoot;
 
 // setupFiles runs for every test file. Always allocate a client root even
 // when an individual suite deliberately supplies STATION_HOME: the latter is

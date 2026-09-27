@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   stationTempRoot,
@@ -53,6 +54,14 @@ export function createVitestRunRoot(): string {
  * manual `rm`.
  */
 export default async function setup(): Promise<() => Promise<void>> {
+  // Captured here, once, before any worker redirects its own `TMPDIR` (see
+  // `vitest.setup.ts`): this process's `os.tmpdir()` is never itself
+  // touched, so this is always the real ambient value. A couple of suites
+  // build a real AF_UNIX socket path under `tmpdir()` and need it verbatim —
+  // a macOS `sockaddr_un` caps the whole path at 104 bytes, and the run root
+  // below already spends most of that budget on its own.
+  process.env.STATION_VITEST_HOST_TMPDIR = tmpdir();
+
   const runRoot = createVitestRunRoot();
   process.env.STATION_VITEST_RUN_ROOT = runRoot;
 

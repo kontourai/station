@@ -293,10 +293,13 @@ describe('live surface routes in the runtime composition', () => {
       },
       LOOPBACK,
     );
+    // #2377 slice A: no station-control tool reaches this route, so the
+    // station-control authority guard refuses the internal token before the
+    // route's own `principal-unresolved` refusal can run.
     expect(internal.status).toBe(403);
-    expect(await internal.json()).toEqual({
+    expect(await internal.json()).toMatchObject({
       success: false,
-      code: 'principal-unresolved',
+      code: 'station_control_route_unmapped',
     });
 
     const delegated = await app.request(

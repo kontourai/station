@@ -447,6 +447,86 @@ describe('weighted bucket scheduler', () => {
       expect.any(Function),
     );
   });
+
+  it('cuts off one bucket that exceeds its own timeoutMs without stopping the rest (#2416)', async () => {
+    vi.useFakeTimers();
+    try {
+      const hang = deferred();
+      const selected = [
+        { name: 'slow', script: 'slow', weight: 1, timeoutMs: 60_000 },
+        { name: 'fast', script: 'fast', weight: 1 },
+      ];
+      const cancel = vi.fn(async (reason, cause) => {
+        // Simulates what startBucket's real cancel does: settle the owned
+        // execution's promise with a TIMEOUT-shaped result once cleanup
+        // completes.
+        hang.resolve({
+          ...selected[0],
+          ok: false,
+          verdict: 'TIMEOUT',
+          interrupted: true,
+          failureKind: cause,
+          runnerError: reason,
+          counts: {},
+          specs: [],
+          output: '',
+        });
+        return { settled: true, errors: [] };
+      });
+      const resultsPromise = runBuckets(selected, {
+        capacity: 2,
+        runBucket: (bucket) =>
+          bucket.name === 'slow'
+            ? { promise: hang.promise, cancel }
+            : Promise.resolve(pass(bucket)),
+      });
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      const results = await resultsPromise;
+
+      expect(cancel).toHaveBeenCalledWith(
+        'exceeded its 1-minute per-bucket deadline',
+        'deadline',
+      );
+      expect(results.find((r) => r.name === 'slow')?.verdict).toBe('TIMEOUT');
+      // The sibling bucket is untouched: one bucket's deadline never cancels
+      // or delays another bucket's own run.
+      expect(results.find((r) => r.name === 'fast')?.verdict).toBe('PASS');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never arms a deadline for a bucket with no timeoutMs', async () => {
+    vi.useFakeTimers();
+    try {
+      const selected = [
+        { name: 'undeadlined', script: 'undeadlined', weight: 1 },
+      ];
+      const cancel = vi.fn(async () => ({ settled: true, errors: [] }));
+      const resultsPromise = runBuckets(selected, {
+        capacity: 1,
+        runBucket: () => ({
+          promise: Promise.resolve(pass(selected[0])),
+          cancel,
+        }),
+      });
+      await vi.runAllTimersAsync();
+      await resultsPromise;
+      expect(cancel).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('per-bucket deadlines (#2416)', () => {
+  it('declares a positive, finite timeoutMs for every bucket', () => {
+    for (const bucket of BUCKETS) {
+      expect(Number.isFinite(bucket.timeoutMs), bucket.name).toBe(true);
+      expect(bucket.timeoutMs, bucket.name).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe('startup-heavy non-overlap', () => {
@@ -606,6 +686,53 @@ describe('owned bucket lifecycle', () => {
     expect(terminate).toHaveBeenCalledOnce();
   });
 
+  it('reports a per-bucket deadline cutoff as TIMEOUT, distinct from FAIL (#2416)', async () => {
+    const execution = ownedExecutionFixture();
+    const terminate = vi.fn(async () => {
+      execution.settle({ status: null, signal: 'SIGTERM' });
+      return { settled: true, errors: [] };
+    });
+    const runner = startBucket(bucket, {
+      execute: () => execution,
+      terminate,
+    });
+
+    await runner.cancel(
+      'exceeded its 5-minute per-bucket deadline',
+      'deadline',
+    );
+    const result = await runner.promise;
+
+    expect(terminate).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      verdict: 'TIMEOUT',
+      interrupted: true,
+      failureKind: 'deadline',
+      runnerError: 'exceeded its 5-minute per-bucket deadline',
+    });
+  });
+
+  it('defaults an uncaused cancel to interrupted, not deadline', async () => {
+    const execution = ownedExecutionFixture();
+    const terminate = vi.fn(async () => {
+      execution.settle({ status: null, signal: 'SIGTERM' });
+      return { settled: true, errors: [] };
+    });
+    const runner = startBucket(bucket, {
+      execute: () => execution,
+      terminate,
+    });
+
+    // No cause argument: the whole-run abort path in `runBuckets` calls
+    // `execution.cancel(reason)` with one argument, and must keep reading as
+    // an ordinary interruption, not a per-bucket deadline.
+    await runner.cancel('SIGTERM');
+    await expect(runner.promise).resolves.toMatchObject({
+      verdict: 'FAIL',
+      failureKind: 'interrupted',
+    });
+  });
+
   it('uses npm.cmd and only marks a Windows tree settled after taskkill succeeds', async () => {
     const execution = ownedExecutionFixture();
     const execute = vi.fn(() => execution);
@@ -736,12 +863,6 @@ describe('coverage arguments', () => {
       expect(result.stderr).toContain('Invalid E2E arguments');
       expect(result.stdout).not.toContain('e2e bucket:');
     }
-  });
-
-  it('uses the resolved file URL entry guard rather than a fragile string URL', () => {
-    expect(readFileSync('scripts/run-e2e-coverage.mjs', 'utf8')).toContain(
-      'pathToFileURL(resolve(process.argv[1])).href',
-    );
   });
 });
 

@@ -9,6 +9,7 @@ import { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-pr
 import type { Neo4jGraphViewConnectionConfig } from '../../knowledge-store/neo4j-connection.js';
 import type { Neo4jDriverLoadResult } from '../../knowledge-store/neo4j-graph-provider.js';
 import { syncRootToNeo4j } from '../../knowledge-store/neo4j-graph-sync.js';
+import { UNSHARED_GRAPH_SYNC_FORBIDDEN_ERROR } from '../../knowledge-store/session-backed-roots.js';
 import { createNeo4jGraphRoutes } from '../knowledge/neo4j-graph-routes.js';
 
 class FakeRootPersistence {
@@ -35,6 +36,7 @@ describe('neo4j-graph routes', () => {
   let storeDir: string;
   let store: KnowledgeStoreProvider;
   let rootId: string;
+  let persistence: FakeRootPersistence;
   let driver: FakeNeo4jDriver;
   const connection: Neo4jGraphViewConnectionConfig = {
     uri: 'neo4j://localhost:7687',
@@ -42,7 +44,7 @@ describe('neo4j-graph routes', () => {
 
   beforeEach(async () => {
     storeDir = mkdtempSync(join(tmpdir(), 'neo4j-graph-routes-store-'));
-    const persistence = new FakeRootPersistence();
+    persistence = new FakeRootPersistence();
     store = new KnowledgeStoreProvider(persistence);
     const root = await store.createRoot({
       scope: { kind: 'personal' },
@@ -207,6 +209,56 @@ describe('neo4j-graph routes', () => {
       }>(res);
       expect(res.status).toBe(200);
       expect(body.data).toEqual({ nodes: [], edges: [] });
+    });
+  });
+
+  describe('a root whose adapter is not registered', () => {
+    // A stored conversation-store root on a boot that never registered that
+    // adapter (a hosted tenant) cannot re-read anything as the caller, so its
+    // projection is unavailable to every read and every non-operator sync.
+    async function syncThenOrphanRoot() {
+      const adapter = await store.adapterFor(rootId);
+      await adapter.create({
+        type: 'raw',
+        title: 'Orphaned title',
+        body: 'raw transcript body',
+        category: 'meeting-notes',
+        provenance: { agent: 'test' },
+      });
+      const synced = await configuredApp().request(
+        `/roots/${rootId}/graph/neo4j-sync`,
+        { method: 'POST' },
+      );
+      expect(synced.status).toBe(200);
+      const root = (await store.getRoot(rootId))!;
+      persistence.saveKnowledgeStoreRoot({
+        ...root,
+        adapterId: 'conversation-store',
+      });
+    }
+
+    test('reads fail closed with 404 and no projection', async () => {
+      await syncThenOrphanRoot();
+      const app = configuredApp();
+      for (const path of [
+        `/roots/${rootId}/graph/neo4j`,
+        `/roots/${rootId}/graph/neo4j/shortest-path?fromId=a&toId=b`,
+      ]) {
+        const res = await app.request(path);
+        expect(res.status, path).toBe(404);
+        expect(await res.text(), path).not.toContain('Orphaned title');
+      }
+    });
+
+    test('a non-operator sync is refused as unshared, not called conversation-backed', async () => {
+      await syncThenOrphanRoot();
+      const res = await configuredApp().request(
+        `/roots/${rootId}/graph/neo4j-sync`,
+        { method: 'POST' },
+      );
+      const body = await readJson<{ success: boolean; error: string }>(res);
+      expect(res.status).toBe(403);
+      expect(body.error).toBe(UNSHARED_GRAPH_SYNC_FORBIDDEN_ERROR);
     });
   });
 

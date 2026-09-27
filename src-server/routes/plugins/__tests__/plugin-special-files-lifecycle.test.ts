@@ -58,8 +58,12 @@ function makeLogger(): Logger {
 }
 
 function makeHome() {
-  // Short root: a unix socket path is limited to ~104 bytes on macOS.
-  const home = mkdtempSync(join(tmpdir(), 'st-sf-'));
+  // Short root: a unix socket path is limited to ~104 bytes on macOS. Build
+  // it under the real OS temp dir, not vitest.setup.ts's run-root redirect
+  // (#2534) — that redirect alone already spends most of the budget.
+  const home = mkdtempSync(
+    join(process.env.STATION_VITEST_HOST_TMPDIR ?? tmpdir(), 'st-sf-'),
+  );
   cleanup.push(home);
   mkdirSync(join(home, 'plugins'), { recursive: true });
   mkdirSync(join(home, 'agents'), { recursive: true });

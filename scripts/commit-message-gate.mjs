@@ -61,6 +61,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /**
  * The only accepted subject types, derived from the repo's real history.
@@ -498,6 +499,6 @@ function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

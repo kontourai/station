@@ -128,6 +128,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   useProjectsQuery: () => projectsQueryState,
   useFileSystemBrowseQuery: () => ({ refetch: validateDirectoryMock }),
   useSshEnvironmentsQuery: () => ({ data: [], isLoading: false }),
+  // The environment picker also offers paired Stations (#2289).
+  usePeerCredentialsQuery: () => ({ data: [], isLoading: false }),
   useProjectIconCandidatesQuery: (...args: unknown[]) => {
     iconCandidatesQueryMock(...args);
     return iconCandidatesState;

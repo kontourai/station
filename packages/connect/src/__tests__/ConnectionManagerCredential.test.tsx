@@ -604,3 +604,75 @@ describe('Connection Manager credential recovery', () => {
     ).toBeNull();
   });
 });
+
+// #2525: the modal routes a shared saved Station (the profile file the
+// station CLI also reads) to the host, and keeps the row when that fails.
+describe('Connection Manager forgets a shared saved Station', () => {
+  function setupShared(
+    removeSharedProfile: (input: {
+      connectionId: string;
+      expected: { name: string; url: string };
+    }) => Promise<void>,
+  ) {
+    const storage = memoryAdapter();
+    storage.set(
+      'station-connect-connections',
+      JSON.stringify([
+        {
+          id: 'station-profile:remote',
+          name: 'Remote Station',
+          url: 'https://station.example.test',
+          createdAt: 1,
+        },
+      ]),
+    );
+    const store = new ConnectionStore({ storage });
+    render(
+      <ConnectionsProvider
+        store={store}
+        removeSharedProfile={removeSharedProfile}
+      >
+        <ConnectionManagerModalContent
+          onClose={vi.fn()}
+          checkHealth={vi.fn(async () => false)}
+          checkCompatibility={checkCompatibleHost}
+        />
+      </ConnectionsProvider>,
+    );
+  }
+
+  it('hands the host the id and the name and address the user confirmed', async () => {
+    const removeSharedProfile = vi.fn(async () => undefined);
+    setupShared(removeSharedProfile);
+    fireEvent.click(openRowAction('Remote Station', 'Forget Station'));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirm forgetting Remote Station' }),
+    );
+    await waitFor(() =>
+      expect(removeSharedProfile).toHaveBeenCalledWith({
+        connectionId: 'station-profile:remote',
+        expected: {
+          name: 'Remote Station',
+          url: 'https://station.example.test',
+        },
+      }),
+    );
+  });
+
+  it('says why when the host refuses', async () => {
+    setupShared(
+      vi.fn(async () => {
+        throw new Error('This Station cannot be forgotten here.');
+      }),
+    );
+    fireEvent.click(openRowAction('Remote Station', 'Forget Station'));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirm forgetting Remote Station' }),
+    );
+    expect(
+      await screen.findByText(
+        'Remote Station: This Station cannot be forgotten here.',
+      ),
+    ).toBeTruthy();
+  });
+});

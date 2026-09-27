@@ -7,7 +7,7 @@
  * - Ranking (AC1): when `pending` carries more than one candidate, the
  *   highest-outcome-priority one leads the payload (approval/input > failed
  *   > running > done — `@kontourai/station-shared/notification-priority`),
- *   ties broken by most-recently-updated. `wireWebPushDelivery`'s live call
+ *   ties broken by most-recently-updated. `WebPushChannel`'s live call
  *   site always supplies a single-item `pending` (the notification that
  *   just fired) — see that module's header comment for why deliberately not
  *   re-ranking across everything currently pending — but the composer stays
@@ -23,7 +23,7 @@
  *   `docs/guides/web-push-notifications.md`'s manual checklist documents.
  *
  * Returns `null` when nothing in `pending` classifies to a known outcome
- * (defensive — `wireWebPushDelivery` already filters before calling this).
+ * (defensive — `WebPushChannel.accepts` already filters before calling this).
  */
 import type { Notification } from '@kontourai/station-contracts/notification';
 import {

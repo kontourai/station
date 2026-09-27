@@ -613,6 +613,20 @@ export async function executeForegroundMessage(
         )
       : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  // A fresh or successor session records `userId` as its owner, and a
+  // session with no recorded owner is readable by no caller. Refuse the start
+  // here, before its approval-mode receipt, a boundary claim, a worktree or
+  // an engine start. Two effects can already have happened above, both only
+  // for a conversation that already has a binding (the binding check above
+  // refuses a caller naming no user when that binding records an owner):
+  // `prepareConversationHandoff` may have written a handoff marker, and
+  // `resolveConversationSession` may have reserved the successor child.
+  // A fresh conversation reaches this point with neither.
+  if ((!binding || continuation?.startRequired) && !input.userId?.trim()) {
+    throw new Error(
+      'A session start requires the principal it belongs to (userId).',
+    );
+  }
   // #2436 MEDIUM-1: a carried pick is recorded before anything starts, so the
   // session this send starts (or continues) is already in it, and it is
   // ordered by this receipt against every other decision (compare-and-set).
@@ -772,7 +786,7 @@ export async function executeForegroundMessage(
             : binding?.worktree
               ? { worktree: binding.worktree }
               : {}),
-          ...(input.userId ? { userId: input.userId } : {}),
+          userId: input.userId,
           ...(input.delegation ? { delegation: input.delegation } : {}),
           ...(input.ephemeral
             ? { [SESSION_VISIBILITY_METADATA_KEY]: 'ephemeral' }

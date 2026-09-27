@@ -1,6 +1,7 @@
 /** Portable Project attachment operations, opt-in through the project-identity SDK subpath. */
 import {
   PROJECT_GIT_RESOURCE_FIELDS,
+  PROJECT_IDENTITY_NOT_PREPARED_CODE,
   PROJECT_LOCAL_RESOURCE_FIELDS,
   PROJECT_PORTABLE_IDENTITY_FIELDS,
   type ProjectAttachRequest,
@@ -97,6 +98,50 @@ function readProjectIdentityView(
       localProjectSlug: slug,
     },
   };
+}
+
+/**
+ * What a failed identity read actually established (#480 review).
+ *
+ * - `not-prepared` — the ONLY verified absence: a 404 carrying the
+ *   discriminated `project_identity_not_prepared` wire code, i.e. the server
+ *   found the Project and holds no identity record. Only this gets prepare
+ *   guidance.
+ * - `not-found-unverified` — a 404 WITHOUT that code: an old server with no
+ *   identity endpoint, a proxy 404, a non-JSON 404 body, or a removed
+ *   Project (generic `file_storage_not_found`). Nothing verified; retry plus
+ *   conditional setup help, never an absence claim.
+ * - `denied` — 401/403 authorization refusal.
+ * - `unavailable` — timeouts, 5xx, malformed bodies, anything else.
+ *
+ * Branches on transport status + machine code only. The server message is
+ * never read: two failures can share every word and mean different things.
+ */
+export type ProjectIdentityReadFailure =
+  | 'not-prepared'
+  | 'denied'
+  | 'not-found-unverified'
+  | 'unavailable';
+
+export function projectIdentityReadFailure(
+  error: unknown,
+): ProjectIdentityReadFailure {
+  const record =
+    typeof error === 'object' && error !== null
+      ? (error as { status?: unknown; code?: unknown })
+      : undefined;
+  const status = typeof record?.status === 'number' ? record.status : undefined;
+  const code = typeof record?.code === 'string' ? record.code : undefined;
+  if (status === 404 && code === PROJECT_IDENTITY_NOT_PREPARED_CODE)
+    return 'not-prepared';
+  if (status === 404) return 'not-found-unverified';
+  if (status === 401 || status === 403) return 'denied';
+  return 'unavailable';
+}
+
+/** Only a discriminated not-prepared read verifies absence. */
+export function isProjectIdentityNotPrepared(error: unknown): boolean {
+  return projectIdentityReadFailure(error) === 'not-prepared';
 }
 
 /** Read a prepared identity. This never creates or repairs one implicitly. */

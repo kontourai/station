@@ -22,14 +22,36 @@ import {
   requestProjectChat,
 } from '../../../lib/projectChatEvents';
 
-const { createChatSession, sendMessage, updateChat, pickerProps } = vi.hoisted(
-  () => ({
+const { createChatSession, sendMessage, updateChat, pickerProps, dockProbe } =
+  vi.hoisted(() => ({
     createChatSession: vi.fn(() => 'new-session'),
     sendMessage: vi.fn(),
     updateChat: vi.fn(),
     pickerProps: [] as Record<string, any>[],
-  }),
-);
+    dockProbe: { mobile: false, sessions: [] as Record<string, any>[] },
+  }));
+
+vi.mock('../../../hooks/useDerivedSessions', () => ({
+  useDerivedSessions: () => dockProbe.sessions,
+}));
+vi.mock('../../../hooks/useDockShellChrome', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../../hooks/useDockShellChrome')>();
+  return {
+    ...actual,
+    useDockShellChrome: (
+      ...args: Parameters<typeof actual.useDockShellChrome>
+    ) => ({
+      ...actual.useDockShellChrome(...args),
+      isMobile: dockProbe.mobile,
+    }),
+  };
+});
+vi.mock('../ChatDockMobileHeader', () => ({
+  ChatDockMobileHeader: ({ activeCount }: { activeCount: number }) => (
+    <div data-testid="mobile-dock-work-badge">{activeCount}</div>
+  ),
+}));
 
 vi.mock('../../modals/NewChatModal', () => ({
   NewChatModal: (props: Record<string, any>) => {
@@ -104,6 +126,8 @@ afterEach(() => {
   createChatSession.mockClear();
   sendMessage.mockClear();
   updateChat.mockClear();
+  dockProbe.mobile = false;
+  dockProbe.sessions = [];
 });
 
 const draft: ProjectChatComposerDraft = {
@@ -223,4 +247,36 @@ test('a fullscreen pane bound to another Project leaves the draft alone', async 
   }
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('other');
   expect(createChatSession).not.toHaveBeenCalled();
+});
+
+test('the dock passes a background-only session into its mobile work badge', async () => {
+  dockProbe.mobile = true;
+  dockProbe.sessions = [
+    {
+      id: 'background-chat',
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title: 'Background research',
+      projectSlug: 'pulse',
+      status: 'idle',
+      source: 'manual',
+      input: '',
+      attachments: [],
+      queuedMessages: [],
+      inputHistory: [],
+      messages: [],
+      hasUnread: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      conversationActivity: {
+        conversationId: 'background-chat',
+        asOfSequence: 4,
+        runningChildWork: { count: 1, producers: ['engine-subagent'] },
+      },
+    },
+  ];
+  renderPane('pulse');
+  expect(
+    (await screen.findByTestId('mobile-dock-work-badge')).textContent,
+  ).toBe('1');
 });

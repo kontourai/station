@@ -7,6 +7,7 @@ import { z } from 'zod/v3';
 import {
   FileStorageConflictError,
   FileStorageNotFoundError,
+  ProjectIdentityNotPreparedError,
 } from '../../domain/project-file-transactions.js';
 import { ProjectIdentityValidationError } from '../../domain/project-identity-record.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
@@ -88,12 +89,26 @@ export function createProjectIdentityRoutes(
           },
           409,
         );
-      if (error instanceof FileStorageNotFoundError)
+      // Subclass first: a VERIFIED not-prepared Project (found, no identity
+      // record) carries the discriminated seam code, while a removed Project
+      // falls through to the generic 404 below. Clients must only offer
+      // prepare guidance on the discriminated code — never on a bare 404,
+      // which also covers old servers without this endpoint and proxies.
+      if (error instanceof ProjectIdentityNotPreparedError)
         return c.json(
           {
             success: false,
             error:
-              'Project identity was not found. An existing Project may need explicit identity preparation.',
+              'This Project has no prepared portable identity. Prepare it explicitly before placing it elsewhere.',
+            code: error.code,
+          },
+          404,
+        );
+      if (error instanceof FileStorageNotFoundError)
+        return c.json(
+          {
+            success: false,
+            error: 'Project identity was not found.',
             code: error.code,
           },
           404,

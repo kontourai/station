@@ -3694,12 +3694,32 @@ When no upstream is configured:
 POST /system/core-update
 ```
 
-Runs `git pull --ff-only` on the app repository and emits a `core:updated` event.
+On a source checkout, runs `git pull --ff-only`, installs dependencies through
+the repository's owned lifecycle (`npm run dependencies:install`, the same step
+`station upgrade` runs), builds through the checkout's own `station build`, emits
+a `core:updated` event, and restarts the server under a detached health
+watchdog. A pulled tree without the owned dependency lifecycle fails closed
+(`500`) before anything is installed, built, or restarted.
 
 **Response**:
 ```json
-{ "success": true, "hash": "def5678", "message": "Updated to def5678. Restart to apply." }
+{ "success": true, "restarting": true, "hash": "def5678", "restart": { "expectedHash": "def5678", "expectedInstanceId": "default", "deadlineAt": "..." } }
 ```
+
+A supervised server refuses with `409` before any git or build work, because
+its supervisor would restart it mid-update. The code is `service-managed` under
+the installed launchd/systemd service, and `supervised` when only a supervisor
+PID is present (the Windows service, the desktop, a development harness), whose
+remedy does not presume the service:
+
+```json
+{ "success": false, "selfUpdateUnavailableCode": "service-managed", "error": "... Stop the service with \"station service stop\", run \"station upgrade\", then start it again with \"station service start\" ..." }
+```
+
+`GET /system/core-update` reports the same refusal up front as
+`selfUpdateUnavailableCode` with the remedy in
+`selfUpdateUnavailableReason`, so clients do not offer an apply the server
+will refuse.
 
 ---
 

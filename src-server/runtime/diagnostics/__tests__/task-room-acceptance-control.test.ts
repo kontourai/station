@@ -45,8 +45,19 @@ test('extends only exact performance command shapes', () => {
 });
 
 function privateRoot() {
+  // Built under the real OS temp dir, not vitest.setup.ts's run-root
+  // redirect (#2534): this creates a real AF_UNIX socket below, and that
+  // redirect alone already spends most of macOS's 104-byte sockaddr_un
+  // budget.
   const root = realpathSync(
-    resolve(mkdtempSync(join(tmpdir(), 'station-room-control-'))),
+    resolve(
+      mkdtempSync(
+        join(
+          process.env.STATION_VITEST_HOST_TMPDIR ?? tmpdir(),
+          'station-room-control-',
+        ),
+      ),
+    ),
   );
   chmodSync(root, 0o700);
   roots.push(root);

@@ -21,6 +21,11 @@ Describe the user-visible outcome this change delivers.
 
 List every command run and its result or receipt location.
 
+Changes altering rendered UI: attach inspected before/after screenshots in the
+PR body; CI artifacts, logs, or local files alone do not establish a visual
+claim. New or materially changed test files: state the measured wall cost for
+each (the `test:focused` duration line is the receipt).
+
 ### NOT_VERIFIED
 
 | Claim or surface | Owner | Reason |

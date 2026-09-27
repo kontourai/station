@@ -157,8 +157,11 @@ test.describe('Agents pane child work (#2459)', () => {
     const scopeAll = page.getByRole('button', { name: 'All', exact: true });
     await expect(scopeChat).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByText('Investigate flaky test')).toBeVisible();
-    // Claude's cell is not wired yet: the shipped per-task Stop stays on the
-    // pre-contract row.
+    // Claude's subagent keeps exactly one Stop, with no duplicate. Since
+    // #2533 its `subagentControl` cell is wired and the child-work row
+    // carries it. WHICH row carries it is not observable from this count: a
+    // TaskRow bridge that failed to retire replaces the child-work row, so
+    // the total stays 1. AgentsWorkspacePane.childWork.test.tsx pins that.
     await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(1);
 
     await scopeAll.click();
@@ -216,9 +219,24 @@ test.describe('Agents pane child work (#2459)', () => {
     await expect(page.getByText('No result')).toBeVisible();
     await expect(page.getByText('Completed')).toHaveCount(0);
 
-    // Only the delegate's Station interrupt is a Stop in All: Claude's
-    // subagent renders from its (unwired) cell and gets none.
-    await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(1);
+    // In All, each running child that has a wired stop seam carries exactly
+    // one Stop: the delegate's Station interrupt, and (since #2533 wired
+    // Claude's `subagentControl` cell) Claude's subagent. The exited chatless
+    // subagent has none.
+    const runningRow = (title: string) =>
+      page.getByRole('listitem').filter({ hasText: title });
+    await expect(
+      runningRow('Nightly audit').getByRole('button', { name: 'Stop' }),
+    ).toHaveCount(1);
+    await expect(
+      runningRow('Investigate flaky test').getByRole('button', {
+        name: 'Stop',
+      }),
+    ).toHaveCount(1);
+    await expect(
+      runningRow('Chatless survey').getByRole('button', { name: 'Stop' }),
+    ).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(2);
 
     // The scope is remembered on this device.
     await page.reload();
@@ -229,5 +247,65 @@ test.describe('Agents pane child work (#2459)', () => {
     await expect(
       page.getByRole('button', { name: 'All', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');
+  });
+  /**
+   * #2510: a phone has no side region and no desktop More menu, so the
+   * header's ⋯ sheet carries the Background tasks row, and on a bottom-only
+   * device it opens the Background tasks sheet rather than the Agents pane.
+   */
+  test.describe('on a phone (#2510)', () => {
+    test.use({ viewport: { width: 390, height: 844 } });
+
+    test('the ⋯ sheet opens the Background tasks sheet with the running task', async ({
+      page,
+    }, testInfo) => {
+      await page.goto(
+        `/projects/dev/layouts/code?chat=${encodeURIComponent(CONVERSATION_ID)}`,
+      );
+      await dismissSetupLauncher(page);
+      await waitForMockOrchestrationSse(page);
+
+      await emit(page, {
+        provider: 'claude',
+        threadId: SESSION_ID,
+        method: 'extension.notification',
+        namespace: 'claude-code',
+        type: 'task/registry',
+        payload: {
+          active: [
+            {
+              taskId: 'task-1',
+              description: 'Investigate flaky test',
+              backgrounded: true,
+            },
+          ],
+        },
+      });
+
+      await page
+        .getByRole('button', { name: 'Chat actions', exact: true })
+        .click();
+      const actions = page.getByRole('menu', { name: 'Chat actions' });
+      await expect(actions).toBeVisible();
+      const row = actions.getByRole('menuitem', {
+        name: 'Background tasks — 1 running',
+      });
+      await expect(row).toBeVisible();
+      const box = await row.boundingBox();
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+      await row.click();
+
+      await expect(actions).toBeHidden();
+      const sheet = page.getByRole('dialog', { name: 'Background tasks' });
+      await expect(sheet).toBeVisible();
+      await expect(sheet.getByText('Investigate flaky test')).toBeVisible();
+      // Bottom-only: the sheet, never the Agents pane's scope controls.
+      await expect(
+        page.getByRole('button', { name: 'This conversation' }),
+      ).toHaveCount(0);
+      await page.screenshot({
+        path: testInfo.outputPath('mobile-background-tasks-390.png'),
+      });
+    });
   });
 });

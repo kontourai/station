@@ -637,6 +637,30 @@ describe('Draft lifecycle derivation (#2310)', () => {
     },
   );
 
+  test('a continuation child whose start failed still names its conversation', async () => {
+    // Observed live (Codex "active writer"): the child's start failed, so it
+    // never emitted the `session.started` whose metadata carries the
+    // conversation id, and every inbox listed it as a conversation of its own.
+    upsert(ROOT);
+    seedNeverPrompted(ROOT);
+    turn(ROOT, 'turn-1');
+    const child = `${ROOT}:session:18f25bda-b740-4eb2-8241-383197bd413f`;
+    store.reserveNextConversationSession({
+      conversationId: ROOT,
+      predecessorSessionId: ROOT,
+      proposedSessionId: child,
+      createdAt: at(5_000),
+    });
+    upsert(child, { createdAt: at(5_000), status: 'closed' });
+
+    const sessions = await (await service()).listSessionReadModel(
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(
+      sessions.find((session) => session.threadId === child)?.conversationId,
+    ).toBe(ROOT);
+  });
+
   test('the list route carries the lineage-aware answer', async () => {
     upsert(ROOT);
     seedNeverPrompted(ROOT);

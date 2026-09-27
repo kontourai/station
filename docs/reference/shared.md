@@ -131,6 +131,7 @@ interface AgentTools {
   mcpServers: string[];
   available?: string[];
   autoApprove?: string[];
+  unattendedAutoApprove?: string[];
 }
 
 interface SlashCommand {

@@ -307,9 +307,19 @@ export async function runLanesToCompletion({
     );
   }
   const limit = planConcurrency(lanes.length, { concurrency });
-  const results = await mapWithConcurrency(lanes, limit, (lane) =>
-    runLane(lane, { cwd, env, spawnFn, npmBin, platform }),
-  );
+  let finished = 0;
+  // One line per lane AS IT FINISHES (station#2621): the summary below only
+  // prints once every lane settles, so a run killed while one lane hangs
+  // printed nothing at all -- a stuck lane looked identical to twelve. These
+  // lines make the missing lane the one that never reported.
+  const results = await mapWithConcurrency(lanes, limit, async (lane) => {
+    const result = await runLane(lane, { cwd, env, spawnFn, npmBin, platform });
+    finished += 1;
+    log(
+      `[${label ?? 'npm-lane-aggregate'}] ${result.ok ? 'done' : 'FAILED'} ${lane.id} in ${result.seconds.toFixed(1)}s (${finished}/${lanes.length})`,
+    );
+    return result;
+  });
   const summary = summarizeLaneResults(results, { label });
   log(summary.text);
   if (!summary.ok) {

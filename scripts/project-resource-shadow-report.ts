@@ -33,6 +33,7 @@ import {
   type ShadowRecordEntry,
   SLICE_3C_POPULATIONS,
 } from '../src-server/services/projects/project-resource-shadow-record.js';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 interface Options {
   homeDir: string;
@@ -568,6 +569,6 @@ export function main(argv: readonly string[]): number {
   return options.gate && !report.gatePass ? 1 : 0;
 }
 
-if (process.argv[1]?.endsWith('project-resource-shadow-report.ts')) {
+if (invokedDirectly(import.meta.url)) {
   process.exit(main(process.argv.slice(2)));
 }

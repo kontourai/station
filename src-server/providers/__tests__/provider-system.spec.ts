@@ -8,7 +8,6 @@ import type { ProviderAdapterShape } from '../adapter-shape.js';
 import { BedrockAdapter } from '../adapters/bedrock-adapter.js';
 import {
   clearAll,
-  clearPluginProviders,
   createProviderAdapterRegistry,
   disposePreparedPluginProviders,
   disposeRetainedPreparedPluginProviders,
@@ -531,7 +530,7 @@ describe('Provider System', () => {
       expect(registry.list()).toEqual([adapter]);
     });
 
-    it('preserves built-in adapters when clearing plugin providers', () => {
+    it('preserves built-in adapters when plugin providers are replaced with none', async () => {
       const builtInAdapter = new BedrockAdapter();
       const pluginAdapter = {
         provider: 'custom-runtime',
@@ -562,7 +561,7 @@ describe('Provider System', () => {
       const revisionBeforeClear =
         providerAdapterLaunchabilitySource.getLaunchabilityRevision();
 
-      clearPluginProviders();
+      await replacePluginProviders([]);
 
       expect(getProviderAdapters()).toEqual([builtInAdapter]);
       expect(
@@ -570,7 +569,7 @@ describe('Provider System', () => {
       ).toBe(revisionBeforeClear + 1);
     });
 
-    it('restores a built-in adapter after clearing a plugin override with the same provider id', () => {
+    it('restores a built-in adapter after replacing a plugin override with none', async () => {
       const builtInAdapter = new BedrockAdapter();
       const pluginAdapter = new BedrockAdapter();
 
@@ -578,7 +577,7 @@ describe('Provider System', () => {
       registerProviderAdapter(pluginAdapter, { builtin: false });
       expect(getProviderAdapter('bedrock')).toBe(pluginAdapter);
 
-      clearPluginProviders();
+      await replacePluginProviders([]);
 
       expect(getProviderAdapters()).toEqual([builtInAdapter]);
       expect(getProviderAdapter('bedrock')).toBe(builtInAdapter);

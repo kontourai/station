@@ -115,8 +115,8 @@ describe('AgentActivitySetting', () => {
     window.localStorage.clear();
   });
 
-  it('is absent outside the Android app, without loading anything', async () => {
-    target = 'ios';
+  it('is absent outside the phone apps, without loading anything', async () => {
+    target = 'macos';
     const load = vi.fn(async () => null);
     renderWith(load);
     await act(async () => {});
@@ -209,6 +209,170 @@ describe('AgentActivitySetting', () => {
     fireEvent.click(allow);
     await waitFor(() =>
       expect(commands).toContain('open_live_update_settings'),
+    );
+  });
+});
+
+/** An iOS phone whose host reports the Live Activity half, over the real adapter. */
+async function iosControllerFor(status: Record<string, unknown> = {}) {
+  const commands: string[] = [];
+  const register = vi.fn(
+    async () =>
+      ({
+        registrationId: 'reg_AAAAAAAAAAAAAAAAAAAA',
+        stationId: 'env-a',
+        stationKey: 'k'.repeat(43),
+        payloadKey: PAYLOAD_KEY,
+      }) as NativePushRegistrationResponse,
+  );
+  const adapter = new TauriNativePlatformAdapter({
+    async invoke<T>(command: string) {
+      if (command === 'native_capability_report') {
+        return completeNativeCapabilityReport('ios', {
+          'remote-push': { state: 'enabled' },
+        }) as T;
+      }
+      commands.push(command.split('|')[1]);
+      if (command.endsWith('|status')) {
+        return {
+          platform: 'ios',
+          osVersion: '18.4',
+          packageName: 'io.kontourai.station',
+          liveActivitiesSupported: true,
+          liveActivitiesEnabled: true,
+          frequentPushesEnabled: false,
+          pushConfigured: true,
+          configured: false,
+          apnsEnvironment: 'production',
+          ...status,
+        } as T;
+      }
+      if (command.endsWith('|push_token'))
+        return {
+          state: 'available',
+          token: 'ab'.repeat(32),
+          apnsEnvironment: 'production',
+        } as T;
+      if (command.endsWith('|open_live_update_settings'))
+        return { opened: true } as T;
+      return null as T;
+    },
+    listen: async () => () => {},
+  });
+  await adapter.getCapabilityReport();
+  const controller = createAgentActivityController({
+    adapter,
+    register,
+    unregister: vi.fn(async () => {}),
+    store: localAgentActivityRegistrationStore(window.localStorage),
+    requestNotificationPermission: async () => false,
+    now: () => 0,
+  });
+  return { controller, commands, register };
+}
+
+describe('AgentActivitySetting on iOS', () => {
+  beforeEach(() => {
+    target = 'ios';
+    window.localStorage.clear();
+  });
+
+  it('turns on as an iOS registration when the build has the Live Activity half and is signed for push', async () => {
+    const { controller, register } = await iosControllerFor();
+    renderWith(async () => controller);
+
+    fireEvent.click(await toggle());
+    await waitFor(async () =>
+      expect((await toggle()).getAttribute('aria-checked')).toBe('true'),
+    );
+    expect(register).toHaveBeenCalledWith(
+      {
+        token: 'ab'.repeat(32),
+        packageName: 'io.kontourai.station',
+        platform: 'ios',
+        apnsEnvironment: 'production',
+      },
+      'https://station.test',
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('shows nothing, and no error, when the host has no Live Activity half', async () => {
+    const load = vi.fn(async () => null);
+    renderWith(load);
+    await act(async () => {});
+    expect(load).toHaveBeenCalled();
+    expect(screen.queryByTestId('agent-activity')).toBeNull();
+  });
+
+  it('shows nothing, and no error, when the build is not signed for push', async () => {
+    const { controller, commands } = await iosControllerFor({
+      pushConfigured: false,
+      apnsEnvironment: undefined,
+    });
+    renderWith(async () => controller);
+    await waitFor(() => expect(commands).toContain('status'));
+    await act(async () => {});
+    expect(screen.queryByTestId('agent-activity')).toBeNull();
+  });
+
+  it('shows nothing below iOS 18', async () => {
+    const { controller, commands } = await iosControllerFor({
+      liveActivitiesSupported: false,
+    });
+    renderWith(async () => controller);
+    await waitFor(() => expect(commands).toContain('status'));
+    await act(async () => {});
+    expect(screen.queryByTestId('agent-activity')).toBeNull();
+  });
+
+  it('says when Live Activities are off for Station and offers Settings', async () => {
+    const { controller, commands, register } = await iosControllerFor({
+      liveActivitiesEnabled: false,
+    });
+    renderWith(async () => controller);
+
+    fireEvent.click(await toggle());
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open Settings' }),
+    );
+    await waitFor(() =>
+      expect(commands).toContain('open_live_update_settings'),
+    );
+    expect(register).not.toHaveBeenCalled();
+    expect((await toggle()).getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('stays visible while on when the build can no longer do Live Activities, so it can be turned off', async () => {
+    const status: Record<string, unknown> = {};
+    const { controller, commands } = await iosControllerFor(status);
+    await controller.enable({
+      environmentId: 'env-a',
+      apiBase: 'https://station.test',
+    });
+    status.pushConfigured = false;
+    status.apnsEnvironment = undefined;
+    renderWith(async () => controller);
+
+    const control = await toggle();
+    expect(control.getAttribute('aria-checked')).toBe('true');
+    expect(control).toHaveProperty('disabled', false);
+    expect(
+      await screen.findByText(
+        'This build can no longer show Live Activities. Turn this off to stop the Station sending them.',
+      ),
+    ).toBeTruthy();
+    // iOS explains itself with the sentence above, not Android's line.
+    expect(
+      screen.queryByText('This build has no push configuration.'),
+    ).toBeNull();
+
+    fireEvent.click(control);
+    await waitFor(() => expect(commands).toContain('clear'));
+    expect(controller.registration('env-a')).toBeNull();
+    // Off, on a build that cannot turn it on again: nothing is left to show.
+    await waitFor(() =>
+      expect(screen.queryByTestId('agent-activity')).toBeNull(),
     );
   });
 });

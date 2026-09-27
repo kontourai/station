@@ -63,3 +63,46 @@ export function effectiveOwnerAttribution(context: {
     return UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION;
   return undefined;
 }
+
+/**
+ * Who a session a request starts belongs to, and whether it acts for them.
+ * `ownerUserId` is recorded as the session's owner (so its account can read
+ * it); `ownerAttribution` rides the start so the one start choke point (or
+ * a seeded record) marks an unverified agent's session to act for no one.
+ */
+export interface SessionOwnerStamp {
+  readonly ownerUserId: string;
+  readonly ownerAttribution?: StartOwnerAttribution;
+}
+
+/**
+ * The same decision `/api/orchestration`'s `resolveDispatchActor` makes for
+ * a start (Station #90 lane D, B2), for any other route that starts a
+ * session:
+ *
+ * - no agent verdict (an operator or device credential): the request's own
+ *   principal owns it and it acts for them;
+ * - `verified` (a bound station-control caller acting for an authenticated
+ *   session owner): that owner owns it and it acts for them;
+ * - `unattributed` (any other request carrying Station's internal token):
+ *   the request principal (the local operator) owns it, so the operator's
+ *   account can read it, but it acts for no one.
+ */
+export function sessionOwnerStampFor(
+  requestPrincipalId: string,
+  agent:
+    | { readonly kind: 'verified'; readonly principalId: string }
+    | { readonly kind: 'unattributed' }
+    | undefined,
+): SessionOwnerStamp {
+  if (!agent) return { ownerUserId: requestPrincipalId };
+  if (agent.kind === 'verified')
+    return {
+      ownerUserId: agent.principalId,
+      ownerAttribution: 'verified-bound',
+    };
+  return {
+    ownerUserId: requestPrincipalId,
+    ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
+  };
+}

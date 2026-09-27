@@ -21,6 +21,7 @@ import {
 } from '../lib/verification-reporter.mjs';
 import { reportExecution } from '../lib/verification-terminal-receipt.mjs';
 import {
+  CI_FAST_BUDGET_EXCEEDED_CAUSE,
   CI_FAST_INFRASTRUCTURE_EXIT_CODE,
   CI_FAST_NESTED_INFRASTRUCTURE_CAUSE,
 } from '../run-ci-fast.mjs';
@@ -739,7 +740,7 @@ describe('verification status projection', () => {
   test('carries the declared-cause marker into the over-cap tail fallback (station#1827)', () => {
     const worktree = mkdtempSync(join(tmpdir(), 'station-1827-overcap-'));
     const key = 'e'.repeat(64);
-    const cause = 'ci:fast exceeded its 12-minute feedback budget';
+    const cause = CI_FAST_BUDGET_EXCEEDED_CAUSE;
     try {
       const persisted = persistVerificationOutput({
         root: worktree,

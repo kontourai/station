@@ -3,7 +3,7 @@
  * sends a single Web Push message with Station's VAPID keypair.
  *
  * Deliberately dumb: it knows nothing about notifications, categories, or
- * paired devices. `web-push-delivery.ts` owns the fan-out/self-heal policy;
+ * paired devices. `web-push-channel.ts` owns the send/self-heal policy;
  * this class only classifies one send's outcome (sent/gone/error) so the
  * caller never has to inspect a `WebPushError` directly.
  */

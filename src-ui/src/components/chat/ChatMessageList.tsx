@@ -53,6 +53,8 @@ import {
 
 interface ChatMessageListProps {
   activeSession: ChatSession;
+  /** The canonical window plus sequenced live events already renders this turn. */
+  suppressStreamingRow?: boolean;
   fontSize: number;
   /** Discrete dock/viewport height used to re-anchor before the resized frame paints. */
   layoutHeight?: number;
@@ -133,11 +135,19 @@ function backgroundTasksLabel(
 // (which re-measures on every keystroke) from repeatedly snapping the
 // scroll position even when nothing visually grew.
 const RESIZE_REANCHOR_THRESHOLD_PX = 4;
+// A programmatic scrollTop write dispatches its scroll event asynchronously,
+// so the handler recognizes the write's echo by position for this long. The
+// positional match alone is already safe (a write always targets the position
+// the current reader state implies), and the window closes the one hole:
+// the reader landing pixel-exact on a stale write minutes later.
+const PROGRAMMATIC_SCROLL_ECHO_MS = 500;
+const PROGRAMMATIC_SCROLL_ECHO_PX = 1;
 const VIRTUALIZE_AFTER_MESSAGE_COUNT = 40;
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
 function ChatMessageListComponent({
   activeSession,
+  suppressStreamingRow,
   fontSize,
   layoutHeight,
   showReasoning,
@@ -172,9 +182,18 @@ function ChatMessageListComponent({
             approvalEvents
               .map((item) => item.event)
               .filter((event) => Boolean(event.eventId)),
+            activeSession.orchestrationTurnOpen
+              ? activeSession.openTurnId
+              : undefined,
           )
         : NO_PENDING_APPROVALS,
-    [activeSession.messages, activeSession.replay, approvalEvents],
+    [
+      activeSession.messages,
+      activeSession.replay,
+      activeSession.orchestrationTurnOpen,
+      activeSession.openTurnId,
+      approvalEvents,
+    ],
   );
   const sendMessage = useSendMessage(apiBase);
   // The store is already live at the shell; reading its scalar snapshot here
@@ -189,7 +208,10 @@ function ChatMessageListComponent({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const visibleAnchorRef = useRef<ChatScrollAnchor | null>(null);
   const isUserScrolledUpRef = useRef(false);
-  const userScrollIntentRef = useRef(false);
+  const lastProgrammaticScrollRef = useRef<{
+    top: number;
+    at: number;
+  } | null>(null);
   const lastClientHeightRef = useRef<number | null>(null);
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const [scrollAnchorVersion, setScrollAnchorVersion] = useState(0);
@@ -207,6 +229,23 @@ function ChatMessageListComponent({
   const loadingOlderRef = useRef(false);
   const previousTranscriptRows = useRef<readonly TranscriptRow[]>([]);
 
+  // Every programmatic scrollTop write goes through these so the scroll
+  // handler can tell our own echoes apart from reader movement. The recorded
+  // (clamped) position is what the echo carries.
+  const noteProgrammaticScroll = useCallback((el: HTMLDivElement) => {
+    lastProgrammaticScrollRef.current = {
+      top: el.scrollTop,
+      at: performance.now(),
+    };
+  }, []);
+  const writeProgrammaticScroll = useCallback(
+    (el: HTMLDivElement, top: number) => {
+      el.scrollTop = top;
+      noteProgrammaticScroll(el);
+    },
+    [noteProgrammaticScroll],
+  );
+
   // Dock snap changes are known synchronously by the parent. Handle that
   // discrete resize in a layout effect instead of relying solely on the
   // browser's later ResizeObserver delivery, which can arrive after a native
@@ -215,13 +254,15 @@ function ChatMessageListComponent({
     const el = messagesContainerRef.current;
     if (!el || layoutHeight === undefined) return;
     if (isUserScrolledUpRef.current && visibleAnchorRef.current) {
-      restoreChatScrollAnchor(el, visibleAnchorRef.current);
+      if (restoreChatScrollAnchor(el, visibleAnchorRef.current)) {
+        noteProgrammaticScroll(el);
+      }
     } else {
-      el.scrollTop = el.scrollHeight;
+      writeProgrammaticScroll(el, el.scrollHeight);
     }
     visibleAnchorRef.current = captureChatScrollAnchor(el);
     lastClientHeightRef.current = el.clientHeight;
-  }, [layoutHeight]);
+  }, [layoutHeight, noteProgrammaticScroll, writeProgrammaticScroll]);
 
   const submitForm = useCallback(
     (submission: UIBlockFormSubmission) => {
@@ -259,7 +300,20 @@ function ChatMessageListComponent({
   // not reconstruct its own streaming row after resume. See the doc comment
   // on `isTurnStreamLive` for why `isSessionExecutionActive` was the wrong
   // derivation for THIS row specifically.
-  const isStreaming = isTurnStreamLive(activeSession);
+  const turnLive = isTurnStreamLive(activeSession);
+  // The background banner below means "turn over, work continues", so it
+  // reads turn liveness, not whether this row renders: suppression moves a
+  // live turn into the transcript window without ending it (#2654).
+  const isStreaming = turnLive && !suppressStreamingRow;
+  const localBackgroundTasks = activeSession.backgroundTasks ?? [];
+  const serverBackgroundCount =
+    activeSession.conversationActivity?.runningChildWork?.count ?? 0;
+  const backgroundBannerLabel =
+    localBackgroundTasks.length > 0
+      ? backgroundTasksLabel(localBackgroundTasks)
+      : serverBackgroundCount === 1
+        ? 'Background agent working'
+        : `${serverBackgroundCount} background agents working`;
 
   // The dock supplies the bounded event-window projection. This component
   // owns only that projection's one scroll surface, so it cannot create a
@@ -306,7 +360,6 @@ function ChatMessageListComponent({
         return;
       event.preventDefault();
       isUserScrolledUpRef.current = true;
-      userScrollIntentRef.current = false;
       visibleAnchorRef.current = request.anchor ?? null;
       setIsUserScrolledUp(true);
       setReaderRestoreRequest((current) => ({
@@ -327,9 +380,18 @@ function ChatMessageListComponent({
     const restored = currentReaderRestoreRequest.anchor
       ? restoreChatScrollAnchor(element, currentReaderRestoreRequest.anchor)
       : false;
-    if (!restored) element.scrollTop = currentReaderRestoreRequest.scrollTop;
+    if (!restored) {
+      writeProgrammaticScroll(element, currentReaderRestoreRequest.scrollTop);
+    } else {
+      noteProgrammaticScroll(element);
+    }
     if (restored) visibleAnchorRef.current = captureChatScrollAnchor(element);
-  }, [currentReaderRestoreRequest, messages.length]);
+  }, [
+    currentReaderRestoreRequest,
+    messages.length,
+    noteProgrammaticScroll,
+    writeProgrammaticScroll,
+  ]);
 
   // A command-palette transcript result carries the stable runtime message id
   // in the location hash. Re-run when messages arrive, rather than trusting a
@@ -358,20 +420,31 @@ function ChatMessageListComponent({
   // before paint so there is no visible jump; rAF covers late layout (images,
   // markdown reflow) without fighting the browser via a 0ms timeout.
   const lastMessage = messages[messages.length - 1];
-  const streamingTick = isStreaming
-    ? (lastMessage?.contentParts?.length ?? 0)
-    : 0;
-  // messages.length / streamingTick / isStreaming are growth triggers — not read
-  // in the body but they must re-pin the scroll as content streams in.
+  // Tail-growth triggers for the follow below. The shell's per-flush revision
+  // (`streamingContentRevision`) covers a shell-owned turn, but a turn the
+  // transcript window projects (`suppressStreamingRow`, #2594) renders as an
+  // ordinary row with no shell and no flush: pure-text streaming then grows
+  // one message's content without changing `messages.length` or its part
+  // count, so the tail row's own growth is the follow trigger.
+  const tailContentLength = lastMessage?.content?.length ?? 0;
+  const tailPartsLength = lastMessage?.contentParts?.length ?? 0;
+  // messages.length / tailContentLength / tailPartsLength / isStreaming are
+  // growth triggers — not read in the body but they must re-pin the scroll
+  // as content streams in.
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional triggers
   useLayoutEffect(() => {
     const el = messagesContainerRef.current;
     if (!el || isUserScrolledUp) return;
-    el.scrollTop = el.scrollHeight;
+    writeProgrammaticScroll(el, el.scrollHeight);
     const raf = requestAnimationFrame(() => {
-      if (messagesContainerRef.current && !isUserScrolledUp) {
-        messagesContainerRef.current.scrollTop =
-          messagesContainerRef.current.scrollHeight;
+      // Read the ref, not the state closed over above: the reader may have
+      // scrolled up between the layout write and this frame, and a stale
+      // `false` would yank them back down after they asked to read.
+      if (messagesContainerRef.current && !isUserScrolledUpRef.current) {
+        writeProgrammaticScroll(
+          messagesContainerRef.current,
+          messagesContainerRef.current.scrollHeight,
+        );
       }
     });
     return () => cancelAnimationFrame(raf);
@@ -379,8 +452,10 @@ function ChatMessageListComponent({
     isUserScrolledUp,
     messages.length,
     streamingContentRevision,
-    streamingTick,
+    tailContentLength,
+    tailPartsLength,
     isStreaming,
+    writeProgrammaticScroll,
   ]);
 
   // A reader who requested earlier history keeps the same visible row when
@@ -397,9 +472,11 @@ function ChatMessageListComponent({
     if (!el || !isUserScrolledUpRef.current || !visibleAnchorRef.current) {
       return;
     }
-    restoreChatScrollAnchor(el, visibleAnchorRef.current);
+    if (restoreChatScrollAnchor(el, visibleAnchorRef.current)) {
+      noteProgrammaticScroll(el);
+    }
     visibleAnchorRef.current = captureChatScrollAnchor(el);
-  }, [messages.length, transcriptRows]);
+  }, [messages.length, transcriptRows, noteProgrammaticScroll]);
 
   // Container resize is the important keyboard/composer path. Keep a reader's
   // scrollTop stable; only an already-pinned conversation follows the bottom.
@@ -420,17 +497,20 @@ function ChatMessageListComponent({
       lastClientHeightRef.current = el.clientHeight;
       if (!reanchorGate.shouldReanchor(el.clientHeight)) return;
       if (isUserScrolledUpRef.current) {
-        if (visibleAnchorRef.current) {
-          restoreChatScrollAnchor(el, visibleAnchorRef.current);
+        if (
+          visibleAnchorRef.current &&
+          restoreChatScrollAnchor(el, visibleAnchorRef.current)
+        ) {
+          noteProgrammaticScroll(el);
         }
       } else {
-        el.scrollTop = el.scrollHeight;
+        writeProgrammaticScroll(el, el.scrollHeight);
       }
       visibleAnchorRef.current = captureChatScrollAnchor(el);
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [noteProgrammaticScroll, writeProgrammaticScroll]);
 
   const loadOlder = async () => {
     if (!onLoadOlder || historyLoading || loadingOlderRef.current) return;
@@ -463,16 +543,25 @@ function ChatMessageListComponent({
     // transcript is restored by the observer from its captured anchor.
     if (resized) {
       if (!isUserScrolledUpRef.current) {
-        target.scrollTop = target.scrollHeight;
+        writeProgrammaticScroll(target, target.scrollHeight);
         visibleAnchorRef.current = null;
       }
       return;
     }
-    // Programmatic positioning, measurement correction, and viewport resize
-    // also produce trusted browser scroll events, so trust alone cannot mark
-    // reader intent. Only wheel/touch/pointer input arms the next scroll.
-    if (!userScrollIntentRef.current) return;
-    userScrollIntentRef.current = false;
+    // Our own positioning writes (tail-follow pins, anchor restores) dispatch
+    // scroll events too. A write always targets the position the current
+    // reader state already implies, so an event landing on the last write is
+    // its echo — not the reader moving. Anything else is reader movement, no
+    // matter the device: wheel, touch, keyboard and scrollbar drags all just
+    // move scrollTop, and none of them needs a separate intent signal.
+    const echo = lastProgrammaticScrollRef.current;
+    if (
+      echo &&
+      performance.now() - echo.at <= PROGRAMMATIC_SCROLL_ECHO_MS &&
+      Math.abs(target.scrollTop - echo.top) <= PROGRAMMATIC_SCROLL_ECHO_PX
+    ) {
+      return;
+    }
     setReaderRestoreRequest(null);
     if (hasOlderMessages && target.scrollTop <= 96) void loadOlder();
     setScrollAnchorVersion((version) => version + 1);
@@ -492,8 +581,10 @@ function ChatMessageListComponent({
     if (messagesContainerRef.current) {
       setReaderRestoreRequest(null);
       visibleAnchorRef.current = null;
-      messagesContainerRef.current.scrollTop =
-        messagesContainerRef.current.scrollHeight;
+      writeProgrammaticScroll(
+        messagesContainerRef.current,
+        messagesContainerRef.current.scrollHeight,
+      );
       isUserScrolledUpRef.current = false;
       setIsUserScrolledUp(false);
     }
@@ -695,22 +786,6 @@ function ChatMessageListComponent({
         aria-live="polite"
         style={{ fontSize: `${fontSize}px` }}
         onScroll={handleScroll}
-        onWheel={() => {
-          userScrollIntentRef.current = true;
-        }}
-        onTouchMove={() => {
-          userScrollIntentRef.current = true;
-        }}
-        onPointerDown={(event) => {
-          // Activating a control can move focus and dispatch a programmatic
-          // scroll. It is not a request to replace the reader's anchor.
-          if (
-            event.target instanceof Element &&
-            event.target.closest('button, a, input, select, textarea, summary')
-          )
-            return;
-          userScrollIntentRef.current = true;
-        }}
       >
         {hasOlderMessages && (
           <div className="session-history-controls">
@@ -743,6 +818,7 @@ function ChatMessageListComponent({
                   scrollElement={messagesContainerRef}
                   renderRow={renderTranscriptRow}
                   followTail={!isUserScrolledUp && !requestedMessageRowId}
+                  followTick={`${tailContentLength}:${tailPartsLength}`}
                   anchorVersion={scrollAnchorVersion}
                   revealRowId={
                     requestedMessageRowId ??
@@ -799,9 +875,9 @@ function ChatMessageListComponent({
             {/* Backgrounded provider tasks outlive the assistant turn: the
                 session is honestly idle, but work continues. Keep a live
                 affordance so the chat never looks done while it isn't. */}
-            {!isStreaming &&
-              (activeSession.backgroundTasks?.length ?? 0) > 0 &&
-              (onOpenBackgroundTasks ? (
+            {!turnLive &&
+              (localBackgroundTasks.length > 0 || serverBackgroundCount > 0) &&
+              (onOpenBackgroundTasks && localBackgroundTasks.length > 0 ? (
                 // archive#1301: a `<button>` cannot
                 // also carry `role="status"` (an interactive element and a
                 // live region are mutually exclusive ARIA roles) — a visually
@@ -814,28 +890,28 @@ function ChatMessageListComponent({
                     type="button"
                     className="background-tasks-banner"
                     onClick={onOpenBackgroundTasks}
-                    aria-label={`${backgroundTasksLabel(activeSession.backgroundTasks!)} — open background tasks`}
+                    aria-label={`${backgroundBannerLabel} — open background tasks`}
                   >
                     <LoadingDots />
                     <span
                       className="background-tasks-banner__label"
                       aria-hidden="true"
                     >
-                      {backgroundTasksLabel(activeSession.backgroundTasks!)}
+                      {backgroundBannerLabel}
                     </span>
                   </button>
                   <span
                     className="background-tasks-banner__sr-status"
                     role="status"
                   >
-                    {backgroundTasksLabel(activeSession.backgroundTasks!)}
+                    {backgroundBannerLabel}
                   </span>
                 </>
               ) : (
                 <div className="background-tasks-banner" role="status">
                   <LoadingDots />
                   <span className="background-tasks-banner__label">
-                    {backgroundTasksLabel(activeSession.backgroundTasks!)}
+                    {backgroundBannerLabel}
                   </span>
                 </div>
               ))}

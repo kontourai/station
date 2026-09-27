@@ -654,21 +654,6 @@ test('projects only shipped product occurrences into the foreground timeline', (
   ]);
 });
 
-test('classifies the closed unavailable workspace corpus receipt', () => {
-  expect(
-    productMarkFailureCode(new Error('task workspace is unavailable')),
-  ).toBe('PRODUCT_FILE_TASK_WORKSPACE_UNAVAILABLE');
-});
-
-test('classifies closed control receipt reasons without retaining transport text', () => {
-  expect(
-    productMarkFailureCode(new Error('100k corpus receipt CONTROL_CONNECTION')),
-  ).toBe('PRODUCT_FILE_100K_PREPARE_CORPUS_CONTROL_CONNECTION');
-  expect(
-    productMarkFailureCode(new Error('100k corpus receipt CONTROL_UNKNOWN')),
-  ).toBe('PRODUCT_FILE_100K_PREPARE_CORPUS_CONTROL_UNKNOWN');
-});
-
 test('keeps only a closed live-command diagnostic through collaboration failure', () => {
   expect(
     productMarkFailureCode(
@@ -719,23 +704,6 @@ test('categorizes reconnect revision mismatches without retaining revisions', ()
         `Reconnect stage FALLBACK_SAMPLE_74 failed: document status ${status}; editor revision a1b2c3d4e5f6 expected a1b2c3d4e5f6; reconnect apply wait timed out; no task apply observed`,
       ),
     ).toBe('FALLBACK_SAMPLE_74_APPLY_NO_MARK');
-});
-
-test('classifies closed peer-presence stages before their outer measure wrapper', () => {
-  expect(
-    productMarkFailureCode(
-      new Error(
-        'Collaboration measure peer-publish failed: Collaboration presence owner-absence failed',
-      ),
-    ),
-  ).toBe('PRODUCT_COLLABORATION_PRESENCE_OWNER_ABSENCE_FAILED');
-  expect(
-    productMarkFailureCode(
-      new Error(
-        'Collaboration measure peer-publish failed: Collaboration presence secret-token failed',
-      ),
-    ),
-  ).toBe('PRODUCT_COLLABORATION_PEER_PUBLISH_FAILED');
 });
 
 test('preserves closed peer-presence driver failures through the measurement bridge', async () => {

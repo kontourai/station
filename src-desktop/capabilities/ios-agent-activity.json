@@ -1,0 +1,8 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "ios-agent-activity",
+  "description": "Agent-activity registration and Live Activity settings. iOS-only for the same reason as android-agent-activity (station#575). The native half answers only in STATION_IOS_LIVE_ACTIVITY=1 builds. `preview` is deliberately absent — it starts a Live Activity from an arbitrary sealed card and is reachable only through a debug build's launch argument.",
+  "windows": ["main"],
+  "platforms": ["iOS"],
+  "permissions": ["station-agent-activity:default"]
+}

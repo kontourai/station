@@ -361,6 +361,21 @@ export const PROJECT_LOCAL_RESOURCE_FIELDS = Object.freeze({
   role: true,
 } satisfies Record<keyof ProjectLocalOnlyResource, true>);
 
+/**
+ * Discriminated wire code for a VERIFIED not-prepared identity read: the
+ * server found the local Project but holds no portable identity record for
+ * it. A bare 404 (or the generic `file_storage_not_found` code, which the
+ * identity route also returns for a removed Project) is NOT this — it is an
+ * unverified absence from an old server, a proxy, or a deleted Project, and
+ * must never be presented as "no identity". Compatibility: servers predating
+ * this code keep sending the generic shape; clients treat that as unknown,
+ * never as verified missing.
+ */
+export const PROJECT_IDENTITY_NOT_PREPARED_CODE =
+  'project_identity_not_prepared' as const;
+export type ProjectIdentityNotPreparedCode =
+  typeof PROJECT_IDENTITY_NOT_PREPARED_CODE;
+
 /** The receiving environment owns this mapping; slugs are never portable keys. */
 export interface ProjectIdentityAssociation {
   portableProjectId: string;

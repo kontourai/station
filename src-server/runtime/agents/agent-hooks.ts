@@ -29,12 +29,17 @@ import {
 } from '../conversation/usage-stats.js';
 import { resolveManagedModelIdentity } from '../plugins/runtime-provider-resolution.js';
 import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
-import { isAutoApproved } from '../tools/tool-executor.js';
+import { isAuthoredToolPatternMatch } from '../tools/tool-approval.js';
+import {
+  isAutoApproved,
+  isIntrinsicStationEngineGrant,
+} from '../tools/tool-executor.js';
 import type {
   IAgentHooks,
   InvocationContext,
   TokenUsage,
   ToolCallContext,
+  UnattendedGrantResolution,
 } from '../types.js';
 import type { WorkItemCapture } from '../work-item-capture.js';
 import { stationDenial } from './denial-message.js';
@@ -78,7 +83,7 @@ export interface AgentHooksDeps {
   resolveUnattendedGrant?: (
     tool: ToolCallContext,
     invocation: InvocationContext,
-  ) => Promise<boolean>;
+  ) => Promise<UnattendedGrantResolution>;
   toolNameMapping: Map<string, MCPToolNameMappingEntry>;
   workItemCapture?: WorkItemCapture;
   logger: any;
@@ -102,6 +107,7 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
   ): () => void;
 } {
   const autoApprove = deps.spec.tools?.autoApprove || [];
+  const unattendedAutoApprove = deps.spec.tools?.unattendedAutoApprove;
   const approvalRequesters = new Map<
     string,
     (tool: ToolCallContext) => Promise<boolean>
@@ -123,7 +129,20 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       : undefined,
     resolveUnattendedGrant: deps.resolveUnattendedGrant,
     toolNameMapping: deps.toolNameMapping,
-    isGranted: (tool) => isAutoApproved(tool.toolName, autoApprove),
+    isGranted: (tool) =>
+      isAutoApproved(tool.toolName, autoApprove) ||
+      // #2584: the built-in's bounded-write tools, for every agent and run
+      // (attended, unattended, delegated), by exact loader identity.
+      isIntrinsicStationEngineGrant(tool.toolName, deps.toolNameMapping),
+    // #2613: the explicit unattended opt-in, matched like attended chat
+    // matches `autoApprove` (runtime OR original MCP name). `isGranted` above
+    // stays runtime-name-only so no existing agent gains unattended authority.
+    isUnattendedGranted: (tool) =>
+      isAuthoredToolPatternMatch(
+        tool.toolName,
+        unattendedAutoApprove,
+        deps.toolNameMapping,
+      ),
     logger: deps.logger,
   });
 

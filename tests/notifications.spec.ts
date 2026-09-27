@@ -32,7 +32,6 @@ test.describe('Notification System', () => {
     // Schedule a notification via API — the SSE bridge should push it to the toast UI
     const response = await authenticatedRequest.post(`${API}/notifications`, {
       data: {
-        source: 'playwright-ui',
         category: 'test',
         title: 'UI Toast Test',
         body: 'Should appear in the UI',
@@ -61,7 +60,6 @@ test.describe('Notification System', () => {
     // Fire notification with navigateTo metadata from within the page context
     const response = await authenticatedRequest.post(`${API}/notifications`, {
       data: {
-        source: 'rss-plugin',
         category: 'rss-update',
         title: 'New article in Tech Feed',
         body: 'AWS announces new container service',

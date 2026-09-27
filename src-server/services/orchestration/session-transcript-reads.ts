@@ -187,6 +187,20 @@ export class SessionTranscriptReads {
     return sessions;
   }
 
+  /**
+   * Owners whose usage `authority` may read. Hosted is the exact owner (its
+   * tenant is applied by the query); personal adds the caller's personal
+   * conversation account, exactly as `transcriptOwnerConstraint` does for
+   * transcript search.
+   */
+  private usageOwnerIds(authority: SessionReadAuthority): string[] {
+    if (authority.mode === 'hosted') return [authority.userId];
+    const constraint = this.deps.transcriptOwnerConstraint?.(authority);
+    return [
+      ...new Set([authority.userId, ...(constraint?.ownerUserIds ?? [])]),
+    ];
+  }
+
   listUsageReceipts(
     authority: SessionReadAuthority,
     stationId: string,
@@ -216,8 +230,13 @@ export class SessionTranscriptReads {
     }
     const pageSize = Math.min(Math.max(request.pageSize ?? 50, 1), 100);
     const after = decodeUsageCursor(request.cursor);
+    // The same owner set transcript reads bind: the caller's own principal,
+    // plus (personal mode) the owners of the personal conversation account
+    // it belongs to. Hosted narrows to the exact owner below, with its
+    // tenant.
+    const ownerUserIds = this.usageOwnerIds(authority);
     const rows = this.deps.listUsageReceiptEvents({
-      ownerUserId: authority.userId,
+      ownerUserIds,
       ...(authority.mode === 'hosted' && authority.tenantExecutionContext
         ? { tenantId: authority.tenantExecutionContext.tenantId }
         : {}),
@@ -285,7 +304,7 @@ export class SessionTranscriptReads {
     );
     const last = page.at(-1)?.event;
     const coverageEvidence = this.deps.listUsageCoverageEvents({
-      ownerUserId: authority.userId,
+      ownerUserIds,
       ...(authority.mode === 'hosted'
         ? { tenantId: authority.tenantExecutionContext!.tenantId }
         : {}),

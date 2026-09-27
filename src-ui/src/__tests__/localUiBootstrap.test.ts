@@ -61,9 +61,39 @@ describe('local UI bootstrap capability (station#2093)', () => {
     await expect(
       bootstrapLocalUiSession(window.location.origin),
     ).rejects.toThrow(
-      'Local UI bootstrap was refused (403). Open a fresh Station start link.',
+      "This sign-in link was already used or replaced, or this address isn't trusted.",
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('a sign-in limit is not reported as a used link (#2612)', async () => {
+    window.location.hash = `#station-ui-bootstrap=${TOKEN}`;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('{}', { status: 429 })),
+    );
+
+    const failure = bootstrapLocalUiSession(window.location.origin);
+    await expect(failure).rejects.toThrow('Too many new sign-ins right now.');
+    await expect(failure).rejects.not.toThrow('already used');
+  });
+
+  test('a host restarting behind the UI proxy is the host being away, not a refused link (#2612)', async () => {
+    window.location.hash = `#station-ui-bootstrap=${TOKEN}`;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ ready: false, status: 'unavailable' }), {
+          status: 503,
+        }),
+      ),
+    );
+
+    await expect(
+      bootstrapLocalUiSession(window.location.origin),
+    ).rejects.toThrow(
+      'Could not reach this Station to exchange its start link.',
+    );
   });
 
   test('shares one concurrent identity resolution per page', async () => {

@@ -2,10 +2,13 @@ import type { ProjectIdentityView } from '@kontourai/station-contracts/project-i
 import {
   attachProject,
   getProjectIdentity,
+  isProjectIdentityNotPrepared,
   prepareProjectIdentity,
+  projectIdentityReadFailure,
   updateProjectExecutionRoot,
 } from '@kontourai/station-sdk/project-identity';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { StationHttpError } from '../client/http';
 
 function view(): ProjectIdentityView {
   return {
@@ -248,6 +251,107 @@ describe('Project identity client', () => {
       }),
     ).rejects.toThrow();
     expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  describe('read-failure discrimination (#480 review)', () => {
+    function failureReply(status: number, body: unknown) {
+      const text = typeof body === 'string' ? body : JSON.stringify(body);
+      return new Response(text, {
+        status,
+        headers: {
+          'content-type':
+            typeof body === 'string' ? 'text/html' : 'application/json',
+        },
+      });
+    }
+    async function readError(url: string, slug: string): Promise<unknown> {
+      try {
+        await getProjectIdentity(url, slug);
+      } catch (error) {
+        return error;
+      }
+      throw new Error('expected the identity read to fail');
+    }
+
+    test('a discriminated 404 preserves the not-prepared code on the error', async () => {
+      vi.mocked(fetch).mockResolvedValue(
+        failureReply(404, {
+          success: false,
+          error: 'Project identity was not found.',
+          code: 'project_identity_not_prepared',
+        }),
+      );
+      const error = await readError('https://station.example', 'local');
+      expect(error).toBeInstanceOf(StationHttpError);
+      expect(error).toMatchObject({
+        status: 404,
+        code: 'project_identity_not_prepared',
+      });
+      expect(projectIdentityReadFailure(error)).toBe('not-prepared');
+      expect(isProjectIdentityNotPrepared(error)).toBe(true);
+    });
+
+    test.each([
+      {
+        name: 'removed Project (generic storage code)',
+        reply: {
+          success: false,
+          error: 'Project identity was not found.',
+          code: 'file_storage_not_found',
+        },
+      },
+      {
+        name: 'old server (no machine code)',
+        reply: { success: false, error: 'Not Found' },
+      },
+      {
+        name: 'proxy HTML page (non-JSON 404)',
+        reply: '<html><body>404 Not Found</body></html>',
+      },
+      {
+        name: 'absence sentence without the code',
+        reply: {
+          success: false,
+          error: 'This Project has no portable identity.',
+        },
+      },
+    ])(
+      'a non-discriminated 404 never verifies absence: $name',
+      async ({ reply }) => {
+        vi.mocked(fetch).mockResolvedValue(failureReply(404, reply));
+        const error = await readError('https://station.example', 'local');
+        expect(error).toBeInstanceOf(StationHttpError);
+        expect((error as { status: unknown }).status).toBe(404);
+        expect(projectIdentityReadFailure(error)).toBe('not-found-unverified');
+        expect(isProjectIdentityNotPrepared(error)).toBe(false);
+      },
+    );
+
+    test.each([
+      { name: 'denial', error: Object.assign(new Error('x'), { status: 401 }) },
+      {
+        name: 'forbidden',
+        error: Object.assign(new Error('x'), { status: 403 }),
+      },
+      { name: 'transport failure', error: new TypeError('fetch failed') },
+      {
+        name: 'server failure',
+        error: Object.assign(new Error('x'), { status: 503 }),
+      },
+      { name: 'malformed body', error: new Error('cannot validate') },
+      { name: 'no error', error: undefined },
+    ])('$name is never a verified absence', ({ error }) => {
+      expect(projectIdentityReadFailure(error)).not.toBe('not-prepared');
+      expect(isProjectIdentityNotPrepared(error)).toBe(false);
+    });
+
+    test('denials classify by status, not by text', () => {
+      expect(
+        projectIdentityReadFailure(
+          Object.assign(new Error('ok'), { status: 403 }),
+        ),
+      ).toBe('denied');
+    });
   });
 
   test('captures the requested association before asynchronous credential or response work', async () => {

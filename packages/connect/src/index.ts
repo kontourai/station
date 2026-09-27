@@ -157,6 +157,7 @@ export type {
   ResolvedHostTunnelAccess,
   SavedConnection,
   SavedStationEdit,
+  SavedStationRemoval,
   StationHandshakeIdentity,
   StorageAdapter,
 } from './core/types';

@@ -29,7 +29,7 @@
  * business touching. If a third caller wants it, extract then.
  */
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { redactVerificationOutput } from './lib/verification-redaction.mjs';
 
 export const DEFAULT_INSTALL_ATTEMPTS = 3;
@@ -401,5 +401,4 @@ async function main() {
   if (!result.ok) process.exitCode = result.exitCode || 1;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1])
-  await main();
+if (invokedDirectly(import.meta.url)) await main();

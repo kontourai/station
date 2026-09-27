@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 // The send-outcome classifier is the safety-critical seam: 'gone' triggers
-// subscription self-healing in web-push-delivery.ts, so a transient failure
+// subscription self-healing in web-push-channel.ts, so a transient failure
 // (5xx, network error) must NEVER classify as 'gone' or healthy devices
 // would be silently unsubscribed.
 const sendNotification = vi.fn();

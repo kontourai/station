@@ -11,6 +11,7 @@ import {
   runSessionStartWithBoundary,
   SESSION_START_INDETERMINATE_CODE,
   SESSION_TURN_ACCEPTED_CAPACITY,
+  SessionStartIndeterminateError,
   type SessionTurnBoundaryCoordinator,
   type SessionTurnBoundaryRecord,
 } from '../session-turn-boundary.js';
@@ -28,6 +29,21 @@ function terminal(threadId: string, turnId: string): CanonicalRuntimeEvent {
 }
 
 describe('SessionTurnBoundaryAuthority', () => {
+  test('an indeterminate start keeps the engine message a sentence of its own', () => {
+    // Codex's text carries no terminal punctuation; the explanation used to
+    // run straight on ("…an active writer Provider session creation…").
+    expect(
+      new SessionStartIndeterminateError(
+        new Error('thread t-1 already has an active writer'),
+      ).message,
+    ).toBe(
+      'thread t-1 already has an active writer. Provider session creation may have completed. Inspect the session before retrying.',
+    );
+    expect(
+      new SessionStartIndeterminateError(new Error('Spawn failed.')).message,
+    ).toMatch(/^Spawn failed\. Provider/);
+  });
+
   const roots: string[] = [];
 
   afterEach(() => {

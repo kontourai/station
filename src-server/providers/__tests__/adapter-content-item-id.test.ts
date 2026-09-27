@@ -297,6 +297,52 @@ describe('Claude content-delta itemId (station#3457)', () => {
     expect(nextTurn.itemId).not.toBe(secondMessageText.itemId);
   });
 
+  test('a second assistant message in a turn opens a paragraph; blocks of one message join verbatim', () => {
+    const publish = vi.fn();
+    const record = makeRecord('turn-1');
+    const emit = (message: never) =>
+      mapClaudeSdkMessage({ provider: 'claude', record, publish, message });
+
+    emit(messageStart('msg_a', 'u1'));
+    emit(textDelta(0, 'Per the docs', 'u2'));
+    // A citation splits ONE message into text blocks mid-sentence.
+    emit(textDelta(1, ', the flag is on.', 'u3'));
+    // The engine continues with a second message and no tool between.
+    emit(messageStart('msg_b', 'u4'));
+    emit(textDelta(0, 'Next I', 'u5'));
+    emit(textDelta(0, ' checked CI.', 'u6'));
+
+    expect(
+      publish.mock.calls.map(([event]) => (event as DeltaEvent).delta),
+    ).toEqual([
+      'Per the docs',
+      ', the flag is on.',
+      '\n\nNext I',
+      ' checked CI.',
+    ]);
+  });
+
+  test("a subagent's messages add no paragraph breaks to the reply", () => {
+    const publish = vi.fn();
+    const record = makeRecord('turn-1');
+    const emit = (message: never) =>
+      mapClaudeSdkMessage({ provider: 'claude', record, publish, message });
+    const fromSubagent = (message: never) =>
+      ({
+        ...(message as object),
+        parent_tool_use_id: 'task-tool-1',
+      }) as never;
+
+    emit(messageStart('msg_a', 'u1'));
+    emit(textDelta(0, 'Delegating.', 'u2'));
+    emit(fromSubagent(messageStart('sub_1', 'u3')));
+    emit(fromSubagent(textDelta(0, 'sub text', 'u4')));
+
+    expect(
+      publish.mock.calls.map(([event]) => (event as DeltaEvent).delta),
+    ).toEqual(['Delegating.', 'sub text']);
+  });
+
   test('deltas with no preceding message_start still share one id per turn, and never across turns', () => {
     const publish = vi.fn();
     const record = makeRecord('turn-1');

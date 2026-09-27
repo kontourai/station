@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 // Resolve the CLI's own declared planner dependencies, so this gate uses the
 // same package discovery, config and release rules as the installed publisher.
@@ -37,10 +37,7 @@ export async function checkChangesets(cwd = process.cwd()) {
   };
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const result = await checkChangesets();
     process.stdout.write(

@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
 import { REQUIRED_CODING_COMPOSITION_CATEGORIES } from './coding-composition-policy.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const expectedDependencies = new Map(
   Object.entries({
@@ -110,9 +110,9 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/CodingLayout.css': 'presentation',
     // #2064: independent-review receipts moved from /review-queue into the
     // Coding inspector's Reviews tab. This is the tab's content: it lists a
-    // project's receipts and opens the run modal. Privileged like the
-    // inspector panel that mounts it, because running a review POSTs a
-    // receipt-producing job.
+    // project's receipts and opens the run modal. Privileged because running
+    // a review POSTs a receipt-producing job. No production surface mounts it
+    // since the unused inspector shell was deleted.
     'src-ui/src/components/coding-layout/IndependentReviewInspectorContent.tsx':
       'privileged-renderer',
     'src-ui/src/components/coding-layout/BranchToolbar.css': 'presentation',
@@ -354,7 +354,7 @@ export function auditCodingCompositionInventory(
   return findings;
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
   const findings = auditCodingCompositionInventory();
   if (findings.length) {
     for (const finding of findings) console.error(finding);

@@ -52,7 +52,11 @@ export function handleRequestOpenedEvent(
   // session" would both mislead about the grant's scope and swamp the button.
   // The inline card uses the same helper (#2316).
   const grantLabel = toolRequestGrantLabel(payloadToolName);
-  if (isReplayThread(event.threadId)) return;
+  if (
+    isReplayThread(event.threadId) ||
+    chat.approvalToasts?.has(event.requestId)
+  )
+    return;
 
   showApprovalToast(apiBase, event, {
     toolName,

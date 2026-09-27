@@ -34,6 +34,49 @@ const legacy = (type: string, payload: unknown, threadId = THREAD) =>
   );
 
 describe('ChildWorkProjection', () => {
+  test('reports a settled child alongside the current running set', () => {
+    const projection = new ChildWorkProjection();
+    projection.observe(
+      event({
+        method: 'child-work.updated',
+        delta: {
+          kind: 'upsert',
+          item: {
+            producer: 'engine-subagent',
+            reporterThreadId: THREAD,
+            childId: 'child-1',
+            status: 'running',
+            title: 'Explore',
+            backgrounded: true,
+          },
+        },
+      }),
+    );
+    projection.observe(
+      event({
+        method: 'child-work.updated',
+        delta: {
+          kind: 'settle',
+          producer: 'engine-subagent',
+          reporterThreadId: THREAD,
+          childId: 'child-1',
+          status: 'completed',
+          result: { summary: 'Done.' },
+        },
+      }),
+    );
+    expect(projection.read(THREAD, 'claude')).toMatchObject({
+      observability: 'reported',
+      running: [],
+      settled: [
+        {
+          childId: 'child-1',
+          status: 'completed',
+          result: { summary: 'Done.' },
+        },
+      ],
+    });
+  });
   test('R2: with no report of its own (a fresh process after a restart) the view still speaks for every engine session', () => {
     const projection = new ChildWorkProjection();
     // A declared engine: reported, nothing running — truthful, because an

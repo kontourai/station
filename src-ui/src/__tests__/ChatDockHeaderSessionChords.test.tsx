@@ -95,4 +95,24 @@ describe('activity dropdown per-session chords (#1649)', () => {
     renderHeader([active('a', 'First'), active('b', 'Second')]);
     expect(screen.getAllByText(/First|Second/)).toHaveLength(2);
   });
+
+  test('a background-only session appears in the activity badge and list', () => {
+    const { container } = renderHeader([
+      {
+        id: 'background',
+        title: 'Background research',
+        status: 'idle',
+        conversationActivity: {
+          conversationId: 'background',
+          asOfSequence: 4,
+          runningChildWork: { count: 1, producers: ['engine-subagent'] },
+        },
+      },
+    ]);
+    expect(container.querySelector('.chat-dock__activity-btn')).not.toBeNull();
+    expect(
+      container.querySelector('.chat-dock__activity-btn')?.textContent,
+    ).toContain('1');
+    expect(screen.getByText('Background research')).toBeTruthy();
+  });
 });

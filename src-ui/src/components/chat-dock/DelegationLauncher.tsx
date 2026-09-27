@@ -1,7 +1,10 @@
 import { environmentId as toEnvironmentId } from '@kontourai/station-contracts/execution-target';
+import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import {
   type DelegatedTaskHandle,
   type DelegationTargetOption,
+  isApiRequestScope,
+  projectIdentityReadFailure,
   useDelegateOrchestrationTaskMutation,
   useDelegationOptionsQuery,
   usePeerCredentialsQuery,
@@ -9,8 +12,16 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useScopedProjectQuery } from '../../contexts/ProjectsContext';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import {
+  useScopedProjectIdentityQuery,
+  useScopedProjectQuery,
+} from '../../contexts/ProjectsContext';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
+import {
+  peerStationLabel,
+  selectablePeerStations,
+} from '../../utils/peerEnvironmentOptions';
 import { Button } from '../Button';
 import {
   ENVIRONMENTS_UNAVAILABLE_NOTICE,
@@ -42,6 +53,87 @@ type TargetOption = {
   defaultModel?: string;
   models: DelegationTargetOption['models'];
 };
+
+/**
+ * Named placement states for personal-peer portable execution (#480/#1964).
+ * Every state names what is known; none guesses a target and none falls back
+ * to receiver-local slug/path or local execution when portable intent cannot
+ * be formed. Eligibility stays "unverified" until an authorized
+ * controller-side offer query exists — the Station confirms on submit.
+ */
+const PORTABLE_IDENTITY_NOTICE =
+  'Checking this Project\u2019s portable identity before placing it on the selected Station.';
+const PORTABLE_IDENTITY_MISSING_NOTICE =
+  'This Project has no portable identity on this Station, so it cannot be placed on a paired Station. Its prompt, Project and Station choice are kept.';
+const PORTABLE_IDENTITY_SETUP_GUIDANCE =
+  'Prepare one explicitly with `station projects prepare-identity <slug>` and choose its execution resource with `station projects execution-root <slug> --repo-id=<resource-id> --path=<relative-path>`, then retry. Attaching a copy elsewhere is a separate explicit step (`station projects attach`).';
+const PORTABLE_RESOURCE_MISSING_NOTICE =
+  'This Project\u2019s portable identity declares no executable resource, so there is nothing to place on the selected Station yet.';
+const PORTABLE_RESOURCE_CHOICE_NOTICE =
+  'Choose which Project resource to place on the selected Station.';
+const PORTABLE_SSH_UNSUPPORTED_NOTICE =
+  'This Project can\u2019t be placed on an SSH Station in this flow.';
+const PORTABLE_SSH_UNSUPPORTED_GUIDANCE =
+  'Choose a paired Station to place this Project, or This Station to run it here. The prompt and Project choice are kept.';
+const PORTABLE_IDENTITY_DENIED_NOTICE =
+  'This Station refused to share this Project\u2019s placement details.';
+const PORTABLE_IDENTITY_DENIED_GUIDANCE =
+  'Check access and retry \u2014 nothing was sent and the prompt, Project and Station choice are kept.';
+const PORTABLE_IDENTITY_UNAVAILABLE_NOTICE =
+  'This Project\u2019s placement details couldn\u2019t be loaded.';
+const PORTABLE_IDENTITY_UNAVAILABLE_GUIDANCE =
+  'Retry when ready \u2014 nothing was sent and the prompt, Project and Station choice are kept.';
+const PORTABLE_OFFER_UNVERIFIED_NOTICE =
+  'Offer not verified from here \u2014 the selected Station confirms whether it currently offers this Project resource when the task is submitted.';
+const PORTABLE_IDENTITY_STALE_INCARNATION_NOTICE =
+  'This Project changed on this Station since its placement details were opened. Nothing was sent; retry to load the current Project.';
+const PORTABLE_AUTHORITY_STALE_NOTICE =
+  'Station access changed before the task could start. The draft is kept; choose the Station again and retry.';
+
+/**
+ * Placement-surface view of the SDK's discriminated identity-read outcome
+ * (#480 review). Only the SDK's `not-prepared` — a 404 carrying the
+ * `project_identity_not_prepared` wire code, i.e. the server found the
+ * Project and holds no identity record — is a VERIFIED missing identity
+ * with prepare guidance. An unverified 404 (old server, proxy, removed
+ * Project), a denial, and every other failure refuse visibly with retry
+ * and never invent absence or readiness. Branches on transport status +
+ * machine code, never on message text.
+ */
+type ProjectIdentityFailureKind = 'missing' | 'denied' | 'unavailable';
+
+function projectIdentityFailureKind(
+  error: unknown,
+): ProjectIdentityFailureKind {
+  const failure = projectIdentityReadFailure(error);
+  if (failure === 'not-prepared') return 'missing';
+  if (failure === 'denied') return 'denied';
+  return 'unavailable';
+}
+
+/**
+ * A 404 that verifies nothing — an old Station without the identity
+ * endpoint, a proxy 404, a non-JSON 404 body, or a removed Project. Treated
+ * exactly like any other unavailable read: retry/access guidance only,
+ * never an absence claim and never speculative setup help (#480 final
+ * review — the unverified 404 has no established diagnosis, so naming the
+ * prepare command would expose implementation detail as if it were one).
+ */
+
+type PlacementResource = {
+  id: string;
+  name: string;
+};
+
+/** Public repo labels/ids only — never paths, slugs or credentials. */
+function placementResources(
+  identity: ProjectIdentityView | undefined,
+): PlacementResource[] {
+  return (identity?.identity.repos ?? []).map((repo) => ({
+    id: repo.id,
+    name: repo.label ?? repo.id,
+  }));
+}
 
 export function DelegationLauncher({
   isOpen,
@@ -82,23 +174,30 @@ export function DelegationLauncher({
   // for a remote caller — a non-operator browser session 403s, so peers are
   // rendered only on success, exactly like the Computers page.
   const peerCredentialsQuery = usePeerCredentialsQuery({ enabled: isOpen });
-  const peerStations = useMemo(() => {
-    const sshEnvironmentIds = new Set(
-      (environments ?? [])
-        .map((environment) => environment.profile.environmentId)
-        .filter(Boolean),
-    );
-    return (peerCredentialsQuery.data ?? []).filter(
-      (peer) =>
-        // An environmentId with a saved SSH profile resolves through SSH
-        // server-side (the peer credential rides that tunnel); its SSH option
-        // is already listed, so a second entry would dispatch identically.
-        !sshEnvironmentIds.has(peer.environmentId) &&
-        // 'current' is this select's sentinel for "This Station"; a peer that
-        // somehow stored it could never be dispatched as itself.
-        peer.environmentId !== 'current',
-    );
-  }, [environments, peerCredentialsQuery.data]);
+  const peerStations = useMemo(
+    () => selectablePeerStations(peerCredentialsQuery.data, environments),
+    [environments, peerCredentialsQuery.data],
+  );
+  const requestScope = useHostRequestAuthorityScope();
+  // Portable identity loads under the CAPTURED current Home/authority +
+  // Project scope, keyed by all three — a late response for a previous
+  // Home/authority/Project can never satisfy the current selection. The
+  // browser reads the prepared identity only; it never uses a stored peer
+  // secret and never prepares/attaches implicitly.
+  const {
+    data: projectIdentity,
+    isSuccess: identityLoaded,
+    isError: identityFailed,
+    error: identityError,
+    refetch: retryIdentity,
+  } = useScopedProjectIdentityQuery(projectSlug ?? '', {
+    enabled: isOpen && Boolean(projectSlug),
+    // Identity-lifetime binding (#480 review): the selected Project's local
+    // id joins the cache key and validates the response, so a same-Home
+    // same-slug delete/recreate can never serve the previous incarnation's
+    // portable id or resources from cache or a late response.
+    expectedProjectId: project?.id,
+  });
   const configuredEnvironmentId =
     project?.defaultEnvironment?.kind === 'saved'
       ? project.defaultEnvironment.id
@@ -122,6 +221,12 @@ export function DelegationLauncher({
   // refreshes. Missing inventory must never substitute the current machine.
   const [chosenEnvironmentId, setEnvironmentId] = useState<string | null>(null);
   const environmentId = chosenEnvironmentId ?? configuredEnvironmentId;
+  // Only an unset choice follows the default. An unavailable explicit choice
+  // stays selected until the user chooses a replacement.
+  const [chosenResourceId, setChosenResourceId] = useState<string | null>(null);
+  // Set when Home/authority went stale across the submit await: the draft,
+  // Project, resource and machine choice are kept; nothing is redispatched.
+  const [authorityStale, setAuthorityStale] = useState(false);
   const projectDefaultsUnavailable =
     Boolean(projectSlug) &&
     (!projectLoaded || !project) &&
@@ -179,18 +284,47 @@ export function DelegationLauncher({
   const [target, setTarget] = useState(defaultTarget);
   const [model, setModel] = useState(currentModel ?? '');
   const [showRouting, setShowRouting] = useState(false);
+  // Public repo labels/ids for the portable placement selector. The declared
+  // execution-root repo wins; a sole repo is unambiguous; anything else
+  // requires an explicit choice — never a guess.
+  const identityResources = useMemo(
+    () => placementResources(projectIdentity),
+    [projectIdentity],
+  );
+  const declaredDefaultResourceId =
+    projectIdentity?.identity.executionRoot &&
+    identityResources.some(
+      (resource) =>
+        resource.id === projectIdentity.identity.executionRoot?.repoId,
+    )
+      ? projectIdentity.identity.executionRoot.repoId
+      : null;
+  const defaultResourceId =
+    declaredDefaultResourceId ??
+    (identityResources.length === 1 ? identityResources[0].id : null);
+  const resourceId = chosenResourceId ?? defaultResourceId;
+  const resourceAvailable = identityResources.some(
+    (resource) => resource.id === resourceId,
+  );
+  const resourceChoiceUnavailable =
+    chosenResourceId !== null && !resourceAvailable;
 
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
       setPrompt(initialPrompt);
       setTarget(defaultTarget);
       setEnvironmentId(null);
+      setChosenResourceId(null);
+      setAuthorityStale(false);
       setModel(defaultTarget === currentTarget ? (currentModel ?? '') : '');
       setShowRouting(false);
       mutation.reset();
       requestAnimationFrame(() => promptRef.current?.focus());
     }
-    if (!isOpen) setEnvironmentId(null);
+    if (!isOpen) {
+      setEnvironmentId(null);
+      setChosenResourceId(null);
+    }
     wasOpenRef.current = isOpen;
   }, [
     currentModel,
@@ -232,12 +366,69 @@ export function DelegationLauncher({
     environmentId === 'current'
       ? 'This Station'
       : (selectedEnvironment?.profile.name ??
-        selectedPeer?.label ??
-        selectedPeer?.apiBase ??
+        (selectedPeer ? peerStationLabel(selectedPeer) : undefined) ??
         (discoveryMatchesEnvironment
           ? delegationOptions?.environment.name
           : undefined) ??
         'Selected Station');
+  // Personal-peer portable placement is ONLY the paired-peer selection for an
+  // already-linked Project. Current-Station execution keeps its explicit
+  // local workspace semantics. A Project selected for an SSH Station is
+  // REFUSED with a named repair state — choosing a transport is not consent
+  // to substitute a different same-named Project, so no slug/path/local
+  // dispatch is possible there. No-Project SSH delegation is unaffected.
+  const isPeerEnvironment = selectedPeer !== undefined;
+  const isSshEnvironment =
+    selectedEnvironment !== undefined && !isPeerEnvironment;
+  const portablePlacement = Boolean(projectSlug) && isPeerEnvironment;
+  // SSH + linked Project: blocked outright, never dispatched.
+  const sshProjectBlocked = Boolean(projectSlug) && isSshEnvironment;
+  const portableProjectId = portablePlacement
+    ? projectIdentity?.identity.id
+    : undefined;
+  const portableIdentityPending =
+    portablePlacement && !identityLoaded && !identityFailed;
+  const portableIdentityFailure = portablePlacement && identityFailed;
+  const identityFailureKind = portableIdentityFailure
+    ? projectIdentityFailureKind(identityError)
+    : null;
+  const portableIdentityMissing = identityFailureKind === 'missing';
+  const portableIdentityDenied = identityFailureKind === 'denied';
+  const portableIdentityUnavailable = identityFailureKind === 'unavailable';
+  const portableResourceMissing =
+    portablePlacement && identityLoaded && identityResources.length === 0;
+  const portableResourceChoiceRequired =
+    portablePlacement &&
+    identityLoaded &&
+    ((identityResources.length > 1 && !resourceId) ||
+      resourceChoiceUnavailable);
+  const portableProjectUnavailable =
+    portablePlacement && (!projectLoaded || !project?.id);
+  const portableProjectInvalid =
+    portableProjectUnavailable && (projectFailed || projectLoaded);
+  const portableReady =
+    portablePlacement &&
+    !portableProjectUnavailable &&
+    identityLoaded &&
+    Boolean(portableProjectId) &&
+    resourceAvailable;
+  // Defense-in-depth over the SDK key/response binding: cached success data
+  // (or a hook caller that did not pass expectedProjectId) could still name
+  // a previous incarnation of the SAME slug. The selected Project record is
+  // the owner of the answer — mismatch is a named blocked state, never a
+  // dispatch and never a fallback to slug/path/local.
+  const identityIncarnationMismatch = Boolean(
+    portablePlacement &&
+      identityLoaded &&
+      typeof project?.id === 'string' &&
+      projectIdentity?.association.localProjectId !== project.id,
+  );
+  const portableBlocked =
+    portablePlacement && (!portableReady || identityIncarnationMismatch);
+  const portableResourceName = portableReady
+    ? (identityResources.find((resource) => resource.id === resourceId)?.name ??
+      resourceId)
+    : null;
   const resolvedModelId = model.trim() || selectedTarget?.defaultModel || '';
   const resolvedModelName = resolvedModelId
     ? (selectedTarget?.models.find(
@@ -259,29 +450,78 @@ export function DelegationLauncher({
       !selectedTarget?.ready ||
       !prompt.trim() ||
       environmentUnavailable ||
+      portableBlocked ||
+      sshProjectBlocked ||
       isDiscovering ||
       discoveryError
     )
       return;
+    // Capture every intent scalar BEFORE the await: a late Home/authority
+    // switch must refuse the dispatch, never redirect it, and a stale
+    // response after the await must not open a result for the new scope.
+    // apiBase + requestScope are frozen as immutable PER-INVOCATION values
+    // (scalars only — never the isCurrent function or any credential) and
+    // passed through the SDK transport's authority guards, so a rotation
+    // across the awaits refuses instead of dispatching the old intent under
+    // new credentials, and a late hook re-render cannot redirect it.
+    const capturedScope = requestScope;
+    const invocationScope = isApiRequestScope(capturedScope)
+      ? {
+          apiBase: capturedScope.apiBase,
+          authorityKey: capturedScope.authorityKey,
+        }
+      : undefined;
+    const invocationApiBase = invocationScope?.apiBase ?? apiBase;
+    const capturedPrompt = prompt.trim();
+    const capturedEnvironmentId = environmentId;
+    const capturedTargetId = selectedTarget.id;
+    const capturedTargetName = selectedTarget.name;
+    const capturedModel = model.trim();
+    const capturedParentTaskId = parentTaskId;
+    const capturedWorkspace = projectSlug
+      ? portablePlacement && portableProjectId && resourceId
+        ? {
+            kind: 'project-portable' as const,
+            portableProjectId,
+            resourceId,
+          }
+        : { kind: 'project' as const, projectSlug }
+      : undefined;
+    if (capturedScope?.isCurrent() === false) {
+      setAuthorityStale(true);
+      return;
+    }
     try {
       const task = await mutation.mutateAsync({
-        prompt: prompt.trim(),
-        target: {
-          environment:
-            environmentId === 'current'
-              ? { kind: 'current' }
-              : { kind: 'saved', id: toEnvironmentId(environmentId) },
-          agent: selectedTarget.id,
-          ...(model.trim() ? { model: { override: model.trim() } } : {}),
-          ...(projectSlug
-            ? { workspace: { kind: 'project', projectSlug } }
+        input: {
+          prompt: capturedPrompt,
+          target: {
+            environment:
+              capturedEnvironmentId === 'current'
+                ? { kind: 'current' }
+                : { kind: 'saved', id: toEnvironmentId(capturedEnvironmentId) },
+            agent: capturedTargetId,
+            ...(capturedModel ? { model: { override: capturedModel } } : {}),
+            ...(capturedWorkspace ? { workspace: capturedWorkspace } : {}),
+          },
+          ...(capturedParentTaskId
+            ? { parentTaskId: capturedParentTaskId }
             : {}),
         },
-        ...(parentTaskId ? { parentTaskId } : {}),
+        apiBase: invocationApiBase,
+        ...(invocationScope ? { requestScope: invocationScope } : {}),
       });
-      onDelegated(task, selectedTarget.name);
+      if (capturedScope?.isCurrent() === false) {
+        // The dispatch already happened under the captured authority; the
+        // late UI effect must not: keep the draft and name the staleness.
+        setAuthorityStale(true);
+        return;
+      }
+      onDelegated(task, capturedTargetName);
     } catch {
-      // React Query exposes the actionable error inline and keeps the draft.
+      // React Query exposes the actionable error inline and keeps the draft,
+      // Project/resource and machine choice: no automatic redispatch, and a
+      // transport failure is never labeled 'not offered'.
     }
   };
 
@@ -395,7 +635,11 @@ export function DelegationLauncher({
                     : 'No ready worker')}
               </strong>
               <small>
-                {[resolvedModelName, selectedEnvironmentName]
+                {[
+                  resolvedModelName,
+                  selectedEnvironmentName,
+                  portableResourceName,
+                ]
                   .filter(Boolean)
                   .join(' · ')}
               </small>
@@ -418,15 +662,21 @@ export function DelegationLauncher({
               </button>
             </div>
           )}
-          {projectDefaultsUnavailable && (
+          {(projectDefaultsUnavailable || portableProjectUnavailable) && (
             <p
               className="delegation-launcher__hint"
-              role={projectFailed ? 'alert' : 'status'}
+              role={
+                projectFailed || portableProjectInvalid ? 'alert' : 'status'
+              }
             >
-              {projectFailed
-                ? 'Project execution defaults could not be loaded.'
-                : 'Checking Project execution defaults before choosing a Station.'}
-              {projectFailed && (
+              {portableProjectUnavailable
+                ? portableProjectInvalid
+                  ? 'Project details could not be verified. Retry before placing this task.'
+                  : 'Checking Project details before placing this task.'
+                : projectFailed
+                  ? 'Project execution defaults could not be loaded.'
+                  : 'Checking Project execution defaults before choosing a Station.'}
+              {(projectFailed || portableProjectInvalid) && (
                 <Button
                   variant="link"
                   size="sm"
@@ -445,6 +695,109 @@ export function DelegationLauncher({
           {environmentsFailed && configuredEnvironmentId !== 'current' && (
             <p className="delegation-launcher__hint" role="alert">
               {ENVIRONMENTS_UNAVAILABLE_NOTICE}
+            </p>
+          )}
+          {sshProjectBlocked && (
+            <div className="delegation-launcher__discovery-error" role="alert">
+              <span>{PORTABLE_SSH_UNSUPPORTED_NOTICE}</span>
+              <span className="delegation-launcher__hint">
+                {PORTABLE_SSH_UNSUPPORTED_GUIDANCE}
+              </span>
+            </div>
+          )}
+          {portableIdentityPending && (
+            <p className="delegation-launcher__hint" role="status">
+              {PORTABLE_IDENTITY_NOTICE}
+            </p>
+          )}
+          {portableIdentityMissing && (
+            <div className="delegation-launcher__discovery-error" role="alert">
+              <span>{PORTABLE_IDENTITY_MISSING_NOTICE}</span>
+              <span className="delegation-launcher__hint">
+                {PORTABLE_IDENTITY_SETUP_GUIDANCE}
+              </span>
+              <button type="button" onClick={() => void retryIdentity()}>
+                Retry Project identity
+              </button>
+            </div>
+          )}
+          {portableIdentityDenied && (
+            <div className="delegation-launcher__discovery-error" role="alert">
+              <span>{PORTABLE_IDENTITY_DENIED_NOTICE}</span>
+              <span className="delegation-launcher__hint">
+                {PORTABLE_IDENTITY_DENIED_GUIDANCE}
+              </span>
+              <button type="button" onClick={() => void retryIdentity()}>
+                Retry Project identity
+              </button>
+            </div>
+          )}
+          {portableIdentityUnavailable && (
+            <div className="delegation-launcher__discovery-error" role="alert">
+              <span>{PORTABLE_IDENTITY_UNAVAILABLE_NOTICE}</span>
+              <span className="delegation-launcher__hint">
+                {PORTABLE_IDENTITY_UNAVAILABLE_GUIDANCE}
+              </span>
+              <button type="button" onClick={() => void retryIdentity()}>
+                Retry Project identity
+              </button>
+            </div>
+          )}
+          {identityIncarnationMismatch && (
+            <div className="delegation-launcher__discovery-error" role="alert">
+              <span>{PORTABLE_IDENTITY_STALE_INCARNATION_NOTICE}</span>
+              <button type="button" onClick={() => void retryIdentity()}>
+                Retry Project identity
+              </button>
+            </div>
+          )}
+          {portableResourceMissing && (
+            <div className="delegation-launcher__discovery-error" role="alert">
+              <span>{PORTABLE_RESOURCE_MISSING_NOTICE}</span>
+              <span className="delegation-launcher__hint">
+                {PORTABLE_IDENTITY_SETUP_GUIDANCE}
+              </span>
+            </div>
+          )}
+          {portableResourceChoiceRequired && (
+            <p className="delegation-launcher__hint" role="status">
+              {PORTABLE_RESOURCE_CHOICE_NOTICE}
+            </p>
+          )}
+          {portableReady && (
+            <p className="delegation-launcher__hint" role="status">
+              {PORTABLE_OFFER_UNVERIFIED_NOTICE}
+            </p>
+          )}
+          {portablePlacement &&
+            identityLoaded &&
+            (identityResources.length > 1 || resourceChoiceUnavailable) && (
+              <label className="delegation-launcher__resource">
+                Project resource
+                <select
+                  aria-label="Project resource"
+                  value={resourceId ?? ''}
+                  onChange={(event) =>
+                    setChosenResourceId(event.target.value || null)
+                  }
+                >
+                  <option value="">Choose a resource…</option>
+                  {resourceChoiceUnavailable && (
+                    <option value={chosenResourceId!} disabled>
+                      Selected resource is no longer available
+                    </option>
+                  )}
+                  {identityResources.map((resource) => (
+                    <option key={resource.id} value={resource.id}>
+                      {resource.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          {authorityStale && (
+            <p className="delegation-launcher__error" role="alert">
+              {PORTABLE_AUTHORITY_STALE_NOTICE}
             </p>
           )}
           {showRouting && (
@@ -494,6 +847,7 @@ export function DelegationLauncher({
                       setEnvironmentId(event.target.value);
                       setTarget('');
                       setModel('');
+                      setAuthorityStale(false);
                     }}
                   >
                     <option value="current">This Station</option>
@@ -527,7 +881,7 @@ export function DelegationLauncher({
                         key={`peer:${peer.environmentId}`}
                         value={peer.environmentId}
                       >
-                        {peer.label ?? peer.apiBase} — Paired Station
+                        {peerStationLabel(peer)} — Paired Station
                       </option>
                     ))}
                   </select>
@@ -598,7 +952,9 @@ export function DelegationLauncher({
               Boolean(discoveryError) ||
               !prompt.trim() ||
               !selectedTarget?.ready ||
-              environmentUnavailable
+              environmentUnavailable ||
+              portableBlocked ||
+              sshProjectBlocked
             }
           >
             {mutation.isPending ? 'Starting…' : 'Delegate'}

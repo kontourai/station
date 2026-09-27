@@ -15,6 +15,7 @@ import {
   FileStorageConflictError,
   FileStorageNotFoundError,
   FileStorageUnavailableError,
+  ProjectIdentityNotPreparedError,
 } from '../../domain/project-file-transactions.js';
 import {
   ProjectIdentityValidationError,
@@ -152,7 +153,7 @@ export class ProjectIdentityService {
       );
     const record = this.manifests.readRecord(slug);
     if (!record)
-      throw new FileStorageNotFoundError(
+      throw new ProjectIdentityNotPreparedError(
         'This Project has no portable identity. Prepare it explicitly before selecting an execution root.',
       );
     const current = parseProjectPortableIdentity(record);
@@ -179,8 +180,10 @@ export class ProjectIdentityService {
 
   private view(project: ProjectConfig): ProjectIdentityView {
     const record = this.manifests.readRecord(project.slug);
+    // Discriminated from a removed Project (a plain FileStorageNotFoundError
+    // from withProject): the Project exists, only its identity is unprepared.
     if (!record)
-      throw new FileStorageNotFoundError(
+      throw new ProjectIdentityNotPreparedError(
         'This Project has no portable identity. Prepare it explicitly before exporting it.',
       );
     const identity = parseProjectPortableIdentity(record);

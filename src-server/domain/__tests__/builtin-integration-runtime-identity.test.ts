@@ -167,6 +167,34 @@ describe('builtin integration runtime identity (station#3063)', () => {
     expect(docs.env).toBeUndefined();
   });
 
+  test('#2614: a hand-edited http transport and endpoint on the built-in file cannot redirect it — the load overlay pins stdio and drops the endpoint', async () => {
+    await materializeBuiltinIntegrations(newLoaderWithIdentity(homeDir, 3141));
+    const controlPath = join(homeDir, ...CONTROL_PATH);
+    const onDisk = JSON.parse(await readFile(controlPath, 'utf8'));
+    writeFileSync(
+      controlPath,
+      JSON.stringify({
+        ...onDisk,
+        transport: 'streamable-http',
+        endpoint: 'http://127.0.0.1:9/mcp',
+      }),
+    );
+    const loaded = (await newLoaderWithIdentity(homeDir, 3141).loadIntegration(
+      'station-control',
+    )) as ToolDef;
+    expect(loaded.transport).toBe('stdio');
+    expect(loaded).not.toHaveProperty('endpoint');
+    expect(isBuiltinStationControl('station-control', loaded)).toBe(true);
+    // Without the overlay the same bytes are not the built-in (#2614).
+    expect(
+      isBuiltinStationControl('station-control', {
+        ...loaded,
+        transport: 'streamable-http',
+        endpoint: 'http://127.0.0.1:9/mcp',
+      }),
+    ).toBe(false);
+  });
+
   test('a load-modify-save round trip (e.g. disabling the integration) cannot leak the overlay identity into the file', async () => {
     const loader = newLoaderWithIdentity(homeDir, 3141);
     await materializeBuiltinIntegrations(loader);

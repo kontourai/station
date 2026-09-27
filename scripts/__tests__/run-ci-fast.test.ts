@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { checkChangesets } from '../check-changesets.mjs';
+import { npmInvocation } from '../lib/npm-cli.mjs';
 import {
   CHANGESET_STATUS_FAST_COMMAND,
   CI_FAST_INFRASTRUCTURE_EXIT_CODE,
@@ -19,10 +20,12 @@ import {
   CiFastInfrastructureError,
   CONTENT_INTEGRITY_FAST_COMMAND,
   classifyCiFastCommandResult,
+  describeCiFastCommand,
   FAST_FEEDBACK_TIMEOUT_MS,
   FAST_STATIC_COMMANDS,
   FAST_STATIC_RESERVE_MS,
   fastBase,
+  formatCiFastElapsedSeconds,
   runCiFast,
   runCiFastCli,
   SELECTOR_DEFERRED_EXIT_CODE,
@@ -39,15 +42,24 @@ afterEach(() => {
   contentGateRepos.clear();
 });
 
+/** The copied gate imports its entry guard from scripts/lib (#2682). */
+function copyEntryGuard(dir: string): void {
+  copyFileSync(
+    join(process.cwd(), 'scripts', 'lib', 'module-entry.mjs'),
+    join(dir, 'scripts', 'lib', 'module-entry.mjs'),
+  );
+}
+
 function contentGateRepo(source: string): string {
   const dir = mkdtempSync(join(tmpdir(), 'station-ci-fast-content-gate-'));
   contentGateRepos.add(dir);
-  mkdirSync(join(dir, 'scripts'), { recursive: true });
+  mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
   mkdirSync(join(dir, 'src-server'), { recursive: true });
   copyFileSync(
     join(process.cwd(), 'scripts', 'content-integrity-gate.mjs'),
     join(dir, 'scripts', 'content-integrity-gate.mjs'),
   );
+  copyEntryGuard(dir);
   writeFileSync(
     join(dir, 'package.json'),
     JSON.stringify({
@@ -81,7 +93,9 @@ function runOnlyFastGate(
     env: { STATION_CI_FAST_BASE: 'fixture-base' },
     execute(command, args, { cwd: childCwd, timeout }) {
       if (command !== gate[0] || args !== gate[1]) return 0;
-      const result = spawnSync(command, args, {
+      const invocation =
+        command === 'npm' ? npmInvocation(args) : { command, args };
+      const result = spawnSync(invocation.command, invocation.args, {
         cwd: childCwd,
         timeout,
         encoding: 'utf8',
@@ -133,6 +147,7 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'channel-ports:check']],
       ['npm', ['run', 'gate:workflows']],
       ['npm', ['run', 'content:integrity']],
+      ['npm', ['run', 'content:excluded-names']],
       // CLI help ↔ docs/reference/cli.md parity: a help topic without a
       // reference heading must red the PR lane, not the nightly (the `open`
       // verb shipped green and failed Nightly a day later).
@@ -185,11 +200,14 @@ describe('bounded ci:fast runner', () => {
   it('continues after an explicit selector deferral without treating it as completion', () => {
     const calls: string[] = [];
     const reports: string[] = [];
+    let clock = 1_000;
     expect(
       runCiFast({
         env: { STATION_CI_FAST_BASE: 'base-sha' },
+        now: () => clock,
         execute(command) {
           calls.push(command);
+          clock += 1_500;
           return calls.length === 1 ? SELECTOR_DEFERRED_EXIT_CODE : 0;
         },
         report(message) {
@@ -201,7 +219,53 @@ describe('bounded ci:fast runner', () => {
       process.execPath,
       ...FAST_STATIC_COMMANDS.map(([command]) => command),
     ]);
-    expect(reports).toEqual([SELECTOR_DEFERRED_MESSAGE]);
+    // One timing line per command, in order, plus the deferral notice
+    // immediately after the selector's own timing line.
+    const [selectorCommand, selectorArgs] = [
+      process.execPath,
+      ['scripts/run-changed-verification.mjs', '--base=base-sha'],
+    ];
+    expect(reports).toEqual([
+      `[ci:fast] ${describeCiFastCommand(selectorCommand, selectorArgs)} 1.5s\n`,
+      SELECTOR_DEFERRED_MESSAGE,
+      ...FAST_STATIC_COMMANDS.map(
+        ([command, args]) =>
+          `[ci:fast] ${describeCiFastCommand(command, args)} 1.5s\n`,
+      ),
+    ]);
+  });
+
+  it('prints one per-step timing line naming the command and its elapsed seconds', () => {
+    const reports: string[] = [];
+    let clock = 0;
+    runCiFast({
+      env: { STATION_CI_FAST_BASE: 'base-sha' },
+      now: () => clock,
+      execute() {
+        clock += 2_340;
+        return 0;
+      },
+      report(message) {
+        reports.push(message);
+      },
+    });
+    expect(reports[0]).toBe(
+      `[ci:fast] ${describeCiFastCommand(process.execPath, [
+        'scripts/run-changed-verification.mjs',
+        '--base=base-sha',
+      ])} 2.3s\n`,
+    );
+    expect(reports).toHaveLength(1 + FAST_STATIC_COMMANDS.length);
+    for (const line of reports)
+      expect(line).toMatch(/^\[ci:fast\] .+ \d+\.\ds\n$/);
+  });
+
+  it('formats a command label and elapsed seconds', () => {
+    expect(describeCiFastCommand('npm', ['run', 'veritas:readiness'])).toBe(
+      'npm run veritas:readiness',
+    );
+    expect(formatCiFastElapsedSeconds(82_950)).toBe('83.0');
+    expect(formatCiFastElapsedSeconds(0)).toBe('0.0');
   });
 
   it('preserves the product-law infrastructure exit for the coordinator to classify', () => {
@@ -306,7 +370,7 @@ describe('bounded ci:fast runner', () => {
     ]);
   });
 
-  it('does not launch the next child after the twelve-minute budget is exhausted', () => {
+  it('does not launch the next child after the fifteen-minute budget is exhausted', () => {
     let clock = 1_000;
     let calls = 0;
     expect(() =>
@@ -319,7 +383,7 @@ describe('bounded ci:fast runner', () => {
           return 0;
         },
       }),
-    ).toThrow('exceeded its 12-minute feedback budget');
+    ).toThrow('exceeded its 15-minute feedback budget');
     expect(calls).toBe(1);
   });
 });
@@ -332,11 +396,12 @@ describe('Changesets workspace validation through ci:fast', () => {
       contentGateRepos.add(dir);
       mkdirSync(join(dir, 'packages', 'published'), { recursive: true });
       mkdirSync(join(dir, '.changeset'));
-      mkdirSync(join(dir, 'scripts'));
+      mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
       copyFileSync(
         join(process.cwd(), 'scripts', 'check-changesets.mjs'),
         join(dir, 'scripts', 'check-changesets.mjs'),
       );
+      copyEntryGuard(dir);
       writeFileSync(
         join(dir, 'package.json'),
         JSON.stringify({

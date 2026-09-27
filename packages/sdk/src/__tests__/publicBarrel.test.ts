@@ -43,6 +43,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'pluginVisibility',
   'knowledgeStores',
   'knownEnvironments',
+  'notificationPreferences',
   'notifications',
   'operatingState',
   'plugins',

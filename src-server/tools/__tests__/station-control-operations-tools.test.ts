@@ -2,6 +2,7 @@ import { REVIEW_EVIDENCE_OPERATOR_SURFACE } from '@kontourai/station-contracts/r
 import { SCHEDULER_OPERATOR_SURFACE } from '@kontourai/station-contracts/scheduler';
 import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { asStationControlCaller } from '../../__test-utils__/station-control-caller-fixture.js';
 
 /**
  * archive#167 Wave 3: characterization tests for `station-control-operations-tools.ts`'s
@@ -114,7 +115,8 @@ async function registerTools(): Promise<Record<string, ToolHandler>> {
   for (const [name, tool] of Object.entries(registry)) {
     handlers[name] = tool.handler;
   }
-  return handlers;
+  // #2377 slice A: characterization runs as a bound operator caller.
+  return asStationControlCaller(handlers);
 }
 
 describe('station-control operations tools (characterization)', () => {
@@ -1271,206 +1273,9 @@ describe('station-control operations tools (characterization)', () => {
     });
   });
 
-  // archive#1136: environment MANAGEMENT verbs. These characterize the
-  // straightforward request-forwarding shape at the HTTP boundary, the same
-  // way every other tool in this file is pinned; the deeper round-trip
-  // (AC1), non-blocking-connect (AC2), and no-duplicated-logic (AC3)
-  // guarantees are proven against a real `SshEnvironmentService` in
-  // `station-control-ssh-environment-tools.test.ts`.
-
-  test('create_ssh_environment posts the profile input and forwards the created envelope', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(
-        {
-          success: true,
-          data: {
-            profile: {
-              id: 'ssh-1',
-              name: 'Brian media',
-              hostAlias: 'brian-media',
-            },
-            state: { phase: 'idle' },
-          },
-        },
-        201,
-      ),
-    );
-    const tools = await registerTools();
-
-    const result = await tools.create_ssh_environment({
-      hostAlias: 'brian-media',
-      remoteProjectPath: '~/dev/station',
-    });
-
-    expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE}/api/environments/ssh`);
-    expect(fetchMock.mock.calls[0][1]).toEqual(
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          hostAlias: 'brian-media',
-          remoteProjectPath: '~/dev/station',
-        }),
-      }),
-    );
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
-      success: true,
-      data: { profile: { id: 'ssh-1' } },
-    });
-  });
-
-  test('create_ssh_environment forwards the validation-error envelope on an invalid hostAlias', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(
-        { success: false, error: 'Validation failed', details: {} },
-        400,
-      ),
-    );
-    const tools = await registerTools();
-
-    const result = await tools.create_ssh_environment({
-      hostAlias: '-oProxyCommand=bad',
-      remoteProjectPath: '/srv/station',
-    });
-
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
-      success: false,
-      error: 'Validation failed',
-    });
-  });
-
-  test('get_ssh_environment forwards the full profile-and-state envelope', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        success: true,
-        data: {
-          profile: { id: 'ssh-1', verifiedProjectPath: '/home/brian/station' },
-          state: { phase: 'connected', localUrl: 'http://127.0.0.1:45123' },
-        },
-      }),
-    );
-    const tools = await registerTools();
-
-    const result = await tools.get_ssh_environment({ id: 'ssh-1' });
-
-    expect(fetchMock.mock.calls[0][0]).toBe(
-      `${API_BASE}/api/environments/ssh/ssh-1`,
-    );
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
-      success: true,
-      data: { state: { phase: 'connected' } },
-    });
-  });
-
-  test('get_ssh_environment forwards the not-found envelope', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({ success: false, error: 'SSH environment not found' }, 404),
-    );
-    const tools = await registerTools();
-
-    const result = await tools.get_ssh_environment({ id: 'missing' });
-
-    expect(JSON.parse(result.content[0].text)).toEqual({
-      success: false,
-      error: 'SSH environment not found',
-    });
-  });
-
-  test('connect_ssh_environment forwards a fast-resolving connect and marks polling false', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        success: true,
-        data: {
-          profile: { id: 'ssh-1' },
-          state: { phase: 'connected', localUrl: 'http://127.0.0.1:45123' },
-        },
-      }),
-    );
-    const tools = await registerTools();
-
-    const result = await tools.connect_ssh_environment({ id: 'ssh-1' });
-
-    expect(fetchMock.mock.calls[0][0]).toBe(
-      `${API_BASE}/api/environments/ssh/ssh-1/connect`,
-    );
-    expect(fetchMock.mock.calls[0][1]).toEqual(
-      expect.objectContaining({ method: 'POST' }),
-    );
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
-      success: true,
-      polling: false,
-      data: { state: { phase: 'connected' } },
-    });
-  });
-
-  test('connect_ssh_environment forwards the error envelope when the connect call fails outright', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({ success: false, error: 'worker-incompatible' }, 400),
-    );
-    const tools = await registerTools();
-
-    const result = await tools.connect_ssh_environment({ id: 'ssh-1' });
-
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
-      success: false,
-      polling: false,
-      error: 'worker-incompatible',
-    });
-  });
-
-  test('disconnect_ssh_environment posts to the disconnect endpoint and forwards the envelope', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        success: true,
-        data: {
-          profile: { id: 'ssh-1' },
-          state: { phase: 'disconnected', reason: 'stopped' },
-        },
-      }),
-    );
-    const tools = await registerTools();
-
-    const result = await tools.disconnect_ssh_environment({ id: 'ssh-1' });
-
-    expect(fetchMock.mock.calls[0][0]).toBe(
-      `${API_BASE}/api/environments/ssh/ssh-1/disconnect`,
-    );
-    expect(fetchMock.mock.calls[0][1]).toEqual(
-      expect.objectContaining({ method: 'POST' }),
-    );
-    expect(JSON.parse(result.content[0].text)).toMatchObject({
-      success: true,
-      data: { state: { phase: 'disconnected' } },
-    });
-  });
-
-  test('remove_ssh_environment issues a DELETE and forwards the envelope', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true }));
-    const tools = await registerTools();
-
-    const result = await tools.remove_ssh_environment({ id: 'ssh-1' });
-
-    expect(fetchMock.mock.calls[0][0]).toBe(
-      `${API_BASE}/api/environments/ssh/ssh-1`,
-    );
-    expect(fetchMock.mock.calls[0][1]).toEqual(
-      expect.objectContaining({ method: 'DELETE' }),
-    );
-    expect(JSON.parse(result.content[0].text)).toEqual({ success: true });
-  });
-
-  test('remove_ssh_environment forwards the not-found envelope', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({ success: false, error: 'SSH environment not found' }, 404),
-    );
-    const tools = await registerTools();
-
-    const result = await tools.remove_ssh_environment({ id: 'missing' });
-
-    expect(JSON.parse(result.content[0].text)).toEqual({
-      success: false,
-      error: 'SSH environment not found',
-    });
-  });
+  // archive#1136: the SSH environment management verbs are proven against
+  // the real routes and SshEnvironmentService in
+  // station-control-ssh-environment-tools.test.ts.
 
   test('read_logs calls GET /api/diagnostics/logs with no query string when no filters are given', async () => {
     fetchMock.mockResolvedValueOnce(

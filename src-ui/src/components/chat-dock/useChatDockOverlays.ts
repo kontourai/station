@@ -17,7 +17,6 @@ import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import type { ActiveWorkPanel } from './ActiveWorkContextFrame';
 import { CHAT_DOCK_INBOX_EXIT_MS } from './chat-dock-utils';
-import type { MobileTaskSwitcherMode } from './MobileTaskSwitcher';
 
 /**
  * The dock's overlay open flags and the toggles that drive them: history,
@@ -84,14 +83,9 @@ export function useChatDockOverlays({
   const [activeWorkPanel, setActiveWorkPanel] =
     useState<ActiveWorkPanel | null>(null);
   const [isTaskSwitcherOpen, setIsTaskSwitcherOpen] = useState(false);
-  // Which entry point opened the switcher — the chat-title chevron (full list)
-  // or the header's activity button (running / just-finished first).
-  const [taskSwitcherMode, setTaskSwitcherMode] =
-    useState<MobileTaskSwitcherMode>('tasks');
-  const activityTriggerRef = useRef<HTMLButtonElement>(null);
   // station#1301 slice 1: one shared open/close boolean for the Background
   // tasks sheet, opened from either entry point (desktop tab-bar button,
-  // mobile activity-switcher row, or the transcript banner tap target).
+  // the phone's ⋯ sheet row, or the transcript banner tap target).
   // `backgroundTasksTriggerRef` is the desktop anchor; on mobile it is never
   // populated (the button that owns it doesn't render there), so
   // `ResponsiveDialogSurface` falls back to its un-anchored bottom sheet.
@@ -169,9 +163,6 @@ export function useChatDockOverlays({
     setActiveWorkPanel,
     isTaskSwitcherOpen,
     setIsTaskSwitcherOpen,
-    taskSwitcherMode,
-    setTaskSwitcherMode,
-    activityTriggerRef,
     isBackgroundTasksOpen,
     setIsBackgroundTasksOpen,
     backgroundTasksTriggerRef,

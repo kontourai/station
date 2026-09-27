@@ -98,8 +98,25 @@ describe('GuidedConnect', () => {
     ).toBeNull();
   });
 
+  test('says why this browser landed here inside the full-screen layer (#2612)', () => {
+    const { container } = render(
+      <GuidedConnect notice="This sign-in link was already used, or a newer one replaced it." />,
+    );
+
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toBe(
+      'This sign-in link was already used, or a newer one replaced it.',
+    );
+    // Inside the screen's own layer: it covers the viewport, so a notice
+    // rendered beside it (where the gate used to put it) is never seen.
+    expect(alert.closest('.guided-connect')).toBe(
+      container.querySelector('.guided-connect'),
+    );
+  });
+
   test('renders the first-run welcome copy without error framing', () => {
     render(<GuidedConnect />);
+    expect(screen.queryByRole('alert')).toBeNull();
 
     expect(screen.getByText('Connect to a Station')).toBeTruthy();
     expect(

@@ -161,7 +161,6 @@
     "scripts/__tests__/prepare-verify-static.test.ts": 1,
     "scripts/__tests__/prepush-tier.test.ts": 9,
     "scripts/__tests__/prepush-typecheck.test.ts": 1,
-    "scripts/__tests__/prepush-ui-bundle.test.ts": 1,
     "scripts/__tests__/product-docs-source-links.test.ts": 1,
     "scripts/__tests__/product-version.test.ts": 1,
     "scripts/__tests__/project-resource-shadow-report.test.ts": 1,

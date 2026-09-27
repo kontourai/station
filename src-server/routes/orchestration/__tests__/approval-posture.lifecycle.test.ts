@@ -176,7 +176,6 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     }),
     resolveStationDefaultApprovalMode: async () => stationDefault,
     logger: { debug: vi.fn(), warn: vi.fn() },
-    ownerlessSessionAccess: 'single-user-compat',
   });
   const deps: ExecutionTargetExecutionDependencies = {
     resolveEnvironmentAccess: async () => ({

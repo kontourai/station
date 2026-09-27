@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { validateE2EManifest } from '../tests/e2e-manifest.mjs';
 import { instructionGateErrors } from './agent-instructions-gate.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { FAST_STATIC_COMMANDS } from './run-ci-fast.mjs';
 import {
   CI_FAST_TIMEOUT_MS,
@@ -56,11 +56,11 @@ const guidance = [
 export const CI_FAST_DEADLINE_GUIDANCE = Object.freeze([
   Object.freeze({
     file: 'docs/guides/testing.md',
-    marker: 'twelve-minute coordinator deadline',
+    marker: 'fifteen-minute coordinator deadline',
   }),
   Object.freeze({
     file: 'docs/guides/code-quality.md',
-    marker: 'bounded twelve-minute feedback',
+    marker: 'bounded fifteen-minute feedback',
   }),
 ]);
 const ciFastDeadlineDocs = CI_FAST_DEADLINE_GUIDANCE.map((entry) => ({
@@ -96,6 +96,7 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   Object.freeze(['npm', Object.freeze(['run', 'content:integrity'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'content:excluded-names'])]),
   // CLI help ↔ docs/reference/cli.md parity. Pure source read, ~50ms; see
   // run-ci-fast.mjs for why this belongs on the PR-visible lane.
   Object.freeze(['npm', Object.freeze(['run', 'docs:cli-parity:check'])]),
@@ -106,13 +107,9 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
     Object.freeze(['scripts/generate-basis-mcp-apps.mjs']),
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'verification:policy:gate'])]),
-  // Governance, lint and readiness (2026-09-14). Each was composed only by
-  // the nightly full-regression gate or by a per-machine pre-push hook, so
-  // none of the three could red a pull request; see run-ci-fast.mjs for the
-  // two violations that reached main while the Nightly that owned them was
-  // itself red, and for why readiness runs last of the three.
-  Object.freeze(['npm', Object.freeze(['run', 'proof:repo-governance'])]),
-  Object.freeze(['npm', Object.freeze(['run', 'lint:check'])]),
+  // Readiness owns the configured governance and lint evidence checks.
+  // Keep them out of this bounded list to avoid running them twice; retain
+  // the direct policy gate because readiness treats it as optional.
   Object.freeze(['npm', Object.freeze(['run', 'veritas:readiness'])]),
   // station#4273: the typecheck invariant and its stated precondition. This
   // allowlist is the CANONICAL declaration — `run-ci-fast.mjs` must match it
@@ -225,7 +222,7 @@ export function renderVerificationSchedulingSection(lanes = LANES) {
     '',
     renderLaneCatalogTable(lanes),
     '',
-    `\`ci:fast\` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, **typecheck**, **lint**, and **governance** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every \`typecheck:*\` lane through \`scripts/typecheck-aggregate.mjs\` (station#4273), preceded by \`build:connect\` because \`typecheck:ui\` resolves \`@kontourai/station-connect\` through its \`dist\`. It was added because the lane was previously uncovered per-PR: a red \`main\` displayed green on every contributor's checks, twice in 24 hours. \`lint:check\`, \`proof:repo-governance\`, and \`veritas:readiness\` joined on 2026-09-14 for the same reason: each was composed only by the nightly full-regression gate or by a per-machine pre-push hook, so two governance violations reached \`main\` unobserved while that Nightly was itself red. Its ${ciFast?.weight ?? 'unknown'}-unit reservation overlaps each ${ordinary?.weight ?? 'unknown'}-unit ordinary shard phase so feedback can admit while completion work runs.`,
+    `\`ci:fast\` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, **typecheck**, and readiness invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every \`typecheck:*\` lane through \`scripts/typecheck-aggregate.mjs\` (station#4273), preceded by \`build:connect\` because \`typecheck:ui\` resolves \`@kontourai/station-connect\` through its \`dist\`. Readiness owns the configured \`proof:repo-governance\` and \`lint:check\` evidence checks, so their standalone commands stay out of this lane; \`verification:policy:gate\` remains direct because readiness reports it only as an optional diagnostic. Its ${ciFast?.weight ?? 'unknown'}-unit reservation overlaps each ${ordinary?.weight ?? 'unknown'}-unit ordinary shard phase so feedback can admit while completion work runs.`,
     '',
     '`full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:',
     renderFullRegressionPhaseSchedule(lanes),
@@ -265,7 +262,7 @@ const VERIFICATION_POLICY_SECTION_LINES = [
   'See `docs/reference/verification-receipts.md` for the field-by-field table.',
   '',
   '`ci:fast` is bounded diagnostic feedback, not completion evidence: it has a',
-  'twelve-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default',
+  'fifteen-minute coordinator deadline, uses `STATION_CI_FAST_BASE` (default',
   '`origin/main`) in its request identity, runs the affected selection before a',
   'fixed bounded static invariant set. A selector exit 3 is reported as a',
   'diagnostic defer after those invariants, never completion evidence; the',
@@ -820,5 +817,4 @@ export function main() {
   }
 }
 
-if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href)
-  main();
+if (invokedDirectly(import.meta.url)) main();

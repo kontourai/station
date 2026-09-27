@@ -20,10 +20,14 @@ const loadAgentActivityController: LoadController = () =>
 const STATUS_QUERY_KEY = ['native', 'agent-activity-status'] as const;
 
 /**
- * "Agent activity on this phone": the Android app's Live Update card for the
- * active Station. Renders nothing unless this is the Android app and its host
- * reports `remote-push` as enabled, which only a build carrying a push
- * configuration does.
+ * "Agent activity on this phone": the Android app's Live Update card, or the
+ * iOS app's Live Activity, for the active Station. Renders nothing unless
+ * this is the Android or iOS app and its host reports `remote-push` as
+ * enabled: an Android build carrying a push configuration, or an iOS build
+ * with the Live Activity half. On iOS, while this Station is off, it also
+ * stays hidden until the plugin says the build is signed for push on an OS
+ * with Live Activities, since nothing else there could ever turn it on. A
+ * Station that is already on stays visible so it can be turned off.
  */
 export function AgentActivitySetting({
   loadController = loadAgentActivityController,
@@ -31,13 +35,13 @@ export function AgentActivitySetting({
   loadController?: LoadController;
 }) {
   const { target } = usePlatformProfile();
-  const android = target === 'android';
+  const phoneApp = target === 'android' || target === 'ios';
   const [controller, setController] = useState<AgentActivityController | null>(
     null,
   );
   useEffect(() => {
-    // Only the Android plugin exists; nothing else is worth loading.
-    if (!android) return;
+    // Only the phone plugins exist; nothing else is worth loading.
+    if (!phoneApp) return;
     let live = true;
     loadController().then(
       (loaded) => {
@@ -50,15 +54,19 @@ export function AgentActivitySetting({
     return () => {
       live = false;
     };
-  }, [android, loadController]);
-  if (!android || !controller) return null;
-  return <AgentActivityControl controller={controller} />;
+  }, [phoneApp, loadController]);
+  if (!phoneApp || !controller) return null;
+  return (
+    <AgentActivityControl controller={controller} iosApp={target === 'ios'} />
+  );
 }
 
 function AgentActivityControl({
   controller,
+  iosApp,
 }: {
   controller: AgentActivityController;
+  iosApp: boolean;
 }) {
   const { apiBase, activeConnection } = useConnections();
   const environmentId = activeConnection?.environmentId ?? null;
@@ -114,13 +122,28 @@ function AgentActivityControl({
 
   const on = registration !== null;
   const phone = status.data;
+  const iosUnavailable =
+    phone?.platform === 'ios' &&
+    (!phone.pushConfigured || !phone.liveActivitiesSupported);
+  // iOS: without a push-signed build on iOS 18 there is nothing to offer,
+  // so show nothing rather than a switch that can never turn on — unless
+  // this Station is already on, which must stay visible so it can be turned
+  // off. A status that failed still renders, so its error is seen.
+  if (iosApp && !on && (status.isPending || iosUnavailable)) return null;
+  const android = phone?.platform !== 'ios' ? phone : undefined;
+  const ios = phone?.platform === 'ios' ? phone : undefined;
+  // On iOS a build without push is `iosUnavailable` above; the outcome is
+  // still reachable if `push_token` disagrees with `status`.
   const unconfigured =
-    outcome === 'unconfigured' || phone?.pushConfigured === false;
+    outcome === 'unconfigured' || (!ios && phone?.pushConfigured === false);
   const notificationsOff =
     outcome === 'notifications-disabled' ||
-    (on && phone?.notificationsEnabled === false);
+    (on && android?.notificationsEnabled === false);
   const promotionOff =
-    on && phone?.liveUpdatesSupported === true && !phone.promotionAllowed;
+    on && android?.liveUpdatesSupported === true && !android.promotionAllowed;
+  const liveActivitiesOff =
+    outcome === 'live-activities-disabled' ||
+    (on && ios?.liveActivitiesEnabled === false);
 
   return (
     <div className="settings__notif-subscribe" data-testid="agent-activity">
@@ -168,6 +191,26 @@ function AgentActivityControl({
             onClick={() => openSettings.mutate()}
           >
             Allow Live Updates
+          </Button>
+        </div>
+      )}
+      {on && iosUnavailable && (
+        <div className="settings__toggle-desc">
+          This build can no longer show Live Activities. Turn this off to stop
+          the Station sending them.
+        </div>
+      )}
+      {liveActivitiesOff && (
+        <div className="settings__notif-subscribed">
+          <span className="settings__toggle-desc">
+            Live Activities are off for Station. Turn them on in Settings.
+          </span>
+          <Button
+            size="sm"
+            pending={openSettings.isPending}
+            onClick={() => openSettings.mutate()}
+          >
+            Open Settings
           </Button>
         </div>
       )}

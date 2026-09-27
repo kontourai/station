@@ -139,7 +139,7 @@ Adapter mappings, same Station event:
 | Codex | app-server `turn/steer` `{ threadId, input, expectedTurnId }` (additive; does not emit a Codex `turn/started`) |
 | Kiro / KAS | ACP extension **method** `_session/steer` (additive; not a notification) |
 | Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`). `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
-| Any other ACP | T3-style `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive). Also the fallback when the native method returns JSON-RPC -32601. |
+| Any other ACP | Cancel + re-prompt fallback: `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive). Also the fallback when the native method returns JSON-RPC -32601. |
 
 Muse still binds one prompt to one process — no live input channel. That is a separate backlog item, not invented here.
 

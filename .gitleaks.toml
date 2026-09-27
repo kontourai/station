@@ -43,7 +43,6 @@ regexTarget = "secret"
 regexes = ['''^sk-live-SECRET$''']
 paths = [
   '''(^|/)src-ui/src/__tests__/blockingAlert\.test\.ts$''',
-  '''(^|/)src-ui/src/__tests__/useApprovalOsAlerts\.test\.tsx$''',
 ]
 
 [[allowlists]]
@@ -123,6 +122,10 @@ regexes = [
 paths = [
   '''(^|/)packages/contracts/src/native-push\.ts$''',
   '''(^|/)src-desktop/plugins/agent-activity/android/src/test/java/io/kontourai/station/agentactivity/AgentSealTest\.kt$''',
+  '''(^|/)src-desktop/plugins/agent-activity/android/src/test/java/io/kontourai/station/agentactivity/StationNotificationsTest\.kt$''',
+  '''(^|/)src-desktop/plugins/agent-activity/ios/Tests/StationAgentActivitySharedTests/CardOpenerTests\.swift$''',
+  '''(^|/)src-desktop/plugins/agent-activity/ios/Tests/StationNotificationServiceCoreTests/SealedAlertTests\.swift$''',
+  '''(^|/)src-desktop/plugins/agent-activity/ios/Sources/StationAgentActivityPlugin/AgentActivityPlugin\.swift$''',
 ]
 
 [[allowlists]]

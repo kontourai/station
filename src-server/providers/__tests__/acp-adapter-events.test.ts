@@ -158,6 +158,45 @@ describe('mapAcpSessionUpdate — content and tool events', () => {
     });
   });
 
+  test('a new messageId opens a paragraph; chunks of one message and id-less chunks join as sent', () => {
+    const events: CanonicalRuntimeEvent[] = [];
+    const ctx = makeCtx(events, { state: {} });
+    const chunk = (text: string, messageId?: string) =>
+      mapAcpSessionUpdate(
+        {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text },
+          ...(messageId ? { messageId } : {}),
+        } as any,
+        ctx,
+      );
+
+    chunk('I opened', 'message-1');
+    chunk(' the PR.', 'message-1');
+    chunk('The tests pass.', 'message-2');
+
+    const noIds: CanonicalRuntimeEvent[] = [];
+    const idless = makeCtx(noIds, { state: {} });
+    for (const text of ['One.', 'Two.'])
+      mapAcpSessionUpdate(
+        {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text },
+        } as any,
+        idless,
+      );
+
+    const deltas = (list: CanonicalRuntimeEvent[]) =>
+      list.map((event) => (event as { delta?: string }).delta);
+    expect(deltas(events)).toEqual([
+      'I opened',
+      ' the PR.',
+      '\n\nThe tests pass.',
+    ]);
+    // No messageId: the boundary is invisible, so nothing is invented.
+    expect(deltas(noIds)).toEqual(['One.', 'Two.']);
+  });
+
   test('maps a completed tool_call_update through the bounded typed projection', () => {
     const events: CanonicalRuntimeEvent[] = [];
     const ctx = makeCtx(events);
@@ -181,6 +220,42 @@ describe('mapAcpSessionUpdate — content and tool events', () => {
       status: 'success',
       output: [{ type: 'text', text: 'file-a' }],
     });
+  });
+
+  test('an oversized tool call and its completion reach no event unbounded', () => {
+    const events: CanonicalRuntimeEvent[] = [];
+    const ctx = makeCtx(events);
+    const oversized = `${'provider-bytes '.repeat(4096)}tail`;
+
+    mapAcpSessionUpdate(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'tool-big',
+        title: 'dump',
+        rawInput: { blob: oversized },
+      } as any,
+      ctx,
+    );
+    mapAcpSessionUpdate(
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'tool-big',
+        status: 'completed',
+        content: [
+          { type: 'content', content: { type: 'text', text: oversized } },
+        ],
+        rawOutput: { blob: oversized },
+      } as any,
+      ctx,
+    );
+
+    expect(events.at(-1)).toMatchObject({
+      method: 'tool.completed',
+      toolCallId: 'tool-big',
+      outputReceipt: { truncated: true, fullOutput: 'unavailable' },
+    });
+    for (const event of events)
+      expect(JSON.stringify(event)).not.toContain(oversized);
   });
 
   test('emits tool.progress for an in_progress tool_call_update', () => {

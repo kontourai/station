@@ -11,11 +11,14 @@ import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
+import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from '@kontourai/station-contracts/project-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import {
   FileStorageConflictError,
+  FileStorageNotFoundError,
   type ProjectFileTransactionFaults,
+  ProjectIdentityNotPreparedError,
 } from '../../../domain/project-file-transactions.js';
 import {
   ProjectIdentityValidationError,
@@ -616,6 +619,42 @@ describe('portable Project attachment', () => {
       (await createProjectIdentityRoutes(undefined).request('/local/identity'))
         .status,
     ).toBe(501);
+  });
+
+  test('HTTP identity read discriminates not-prepared from a removed Project', async () => {
+    const { service, storage } = harness();
+    const app = createProjectIdentityRoutes(service);
+    await storage.createProject(project());
+    // Genuine missing: the Project exists, only its identity is unprepared.
+    const missing = await app.request('/local/identity');
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toMatchObject({
+      success: false,
+      code: PROJECT_IDENTITY_NOT_PREPARED_CODE,
+    });
+    // Removed Project: same status, the GENERIC storage code.
+    const removed = await app.request('/removed/identity');
+    expect(removed.status).toBe(404);
+    expect(await removed.json()).toMatchObject({
+      success: false,
+      code: 'file_storage_not_found',
+    });
+    // The seam constant is the literal the route sent, not a drifted copy.
+    expect(PROJECT_IDENTITY_NOT_PREPARED_CODE).toBe(
+      'project_identity_not_prepared',
+    );
+    // Non-HTTP consumers stay distinguishable by type: the discriminated
+    // error remains a FileStorageNotFoundError, the removed Project is not
+    // the discriminated kind.
+    await expect(service.read('local')).rejects.toBeInstanceOf(
+      ProjectIdentityNotPreparedError,
+    );
+    await expect(service.read('removed')).rejects.toBeInstanceOf(
+      FileStorageNotFoundError,
+    );
+    await expect(service.read('removed')).rejects.not.toBeInstanceOf(
+      ProjectIdentityNotPreparedError,
+    );
   });
 
   test('HTTP execution-root mutation returns the guarded current identity', async () => {

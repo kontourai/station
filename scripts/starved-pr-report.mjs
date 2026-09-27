@@ -40,6 +40,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const REPORT_MARKER = '<!-- starved-pr-report -->';
 export const HOLD_MARKER = '<!-- starved-ok:';
@@ -114,7 +115,7 @@ gh api graphql -f query='query{repository(owner:"kontourai",name:"station"){
   pullRequest(number:${number}){isInMergeQueue mergeStateStatus autoMergeRequest{enabledAt}}}}'
 \`\`\`
 
-**One case where arming will not help.** A pull request can also reach this state by being removed from the merge queue while the queue was jammed, rather than by never being armed — and the two look identical from here. Under \`max_entries_to_merge: 1\` a stuck head blocks everything behind it, and entries behind it have been observed dropping back to CLEAN and unarmed with no author action. The mechanism is not established; only the correlation is. If the queue's head has been AWAITING_CHECKS for a long time, re-arming this pull request just returns it behind the same blockage, and the head is what needs attention:
+**One case where arming will not help.** A pull request can also reach this state by being removed from the merge queue while the queue was jammed, rather than by never being armed — and the two look identical from here. A stuck head blocks the entries behind it, and entries behind it have been observed dropping back to CLEAN and unarmed with no author action. The mechanism is not established; only the correlation is. If the queue's head has been AWAITING_CHECKS for a long time, re-arming this pull request just returns it behind the same blockage, and the head is what needs attention:
 
 \`\`\`
 gh api graphql -f query='query{repository(owner:"kontourai",name:"station"){mergeQueue{
@@ -203,4 +204,4 @@ export function main(argv = process.argv.slice(2)) {
   );
 }
 
-if (process.argv[1]?.endsWith('starved-pr-report.mjs')) main();
+if (invokedDirectly(import.meta.url)) main();

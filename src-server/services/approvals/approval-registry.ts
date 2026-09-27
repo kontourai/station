@@ -23,6 +23,13 @@ interface ApprovalRequestMetadata {
   conversationId?: string;
   conversationTitle?: string;
   description?: string;
+  /**
+   * #2589: the orchestration thread whose `request.opened` republishes this
+   * approval (a Station-agent relay turn; stream-orchestrator.ts). Equal to
+   * `conversationId` when set. Marks the approval as already on the
+   * agent-activity card.
+   */
+  orchestrationThreadId?: string;
   purpose?: string;
   server?: string | null;
   source: 'acp' | 'runtime';

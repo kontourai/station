@@ -22,7 +22,6 @@ import {
   resolve,
   sep,
 } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import receiptSchema from '../schemas/verification-receipt.schema.json' with {
   type: 'json',
@@ -31,6 +30,7 @@ import {
   CHANGED_DIAGNOSTIC_ERROR_LIMIT_BYTES,
   incompleteDiagnosticReasons,
 } from './lib/changed-verification-diagnostics.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -42,6 +42,7 @@ import {
   loadProductLawManifest,
   productLawDispositions,
 } from './lib/product-laws.mjs';
+import { refineSdkBarrelRelatedPaths } from './lib/sdk-barrel-selection.mjs';
 import {
   collectVerificationProvenance,
   writeReceiptSecurely,
@@ -260,10 +261,37 @@ export async function runOwnedChangedCommand(
   }
 }
 
+/**
+ * `base` enables SDK barrel-aware seeds (#2707): a changed SDK module is
+ * replaced by the files whose imports actually reach it, rather than by
+ * every importer of the SDK barrels that re-export it. Without a base the
+ * paths go to Vitest unchanged.
+ *
+ * @param {string} root
+ * @param {string[]} relatedPaths
+ * @param {object} [options]
+ * @param {string} [options.base] merge base the changed paths were diffed from
+ * @param {typeof refineSdkBarrelRelatedPaths} [options.refine]
+ * @param {(decision: any) => void} [options.reportRefinement]
+ * @param {(...args: any[]) => Promise<any>} [options.run]
+ * @param {AbortSignal} [options.signal]
+ * @param {number} [options.timeoutMs]
+ */
 export async function discoverRelatedTestFiles(
   root,
   relatedPaths,
   {
+    base,
+    refine = refineSdkBarrelRelatedPaths,
+    reportRefinement = (decision) => {
+      process.stderr.write(
+        `[test:changed] SDK barrel selection: ${decision.path} ${
+          decision.disposition === 'refined'
+            ? `-> ${decision.seeds} import seed(s)`
+            : `kept whole (${decision.reason})`
+        }\n`,
+      );
+    },
     run = runOwnedChangedCommand,
     signal,
     timeoutMs = RELATED_DISCOVERY_TIMEOUT_MS,
@@ -275,13 +303,18 @@ export async function discoverRelatedTestFiles(
     throw new Error('Related Vitest discovery timeout is invalid');
   let result;
   try {
+    const refined = refine(root, relatedPaths, { base });
+    for (const decision of refined.decisions) reportRefinement(decision);
+    // Every refined path reached no file outside SDK source: nothing imports
+    // it, which is discovery's empty answer, not a failure.
+    if (refined.paths.length === 0) return [];
     result = await run(
       process.execPath,
       [
         '--input-type=module',
         '--eval',
         RELATED_DISCOVERY_SOURCE,
-        ...relatedPaths.map((path) => resolve(root, path)),
+        ...refined.paths.map((path) => resolve(root, path)),
       ],
       {
         cwd: root,
@@ -410,6 +443,15 @@ export function selectChangedVerification(
   const tests = new Map();
   const lanes = new Map();
   const relatedPaths = new Set();
+  // Related paths some test-naming edge names by EXACT path — ordinary or
+  // supplemental: a spawned-script edge, a derived path-read pin (#1807), a
+  // generator-input edge. Each of those tests asserts about precisely this
+  // file, so an empty related discovery leaves it covered. A glob edge never
+  // owns a path: a blanket scan (the `src-ui/src/**` copy ratchet, the
+  // `packages/sdk/src/client/**` portability scan) says nothing about one
+  // file's behaviour, so it must not turn "no suite covers this file" into a
+  // completed green (#2176).
+  const ownedRelatedPaths = new Set();
   let escalated = false;
   const changed = new Set(paths);
   for (const path of paths) {
@@ -469,6 +511,11 @@ export function selectChangedVerification(
       for (const lane of edge.lanes ?? [])
         addReason(lanes, lane, `${edge.reason}: ${path}`);
     }
+    if (
+      relatedPaths.has(path) &&
+      edges.some((edge) => edge.pattern === path && edge.tests?.length)
+    )
+      ownedRelatedPaths.add(path);
   }
   if (!paths.length || (!tests.size && !lanes.size && !relatedPaths.size))
     addReason(lanes, 'test-full', 'empty executable selection escalated');
@@ -481,6 +528,7 @@ export function selectChangedVerification(
       .sort()
       .map((id) => ({ id, reasons: [...lanes.get(id)].sort() })),
     relatedPaths: [...relatedPaths].sort(),
+    ownedRelatedPaths: [...ownedRelatedPaths].sort(),
     escalated,
   };
 }
@@ -783,9 +831,18 @@ async function runVitest(
   } = {},
 ) {
   let plannedExecutions;
+  // How many suites related discovery named, observed rather than inferred
+  // from the plan: explicit tests in the same plan must not hide an empty
+  // discovery (#2176).
+  let relatedDiscoveryCount;
+  const discover = discoverRelated ?? discoverRelatedTestFiles;
   try {
     plannedExecutions = await planChangedVitestExecutions(root, selection, {
-      ...(discoverRelated ? { discoverRelated } : {}),
+      discoverRelated: async (discoveryRoot, relatedPaths) => {
+        const files = await discover(discoveryRoot, relatedPaths);
+        relatedDiscoveryCount = files.length;
+        return files;
+      },
       ...(partition ? { partition } : {}),
       vitestPath,
     });
@@ -891,6 +948,7 @@ async function runVitest(
   return {
     executions,
     emptySelection: plannedExecutions.length === 0,
+    relatedDiscoveryEmpty: relatedDiscoveryCount === 0,
     ...(preparation ? { preparation } : {}),
   };
 }
@@ -1370,13 +1428,19 @@ export async function runChangedVerification(
       { ...executionSelection, signal },
       {
         vitestPath,
-        discoverRelated:
-          discoverRelatedFiles ??
-          ((discoveryRoot, relatedPaths) =>
-            discoverRelatedTestFiles(discoveryRoot, relatedPaths, {
-              run,
-              signal,
-            })),
+        // The merge base, not the ref: SDK barrel refinement compares
+        // purity and exported names against the tree this diff was taken
+        // from (#2707).
+        discoverRelated: (discoveryRoot, relatedPaths) =>
+          (
+            discoverRelatedFiles ??
+            ((rootPath, paths, options) =>
+              discoverRelatedTestFiles(rootPath, paths, {
+                ...options,
+                run,
+                signal,
+              }))
+          )(discoveryRoot, relatedPaths, { base: changed.mergeBase }),
         partition: resourcePartition,
         beforeCleanup(executions, preparation) {
           result.executed = executions;
@@ -1403,15 +1467,32 @@ export async function runChangedVerification(
     // Related discovery ran and named no suite. Record the fact durably in
     // the selection artifact so a reader sees a selection decision rather
     // than a silent zero-execution run.
-    if (vitestOutcome.emptySelection === true && !vitestOutcome.preparation) {
+    //
+    // #2176: an empty discovery escalates even when the plan still holds
+    // explicit tests. A test selected only through a glob edge (a copy
+    // ratchet over a whole tree) says nothing about the changed file, so
+    // letting it make the plan non-empty turned "no suite covers this file"
+    // into a completed green. Only a path an edge names exactly
+    // (`ownedRelatedPaths`) is covered without its graph.
+    //
+    // Granularity: discovery is ONE call over every related path, and it
+    // returns the union of suites, not a per-input answer. So this fires only
+    // when discovery returns nothing for the whole set; a diff where one path
+    // has importers and another has none is not detected. A per-path answer
+    // would cost one Vitest graph build per changed file.
+    const owned = new Set(executionSelection.ownedRelatedPaths ?? []);
+    const uncovered =
+      vitestOutcome.emptySelection === true
+        ? executionSelection.relatedPaths
+        : vitestOutcome.relatedDiscoveryEmpty === true
+          ? executionSelection.relatedPaths.filter((path) => !owned.has(path))
+          : [];
+    if (uncovered.length > 0 && !vitestOutcome.preparation) {
       result.emptyRelatedSelection = {
-        relatedPaths: [...executionSelection.relatedPaths].sort(),
+        relatedPaths: [...uncovered].sort(),
         remedy: EMPTY_RELATED_SELECTION_REMEDY,
       };
-      selection = escalateEmptyRelatedSelection(
-        selection,
-        executionSelection.relatedPaths,
-      );
+      selection = escalateEmptyRelatedSelection(selection, uncovered);
     }
     selection = escalateEmptyReports(selection, result.executed);
     result.selection = selection;
@@ -1495,10 +1576,7 @@ export async function runChangedVerification(
           : 1,
   };
 }
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   const controller = new AbortController();
   const unregister = ['SIGINT', 'SIGTERM'].map((name) =>
     registerProcessSignal(name, () => controller.abort(name)),

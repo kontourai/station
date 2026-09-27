@@ -10,12 +10,11 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { realpathSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import {
   DEPLOY_LEDGER_JSON_PATH,
   DEPLOY_LEDGER_MD_PATH,
 } from './deploy-ledger.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 /**
@@ -173,9 +172,6 @@ export function main(argv, { inspectCommit = inspectCommitFromGit } = {}) {
   }
 }
 
-if (
-  process.argv[1] &&
-  realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   process.exit(main(process.argv.slice(2)));
 }

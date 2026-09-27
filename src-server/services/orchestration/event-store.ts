@@ -460,6 +460,18 @@ const SESSION_INVENTORY_GROUP_METHODS: Readonly<
   resources: ['session.configured', 'token-usage.updated'],
 };
 
+/**
+ * `IN (?, ...)` placeholders for a usage read's owner set. An empty set would
+ * be `IN ()`, which is not SQL and is never a meaningful request: a caller
+ * with no owner reads nothing, so it must say so before reaching the store.
+ */
+function usageOwnerPlaceholders(ownerUserIds: readonly string[]): string {
+  if (ownerUserIds.length === 0) {
+    throw new Error('A usage read requires at least one owner');
+  }
+  return ownerUserIds.map(() => '?').join(', ');
+}
+
 function hasBoundedDescriptorText(
   value: unknown,
   maximum: number,
@@ -1998,6 +2010,17 @@ export class EventStore {
       ensureOrchestrationRecoverySettlementColumns(this.db);
       ensureCredentialApplicationCommitPendingIndex(this.db);
       ensureOrchestrationEventStoreColumns(this.db);
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
+         SELECT 1, COALESCE(MAX(global_sequence), 0) FROM orchestration_events`,
+        )
+        .run();
+      this.db
+        .prepare(
+          'INSERT OR IGNORE INTO orchestration_stream_epoch(singleton, epoch) VALUES (1, ?)',
+        )
+        .run(randomUUID());
       ensureOrchestrationAdoptionColumns(this.db);
       this.ensureConversationHistoryProjectSlugColumn();
       // Repair the bounded pre-existing history projection before the full
@@ -3210,10 +3233,9 @@ export class EventStore {
    *
    * `owner_user_id` comes from the conversation-history projection, which
    * materializes the same `metadata.userId` the owner fold reads, written on
-   * this same append path. Rows with no owner stay candidates: an ownerless
-   * session is the `single-user-compat` case, which only the real predicate
-   * may decide, and a Station with one user has no cross-user disclosure to
-   * make.
+   * this same append path. Rows with no owner stay candidates for the real
+   * predicate to decide (it refuses an ownerless session for every caller):
+   * narrowing is an optimisation, never the authorization.
    */
   listAttachmentCandidateThreads(
     ref: string,
@@ -3460,6 +3482,11 @@ export class EventStore {
         this.commitSessionWorkItemAdmission(workItemAdmission);
         return Number(existing.sequence);
       }
+      this.db
+        .prepare(
+          'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
+        )
+        .run(globalSequence);
       this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
       this.chargeCommittedToolImages(persisted.toolImageKey);
       this.projectConversationHistoryEvent(event);
@@ -4112,6 +4139,11 @@ export class EventStore {
         ) as { changes: number };
       absent = result.changes === 0;
       if (!absent) {
+        this.db
+          .prepare(
+            'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
+          )
+          .run(globalSequence);
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
         this.chargeCommittedToolImages(persisted.toolImageKey);
         this.projectConversationHistoryEvent(event);
@@ -4448,7 +4480,8 @@ export class EventStore {
    * belong to SQLite's indexed selection boundary.
    */
   listUsageReceiptEvents(options: {
-    ownerUserId: string;
+    /** The owners whose usage the caller may read; never empty. */
+    ownerUserIds: readonly string[];
     tenantId?: string;
     from: string;
     to: string;
@@ -4461,6 +4494,7 @@ export class EventStore {
     model?: string;
     processEpoch: number;
   }> {
+    const owners = usageOwnerPlaceholders(options.ownerUserIds);
     const rows = this.db
       .prepare(
         `SELECT e.id, e.provider, e.thread_id, e.turn_id, e.method, e.payload,
@@ -4492,7 +4526,7 @@ export class EventStore {
            LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
           WHERE e.method = 'token-usage.updated'
             AND e.observed_at >= ? AND e.observed_at <= ?
-            AND h.owner_user_id = ?
+            AND h.owner_user_id IN (${owners})
             AND (? IS NULL OR h.tenant_id = ?)
             AND (? IS NULL OR e.observed_at > ? OR (e.observed_at = ? AND e.id > ?))
           ORDER BY e.observed_at ASC, e.id ASC
@@ -4501,7 +4535,7 @@ export class EventStore {
       .all(
         `${options.from}T00:00:00.000Z`,
         `${options.to}T23:59:59.999Z`,
-        options.ownerUserId,
+        ...options.ownerUserIds,
         options.tenantId ?? null,
         options.tenantId ?? null,
         options.after?.observedAt ?? null,
@@ -4525,11 +4559,13 @@ export class EventStore {
    * would make an analytics read unbounded and could cross a hosted tenant.
    */
   listUsageCoverageEvents(options: {
-    ownerUserId: string;
+    /** The same owner set as {@link listUsageReceiptEvents}. */
+    ownerUserIds: readonly string[];
     tenantId?: string;
     from: string;
     to: string;
   }): PersistedRuntimeEvent[] {
+    const owners = usageOwnerPlaceholders(options.ownerUserIds);
     const rows = this.db
       .prepare(
         `SELECT e.id, e.provider, e.thread_id, e.turn_id, e.method, e.payload,
@@ -4538,7 +4574,7 @@ export class EventStore {
            INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
           WHERE e.method IN ('turn.completed', 'turn.aborted', 'token-usage.updated', 'session.configured')
             AND e.observed_at >= ? AND e.observed_at <= ?
-            AND h.owner_user_id = ?
+            AND h.owner_user_id IN (${owners})
             AND (? IS NULL OR h.tenant_id = ?)
           ORDER BY e.observed_at ASC, e.id ASC
           LIMIT 1001`,
@@ -4546,7 +4582,7 @@ export class EventStore {
       .all(
         `${options.from}T00:00:00.000Z`,
         `${options.to}T23:59:59.999Z`,
-        options.ownerUserId,
+        ...options.ownerUserIds,
         options.tenantId ?? null,
         options.tenantId ?? null,
       ) as any[];
@@ -5097,6 +5133,50 @@ export class EventStore {
         )
         .all(threadId) as any[]
     ).map((row: any) => this.mapEventRow(row));
+  }
+
+  /** Current open request ids for one authorized snapshot's session set. */
+  listOpenRequestIdsByThreads(
+    threadIds: readonly string[],
+  ): Map<string, string[]> {
+    const result = new Map(
+      threadIds.map((threadId) => [threadId, [] as string[]]),
+    );
+    for (let offset = 0; offset < threadIds.length; offset += 500) {
+      const batch = threadIds.slice(offset, offset + 500);
+      const placeholders = batch.map(() => '?').join(',');
+      const rows = this.db
+        .prepare(
+          `SELECT thread_id, request_id FROM orchestration_request_state
+           WHERE thread_id IN (${placeholders}) AND method = 'request.opened'
+           ORDER BY thread_id, sequence`,
+        )
+        .all(...batch) as Array<{ thread_id: string; request_id: string }>;
+      for (const row of rows) result.get(row.thread_id)?.push(row.request_id);
+    }
+    return result;
+  }
+
+  /** Durable child-work facts for cold process reconstruction, batched by thread. */
+  listChildWorkHistoryForThreads(
+    threadIds: readonly string[],
+  ): Map<string, PersistedRuntimeEvent[]> {
+    return this.groupMappedEventRowsByThread(
+      this.fetchInChunks(
+        [...new Set(threadIds)],
+        (chunk, placeholders) =>
+          this.db
+            .prepare(
+              `SELECT id, provider, thread_id, turn_id, method, payload,
+                    created_at, sequence, global_sequence
+             FROM orchestration_events
+             WHERE thread_id IN (${placeholders})
+               AND method IN ('child-work.updated', 'extension.notification', 'session.exited', 'session.started')
+             ORDER BY global_sequence ASC`,
+            )
+            .all(...chunk) as any[],
+      ),
+    );
   }
 
   /**
@@ -6544,7 +6624,6 @@ export class EventStore {
     tenantId?: string;
     agentSlug?: string;
     requireBound?: boolean;
-    includeOwnerless?: boolean;
     limit: number;
     cursor?: ConversationHistoryCursor;
   }): ConversationHistoryPage {
@@ -6654,14 +6733,7 @@ export class EventStore {
         )
         .all(...values) as HistoryRow[];
     };
-    const rows = [
-      ...readRows('h.owner_user_id = ?'),
-      ...(options.includeOwnerless ? readRows('h.owner_user_id IS NULL') : []),
-    ].sort(
-      (left, right) =>
-        right.updated_at.localeCompare(left.updated_at) ||
-        right.thread_id.localeCompare(left.thread_id),
-    );
+    const rows = readRows('h.owner_user_id = ?');
     const hasMore = rows.length > options.limit;
     const records = rows.slice(0, options.limit).map((row) => ({
       threadId: row.thread_id,
@@ -6916,9 +6988,8 @@ export class EventStore {
    *   (thread_id=?)` and neither emits a temp b-tree.
    *
    * Deliberately NOT a bounded `LIMIT` over the old query: truncating could
-   * turn "owned by X" into `undefined`, and `ownerlessSessionAccess:
-   * 'single-user-compat'` makes an ownerless session READABLE — a silent
-   * authorization widening. The predicate is what bounds this, not the limit.
+   * turn "owned by X" into `undefined`, which makes the session unreadable
+   * by its own owner. The predicate is what bounds this, not the limit.
    */
   /**
    * archive#4075 stage 2: append-time ownership immutability guard, called
@@ -7748,10 +7819,28 @@ export class EventStore {
   headGlobalSequence(): number {
     const row = this.db
       .prepare(
-        `SELECT COALESCE(MAX(global_sequence), 0) AS head FROM orchestration_events`,
+        `SELECT high_water AS head FROM orchestration_stream_identity WHERE singleton = 1`,
       )
       .get() as { head: number };
     return row.head;
+  }
+
+  /** A bus publish must not escape a caller's still-rollbackable transaction. */
+  assertNoOuterTransactionForPublication(): void {
+    if (this.db.isTransaction)
+      throw new Error(
+        'Cannot publish an orchestration event inside an outer transaction',
+      );
+  }
+
+  /** Durable identity of this database, independent of its numeric cursor. */
+  streamEpoch(): string {
+    const row = this.db
+      .prepare(
+        'SELECT epoch FROM orchestration_stream_epoch WHERE singleton = 1',
+      )
+      .get() as { epoch: string };
+    return row.epoch;
   }
 
   /**
@@ -12258,18 +12347,15 @@ export class EventStore {
 
   /**
    * Next value for the cross-thread `global_sequence` cursor (archive#1092).
-   * Computed the same way as {@link nextSequence} but without the thread
-   * filter, so it stays monotonic across every session. Safe to call
-   * speculatively from `appendEventIfAbsent` before knowing whether the
-   * insert will actually land: an ignored insert never persists the
-   * candidate value, so the next real append recomputes MAX+1 from what is
-   * actually in the table and no gap is observable.
+   * The durable head survives physical deletion of tail events. The caller
+   * advances it in the same savepoint as a successful insert; an ignored
+   * insert or rollback leaves it unchanged.
    */
   private nextGlobalSequence(): number {
     const row = this.db
       .prepare(
-        `SELECT COALESCE(MAX(global_sequence), 0) AS max_sequence
-         FROM orchestration_events`,
+        `SELECT high_water AS max_sequence
+         FROM orchestration_stream_identity WHERE singleton = 1`,
       )
       .get() as { max_sequence: number };
     return row.max_sequence + 1;

@@ -20,7 +20,7 @@
  * What this does NOT prove: which chunk the code lands in. It would pass just
  * as well against a static import of the wrapper — that shape is exactly what
  * put the entry 66 bytes over its ceiling — and it is the entry-bundle
- * ceiling (`scripts/check-prepush-ui-bundle.mjs`) that proves the chunking.
+ * ceiling (`scripts/ui-bundle-budget.mjs`) that proves the chunking.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

@@ -13,7 +13,9 @@ import { normalizeDevPairingDeepLinkSuffix } from '../channel-platform-matrix.mj
 import {
   prepareIosSimulator,
   readSimulatorEntitlementSection,
+  simulatorAgentActivityEntitlements,
   simulatorEntitlements,
+  simulatorExtensionEntitlements,
   verifyIosSimulator,
 } from '../ios-simulator-build.mjs';
 
@@ -125,24 +127,199 @@ test('preparation is idempotent, preserves existing flags, and changes only simu
   ]);
 });
 
+test('preparation gives the Live Activity extension the development identity and the shared keychain group', () => {
+  const { root, apple } = fixture();
+  const project = {
+    targets: {
+      station_iOS: {
+        type: 'application',
+        platform: 'iOS',
+        settings: { base: {} },
+      },
+      StationAgentActivity: {
+        type: 'app-extension',
+        platform: 'iOS',
+        settings: {
+          base: { STATION_APP_BUNDLE_IDENTIFIER: 'io.kontourai.station' },
+        },
+      },
+    },
+  };
+  writeFileSync(join(apple, 'project.yml'), YAML.stringify(project));
+  prepareIosSimulator({ root, run: vi.fn(() => '') });
+  const prepared = YAML.parse(readFileSync(join(apple, 'project.yml'), 'utf8'));
+  const extension = prepared.targets.StationAgentActivity.settings.base;
+  expect(extension.STATION_APP_BUNDLE_IDENTIFIER).toBe(id);
+  expect(extension['OTHER_LDFLAGS[sdk=iphonesimulator*]'].at(-1)).toBe(
+    '"$(PROJECT_DIR)/station_iOS/StationAgentActivitySimulator.entitlements"',
+  );
+  const app = readFileSync(
+    join(apple, 'station_iOS/StationSimulator.entitlements'),
+    'utf8',
+  );
+  expect(app).toContain(
+    `<array><string>${id}</string><string>${id}.agentactivity</string></array>`,
+  );
+  const widget = readFileSync(
+    join(apple, 'station_iOS/StationAgentActivitySimulator.entitlements'),
+    'utf8',
+  );
+  expect(widget).toContain(`<string>${id}.AgentActivity</string>`);
+  expect(widget).toContain(
+    `<array><string>${id}.agentactivity</string></array>`,
+  );
+  expect(simulatorAgentActivityEntitlements(id)).toEqual({
+    'application-identifier': `${id}.AgentActivity`,
+    'keychain-access-groups': [`${id}.agentactivity`],
+  });
+});
+
+test('preparation gives the Notification Service Extension the development identity and only the shared group (#2590)', () => {
+  const { root, apple } = fixture();
+  const extension = (type = 'app-extension') => ({
+    type,
+    platform: 'iOS',
+    settings: {
+      base: { STATION_APP_BUNDLE_IDENTIFIER: 'io.kontourai.station' },
+    },
+  });
+  const project = {
+    targets: {
+      station_iOS: {
+        type: 'application',
+        platform: 'iOS',
+        settings: { base: {} },
+      },
+      StationAgentActivity: extension(),
+      StationNotificationService: extension(),
+    },
+  };
+  writeFileSync(join(apple, 'project.yml'), YAML.stringify(project));
+  prepareIosSimulator({ root, run: vi.fn(() => '') });
+  const prepared = YAML.parse(readFileSync(join(apple, 'project.yml'), 'utf8'));
+  const base = prepared.targets.StationNotificationService.settings.base;
+  expect(base.STATION_APP_BUNDLE_IDENTIFIER).toBe(id);
+  expect(base['OTHER_LDFLAGS[sdk=iphonesimulator*]'].at(-1)).toBe(
+    '"$(PROJECT_DIR)/station_iOS/StationNotificationServiceSimulator.entitlements"',
+  );
+  const written = readFileSync(
+    join(apple, 'station_iOS/StationNotificationServiceSimulator.entitlements'),
+    'utf8',
+  );
+  expect(written).toContain(`<string>${id}.NotificationService</string>`);
+  expect(written).toContain(
+    `<array><string>${id}.agentactivity</string></array>`,
+  );
+  expect(simulatorExtensionEntitlements(id, 'NotificationService')).toEqual({
+    'application-identifier': `${id}.NotificationService`,
+    'keychain-access-groups': [`${id}.agentactivity`],
+  });
+  // A target of the wrong kind is refused, not prepared.
+  writeFileSync(
+    join(apple, 'project.yml'),
+    YAML.stringify({
+      targets: {
+        ...project.targets,
+        StationNotificationService: extension('framework'),
+      },
+    }),
+  );
+  expect(() => prepareIosSimulator({ root, run: vi.fn(() => '') })).toThrow(
+    'Expected the Notification Service app-extension target.',
+  );
+});
+
 test('a stable identifier cannot receive development simulator preparation', () => {
   expect(() => simulatorEntitlements('io.kontourai.station')).toThrow();
 });
 
-function archivedFixture() {
+type Entitlements = ReturnType<typeof simulatorEntitlements>;
+
+const entitlementsPlist = (entitlements: Entitlements) =>
+  Buffer.from(
+    `<plist><dict><key>application-identifier</key><string>${entitlements['application-identifier']}</string><key>keychain-access-groups</key><array>${entitlements['keychain-access-groups'].map((group) => `<string>${group}</string>`).join('')}</array></dict></plist>`,
+  );
+
+/** An executable holding one simulator entitlement section, and its otool view. */
+function sectionedExecutable(path: string, entitlements: Entitlements) {
+  const xml = entitlementsPlist(entitlements);
+  writeFileSync(path, Buffer.concat([Buffer.alloc(32), xml, Buffer.alloc(8)]));
+  const commands = `sectname __entitlements\nsegname __TEXT\naddr 0x1000\nsize 0x${xml.length.toString(16)}\noffset 32\n`;
+  return { xml, commands, entitlements };
+}
+
+/**
+ * A simulator archive; `widget` adds PlugIns/StationAgentActivity.appex with
+ * the given Info.plist and section, and makes the app's section carry the
+ * shared group unless `appEntitlements` says otherwise.
+ */
+function archivedFixture({
+  widget,
+  notificationService,
+  appEntitlements,
+}: {
+  widget?: {
+    info?: Record<string, unknown>;
+    entitlements?: Entitlements;
+  };
+  /** Adds PlugIns/StationNotificationService.appex the same way (#2590). */
+  notificationService?: {
+    info?: Record<string, unknown>;
+    entitlements?: Entitlements;
+  };
+  appEntitlements?: Entitlements;
+} = {}) {
   const { root } = fixture();
   const archive = join(root, 'archive');
   const app = join(archive, 'Products/Applications/Station Dev.app');
   mkdirSync(app, { recursive: true });
   const executable = join(app, 'Station Dev');
-  const xml = Buffer.from(
-    `<plist><dict><key>application-identifier</key><string>${id}</string><key>keychain-access-groups</key><array><string>${id}</string></array></dict></plist>`,
-  );
-  writeFileSync(
+  const sections = new Map<string, ReturnType<typeof sectionedExecutable>>();
+  const appSection = sectionedExecutable(
     executable,
-    Buffer.concat([Buffer.alloc(32), xml, Buffer.alloc(8)]),
+    appEntitlements ??
+      simulatorEntitlements(id, {
+        agentActivity:
+          widget !== undefined || notificationService !== undefined,
+      }),
   );
-  const commands = `sectname __entitlements\nsegname __TEXT\naddr 0x1000\nsize 0x${xml.length.toString(16)}\noffset 32\n`;
+  sections.set(executable, appSection);
+  const appex = join(app, 'PlugIns/StationAgentActivity.appex');
+  const widgetExpected = simulatorAgentActivityEntitlements(id);
+  const widgetInfo = {
+    CFBundleIdentifier: widgetExpected['application-identifier'],
+    CFBundleExecutable: 'StationAgentActivity',
+    ...widget?.info,
+  };
+  if (widget) {
+    mkdirSync(appex, { recursive: true });
+    const widgetExecutable = join(appex, 'StationAgentActivity');
+    sections.set(
+      widgetExecutable,
+      sectionedExecutable(
+        widgetExecutable,
+        widget.entitlements ?? widgetExpected,
+      ),
+    );
+  }
+  const nse = join(app, 'PlugIns/StationNotificationService.appex');
+  const nseExpected = simulatorExtensionEntitlements(id, 'NotificationService');
+  const nseInfo = {
+    CFBundleIdentifier: nseExpected['application-identifier'],
+    CFBundleExecutable: 'StationNotificationService',
+    ...notificationService?.info,
+  };
+  if (notificationService) {
+    mkdirSync(nse, { recursive: true });
+    const nseExecutable = join(nse, 'StationNotificationService');
+    sections.set(
+      nseExecutable,
+      sectionedExecutable(
+        nseExecutable,
+        notificationService.entitlements ?? nseExpected,
+      ),
+    );
+  }
   const info = {
     CFBundleIdentifier: id,
     CFBundleExecutable: 'Station Dev',
@@ -158,26 +335,157 @@ function archivedFixture() {
       });
     if (command === 'plutil' && args.at(-1) === join(app, 'Info.plist'))
       return JSON.stringify(info);
+    if (command === 'plutil' && args.at(-1) === join(appex, 'Info.plist'))
+      return JSON.stringify(widgetInfo);
+    if (command === 'plutil' && args.at(-1) === join(nse, 'Info.plist'))
+      return JSON.stringify(nseInfo);
     if (command === 'plutil') {
-      expect(readFileSync(args.at(-1)!)).toEqual(xml);
-      return JSON.stringify(simulatorEntitlements(id));
+      // The verifier copied one section out; answer with what it encodes.
+      const bytes = readFileSync(args.at(-1)!);
+      const section = [...sections.values()].find(({ xml }) =>
+        xml.equals(bytes),
+      );
+      expect(section).toBeDefined();
+      return JSON.stringify(section!.entitlements);
     }
-    if (command === 'xcrun') return args[0] === 'vtool' ? platform : commands;
+    if (command === 'xcrun' && args[0] === 'vtool') return platform;
+    if (command === 'xcrun') {
+      const section = sections.get(args.at(-1)!);
+      expect(section).toBeDefined();
+      return section!.commands;
+    }
     return '';
   });
   return {
     root,
     archive,
     app,
+    appex,
+    nse,
     executable,
-    xml,
-    commands,
+    xml: appSection.xml,
+    commands: appSection.commands,
     run,
     setPlatform: (value: string) => {
       platform = value;
     },
   };
 }
+
+const codesignCalls = (run: ReturnType<typeof archivedFixture>['run']) =>
+  run.mock.calls.filter(([command]) => command === 'codesign');
+
+test('verification checks an embedded Live Activity extension and seals it before the app', () => {
+  const f = archivedFixture({ widget: {} });
+  expect(verifyIosSimulator(f.archive, { root: f.root, run: f.run })).toBe(
+    f.app,
+  );
+  // Both sections were read: the app's (with the shared group) and the widget's.
+  expect(f.run).toHaveBeenCalledWith('xcrun', [
+    'otool',
+    '-l',
+    join(f.appex, 'StationAgentActivity'),
+  ]);
+  expect(codesignCalls(f.run).map(([, args]) => args)).toEqual([
+    ['--force', '--sign', '-', '--identifier', `${id}.AgentActivity`, f.appex],
+    ['--force', '--sign', '-', '--identifier', id, f.app],
+    ['--verify', '--strict', f.app],
+  ]);
+});
+
+test('verification checks both extensions and seals each before the app (#2590)', () => {
+  const f = archivedFixture({ widget: {}, notificationService: {} });
+  expect(verifyIosSimulator(f.archive, { root: f.root, run: f.run })).toBe(
+    f.app,
+  );
+  expect(f.run).toHaveBeenCalledWith('xcrun', [
+    'otool',
+    '-l',
+    join(f.nse, 'StationNotificationService'),
+  ]);
+  expect(codesignCalls(f.run).map(([, args]) => args)).toEqual([
+    ['--force', '--sign', '-', '--identifier', `${id}.AgentActivity`, f.appex],
+    [
+      '--force',
+      '--sign',
+      '-',
+      '--identifier',
+      `${id}.NotificationService`,
+      f.nse,
+    ],
+    ['--force', '--sign', '-', '--identifier', id, f.app],
+    ['--verify', '--strict', f.app],
+  ]);
+});
+
+test('verification refuses a Notification Service Extension outside the identity or with more than the shared group', () => {
+  const foreign = archivedFixture({
+    widget: {},
+    notificationService: {
+      info: { CFBundleIdentifier: 'io.kontourai.station.NotificationService' },
+    },
+  });
+  expect(() =>
+    verifyIosSimulator(foreign.archive, {
+      root: foreign.root,
+      run: foreign.run,
+    }),
+  ).toThrow('The Notification Service extension does not extend');
+  const wider = archivedFixture({
+    widget: {},
+    notificationService: {
+      entitlements: {
+        'application-identifier': `${id}.NotificationService`,
+        'keychain-access-groups': [id, `${id}.agentactivity`],
+      },
+    },
+  });
+  expect(() =>
+    verifyIosSimulator(wider.archive, { root: wider.root, run: wider.run }),
+  ).toThrow('Notification Service extension is missing its shared keychain');
+  expect(codesignCalls(wider.run).map(([, args]) => args.at(-1))).toEqual([
+    wider.appex,
+  ]);
+});
+
+test.each([
+  [
+    'a bundle id outside the development identity',
+    { CFBundleIdentifier: 'io.kontourai.station.AgentActivity' },
+  ],
+  ['another executable', { CFBundleExecutable: 'Other' }],
+])('verification refuses an extension with %s', (_name, info) => {
+  const f = archivedFixture({ widget: { info } });
+  expect(() =>
+    verifyIosSimulator(f.archive, { root: f.root, run: f.run }),
+  ).toThrow('does not extend the development identity');
+  expect(codesignCalls(f.run)).toEqual([]);
+});
+
+test('verification refuses an extension whose section is not the shared group alone', () => {
+  const f = archivedFixture({
+    widget: {
+      entitlements: {
+        'application-identifier': `${id}.AgentActivity`,
+        'keychain-access-groups': [id, `${id}.agentactivity`],
+      },
+    },
+  });
+  expect(() =>
+    verifyIosSimulator(f.archive, { root: f.root, run: f.run }),
+  ).toThrow('missing its shared keychain group');
+  expect(codesignCalls(f.run)).toEqual([]);
+});
+
+test('an embedded extension requires the app section to carry the shared group', () => {
+  const f = archivedFixture({
+    widget: {},
+    appEntitlements: simulatorEntitlements(id),
+  });
+  expect(() =>
+    verifyIosSimulator(f.archive, { root: f.root, run: f.run }),
+  ).toThrow('private keychain identity');
+});
 
 test('verification reads the actual section and seals resources without macOS iOS entitlements', () => {
   const f = archivedFixture();

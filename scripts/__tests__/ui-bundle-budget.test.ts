@@ -2,7 +2,6 @@ import { spawnSync } from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -22,136 +21,25 @@ import {
 } from '../ui-bundle-budget.mjs';
 
 const repositoryRoot = resolve(import.meta.dirname, '../..');
-const mergeDriver = join(repositoryRoot, 'scripts/merge-ui-bundle-budget.mjs');
 const uiBundleBudget = join(repositoryRoot, 'scripts/ui-bundle-budget.mjs');
 
-describe('UI bundle budget merge-driver entry point', () => {
-  const fixtures: string[] = [];
-  afterEach(() => {
-    while (fixtures.length > 0)
-      rmSync(fixtures.pop()!, { recursive: true, force: true });
-  });
-
-  function fixture({
-    ours = '{"entryJsGzipBytes":309647,"entryCssGzipBytes":43400}\n',
-    theirs = '{"entryJsGzipBytes":309574,"entryCssGzipBytes":43419}\n',
-  } = {}) {
-    const root = mkdtempSync(join(tmpdir(), 'station-ui-budget-driver-test-'));
-    fixtures.push(root);
-    const paths = {
-      ancestor: join(root, 'ancestor.json'),
-      ours: join(root, 'ours.json'),
-      theirs: join(root, 'theirs.json'),
-    };
-    writeFileSync(
-      paths.ancestor,
-      '{"entryJsGzipBytes":309574,"entryCssGzipBytes":43400}\n',
-    );
-    writeFileSync(paths.ours, ours);
-    writeFileSync(paths.theirs, theirs);
-    return { paths };
-  }
-
-  function invoke(subject: ReturnType<typeof fixture>) {
-    return spawnSync(
-      process.execPath,
-      [
-        mergeDriver,
-        subject.paths.ancestor,
-        subject.paths.ours,
-        subject.paths.theirs,
-        '7',
-        'scripts/ui-bundle-budget.json',
-      ],
-      { cwd: repositoryRoot, encoding: 'utf8', windowsHide: true },
-    );
-  }
-
+describe('UI bundle budget entry point', () => {
+  // scripts/ui-bundle-delta-report.mjs imports this module for its
+  // measurement; importing it must never run the gate itself, even when the
+  // importer's argv path merely shares the file's suffix.
   it('keeps the UI budget import inert under a suffix-colliding argv path', () => {
     const result = spawnSync(
       process.execPath,
       [
         '--input-type=module',
         '-e',
-        `process.argv[1] = ${JSON.stringify('/tmp/fixture-ui-bundle-budget.mjs')}; await import(${JSON.stringify(pathToFileURL(mergeDriver).href)});`,
+        `process.argv[1] = ${JSON.stringify('/tmp/fixture-ui-bundle-budget.mjs')}; await import(${JSON.stringify(pathToFileURL(uiBundleBudget).href)});`,
       ],
       { cwd: repositoryRoot, encoding: 'utf8', windowsHide: true },
     );
     expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).not.toContain('dist-ui/index.html');
     expect(result.stdout).not.toContain('Initial UI bundle');
-    expect(uiBundleBudget.endsWith('ui-bundle-budget.mjs')).toBe(true);
-  });
-
-  it('overwrites %A with the higher of each field across both sides', () => {
-    // Each side is higher on a different field, so neither take-ours nor
-    // take-theirs produces this result.
-    const subject = fixture();
-    const result = invoke(subject);
-    expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(readFileSync(subject.paths.ours, 'utf8'))).toEqual({
-      entryJsGzipBytes: 309647,
-      entryCssGzipBytes: 43419,
-    });
-  });
-
-  it('never runs a build: no npm on PATH, no node_modules required', () => {
-    // The old design built the pre-merge working tree and called the result
-    // the merged tree (station#1107). Running with an empty PATH proves the
-    // resolution cannot be coming from a build.
-    const subject = fixture();
-    const result = spawnSync(
-      process.execPath,
-      [
-        mergeDriver,
-        subject.paths.ancestor,
-        subject.paths.ours,
-        subject.paths.theirs,
-        '7',
-        'scripts/ui-bundle-budget.json',
-      ],
-      {
-        cwd: repositoryRoot,
-        encoding: 'utf8',
-        env: { PATH: '' },
-        windowsHide: true,
-      },
-    );
-    expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(readFileSync(subject.paths.ours, 'utf8'))).toEqual({
-      entryJsGzipBytes: 309647,
-      entryCssGzipBytes: 43419,
-    });
-  });
-
-  it('labels the written number provisional and names the real measurement', () => {
-    const subject = fixture();
-    const result = invoke(subject);
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain('provisional');
-    expect(result.stdout).toContain('npm run build:ui');
-    expect(result.stdout).not.toContain('measured');
-  });
-
-  it('exits non-zero without writing %A when a side is not a budget document', () => {
-    const subject = fixture({ ours: '<<<<<<< not json\n' });
-    const before = readFileSync(subject.paths.ours, 'utf8');
-    const result = invoke(subject);
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('conflict left unresolved');
-    expect(result.stderr).toContain('ours side is not parseable JSON');
-    expect(readFileSync(subject.paths.ours, 'utf8')).toBe(before);
-  });
-
-  it('exits non-zero without writing %A when a side is missing a field', () => {
-    const subject = fixture({ theirs: '{"entryJsGzipBytes":1}\n' });
-    const before = readFileSync(subject.paths.ours, 'utf8');
-    const result = invoke(subject);
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain(
-      'theirs side has no non-negative integer entryCssGzipBytes',
-    );
-    expect(readFileSync(subject.paths.ours, 'utf8')).toBe(before);
   });
 });
 

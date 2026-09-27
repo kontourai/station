@@ -44,6 +44,7 @@ function buildForm(): AgentFormData {
       mcpServers: ['github'],
       available: [],
       autoApprove: [],
+      unattendedAutoApprove: [],
       browser: true,
     },
     execution: {
@@ -139,6 +140,7 @@ describe('agent-editor utils', () => {
         mcpServers: ['github'],
         available: ['github_run', 'github_find'],
         autoApprove: ['github_*', 'github_run'],
+        unattendedAutoApprove: [],
         browser: true,
       },
     };
@@ -147,6 +149,7 @@ describe('agent-editor utils', () => {
       mcpServers: [],
       available: [],
       autoApprove: [],
+      unattendedAutoApprove: [],
       // Removing an integration leaves the built-in browser tools alone.
       browser: true,
     });

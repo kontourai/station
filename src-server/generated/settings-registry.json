@@ -122,6 +122,15 @@
       "configKey": "surfaceTrustFromVeritasEvidence"
     },
     {
+      "id": "device-helper-url",
+      "label": "Device helper URL",
+      "help": "Station lists this machine’s simulators and emulators through the device helper at this address.",
+      "scope": "station",
+      "section": "host-runtime",
+      "route": "/settings?view=host-runtime&highlight=device-helper-url",
+      "configKey": "mobileDeviceHubUrl"
+    },
+    {
       "id": "registry-url",
       "label": "Registry URL",
       "help": "The Registry page loads its catalog of agents, skills, and plugins from here.",

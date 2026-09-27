@@ -33,6 +33,43 @@ describe('packaged local browser open', () => {
     );
     expect(JSON.stringify(stdout.mock.calls)).not.toContain(token);
   });
+  test('--print hands over the one-time link instead of launching a browser (#2612)', async () => {
+    const token = 'b'.repeat(43);
+    const open = vi.fn().mockResolvedValue(true);
+    const stdout = vi.fn();
+    await runOpenCommand(['--instance=preview', '--print'], {
+      readRegistry: () => ({ version: 1, instances: { preview: instance } }),
+      isLive: () => true,
+      mintToken: vi.fn().mockResolvedValue(token),
+      open,
+      stdout,
+    });
+    expect(open).not.toHaveBeenCalled();
+    const lines = stdout.mock.calls.map(([line]) => line);
+    expect(lines).toContain(
+      `http://localhost:5492/#station-ui-bootstrap=${token}`,
+    );
+    // Minting replaced any unspent link; the output says so.
+    expect(lines.join('\n')).toContain('replaces any earlier unspent link');
+  });
+  test('--print takes no value', async () => {
+    await expect(
+      runOpenCommand(['--print=yes'], {
+        readRegistry: () => ({ version: 1, instances: { preview: instance } }),
+        isLive: () => true,
+      }),
+    ).rejects.toThrow('Usage: station open');
+  });
+  test('a browser that cannot launch points at --print', async () => {
+    await expect(
+      runOpenCommand([], {
+        readRegistry: () => ({ version: 1, instances: { preview: instance } }),
+        isLive: () => true,
+        mintToken: vi.fn().mockResolvedValue('c'.repeat(43)),
+        open: vi.fn().mockResolvedValue(false),
+      }),
+    ).rejects.toThrow('station open --print');
+  });
   test('requires a selection when multiple live instances exist', async () => {
     const open = vi.fn();
     await expect(

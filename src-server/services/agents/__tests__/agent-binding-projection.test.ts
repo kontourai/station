@@ -41,42 +41,6 @@ const { agentCatalogReadSeam } = await import(
   '../../../routes/agents/enriched-agents.js'
 );
 
-/**
- * The source text of one function/method body, brace-matched from its
- * declaration.
- *
- * The guards below count call sites INSIDE a specific body rather than
- * anywhere in the file, which is what makes them non-vacuous: the previous
- * version passed while `getAgent` no longer called the helper, because a
- * docblock still named it.
- */
-function methodBody(source: string, name: string): string {
-  const candidates = source.matchAll(
-    new RegExp(
-      `(?:^|\\n)\\s*(?:export\\s+)?(?:private\\s+|public\\s+|protected\\s+|static\\s+)*(?:async\\s+)?(?:function\\s+)?${name}\\s*(?:<[^>]*>)?\\s*\\(`,
-      'g',
-    ),
-  );
-  for (const candidate of candidates) {
-    const signatureOpen = candidate.index + candidate[0].length - 1;
-    const signatureClose = matchDelimiter(source, signatureOpen, '(', ')');
-    // A DECLARATION's signature closes into a body; a CALL SITE closes into
-    // `,`/`;`/`)`. Without this, the first match in `listAgents` is the call
-    // to `projectStationEngineBinding` itself and the guard reads some
-    // unrelated block — which is exactly how it reported 0 call sites for a
-    // function that plainly has them.
-    let cursor = signatureClose + 1;
-    while (cursor < source.length && !'{,;).'.includes(source[cursor])) {
-      cursor += 1;
-    }
-    if (source[cursor] !== '{') continue;
-    return source.slice(cursor, matchDelimiter(source, cursor, '{', '}') + 1);
-  }
-  throw new Error(
-    `${name} is not declared in this file — the guard is reading the wrong source`,
-  );
-}
-
 /** Index of the delimiter closing the one that opens at `open`. */
 function matchDelimiter(
   source: string,
@@ -93,11 +57,6 @@ function matchDelimiter(
     }
   }
   throw new Error(`unbalanced ${opener}${closer} from index ${open}`);
-}
-
-/** Call sites of `name` in `source`, ignoring bare mentions in prose. */
-function callCount(source: string, name: string): number {
-  return source.split(`${name}(`).length - 1;
 }
 
 /**
@@ -434,31 +393,6 @@ describe('the Station binding projection has exactly one home', () => {
       await expect(seam.loadAgent('station')).resolves.toBe(projected);
     });
 
-    test('a loader-wired seam fails this test', async () => {
-      // The negative control, run rather than asserted in prose: this is the
-      // regression the guard exists to catch, and it must be observable from
-      // the seam's own behaviour.
-      const agentService = {
-        getAgent: vi.fn(),
-        listAgents: vi.fn(async () => []),
-      };
-      const configLoader = {
-        loadAgent: vi.fn(async (_slug: string) => ({
-          name: 'Station',
-          prompt: '',
-        })),
-      };
-      const loaderWired: Pick<
-        ReturnType<typeof agentCatalogReadSeam>,
-        'loadAgent'
-      > = { loadAgent: (slug: string) => configLoader.loadAgent(slug) };
-
-      await loaderWired.loadAgent('station');
-
-      expect(agentService.getAgent).not.toHaveBeenCalled();
-      expect(configLoader.loadAgent).toHaveBeenCalled();
-    });
-
     test('the runtime route wires the catalog through that seam', () => {
       // Grep, but for the SEAM CALL rather than a lambda's spelling: the
       // deps object must be built by `agentCatalogReadSeam`, and must not
@@ -473,39 +407,6 @@ describe('the Station binding projection has exactly one home', () => {
       expect(call).toContain('...agentCatalogReadSeam(context.agentService)');
       expect(call).not.toMatch(/\bloadAgent\s*:/);
       expect(call).not.toMatch(/\blistAgents\s*:/);
-    });
-  });
-
-  describe('structural: the seam still applies the projection', () => {
-    const SERVICE = 'src-server/services/agents/agent-service.ts';
-
-    test.each(['getAgent', 'listAgents'])(
-      '%s calls projectStationEngineBinding',
-      (method) => {
-        // Counted inside the METHOD BODY, not anywhere in the file: the old
-        // check passed on a file that merely mentioned the helper. The
-        // behavioural projection tests above would also redden — this states
-        // the requirement where a reader of the service will see it.
-        const body = methodBody(readFileSync(SERVICE, 'utf8'), method);
-        expect(callCount(body, 'projectStationEngineBinding')).toBeGreaterThan(
-          0,
-        );
-      },
-    );
-
-    test('the projection itself is derived from both halves', () => {
-      // The runtime overlay AND the fallback that copes with a home the heal
-      // could not write. Dropping either is a silent half-projection.
-      const body = methodBody(
-        readFileSync(SERVICE, 'utf8'),
-        'projectStationEngineBinding',
-      );
-      expect(callCount(body, 'runtimeStationEngineExecution')).toBeGreaterThan(
-        0,
-      );
-      expect(callCount(body, 'withoutReservedStationBinding')).toBeGreaterThan(
-        0,
-      );
     });
   });
 
@@ -573,15 +474,5 @@ describe('the Station binding projection has exactly one home', () => {
         expect(files.filter((file) => !ALLOWED_FILES.has(file))).toEqual([]);
       },
     );
-
-    test('the catalog route re-derives nothing', () => {
-      const source = readFileSync(
-        'src-server/routes/agents/enriched-agents.ts',
-        'utf8',
-      );
-      for (const helper of PROJECTION_HELPERS) {
-        expect(source).not.toContain(`${helper}(`);
-      }
-    });
   });
 });

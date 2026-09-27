@@ -1,9 +1,11 @@
 import {
+  ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import { type FetchSseConnection, fetchSSE } from '@kontourai/station-sdk';
 import type { QueryClient } from '@tanstack/react-query';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../clientDocumentSession';
 import {
   handleOrchestrationEvent,
@@ -14,6 +16,7 @@ import {
   recordReplaySnapshot,
 } from './replay/capture-tap';
 import { createStreamCursorTracker, parseStreamSequence } from './resumeCursor';
+import { clearSequencedLiveEvents } from './sequencedLiveEvents';
 import { applyOrchestrationSnapshot } from './snapshotHandlers';
 import { setStreamConnectionState } from './streamConnectionState';
 import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
@@ -103,8 +106,22 @@ const ORCHESTRATION_STREAM_STALL_TIMEOUT_MS = 75_000;
  */
 const requestedBases = new Set<string>();
 let recoveryListenersInstalled = false;
+let hiddenSince: number | undefined;
 /** apiBases whose chats this document has already seeded from a snapshot. */
 const basesWithSnapshot = new Set<string>();
+/** Last sequence this document applied, retained when a transport is replaced. */
+const appliedCursors = new Map<string, string>();
+const streamEpochs = new Map<string, string>();
+
+/** Re-read present-tense state when a previously viewed authority returns. */
+function notifyOrchestrationAuthorityChanged(apiBase: string): void {
+  const owned = activeSources.get(apiBase);
+  if (owned && !owned.ended && !owned.connection.signal.aborted) {
+    owned.connection.restart();
+  } else if (requestedBases.has(apiBase)) {
+    ensureOrchestrationEventStream(apiBase);
+  }
+}
 
 function reensureRequestedStreams(): void {
   if (
@@ -113,6 +130,22 @@ function reensureRequestedStreams(): void {
   )
     return;
   for (const apiBase of requestedBases) ensureOrchestrationEventStream(apiBase);
+}
+
+function recoverAfterVisibilityChange(): void {
+  if ((globalThis as { document?: { hidden?: boolean } }).document?.hidden) {
+    hiddenSince = Date.now();
+    return;
+  }
+  const hiddenFor = hiddenSince === undefined ? 0 : Date.now() - hiddenSince;
+  hiddenSince = undefined;
+  if (hiddenFor > 30_000) {
+    for (const owned of activeSources.values()) {
+      if (!owned.ended && !owned.connection.signal.aborted)
+        owned.connection.restart();
+    }
+  }
+  reensureRequestedStreams();
 }
 
 function installRecoveryListeners(): void {
@@ -124,11 +157,18 @@ function installRecoveryListeners(): void {
   };
   scope.document?.addEventListener(
     'visibilitychange',
-    reensureRequestedStreams,
+    recoverAfterVisibilityChange,
   );
   scope.window?.addEventListener('focus', reensureRequestedStreams);
   scope.window?.addEventListener('online', reensureRequestedStreams);
   scope.window?.addEventListener('pageshow', reensureRequestedStreams);
+  scope.window?.addEventListener(
+    'station:orchestration-authority-change',
+    (event) =>
+      notifyOrchestrationAuthorityChanged(
+        (event as CustomEvent<string>).detail,
+      ),
+  );
 }
 
 /**
@@ -157,6 +197,7 @@ function installRecoveryListeners(): void {
  * activity record, supersedes this.
  */
 const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
+  'child-work.updated',
   'turn.started',
   'runtime.error',
   'session.exited',
@@ -308,6 +349,8 @@ export function ensureOrchestrationEventStream(
   // independent dedup of its own. Safe unconditionally: a pre-archive#1092 host
   // never sets a frame `id:`, so the guard never drops anything against it.
   const cursor = createStreamCursorTracker();
+  const initialLastEventId = appliedCursors.get(apiBase);
+  cursor.adopt(initialLastEventId);
   // archive#1225: the FIRST snapshot this stream instance ever receives is
   // always the ordinary connect-time snapshot (a brand-new stream has no
   // `Last-Event-ID` yet, so `resolveStreamResumePlan` always picks the
@@ -326,9 +369,15 @@ export function ensureOrchestrationEventStream(
   let receiving = false;
   const authenticatedStream = fetchSSE(`${apiBase}/api/orchestration/events`, {
     authentication: 'required',
+    initialLastEventId,
     // station#2301: lets the server's stream open/close lines say WHICH
     // document connected — see `clientDocumentSession.ts`.
-    headers: { 'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID },
+    headers: {
+      'X-Station-Client-Session': CLIENT_DOCUMENT_SESSION_ID,
+      ...(streamEpochs.has(apiBase)
+        ? { 'X-Station-Stream-Epoch': streamEpochs.get(apiBase)! }
+        : {}),
+    },
     // archive#1848: a ceiling equal to the initial delay is not a backoff
     // ladder — it is a fixed 2s poll that never decays, so a server that is
     // down, restarting, or refusing keeps receiving ~30 requests/minute from
@@ -347,6 +396,33 @@ export function ensureOrchestrationEventStream(
         receiving = true;
       }
       if (raw.event === ORCHESTRATION_STREAM_CAUGHT_UP_EVENT) {
+        // station#2530 review D6: an empty or malformed body is a legitimate
+        // wire shape (an older server, a rolling deploy mid-response) — it
+        // means no reconcile payload, never a reason to throw inside the SSE
+        // handler and drop the connection's whole message loop.
+        let caughtUp: Partial<OrchestrationSnapshotPayload> = {};
+        if (raw.data) {
+          try {
+            caughtUp = JSON.parse(
+              raw.data,
+            ) as Partial<OrchestrationSnapshotPayload>;
+          } catch {
+            caughtUp = {};
+          }
+        }
+        if (caughtUp.sessions) {
+          applyOrchestrationSnapshot(caughtUp as OrchestrationSnapshotPayload, {
+            apiBase,
+            isReconnectFallback: hasReceivedSnapshot,
+            queryClient: currentStreamQueryClient(apiBase),
+          });
+          hasReceivedSnapshot = true;
+          basesWithSnapshot.add(apiBase);
+        }
+        if (parseStreamSequence(raw.id) !== undefined) {
+          cursor.adopt(raw.id);
+          appliedCursors.set(apiBase, raw.id!);
+        }
         setStreamConnectionState(apiBase, 'caught-up');
         recordReplayConnection(apiBase, 'caught-up');
       } else if (raw.event === 'orchestration:snapshot') {
@@ -355,8 +431,16 @@ export function ensureOrchestrationEventStream(
         settleSemanticDeliveryBuffer(apiBase);
         // A snapshot always replaces local state — adopt its cursor
         // unconditionally rather than gating it through `admit`.
-        cursor.adopt(raw.id);
         const payload = JSON.parse(raw.data) as OrchestrationSnapshotPayload;
+        const previousEpoch = streamEpochs.get(apiBase);
+        if (payload.epoch && previousEpoch && payload.epoch !== previousEpoch) {
+          activeChatsStore.clearConversationActivity();
+          clearSequencedLiveEvents(apiBase);
+        }
+        if (payload.epoch) streamEpochs.set(apiBase, payload.epoch);
+        cursor.adopt(raw.id);
+        if (parseStreamSequence(raw.id) !== undefined)
+          appliedCursors.set(apiBase, raw.id!);
         recordReplaySnapshot(apiBase, payload, hasReceivedSnapshot);
         applyOrchestrationSnapshot(payload, {
           apiBase,
@@ -365,8 +449,17 @@ export function ensureOrchestrationEventStream(
         });
         hasReceivedSnapshot = true;
         basesWithSnapshot.add(apiBase);
+      } else if (raw.event === ORCHESTRATION_STREAM_ACTIVITY_EVENT) {
+        const payload = JSON.parse(raw.data) as {
+          conversation?: import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding;
+        };
+        activeChatsStore.applyConversationActivity(
+          payload.conversation?.activity,
+        );
       } else if (raw.event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
         if (!cursor.admit(raw.id)) return;
+        if (parseStreamSequence(raw.id) !== undefined)
+          appliedCursors.set(apiBase, raw.id!);
         // archive#1410: the frame is a wrapper, not a bare event — the
         // server attaches a completed turn's provenance envelope as a
         // SIBLING of `event` so the canonical event itself stays untouched.

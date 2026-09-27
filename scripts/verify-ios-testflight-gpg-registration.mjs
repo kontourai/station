@@ -3,6 +3,7 @@ import {
   INTERNAL_TESTFLIGHT_GPG_GITHUB_LOGIN,
   INTERNAL_TESTFLIGHT_GPG_SIGNER_EMAIL,
 } from './ios-testflight-internal-authority.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 export {
   INTERNAL_TESTFLIGHT_GPG_GITHUB_LOGIN,
@@ -78,7 +79,7 @@ function option(args, name) {
   return index < 0 ? undefined : args[index + 1];
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   const expectedFingerprint = option(process.argv, 'expected-fingerprint');
   const authorityPath = option(process.argv, 'authority-colons');
   const githubPath = option(process.argv, 'github-colons');

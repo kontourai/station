@@ -273,6 +273,17 @@ export const APP_SETTINGS_REGISTRY = [
     description: 'Shell used when Station spawns a terminal session.',
   }),
   defineSetting({
+    key: 'mobileDeviceHubUrl',
+    scope: 'station',
+    descriptor: { kind: 'string' },
+    label: 'Device helper URL',
+    help: 'Station lists this machine’s simulators and emulators through the device helper at this address.',
+    description:
+      'HTTP address of the local device helper Station uses to list and capture simulators and emulators. Loopback addresses on a high port only — http://127.0.0.1:<port>, and not port 3000 or 3141. Leave empty when no helper runs on this machine.',
+    placeholder: 'http://127.0.0.1:<port>',
+    envFallback: 'STATION_MOBILE_DEVICE_HUB_URL',
+  }),
+  defineSetting({
     key: 'disableDefaultSkillRegistries',
     scope: 'station',
     descriptor: { kind: 'boolean' },

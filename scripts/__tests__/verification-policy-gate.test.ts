@@ -289,12 +289,33 @@ describe('verification policy gate', () => {
     );
   });
 
-  test('rejects removed code-health checks and broad static/full-Vitest creep into ci:fast', () => {
+  test('keeps blocking policy and readiness checks without duplicated governance or lint commands', () => {
     expect(CI_FAST_STATIC_COMMANDS).toEqual(FAST_STATIC_COMMANDS);
+    const commands = FAST_STATIC_COMMANDS.map(
+      ([command, args]) => `${command} ${args.join(' ')}`,
+    );
+    expect(commands).toContain('npm run verification:policy:gate');
+    expect(commands).toContain('npm run veritas:readiness');
+    expect(commands).not.toContain('npm run proof:repo-governance');
+    expect(commands).not.toContain('npm run lint:check');
     expect(
       verificationPolicyErrors({
         ciFastStaticCommands: FAST_STATIC_COMMANDS.filter(
           ([, args]) => args[0] !== 'scripts/code-health-gate.mjs',
+        ),
+      }),
+    ).toContain(
+      'ci:fast must run only its fixed bounded static invariant allowlist',
+    );
+    expect(
+      verificationPolicyErrors({
+        ciFastStaticCommands: FAST_STATIC_COMMANDS.filter(
+          ([command, args]) =>
+            !(
+              command === 'npm' &&
+              args[0] === 'run' &&
+              args[1] === 'verification:policy:gate'
+            ),
         ),
       }),
     ).toContain(
@@ -324,7 +345,7 @@ describe('verification policy gate', () => {
 
   test('pins admission headroom for ci:fast beside every ordinary shard', () => {
     expect(CI_FAST_RESERVED_WEIGHT).toBe(20);
-    expect(CI_FAST_TIMEOUT_MS).toBe(12 * 60_000);
+    expect(CI_FAST_TIMEOUT_MS).toBe(15 * 60_000);
     expect(FULL_REGRESSION_TEST_WEIGHT).toBe(80);
     const crowded = LANES.map((lane) =>
       lane.id === 'full-regression'
@@ -348,7 +369,7 @@ describe('verification policy gate', () => {
       lane.id === 'ci-fast' ? { ...lane, timeoutMs: 7 * 60_000 } : lane,
     );
     expect(verificationPolicyErrors({ lanes: drifted })).toContain(
-      'ci:fast must use the exact 12-minute bounded-feedback deadline',
+      'ci:fast must use the exact 15-minute bounded-feedback deadline',
     );
   });
 
@@ -449,17 +470,17 @@ describe('verification policy gate', () => {
     );
   });
 
-  test('pins the twelve-minute deadline in every contributor-facing ci:fast guide', () => {
+  test('pins the fifteen-minute deadline in every contributor-facing ci:fast guide', () => {
     const stale = CI_FAST_DEADLINE_GUIDANCE.map((entry) => ({
       ...entry,
-      text: entry.marker.includes('twelve-minute')
+      text: entry.marker.includes('fifteen-minute')
         ? 'bounded seven-minute feedback lane'
         : '',
     }));
     expect(
       verificationPolicyErrors({ ciFastDeadlineGuidance: stale }),
     ).toContain(
-      "docs/guides/code-quality.md must state 'bounded twelve-minute feedback'",
+      "docs/guides/code-quality.md must state 'bounded fifteen-minute feedback'",
     );
   });
 

@@ -18,9 +18,17 @@ export const BOOT_INTERNAL_SECRET_ENV_KEYS = [
  * Settings addressed to this process by its own supervisor, never to the
  * processes it spawns. `STATION_STDOUT_LOGS=0` inherited by a `station start`
  * or test run inside a desktop terminal would silently empty that process's
- * stdout log (#2327).
+ * stdout log (#2327). The supervision markers say "a supervisor restarts
+ * THIS process": inherited by a terminal or engine child, a Station started
+ * from there would read itself as supervised and refuse its own core update
+ * (#2674), or arm a parent watchdog against a process that is not its parent.
  */
-const SUPERVISOR_CHANNEL_ENV_KEYS = ['STATION_STDOUT_LOGS'] as const;
+const SUPERVISOR_CHANNEL_ENV_KEYS = [
+  'STATION_STDOUT_LOGS',
+  'STATION_SUPERVISOR_PID',
+  'STATION_SUPERVISOR_BIRTH',
+  'STATION_SERVICE_MANAGED',
+] as const;
 
 /** Removes the boot-internal secrets and, despite the name, the
  * supervisor-channel settings above: every caller that must not leak one

@@ -233,18 +233,6 @@ describe('shouldRenderSetupLauncher', () => {
     expect(decide()).toBe(true);
   });
 
-  test('credentialRequired suppresses it — the credential banner owns the screen', () => {
-    expect(decide({ credentialRequired: true })).toBe(false);
-  });
-
-  test('an invisible setup banner suppresses it', () => {
-    expect(decide({ setupVisible: false })).toBe(false);
-  });
-
-  test('no content suppresses it — there would be nothing to render', () => {
-    expect(decide({ setupContent: null })).toBe(false);
-  });
-
   test('/connections suppresses it, including nested routes', () => {
     expect(decide({ pathname: '/connections' })).toBe(false);
     expect(decide({ pathname: '/connections/providers' })).toBe(false);
@@ -274,7 +262,9 @@ describe('shouldRenderSetupLauncher', () => {
 
   test('every remaining combination of the four inputs', () => {
     // 2x2x2x2 exhaustive: the predicate is a conjunction, so exactly one of
-    // the sixteen rows may be true. A future clause that flips any other row
+    // the sixteen rows may be true — the all-clear row pinned above, so a
+    // credential requirement, a hidden banner, or missing content each
+    // suppresses it. A future clause that flips any other row
     // reddens here rather than being discovered on a blank route.
     const rows: boolean[] = [];
     for (const credentialRequired of [false, true])

@@ -25,10 +25,16 @@
  * for an existing root first, so re-running this at every boot is a true
  * no-op once the root exists (idempotent, and never rewrites `createdAt`).
  */
+
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
+import type {
+  InternalSessionReadScope,
+  SessionReadAuthority,
+} from '@kontourai/station-contracts/tenancy';
 import { getOrchestrationDatabasePath } from '../domain/migrations/003-orchestration-events.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
+import { currentKnowledgeReadScope } from '../runtime/request-read-authority-context.js';
 import {
   CONVERSATION_ROOT_ID,
   CONVERSATION_STORE_ADAPTER_ID,
@@ -51,6 +57,16 @@ interface EnsureConversationKnowledgeRootDeps {
   sessionReader: ConversationSessionReader;
   fileStores: Map<string, ConversationFileStoreReader>;
   getUserId: () => string | undefined;
+  /**
+   * The authority the adapter's session leg reads with. The file-memory leg
+   * keeps keying on `getUserId`; the session leg must read as a principal,
+   * because a session is readable only by its recorded principal owner (or
+   * that owner's personal conversation account).
+   */
+  getReadAuthority?: () =>
+    | SessionReadAuthority
+    | InternalSessionReadScope
+    | undefined;
   /** `projectHomeDir` — used only to derive the documentary `storeRoot` path
    * (`{projectHomeDir}/data/orchestration.sqlite`) recorded on the root for
    * Settings/CLI listings; the adapter itself never reads this path (see
@@ -79,6 +95,9 @@ export async function ensureConversationKnowledgeRoot(
       sessionReader: deps.sessionReader,
       fileStores: deps.fileStores,
       getUserId: deps.getUserId,
+      ...(deps.getReadAuthority
+        ? { getReadAuthority: deps.getReadAuthority }
+        : {}),
     }),
   );
 
@@ -97,4 +116,50 @@ export async function ensureConversationKnowledgeRoot(
     createdAt: new Date().toISOString(),
   };
   await deps.persistence.saveKnowledgeStoreRoot(root);
+}
+
+/**
+ * The runtime's conversation-knowledge registration, with its read scope
+ * fixed: sessions are read as the principal of the `/api/knowledge` request
+ * the adapter runs inside, or, while the Station indexer builds the shared
+ * index/graph, as ALL sessions (every read path re-checks the caller before
+ * showing a record), and none are read outside either. Legacy file-memory conversations keep their OS-alias
+ * key. Station runtime calls this; it takes no authority parameter, so its
+ * composition cannot substitute a constant reader.
+ */
+export async function registerRuntimeConversationKnowledgeRoot(deps: {
+  provider: KnowledgeStoreProvider;
+  persistence: KnowledgeStoreRootPersistence;
+  /** The orchestration service, structurally. */
+  sessions: Pick<
+    ConversationSessionReader,
+    'listSessionReadModel' | 'sessionQueries'
+  > & {
+    canUserReadConversation(
+      conversationId: string,
+      scope: SessionReadAuthority | InternalSessionReadScope,
+    ): boolean;
+  };
+  fileStores: Map<string, ConversationFileStoreReader>;
+  fileMemoryUserId: () => string | undefined;
+  projectHomeDir: string;
+  knowledgeStoresEnabled: AppConfig['knowledgeStores'];
+}): Promise<void> {
+  await ensureConversationKnowledgeRoot({
+    provider: deps.provider,
+    persistence: deps.persistence,
+    sessionReader: {
+      listSessionReadModel: (scope) =>
+        deps.sessions.listSessionReadModel(scope),
+      sessionQueries: deps.sessions.sessionQueries,
+      // The cheap readability check the graph reads use (no transcript).
+      canReadConversation: (conversationId, scope) =>
+        deps.sessions.canUserReadConversation(conversationId, scope),
+    },
+    fileStores: deps.fileStores,
+    getUserId: deps.fileMemoryUserId,
+    getReadAuthority: currentKnowledgeReadScope,
+    projectHomeDir: deps.projectHomeDir,
+    knowledgeStoresEnabled: deps.knowledgeStoresEnabled,
+  });
 }

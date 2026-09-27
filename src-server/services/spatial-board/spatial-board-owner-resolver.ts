@@ -22,7 +22,12 @@ interface SpatialBoardOwnerResolverDeps {
       authority: SessionReadAuthority,
     ): Promise<readonly Session[]>;
   };
-  sessionAuthority: SessionReadAuthority;
+  /**
+   * The session-read authority of the request resolving the board. Sessions
+   * and runs are resolved only as that principal; with no request (or no
+   * authority) they resolve as missing rather than as anyone else.
+   */
+  sessionAuthority: (request?: Request) => SessionReadAuthority | undefined;
   approvals: { has(id: string): boolean };
   /** Exact receipt reads: no index repair, lock acquisition, or publication. */
   reviews: { read(id: string, projectSlug: string): Promise<unknown | null> };
@@ -54,7 +59,8 @@ const kind = <K extends WorkReference['kind']>(
 export function createSpatialBoardOwnerResolver(
   deps: SpatialBoardOwnerResolverDeps,
 ): SpatialBoardResolver {
-  return new SpatialBoardResolver(() => {
+  return new SpatialBoardResolver((request) => {
+    const sessionAuthority = deps.sessionAuthority(request);
     // This snapshot and promise live for ONE GET /resolved observation. They
     // make owner groups agree within the request without caching a rejected or
     // fulfilled inventory across the next read.
@@ -70,7 +76,9 @@ export function createSpatialBoardOwnerResolver(
       ));
     let allRuns: Promise<readonly RunSummary[]> | undefined;
     const readAllRuns = () =>
-      (allRuns ??= deps.runs.listRuns(deps.sessionAuthority));
+      (allRuns ??= sessionAuthority
+        ? deps.runs.listRuns(sessionAuthority)
+        : Promise.resolve([]));
     return {
       project: {
         resolve: async (references) => {
@@ -100,8 +108,9 @@ export function createSpatialBoardOwnerResolver(
       session: {
         resolve: async (references) => {
           const sessions = new Map(
-            (
-              await deps.sessions.listSessionReadModel(deps.sessionAuthority)
+            (sessionAuthority
+              ? await deps.sessions.listSessionReadModel(sessionAuthority)
+              : []
             ).map((session) => [session.threadId, session]),
           );
           return kind(references, 'session').map((reference) => {

@@ -1284,7 +1284,7 @@ interface Screen {
 const SCREENS: Screen[] = [
   {
     name: 'mobile-activity-compact',
-    title: 'Mobile — Activity controls in a short dock',
+    title: 'Mobile — Activity opened over Chat (#2549)',
     path: '/?surface=activity',
     viewport: MOBILE,
     waitFor: '.sessions-axis-tabs',
@@ -1867,19 +1867,24 @@ const SCREENS: Screen[] = [
     reducedMotion: true,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      await page.evaluate(async () => {
-        await fetch('/notifications', {
+      const status = await page.evaluate(async () => {
+        const response = await fetch('/notifications', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            source: 'motion-gallery',
             category: 'test',
             title: 'Reduced motion is active',
             body: 'Notification state remains visible without entrance motion.',
             ttl: 15_000,
           }),
         });
+        return response.status;
       });
+      // #2639: a refused request (the route sets `source` itself since #2597)
+      // must fail here, not as a toast that never appears.
+      expect(status, 'POST /notifications for "Reduced motion is active"').toBe(
+        201,
+      );
       await expect(page.getByText('Reduced motion is active')).toBeVisible({
         timeout: 10_000,
       });
@@ -2330,19 +2335,24 @@ const SCREENS: Screen[] = [
       // reduced-motion emulation — nothing about producing the toast itself
       // is motion-preference-specific. `hideVolatileChrome` already hides
       // `.toast-card__time`'s live relative timestamp.
-      await page.evaluate(async () => {
-        await fetch('/notifications', {
+      const status = await page.evaluate(async () => {
+        const response = await fetch('/notifications', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            source: 'overlay-gallery',
             category: 'test',
             title: 'Overlay gallery toast',
             body: 'A toast captured at normal (non-reduced) motion.',
             ttl: 15_000,
           }),
         });
+        return response.status;
       });
+      // #2639: a refused request (the route sets `source` itself since #2597)
+      // must fail here, not as a toast that never appears.
+      expect(status, 'POST /notifications for "Overlay gallery toast"').toBe(
+        201,
+      );
       await expect(page.getByText('Overlay gallery toast')).toBeVisible({
         timeout: 10_000,
       });
@@ -2364,12 +2374,11 @@ const SCREENS: Screen[] = [
       // (src-server/routes/schemas/schema-definitions/system.ts) is
       // `.passthrough()`, so `metadata` rides through the same POST
       // `overlay-toast` already uses.
-      await page.evaluate(async () => {
-        await fetch('/notifications', {
+      const status = await page.evaluate(async () => {
+        const response = await fetch('/notifications', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            source: 'overlay-gallery',
             category: 'test',
             title: 'Toast with an action',
             body: 'This toast carries a View action button.',
@@ -2377,7 +2386,13 @@ const SCREENS: Screen[] = [
             metadata: { navigateTo: { path: '/agents' } },
           }),
         });
+        return response.status;
       });
+      // #2639: a refused request (the route sets `source` itself since #2597)
+      // must fail here, not as a toast that never appears.
+      expect(status, 'POST /notifications for "Toast with an action"').toBe(
+        201,
+      );
       const toast = page.locator('.toast-card', {
         hasText: 'Toast with an action',
       });

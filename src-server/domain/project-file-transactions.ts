@@ -3,6 +3,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, rename, rm, unlink } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import {
+  PROJECT_IDENTITY_NOT_PREPARED_CODE,
+  type ProjectIdentityNotPreparedCode,
+} from '@kontourai/station-contracts/project-identity';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isSafePathSegment } from '../knowledge-index/path-safety.js';
@@ -43,11 +47,31 @@ export class FileStorageAlreadyExistsError extends FileStorageConflictError {
 }
 
 export class FileStorageNotFoundError extends Error {
-  readonly code = 'file_storage_not_found';
+  // Widened from the literal so a discriminated subclass can narrow it back:
+  // readers compare by string and the wire sends a string either way.
+  readonly code: string = 'file_storage_not_found';
 
   constructor(message: string) {
     super(message);
     this.name = 'FileStorageNotFoundError';
+  }
+}
+
+/**
+ * A Project the server FOUND with no prepared portable identity record —
+ * distinct from a removed Project, which is a plain
+ * {@link FileStorageNotFoundError}. A subclass (not a message variant) so the
+ * identity route answers the two differently while every existing
+ * `instanceof FileStorageNotFoundError` catch keeps working. The wire code is
+ * the shared {@link PROJECT_IDENTITY_NOT_PREPARED_CODE} seam constant.
+ */
+export class ProjectIdentityNotPreparedError extends FileStorageNotFoundError {
+  override readonly code: ProjectIdentityNotPreparedCode =
+    PROJECT_IDENTITY_NOT_PREPARED_CODE;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProjectIdentityNotPreparedError';
   }
 }
 

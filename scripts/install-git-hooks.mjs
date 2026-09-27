@@ -13,11 +13,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const mergeDriverName = 'station-ui-bundle-budget';
-const mergeDriverCommand =
-  'node scripts/merge-ui-bundle-budget.mjs %O %A %B %L %P';
 
 function git(args) {
   return execFileSync('git', args, {
@@ -41,7 +39,7 @@ export function installGitIntegration({
   try {
     toplevel = runGit(['rev-parse', '--show-toplevel']);
   } catch {
-    fail('not a git checkout; hooks and merge driver were NOT armed');
+    fail('not a git checkout; hooks were NOT armed');
   }
 
   // Guard against arming an ENCLOSING repository: if this package is vendored
@@ -59,14 +57,7 @@ export function installGitIntegration({
     }
   }
 
-  const settings = [
-    ['core.hooksPath', '.githooks'],
-    [
-      `merge.${mergeDriverName}.name`,
-      'Station UI bundle budget re-measurement',
-    ],
-    [`merge.${mergeDriverName}.driver`, mergeDriverCommand],
-  ];
+  const settings = [['core.hooksPath', '.githooks']];
   for (const [key, value] of settings) {
     try {
       runGit(['config', '--local', key, value]);
@@ -75,9 +66,8 @@ export function installGitIntegration({
       fail(`could not set ${key}: ${detail}`);
     }
 
-    // Prove every write landed rather than assuming it. In particular, the
-    // attribute is fail-safe only when a missing driver stays unregistered;
-    // never report this driver active after a partial or redirected write.
+    // Prove every write landed rather than assuming it; never report the
+    // hooks active after a partial or redirected write.
     if (runGit(['config', '--local', '--get', key]) !== value) {
       fail(
         `${key} did not read back as configured; git integration is NOT armed`,
@@ -86,12 +76,10 @@ export function installGitIntegration({
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
   try {
     installGitIntegration();
-    console.log(
-      `Station git hooks active (.githooks); merge driver active (${mergeDriverName})`,
-    );
+    console.log('Station git hooks active (.githooks)');
   } catch (error) {
     console.error(
       `[install-git-hooks] ${error instanceof Error ? error.message : String(error)}`,

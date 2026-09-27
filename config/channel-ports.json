@@ -25,5 +25,22 @@
       "consentPort": 38144,
       "instanceDirectory": "nightly"
     }
+  },
+  "releaseRings": {
+    "stable": {
+      "runtimeChannel": "stable",
+      "prerelease": false,
+      "launcher": "station"
+    },
+    "preview": {
+      "runtimeChannel": "beta",
+      "prerelease": true,
+      "launcher": "station-beta"
+    },
+    "nightly": {
+      "runtimeChannel": "nightly",
+      "prerelease": true,
+      "launcher": "station-nightly"
+    }
   }
 }

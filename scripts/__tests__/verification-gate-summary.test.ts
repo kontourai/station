@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { summarizeVerificationOutput } from '../lib/verification-reporter.mjs';
+import { CI_FAST_BUDGET_EXCEEDED_CAUSE } from '../run-ci-fast.mjs';
 // The fixtures below are rendered by the REAL producers this script consumes in
 // CI, not by a hand-written idea of their shape: `summarizeVerificationOutput`
 // builds the summary and `renderBounded` builds the envelope
@@ -729,7 +730,7 @@ describe('verification gate summary', () => {
             infrastructureErrors: 1,
           },
           passed: false,
-          infrastructureCause: 'ci:fast exceeded its 12-minute feedback budget',
+          infrastructureCause: CI_FAST_BUDGET_EXCEEDED_CAUSE,
         }),
       ),
     );
@@ -747,9 +748,7 @@ describe('verification gate summary', () => {
     // The fixture is only discriminating if the block really does hold BOTH
     // provenances. Assert that before asserting anything about the caveat.
     const block = causalExcerptBlock(summary);
-    expect(block[0]).toContain(
-      'ci:fast exceeded its 12-minute feedback budget',
-    );
+    expect(block[0]).toContain(CI_FAST_BUDGET_EXCEEDED_CAUSE);
     expect(block.slice(1).join('\n')).toContain('Error: observer failed');
 
     // Round-4 review, H1: these were phrase pins over the WHOLE page, so a
@@ -772,7 +771,7 @@ describe('verification gate summary', () => {
     // a positive statement rather than the silence it used to be.
     expect(caveat).not.toMatch(/severity and position/i);
     expect(errorAnnotations(stdout).join('\n')).toContain(
-      'ci:fast exceeded its 12-minute feedback budget',
+      CI_FAST_BUDGET_EXCEEDED_CAUSE,
     );
   });
 
@@ -808,13 +807,11 @@ describe('verification gate summary', () => {
           // The receipt DOES record the declaration on this path; the summary
           // deliberately does not carry the marker, and the summary is what
           // this renderer reads.
-          receiptInfrastructureCause:
-            'ci:fast exceeded its 12-minute feedback budget',
+          receiptInfrastructureCause: CI_FAST_BUDGET_EXCEEDED_CAUSE,
           extraSummary: {
-            firstCausalExcerpt:
-              'verification execution infrastructure error: ci:fast exceeded its 12-minute feedback budget',
+            firstCausalExcerpt: `verification execution infrastructure error: ${CI_FAST_BUDGET_EXCEEDED_CAUSE}`,
             causalExcerpts: [
-              'verification execution infrastructure error: ci:fast exceeded its 12-minute feedback budget',
+              `verification execution infrastructure error: ${CI_FAST_BUDGET_EXCEEDED_CAUSE}`,
               'verification reporting failed: required attachment unavailable: changed-test-diagnostics (missing)',
             ],
             reconcileNote:

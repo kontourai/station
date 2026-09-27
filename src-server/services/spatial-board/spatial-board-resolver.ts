@@ -34,7 +34,10 @@ type SpatialBoardOwnerResolvers = Partial<
 >;
 
 /** Creates one request-local set of owner observations for each board read. */
-type SpatialBoardOwnerResolverFactory = () => SpatialBoardOwnerResolvers;
+/** Built once per resolution, for the request that asked (if any). */
+type SpatialBoardOwnerResolverFactory = (
+  request?: Request,
+) => SpatialBoardOwnerResolvers;
 
 function boundedText(value: unknown, maximum: number): value is string {
   return (
@@ -77,9 +80,12 @@ export class SpatialBoardResolver {
     this.ownerFactory = typeof owners === 'function' ? owners : () => owners;
   }
 
-  async resolve(board: SpatialBoard): Promise<SpatialBoardResolved> {
+  async resolve(
+    board: SpatialBoard,
+    request?: Request,
+  ): Promise<SpatialBoardResolved> {
     const startedAt = performance.now();
-    const owners = this.ownerFactory();
+    const owners = this.ownerFactory(request);
     const groups = new Map<WorkReferenceKind, Map<string, WorkReference>>();
     for (const pin of board.pins) {
       const group = groups.get(pin.reference.kind) ?? new Map();

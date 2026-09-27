@@ -17,6 +17,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
+import { useDialogHistoryHost } from './DialogHistoryHost';
 import { registerDialogHistory } from './dialog-history';
 
 const FOCUSABLE =
@@ -237,6 +238,7 @@ export function ResponsiveDialogSurface({
   const restoreFrame = useRef<number | null>(null);
   const onCloseRef = useRef(onClose);
   const dialogHistoryId = useId();
+  const dialogHistoryHost = useDialogHistoryHost();
   const visualViewport = useMobileVisualViewport();
   const isMobile = useIsMobile();
 
@@ -250,8 +252,12 @@ export function ResponsiveDialogSurface({
     ) {
       return;
     }
-    return registerDialogHistory(dialogHistoryId, () => onCloseRef.current());
-  }, [dialogHistoryId, dismissible, historyMode]);
+    return registerDialogHistory(
+      dialogHistoryId,
+      () => onCloseRef.current(),
+      dialogHistoryHost,
+    );
+  }, [dialogHistoryHost, dialogHistoryId, dismissible, historyMode]);
 
   // Anchored desktop-popover measurement. Raw trigger geometry only — how the
   // panel uses it (side, offsets, clamping) belongs to the feature's CSS.

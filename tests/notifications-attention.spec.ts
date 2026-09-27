@@ -35,7 +35,6 @@ const API = resolveE2EApiBase();
 
 const APPROVAL_TITLE = 'D9 approval request';
 const ACTIVITY_TITLE = 'D9 activity item';
-const SEED_SOURCE = 'playwright-d9-attention';
 
 interface AttentionSnapshot {
   items: AttentionItem[];
@@ -88,7 +87,6 @@ async function seedOneOfEach(request: AuthenticatedE2ERequest): Promise<void> {
   const before = await readAttention(request);
   const approval = await request.post(`${API}/notifications`, {
     data: {
-      source: SEED_SOURCE,
       category: 'approval-request',
       title: APPROVAL_TITLE,
       priority: 'high',
@@ -98,7 +96,6 @@ async function seedOneOfEach(request: AuthenticatedE2ERequest): Promise<void> {
   expect(approval.status(), 'seeding the approval').toBe(201);
   const activity = await request.post(`${API}/notifications`, {
     data: {
-      source: SEED_SOURCE,
       category: 'info',
       title: ACTIVITY_TITLE,
       priority: 'normal',
@@ -134,8 +131,11 @@ function bulkDismiss(page: Page) {
  * what this spec is reading, so it must read it off the one control that
  * renders it.
  */
+// The header toolbar's bell. The sidebar footer has carried a second
+// `title="Notifications"` button with the same label since #2080, so the
+// unscoped locator matched two elements.
 function bell(page: Page) {
-  return page.locator('button[title="Notifications"]');
+  return page.getByRole('banner').locator('button[title="Notifications"]');
 }
 
 test.describe('Notifications: attention queue and activity log', () => {

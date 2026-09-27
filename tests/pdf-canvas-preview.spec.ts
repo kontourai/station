@@ -366,6 +366,43 @@ test('a short text preview fits its content and keeps list markers', async ({
   expect(
     await item.evaluate((element) => getComputedStyle(element).listStyleType),
   ).toBe('disc');
+  // The file's "# Notes" uses the transcript's heading scale (1.5x body
+  // text), not the browser's 2em default.
+  const heading = dialog.getByRole('heading', { name: 'Notes' });
+  const [headingSize, bodySize] = await Promise.all([
+    heading.evaluate((element) =>
+      parseFloat(getComputedStyle(element).fontSize),
+    ),
+    item.evaluate((element) => parseFloat(getComputedStyle(element).fontSize)),
+  ]);
+  expect(headingSize / bodySize).toBeCloseTo(1.5, 1);
+});
+
+test('opening a preview from the keyboard focuses the dialog without ringing the whole panel', async ({
+  page,
+}) => {
+  await mount(page);
+
+  // Keyboard modality: the dialog's programmatic panel focus then matches
+  // :focus-visible, which is what drew a ring around the entire panel.
+  await page
+    .getByRole('button', { name: 'Open short note', exact: true })
+    .focus();
+  await page.keyboard.press('Enter');
+  const panel = page.locator('.image-preview-panel');
+  await expect(page.getByRole('dialog', { name: 'Preview' })).toBeVisible();
+  expect(
+    await panel.evaluate((element) => document.activeElement === element),
+  ).toBe(true);
+  expect(
+    await panel.evaluate((element) => getComputedStyle(element).outlineStyle),
+  ).toBe('none');
+  // Controls inside still get the product's keyboard ring.
+  await page.keyboard.press('Tab');
+  const focused = page.locator(':focus');
+  expect(
+    await focused.evaluate((element) => getComputedStyle(element).outlineStyle),
+  ).toBe('solid');
 });
 
 test('a page zoomed wider than the dialog can be scrolled to both of its edges', async ({

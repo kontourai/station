@@ -24,6 +24,7 @@
     "./answer-support": "./src/answer-support.ts",
     "./answer-basis": "./src/answer-basis.ts",
     "./answer-assessment-events": "./src/answer-assessment-events.ts",
+    "./notification-read": "./src/notification-read.ts",
     "./answer-narrative-binding": "./src/client/answer-narrative-binding.ts",
     "./answer-narrative-events": "./src/answer-narrative-events.ts",
     "./task-basis": "./src/task-basis.ts",

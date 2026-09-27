@@ -44,7 +44,7 @@ function isBlocking(
  * gate (`scripts/ui-bundle-budget.json` is tight, and this is a feature most
  * sessions never trigger).
  */
-let announced: { apiBase: string; ids: Set<string> } | null = null;
+let announced: { scopeKey: string; ids: Set<string> } | null = null;
 
 /** Test seam: a fresh module per case without reaching into module state. */
 export function resetBlockingAlertState(): void {
@@ -57,7 +57,12 @@ export function resetBlockingAlertState(): void {
  */
 export async function reconcileBlockingAlerts(
   notifications: readonly Notification[],
-  apiBase: string,
+  /**
+   * The connection the list was read from: endpoint plus connection id
+   * (#2587). Two saved Stations can share one endpoint, and keying by the
+   * endpoint alone let one's waiting requests announce as new on the other.
+   */
+  scopeKey: string,
 ): Promise<number> {
   const blocking = notifications.filter((notification) =>
     isBlocking(notification.category),
@@ -76,9 +81,9 @@ export async function reconcileBlockingAlerts(
    * skew-dependent double-announcing. It stays visible in-app, and the next
    * request on that connection announces normally.
    */
-  if (announced?.apiBase !== apiBase) {
+  if (announced?.scopeKey !== scopeKey) {
     announced = {
-      apiBase,
+      scopeKey,
       ids: new Set(blocking.map((notification) => notification.id)),
     };
     return 0;

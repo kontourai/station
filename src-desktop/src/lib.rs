@@ -7,22 +7,30 @@ mod android_dns;
 #[cfg(not(mobile))]
 mod bundled_server_state;
 mod channel_ports_generated;
-#[cfg(all(not(mobile), unix))]
-mod login_shell;
-mod notification_watch;
-#[cfg(not(mobile))]
-mod local_access_watch;
 #[cfg(not(mobile))]
 mod desktop_companion;
+#[cfg(not(mobile))]
+mod desktop_installation;
+#[cfg(not(mobile))]
+mod local_access_watch;
+#[cfg(all(not(mobile), unix))]
+mod login_shell;
+#[cfg(not(mobile))]
+mod notification_feed;
+mod notification_watch;
 // Foundation only: this module owns native proof-key custody and signing but
 // is intentionally not registered as renderer IPC or wired to app traffic.
+#[cfg(not(mobile))]
+mod native_relay_key_approval;
 #[cfg(not(mobile))]
 pub(crate) mod native_relay_proof_key;
 #[cfg(not(mobile))]
 mod native_relay_redemption;
 #[cfg(not(mobile))]
-mod relay_grant_vault;
+mod native_station_key_custody;
 mod pairing_deep_link_channels_generated;
+#[cfg(not(mobile))]
+mod relay_grant_vault;
 mod service_state;
 #[cfg(not(mobile))]
 mod ssh_launcher;
@@ -167,10 +175,33 @@ fn android_build_carries_firebase_identity(values: [Option<&str>; 4]) -> bool {
         .all(|value| value.is_some_and(|value| !value.trim().is_empty()))
 }
 
-/// Closed-app push is the Android agent-activity plugin (FCM through the
-/// Kontour push gateway). Enabled means this build CAN register; whether a
-/// Station sends anything depends on the person turning it on.
-fn remote_push_capability(android: bool, firebase_identity: bool) -> NativeCapabilityStatus {
+/// The iOS plugin's native half is compiled only with
+/// STATION_IOS_LIVE_ACTIVITY=1 (plugins/agent-activity/build.rs); the plugin
+/// crate is a dependency on mobile targets only.
+fn ios_live_activity_built() -> bool {
+    #[cfg(target_os = "ios")]
+    return tauri_plugin_station_agent_activity::IOS_LIVE_ACTIVITY_BUILT;
+    #[cfg(not(target_os = "ios"))]
+    return false;
+}
+
+/// Closed-app push is the agent-activity plugin: FCM through the Kontour push
+/// gateway on Android, Live Activities over APNs on iOS. Enabled means this
+/// build CAN register; whether a Station sends anything depends on the person
+/// turning it on. On iOS the plugin's own `status` still says whether the
+/// build is signed for push, which the web layer checks before offering it.
+fn remote_push_capability(
+    android: bool,
+    firebase_identity: bool,
+    ios_live_activity: bool,
+) -> NativeCapabilityStatus {
+    if ios_live_activity {
+        return NativeCapabilityStatus {
+            id: "remote-push",
+            state: "enabled",
+            reason: "This iOS build carries the Live Activity plugin; agent activity on this phone can be turned on in Settings when the build is signed for push.",
+        };
+    }
     match (android, firebase_identity) {
         (true, true) => NativeCapabilityStatus {
             id: "remote-push",
@@ -185,7 +216,7 @@ fn remote_push_capability(android: bool, firebase_identity: bool) -> NativeCapab
         (false, _) => NativeCapabilityStatus {
             id: "remote-push",
             state: "unsupported",
-            reason: "Closed-app push is available only in the Android app; iOS Live Activities and APNs are not built yet.",
+            reason: "Closed-app push needs the Android app or an iOS build with the Live Activity half.",
         },
     }
 }
@@ -291,6 +322,7 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
             option_env!("STATION_FIREBASE_PROJECT_ID"),
             option_env!("STATION_FIREBASE_SENDER_ID"),
         ]),
+        ios_live_activity_built(),
     ));
 
     NativeCapabilityReport {
@@ -1327,8 +1359,10 @@ async fn credential_vault_delete_unreferenced(
     app: AppHandle,
     reference: NativeCredentialReference,
 ) -> Result<(), String> {
-    run_saved_station_command(move || credential_vault_delete_unreferenced_blocking(&app, reference))
-        .await
+    run_saved_station_command(move || {
+        credential_vault_delete_unreferenced_blocking(&app, reference)
+    })
+    .await
 }
 
 fn credential_vault_delete_unreferenced_blocking(
@@ -1629,33 +1663,28 @@ fn validate_station_profile_store_root(root: &std::path::Path) -> Result<(), Str
         }
     }
     #[cfg(windows)]
-    crate::windows_path_trust::verify(&[(
-        crate::windows_path_trust::TrustKind::Directory,
-        root,
-    )])?;
+    crate::windows_path_trust::verify(&[(crate::windows_path_trust::TrustKind::Directory, root)])?;
     Ok(())
 }
 
 #[cfg(not(mobile))]
 fn ensure_station_profile_store_root(root: &std::path::Path) -> Result<(), String> {
-    std::fs::create_dir_all(root)
-        .map_err(|error| format!("create saved Station root: {error}"))?;
+    std::fs::create_dir_all(root).map_err(|error| format!("create saved Station root: {error}"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
         let metadata = std::fs::symlink_metadata(root)
             .map_err(|error| format!("inspect saved Station root: {error}"))?;
         if !metadata.file_type().is_dir() || !profile_lock_owned_by_current_user(metadata.uid()) {
-            return Err("saved Station root must be a current-user-owned non-symlink directory".to_string());
+            return Err(
+                "saved Station root must be a current-user-owned non-symlink directory".to_string(),
+            );
         }
         std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))
             .map_err(|error| format!("secure saved Station root: {error}"))?;
     }
     #[cfg(windows)]
-    crate::windows_path_trust::ensure(&[(
-        crate::windows_path_trust::TrustKind::Directory,
-        root,
-    )])?;
+    crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::Directory, root)])?;
     validate_station_profile_store_root(root)
 }
 
@@ -1681,13 +1710,18 @@ fn station_profile_store_genesis_lock_target(
 /// It is deliberately more conservative than a mere missing `profiles.json`:
 /// an existing runtime, cache, backup, cutover receipt, or config directory is
 /// evidence that an absent profile document could be a partial relocation, not
-/// a fresh install.  `installs/` alone is admitted because the portable
-/// installer materializes its channel release before the first desktop launch.
+/// a fresh install.  `installs/` is admitted because the portable installer
+/// materializes its channel release before the first desktop launch, and
+/// `state/` because a prebuilt server archive keeps its CLI lifecycle state
+/// there (#2675): process bookkeeping, never saved-Station history.
 #[cfg(not(mobile))]
 fn station_profile_store_genesis_admissible(root: &std::path::Path) -> Result<bool, String> {
     station_profile_store_genesis_admissible_with_schema(root, false)
 }
-fn station_profile_store_genesis_admissible_with_schema(root: &std::path::Path, fresh_schema: bool) -> Result<bool, String> {
+fn station_profile_store_genesis_admissible_with_schema(
+    root: &std::path::Path,
+    fresh_schema: bool,
+) -> Result<bool, String> {
     match std::fs::read_dir(root) {
         Ok(entries) => {
             for entry in entries {
@@ -1695,13 +1729,17 @@ fn station_profile_store_genesis_admissible_with_schema(root: &std::path::Path, 
                 let name = entry.file_name();
                 let metadata = std::fs::symlink_metadata(entry.path())
                     .map_err(|error| format!("inspect Station install root: {error}"))?;
-                if fresh_schema && name == ".station-home-schema.json" && metadata.file_type().is_file() && !metadata.file_type().is_symlink() {
+                if fresh_schema
+                    && name == ".station-home-schema.json"
+                    && metadata.file_type().is_file()
+                    && !metadata.file_type().is_symlink()
+                {
                     continue;
                 }
                 if !metadata.file_type().is_dir() {
                     return Ok(false);
                 }
-                if name == "installs" {
+                if name == "installs" || name == "state" {
                     continue;
                 }
                 // Windows establishes the ACL/reparse boundary before the
@@ -1720,7 +1758,9 @@ fn station_profile_store_genesis_admissible_with_schema(root: &std::path::Path, 
             Ok(true)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
-        Err(error) => Err(format!("inspect Station root for profile bootstrap: {error}")),
+        Err(error) => Err(format!(
+            "inspect Station root for profile bootstrap: {error}"
+        )),
     }
 }
 
@@ -1761,14 +1801,14 @@ fn validate_profile_store_genesis_marker(root: &std::path::Path) -> Result<bool,
     {
         use std::os::unix::fs::MetadataExt;
         if metadata.mode() & 0o077 != 0 || !profile_lock_owned_by_current_user(metadata.uid()) {
-            return Err("saved Station genesis marker must be current-user owned and owner-only".to_string());
+            return Err(
+                "saved Station genesis marker must be current-user owned and owner-only"
+                    .to_string(),
+            );
         }
     }
     #[cfg(windows)]
-    crate::windows_path_trust::verify(&[(
-        crate::windows_path_trust::TrustKind::File,
-        &marker,
-    )])?;
+    crate::windows_path_trust::verify(&[(crate::windows_path_trust::TrustKind::File, &marker)])?;
     #[cfg(unix)]
     use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
     let mut options = std::fs::OpenOptions::new();
@@ -1786,7 +1826,10 @@ fn validate_profile_store_genesis_marker(root: &std::path::Path) -> Result<bool,
     }
     #[cfg(unix)]
     if opened.mode() & 0o077 != 0 || !profile_lock_owned_by_current_user(opened.uid()) {
-        return Err("saved Station genesis marker must remain current-user owned and owner-only".to_string());
+        return Err(
+            "saved Station genesis marker must remain current-user owned and owner-only"
+                .to_string(),
+        );
     }
     let mut contents = String::new();
     file.read_to_string(&mut contents)
@@ -1992,7 +2035,11 @@ fn station_profile_store_is_initialized(root: &std::path::Path) -> Result<bool, 
 }
 
 #[cfg(not(mobile))]
-fn ensure_station_profile_store_genesis_after_schema(app: &AppHandle, root: &std::path::Path, fresh_schema: bool) -> Result<(), String> {
+fn ensure_station_profile_store_genesis_after_schema(
+    app: &AppHandle,
+    root: &std::path::Path,
+    fresh_schema: bool,
+) -> Result<(), String> {
     let path = root.join("config").join("profiles.json");
     ensure_station_profile_store_root(root)?;
     #[cfg(windows)]
@@ -2018,7 +2065,9 @@ fn ensure_station_profile_store_genesis_after_schema(app: &AppHandle, root: &std
             Ok(())
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            if marker_exists || !station_profile_store_genesis_admissible_with_schema(root, fresh_schema)? {
+            if marker_exists
+                || !station_profile_store_genesis_admissible_with_schema(root, fresh_schema)?
+            {
                 return Err("saved Station metadata is missing from an initialized or in-progress shared root; restore profiles.json before launching Station".to_string());
             }
             let parent = path.parent().expect("profiles path has config parent");
@@ -2197,6 +2246,21 @@ fn authorized_credential_reference(
         ));
     }
     Ok(selected.reference)
+}
+
+/// The host-authorized active Station's exact origin, when there is one.
+/// Native consumers pair it with `native_credential_for_origin`, which
+/// re-validates the whole binding before any bearer is read.
+#[cfg(not(mobile))]
+pub(crate) fn native_active_station_origin(app: &AppHandle) -> Option<String> {
+    let authority = app.try_state::<NativeProfileAuthority>()?;
+    let state = authority.0.lock().ok()?;
+    let active = state.active.as_ref()?;
+    let key = credential_reference_key(&active.reference).ok()?;
+    state
+        .bindings
+        .get(&key)
+        .map(|binding| binding.exact_origin.clone())
 }
 
 /// Native-only credential read for one already-validated origin. It reuses the
@@ -3180,9 +3244,11 @@ fn station_native_public_handshake_blocking(
             let detail = native_request_transport_detail(&error);
             NativeCommandError::new(detail.code, detail.detail)
         })?;
-    if response.body().content_length().is_some_and(|length| {
-        length > NATIVE_PUBLIC_HANDSHAKE_BODY_LIMIT
-    }) {
+    if response
+        .body()
+        .content_length()
+        .is_some_and(|length| length > NATIVE_PUBLIC_HANDSHAKE_BODY_LIMIT)
+    {
         return Err(NativeCommandError::new(
             "response_too_large",
             "Station public handshake exceeded the native response limit",
@@ -4729,9 +4795,7 @@ fn lock_station_profiles_with_record_within(
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 let now = std::time::Instant::now();
                 let expired = now.duration_since(started) >= wait;
-                if !reclaimed_stale_lock
-                    && (expired || next_probe_at.is_none_or(|at| now >= at))
-                {
+                if !reclaimed_stale_lock && (expired || next_probe_at.is_none_or(|at| now >= at)) {
                     next_probe_at = Some(now + probe_interval);
                     if reclaim_stale_profile_lock(&lock_path, record_bytes, birth_for_pid)? {
                         reclaimed_stale_lock = true;
@@ -4925,6 +4989,190 @@ fn lock_station_profiles_for_app(
     lock_station_profiles_legacy(path)
 }
 
+/// Reconstructs Station-key approval authority from the current native profile
+/// while holding the same interprocess lock used by profile writers. A broker
+/// offer or renderer-supplied route cannot supply this snapshot.
+#[cfg(not(mobile))]
+struct AppNativeTrustProfileProvider<'a> {
+    app: &'a AppHandle,
+}
+
+#[cfg(not(mobile))]
+impl<'a> AppNativeTrustProfileProvider<'a> {
+    pub(crate) fn enrollment(app: &'a AppHandle) -> Self {
+        Self { app }
+    }
+
+    pub(crate) fn existing_trust(app: &'a AppHandle) -> Self {
+        Self { app }
+    }
+}
+
+#[cfg(not(mobile))]
+impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustProfileProvider<'_> {
+    fn with_current_profile<T, F>(
+        &self,
+        expected_binding: &native_station_key_custody::TrustProfileBinding,
+        expected_profile_revision: u64,
+        operation: F,
+    ) -> native_station_key_custody::CandidateResult<T>
+    where
+        F: FnOnce(
+            native_station_key_custody::LockedTrustProfileSnapshot,
+        ) -> native_station_key_custody::CandidateResult<T>,
+    {
+        use native_station_key_custody::CandidateError;
+
+        let path = station_profiles_path(self.app).map_err(|_| CandidateError::ProfileStale)?;
+        let _lock = lock_station_profiles_for_app(self.app, &path)
+            .map_err(|_| CandidateError::ProfileStale)?;
+        let contents =
+            read_station_profile_store(&path).map_err(|_| CandidateError::ProfileStale)?;
+        let store =
+            parse_station_profile_store(&contents).map_err(|_| CandidateError::ProfileStale)?;
+        let snapshot = native_trust_profile_snapshot_in_store(
+            &store,
+            expected_binding,
+            expected_profile_revision,
+            &self.app.config().identifier,
+            native_app_channel(&self.app.config().identifier, cfg!(debug_assertions)),
+        )?;
+        operation(snapshot)
+    }
+}
+
+#[cfg(not(mobile))]
+fn native_trust_profile_snapshot_in_store(
+    store: &CredentialProfileStore,
+    expected_binding: &native_station_key_custody::TrustProfileBinding,
+    expected_profile_revision: u64,
+    app_identifier: &str,
+    channel: &str,
+) -> native_station_key_custody::CandidateResult<
+    native_station_key_custody::LockedTrustProfileSnapshot,
+> {
+    use native_station_key_custody::{CandidateError, LockedTrustProfileSnapshot};
+
+    let profile = store
+        .profiles
+        .iter()
+        .find(|profile| profile.name == expected_binding.profile_owner_id)
+        .ok_or(CandidateError::ProfileStale)?;
+    let route = profile
+        .relay_route
+        .as_ref()
+        .ok_or(CandidateError::ProfileStale)?;
+    let actual = native_station_key_custody::TrustProfileBinding {
+        profile_owner_id: profile.name.clone(),
+        app_identifier: app_identifier.to_owned(),
+        channel: channel.to_owned(),
+        client_instance_id: profile
+            .client_instance_id
+            .clone()
+            .ok_or(CandidateError::ProfileStale)?,
+        broker_origin: route.broker_origin.clone(),
+        station_id: route.station_id.clone(),
+        enrollment_id: route.enrollment_id.clone(),
+    };
+    if store.revision != expected_profile_revision
+        || actual != *expected_binding
+        || profile.configuration_state != "unconfigured"
+        || profile.setup_source != "manual"
+        || profile.credential_ref.is_some()
+    {
+        return Err(CandidateError::ProfileStale);
+    }
+    Ok(LockedTrustProfileSnapshot {
+        binding: actual,
+        revision: store.revision,
+    })
+}
+
+#[cfg(all(test, not(mobile)))]
+mod native_trust_profile_snapshot_tests {
+    use super::*;
+    use native_station_key_custody::{CandidateError, TrustProfileBinding};
+
+    fn saved_route() -> CredentialProfileStore {
+        parse_station_profile_store(
+            r#"{
+              "schemaVersion":1,"revision":7,"defaultProfile":null,
+              "profiles":[{"schemaVersion":1,"name":"Zach's Station",
+                "endpoint":"https://station.example",
+                "clientInstanceId":"33333333-3333-4333-8333-333333333333",
+                "relayRoute":{"brokerOrigin":"https://broker.example",
+                  "stationId":"11111111-1111-4111-8111-111111111111",
+                  "enrollmentId":"22222222-2222-4222-8222-222222222222"},
+                "setupSource":"manual","configurationState":"unconfigured",
+                "createdAt":1,"updatedAt":2}],"projectProfiles":{}
+            }"#,
+        )
+        .unwrap()
+    }
+
+    fn binding() -> TrustProfileBinding {
+        TrustProfileBinding {
+            profile_owner_id: "Zach's Station".to_owned(),
+            app_identifier: "io.kontourai.station".to_owned(),
+            channel: "stable".to_owned(),
+            client_instance_id: "33333333-3333-4333-8333-333333333333".to_owned(),
+            broker_origin: "https://broker.example".to_owned(),
+            station_id: "11111111-1111-4111-8111-111111111111".to_owned(),
+            enrollment_id: "22222222-2222-4222-8222-222222222222".to_owned(),
+        }
+    }
+
+    #[test]
+    fn trust_snapshot_requires_exact_current_saved_route_and_revision() {
+        let store = saved_route();
+        let expected = binding();
+        let snapshot = native_trust_profile_snapshot_in_store(
+            &store,
+            &expected,
+            7,
+            "io.kontourai.station",
+            "stable",
+        )
+        .unwrap();
+        assert_eq!(snapshot.binding, expected);
+        assert_eq!(snapshot.revision, 7);
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &store,
+                &expected,
+                6,
+                "io.kontourai.station",
+                "stable"
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+        let mut wrong_route = expected.clone();
+        wrong_route.broker_origin = "https://other-broker.example".to_owned();
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &store,
+                &wrong_route,
+                7,
+                "io.kontourai.station",
+                "stable"
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+        let mut renamed = expected;
+        renamed.profile_owner_id = "zach's station".to_owned();
+        assert_eq!(
+            native_trust_profile_snapshot_in_store(
+                &store,
+                &renamed,
+                7,
+                "io.kontourai.station",
+                "stable"
+            ),
+            Err(CandidateError::ProfileStale)
+        );
+    }
+}
+
 #[cfg(test)]
 fn lock_station_profiles(path: &std::path::Path) -> Result<StationProfileLock, String> {
     let self_pid = std::process::id();
@@ -5100,14 +5348,26 @@ fn station_profile_store_write_internal(
     expected_revision: u64,
     pairing_handle: Option<String>,
 ) -> Result<(), String> {
-    station_profile_store_write_with_host(
+    let result = station_profile_store_write_with_host(
         &AppProfileWriteHost(app),
         authority,
         pending,
         contents,
         expected_revision,
         pairing_handle,
-    )
+    );
+    #[cfg(not(mobile))]
+    {
+        let app = app.clone();
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            if let Err(error) = native_relay_redemption::retry_pending_cleanup_for_app(&app) {
+                log::warn!(
+                    "could not resume native relay grant cleanup after profile write: {error:?}"
+                );
+            }
+        });
+    }
+    result
 }
 
 // Only host I/O varies in tests. The CAS, pending-handle transitions, cleanup,
@@ -5155,7 +5415,8 @@ impl ProfileWriteHost for AppProfileWriteHost<'_> {
     ) -> Result<(), String> {
         #[cfg(not(mobile))]
         {
-            relay_grant_vault::invalidate_removed_routes(self.0, current, next)
+            relay_grant_vault::invalidate_removed_routes(self.0, current, next)?;
+            native_relay_redemption::stage_removed_profile_routes(self.0, current, next)
         }
         #[cfg(mobile)]
         {
@@ -5221,10 +5482,12 @@ fn station_profile_store_write_with_host(
     };
     let current_store = match read_station_profile_store(&path) {
         Ok(current) => parse_station_profile_store(&current)?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(
-            "saved Station metadata disappeared during a write; refusing to recreate it"
-                .to_string(),
-        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(
+                "saved Station metadata disappeared during a write; refusing to recreate it"
+                    .to_string(),
+            )
+        }
         Err(error) => return Err(format!("read saved Station metadata for revision: {error}")),
     };
     if current_store.revision != expected_revision {
@@ -5631,9 +5894,7 @@ fn reconcile_bundled_local_profile_with_retry(
             .map_err(|_| "invalid bundled Station metadata".to_string())?;
         match write(contents, current.revision) {
             Ok(()) => return Ok(profile_name),
-            Err(error)
-                if error.starts_with("saved Station revision conflict:") && attempt < 2 =>
-            {
+            Err(error) if error.starts_with("saved Station revision conflict:") && attempt < 2 => {
                 continue
             }
             Err(error) => return Err(error),
@@ -5708,13 +5969,15 @@ fn station_ensure_bundled_local_profile_blocking(
     let explicit_ui_port = std::env::var("STATION_UI_PORT").ok();
     let ui_port = resolve_bundled_profile_ui_port(explicit_ui_port.as_deref(), channel)
         .ok_or_else(|| "running Station sidecar has no UI port contract".to_string())?;
-    let mut read = || match read_station_profile_store(&path) {
+    let mut read = || {
+        match read_station_profile_store(&path) {
         Ok(contents) => parse_station_profile_store(&contents),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(
             "saved Station metadata disappeared after shared-root admission; refusing to recreate it"
                 .to_string(),
         ),
         Err(error) => Err(format!("read saved Station metadata: {error}")),
+    }
     };
     let mut write = |contents, expected_revision| {
         station_profile_store_write_internal(
@@ -6029,9 +6292,9 @@ fn probe_local_credential(
     credential: &str,
     secret: &str,
 ) -> LocalCredentialProbeOutcome {
-    let endpoint = match url::Url::parse(origin).and_then(|url| {
-        url.join("/.well-known/station/v1/pairing/local-grant-eligibility")
-    }) {
+    let endpoint = match url::Url::parse(origin)
+        .and_then(|url| url.join("/.well-known/station/v1/pairing/local-grant-eligibility"))
+    {
         Ok(endpoint) => endpoint,
         Err(_) => return LocalCredentialProbeOutcome::Inconclusive,
     };
@@ -6650,6 +6913,18 @@ async fn notification_watch_start(
 
     log::info!("Station notification watch started");
     Ok(())
+}
+
+/// The persisted id of this desktop installation, for the delivery surface
+/// `local:desktop-<id>` (#2587). See `desktop_installation`.
+#[cfg(not(mobile))]
+#[tauri::command]
+fn desktop_installation_id(app: AppHandle) -> Result<String, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| format!("resolve the desktop config directory: {error}"))?;
+    desktop_installation::read_or_create(&dir)
 }
 
 #[tauri::command]
@@ -7610,13 +7885,19 @@ fn prepare_runtime_registry_bridge(
     // Standalone homes have no distinct shared-root legacy service to move.
     // Native home admission and schema preparation have already succeeded.
     if let (Ok(root), Ok(home)) = (station_root.canonicalize(), station_home.canonicalize()) {
-        if root == home { return Ok(PrepareRuntimeKind::Absent); }
+        if root == home {
+            return Ok(PrepareRuntimeKind::Absent);
+        }
     }
     // Attaching to a live service is read-only. Its home lease must remain
     // held; legacy migration cannot acquire maintenance while it is serving.
     match decide_home_ownership_from_runtime(resource_dir, station_home) {
-        HomeOwnershipDecision::ServiceOwnsHome { .. } => return Ok(PrepareRuntimeKind::ServiceOwned),
-        HomeOwnershipDecision::AmbiguousOwnership | HomeOwnershipDecision::FailClosedRegistry => return Err(RegistryBridgeFailure::Untrusted),
+        HomeOwnershipDecision::ServiceOwnsHome { .. } => {
+            return Ok(PrepareRuntimeKind::ServiceOwned)
+        }
+        HomeOwnershipDecision::AmbiguousOwnership | HomeOwnershipDecision::FailClosedRegistry => {
+            return Err(RegistryBridgeFailure::Untrusted)
+        }
         HomeOwnershipDecision::SpawnSidecar => {}
     }
     let output = invoke_registry_bridge(
@@ -8155,7 +8436,10 @@ fn owner_owns_reapable_child(owner: DesktopOwner) -> bool {
 /// windows are ordinary Station windows. Sidecar teardown is intentionally
 /// wired only from `RunEvent::Exit` below.
 #[cfg(not(mobile))]
-fn owner_after_preparation(preparation: PrepareRuntimeKind, decision: HomeOwnershipDecision) -> DesktopOwner {
+fn owner_after_preparation(
+    preparation: PrepareRuntimeKind,
+    decision: HomeOwnershipDecision,
+) -> DesktopOwner {
     let owner = owner_for_decision(decision);
     if preparation == PrepareRuntimeKind::ServiceOwned {
         // A service observed before preparation may exit before this second
@@ -8288,11 +8572,7 @@ fn release_failed_startup_commit(app: &AppHandle, claim_epoch: u64) {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .epoch;
-        if finish_startup_commit_claim(
-            &state.startup_commit_claim,
-            claim_epoch,
-            current_epoch,
-        ) {
+        if finish_startup_commit_claim(&state.startup_commit_claim, claim_epoch, current_epoch) {
             request_native_startup_commit(app);
         }
     }
@@ -8312,11 +8592,8 @@ fn complete_startup_commit<R: Runtime>(
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             (readiness.epoch, readiness.identity_committed)
         };
-        let retry_current = finish_startup_commit_claim(
-            &state.startup_commit_claim,
-            claim_epoch,
-            current_epoch,
-        );
+        let retry_current =
+            finish_startup_commit_claim(&state.startup_commit_claim, claim_epoch, current_epoch);
         if retry_current && !identity_committed {
             request_retry(app);
         }
@@ -8801,7 +9078,9 @@ fn with_native_startup_cover(
 
 #[cfg(target_os = "macos")]
 fn present_startup_recovery_surface(app: &AppHandle) {
-    if desktop_companion::background(app) { return; }
+    if desktop_companion::background(app) {
+        return;
+    }
     request_native_cover(app, true);
 }
 
@@ -8812,7 +9091,9 @@ fn present_startup_recovery_surface(_app: &AppHandle) {
 
 #[cfg(not(mobile))]
 fn reveal_main_window(app: &AppHandle) {
-    if desktop_companion::background(app) { return; }
+    if desktop_companion::background(app) {
+        return;
+    }
     #[cfg(target_os = "macos")]
     {
         request_native_cover(app, false);
@@ -9096,12 +9377,21 @@ fn arm_startup_deadline(app: AppHandle, epoch: u64) {
 }
 
 #[cfg(not(mobile))]
-fn prepare_desktop_station_storage<S, P>(home: PathBuf, root: &Path, ensure_schema: S, ensure_profiles: P) -> Result<PathBuf, String>
-where S: FnOnce(&Path) -> Result<(), String>, P: FnOnce(bool) -> Result<(), String> {
+fn prepare_desktop_station_storage<S, P>(
+    home: PathBuf,
+    root: &Path,
+    ensure_schema: S,
+    ensure_profiles: P,
+) -> Result<PathBuf, String>
+where
+    S: FnOnce(&Path) -> Result<(), String>,
+    P: FnOnce(bool) -> Result<(), String>,
+{
     if home == root {
         // A standalone home also holds root metadata. Schema must be born
         // first, otherwise genesis makes our own empty home look unversioned.
-        let fresh_schema = !home.join(".station-home-schema.json").exists() && station_profile_store_genesis_admissible(&home)?;
+        let fresh_schema = !home.join(".station-home-schema.json").exists()
+            && station_profile_store_genesis_admissible(&home)?;
         let prepared = prepare_desktop_station_home(home, ensure_schema)?;
         ensure_profiles(fresh_schema)?;
         Ok(prepared)
@@ -9211,11 +9501,7 @@ fn bundled_startup_local_proof_receipt(
             profile.configuration_state == "configured"
                 && profile.local_service.as_ref().is_some_and(|service| {
                     service.instance_id == ticket.instance_id
-                        && same_runtime_home_identity(
-                            &service.base_dir,
-                            home,
-                            &launch.station_root,
-                        )
+                        && same_runtime_home_identity(&service.base_dir, home, &launch.station_root)
                 })
                 && exact_origin(&profile.endpoint).as_deref() == Ok(ticket_origin.as_str())
         })
@@ -9226,12 +9512,17 @@ fn bundled_startup_local_proof_receipt(
                 .to_string(),
         );
     };
-    let environment_id = profile._environment_id.clone().filter(|value| {
-        !value.trim().is_empty() && value.len() <= 512
-    }).ok_or_else(|| {
-        "Desktop startup readiness profile has no exact environment binding.".to_string()
-    })?;
-    let local_service = profile.local_service.clone().expect("matched local service");
+    let environment_id = profile
+        ._environment_id
+        .clone()
+        .filter(|value| !value.trim().is_empty() && value.len() <= 512)
+        .ok_or_else(|| {
+            "Desktop startup readiness profile has no exact environment binding.".to_string()
+        })?;
+    let local_service = profile
+        .local_service
+        .clone()
+        .expect("matched local service");
     Ok(BundledStartupLocalProofReceipt {
         profile_name: profile.name.clone(),
         exact_origin: ticket_origin,
@@ -9271,9 +9562,7 @@ fn prove_bundled_startup_identity(
     let receipt = read_bundled_startup_local_proof_receipt(launch, ticket)?;
     let local_grant = read_local_grant_secret(&receipt.local_service)?;
     let identity_url = url::Url::parse(&receipt.exact_origin)
-        .and_then(|origin| {
-            origin.join("/.well-known/station/v1/pairing/local-grant-startup-proof")
-        })
+        .and_then(|origin| origin.join("/.well-known/station/v1/pairing/local-grant-startup-proof"))
         .map_err(|_| "Desktop startup local proof URL is invalid.".to_string())?;
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .max_redirects(0)
@@ -9345,9 +9634,7 @@ fn commit_startup_readiness_blocking(
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let current = current_startup_ticket(&status).map_err(|error| {
-            log::warn!(
-                "desktop startup identity proof refused generation {generation}: {error}"
-            );
+            log::warn!("desktop startup identity proof refused generation {generation}: {error}");
             error.to_string()
         })?;
         if ticket != current {
@@ -9451,7 +9738,9 @@ async fn commit_startup_readiness(
         epoch,
         &state.startup_commit_claim,
     ) {
-        return Err("Desktop startup identity proof is already committed or in flight.".to_string());
+        return Err(
+            "Desktop startup identity proof is already committed or in flight.".to_string(),
+        );
     }
     let app_for_commit = app.clone();
     let result = match tauri::async_runtime::spawn_blocking(move || {
@@ -10050,11 +10339,7 @@ fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String
     // The ambient read lives at the edge so the builder stays a pure function
     // of its inputs -- otherwise its tests would pass or fail depending on the
     // developer's own STATION_ROOT.
-    build_sidecar_command(
-        &context.launch,
-        &boot_id,
-        std::env::var_os("STATION_ROOT"),
-    )
+    build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
         .spawn()
         .map(|child| (child, boot_id))
         .map_err(|error| format!("launch Station sidecar: {error}"))
@@ -10123,7 +10408,9 @@ fn capture_sidecar_stderr(mut stderr: impl Read) -> Option<String> {
     // Invalid UTF-8 expands into replacement characters; bound the rendered
     // tail as well as the retained raw bytes, without splitting a character.
     let mut start = text.len().saturating_sub(MAX_TAIL_BYTES);
-    while !text.is_char_boundary(start) { start += 1; }
+    while !text.is_char_boundary(start) {
+        start += 1;
+    }
     let lines: Vec<&str> = text[start..].lines().rev().take(16).collect();
     (!lines.is_empty()).then(|| lines.into_iter().rev().collect::<Vec<_>>().join("\n"))
 }
@@ -10708,10 +10995,11 @@ If a stable instance is running, this launch will focus its window and exit.",
     // Events, never argv, so the feature is inert there by design). The
     // callback itself only brings the existing window to the user.
     #[cfg(not(mobile))]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(
-        |app, argv, _cwd| {
-          if desktop_companion::background_arguments(&argv) { return; }
-          match app.get_webview_window("main") {
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        if desktop_companion::background_arguments(&argv) {
+            return;
+        }
+        match app.get_webview_window("main") {
             Some(window) => {
                 log::info!(
                     "second launch detected; requesting main window activation '{}'",
@@ -10722,9 +11010,8 @@ If a stable instance is running, this launch will focus its window and exit.",
             None => {
                 log::warn!("second launch detected but no window exists to focus");
             }
-          }
-        },
-    ));
+        }
+    }));
 
     // The embedded WebDriver binds loopback and grants full automation over
     // the WebView. Keep it behind an explicit test feature; release workflows
@@ -10781,9 +11068,10 @@ If a stable instance is running, this launch will focus its window and exit.",
     // haptics unsupported off-mobile so the webview never calls it there.
     #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_haptics::init());
-    // Android-only: its capability file is scoped to android, and the iOS
-    // counterpart (a Live Activity widget extension) does not exist yet.
-    #[cfg(target_os = "android")]
+    // Mobile-only, with one capability file per platform (a shared one would
+    // fail ACL resolution where the plugin is not compiled, station#575). On
+    // iOS the native half exists only in STATION_IOS_LIVE_ACTIVITY=1 builds.
+    #[cfg(mobile)]
     let builder = builder.plugin(tauri_plugin_station_agent_activity::init());
     let builder = builder
         .manage(NativeProfileAuthority::default())
@@ -10793,21 +11081,42 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder
         .manage(NativeStartupBootstrap::default())
+        .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
         .manage(desktop_companion::DesktopCompanion::default())
         .menu(desktop_companion::desktop_menu)
         .on_menu_event(|app, event| {
-            if event.id().as_ref() == desktop_companion::QUIT_MENU_ID { desktop_companion::request_quit(app); }
+            if event.id().as_ref() == desktop_companion::QUIT_MENU_ID {
+                desktop_companion::request_quit(app);
+            }
         })
-        .manage(desktop_companion::BackgroundTray(AtomicBool::new(desktop_companion::background_arguments(&std::env::args().collect::<Vec<_>>()))))
+        .manage(desktop_companion::BackgroundTray(AtomicBool::new(
+            desktop_companion::background_arguments(&std::env::args().collect::<Vec<_>>()),
+        )))
         .on_page_load(|webview, payload| {
             observe_native_startup_page(webview.app_handle(), webview.label(), payload.event());
         })
         .manage(NativeBrowserPreviewGrants::default())
+        .manage(notification_feed::NotificationFeed::default())
         .manage(ssh_launcher::SshLaunches::default());
 
     #[cfg(not(mobile))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        native_relay_key_approval::station_native_relay_key_approval_prepare,
+        native_relay_key_approval::station_native_relay_key_approval_begin,
+        native_relay_key_approval::station_native_relay_key_approval_pending,
+        native_relay_key_approval::station_native_relay_key_approval_cancel,
+        native_relay_key_approval::station_native_relay_key_approval_approve,
+        native_relay_key_approval::station_native_relay_key_approval_revoke,
+        native_relay_key_approval::station_native_relay_key_approval_status,
+        native_relay_redemption::station_native_relay_grant_redeem,
+        native_relay_redemption::station_native_relay_grant_status,
+        native_relay_redemption::station_native_relay_grant_revoke,
+        native_relay_redemption::station_native_relay_grant_cleanup_pending,
+        native_relay_redemption::station_native_relay_grant_cleanup_retry,
+        native_relay_redemption::station_native_relay_diagnostic_binding,
+        native_relay_redemption::station_native_relay_signal_diagnostic_open,
+        native_relay_redemption::station_native_relay_signal_diagnostic_read,
         relay_grant_vault::relay_client_grant_store,
         relay_grant_vault::relay_client_grant_revoke,
         relay_grant_vault::relay_client_grant_metadata,
@@ -10827,6 +11136,10 @@ If a stable instance is running, this launch will focus its window and exit.",
         station_profile_store_write,
         notification_watch_start,
         notification_watch_stop,
+        desktop_installation_id,
+        notification_feed::notification_feed_native_consumer,
+        notification_feed::notification_feed_adopt_cursor,
+        notification_feed::take_notification_open_link,
         open_local_browser_preview,
         open_external_link,
         discover_local_browser_preview_target,
@@ -10868,6 +11181,17 @@ If a stable instance is running, this launch will focus its window and exit.",
 
     builder
         .setup(move |app| {
+            #[cfg(not(mobile))]
+            {
+                let app = app.handle().clone();
+                let _ = tauri::async_runtime::spawn_blocking(move || {
+                    if let Err(error) =
+                        native_relay_redemption::retry_pending_cleanup_for_app(&app)
+                    {
+                        log::warn!("could not resume native relay grant cleanup at startup: {error:?}");
+                    }
+                });
+            }
             #[cfg(all(not(mobile), feature = "webdriver"))]
             seed_webdriver_credential_fixture(&app.config().identifier)?;
             if let Some(raw) = &invalid_log_level {
@@ -11046,6 +11370,9 @@ If a stable instance is running, this launch will focus its window and exit.",
                 // fail-closed initialization placeholder and then stop before
                 // the sidecar could publish its healthy state.
                 tray::init(app.handle())?;
+                // The desktop's single consumer of the notification delivery
+                // feed (#2608); the webview defers to it.
+                notification_feed::start(app.handle())?;
                 if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) { reveal_main_window(app.handle()); }
                 if !cfg!(debug_assertions) { arm_startup_deadline(app.handle().clone(), 1); }
                 if owner == DesktopOwner::Sidecar {
@@ -11126,18 +11453,36 @@ mod tests {
 
     #[cfg(not(mobile))]
     impl ProfileWriteHost for WriterTestHost {
-        fn path(&self) -> Result<std::path::PathBuf, String> { Ok(self.path.clone()) }
+        fn path(&self) -> Result<std::path::PathBuf, String> {
+            Ok(self.path.clone())
+        }
         fn genesis(&self, root: &std::path::Path) -> Result<(), String> {
             assert!(station_profile_store_is_initialized(root)?);
             Ok(())
         }
-        fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String> { lock_station_profiles(path) }
-        fn invalidate_removed_routes(&self, _: &CredentialProfileStore, _: &CredentialProfileStore) -> Result<(), String> {
-            if self.fail_invalidation { Err("injected relay grant invalidation failure".into()) } else { Ok(()) }
+        fn lock(&self, path: &std::path::Path) -> Result<StationProfileLock, String> {
+            lock_station_profiles(path)
+        }
+        fn invalidate_removed_routes(
+            &self,
+            _: &CredentialProfileStore,
+            _: &CredentialProfileStore,
+        ) -> Result<(), String> {
+            if self.fail_invalidation {
+                Err("injected relay grant invalidation failure".into())
+            } else {
+                Ok(())
+            }
         }
         fn postpublication_trust(&self, path: &std::path::Path) -> Result<(), String> {
-            if self.fail_postpublication_trust { Err("injected postpublication trust failure".into()) }
-            else { crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, path)]) }
+            if self.fail_postpublication_trust {
+                Err("injected postpublication trust failure".into())
+            } else {
+                crate::windows_path_trust::ensure(&[(
+                    crate::windows_path_trust::TrustKind::File,
+                    path,
+                )])
+            }
         }
         fn staged_path(&self, generated: std::path::PathBuf) -> std::path::PathBuf {
             self.staged_path.clone().unwrap_or(generated)
@@ -11167,18 +11512,34 @@ mod tests {
         };
         let handle = "test-pairing-handle".to_string();
         let pending = NativePendingPairingCredentials::default();
-        pending.0.lock().unwrap().insert(handle.clone(), PendingPairingCredential {
-            credential: "secret-never-leaves-native-state".into(),
-            reference,
-            exact_origin: "https://one.example".into(),
-            environment_id: "environment-one".into(),
-            client_instance_id: "11111111-1111-4111-8111-111111111111".into(),
-            expires_at: SystemTime::now() + Duration::from_secs(120),
-            phase: NativePairingPhase::AwaitingRequiresAuth,
-        });
+        pending.0.lock().unwrap().insert(
+            handle.clone(),
+            PendingPairingCredential {
+                credential: "secret-never-leaves-native-state".into(),
+                reference,
+                exact_origin: "https://one.example".into(),
+                environment_id: "environment-one".into(),
+                client_instance_id: "11111111-1111-4111-8111-111111111111".into(),
+                expires_at: SystemTime::now() + Duration::from_secs(120),
+                phase: NativePairingPhase::AwaitingRequiresAuth,
+            },
+        );
         let contents = r#"{"schemaVersion":1,"revision":1,"defaultProfile":null,"projectProfiles":{},"profiles":[{"schemaVersion":1,"name":"pending","endpoint":"https://one.example","credentialRef":{"kind":"station-bearer","id":"test-host-allocated"},"environmentId":"environment-one","clientInstanceId":"11111111-1111-4111-8111-111111111111","setupSource":"paired","configurationState":"requires-auth","createdAt":1,"updatedAt":1}]}"#.to_string();
-        let host = WriterTestHost { path: path.clone(), staged_path: None, fail_invalidation: false, fail_postpublication_trust: false };
-        (directory, path, NativeProfileAuthority::default(), pending, handle, contents, host)
+        let host = WriterTestHost {
+            path: path.clone(),
+            staged_path: None,
+            fail_invalidation: false,
+            fail_postpublication_trust: false,
+        };
+        (
+            directory,
+            path,
+            NativeProfileAuthority::default(),
+            pending,
+            handle,
+            contents,
+            host,
+        )
     }
 
     /// #2565 through the real writer: the host reads `current` from disk under
@@ -11512,51 +11873,170 @@ mod tests {
     #[cfg(not(mobile))]
     #[test]
     fn profile_writer_rolls_back_prepublication_failure_and_retries_same_handle() {
-        let (_directory, path, authority, pending, handle, contents, mut host) = writer_pairing_fixture();
+        let (_directory, path, authority, pending, handle, contents, mut host) =
+            writer_pairing_fixture();
         host.fail_invalidation = true;
-        let error = station_profile_store_write_with_host(&host, &authority, &pending, contents.clone(), 0, Some(handle.clone())).unwrap_err();
+        let error = station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            contents.clone(),
+            0,
+            Some(handle.clone()),
+        )
+        .unwrap_err();
         assert!(error.contains("injected relay grant invalidation failure"));
-        assert_eq!(parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap().revision, 0);
+        assert_eq!(
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap())
+                .unwrap()
+                .revision,
+            0
+        );
         assert!(authority.0.lock().unwrap().transitioning.is_empty());
-        assert!(matches!(pending.0.lock().unwrap().get(&handle).unwrap().phase, NativePairingPhase::AwaitingRequiresAuth));
+        assert!(matches!(
+            pending.0.lock().unwrap().get(&handle).unwrap().phase,
+            NativePairingPhase::AwaitingRequiresAuth
+        ));
         host.fail_invalidation = false;
-        station_profile_store_write_with_host(&host, &authority, &pending, contents, 0, Some(handle.clone())).unwrap();
-        assert_eq!(parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap().revision, 1);
-        assert!(matches!(pending.0.lock().unwrap().get(&handle).unwrap().phase, NativePairingPhase::RequiresAuthPersisted { .. }));
+        station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            contents,
+            0,
+            Some(handle.clone()),
+        )
+        .unwrap();
+        assert_eq!(
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap())
+                .unwrap()
+                .revision,
+            1
+        );
+        assert!(matches!(
+            pending.0.lock().unwrap().get(&handle).unwrap().phase,
+            NativePairingPhase::RequiresAuthPersisted { .. }
+        ));
     }
 
     #[cfg(not(mobile))]
     #[test]
     fn profile_writer_does_not_roll_back_after_publication_or_delete_foreign_stage() {
-        let (_directory, path, authority, pending, handle, contents, mut host) = writer_pairing_fixture();
+        let (_directory, path, authority, pending, handle, contents, mut host) =
+            writer_pairing_fixture();
         host.fail_postpublication_trust = true;
-        let error = station_profile_store_write_with_host(&host, &authority, &pending, contents.clone(), 0, Some(handle.clone())).unwrap_err();
+        let error = station_profile_store_write_with_host(
+            &host,
+            &authority,
+            &pending,
+            contents.clone(),
+            0,
+            Some(handle.clone()),
+        )
+        .unwrap_err();
         assert!(error.contains("injected postpublication trust failure"));
-        assert_eq!(parse_station_profile_store(&read_station_profile_store(&path).unwrap()).unwrap().revision, 1);
+        assert_eq!(
+            parse_station_profile_store(&read_station_profile_store(&path).unwrap())
+                .unwrap()
+                .revision,
+            1
+        );
         assert!(!authority.0.lock().unwrap().transitioning.is_empty());
-        assert!(matches!(pending.0.lock().unwrap().get(&handle).unwrap().phase, NativePairingPhase::RequiresAuthPersisted { .. }));
+        assert!(matches!(
+            pending.0.lock().unwrap().get(&handle).unwrap().phase,
+            NativePairingPhase::RequiresAuthPersisted { .. }
+        ));
 
         // A second isolated writer hits create_new on a path already owned by
         // another process. Its cleanup may remove only a stage it created.
-        let (_other_directory, other_path, other_authority, other_pending, other_handle, other_contents, mut other_host) = writer_pairing_fixture();
+        let (
+            _other_directory,
+            other_path,
+            other_authority,
+            other_pending,
+            other_handle,
+            other_contents,
+            mut other_host,
+        ) = writer_pairing_fixture();
         let staged = other_path.with_extension("foreign.tmp");
         std::fs::write(&staged, "foreign writer's staged bytes").unwrap();
         other_host.staged_path = Some(staged.clone());
-        assert!(station_profile_store_write_with_host(&other_host, &other_authority, &other_pending, other_contents, 0, Some(other_handle.clone())).unwrap_err().contains("create saved Station temp file"));
-        assert_eq!(std::fs::read_to_string(&staged).unwrap(), "foreign writer's staged bytes");
-        assert_eq!(parse_station_profile_store(&read_station_profile_store(&other_path).unwrap()).unwrap().revision, 0);
-        assert!(matches!(other_pending.0.lock().unwrap().get(&other_handle).unwrap().phase, NativePairingPhase::AwaitingRequiresAuth));
+        assert!(station_profile_store_write_with_host(
+            &other_host,
+            &other_authority,
+            &other_pending,
+            other_contents,
+            0,
+            Some(other_handle.clone())
+        )
+        .unwrap_err()
+        .contains("create saved Station temp file"));
+        assert_eq!(
+            std::fs::read_to_string(&staged).unwrap(),
+            "foreign writer's staged bytes"
+        );
+        assert_eq!(
+            parse_station_profile_store(&read_station_profile_store(&other_path).unwrap())
+                .unwrap()
+                .revision,
+            0
+        );
+        assert!(matches!(
+            other_pending
+                .0
+                .lock()
+                .unwrap()
+                .get(&other_handle)
+                .unwrap()
+                .phase,
+            NativePairingPhase::AwaitingRequiresAuth
+        ));
     }
 
     #[test]
     #[cfg(not(mobile))]
     fn service_attachment_never_claims_an_unprepared_home_after_service_exit() {
-        assert_eq!(owner_after_preparation(PrepareRuntimeKind::ServiceOwned, HomeOwnershipDecision::SpawnSidecar), DesktopOwner::Unowned);
-        assert_eq!(owner_after_preparation(PrepareRuntimeKind::ServiceOwned, HomeOwnershipDecision::ServiceOwnsHome { id: "owned-service".into(), port: 4123 }), DesktopOwner::Service { id: "owned-service".into(), port: 4123 });
-        assert_eq!(owner_after_preparation(PrepareRuntimeKind::Absent, HomeOwnershipDecision::SpawnSidecar), DesktopOwner::Sidecar);
+        assert_eq!(
+            owner_after_preparation(
+                PrepareRuntimeKind::ServiceOwned,
+                HomeOwnershipDecision::SpawnSidecar
+            ),
+            DesktopOwner::Unowned
+        );
+        assert_eq!(
+            owner_after_preparation(
+                PrepareRuntimeKind::ServiceOwned,
+                HomeOwnershipDecision::ServiceOwnsHome {
+                    id: "owned-service".into(),
+                    port: 4123
+                }
+            ),
+            DesktopOwner::Service {
+                id: "owned-service".into(),
+                port: 4123
+            }
+        );
+        assert_eq!(
+            owner_after_preparation(
+                PrepareRuntimeKind::Absent,
+                HomeOwnershipDecision::SpawnSidecar
+            ),
+            DesktopOwner::Sidecar
+        );
         let source = include_str!("lib.rs");
-        let preparation = source.split("fn prepare_runtime_registry_bridge(").nth(1).unwrap().split("fn capture_bounded_registry_bridge_stdout").next().unwrap();
-        assert!(preparation.find("HomeOwnershipDecision::ServiceOwnsHome").unwrap() < preparation.find("\"prepareRuntime\"").unwrap());
+        let preparation = source
+            .split("fn prepare_runtime_registry_bridge(")
+            .nth(1)
+            .unwrap()
+            .split("fn capture_bounded_registry_bridge_stdout")
+            .next()
+            .unwrap();
+        assert!(
+            preparation
+                .find("HomeOwnershipDecision::ServiceOwnsHome")
+                .unwrap()
+                < preparation.find("\"prepareRuntime\"").unwrap()
+        );
     }
 
     #[test]
@@ -12669,7 +13149,9 @@ mod tests {
     #[cfg(not(mobile))]
     fn startup_local_proof_requires_only_the_exact_ready_response_shape() {
         assert!(startup_local_proof_is_ready(r#"{"ready":true}"#));
-        assert!(!startup_local_proof_is_ready(r#"{"ready":true,"instanceId":"leak"}"#));
+        assert!(!startup_local_proof_is_ready(
+            r#"{"ready":true,"instanceId":"leak"}"#
+        ));
         assert!(!startup_local_proof_is_ready(r#"{"ready":false}"#));
         assert!(!startup_local_proof_is_ready("not-json"));
     }
@@ -12869,7 +13351,10 @@ mod tests {
         struct Broken(bool);
         impl Read for Broken {
             fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
-                assert!(!self.0, "an errored stderr reader must not be retried forever");
+                assert!(
+                    !self.0,
+                    "an errored stderr reader must not be retried forever"
+                );
                 self.0 = true;
                 Err(std::io::Error::other("broken stderr"))
             }
@@ -13368,7 +13853,8 @@ mod tests {
             assert_eq!(bridge_home, expected.as_path());
             assert!(!bridge_home.to_string_lossy().starts_with(r"\\?\"));
             Ok(())
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(prepared, expected);
         assert_eq!(std::fs::canonicalize(prepared).unwrap(), canonical);
     }
@@ -13776,7 +14262,9 @@ mod tests {
         assert_eq!(invalid.as_deref(), Some("verbose"));
     }
 
-    fn plugins_map(value: serde_json::Value) -> std::collections::HashMap<String, serde_json::Value> {
+    fn plugins_map(
+        value: serde_json::Value,
+    ) -> std::collections::HashMap<String, serde_json::Value> {
         match value {
             serde_json::Value::Object(map) => map.into_iter().collect(),
             _ => panic!("test fixture must be a JSON object"),
@@ -15410,10 +15898,8 @@ mod tests {
             .unwrap_err()
             .contains("default Station is missing"));
 
-        let insecure_public_broker = contents.replace(
-            "https://broker.example",
-            "http://broker.example",
-        );
+        let insecure_public_broker =
+            contents.replace("https://broker.example", "http://broker.example");
         assert!(parse_station_profile_store(&insecure_public_broker).is_err());
 
         let embedded_key = contents.replace(
@@ -16167,10 +16653,8 @@ mod tests {
         }
         #[cfg(unix)]
         use std::os::unix::fs::OpenOptionsExt;
-        let temporary = path.with_extension(format!(
-            "json.native-bootstrap-{}.tmp",
-            std::process::id(),
-        ));
+        let temporary =
+            path.with_extension(format!("json.native-bootstrap-{}.tmp", std::process::id(),));
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -16184,10 +16668,7 @@ mod tests {
             .map_err(|error| format!("sync native bootstrap profile store: {error}"))?;
         drop(file);
         replace_station_profile_store(&temporary, path)?;
-        crate::windows_path_trust::ensure(&[(
-            crate::windows_path_trust::TrustKind::File,
-            path,
-        )])?;
+        crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, path)])?;
         Ok(())
     }
 
@@ -16200,8 +16681,8 @@ mod tests {
         let Ok(root) = std::env::var("STATION_NATIVE_BOOTSTRAP_RACE_ROOT") else {
             return;
         };
-        let channel = std::env::var("STATION_NATIVE_BOOTSTRAP_RACE_CHANNEL")
-            .expect("worker channel");
+        let channel =
+            std::env::var("STATION_NATIVE_BOOTSTRAP_RACE_CHANNEL").expect("worker channel");
         let (server_port, ui_port) = match channel.as_str() {
             "stable" => (18141, 18000),
             "beta" => (28141, 28000),
@@ -16275,11 +16756,8 @@ mod tests {
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
         }
         #[cfg(windows)]
-        crate::windows_path_trust::ensure(&[(
-            crate::windows_path_trust::TrustKind::File,
-            &path,
-        )])
-        .unwrap();
+        crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, &path)])
+            .unwrap();
 
         let executable = std::env::current_exe().unwrap();
         // One process per packaged channel is the production contract: the
@@ -16300,7 +16778,9 @@ mod tests {
                     .stdout(Stdio::null())
                     .stderr(Stdio::piped());
                 apply_no_window(&mut command);
-                command.spawn().expect("spawn native bundled bootstrap worker")
+                command
+                    .spawn()
+                    .expect("spawn native bundled bootstrap worker")
             })
             .collect::<Vec<_>>();
         for child in children {
@@ -16319,8 +16799,18 @@ mod tests {
             ("beta-paired", "beta-ref", "beta-environment"),
             ("nightly-paired", "nightly-ref", "nightly-environment"),
         ] {
-            let profile = store.profiles.iter().find(|profile| profile.name == name).unwrap();
-            assert_eq!(profile.credential_ref.as_ref().map(|value| value.id.as_str()), Some(reference));
+            let profile = store
+                .profiles
+                .iter()
+                .find(|profile| profile.name == name)
+                .unwrap();
+            assert_eq!(
+                profile
+                    .credential_ref
+                    .as_ref()
+                    .map(|value| value.id.as_str()),
+                Some(reference)
+            );
             assert_eq!(profile._environment_id.as_deref(), Some(environment));
         }
         for (channel, port) in [("stable", 18141), ("beta", 28141), ("nightly", 38141)] {
@@ -16329,7 +16819,8 @@ mod tests {
                     && profile.credential_ref.is_none()
                     && profile.local_service.as_ref().is_some_and(|service| {
                         service.instance_id == format!("desktop-sidecar-{channel}")
-                            && service.base_dir == root.join("instances").join(channel).to_string_lossy()
+                            && service.base_dir
+                                == root.join("instances").join(channel).to_string_lossy()
                             && service.server_port == port
                     })
             }));
@@ -16411,6 +16902,14 @@ mod tests {
         assert!(
             !station_profile_store_genesis_admissible(&root).unwrap(),
             "cutover evidence must fence missing profiles.json"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+
+        std::fs::create_dir_all(root.join("installs/stable")).unwrap();
+        std::fs::create_dir_all(root.join("state/stable/instances")).unwrap();
+        assert!(
+            station_profile_store_genesis_admissible(&root).unwrap(),
+            "installed releases and archive lifecycle state are not history (#2675)"
         );
         std::fs::remove_dir_all(&root).unwrap();
 
@@ -16640,9 +17139,10 @@ mod tests {
         let source = include_str!("lib.rs");
         let marker = &source[source
             .find("fn write_profile_store_genesis_marker(")
-            .expect("marker writer exists")..source
-            .find("fn write_empty_station_profile_store(")
-            .expect("empty writer follows marker writer")];
+            .expect("marker writer exists")
+            ..source
+                .find("fn write_empty_station_profile_store(")
+                .expect("empty writer follows marker writer")];
         assert!(marker.contains("sync_profile_store_directory(root)?"));
         assert!(marker.contains("sync_profile_store_directory(parent)?"));
         assert!(marker.contains("#[cfg(windows)]"));
@@ -16650,18 +17150,20 @@ mod tests {
 
         let empty = &source[source
             .find("fn write_empty_station_profile_store(")
-            .expect("empty writer exists")..source
-            .find("fn ensure_station_profile_store_genesis(")
-            .expect("genesis admission follows empty writer")];
+            .expect("empty writer exists")
+            ..source
+                .find("fn ensure_station_profile_store_genesis(")
+                .expect("genesis admission follows empty writer")];
         assert!(empty.contains("sync_profile_store_directory(parent)?"));
         assert!(empty.contains("#[cfg(windows)]"));
         assert!(empty.contains("TrustKind::File"));
 
         let admission = &source[source
             .find("fn ensure_station_profile_store_genesis(")
-            .expect("genesis admission exists")..source
-            .find("fn read_station_profile_store(")
-            .expect("profile reader follows admission")];
+            .expect("genesis admission exists")
+            ..source
+                .find("fn read_station_profile_store(")
+                .expect("profile reader follows admission")];
         assert!(admission.contains("TrustKind::Directory, root"));
         assert!(admission.contains("TrustKind::Directory, &config"));
     }
@@ -16673,16 +17175,18 @@ mod tests {
         assert!(source.contains("fn ReplaceFileW("));
         let production = &source[source
             .find("fn station_profile_store_write_internal(")
-            .expect("native profile writer exists")..source
-            .find("fn station_profile_store_write(")
-            .expect("native command wrapper follows writer")];
+            .expect("native profile writer exists")
+            ..source
+                .find("fn station_profile_store_write(")
+                .expect("native command wrapper follows writer")];
         assert!(production.contains("replace_station_profile_store(&staged, &path)?"));
         assert!(!production.contains("std::fs::rename(&staged, &path)"));
         let worker = &source[source
             .find("fn write_native_bootstrap_process_store(")
-            .expect("native worker publisher exists")..source
-            .find("fn native_bundled_profile_process_worker()")
-            .expect("native worker follows publisher")];
+            .expect("native worker publisher exists")
+            ..source
+                .find("fn native_bundled_profile_process_worker()")
+                .expect("native worker follows publisher")];
         assert!(worker.contains("replace_station_profile_store(&temporary, path)?"));
     }
 
@@ -17103,10 +17607,7 @@ mod tests {
                     panic!("client closed before sending a full request");
                 }
                 raw.extend_from_slice(&chunk[..read]);
-                if let Some(position) = raw
-                    .windows(4)
-                    .position(|window| window == b"\r\n\r\n")
-                {
+                if let Some(position) = raw.windows(4).position(|window| window == b"\r\n\r\n") {
                     break position + 4;
                 }
             };
@@ -17409,7 +17910,9 @@ mod tests {
                     b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n",
                 )
                 .unwrap();
-            socket.write_all(b"event: orchestration:caughtUp\ndata: {}\n\n").unwrap();
+            socket
+                .write_all(b"event: orchestration:caughtUp\ndata: {}\n\n")
+                .unwrap();
             socket.flush().unwrap();
             // Outlive the 1s total body budget the regression configured.
             std::thread::sleep(Duration::from_millis(1500));
@@ -17608,14 +18111,18 @@ mod tests {
     }
 
     #[test]
-    fn remote_push_is_enabled_only_for_an_android_build_with_firebase_identity() {
-        let state = |android, identity| remote_push_capability(android, identity).state;
+    fn remote_push_is_enabled_only_for_an_android_build_with_firebase_identity_or_an_ios_live_activity_build(
+    ) {
+        let state = |android, identity| remote_push_capability(android, identity, false).state;
         assert_eq!(state(true, true), "enabled");
         assert_eq!(state(true, false), "unsupported");
         assert_eq!(state(false, true), "unsupported");
         assert_eq!(state(false, false), "unsupported");
+        assert_eq!(remote_push_capability(false, false, true).state, "enabled");
+        // Off every host this test runs on: only an iOS build sets it.
+        assert!(!ios_live_activity_built());
         assert_eq!(
-            remote_push_capability(true, false).reason,
+            remote_push_capability(true, false, false).reason,
             "This build has no push configuration."
         );
 
@@ -18518,8 +19025,19 @@ mod tests {
             AppHandle,
             NativeCredentialReference
         );
-        assert_async_command!(credential_vault_commit_pairing, AppHandle, Authority, Pending, String);
-        assert_async_command!(station_profile_authorize_active, AppHandle, Authority, String);
+        assert_async_command!(
+            credential_vault_commit_pairing,
+            AppHandle,
+            Authority,
+            Pending,
+            String
+        );
+        assert_async_command!(
+            station_profile_authorize_active,
+            AppHandle,
+            Authority,
+            String
+        );
         assert_async_command!(station_profile_store_read, AppHandle, Authority);
         assert_async_command!(
             station_profile_store_write,
@@ -18530,8 +19048,19 @@ mod tests {
             u64,
             Option<String>
         );
-        assert_async_command!(station_ensure_bundled_local_profile, AppHandle, Authority, Pending);
-        assert_async_command!(station_local_self_provision, AppHandle, Authority, Pending, String);
+        assert_async_command!(
+            station_ensure_bundled_local_profile,
+            AppHandle,
+            Authority,
+            Pending
+        );
+        assert_async_command!(
+            station_local_self_provision,
+            AppHandle,
+            Authority,
+            Pending,
+            String
+        );
     }
 
     /// The async signature alone only moves the body to an async-runtime
@@ -18550,10 +19079,11 @@ mod tests {
         });
         assert_ne!(ran_on, awaiting, "the body ran on the thread awaiting it");
 
-        let panicked = tauri::async_runtime::block_on(run_saved_station_command(
-            || -> Result<(), String> { panic!("saved Station body panicked") },
-        ))
-        .expect_err("a panicking body answers with an error");
+        let panicked =
+            tauri::async_runtime::block_on(run_saved_station_command(|| -> Result<(), String> {
+                panic!("saved Station body panicked")
+            }))
+            .expect_err("a panicking body answers with an error");
         assert!(
             panicked.starts_with("saved Station command task failed"),
             "unexpected error: {panicked}"
@@ -18564,25 +19094,49 @@ mod tests {
 #[cfg(all(test, not(mobile)))]
 mod standalone_storage_order_tests {
     use super::*;
-    #[test] fn standalone_schema_is_prepared_before_profile_genesis() {
+    #[test]
+    fn standalone_schema_is_prepared_before_profile_genesis() {
         let root = tempfile::tempdir().unwrap();
         let home = root.path().join("home");
         let events = std::cell::RefCell::new(Vec::new());
         // This helper receives an external path relative to the ambient test
         // root; admission is independent from the callback-order assertion.
-        prepare_desktop_station_storage(home.clone(), &home, |_| { events.borrow_mut().push("schema"); Ok(()) }, |fresh| { assert!(fresh); events.borrow_mut().push("profiles"); Ok(()) }).unwrap();
+        prepare_desktop_station_storage(
+            home.clone(),
+            &home,
+            |_| {
+                events.borrow_mut().push("schema");
+                Ok(())
+            },
+            |fresh| {
+                assert!(fresh);
+                events.borrow_mut().push("profiles");
+                Ok(())
+            },
+        )
+        .unwrap();
         assert_eq!(*events.borrow(), vec!["schema", "profiles"]);
     }
 }
 
-#[cfg(all(test, not(mobile)))] mod profile_schema_birth_tests {
- use super::*;
- #[test] fn a_schema_marker_is_not_general_permission_to_recreate_lost_profiles() {
-   let directory = tempfile::tempdir().unwrap();
-   std::fs::write(directory.path().join(".station-home-schema.json"), "{\"schemaVersion\":2}").unwrap();
-   assert!(!station_profile_store_genesis_admissible(directory.path()).unwrap());
-   assert!(station_profile_store_genesis_admissible_with_schema(directory.path(), true).unwrap());
-   std::fs::write(directory.path().join("other-data"), "keep").unwrap();
-   assert!(!station_profile_store_genesis_admissible_with_schema(directory.path(), true).unwrap());
- }
+#[cfg(all(test, not(mobile)))]
+mod profile_schema_birth_tests {
+    use super::*;
+    #[test]
+    fn a_schema_marker_is_not_general_permission_to_recreate_lost_profiles() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join(".station-home-schema.json"),
+            "{\"schemaVersion\":2}",
+        )
+        .unwrap();
+        assert!(!station_profile_store_genesis_admissible(directory.path()).unwrap());
+        assert!(
+            station_profile_store_genesis_admissible_with_schema(directory.path(), true).unwrap()
+        );
+        std::fs::write(directory.path().join("other-data"), "keep").unwrap();
+        assert!(
+            !station_profile_store_genesis_admissible_with_schema(directory.path(), true).unwrap()
+        );
+    }
 }

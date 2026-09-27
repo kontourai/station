@@ -1,3 +1,4 @@
+import type { ChildWorkItem } from '@kontourai/station-contracts/child-work';
 import type {
   ConversationTurnActivity,
   OrchestrationConversationStreamBinding,
@@ -40,6 +41,7 @@ import {
 
 /** Methods whose frames always carry the activity they produced. */
 const ACTIVITY_FRAME_METHODS: ReadonlySet<string> = new Set([
+  'child-work.updated',
   'turn.started',
   'turn.completed',
   'turn.aborted',
@@ -48,6 +50,21 @@ const ACTIVITY_FRAME_METHODS: ReadonlySet<string> = new Set([
   'runtime.error',
   'session.exited',
 ]);
+
+function immediateActivityFrame(event: {
+  method?: string;
+  namespace?: string;
+  type?: string;
+}): boolean {
+  return (
+    (event.method !== undefined && ACTIVITY_FRAME_METHODS.has(event.method)) ||
+    (event.method === 'extension.notification' &&
+      event.namespace === 'claude-code' &&
+      (event.type === 'task/registry' ||
+        event.type === 'task/settled' ||
+        event.type === 'provider/follow-up-pending'))
+  );
+}
 
 /**
  * Any other committed event moves only `lastActivityAt`; its frame carries
@@ -82,6 +99,8 @@ export interface ConversationTurnActivityProjectionDeps {
   readTurnProgress: (
     threadId: string,
   ) => (TurnProgressObservation & { turnId: string }) | undefined;
+  readRunningChildWork: (threadId: string) => ChildWorkItem[];
+  publishProjectionChange?: (threadId: string) => void;
   logger: { warn: (message: string, meta?: Record<string, unknown>) => void };
   now?: () => number;
 }
@@ -134,6 +153,10 @@ export class ConversationTurnActivityProjection {
    * the metric counts each breach once rather than once per read or frame.
    */
   private readonly countedStuckChildren = new Set<string>();
+  private readonly pendingFollowUps = new Map<
+    string,
+    { expiresAt: number; timeout: ReturnType<typeof setTimeout> }
+  >();
   private readonly unsubscribe: () => void;
   private readonly now: () => number;
 
@@ -155,6 +178,7 @@ export class ConversationTurnActivityProjection {
         }
       },
       threadDeleted: (threadId) => {
+        this.clearFollowUp(threadId);
         this.threads.delete(threadId);
         this.coalescedFrame.delete(threadId);
         const prefix = `${threadId}\u0000`;
@@ -174,6 +198,43 @@ export class ConversationTurnActivityProjection {
 
   dispose(): void {
     this.unsubscribe();
+    for (const threadId of this.pendingFollowUps.keys())
+      this.clearFollowUp(threadId);
+  }
+
+  private clearFollowUp(threadId: string): void {
+    const pending = this.pendingFollowUps.get(threadId);
+    if (pending) clearTimeout(pending.timeout);
+    this.pendingFollowUps.delete(threadId);
+  }
+
+  private observeFollowUp(event: CanonicalRuntimeEvent): void {
+    if (event.method === 'session.exited' || event.method === 'turn.started') {
+      this.clearFollowUp(event.threadId);
+      return;
+    }
+    if (
+      event.method !== 'extension.notification' ||
+      event.namespace !== 'claude-code' ||
+      event.type !== 'provider/follow-up-pending'
+    )
+      return;
+    this.clearFollowUp(event.threadId);
+    if (
+      !event.payload ||
+      typeof event.payload !== 'object' ||
+      (event.payload as { pending?: unknown }).pending !== true
+    )
+      return;
+    const expiresAt = this.now() + 5_000;
+    const timeout = setTimeout(() => {
+      const current = this.pendingFollowUps.get(event.threadId);
+      if (current?.expiresAt !== expiresAt) return;
+      this.pendingFollowUps.delete(event.threadId);
+      this.deps.publishProjectionChange?.(event.threadId);
+    }, 5_000);
+    timeout.unref?.();
+    this.pendingFollowUps.set(event.threadId, { expiresAt, timeout });
   }
 
   /**
@@ -257,8 +318,13 @@ export class ConversationTurnActivityProjection {
     let lastActivityAt: string | undefined;
     let lastTool: ThreadActivity['lastTool'];
     let current: ThreadActivity | undefined;
+    const runningChildren: ChildWorkItem[] = [];
+    let followUpPending = false;
     for (const threadId of children) {
       const state = this.thread(threadId);
+      runningChildren.push(...this.deps.readRunningChildWork(threadId));
+      const pending = this.pendingFollowUps.get(threadId);
+      if (pending && pending.expiresAt > this.now()) followUpPending = true;
       if (threadId === currentThreadId) current = state;
       else if (state.openTurn) this.countStuckChild(threadId, state.openTurn);
       asOfSequence = Math.max(asOfSequence, state.asOfSequence);
@@ -270,7 +336,26 @@ export class ConversationTurnActivityProjection {
       )
         lastTool = state.lastTool;
     }
-    const activity: ConversationTurnActivity = { conversationId, asOfSequence };
+    const activity: ConversationTurnActivity = {
+      conversationId,
+      currentThreadId,
+      asOfSequence,
+    };
+    if (runningChildren.length > 0 || followUpPending) {
+      const oldestStartedAt = runningChildren.reduce(
+        (oldest, item) =>
+          item.startedAt && (!oldest || item.startedAt < oldest)
+            ? item.startedAt
+            : oldest,
+        undefined as string | undefined,
+      );
+      activity.runningChildWork = {
+        count: runningChildren.length,
+        producers: [...new Set(runningChildren.map((item) => item.producer))],
+        ...(oldestStartedAt ? { oldestStartedAt } : {}),
+        ...(followUpPending ? { followUpPending: true } : {}),
+      };
+    }
     if (current?.openTurn) {
       const { turnId, startedAt, trigger } = current.openTurn;
       activity.openTurn = {
@@ -310,9 +395,12 @@ export class ConversationTurnActivityProjection {
   streamBinding(event: {
     threadId: string;
     method?: string;
+    namespace?: string;
+    type?: string;
+    force?: boolean;
   }): OrchestrationConversationStreamBinding | undefined {
     if (!event.method) return undefined;
-    if (!ACTIVITY_FRAME_METHODS.has(event.method)) {
+    if (!event.force && !immediateActivityFrame(event)) {
       // Decided before any lookup: the per-token path costs two map reads.
       const chosen = this.coalescedFrame.get(event.threadId);
       if (
@@ -458,6 +546,7 @@ export class ConversationTurnActivityProjection {
       this.threads.delete(event.threadId);
       return;
     }
+    this.observeFollowUp(event);
     const state = this.threads.get(event.threadId);
     // Unseeded: the seed will read this row durably when first needed.
     if (!state || globalSequence <= state.asOfSequence) return;
@@ -499,7 +588,7 @@ export class ConversationTurnActivityProjection {
     }
     state.lastActivityAt = later(state.lastActivityAt, event.createdAt);
     state.asOfSequence = globalSequence;
-    if (!ACTIVITY_FRAME_METHODS.has(event.method)) {
+    if (!immediateActivityFrame(event)) {
       const now = this.now();
       const chosen = this.coalescedFrame.get(event.threadId);
       if (!chosen || now - chosen.at >= COALESCED_FRAME_INTERVAL_MS)

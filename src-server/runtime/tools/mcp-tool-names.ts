@@ -15,6 +15,12 @@ export interface MCPToolNameMappingEntry {
   tool: string;
   /** Exact server-side identity issued during this runtime generation. */
   provenance?: MCPToolLoaderProvenance;
+  /**
+   * #2584: the loader served this tool from the genuine built-in
+   * station-control server (`isBuiltinStationControl`), never an authored
+   * integration reusing the id.
+   */
+  builtinStationControl?: boolean;
 }
 
 export function normalizeLoadedMCPTools(
@@ -31,6 +37,7 @@ export function normalizeLoadedMCPTools(
   logger: {
     debug: (message: string, payload?: Record<string, unknown>) => void;
   },
+  builtinStationControl = false,
 ): Tool<any>[] {
   return tools.map((tool) => {
     const normalized = normalizeToolName(tool.name);
@@ -58,6 +65,7 @@ export function normalizeLoadedMCPTools(
       server: parsed.server,
       tool: parsed.tool,
       provenance,
+      ...(builtinStationControl ? { builtinStationControl: true } : {}),
     });
     toolNameMapping.set(normalized, entry);
     toolNameReverseMapping.set(tool.name, normalized);

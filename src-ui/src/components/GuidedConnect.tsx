@@ -37,12 +37,19 @@ interface GuidedConnectProps {
   onExploreSample?: () => void;
   /** Hold the pre-session screen while a relay Device ceremony joins Projects. */
   onRelayOnboardingChange?: (open: boolean) => void;
+  /**
+   * Why this browser landed here (e.g. a used or replaced sign-in link).
+   * Rendered inside the screen: it is a full-viewport layer, so anything the
+   * gate renders beside it is covered (#2612).
+   */
+  notice?: string;
 }
 
 export function GuidedConnect({
   onSessionEstablished,
   onExploreSample,
   onRelayOnboardingChange,
+  notice,
 }: GuidedConnectProps) {
   const [openPanel, setOpenPanel] = useState<GuidedConnectPanel | null>(null);
   const [brokerOpen, setBrokerOpen] = useState(false);
@@ -63,6 +70,11 @@ export function GuidedConnect({
         <p className="guided-connect__description">
           Choose the computer where you want to work.
         </p>
+        {notice && (
+          <p role="alert" className="guided-connect__notice">
+            {notice}
+          </p>
+        )}
         {!profile.isTauri && (
           <section
             className="guided-connect__destination"

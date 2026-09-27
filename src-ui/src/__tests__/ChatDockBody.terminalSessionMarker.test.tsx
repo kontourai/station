@@ -354,6 +354,40 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     expect(screen.getByText('Details')).toBeTruthy();
   });
 
+  test('an unconfirmed session start keeps its cause but offers no blind Send again', async () => {
+    const onNewChat = vi.fn();
+    const session = buildSession({
+      messages: [
+        {
+          role: 'user',
+          content: 'continue',
+          timestamp: 1,
+        } as any,
+        {
+          role: 'user',
+          content:
+            '[SYSTEM_EVENT] [CHAT_ERROR:SESSION_START_INDETERMINATE] thread t-1 already has an active writer. Provider session creation may have completed. Inspect the session before retrying.',
+          timestamp: 2,
+        } as any,
+      ],
+    });
+
+    renderDock(session, onNewChat);
+
+    expect(
+      await screen.findByText(
+        /already has an active writer/,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Check it before sending again\.$/)).toBeTruthy();
+    // The marker is durable: nothing on this path restored the composer.
+    expect(screen.queryByText(/back in the composer/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Switch agent' })).toBeNull();
+  });
+
   test('an ordinary [CHAT_ERROR] marker (no code) still offers "Send again" exactly as before', async () => {
     const onNewChat = vi.fn();
     const session = buildSession({

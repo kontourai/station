@@ -2,8 +2,8 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { npmBuildInvocation } from './lib/desktop-build-command.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 
@@ -58,9 +58,14 @@ function npmRun(args) {
   run(invocation.command, invocation.args);
 }
 
-function buildHarness() {
+function buildHarness(laneName) {
   const bundleArgs =
     process.platform === 'darwin' ? ['--bundles', 'app'] : ['--no-bundle'];
+  const config =
+    laneName === 'native-relay-grant-lifecycle' ||
+    laneName === 'native-relay-diagnostic-echo'
+      ? 'tauri.webdriver.relay-grant.conf.json'
+      : 'tauri.webdriver.conf.json';
   npmRun([
     'run',
     'build:desktop',
@@ -70,7 +75,7 @@ function buildHarness() {
     '--features',
     'webdriver',
     '--config',
-    'tauri.webdriver.conf.json',
+    config,
     ...bundleArgs,
   ]);
 }
@@ -87,10 +92,38 @@ export const SHELL_E2E_LANES = [
     name: 'device-pane',
     spec: 'tests/tauri-shell/device-pane.e2e.ts',
   },
+  {
+    // Explicit macOS/keyring lane: uses an isolated real Keychain account,
+    // loopback broker and Station signer, with exact owned cleanup.
+    name: 'native-relay-key-approval',
+    spec: 'tests/tauri-shell/native-relay-candidate-approval.e2e.ts',
+    manual: true,
+  },
+  {
+    // Explicit v2 grant custody lane: the real main WebView redeems, reads,
+    // revokes and retries cleanup against a free loopback broker using exact
+    // fixture-owned Keychain identities. It never mounts app data ingress.
+    name: 'native-relay-grant-lifecycle',
+    spec: 'tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts',
+    manual: true,
+  },
+  {
+    // Explicit macOS proof-before-SDP and diagnosticEcho lane. It reuses the
+    // real grant lifecycle journey, then runs the actual connect client inside
+    // the main WebView against loopback broker, coturn and Pion fixtures.
+    name: 'native-relay-diagnostic-echo',
+    spec: 'tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts',
+    manual: true,
+    env: { STATION_TAURI_E2E_NATIVE_DIAGNOSTIC_ECHO: '1' },
+  },
 ];
 
 function main() {
-  if (process.argv.slice(2).includes('--build')) buildHarness();
+  const requested = process.argv
+    .slice(2)
+    .find((argument) => argument.startsWith('--lane='))
+    ?.slice('--lane='.length);
+  if (process.argv.slice(2).includes('--build')) buildHarness(requested);
   const explicit = process.env.STATION_TAURI_E2E_BINARY;
   const binary =
     explicit ??
@@ -119,13 +152,9 @@ function main() {
   // the sweep: a red `plugin-host-security` means `device-pane` did not run at
   // all rather than passing. Use `--lane=<name>` to reach a later lane while an
   // earlier one is red, and to iterate on one without paying for the other.
-  const requested = process.argv
-    .slice(2)
-    .find((argument) => argument.startsWith('--lane='))
-    ?.slice('--lane='.length);
   const lanes = requested
     ? SHELL_E2E_LANES.filter((lane) => lane.name === requested)
-    : SHELL_E2E_LANES;
+    : SHELL_E2E_LANES.filter((lane) => !lane.manual);
   if (lanes.length === 0) {
     throw new Error(
       `Unknown Tauri shell lane '${requested}'. Known lanes: ${SHELL_E2E_LANES.map((lane) => lane.name).join(', ')}.`,
@@ -135,6 +164,7 @@ function main() {
     run(process.execPath, ['--import', 'tsx', lane.spec], {
       env: {
         ...process.env,
+        ...lane.env,
         STATION_TAURI_E2E_BINARY: binary,
         STATION_TAURI_E2E_SOURCE_SHA: revision.stdout.trim(),
       },
@@ -142,10 +172,7 @@ function main() {
   }
 }
 
-if (
-  process.argv[1] &&
-  fileURLToPath(import.meta.url) === resolve(process.argv[1])
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     main();
   } catch (error) {

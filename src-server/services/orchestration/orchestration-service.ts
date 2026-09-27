@@ -748,14 +748,6 @@ interface OrchestrationServiceOptions {
   validateRecoveredTenantExecutionContext?: (
     context: TenantExecutionContext | undefined,
   ) => TenantExecutionContext | undefined;
-  /**
-   * Explicit bridge for installations that still have pre-ownership sessions.
-   * Multi-user hosts must leave this at the secure default (`deny`) and
-   * migrate or quarantine ownerless rows before exposing them.
-   */
-  ownerlessSessionAccess?: 'deny' | 'single-user-compat';
-  /** Exact legacy OS-alias owner for the local-home principal migration only. */
-  legacyPersonalOwner?: string;
   personalConversationAccess?: PersonalConversationAccess;
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
@@ -1565,10 +1557,7 @@ export class OrchestrationService {
    * it).
    */
   private readonly turnProgress: TurnProgressTracker;
-  /**
-   * #2456: process-local child work (engine subagents), served on session
-   * summaries beside `turnProgress` so the reconnect snapshot carries it.
-   */
+  /** Current running child work plus durable terminal outcomes. */
   /**
    * #2457: a child's running → terminal fold is the background-task settle
    * the `sessionBackgroundTasks` metric counts, once per child, for every
@@ -1598,7 +1587,24 @@ export class OrchestrationService {
   private readonly readChildWork = (
     threadId: string,
     provider: string | undefined,
-  ) => this.childWork.read(threadId, provider);
+  ) => {
+    this.hydrateHistoricalChildWork([threadId]);
+    return this.childWork.read(threadId, provider);
+  };
+
+  private hydrateHistoricalChildWork(threadIds: readonly string[]): void {
+    const eventStore = this.options.eventStore;
+    if (!eventStore) return;
+    const cold = this.childWork.threadsNeedingHistoricalSeed(threadIds);
+    if (cold.length === 0) return;
+    const historical = eventStore.listChildWorkHistoryForThreads(cold);
+    for (const threadId of cold) {
+      this.childWork.seedHistoricalSettled(
+        threadId,
+        (historical.get(threadId) ?? []).map((row) => row.payload),
+      );
+    }
+  }
   /**
    * #2309: the conversation activity projection. Absent without an event
    * store: it folds committed events and has nothing to fold without one.
@@ -1874,12 +1880,6 @@ export class OrchestrationService {
               options.validateRecoveredTenantExecutionContext,
           }
         : {}),
-      ...(options.ownerlessSessionAccess !== undefined
-        ? { ownerlessSessionAccess: options.ownerlessSessionAccess }
-        : {}),
-      ...(options.legacyPersonalOwner !== undefined
-        ? { legacyPersonalOwner: options.legacyPersonalOwner }
-        : {}),
       ...(options.sessionOwnerCacheMaxEntries !== undefined
         ? { sessionOwnerCacheMaxEntries: options.sessionOwnerCacheMaxEntries }
         : {}),
@@ -1906,6 +1906,16 @@ export class OrchestrationService {
       ? new ConversationTurnActivityProjection({
           eventStore: options.eventStore,
           readTurnProgress: (threadId) => this.turnProgress.read(threadId),
+          readRunningChildWork: (threadId) => {
+            const provider = this.sessionAdapters.get(threadId)?.provider;
+            const view = this.childWork.read(threadId, provider);
+            return view?.observability === 'reported' ? view.running : [];
+          },
+          publishProjectionChange: (threadId) =>
+            this.options.eventBus.emit(
+              SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED,
+              { threadId },
+            ),
           logger: options.logger,
         })
       : undefined;
@@ -2269,8 +2279,6 @@ export class OrchestrationService {
           this.observeAnswerability(threadId, provider, observedAt),
         readConversationActivity: (conversationId) =>
           this.conversationActivity?.readConversation(conversationId),
-        ownerlessPersonalAccess:
-          options.ownerlessSessionAccess === 'single-user-compat',
       });
     }
     // ConversationLineage captures `turnDeduplicator` and
@@ -3635,18 +3643,22 @@ export class OrchestrationService {
         !this.isEphemeralSession(threadId) &&
         this.sessionAuthz.canReadSession(threadId, authority),
     );
+    const readableThreadSet = new Set(readableThreadIds);
     // archive#4466: batched over every readable thread in a fixed number of
     // SQL round trips instead of one `listSessionProjectionEvents` +
     // `countEventsByThread` pair per thread — this route is polled on the
     // Activity view's mount and stalled proportionally to the thread count
     // before this change.
     const eventStore = this.options.eventStore;
+    this.hydrateHistoricalChildWork(readableThreadIds);
     const eventsByThread =
       eventStore?.listSessionProjectionEventsForThreads(readableThreadIds) ??
       new Map<string, PersistedRuntimeEvent[]>();
     const eventCountByThread =
       eventStore?.countEventsByThreads(readableThreadIds) ??
       new Map<string, number>();
+    const openRequestIdsByThread =
+      eventStore?.listOpenRequestIdsByThreads(readableThreadIds);
     // #1536 B4: batched beside the two reads above, never per row — a
     // continuation child's own events begin at the SECOND prompt, so without
     // the conversation's own first prompted turn every surface that titles a
@@ -3677,6 +3689,14 @@ export class OrchestrationService {
     // above for the same reason — one query for the whole list.
     const conversationDraftFactsByThread =
       eventStore?.conversationDraftFactsForThreads(readableThreadIds);
+    // A continuation child learns its conversation from `session.started`
+    // metadata, which a child whose start failed never emits — it then had no
+    // `conversationId`, and every inbox listed it as its own conversation
+    // ("No project · Model not reported · Stopped" beside the real row). The
+    // lineage row is written before the start, so it names the conversation
+    // either way.
+    const lineageByThread =
+      eventStore?.conversationLineageForThreads(readableThreadIds);
     return readableThreadIds
       .map((threadId) => {
         // archive#1867: summary facts are queried by their load-bearing
@@ -3695,9 +3715,14 @@ export class OrchestrationService {
         const conversationFirstPromptedTurn =
           conversationFirstPromptedTurnByThread.get(threadId)?.payload;
         const conversationActivity = conversationActivityFor(threadId);
+        const currentSessionId = conversationActivity
+          ? this.conversationActivity?.currentSessionId(
+              conversationActivity.conversationId,
+            )
+          : undefined;
         const conversationDraftFacts =
           conversationDraftFactsByThread?.get(threadId);
-        return buildOrchestrationSessionSummary({
+        const summary = buildOrchestrationSessionSummary({
           persisted,
           loaded,
           events: events.map((event) => event.payload),
@@ -3705,7 +3730,13 @@ export class OrchestrationService {
           ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
           turnProgress: this.turnProgress.read(threadId),
           readChildWork: this.readChildWork,
+          ...(openRequestIdsByThread
+            ? { openRequestIds: openRequestIdsByThread.get(threadId) ?? [] }
+            : {}),
           ...(conversationActivity ? { conversationActivity } : {}),
+          ...(currentSessionId && readableThreadSet.has(currentSessionId)
+            ? { currentSessionId }
+            : {}),
           ...(conversationFirstPromptedTurn
             ? { conversationFirstPromptedTurn }
             : {}),
@@ -3715,6 +3746,11 @@ export class OrchestrationService {
             observedAt,
           ),
         });
+        const lineageConversationId =
+          lineageByThread?.get(threadId)?.conversationId;
+        return !summary.conversationId && lineageConversationId
+          ? { ...summary, conversationId: lineageConversationId }
+          : summary;
       })
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
@@ -3980,13 +4016,32 @@ export class OrchestrationService {
   firstStartedMetadataOfThread(
     threadId: string,
   ): Record<string, unknown> | undefined {
+    return this.firstStartedRecordOfThread(threadId)?.metadata;
+  }
+
+  /**
+   * #2601: the engine (`provider`) of the SAME record
+   * `firstStartedMetadataOfThread` reads, so a caller's Agent-less identity
+   * and its metadata can never come from two different events.
+   */
+  firstStartedEngineOfThread(threadId: string): string | undefined {
+    return this.firstStartedRecordOfThread(threadId)?.provider;
+  }
+
+  private firstStartedRecordOfThread(
+    threadId: string,
+  ): { metadata: Record<string, unknown>; provider?: string } | undefined {
     const store = this.options.eventStore;
     for (const method of ['session.started', 'session.configured'] as const) {
-      const payload = store?.firstEventByMethod(threadId, method)?.payload as
-        | { metadata?: unknown }
-        | undefined;
+      const event = store?.firstEventByMethod(threadId, method);
+      const payload = event?.payload as { metadata?: unknown } | undefined;
       if (payload?.metadata && typeof payload.metadata === 'object')
-        return payload.metadata as Record<string, unknown>;
+        return {
+          metadata: payload.metadata as Record<string, unknown>,
+          ...(typeof event?.provider === 'string'
+            ? { provider: event.provider }
+            : {}),
+        };
     }
     return undefined;
   }
@@ -4098,6 +4153,9 @@ export class OrchestrationService {
   conversationStreamBinding(event: {
     threadId: string;
     method?: string;
+    namespace?: string;
+    type?: string;
+    force?: boolean;
   }):
     | import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding
     | undefined {
@@ -4550,6 +4608,11 @@ export class OrchestrationService {
     return this.sessionEventReads.readEventStreamHead();
   }
 
+  readEventStreamEpoch(): string | undefined {
+    this.initialize();
+    return this.sessionEventReads.readEventStreamEpoch();
+  }
+
   readEventGlobalSequence(eventId: string): number | undefined {
     return this.sessionEventReads.readEventGlobalSequence(eventId);
   }
@@ -4710,14 +4773,19 @@ export class OrchestrationService {
    * authorization: `canUserReadSession` stays the final check.
    */
   attachmentCandidateOwnerIds(authority: SessionReadAuthority): string[] {
+    return this.readableSessionOwnerIds(authority);
+  }
+
+  /**
+   * The owner principals whose sessions `authority` may read: its own id,
+   * plus (personal mode) every owner of the personal conversation account
+   * it belongs to. The same set transcript search binds.
+   */
+  readableSessionOwnerIds(authority: SessionReadAuthority): string[] {
     this.initialize();
     const constraint = this.sessionAuthz.transcriptOwnerConstraint(authority);
     return [
-      ...new Set([
-        constraint.ownerUserId,
-        ...(constraint.ownerUserIds ?? []),
-        ...(constraint.legacyOwnerUserId ? [constraint.legacyOwnerUserId] : []),
-      ]),
+      ...new Set([constraint.ownerUserId, ...(constraint.ownerUserIds ?? [])]),
     ];
   }
 
@@ -7687,6 +7755,16 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * Owner-cache invalidation for an ownership-shaped event published outside
+   * `projectAndPublishEvent` (the attached-session envelope).
+   */
+  invalidateSessionOwner(threadId: string): void {
+    if (this.sessionAuthz.invalidateSessionOwner(threadId)) {
+      sessionOwnerCacheOps.add(1, { outcome: 'invalidated' });
+    }
+  }
+
   seedSessionRecord(input: {
     threadId: string;
     provider: EngineId;
@@ -7694,9 +7772,39 @@ export class OrchestrationService {
     status?: ProviderSession['status'];
     controlMode?: ProviderSession['controlMode'];
     attachedSource?: ProviderSession['attachedSource'];
+    /**
+     * The principal the seeded session belongs to. A session with no
+     * recorded owner is readable by no caller, so a seeded row that a person
+     * should open records its owner in an ownership-shaped event, exactly as
+     * a started session does.
+     */
+    ownerUserId?: string;
+    /** See `SessionOwnerStamp`: an unverified start acts for no one. */
+    ownerAttribution?: StartOwnerAttribution;
   }): ProviderSession {
     this.initialize();
     const now = new Date().toISOString();
+    if (input.ownerUserId !== undefined) {
+      this.projectAndPublishEvent({
+        eventId: `session-seeded:${input.threadId}`,
+        provider: input.provider,
+        threadId: input.threadId,
+        createdAt: now,
+        method: 'session.started',
+        sessionId: input.threadId,
+        initialState: 'created',
+        metadata: {
+          userId: input.ownerUserId,
+          ...sessionOwnerAttributionMetadata(
+            effectiveOwnerAttribution({
+              ...(input.ownerAttribution
+                ? { ownerAttribution: input.ownerAttribution }
+                : {}),
+            }),
+          ),
+        },
+      } as CanonicalRuntimeEvent);
+    }
     const session: ProviderSession = {
       provider: input.provider,
       threadId: input.threadId,
@@ -8628,8 +8736,12 @@ export class OrchestrationService {
    * session is deliberately excluded from ordinary user-facing inventories.
    * Read the event-store marker as well as the live Set so restart cannot
    * turn an ephemeral webhook session back into a listed conversation.
+   *
+   * Public for the notification writers (#2589): an ephemeral session is not
+   * in `listSessionReadModel`, so it is never on the agent-activity card, and
+   * its notifications must not be marked as the card's to announce.
    */
-  private isEphemeralSession(threadId: string): boolean {
+  isEphemeralSession(threadId: string): boolean {
     if (this.ephemeralSessionThreads.has(threadId)) return true;
     if (this.sessionReadModel.get(threadId)?.ephemeral === true) return true;
     if (this.options.eventStore?.readSessionByThread(threadId)?.ephemeral)
@@ -8759,6 +8871,7 @@ export class OrchestrationService {
   }
 
   private publishCanonicalEvent(event: CanonicalRuntimeEvent): boolean {
+    this.options.eventStore?.assertNoOuterTransactionForPublication();
     // archive#1399 fix round (independent review, H1/M4/M6, hardened in fix
     // round 2 per B1/B4): a provenance-sanitizing writer — see
     // `ui-block-provenance.ts`'s docblock for why it is NOT the only one
@@ -8941,20 +9054,11 @@ export class OrchestrationService {
     // in practice every adapter-sourced event (consumeAdapterEvents ->
     // projectAndPublishEvent) plus this service's other same-path internal
     // publishes. It is NOT the only place a `session.started`/
-    // `session.configured` event can reach the event bus: two other paths
-    // publish independently of this function and are NOT covered by this
-    // invalidation —
-    //   - AttachedSessionFollowService.appendAndPublish (used for the
-    //     read-only-attached envelope built by attachedSessionEnvelope())
-    // The attached-session path is safe TODAY only because it never sets
-    // `metadata.userId`
-    // on a `session.started`/`session.configured` event, so
-    // sessionOwnerUserId() never resolves (and therefore never caches) an
-    // owner from them in the first place — see the cross-reference comments
-    // at each site. This is a structural gap, not a proof: if either path
-    // is ever changed to stamp `metadata.userId`, it must also route
-    // through (or replicate) this invalidation, or a cached owner could go
-    // stale silently.
+    // `session.configured` event can reach the event bus:
+    // AttachedSessionFollowService.appendAndPublish publishes the
+    // read-only-attached envelope (which records the local operator as
+    // owner) independently of this function, and replicates this
+    // invalidation through `invalidateSessionOwner()` below.
     if (
       (projectedEvent.method === 'session.started' ||
         projectedEvent.method === 'session.configured') &&

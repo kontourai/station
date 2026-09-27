@@ -11,9 +11,8 @@
  * broad static verification. So nothing evaluates a candidate diff against any
  * of them until it is already on main.
  *
- * The consequence is the one `check-prepush-ui-bundle.mjs` was written for,
- * and its docblock states it exactly: "the ratchet fails on whoever gates
- * next, never on whoever added the bytes". Observed twice in one day
+ * The consequence: a ratchet fails on whoever gates next, never on whoever
+ * added the violation. Observed twice in one day
  * (2026-08-18): 3af6c1820 added `animation: … 1.2s ease-in-out` and 6600ad8b8
  * added `transition: … 0.15s`, each putting motion-contract over its ceiling
  * on main. A third, f6aa6568d, added a file the coding-composition inventory
@@ -37,13 +36,9 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import {
-  changedPathsSince,
-  describeMatches,
-} from './check-prepush-ui-bundle.mjs';
+import { changedPathsSince, describeMatches } from './lib/change-scope.mjs';
 import { resolveRef } from './lib/git-ref.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
 
@@ -214,4 +209,4 @@ function main() {
   }
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) main();
+if (invokedDirectly(import.meta.url)) main();

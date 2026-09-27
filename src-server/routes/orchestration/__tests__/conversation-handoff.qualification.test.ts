@@ -256,7 +256,6 @@ describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () 
           };
         },
         logger: { debug: vi.fn(), warn: vi.fn() },
-        ownerlessSessionAccess: 'single-user-compat',
       });
       const conversationId = `conversation:handoff:${source.provider}-to-${target.provider}`;
 
@@ -555,7 +554,6 @@ describe('daily-driver real Agent handoff qualification (#3912/#731/#3307)', () 
         eventBus,
         eventStore: store,
         logger: { debug: vi.fn(), warn: vi.fn() },
-        ownerlessSessionAccess: 'single-user-compat',
       });
       const restored = await service.readConversationEventWindow(
         conversationId,

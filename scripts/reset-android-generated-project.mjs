@@ -3,6 +3,7 @@
 import { lstatSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATED_ANDROID = join('src-desktop', 'gen', 'android');
@@ -57,10 +58,7 @@ export function resetAndroidGeneratedProject({ root = ROOT } = {}) {
   rmSync(generated, { recursive: true });
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   resetAndroidGeneratedProject();
   console.log('Removed the incompatible generated Android namespace.');
 }

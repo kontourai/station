@@ -37,6 +37,8 @@ function mergePages(
 
 interface SessionEventWindowReader {
   events: OrchestrationSequencedEvent[];
+  /** Stable event-log head captured by the window read. */
+  watermark: number;
   /** Present for conversation reads when the newest lineage child is known. */
   currentSessionId?: string;
   /** Per-execution-Session Agent identity for historical transcript rows. */
@@ -63,6 +65,7 @@ interface SessionEventWindowReader {
    * reader is pointed at a different thread.
    */
   settled: boolean;
+  catchingUp: boolean;
   error?: Error;
 }
 
@@ -129,6 +132,7 @@ export function useSessionEventWindow(
   const [watermark, setWatermark] = useState(0);
   const [loading, setLoading] = useState(false);
   const [settled, setSettled] = useState(false);
+  const [settledRevision, setSettledRevision] = useState<number | undefined>();
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [error, setError] = useState<Error>();
   const generation = useRef(0);
@@ -137,15 +141,18 @@ export function useSessionEventWindow(
   const watermarkRef = useRef(0);
   const olderLoadedRef = useRef(false);
   const requestSerialRef = useRef(0);
+  const reconcileRevisionRef = useRef(reconcileRevision);
   const requestControllerRef = useRef<AbortController | undefined>(undefined);
   const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
   cursorRef.current = cursor;
   watermarkRef.current = watermark;
+  reconcileRevisionRef.current = reconcileRevision;
 
   const reload = useCallback(async () => {
     if (!threadId) return;
+    const revisionAtStart = reconcileRevisionRef.current;
     if (recoveryTimerRef.current !== undefined) {
       clearTimeout(recoveryTimerRef.current);
       recoveryTimerRef.current = undefined;
@@ -156,6 +163,7 @@ export function useSessionEventWindow(
     const controller = new AbortController();
     requestControllerRef.current = controller;
     setLoading(true);
+    setSettled(false);
     setError(undefined);
     try {
       const capability = await fetchSessionEventWindowCapability(apiBase);
@@ -239,6 +247,7 @@ export function useSessionEventWindow(
         // knows something, and `error`/`upgradeRequired` say what. Only a read
         // superseded by a newer one leaves the question open.
         setSettled(true);
+        setSettledRevision(revisionAtStart);
       }
     }
   }, [apiBase, legacySessionId, threadId]);
@@ -314,6 +323,7 @@ export function useSessionEventWindow(
     setUpgradeRequired(false);
     // A new thread has not been read yet, whatever the previous one reported.
     setSettled(false);
+    setSettledRevision(undefined);
     if (threadId) void reload();
     return () => {
       requestControllerRef.current?.abort();
@@ -372,6 +382,7 @@ export function useSessionEventWindow(
   );
   return {
     events: currentReader ? events : [],
+    watermark: currentReader ? watermark : 0,
     ...(currentReader && currentSessionId ? { currentSessionId } : {}),
     ...(currentReader && sessionLineage ? { sessionLineage } : {}),
     handoffs: currentReader ? handoffs : [],
@@ -382,6 +393,20 @@ export function useSessionEventWindow(
     upgradeRequired: currentReader && upgradeRequired,
     loading: currentReader ? loading : Boolean(threadId),
     settled: currentReader && settled,
+    // station#2530 review 2: catching up means a NEWER revision's fetch is
+    // genuinely outstanding — `settledRevision`/`settled` have not caught up
+    // to this render's `reconcileRevision` yet. `error` alone is
+    // deliberately NOT part of this: a FAILED background refetch settles
+    // `settledRevision` to match regardless (see the `finally` above), so
+    // catching-up ends the instant that fetch resolves either way, instead
+    // of pinning an already-loaded transcript behind a permanent "catching
+    // up" state for as long as retries keep failing. `error` is still
+    // surfaced on its own field for a retry affordance.
+    catchingUp: Boolean(
+      threadId &&
+        reconcileRevision > 0 &&
+        (settledRevision !== reconcileRevision || !settled),
+    ),
     error: currentReader ? error : undefined,
   };
 }

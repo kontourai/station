@@ -42,6 +42,7 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
     vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
     vi.doMock('../auth/cli-auth.js', () => ({
       findCliBinary: () => '/usr/local/bin/codex',
+      resolveAugmentedPathSync: () => '/usr/bin:/bin',
     }));
 
     const { createCodexProcess } = await import(
@@ -70,6 +71,7 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
     vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
     vi.doMock('../auth/cli-auth.js', () => ({
       findCliBinary: () => '/usr/local/bin/codex',
+      resolveAugmentedPathSync: () => '/usr/bin:/bin',
     }));
 
     const { createCodexProcess } = await import(

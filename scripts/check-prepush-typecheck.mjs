@@ -32,13 +32,10 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { basename, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import {
-  changedPathsSince,
-  describeMatches,
-} from './check-prepush-ui-bundle.mjs';
+import { basename } from 'node:path';
+import { changedPathsSince, describeMatches } from './lib/change-scope.mjs';
 import { resolveRef } from './lib/git-ref.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
 
@@ -208,4 +205,4 @@ function main() {
   }
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) main();
+if (invokedDirectly(import.meta.url)) main();

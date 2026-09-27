@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
 import { __verificationCoordinatorInternals } from '../lib/verification-coordinator.mjs';
 import { reportExecution } from '../lib/verification-terminal-receipt.mjs';
+import { CI_FAST_BUDGET_EXCEEDED_CAUSE } from '../run-ci-fast.mjs';
 
 const roots: string[] = [];
 
@@ -1098,7 +1099,7 @@ describe('reportExecution preserves genuine failures (station#4173)', () => {
  * happened not to be there.
  */
 const SCANNED_DECOY_DIAGNOSTIC = '          Error: observer failed';
-const BUDGET_CAUSE = 'ci:fast exceeded its 12-minute feedback budget';
+const BUDGET_CAUSE = CI_FAST_BUDGET_EXCEEDED_CAUSE;
 const OWNER_FINAL_STDERR = `[station-ci-fast-owner-final] ${BUDGET_CAUSE}\n`;
 
 /**

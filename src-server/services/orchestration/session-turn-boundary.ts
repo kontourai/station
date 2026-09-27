@@ -135,13 +135,20 @@ export interface SessionStartBoundaryClaim {
   indeterminate(now: string): SessionTurnBoundaryTransition;
 }
 
+/** Terminate an engine message so the explanation that follows reads as its own sentence. */
+function sentence(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed) return '';
+  return /[.!?]$/.test(trimmed) ? `${trimmed} ` : `${trimmed}. `;
+}
+
 export const SESSION_START_INDETERMINATE_CODE = 'SESSION_START_INDETERMINATE';
 export class SessionStartIndeterminateError extends Error {
   readonly code = SESSION_START_INDETERMINATE_CODE;
   constructor(cause?: unknown, reportedMessage?: string) {
     super(
       reportedMessage ??
-        `${cause instanceof Error ? `${cause.message} ` : ''}Provider session creation may have completed. Inspect the session before retrying.`,
+        `${cause instanceof Error ? sentence(cause.message) : ''}Provider session creation may have completed. Inspect the session before retrying.`,
       { cause },
     );
     this.name = 'SessionStartIndeterminateError';
