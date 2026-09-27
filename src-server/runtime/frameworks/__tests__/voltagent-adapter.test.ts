@@ -9,7 +9,7 @@ import { jsonSchema } from 'ai';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { createAgentHooks } from '../../agents/agent-hooks.js';
-import { SC_READ_ONLY_TOOLS } from '../../tools/runtime-control-tools.js';
+import { SC_AUTO_APPROVED_TOOLS } from '../../tools/runtime-control-tools.js';
 import { GENERIC_TOOL_FAILURE_MESSAGE } from '../../types.js';
 import {
   appendObservedToolDenials,
@@ -175,8 +175,9 @@ describe('VoltAgentFramework', () => {
   // conversation requester ever registers. Pre-#1834, createTempAgent wired
   // NO hooks, so a scheduled prompt could drive ANY tool the default agent
   // held. This builds the default-shaped temp agent through the adapter with
-  // its real hooks (autoApprove = SC_READ_ONLY_TOOLS) and a real model
-  // round-trip that requests a mutating station-control tool.
+  // its real hooks (autoApprove = SC_AUTO_APPROVED_TOOLS, the set every
+  // production default-agent path passes) and a real model round-trip that
+  // requests a mutating station-control tool.
   test('default temp agent denies a non-autoApproved tool through the real adapter path (station#1834)', async () => {
     // Scripted OpenAI-compat server: EVERY call requests the mutating tool
     // (a model told to mutate config keeps asking) — the run can only end
@@ -270,12 +271,12 @@ describe('VoltAgentFramework', () => {
     );
 
     // The REAL hooks the default agent bootstrap builds: its own spec with
-    // the read-only station-control autoApprove set.
+    // the production station-control autoApprove set.
     const hooks = createAgentHooks({
       spec: {
         name: 'Station',
         prompt: 'Help',
-        tools: { autoApprove: SC_READ_ONLY_TOOLS },
+        tools: { autoApprove: SC_AUTO_APPROVED_TOOLS },
       },
       appConfig: {},
       configLoader: { loadAgent: async () => ({}) },
@@ -324,7 +325,7 @@ describe('VoltAgentFramework', () => {
     expect(surfaced).toContain('no approval channel');
   });
 
-  // Twin guard for the test above: the default agent's read-only
+  // Twin guard for the test above: a read-only tool in the default agent's
   // autoApprove set still executes unattended (guards over-denial).
   test('default temp agent still executes a read-only autoApproved tool unattended (station#1834 twin)', async () => {
     let calls = 0;
@@ -424,7 +425,7 @@ describe('VoltAgentFramework', () => {
       spec: {
         name: 'Station',
         prompt: 'Help',
-        tools: { autoApprove: SC_READ_ONLY_TOOLS },
+        tools: { autoApprove: SC_AUTO_APPROVED_TOOLS },
       },
       appConfig: {},
       configLoader: { loadAgent: async () => ({}) },
@@ -985,24 +986,38 @@ describe('VoltAgentFramework', () => {
       projectHomeDir: mkdtempSync(join(tmpdir(), 'station-temp-agent-')),
     });
 
-    const withStore = await framework.createTempAgent({
+    const agent = await framework.createTempAgent({
       name: 'with-store',
       instructions: 'Be concise.',
       model: {} as any,
       tools: [],
       memoryAdapter: store,
     });
-    const withoutStore = await framework.createTempAgent({
-      name: 'without-store',
-      instructions: 'Be concise.',
-      model: {} as any,
-      tools: [],
-    });
 
-    expect(withStore.getMemory()).toBeTruthy();
-    // Reads go through the prompt-only view, so the agent's memory is a
-    // wrapper over the store rather than the store object itself.
-    expect(withStore.getMemory()).not.toBe(withoutStore.getMemory());
+    // Write through the agent's own memory; it must land in the supplied
+    // store, not in a framework-private in-process one.
+    const memory = agent.getMemory()!;
+    await memory.createConversation({
+      id: 'conversation-914',
+      resourceId: 'with-store',
+      userId: 'user-914',
+    });
+    await memory.addMessage(
+      {
+        id: 'message-914',
+        role: 'user',
+        parts: [{ type: 'text', text: 'persist me' }],
+      },
+      'user-914',
+      'conversation-914',
+    );
+
+    expect(await store.getMessages('user-914', 'conversation-914')).toEqual([
+      expect.objectContaining({
+        id: 'message-914',
+        parts: [{ type: 'text', text: 'persist me' }],
+      }),
+    ]);
   });
 
   test('maps Station cancellation to VoltAgent abortSignal at the real wrapper seam', async () => {
