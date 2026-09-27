@@ -418,40 +418,45 @@ test('lists a paired connection with a source badge', () => {
   });
 
   // #1196 independent review, HIGH finding: a bare substring search treated a value asserted
-  // only through `.not.` as positive coverage. This reconstruction re-injects the same
-  // provenance-as-liveness defect into the current pure computer-row model, then proves the
-  // current ComputersSection fixture has no positive assertion for that wrong `ready` value.
-  describe('same-member negative-assertion shadowing reconstruction', () => {
-    it('re-injecting the paired authorized tone defect into the real current row model finds ready only inside a `.not.` chain in the real current fixture', () => {
-      const realSource = readFileSync(
-        'src-ui/src/views/connections-hub/computer-rows.ts',
-        'utf8',
-      );
-      const realTestContent = readFileSync(
-        'src-ui/src/__tests__/ComputersSection.test.tsx',
-        'utf8',
-      );
-      const strippedTestContent = stripComments(realTestContent);
-
-      // Sanity: the real, current test file really does assert the injected value only inside a
-      // `.not.` chain — if this ever stops being true (the regression guard was rewritten), this
-      // reconstruction needs re-deriving, not silently passing for a different reason.
-      expect(realTestContent).toContain(
-        "expect(state.className).not.toContain(\n      'connections-computers__state--ready',",
+  // only through `.not.` as positive coverage. This is the shape that shipped: a paired row's
+  // provenance tone mapped to `'ready'`, and the only `ready` in its test file was the
+  // regression guard asserting the class is NOT present.
+  describe('same-member negative-assertion shadowing', () => {
+    const source = `
+const COMPUTER_TONE: Record<Source, 'ready' | 'disabled'> = {
+  paired: 'ready',
+  manual: 'disabled',
+};
+`;
+    const declaration = { name: 'COMPUTER_TONE', kind: 'record' } as const;
+    const coverage = (testContent: string) =>
+      Object.fromEntries(
+        checkDeclarationCoverage({
+          sourceContent: source,
+          testContent: stripComments(testContent),
+          declaration,
+        }).findings.map((f) => [f.member, f.covered]),
       );
 
-      // Re-inject the paired authorized provenance-as-liveness defect.
-      const injectedSource = realSource.replace(
-        "? { label: 'Authorized', tone: 'disabled' }",
-        "? { label: 'Authorized', tone: 'ready' }",
-      );
-      expect(injectedSource).not.toBe(realSource); // guard: the replace actually matched
-      expect(injectedSource).toContain(
-        "? { label: 'Authorized', tone: 'ready' }",
-      );
-      // The polarity-aware helper rejects the test's only `ready` occurrence because it sits in
-      // the `.not.` chain above; a bare substring search would incorrectly return true.
-      expect(testFileHasSubstring(strippedTestContent, 'ready')).toBe(false);
+    it('a value asserted only inside a `.not.` chain is not coverage', () => {
+      expect(
+        coverage(`
+expect(state.className).not.toContain(
+  'connections-computers__state--ready',
+);
+expect(other.className).toContain('connections-computers__state--disabled');
+`),
+      ).toEqual({ paired: false, manual: true });
+    });
+
+    it('the same line without `.not.` is coverage — the positive control', () => {
+      expect(
+        coverage(`
+expect(state.className).toContain(
+  'connections-computers__state--ready',
+);
+`),
+      ).toEqual({ paired: true, manual: false });
     });
   });
 

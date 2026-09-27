@@ -174,6 +174,16 @@ describe('lifecycle runtime defaults', () => {
     expect(commandHelpText('dev')).not.toContain('~/.station-dev');
     expect(fresh).toContain('selected channel default home');
   });
+
+  test('names the channel server port, not 3141, as the last-resort target', () => {
+    const fallback = 'the active local Station, then http://127.0.0.1:18141.';
+    expect(commandHelpText('agents')).toContain(fallback);
+    expect(usageText()).toContain(
+      'the active local Station, http://127.0.0.1:18141.',
+    );
+    for (const text of [commandHelpText('agents'), usageText()])
+      expect(text).not.toContain('127.0.0.1:3141');
+  });
 });
 
 describe('tasks help inventory', () => {

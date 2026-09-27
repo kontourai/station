@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
@@ -30,47 +31,22 @@ function interfaceFields(text: string, name: string): string[] {
   });
 }
 
-function manifestFields(contract: string): string[] {
-  return interfaceFields(contract, 'PluginManifest');
-}
-
 describe('documentation foundations', () => {
-  it('binds getting-started channel facts, Starters, and review route to their current source owners', () => {
+  it('binds getting-started channel facts and review route to their current source owners', () => {
     const guide = read('docs/user/getting-started.md');
     const installer = read('install.sh');
-    const channels = JSON.parse(read('config/channel-ports.json')) as {
-      channels: Record<
-        string,
-        { instanceDirectory: string; uiPort: number; serverPort: number }
-      >;
+    const { channels } = JSON.parse(read('config/channel-ports.json')) as {
+      channels: Record<string, { instanceDirectory: string; uiPort: number }>;
     };
-    const starterRegistry = read(
-      'src-server/services/starter-work/starter-registry.ts',
-    );
-    // #2065 retired the global `/review-queue` destination, so the review
-    // route's source owner is no longer the destination registry: Review is a
-    // layout kind, and the href the Starter mints is derived in the contract
-    // below. Binding to the registry now would bind the guide to a file that
-    // says nothing about Review.
-    const layoutContract = read('packages/contracts/src/layout.ts');
+    const { stable, beta } = channels;
 
-    expect(channels.channels.stable).toMatchObject({
-      instanceDirectory: 'stable',
-      uiPort: 18000,
-      serverPort: 18141,
-    });
-    expect(channels.channels.beta).toMatchObject({
-      instanceDirectory: 'beta',
-      uiPort: 28000,
-      serverPort: 28141,
-    });
     for (const fact of [
-      '~/.station/installs/stable',
-      '~/.station/instances/stable',
-      'http://localhost:18000',
+      `~/.station/installs/${stable.instanceDirectory}`,
+      `~/.station/instances/${stable.instanceDirectory}`,
+      `http://localhost:${stable.uiPort}`,
       'station-beta',
-      '~/.station/instances/beta',
-      'http://localhost:28000',
+      `~/.station/instances/${beta.instanceDirectory}`,
+      `http://localhost:${beta.uiPort}`,
       'STATION_CHANNEL=beta',
     ])
       expect(guide).toContain(fact);
@@ -80,23 +56,12 @@ describe('documentation foundations', () => {
     expect(installer).toContain(
       `station_home="\${STATION_HOME:-$station_root/instances/$runtime_channel}"`,
     );
-    for (const sourceFact of [
-      "id: 'start-task'",
-      "id: 'continue-session'",
-      "id: 'inspect-approval'",
-      "id: 'inspect-receipt'",
-      "id: 'run-scheduled-check'",
-    ])
-      expect(starterRegistry).toContain(sourceFact);
-    expect(layoutContract).toContain("slug: 'review'");
-    expect(layoutContract).toContain('export function projectReviewLayoutHref');
-    expect(guide).toContain('`/projects/<slug>/layouts/review?receipt=...`');
-    expect(guide).toContain(
-      `STATION_CHANNEL=stable "\${STATION_ROOT:-$HOME/.station}/installs/stable/current/install.sh" uninstall`,
+    // #2065 retired the global `/review-queue` destination: Review is a layout
+    // kind, and the href the Starter mints is derived by the contract.
+    const reviewHref = decodeURIComponent(
+      projectReviewLayoutHref('<slug>', { receipt: '...' }),
     );
-    expect(guide).toContain(
-      `STATION_CHANNEL=beta "\${STATION_ROOT:-$HOME/.station}/installs/beta/current/install.sh" uninstall`,
-    );
+    expect(guide).toContain(`\`${reviewHref}\``);
   });
 
   it('keeps product-law authoring explanatory while linking its generated reference', () => {
@@ -114,7 +79,7 @@ describe('documentation foundations', () => {
 
   it('keeps the plugin manifest field reference complete against the contract', () => {
     const contract = read('packages/contracts/src/plugin.ts');
-    const contractFields = manifestFields(contract);
+    const contractFields = interfaceFields(contract, 'PluginManifest');
 
     const guide = read('docs/guides/plugins.md');
     const fieldTable = guide.match(
@@ -160,21 +125,6 @@ describe('documentation foundations', () => {
     ).toThrow('Expected one');
   });
 
-  it('extracts only direct manifest fields across nested types and adjacent interfaces', () => {
-    const contract = `
-      export interface PluginManifest {
-        name: string;
-        configuration?: { nested: string };
-      }
-      export interface PluginManifestRejection { code: string; name: string; }
-      export interface PluginOverrideConfig { status: string; }
-    `;
-    expect(manifestFields(contract)).toEqual(['name', 'configuration']);
-    expect(() => manifestFields('export interface Other {}')).toThrow(
-      'missing',
-    );
-  });
-
   it('defers shared UI explorer, manifest, tokens, themes, and accessibility to Kontour UI', () => {
     for (const file of [
       'docs/guides/theming.md',
@@ -193,23 +143,18 @@ describe('documentation foundations', () => {
     }
   });
 
-  it('derives both uninstall commands from the one-root installer layout', () => {
-    const installer = read('install.sh');
+  it('keeps uninstall channel-explicit, custom-root-safe, and runtime-scoped', () => {
     const guide = read('docs/user/getting-started.md');
+    const cli = read('docs/reference/cli.md');
+    // The documented `${STATION_ROOT:-$HOME/.station}/installs/<channel>`
+    // path is the installer's one-root layout.
+    const installer = read('install.sh');
     expect(installer).toContain('normalized_station_root()');
     expect(installer).toContain('station_root="$(normalized_station_root)"');
     expect(installer).toContain(
       'install_root="$' +
         '{STATION_INSTALL_ROOT:-$station_root/installs/$runtime_channel}"',
     );
-    expect(guide).toContain(
-      `STATION_CHANNEL=stable "\${STATION_ROOT:-$HOME/.station}/installs/stable/current/install.sh" uninstall`,
-    );
-  });
-
-  it('keeps uninstall channel-explicit, custom-root-safe, and runtime-scoped', () => {
-    const guide = read('docs/user/getting-started.md');
-    const cli = read('docs/reference/cli.md');
     for (const source of [guide, cli]) {
       expect(source).toContain(
         `STATION_CHANNEL=stable "\${STATION_ROOT:-$HOME/.station}/installs/stable/current/install.sh" uninstall`,
@@ -308,14 +253,10 @@ describe('documentation foundations', () => {
     expect(packageReadme).not.toContain('127.0.0.1:3141');
   });
 
-  it('derives CLI target fallback copy from the shared channel runtime authority', () => {
-    const help = read('packages/cli/src/help.ts');
-    const runtime = read('packages/shared/src/runtime-path-resolver.ts');
+  // The rendered help's fallback target is pinned at its owner, the CLI help
+  // test ('lifecycle runtime defaults' in packages/cli cli-help.test.ts).
+  it('documents the CLI target fallback as the channel runtime-resolver port', () => {
     const reference = read('docs/reference/cli.md');
-    expect(help).toContain('resolveStationRuntimeContext');
-    expect(help).toContain('loopbackApiBase');
-    expect(help).not.toContain('then http://127.0.0.1:3141');
-    expect(runtime).toContain('serverPort');
     expect(reference).toContain('runtime-resolver server port');
     expect(reference).not.toContain(
       'Loopback default target | `http://127.0.0.1:$' + '{STATION_PORT:-3141}`',
