@@ -14,6 +14,7 @@ import {
 } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import { serverTurnLive } from '../../utils/conversation-activity';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
 import { isReplayThread } from './replay/replay-registry';
 
@@ -433,7 +434,11 @@ export function drainQueuedMessageOnTurnCompleted(
         // of requeued — retrying a permanent rejection forever is queue
         // poison. Transient/network failures keep the requeue-at-head path.
         const dropPermanentlyRejected = isDefinitiveClientRejection(error);
-        const reason = error instanceof Error ? error.message : String(error);
+        // A validation refusal reads as its reasons, not schema keys (#2708).
+        const reason =
+          error instanceof Error
+            ? userFacingErrorMessage(error)
+            : String(error);
         const code =
           error instanceof ChatHttpError && typeof error.code === 'string'
             ? error.code

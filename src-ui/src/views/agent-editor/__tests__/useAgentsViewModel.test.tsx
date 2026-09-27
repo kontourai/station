@@ -1015,4 +1015,54 @@ describe('the built-in Station Agent saves its fields, not its resolved engine (
       'Change the built-in Agent engine in Settings, then save your changes again.',
     );
   });
+
+  // #2708 A-3a: a save refused by the validation middleware, as the REAL
+  // agent fetcher throws it, reads as the server's reason, not the schema key.
+  test('a validation refusal from the real agent fetcher shows its reason', async () => {
+    const { updateAgentRaw } = await import('@kontourai/station-sdk/client');
+    const refusal = await realValidationRefusal(
+      () => updateAgentRaw('http://station.test', 'station', {}),
+      'Name must not be empty.',
+      'name',
+    );
+    state.selectedId = 'station';
+    state.detail = { slug: 'station', name: 'Station' };
+    updateAgent.mockRejectedValue(refusal);
+    const { result } = render();
+
+    act(() => {
+      result.current.setForm((form) => ({
+        ...form,
+        description: 'Trigger save',
+      }));
+    });
+    await act(async () => {
+      await result.current.handleSave();
+    });
+
+    expect(result.current.error).toBe('Name must not be empty.');
+  });
 });
+
+/** The refusal the REAL SDK fetcher throws for a validation 400 (#2708). */
+async function realValidationRefusal(
+  call: () => Promise<unknown>,
+  reason: string,
+  field: string,
+): Promise<unknown> {
+  const previous = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        success: false,
+        error: 'Validation failed',
+        details: { formErrors: [], fieldErrors: { [field]: [reason] } },
+      }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    )) as typeof fetch;
+  try {
+    return await call().catch((caught: unknown) => caught);
+  } finally {
+    globalThis.fetch = previous;
+  }
+}

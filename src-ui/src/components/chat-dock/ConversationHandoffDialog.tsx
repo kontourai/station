@@ -29,6 +29,7 @@ import {
 } from '../ResponsiveDialogSurface';
 import { Empty } from '../state';
 import '../chat/ConversationHandoff.css';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 export interface AcceptedConversationHandoff {
   receipt: ConversationHandoffReceipt;
@@ -289,7 +290,11 @@ export function ConversationHandoffDialog({
         clearPendingIntent(apiBase, conversationId);
         onDefiniteFailure(clientTurnId);
         setState('error');
-        setFeedback(error instanceof Error ? error.message : String(error));
+        setFeedback(
+          error instanceof Error
+            ? userFacingErrorMessage(error)
+            : String(error),
+        );
       }
     }
   };
@@ -346,7 +351,9 @@ export function ConversationHandoffDialog({
       );
     } catch (error) {
       setState('indeterminate');
-      setFeedback(error instanceof Error ? error.message : String(error));
+      setFeedback(
+        error instanceof Error ? userFacingErrorMessage(error) : String(error),
+      );
     }
   };
 

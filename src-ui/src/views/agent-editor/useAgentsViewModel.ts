@@ -32,6 +32,7 @@ import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { useUrlSelection } from '../../hooks/useUrlSelection';
 import type { NavigationView, Tool } from '../../types';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   defaultSelectableManagedRuntimeConnection,
   isAgentConnectionSelectable,
@@ -667,8 +668,8 @@ export function useAgentsViewModel({
       await deleteAgent(selectedSlug!);
       urlDeselect();
       setIsCreating(false);
-    } catch (err: any) {
-      setActionError(err.message);
+    } catch (err: unknown) {
+      setActionError(userFacingErrorMessage(err));
     }
   }
 
@@ -761,7 +762,9 @@ export function useAgentsViewModel({
       const slug = (data as { slug?: string })?.slug;
       if (slug) urlSelect(slug);
     } catch (err: any) {
-      setEnableError(err?.message ?? String(err));
+      setEnableError(
+        err instanceof Error ? userFacingErrorMessage(err) : String(err),
+      );
     }
   }
 
