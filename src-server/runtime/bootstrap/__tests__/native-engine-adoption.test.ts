@@ -564,8 +564,9 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     expect(registry.engineConnections).toEqual([]);
   });
 
-  // #875: the suppression request is inert unless the whole containment
-  // conjunction holds, so a persistent or non-screenshot runtime still adopts.
+  // archive#875: the suppression request is inert unless the whole
+  // containment conjunction holds, so a persistent or non-screenshot runtime
+  // still adopts.
   it.each([
     {
       name: 'flag absent',
