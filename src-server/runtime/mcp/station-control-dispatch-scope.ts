@@ -10,6 +10,8 @@
  * its session-record Project (the same resolver the caller's own session is
  * read through), and whether any session of its conversation runs `host`.
  */
+
+import { resolve } from 'node:path';
 import {
   type StationControlDispatchTarget,
   type StationControlScope,
@@ -19,6 +21,7 @@ import {
   canonicalPath,
   isCanonicalPathWithin,
 } from '../../utils/path-containment.js';
+import { expandTilde } from '../../utils/paths.js';
 import type { StationControlCallerRecordResolver } from './station-control-caller.js';
 
 /** The Project action a scoped call needs from the session's owner. */
@@ -141,10 +144,14 @@ export function stationControlDirectoryScope(
   }
   let deepest: { id: string; root: string } | undefined;
   for (const project of projects) {
-    if (!project.workingDirectory) continue;
+    // Stored tilde-literal (`~/dev/x`, station#3155): expanded at the read.
+    const workingDirectory = project.workingDirectory
+      ? resolve(expandTilde(project.workingDirectory))
+      : undefined;
+    if (workingDirectory === undefined) continue;
     let root: string;
     try {
-      root = canonicalPath(project.workingDirectory);
+      root = canonicalPath(workingDirectory);
     } catch {
       continue;
     }
@@ -292,9 +299,11 @@ export function createStationControlDispatchScope(
       if (ref.directory === undefined || named.kind !== 'project')
         return { scope: named };
       const cwd = canonical(ref.directory);
-      const root = projects.find(
-        (project) => project.id === named.id,
-      )?.workingDirectory;
+      const project = projects.find((entry) => entry.id === named.id);
+      // Stored tilde-literal (`~/dev/x`, station#3155): expanded at the read.
+      const root = project?.workingDirectory
+        ? resolve(expandTilde(project.workingDirectory))
+        : undefined;
       const rootPath = root !== undefined ? canonical(root) : undefined;
       return cwd !== undefined &&
         rootPath !== undefined &&

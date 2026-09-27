@@ -5,9 +5,12 @@
  */
 import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { stationControlDirectoryScope } from '../station-control-dispatch-scope.js';
+import {
+  createStationControlDispatchScope,
+  stationControlDirectoryScope,
+} from '../station-control-dispatch-scope.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -67,5 +70,65 @@ describe('stationControlDirectoryScope', () => {
     expect(
       stationControlDirectoryScope(join(root, 'gone', 'x'), projects),
     ).toEqual({ kind: 'unreadable' });
+  });
+});
+
+// Project working directories are stored tilde-literal (`~/proj`,
+// station#3155); the folder scope and a Project workspace's `cwd` check read
+// them expanded.
+describe('a Project stored as ~/…', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function homeWithProject() {
+    const home = realpathSync(makeTempDir('folder-scope-home-'));
+    mkdirSync(join(home, 'proj', 'sub'), { recursive: true });
+    mkdirSync(join(home, 'elsewhere'), { recursive: true });
+    vi.stubEnv('HOME', home);
+    return home;
+  }
+
+  test('a folder inside it is that Project’s', () => {
+    const home = homeWithProject();
+    const projects = [{ id: 'tilde', workingDirectory: '~/proj' }];
+    expect(
+      stationControlDirectoryScope(join(home, 'proj', 'sub'), projects),
+    ).toEqual({ kind: 'project', id: 'tilde' });
+    expect(
+      stationControlDirectoryScope(join(home, 'elsewhere'), projects),
+    ).toEqual({ kind: 'global' });
+  });
+
+  test('a Project workspace cwd inside it is admitted, one outside is not', () => {
+    const home = homeWithProject();
+    const scope = createStationControlDispatchScope({
+      resolveRecord: () => undefined,
+      sessionOwnerId: () => undefined,
+      sessionExists: () => false,
+      sessionRunsHost: () => false,
+      conversationThreads: () => [],
+      conversationSessionIds: () => [],
+      defaultSessionDirectory: () => undefined,
+      projectDirectories: () => [{ id: 'tilde', workingDirectory: '~/proj' }],
+      sessionCwd: () => undefined,
+      projectIdForSlug: (slug) => (slug === 'tilde-slug' ? 'tilde' : undefined),
+      ownerMay: () => true,
+    });
+    const newIn = (directory: string) =>
+      scope.target({
+        kind: 'new',
+        ownerId: 'human:local:operator',
+        projectSlug: 'tilde-slug',
+        directory,
+        remote: false,
+      });
+    expect(newIn(join(home, 'proj', 'sub'))).toMatchObject({
+      scope: { kind: 'project', id: 'tilde' },
+      canonicalCwd: join(home, 'proj', 'sub'),
+    });
+    expect(newIn(join(home, 'elsewhere'))).toMatchObject({
+      scope: { kind: 'unreadable' },
+    });
   });
 });
