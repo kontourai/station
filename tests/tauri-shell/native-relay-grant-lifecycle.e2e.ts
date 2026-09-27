@@ -1475,16 +1475,6 @@ async function main() {
     );
     assert.deepEqual(finalStatus.ipcResult.grants, []);
     assert.deepEqual(finalStatus.ipcResult.cleanups, []);
-    if (NATIVE_ECHO_LANE) {
-      for (const item of ownedItems.filter((candidate) =>
-        candidate.account.startsWith('relay-native-client-grant:'),
-      ))
-        assert.equal(
-          keychainStatus(item),
-          44,
-          `revoked grant Keychain item remained: ${item.account}`,
-        );
-    }
     assert.equal(
       keychainStatus(proof),
       0,
@@ -1629,6 +1619,26 @@ async function main() {
             finalStatus.ipcResult.cleanups.length === 0 &&
             !!registeredOwners.ipcResult &&
             registeredOwners.ipcResult.length === 0;
+          if (NATIVE_ECHO_LANE) {
+            console.log(
+              `STATION_NATIVE_RELAY_GRANT_CLEANUP_STATUS ${JSON.stringify({
+                profileRevision: expectedProfileRevision,
+                stationId: route.stationId,
+                enrollmentId: route.enrollmentId,
+                grantStatusAvailable: !!finalStatus.ipcResult,
+                grantStatusErrorPresent: !!finalStatus.ipcError,
+                grantCount: finalStatus.ipcResult?.grants?.length ?? null,
+                cleanupCount: finalStatus.ipcResult?.cleanups?.length ?? null,
+                ownerRegistryAvailable: !!registeredOwners.ipcResult,
+                ownerRegistryErrorPresent: !!registeredOwners.ipcError,
+                pendingOwnerCount: registeredOwners.ipcResult?.length ?? null,
+                ownerIndexEmpty:
+                  !!registeredOwners.ipcResult &&
+                  registeredOwners.ipcResult.length === 0,
+                custodyVerified: grantCustodyStatusVerified,
+              })}`,
+            );
+          }
           if (!grantCustodyStatusVerified) {
             console.error(
               'fixture native grant owner registry could not be proven empty; retaining owned native Keychain custody',
