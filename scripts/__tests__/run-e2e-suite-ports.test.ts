@@ -1649,6 +1649,19 @@ describe('classifyStartFailure (#1177)', () => {
     ).toBe('boot-race');
   });
 
+  test('an identity wait ended early by the child exiting stays retryable (#2805)', () => {
+    expect(
+      classifyStartFailure(
+        'Station process exited before http://localhost:3542/api/system/identity answered (fetch failed)',
+      ),
+    ).toBe('boot-race');
+    expect(
+      classifyStartFailure(
+        'Station process exited before http://localhost:3542/api/system/identity answered (500 Internal Server Error)',
+      ),
+    ).toBe('fatal');
+  });
+
   test('a UI-port identity race is retryable too (review MED-2)', () => {
     expect(
       classifyStartFailure(

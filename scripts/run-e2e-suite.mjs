@@ -1441,6 +1441,16 @@ export function classifyStartFailure(output, expectedServerPort) {
   ) {
     return 'boot-race';
   }
+  // The same unanswered wait, ended early because the child exited (#2805):
+  // a child that lost its bind race exits, so this stays retryable as the
+  // full-deadline form above always was.
+  if (
+    /Station process exited before .*(\/api\/system\/identity|\/__station\/identity) answered \(fetch failed\)/i.test(
+      output,
+    )
+  ) {
+    return 'boot-race';
+  }
   return 'fatal';
 }
 
