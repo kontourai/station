@@ -14,10 +14,12 @@ import {
   STATION_CONTROL_INFRASTRUCTURE_POLICY,
   STATION_CONTROL_OPERATOR_PRINCIPAL_ID,
   STATION_CONTROL_TOOL_POLICY,
-  type StationControlCommandThread,
+  type StationControlDispatchTarget,
   type StationControlPolicyCaller,
   type StationControlPolicyContext,
   type StationControlToolPolicy,
+  stationControlScopeRefusal,
+  stationControlSessionScope,
 } from '../station-control-policy.js';
 
 const OPERATOR = 'human:local:operator';
@@ -88,7 +90,7 @@ const DECISION_2_PRINCIPAL_READS = [
 ];
 // Decision 3: answering a worker's request needs bound + Project approve;
 // until slice C adds the Project path, only the bound operator.
-const DECISION_3_BOUND_OPERATOR = ['respond_to_task_request'];
+const DECISION_3_BOUND_APPROVE = ['respond_to_task_request'];
 const DECISION_1_PERSON_ONLY = [
   'create_integration',
   'install_registry_integration',
@@ -151,14 +153,18 @@ describe('station-control authority table: the owner decisions', () => {
     }
   });
 
-  test('decision 3: answering a worker request needs the bound operator (slice C adds Project approve)', () => {
-    for (const name of DECISION_3_BOUND_OPERATOR) {
+  test('decision 3: answering a worker request needs a bound caller whose owner holds Project approve', () => {
+    for (const name of DECISION_3_BOUND_APPROVE) {
       const policy = STATION_CONTROL_TOOL_POLICY[
         name as keyof typeof STATION_CONTROL_TOOL_POLICY
       ] as StationControlToolPolicy;
-      expect([name, policy.assurance, policy.role, policy.tightenedBy]).toEqual(
-        [name, 'bound', 'operator', ['C']],
-      );
+      expect([
+        name,
+        policy.assurance,
+        policy.role,
+        policy.projectAction,
+        policy.tightenedBy,
+      ]).toEqual([name, 'bound', 'project', 'approve', ['C']]);
     }
   });
 
@@ -250,7 +256,6 @@ describe('station-control authority table: the owner decisions', () => {
       [
         ...DECISION_1_BOUND_OPERATOR,
         ...DECISION_2_OPERATOR_READS,
-        ...DECISION_3_BOUND_OPERATOR,
         ...DECISION_1_PERSON_ONLY,
       ].sort(),
     );
@@ -377,29 +382,20 @@ describe('station-control authority table: shared leaves', () => {
     (route) => `${route.method} ${route.path}`,
   );
   const EXPECTED_WEAKENED: Record<string, readonly string[]> = {
-    // Dispatch (slice C) reaches these while resolving an SSH target; slice C
-    // moves that server-side.
-    connect_ssh_environment: [
-      'POST /api/environments/ssh/:id/connect',
-      // Slice B: get_ssh_environment is an operator-wide read, so its leaf
-      // is no longer looser than this entry.
-    ],
-    // Every leaf is shared with dispatch (slice C).
+    // Every dispatch leaf it reaches is shared with dispatch (slice C). Its
+    // remote-target leaves are the operator's alone since slice C2a, so they
+    // no longer loosen it.
     list_delegation_targets: DISPATCH_LEAVES,
     // Its own respond leaf is strict; the rest is the dispatch plumbing it
     // shares (slice C). The respond COMMAND on /commands is held to a bound
     // operator by the leaf's own rule, not by this entry.
     respond_to_task_request: DISPATCH_LEAVES,
     // Slice B: its status poll, get_review_request, now needs a recorded
-    // owner too, so it no longer loosens this entry.
+    // owner too, so it no longer loosens this entry. Slice C2a: the SSH list
+    // and connect leaves are no longer dispatch leaves, so neither
+    // `list_delegation_environments` nor `connect_ssh_environment` is
+    // loosened any more.
   };
-  // Slice B review (M2): the SSH environment list is an operator-wide read,
-  // but every dispatch tool reaches the same leaf with any verified caller,
-  // so the leaf is only as strict as dispatch until slice C. No read loosens
-  // a dispatch tool any more.
-  EXPECTED_WEAKENED.list_delegation_environments = [
-    'GET /api/environments/ssh',
-  ];
 
   test('the complete list of tool routes the guard enforces more loosely than the tool', () => {
     const weakened: Record<string, string[]> = {};
@@ -541,98 +537,159 @@ describe('station-control authority: route matching and refusals', () => {
     ).toBe('station_control_assurance_insufficient');
   });
 
-  test('slice C1: steerTurn and adoptSession stay in the caller’s owner, Project and confinement', () => {
+  test('slices C1 and C2a: one scope rule for steer, adopt and dispatch', () => {
     const OTHER = 'human:local:someone-else';
-    const inProject = (
-      caller: StationControlPolicyCaller | null | undefined,
-      localProjectId = 'project-a',
-      projectIdSource: 'session-record' | 'slug-lookup' = 'session-record',
-    ): StationControlPolicyCaller | null =>
-      caller ? { ...caller, localProjectId, projectIdSource } : null;
-    const thread = (
+    const P = { kind: 'project', id: 'project-a' } as const;
+    const Q = { kind: 'project', id: 'project-b' } as const;
+    const GLOBAL = { kind: 'global' } as const;
+    const UNREADABLE = { kind: 'unreadable' } as const;
+    type Scope = typeof P | typeof Q | typeof GLOBAL | typeof UNREADABLE;
+    const inP = (caller: StationControlPolicyCaller | null | undefined) =>
+      ({
+        ...caller!,
+        localProjectId: 'project-a',
+        projectIdSource: 'session-record',
+      }) as StationControlPolicyCaller;
+    const inGlobal = (caller: StationControlPolicyCaller | null | undefined) =>
+      ({ ...caller! }) as StationControlPolicyCaller;
+    const target = (
       ownerId: string | undefined,
-      extra: { localProjectId?: string; host?: boolean } = {},
-    ) => ({
+      scope: Scope,
+      extra: Partial<StationControlDispatchTarget> = {},
+    ): StationControlDispatchTarget => ({
       ...(ownerId ? { ownerId } : {}),
-      localProjectId: 'project-a',
+      scope,
       host: false,
+      remote: false,
+      ...(scope.kind === 'project' ? { ownerHoldsAction: true } : {}),
       ...extra,
     });
+    const decide = (
+      caller: StationControlPolicyCaller | null,
+      t: StationControlDispatchTarget | undefined,
+    ) => stationControlScopeRefusal(caller, t, isOperatorPrincipal)?.code;
+    const bearer = CALLERS['bearer-operator'];
+    const delegated = CALLERS['delegated-operator'];
+    const boundOther = CALLERS['bound-other-person'];
+    const ASSURANCE = 'station_control_assurance_insufficient';
+    const ROLE = 'station_control_role_required';
+
+    for (const caller of [bearer, delegated]) {
+      // Project P: only P.
+      expect(decide(inP(caller), target(OPERATOR, P))).toBeUndefined();
+      expect(decide(inP(caller), target(OPERATOR, Q))).toBe(ASSURANCE);
+      expect(decide(inP(caller), target(OPERATOR, GLOBAL))).toBe(ASSURANCE);
+      // Global: only global.
+      expect(
+        decide(inGlobal(caller), target(OPERATOR, GLOBAL)),
+      ).toBeUndefined();
+      expect(decide(inGlobal(caller), target(OPERATOR, P))).toBe(ASSURANCE);
+      // Unreadable on either side.
+      // (An unreadable Project proves no action held there.)
+      expect(
+        decide(
+          inP(caller),
+          target(OPERATOR, UNREADABLE, { ownerHoldsAction: false }),
+        ),
+      ).toBe(ROLE);
+      expect(
+        decide(
+          {
+            ...caller!,
+            localProjectId: 'project-a',
+            projectIdSource: 'slug-lookup',
+          },
+          target(OPERATOR, P),
+        ),
+      ).toBe(ASSURANCE);
+      expect(
+        decide({ ...caller!, projectSlug: 'gone' }, target(OPERATOR, GLOBAL)),
+      ).toBe(ASSURANCE);
+      // Host, remote, another owner, no owner, an unreadable target.
+      expect(decide(inP(caller), target(OPERATOR, P, { host: true }))).toBe(
+        ASSURANCE,
+      );
+      expect(decide(inP(caller), target(OPERATOR, P, { remote: true }))).toBe(
+        ASSURANCE,
+      );
+      expect(decide(inP(caller), target(OTHER, P))).toBe(ASSURANCE);
+      expect(decide(inP(caller), target(undefined, P))).toBe(ASSURANCE);
+      expect(decide(inP(caller), undefined)).toBe(ASSURANCE);
+      // The owner lacks the action in P.
+      expect(
+        decide(inP(caller), target(OPERATOR, P, { ownerHoldsAction: false })),
+      ).toBe(ROLE);
+    }
+
+    // A bound caller for another person: its own sessions anywhere local,
+    // with the action; never remote, never another owner's.
+    for (const scope of [P, Q, GLOBAL] as const)
+      expect(decide(inP(boundOther), target(OTHER, scope))).toBeUndefined();
+    expect(
+      decide(inP(boundOther), target(OTHER, P, { host: true })),
+    ).toBeUndefined();
+    expect(decide(inP(boundOther), target(OTHER, P, { remote: true }))).toBe(
+      ROLE,
+    );
+    expect(decide(inP(boundOther), target(OPERATOR, P))).toBe(ROLE);
+    expect(
+      decide(inP(boundOther), target(OTHER, P, { ownerHoldsAction: false })),
+    ).toBe(ROLE);
+    expect(
+      decide(
+        inP(boundOther),
+        target(OTHER, UNREADABLE, { ownerHoldsAction: false }),
+      ),
+    ).toBe(ROLE);
+    // An inferred owner owns nothing.
+    expect(
+      decide(inP(CALLERS['bound-operator-inferred']), target(OPERATOR, P)),
+    ).toBe(ROLE);
+
+    // The bound operator keeps the operator's reach.
+    const boundOperator = inP(CALLERS['bound-operator']);
+    for (const t of [
+      target(OTHER, Q, { host: true, remote: true, ownerHoldsAction: false }),
+      undefined,
+    ])
+      expect(decide(boundOperator, t)).toBeUndefined();
+    expect(decide(null, target(OPERATOR, P))).toBe(
+      'station_control_caller_required',
+    );
+
+    // The steer and adopt leaf applies the same rule.
     for (const body of [
       { type: 'steerTurn', threadId: 't', input: 'go' },
       { type: 'adoptSession', sourceThreadId: 't' },
     ]) {
-      const decide = (
-        caller: StationControlPolicyCaller | null,
-        commandThread?: StationControlCommandThread,
-      ) =>
+      const command = (commandThread?: StationControlDispatchTarget) =>
         authorizeStationControlRequest('POST', '/api/orchestration/commands', {
-          caller,
+          caller: inP(bearer),
           isOperatorPrincipal,
           body,
           ...(commandThread ? { commandThread } : {}),
         })?.code;
-      const bearer = inProject(CALLERS['bearer-operator']);
-      const delegated = inProject(CALLERS['delegated-operator']);
-      const boundOther = inProject(CALLERS['bound-other-person']);
-      // Same owner, same session-record Project.
-      expect(decide(bearer, thread(OPERATOR))).toBeUndefined();
-      expect(decide(delegated, thread(OPERATOR))).toBeUndefined();
-      // Another Project, a thread with no session-record Project, or a
-      // caller whose own Project is a slug lookup.
-      for (const [caller, target] of [
-        [bearer, thread(OPERATOR, { localProjectId: 'project-b' })],
-        [bearer, { ownerId: OPERATOR, host: false }],
-        [
-          inProject(CALLERS['bearer-operator'], 'project-a', 'slug-lookup'),
-          thread(OPERATOR),
-        ],
-        [{ ...CALLERS['bearer-operator']! }, thread(OPERATOR)],
-      ] as const)
-        expect(decide(caller, target)).toBe(
-          'station_control_assurance_insufficient',
-        );
-      // A host thread needs a bound caller.
-      expect(decide(bearer, thread(OPERATOR, { host: true }))).toBe(
-        'station_control_assurance_insufficient',
-      );
-      expect(decide(delegated, thread(OPERATOR, { host: true }))).toBe(
-        'station_control_assurance_insufficient',
-      );
-      expect(
-        decide(
-          boundOther,
-          thread(OTHER, { host: true, localProjectId: 'project-b' }),
-        ),
-      ).toBeUndefined();
-      // Another owner's thread, or one with no recorded owner.
-      expect(decide(bearer, thread(OTHER))).toBe(
-        'station_control_assurance_insufficient',
-      );
-      expect(decide(bearer, thread(undefined))).toBe(
-        'station_control_assurance_insufficient',
-      );
-      expect(decide(boundOther, thread(OPERATOR))).toBe(
-        'station_control_role_required',
-      );
-      expect(
-        decide(inProject(CALLERS['bound-operator-inferred']), thread(OPERATOR)),
-      ).toBe('station_control_role_required');
-      // An unreadable thread refuses.
-      expect(decide(bearer)).toBe('station_control_assurance_insufficient');
-      expect(decide(boundOther)).toBe('station_control_role_required');
-      // The bound operator keeps the operator's reach.
-      expect(
-        decide(
-          inProject(CALLERS['bound-operator']),
-          thread(OTHER, { host: true }),
-        ),
-      ).toBeUndefined();
-      expect(decide(inProject(CALLERS['bound-operator']))).toBeUndefined();
-      expect(decide(null, thread(OPERATOR))).toBe(
-        'station_control_caller_required',
-      );
+      expect(command(target(OPERATOR, P))).toBeUndefined();
+      expect(command(target(OPERATOR, Q))).toBe(ASSURANCE);
+      expect(command()).toBe(ASSURANCE);
     }
+  });
+
+  test('a session’s scope: its session-record Project, global when it has none, unreadable otherwise', () => {
+    expect(
+      stationControlSessionScope({
+        localProjectId: 'p',
+        projectIdSource: 'session-record',
+        projectSlug: 's',
+      }),
+    ).toEqual({ kind: 'project', id: 'p' });
+    expect(stationControlSessionScope({})).toEqual({ kind: 'global' });
+    for (const facts of [
+      { localProjectId: 'p', projectIdSource: 'slug-lookup' as const },
+      { projectSlug: 's' },
+      { localProjectId: 'p' },
+    ])
+      expect(stationControlSessionScope(facts)).toEqual({ kind: 'unreadable' });
   });
 
   test('retargeting a granted job is a person’s step even for the bound operator', () => {
