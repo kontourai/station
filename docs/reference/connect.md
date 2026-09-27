@@ -89,6 +89,9 @@ credential resolver supplies `mutationAllowed: () => false`; Station's current
 features still own their availability checks. See the
 [SDK transport](../../packages/sdk/src/client/http.ts) and
 [Station resolver](../../src-ui/src/contexts/ApiBaseContext.tsx).
+[#2815](https://github.com/kontourai/station/issues/2815) tracks the decision
+about a shared stale-connection mutation policy. The optional guard's absence
+alone does not establish that a particular stale operation can succeed.
 This health coordinator does not queue mutations.
 Station's separate chat outbound queue has its own admission and replay rules;
 this is not a promise that the whole application has no queue.

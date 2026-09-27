@@ -1618,6 +1618,9 @@ resolved dependencies, the derived `permissions` (`required`, `autoGranted`,
 `pendingConsent`) and the `contentDigest` of the copy it staged. Lifecycle-bearing
 dependencies additionally carry their own `consent` object, binding their
 permissions and bytes before installation.
+The hook returns the server's preview body; an invalid preview is a returned
+`valid: false` result, not necessarily a rejected promise. Check that result
+before accessing review fields or constructing consent.
 
 ```tsx
 const { mutate } = usePluginPreviewMutation();
@@ -1653,6 +1656,7 @@ const preview = await previewPluginRecovery(apiBase, name, requestOptions);
 const result = await recoverPlugin(apiBase, name, {
   recoveryRevision: preview.recoveryRevision,
   consent: {
+    registryTrustRevision: preview.registryTrustRevision,
     contentDigest: preview.contentDigest,
     grantRevision: preview.grantRevision,
     permissions: operatorDecision.permissions,
@@ -1676,6 +1680,11 @@ The mutation disables retries and refreshes plugin, recovery, layout, Agent, and
 Project queries after an accepted response, including pending activation. A network
 failure does not prove that the server had no effect; inspect current state before
 asking for another recovery decision.
+
+Follow the [client](../../packages/sdk/src/client/plugins.ts),
+[mutation hooks](../../packages/sdk/src/query-domains/plugin-mutations.ts),
+[install/recovery routes](../../src-server/routes/plugins/plugin-install-routes.ts),
+and [transaction owner](../../src-server/services/plugins/plugin-install-transaction.ts).
 
 ### `usePluginUpdateMutation()`
 
@@ -2722,7 +2731,7 @@ class StationHttpError extends Error {
 }
 ```
 
-The integration, review and workspace pane host-action fetchers (built on
+The integration, review and workspace pane host-action catalog/preparation fetchers (built on
 `readEnvelopeOrThrow`), plus the scheduler, skills, knowledge, secret-binding,
 conversation and orchestration fetchers preserve supplied refusal fields.
 The conversation and orchestration fetchers used to throw a plain `Error` for
@@ -2746,6 +2755,8 @@ error the envelope helper made of the response, so they keep its status,
 `PluginCollectionHttpError` keeps the envelope's `code` on the error and on
 its `envelope`, and keeps the refusal's `details`; it does not yet preserve
 `Retry-After`.
+Host-action execution deliberately returns `indeterminate` after any failed or
+unreadable response; it does not expose the helper's exception to the caller.
 
 - `status` is the status the response actually carried. A route that answers
   `200` with `{ success: false }` produces a `StationHttpError` whose status
@@ -2955,7 +2966,8 @@ physical package paths in this API.
 The portable client exports `getWorkspacePaneHostActions`,
 `prepareWorkspacePaneHostAction`, and `executeWorkspacePaneHostAction` from
 `@kontourai/station-sdk/client`. Preparation returns a short-lived, actor- and
-Project-bound one-shot ticket. Execution consumes it before any provider work.
+Project-bound one-shot ticket, held in memory for 60 seconds. A restart loses
+unused tickets. Execution consumes it before any provider work.
 Do not store or log tickets, and never retry execution automatically. An
 `indeterminate` result means work may have started; use existing Activity and
 conversation evidence to inspect it. An accepted result carries distinct
@@ -3009,7 +3021,15 @@ preparation and execution repeat authorization against the current installation.
 Host actions require the package's current `agents.invoke` permission. They use
 captured Project and Agent authority at provider invocation and cannot substitute
 an ambient Agent, override a fixed action, or revive a retired installation.
-Host actions support native Station Agents and externally connected Agents in shared or provisioned Project worktrees. Native execution preserves the existing configured Agent and model; a private relay capability verifies its runtime generation and repeats admission immediately before the native model call. Canonical provisioning mints a private exact Session/Project/CWD binding. The native relay carries that Session directory into Project context, Bash children, and relative file operations; explicit MCP resource roots retain their configured meaning.
+Host actions currently admit `own-plugin-agent` references. Those package-owned
+Agents may use Station's engine or an external engine, in shared or provisioned
+Project worktrees; a `station-agent` reference to an arbitrary global Agent is
+not admitted. Native execution preserves the configured Agent and model. Its
+private relay verifies the runtime generation and repeats admission immediately
+before the model call. Provisioning binds the exact Session, Project and working
+directory. The native relay uses that directory for Project context, Bash
+children and relative file operations; explicit MCP resource roots keep their
+configured meaning.
 
 A host-created Session retains server-stamped `workspacePaneHostAction` metadata:
 package id, action id, and opaque installation generation. These coordinates
@@ -3018,12 +3038,21 @@ receipts. Public metadata/options cannot forge this reserved field; callers
 receive the existing client-origin and principal attribution as well.
 
 Host action reads and mutations accept the standard `ApiRequestScope`/client
-request options so the preparation and execution stay on the same Station
-and authority. The mutation refreshes canonical Session and conversation
-inventory queries before exposing its result. In Station's host UI, **Open
+request options. Pass a captured scope to keep preparation and execution on the
+same Station and authority; omitted scopes retain legacy ambient behavior.
+Before exposing a result, the mutation waits for its canonical Session and
+conversation-inventory refresh attempts to settle, including failures. In
+Station's host UI, **Open
 conversation** uses canonical resolution and hydration; **View result** stays
 anchored to the execution Session returned by this invocation. A removed Agent
 falls back to read-only evidence, never to another default Agent.
+
+The [host UI](../../src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx),
+[SDK client](../../packages/sdk/src/client/workspace-pane-host-actions.ts),
+[ticket owner](../../src-server/services/plugins/workspace-pane-host-actions.ts),
+[invocation admission](../../src-server/services/plugins/workspace-pane-host-admission.ts),
+and [runtime bridge](../../src-server/runtime/routes/workspace-pane-host-actions.ts)
+own these stages.
 
 ## Package lifecycle results
 
