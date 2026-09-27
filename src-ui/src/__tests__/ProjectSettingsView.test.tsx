@@ -875,6 +875,53 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(screen.getByText('unsaved')).toBeTruthy();
   });
 
+  // #2708 A-2: the save's error is the one the REAL project fetcher throws for
+  // the validation middleware's body; the view shows the server's reason, not
+  // "Validation failed: name …".
+  test('a refused save shows the server reason, not the field key', async () => {
+    const { updateProject, StationHttpError } = await import(
+      '@kontourai/station-sdk/client'
+    );
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Validation failed',
+          details: {
+            formErrors: [],
+            fieldErrors: { name: ['Name must be 200 characters or fewer.'] },
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+    try {
+      sdkMocks.updateFailure = await updateProject(
+        'http://station.test',
+        'demo',
+        {
+          name: 'x',
+        },
+      ).catch((caught: unknown) => caught);
+    } finally {
+      globalThis.fetch = previous;
+    }
+    expect(sdkMocks.updateFailure).toBeInstanceOf(StationHttpError);
+    const { container } = renderProjectSettings();
+
+    fireEvent.change(
+      container.querySelector('.project-settings__name-input') as Element,
+      { target: { value: 'Too long' } },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await screen.findByRole('alert');
+    expect(
+      screen.getByText('Name must be 200 characters or fewer.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Validation failed/)).toBeNull();
+  });
+
   test('keeps a failed deletion in context and renders the rejection', async () => {
     sdkMocks.deleteFailure = new Error('Station connection was interrupted');
     renderProjectSettings();
