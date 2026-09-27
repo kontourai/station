@@ -49,6 +49,7 @@ import {
   redact,
   stationLogReport,
 } from './lib/portable-smoke-diagnostics.mjs';
+import { parseStopHint } from './lib/station-stop-hint.mjs';
 
 const WINDOWS = process.platform === 'win32';
 const MAX_PATH = 260;
@@ -398,14 +399,26 @@ async function bootAndProbe({ launcher, nextLauncher, env, home, release }) {
     );
     // An archive keeps a --temp-home instance's record inside that home
     // (#2675), so the printed stop command names it.
-    const stopEphemeral =
-      /Stop with: station (stop --home=\S+ --instance=\S+)/.exec(
-        ephemeral,
-      )?.[1];
+    // Parsed, not split on spaces: the home is quoted for the platform's
+    // shell, and parseStopHint refuses the other platform's quoting (#2805).
+    const stopEphemeral = parseStopHint(ephemeral);
     if (!stopEphemeral) {
       fail('station start --temp-home named no stop command with its home');
     }
-    runLauncher(launcher, stopEphemeral.split(' '), lifecycleEnv, home);
+    runLauncher(
+      launcher,
+      [
+        'stop',
+        // The launcher runs through cmd.exe on Windows, which passes a
+        // double-quoted argument through intact; POSIX spawns it directly.
+        WINDOWS
+          ? `--home="${stopEphemeral.home}"`
+          : `--home=${stopEphemeral.home}`,
+        `--instance=${stopEphemeral.instanceId}`,
+      ],
+      lifecycleEnv,
+      home,
+    );
     await waitUntilClosed([serverPort, uiPort]);
     // `stop` leaves the temporary home itself behind; the smoke owns it.
     const temporaryHome = /Station home: (.+) \(--temp-home\)/.exec(

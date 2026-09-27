@@ -16,6 +16,7 @@ import {
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { homeFlag } from '../../packages/cli/src/commands/lifecycle.js';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { readPortableNodeRuntime } from '../lib/portable-server-archive.mjs';
 import {
@@ -143,7 +144,11 @@ describe('portable smoke failure diagnostics', () => {
  * a channel instance would), then fails `start --temp-home` after "the
  * server" logged into a temporary home outside HOME.
  */
-function fakeArchive(directory: string, temporaryHome: string) {
+function fakeArchive(
+  directory: string,
+  temporaryHome: string,
+  mode: 'start-fails' | 'start-prints-stop-hint' = 'start-fails',
+) {
   const root = join(directory, 'tree', 'station');
   mkdirSync(join(root, 'bin'), { recursive: true });
   mkdirSync(join(root, 'lib'), { recursive: true });
@@ -158,6 +163,22 @@ function fakeArchive(directory: string, temporaryHome: string) {
     sha: release.sha,
     platform: `${process.platform}-${process.arch}`,
   };
+  // `start` fails after "the server" logged into the temporary home.
+  const startFails = `    mkdir -p '${temporaryHome}/logs'
+    echo 'TEMP-LOG-MARKER server crashed; link #station-ui-bootstrap=SECRET-TOKEN' > '${temporaryHome}/logs/station-t.log'
+    echo 'Timed out waiting for http://127.0.0.1:1/api/system/identity (fetch failed) STDERR-MARKER' >&2
+    exit 1 ;;
+  stop) exit 0 ;;`;
+  // `start` prints the stop hint exactly as the CLI renders it on POSIX, and
+  // `stop` refuses any argv but the exact home and instance.
+  const startPrintsStopHint = `    cat <<'HINT'
+  Stop with: station stop${homeFlag(temporaryHome, 'linux')} --instance=instance-1
+HINT
+    exit 0 ;;
+  stop)
+    if [ "$2" = '--home=${temporaryHome}' ] && [ "$3" = --instance=instance-1 ]; then exit 0; fi
+    echo "STOP-ARGV-BAD [$2] [$3]" >&2
+    exit 1 ;;`;
   const launcher = join(root, 'bin', 'station');
   writeFileSync(
     launcher,
@@ -177,11 +198,7 @@ case "$1" in
     exit 1 ;;
   start)
     echo 'Station home: ${temporaryHome} (--temp-home)'
-    mkdir -p '${temporaryHome}/logs'
-    echo 'TEMP-LOG-MARKER server crashed; link #station-ui-bootstrap=SECRET-TOKEN' > '${temporaryHome}/logs/station-t.log'
-    echo 'Timed out waiting for http://127.0.0.1:1/api/system/identity (fetch failed) STDERR-MARKER' >&2
-    exit 1 ;;
-  stop) exit 0 ;;
+${mode === 'start-prints-stop-hint' ? startPrintsStopHint : startFails}
   *) exit 2 ;;
 esac
 `,
@@ -234,6 +251,43 @@ describe('portable smoke end to end', () => {
       expect(result.stderr).toContain('HOME-LOG-MARKER from an earlier run');
       expect(output).toContain('#station-ui-bootstrap=<redacted>');
       expect(output).not.toContain('SECRET-TOKEN');
+    },
+  );
+});
+
+describe('portable smoke stop hint', () => {
+  it.skipIf(process.platform === 'win32')(
+    'stops the temporary instance with the exact home its hint names, spaces and all (#2805)',
+    () => {
+      const directory = makeTempDir('portable-smoke-hint-');
+      // A home that needs quoting: the hint single-quotes it on POSIX.
+      const temporaryHome = join(
+        makeTempDir('portable-smoke-hint-home-'),
+        'dev home',
+      );
+      const archive = fakeArchive(
+        directory,
+        temporaryHome,
+        'start-prints-stop-hint',
+      );
+      const result = spawnSync(
+        process.execPath,
+        [
+          join(repoRoot, 'scripts', 'smoke-portable-server-archive.mjs'),
+          '--archive',
+          archive,
+          '--work-dir',
+          join(directory, 'work'),
+        ],
+        { encoding: 'utf8', timeout: 60_000, windowsHide: true },
+      );
+      // The fake stop exits 1 unless its argv is exactly the home and
+      // instance, unquoted; the smoke then goes on to the step after it.
+      expect(result.stderr).not.toContain('STOP-ARGV-BAD');
+      expect(result.stdout).toMatch(/\$ station stop --home=.+ -> exit 0/);
+      expect(result.stderr).toContain(
+        'FAIL: no lifecycle state in the temporary home',
+      );
     },
   );
 });

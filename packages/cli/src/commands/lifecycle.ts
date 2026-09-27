@@ -2173,9 +2173,25 @@ function writeInstanceState(record: InstanceStateRecord): void {
   if (pidFile !== null) rmSync(pidFile, { force: true });
 }
 
-/** ` --home=<path>`, shell-quoted when the path needs it. */
-function homeFlag(projectHome: string): string {
-  return ` --home=${/^[\w./~:-]+$/.test(projectHome) ? projectHome : `'${projectHome.replaceAll("'", "'\\''")}'`}`;
+/**
+ * ` --home=<path>`, quoted for the shell a user of this platform pastes it
+ * into when the path needs it.
+ *
+ * POSIX: single quotes, with `'` escaped. Windows: double quotes (#2805).
+ * cmd.exe keeps single quotes as literal characters, so a pasted
+ * `--home='C:\...'` named a home that does not exist and `station stop`
+ * found nothing to stop. Double quotes are quoting in both cmd.exe and
+ * PowerShell, and a Windows path cannot contain `"`, so they need no
+ * escaping. Both shells still expand `%VAR%` (cmd) or `$name` (PowerShell)
+ * inside them; a path containing those needs editing by hand.
+ */
+export function homeFlag(
+  projectHome: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (/^[\w./~:-]+$/.test(projectHome)) return ` --home=${projectHome}`;
+  if (platform === 'win32') return ` --home="${projectHome}"`;
+  return ` --home='${projectHome.replaceAll("'", "'\\''")}'`;
 }
 
 /**
