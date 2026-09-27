@@ -48,7 +48,11 @@ afterEach(async () => {
       launcher.process.signalCode === null
     ) {
       launcher.process.kill('SIGTERM');
+      // A launcher blocked in a synchronous step (a gated backup) handles the
+      // signal only afterwards; do not wait for it.
+      const timer = setTimeout(() => launcher.process.kill('SIGKILL'), 10_000);
       await launcher.exited;
+      clearTimeout(timer);
     }
   }
 });

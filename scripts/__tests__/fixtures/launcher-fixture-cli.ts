@@ -64,7 +64,12 @@ async function waitForGate(name: string): Promise<void> {
   const gate = process.env[name];
   if (!gate) return;
   log(`waiting ${name}`);
-  while (!existsSync(gate)) await new Promise((r) => setTimeout(r, 50));
+  // Bounded, so a gate a failed test never opens leaves no process behind.
+  const deadline = Date.now() + 60_000;
+  while (!existsSync(gate)) {
+    if (Date.now() > deadline) throw new Error(`${name} never opened`);
+    await new Promise((r) => setTimeout(r, 50));
+  }
 }
 
 async function serviceRun(): Promise<void> {

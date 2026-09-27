@@ -1685,10 +1685,12 @@ installs (no `.git`) are not checked.
 What the unit runs depends on where `service install` runs from. A source
 checkout's unit runs its `scripts/station-cli.ts` through `tsx` with the
 installing Node.js, from the checkout's physical path. A prebuilt archive's
-unit runs `bin/station.mjs` with the archive's bundled Node.js; for the
-version `install.sh` made active, it runs them through
-`<install root>/current` (and puts `current/runtime/bin` on its `PATH`), so an
-upgrade switches `current` and restarts the unit without rewriting it. The
+unit runs `bin/station.mjs` with the archive's bundled Node.js. For the
+version `install.sh` made active (on Linux and macOS), the unit runs the
+archive's bundled Node.js through `<install root>/current` (and puts
+`current/runtime/bin` on its `PATH`) with the fixed service launcher that
+`service install` copies to `<install root>/runtime/station-launcher.mjs`; the
+launcher runs the active version. The
 service manifest records which (`kind`: `source` or `archive`) and, for such
 an archive, its `installRoot`; the installer and `station upgrade` recognize
 the service by that root. Installing a service from another version under
@@ -1698,10 +1700,30 @@ another port explicitly refuses rather than ignoring it. A registered unit
 that is not running (stopped, or waiting to be restarted after a crash) is
 stopped for the switch and left stopped, and the installer starts no separate
 Station beside it; `service start` starts it on the new version. Every unit
-sets `STATION_SERVICE_MANAGED=1`, and systemd waits 75 seconds
-(`TimeoutStopSec`) for `service run`'s 60-second shutdown before it kills the
-unit. A unit installed by an earlier version keeps `TimeoutStopSec=30` until
+sets `STATION_SERVICE_MANAGED=1`, and systemd waits 150 seconds
+(`TimeoutStopSec`) before it kills the unit: the launcher gives `service run`
+65 seconds to stop, then kills it and runs that version's own `station stop`.
+A unit installed by an earlier version keeps its shorter timeout until
 `station service install` is run again.
+
+A launcher-run service updates itself (#2675). `runtime/service-state.json`
+records which version it runs. An update request
+(`runtime/update-request.json`) is staged by the running version with its own
+`install.sh` (`STATION_INSTALL_STAGE_ONLY=1`: downloaded, verified and sealed
+into `versions/<version>`, nothing else changed). The launcher then stops the
+running version, backs up the home once (every entry but the service
+manifests, `instances.json`, logs, monitoring, quarantine and `tmp`), and
+starts the new version as a trial. The trial has 240 seconds to prove its
+identity; if it does, the update commits and `current` follows it. If it does
+not, the launcher restores the backup, including `.station-home-schema.json`,
+and restarts the previous version. A trial gets at most two attempts, and a
+launcher that is killed at any point finishes the same update when it starts
+again. Throughout, the service's registry entry names the launcher, so the
+desktop app keeps treating the home as owned by a live service.
+`install.sh` (and so `station upgrade`) does not switch `current` under a
+running launcher service: it stages the version, asks the service to switch,
+and reports the outcome. It refuses to touch an install whose update is
+unfinished until the service has been started to finish it.
 
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse
