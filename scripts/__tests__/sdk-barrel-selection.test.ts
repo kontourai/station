@@ -19,6 +19,10 @@ import {
 } from '../lib/sdk-barrel-selection.mjs';
 import { discoverRelatedTestFiles } from '../run-changed-verification.mjs';
 
+// A template-literal span in fixture source, spelled without a literal
+// `${` in this file's own strings.
+const span = (name: string) => `$\{${name}}`;
+
 const SCHEDULER = 'packages/sdk/src/client/scheduler.ts';
 const BOARD = 'packages/sdk/src/client/board.ts';
 const ROOT_BARREL = 'packages/sdk/src/index.ts';
@@ -722,6 +726,11 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
           { 'packages/sdk/src/mid.ts': "export { count } from './s';" },
         ],
         [
+          'only through a star re-export',
+          "import { count } from './mid';\nexport const snap = count;",
+          { 'packages/sdk/src/mid.ts': "export * from './s';" },
+        ],
+        [
           'declared by a renamed local export',
           qReadsCount,
           {
@@ -771,6 +780,27 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
         );
         expect(decision.reason).toMatch(/live binding: .*reads count/);
       });
+
+      test.each([
+        ['a template span', `export const snap = \`${span('items')}\`;`],
+        ['string concatenation', "export const snap = items + '';"],
+        ['a relational comparison', 'export const snap = items > 0;'],
+      ])(
+        'coercing an imported mutable object in %s is a side effect of its own',
+        (_label, snap) => {
+          const decision = decideMove(
+            liveFiles(
+              `import { items } from './s';\n${snap}`,
+              'export const items = [];\nexport function inc() { items.push(1); }',
+            ),
+            xAlone,
+            xWithQ,
+          );
+          expect(decision.reason).toMatch(
+            /q\.ts, loaded by .*q\.ts, has a top-level side effect/,
+          );
+        },
+      );
 
       test('control: a snapshot of an imported `export const` still refines', () => {
         const decision = decideMove(
@@ -1357,6 +1387,12 @@ describe('topLevelSideEffect', () => {
       "const local = { a: 1 };\nconst list = ['a'];\nexport const f = Object.freeze(local);\nexport const all = [...list];\nexport const copy = { ...local };\nexport const m = new Map([[1, 2]]);\nexport const n = local.a;",
     ],
     [
+      'non-coercing operators and local coercion',
+      "import { v } from './v';\nconst n = 1;\nexport const a = v === 1;\nexport const b = v !== n;\nexport const c = v && n;\nexport const d = v || n;\nexport const e = v ?? n;\nexport const f = !v;\nexport const g = `" +
+        span('n') +
+        '` + (n * 2) + -n;',
+    ],
+    [
       'reading an imported binding without touching it',
       "import { Base, value } from './b';\nexport const same = value;\nexport const pair = [value];",
     ],
@@ -1377,6 +1413,38 @@ describe('topLevelSideEffect', () => {
       "import { cfg } from './c';\nexport const { a } = cfg;",
     ],
     ['a top-level await', 'await ready;'],
+    [
+      'coercing an imported value in a template span',
+      `import { items } from './s';\nexport const s = \`${span('items')}\`;`,
+    ],
+    ...[
+      '+',
+      '-',
+      '*',
+      '/',
+      '%',
+      '**',
+      '<',
+      '>=',
+      '==',
+      '!=',
+      '&',
+      '|',
+      '<<',
+      'in',
+      'instanceof',
+    ].map((operator) => [
+      `the ${operator} operator on an imported value`,
+      `import { v } from './v';\nconst o = {};\nexport const r = v ${operator} o;`,
+    ]),
+    ...['+', '-', '~'].map((operator) => [
+      `unary ${operator} on an imported value`,
+      `import { v } from './v';\nexport const r = ${operator}v;`,
+    ]),
+    [
+      'coercing a local alias of an imported value',
+      `import { v } from './v';\nconst alias = v;\nexport const r = \`${span('alias')}\`;`,
+    ],
     [
       'a property read of an imported value (a getter)',
       "import { cfg } from './c';\nexport const a = cfg.value;",

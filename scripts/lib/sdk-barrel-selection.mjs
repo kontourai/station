@@ -528,6 +528,16 @@ const IMPURE_OPERATORS = new Set([
   ts.SyntaxKind.QuestionQuestionEqualsToken,
 ]);
 
+// Binary operators that neither coerce nor run an operand's code.
+const NON_COERCING_OPERATORS = new Set([
+  ts.SyntaxKind.EqualsEqualsEqualsToken,
+  ts.SyntaxKind.ExclamationEqualsEqualsToken,
+  ts.SyntaxKind.AmpersandAmpersandToken,
+  ts.SyntaxKind.BarBarToken,
+  ts.SyntaxKind.QuestionQuestionToken,
+  ts.SyntaxKind.CommaToken,
+]);
+
 function calleeName(node) {
   if (ts.isIdentifier(node)) return node.text;
   if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression))
@@ -616,9 +626,13 @@ function pureExpression(node, imported = new Set()) {
       return true;
   }
   if (ts.isClassExpression(node)) return pureClassMembers(node, imported);
+  // A template span coerces its value to a string: an imported object's
+  // toString (or an array's contents) is read at that moment.
   if (ts.isTemplateExpression(node))
-    return node.templateSpans.every((span) =>
-      pureExpression(span.expression, imported),
+    return node.templateSpans.every(
+      (span) =>
+        !readsImported(span.expression, imported) &&
+        pureExpression(span.expression, imported),
     );
   if (
     ts.isParenthesizedExpression(node) ||
@@ -639,11 +653,20 @@ function pureExpression(node, imported = new Set()) {
     return (
       node.operator !== ts.SyntaxKind.PlusPlusToken &&
       node.operator !== ts.SyntaxKind.MinusMinusToken &&
+      // `+x`, `-x`, `~x` coerce to a number (valueOf/toString); `!x` does not.
+      (node.operator === ts.SyntaxKind.ExclamationToken ||
+        !readsImported(node.operand, imported)) &&
       pureExpression(node.operand, imported)
     );
   if (ts.isBinaryExpression(node))
     return (
       !IMPURE_OPERATORS.has(node.operatorToken.kind) &&
+      // Every other operator can coerce an operand (arithmetic, `+`,
+      // relational, loose equality, bitwise, `in`'s key) or run its code
+      // (`instanceof`'s Symbol.hasInstance, `in`'s proxy trap).
+      (NON_COERCING_OPERATORS.has(node.operatorToken.kind) ||
+        (!readsImported(node.left, imported) &&
+          !readsImported(node.right, imported))) &&
       pureExpression(node.left, imported) &&
       pureExpression(node.right, imported)
     );
