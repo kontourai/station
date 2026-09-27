@@ -2,14 +2,13 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import {
   copyFileSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { runFastChecksShardCli } from '../fast-checks-shard.mjs';
 import {
   digestText,
@@ -30,7 +29,7 @@ import {
 import { buildTestImpactManifest } from '../test-impact-manifest.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
-const temporary = new Set<string>();
+const makeTempDir = trackTempDirs();
 /**
  * The CLI and the only modules its slice, empty-run and aggregate paths may
  * load. Each fixture repository gets a copy and no node_modules, so a path
@@ -44,16 +43,9 @@ const DEPENDENCY_FREE_CLI = [
   'scripts/lib/module-entry.mjs',
 ];
 
-afterEach(() => {
-  for (const directory of temporary)
-    rmSync(directory, { recursive: true, force: true });
-  temporary.clear();
-});
-
 /** A throwaway Git repository: the CLI reads HEAD for plan identity. */
 function repository() {
-  const directory = mkdtempSync(join(tmpdir(), 'station-fast-checks-'));
-  temporary.add(directory);
+  const directory = makeTempDir('station-fast-checks-');
   for (const file of DEPENDENCY_FREE_CLI) {
     mkdirSync(join(directory, file, '..'), { recursive: true });
     copyFileSync(join(root, file), join(directory, file));
