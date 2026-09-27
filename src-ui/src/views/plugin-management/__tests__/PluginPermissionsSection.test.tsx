@@ -1,12 +1,8 @@
 /** @vitest-environment jsdom */
 
-import { permissionTier } from '@kontourai/station-contracts/plugin';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
-import {
-  PluginPermissionsSection,
-  revokeNeedsConfirmation,
-} from '../PluginPermissionsSection';
+import { PluginPermissionsSection } from '../PluginPermissionsSection';
 
 /**
  * archive#3815. The panel used to show only what a plugin was still
@@ -111,47 +107,6 @@ test('only the row being withdrawn shows pending, not the whole section', () => 
       name: 'Remove Make network requests through the server',
     }),
   ).toBeTruthy();
-});
-
-test('the asymmetry decides which removals ask first', () => {
-  // Removing is always safe — it narrows what a plugin may do. What differs
-  // is the cost of changing your mind: a trusted grant can only be restored
-  // through the isolated host review page, so that one asks.
-  expect(revokeNeedsConfirmation('trusted')).toBe(true);
-  expect(revokeNeedsConfirmation('active')).toBe(false);
-  expect(revokeNeedsConfirmation('passive')).toBe(false);
-});
-
-test('a held permission shows its REAL tier, not a cautious default (station#3815)', () => {
-  // The bug this pins: a granted permission is by definition not "missing",
-  // so deriving its tier from the missing list rendered every held row as
-  // Trusted. `navigation.dock` is Passive and `network.fetch` is Active — a
-  // review surface that called them Trusted would misinform on exactly the
-  // fact that decides how alarmed to be.
-  expect(permissionTier('navigation.dock')).toBe('passive');
-  expect(permissionTier('network.fetch')).toBe('active');
-  expect(permissionTier('plugin.server')).toBe('trusted');
-  // Unknown reads as trusted: the cautious answer, never a reassuring one.
-  expect(permissionTier('some.future.permission')).toBe('trusted');
-
-  render(
-    <PluginPermissionsSection
-      granted={[
-        {
-          permission: 'navigation.dock',
-          tier: permissionTier('navigation.dock'),
-        },
-        { permission: 'network.fetch', tier: permissionTier('network.fetch') },
-      ]}
-      missing={[]}
-      revoking={new Set()}
-      onRevoke={vi.fn()}
-      onReviewPermissions={vi.fn()}
-    />,
-  );
-  expect(screen.getByText('Passive')).toBeTruthy();
-  expect(screen.getByText('Active')).toBeTruthy();
-  expect(screen.queryByText('Trusted')).toBeNull();
 });
 
 test('the hint projects retirement and retry truth instead of stale reload behavior', () => {

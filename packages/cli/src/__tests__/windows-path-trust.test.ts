@@ -1,12 +1,18 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  assertWindowsPathsTrusted,
   buildWindowsTrustCommand,
   ensureWindowsDirectoriesTrusted,
   hardenWindowsPathsTrusted,
   parseWindowsTrustResult,
+  WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
   type WindowsTrustCommandRunner,
   windowsSystemUtilityPath,
 } from '../commands/windows-path-trust.js';
+
+// Pinned independently of the constant (#2805): the one trust budget, sized
+// for a cold, saturated Windows host.
+const TRUST_BUDGET = { timeout: 120_000 };
 
 describe('Windows current-user path trust', () => {
   function decodeProgram(args: string[]): string {
@@ -112,6 +118,7 @@ describe('Windows current-user path trust', () => {
           buildWindowsTrustCommand('ensure', [
             { kind: 'directory', path: 'C:\\runtime' },
           ]),
+          TRUST_BUDGET,
         ],
       ]);
     });
@@ -130,7 +137,26 @@ describe('Windows current-user path trust', () => {
         [
           windowsSystemUtilityPath('powershell'),
           buildWindowsTrustCommand('ensure', targets),
+          TRUST_BUDGET,
         ],
+      ]);
+    });
+
+    test('every trust operation hands its runner the one cold-host budget (#2805)', () => {
+      onWindows();
+      expect(WINDOWS_TRUST_COMMAND_TIMEOUT_MS).toBe(TRUST_BUDGET.timeout);
+      const run = vi.fn<WindowsTrustCommandRunner>(() => ({
+        status: 0,
+        stdout: '{"trusted":true}',
+      }));
+      const file = [{ kind: 'file' as const, path: 'C:\\runtime\\grant' }];
+      assertWindowsPathsTrusted(run, file);
+      ensureWindowsDirectoriesTrusted(run, ['C:\\runtime']);
+      hardenWindowsPathsTrusted(run, file);
+      expect(run.mock.calls.map((call) => call[2])).toEqual([
+        TRUST_BUDGET,
+        TRUST_BUDGET,
+        TRUST_BUDGET,
       ]);
     });
 

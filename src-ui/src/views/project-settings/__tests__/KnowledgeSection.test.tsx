@@ -74,11 +74,13 @@ function GuardedHarness({ dirty }: { dirty: boolean }) {
 }
 
 describe('project-settings/KnowledgeSection (#242 shell port)', () => {
-  it('renders the no-working-directory state through the canonical Empty component, not a bespoke __empty paragraph', () => {
-    const { container } = render(<KnowledgeSection slug="demo-project" />);
+  it('renders the no-working-directory state through the canonical Empty component', () => {
+    render(<KnowledgeSection slug="demo-project" />);
 
-    expect(screen.getByText('No working directory configured.')).toBeTruthy();
-    expect(container.querySelector('.knowledge-section__empty')).toBeNull();
+    // `.empty` is the hook the shared @kontourai/ui Empty primitive renders.
+    expect(
+      screen.getByText('No working directory configured.').closest('.empty'),
+    ).not.toBeNull();
   });
 
   it('leaves the pre-existing K5 KnowledgeStoreSubsection Empty usage untouched', () => {
@@ -130,9 +132,9 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
     // The interception is what this section wires; the resume is not. That the
     // Discard button settles the deferred navigation to its target is
     // `useUnsavedGuard`'s own contract, driven end to end in
-    // `src-ui/src/__tests__/useUnsavedGuard.test.tsx` -- 'a real Discard dialog
-    // closes without falsely superseding its own prepared navigation', which
-    // clicks a real Discard and asserts the browser reached the target path.
+    // `src-ui/src/__tests__/useUnsavedGuard.test.tsx` -- 'Discard on an
+    // intercepted route change completes that navigation', which clicks a
+    // real Discard and asserts the browser reached the target path.
     // The route this link carries is pinned by the clean-page case above.
     it('a dirty page intercepts the My-knowledge-store link with the discard-confirmation modal instead of silently navigating away', () => {
       navigationStore.navigate('/guard-origin');
@@ -160,21 +162,6 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
 
       expect(window.location.pathname).toBe('/guard-origin');
       expect(screen.getByText('Unsaved Changes')).toBeTruthy();
-    });
-
-    it('confirming discard from a dirty page completes the deferred navigation', () => {
-      navigationStore.navigate('/guard-origin');
-      navigateMock.mockClear();
-      render(<GuardedHarness dirty />);
-
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Open Knowledge infrastructure' }),
-      );
-      expect(window.location.pathname).toBe('/guard-origin');
-
-      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
-      expect(navigateMock).toHaveBeenCalledWith('/connections/knowledge');
-      expect(window.location.pathname).toBe('/connections/knowledge');
     });
   });
 });

@@ -298,19 +298,23 @@ async function startBroker(echoMode = false) {
     );
     let failRetirement = false;
     let dropNextRenewalResponse = false;
+    let renewalRequests = 0;
     const server = serve({
       fetch: async (request) => {
+        const renewalRequest =
+          new URL(request.url).pathname === '/broker/v1/native/grants/renew';
         if (
           failRetirement &&
           new URL(request.url).pathname === '/broker/v1/native/grants/retire'
         ) {
           return new Response('fixture retirement outage', { status: 503 });
         }
+        if (renewalRequest) renewalRequests += 1;
         const response = await app.fetch(request);
         if (
           dropNextRenewalResponse &&
           response.status === 200 &&
-          new URL(request.url).pathname === '/broker/v1/native/grants/renew'
+          renewalRequest
         ) {
           dropNextRenewalResponse = false;
           return new Response('injected lost renewal receipt', { status: 503 });
@@ -823,6 +827,9 @@ async function startBroker(echoMode = false) {
       dropNextRenewalResponse: () => {
         dropNextRenewalResponse = true;
       },
+      get renewalRequests() {
+        return renewalRequests;
+      },
       get echoTurn() {
         return echoTurn;
       },
@@ -1324,6 +1331,7 @@ async function main() {
     );
     assert.deepEqual(initialStatus.ipcResult.grants, []);
 
+    if (NATIVE_ECHO_LANE) broker.dropNextRenewalResponse();
     const redemption = NATIVE_ECHO_LANE
       ? await invokeDroppingSuccessReply<{
           status?: string;
@@ -1362,6 +1370,7 @@ async function main() {
     }
 
     const afterRedeem = await invoke<{
+      profileRevision?: number;
       grants?: Array<{
         metadata?: {
           expiresAt?: number;
@@ -1380,6 +1389,10 @@ async function main() {
     assert.ok(
       afterRedeem.ipcResult,
       afterRedeem.ipcError ?? 'post-redemption status IPC failed',
+    );
+    assert.equal(
+      afterRedeem.ipcResult.profileRevision,
+      expectedProfileRevision,
     );
     assert.equal(afterRedeem.ipcResult.grants?.length, 1);
     const recoveredRoute = afterRedeem.ipcResult.grants?.[0]?.metadata?.route;
@@ -1405,36 +1418,44 @@ async function main() {
     );
 
     if (NATIVE_ECHO_LANE) {
-      const initialExpiresAt =
-        afterRedeem.ipcResult.grants?.[0]?.metadata?.expiresAt;
-      assert.ok(initialExpiresAt, 'native grant expiry is missing');
-      broker.dropNextRenewalResponse();
-      const lostRenewal = await invoke<unknown>(
+      await driver.execute(() => {
+        window.dispatchEvent(new Event('focus'));
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await driver.waitUntil(
+        async () => {
+          if (broker.renewalRequests < 2) return false;
+          const current = await invoke<{
+            grants?: Array<{ metadata?: { expiresAt?: number } }>;
+          }>(fixture!, 'station_native_relay_grant_status', {
+            profileName: route.name,
+          });
+          return (
+            (current.ipcResult?.grants?.[0]?.metadata?.expiresAt ?? 0) >
+            Date.now() + 18 * 60 * 60_000
+          );
+        },
+        {
+          timeout: 45_000,
+          timeoutMsg:
+            'native supervisor did not recover the lost renewal receipt',
+        },
+      );
+      const beforeStaleRenewal = broker.renewalRequests;
+      const staleRenewal = await invoke<unknown>(
         fixture,
         'station_native_relay_grant_renew',
         {
           profileName: route.name,
-          expectedProfileRevision,
+          expectedProfileRevision: expectedProfileRevision + 1,
         },
       );
-      assert.equal(lostRenewal.ipcResult, undefined);
-      assert.match(lostRenewal.ipcError ?? '', /could not renew/i);
-      const recoveredRenewal = await invoke<{ expiresAt?: number }>(
-        fixture,
-        'station_native_relay_grant_renew',
-        {
-          profileName: route.name,
-          expectedProfileRevision,
-        },
-      );
-      assert.ok(
-        recoveredRenewal.ipcResult,
-        recoveredRenewal.ipcError ??
-          'lost native renewal receipt was not recovered',
-      );
-      assert.ok(
-        (recoveredRenewal.ipcResult.expiresAt ?? 0) > initialExpiresAt,
-        'recovered native renewal did not extend the saved grant',
+      assert.equal(staleRenewal.ipcResult, undefined);
+      assert.match(staleRenewal.ipcError ?? '', /could not renew/i);
+      assert.equal(
+        broker.renewalRequests,
+        beforeStaleRenewal,
+        'stale profile revision reached broker renewal',
       );
       lostRenewalResponseRecovered = true;
       assert.ok(echoBundle, 'test-only WebView echo bundle is missing');

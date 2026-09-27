@@ -44,6 +44,12 @@ import {
   PORTABLE_ARCHIVE_ROOT,
   readPortableNodeRuntime,
 } from './lib/portable-server-archive.mjs';
+import {
+  describeCommandFailure,
+  redact,
+  stationLogReport,
+} from './lib/portable-smoke-diagnostics.mjs';
+import { parseStopHint } from './lib/station-stop-hint.mjs';
 
 const WINDOWS = process.platform === 'win32';
 const MAX_PATH = 260;
@@ -68,18 +74,77 @@ function fail(message) {
   throw new Error(message);
 }
 
+// Where a failed smoke looks for Station's logs (#2805): the throwaway HOME,
+// and every Station home a launcher announced (a POSIX --temp-home lives in
+// the OS temporary directory, outside HOME).
+const diagnosticRoots = new Set();
+
+function noteAnnouncedHome(output) {
+  const announced = /Station home: (.+) \(/.exec(output ?? '')?.[1];
+  if (announced) diagnosticRoots.add(announced);
+}
+
+/** Runs the launcher once, recording any Station home it announces. */
+function spawnLauncherSync(launcher, args, env, cwd, timeout) {
+  const { command, args: argv, options } = launcherInvocation(launcher, args);
+  const result = spawnSync(command, argv, {
+    ...options,
+    cwd,
+    env,
+    encoding: 'utf8',
+    timeout,
+    windowsHide: true,
+  });
+  noteAnnouncedHome(result.stdout);
+  return result;
+}
+
 function log(message) {
   console.log(`[portable-smoke] ${message}`);
 }
 
+const WINDOWS_SYSTEM_VARIABLES = [
+  'ALLUSERSPROFILE',
+  'CommonProgramFiles',
+  'CommonProgramFiles(x86)',
+  'CommonProgramW6432',
+  'COMPUTERNAME',
+  'NUMBER_OF_PROCESSORS',
+  'OS',
+  'PROCESSOR_ARCHITECTURE',
+  'PROCESSOR_IDENTIFIER',
+  'PROCESSOR_LEVEL',
+  'PROCESSOR_REVISION',
+  'ProgramData',
+  'ProgramFiles',
+  'ProgramFiles(x86)',
+  'ProgramW6432',
+  'PUBLIC',
+  'SystemDrive',
+  'USERDOMAIN',
+  'USERNAME',
+];
+
 /**
  * The environment of a host that never installed Node.js: only the base OS
- * directories on PATH and a throwaway HOME. Nothing is inherited.
+ * directories on PATH and a throwaway HOME. Only machine-level system
+ * variables are inherited.
  */
 function scrubbedEnvironment(home) {
   if (!WINDOWS) return { HOME: home, PATH: '/usr/bin:/bin' };
   const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
+  // Machine-level variables every Windows session and service has, so the
+  // smoke models a real host rather than one missing them. PATH stays
+  // minimal, so the archive still proves it needs no Node or PowerShell on
+  // PATH.
+  const system = Object.fromEntries(
+    WINDOWS_SYSTEM_VARIABLES.filter((name) => process.env[name]).map((name) => [
+      name,
+      process.env[name],
+    ]),
+  );
   return {
+    ...system,
     SystemRoot: systemRoot,
     windir: systemRoot,
     ComSpec: join(systemRoot, 'System32', 'cmd.exe'),
@@ -135,39 +200,23 @@ function launcherInvocation(launcher, args) {
 }
 
 function runLauncher(launcher, args, env, cwd, timeout = 30_000) {
-  const { command, args: argv, options } = launcherInvocation(launcher, args);
-  const result = spawnSync(command, argv, {
-    ...options,
-    cwd,
-    env,
-    encoding: 'utf8',
-    timeout,
-    windowsHide: true,
-  });
+  const result = spawnLauncherSync(launcher, args, env, cwd, timeout);
   const shown = args.map((arg) => arg.replace(cwd, '<home>')).join(' ');
-  if (result.error) fail(`station ${shown}: ${result.error}`);
+  if (result.error || result.status !== 0) {
+    fail(describeCommandFailure(shown, result, timeout));
+  }
   log(
     `$ station ${shown} -> exit ${result.status}:\n${redact(result.stdout.trim())}`,
   );
-  if (result.status !== 0) {
-    fail(`launcher exited ${result.status}: ${redact(result.stderr)}`);
-  }
   return result.stdout.trim();
 }
 
 /** Runs a command that must fail, and returns what it printed. */
 function runLauncherExpectingFailure(launcher, args, env, cwd) {
-  const { command, args: argv, options } = launcherInvocation(launcher, args);
-  const result = spawnSync(command, argv, {
-    ...options,
-    cwd,
-    env,
-    encoding: 'utf8',
-    timeout: 60_000,
-    windowsHide: true,
-  });
+  const timeout = 60_000;
+  const result = spawnLauncherSync(launcher, args, env, cwd, timeout);
   const shown = args.map((arg) => arg.replace(cwd, '<home>')).join(' ');
-  if (result.error) fail(`station ${shown}: ${result.error}`);
+  if (result.error) fail(describeCommandFailure(shown, result, timeout));
   const output = `${result.stdout}${result.stderr}`.trim();
   log(`$ station ${shown} -> exit ${result.status}:\n${redact(output)}`);
   if (result.status === 0) fail(`station ${shown} was expected to refuse`);
@@ -268,11 +317,6 @@ function makeReadOnly(root) {
   };
 }
 
-/** A launch receipt names a single-use sign-in link; never echo the token. */
-function redact(text) {
-  return text.replace(/(#station-ui-bootstrap=)[^\s]+/g, '$1<redacted>');
-}
-
 async function fetchChecked(url, headers = {}) {
   const response = await fetch(url, {
     headers,
@@ -355,14 +399,26 @@ async function bootAndProbe({ launcher, nextLauncher, env, home, release }) {
     );
     // An archive keeps a --temp-home instance's record inside that home
     // (#2675), so the printed stop command names it.
-    const stopEphemeral =
-      /Stop with: station (stop --home=\S+ --instance=\S+)/.exec(
-        ephemeral,
-      )?.[1];
+    // Parsed, not split on spaces: the home is quoted for the platform's
+    // shell, and parseStopHint refuses the other platform's quoting (#2805).
+    const stopEphemeral = parseStopHint(ephemeral);
     if (!stopEphemeral) {
       fail('station start --temp-home named no stop command with its home');
     }
-    runLauncher(launcher, stopEphemeral.split(' '), lifecycleEnv, home);
+    runLauncher(
+      launcher,
+      [
+        'stop',
+        // The launcher runs through cmd.exe on Windows, which passes a
+        // double-quoted argument through intact; POSIX spawns it directly.
+        WINDOWS
+          ? `--home="${stopEphemeral.home}"`
+          : `--home=${stopEphemeral.home}`,
+        `--instance=${stopEphemeral.instanceId}`,
+      ],
+      lifecycleEnv,
+      home,
+    );
     await waitUntilClosed([serverPort, uiPort]);
     // `stop` leaves the temporary home itself behind; the smoke owns it.
     const temporaryHome = /Station home: (.+) \(--temp-home\)/.exec(
@@ -568,16 +624,11 @@ async function proveArchiveLifecycle({
 
 /** Runs the launcher and returns its result whatever its exit status. */
 function spawnLauncher(launcher, args, env, cwd) {
-  const { command, args: argv, options } = launcherInvocation(launcher, args);
-  const result = spawnSync(command, argv, {
-    ...options,
-    cwd,
-    env,
-    encoding: 'utf8',
-    timeout: 60_000,
-    windowsHide: true,
-  });
-  if (result.error) fail(`station ${args.join(' ')}: ${result.error}`);
+  const timeout = 60_000;
+  const result = spawnLauncherSync(launcher, args, env, cwd, timeout);
+  if (result.error) {
+    fail(describeCommandFailure(args.join(' '), result, timeout));
+  }
   log(`$ station ${args.join(' ')} -> exit ${result.status}`);
   return result;
 }
@@ -697,6 +748,7 @@ async function main() {
       launcherName,
     );
     const home = join(work, 'home');
+    diagnosticRoots.add(home);
     const env = scrubbedEnvironment(home);
     mkdirSync(env.TEMP ?? home, { recursive: true });
     mkdirSync(env.APPDATA ?? home, { recursive: true });
@@ -732,6 +784,12 @@ async function main() {
     }
     log(`archive unchanged: ${listing.length} entries`);
     log('PASS');
+  } catch (error) {
+    // Before cleanup removes them: the logs of every Station this smoke ran.
+    console.error(
+      `[portable-smoke] Station logs after the failure:\n${stationLogReport(diagnosticRoots)}`,
+    );
+    throw error;
   } finally {
     if (!values.keep) {
       try {

@@ -28,11 +28,9 @@ import {
 import { errorMessage } from '../../routes/schemas/schemas.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
 import { execGit, isLocalGitSource } from '../../utils/git-exec.js';
-import {
-  isGitMetadataName,
-  stripHfsIgnorable,
-} from '../../utils/git-metadata-name.js';
+import { endsAsGitName } from '../../utils/git-metadata-name.js';
 import type { Logger } from '../../utils/logger.js';
+import { ownGitRepositoryArgs } from '../../utils/own-git-repository.js';
 import { DistributionProfileService } from './distribution-profile-service.js';
 import {
   computePluginContentDigest,
@@ -236,8 +234,7 @@ export function resolvePluginDependencySource(
     dependency.source.includes('#') ||
     // `repo.git` (a clone target) or a name that IS `.git` on some
     // filesystem (`.GIT`, `git~1`, HFS+-ignorable spellings).
-    /\.git[. ]*$/i.test(stripHfsIgnorable(basename(source))) ||
-    isGitMetadataName(basename(source))
+    endsAsGitName(basename(source))
   ) {
     throw new Error(
       `Plugin dependency '${dependency.id}' local source must be a plain directory; name a git repository by its remote URL`,
@@ -481,22 +478,24 @@ export async function getPluginGitInfo(
   dir: string,
   logger: Logger,
 ): Promise<PluginGitInfo | undefined> {
-  if (!existsSync(join(dir, '.git'))) return undefined;
+  // Only the plugin's own repository: never one enclosing `dir`.
+  const own = ownGitRepositoryArgs(dir);
+  if (!own) return undefined;
   try {
-    const { stdout: hash } = await execGit(['rev-parse', '--short', 'HEAD'], {
-      cwd: dir,
-      encoding: 'utf-8',
-    });
+    const { stdout: hash } = await execGit(
+      [...own, 'rev-parse', '--short', 'HEAD'],
+      { cwd: dir, encoding: 'utf-8' },
+    );
     const { stdout: branch } = await execGit(
-      ['rev-parse', '--abbrev-ref', 'HEAD'],
+      [...own, 'rev-parse', '--abbrev-ref', 'HEAD'],
       { cwd: dir, encoding: 'utf-8' },
     );
     let remote: string | undefined;
     try {
-      const { stdout } = await execGit(['remote', 'get-url', 'origin'], {
-        cwd: dir,
-        encoding: 'utf-8',
-      });
+      const { stdout } = await execGit(
+        [...own, 'remote', 'get-url', 'origin'],
+        { cwd: dir, encoding: 'utf-8' },
+      );
       remote = stdout.trim();
     } catch (error) {
       logger.debug('Failed to get git remote URL for plugin', { error });

@@ -122,6 +122,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Runs the real portable-archive smoke against a fake archive whose start fails.
+  'scripts/__tests__/portable-smoke-diagnostics.test.ts',
   // Copies the tracked tree and runs the repo-governance lane CLI twice (clean and violating).
   'scripts/__tests__/proof-family-route-error-egress.test.ts',
   // Real CLI prerequisite probes, a loopback listener, and the SQLite runtime owner.
