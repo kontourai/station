@@ -1646,6 +1646,9 @@ export function configureRuntimeRoutes(
     },
     currentConversationSessionId: (conversationId) =>
       context.orchestrationService.currentConversationSessionId(conversationId),
+    projectDirectories: () => context.projectService.listProjects(),
+    sessionCwd: (threadId) =>
+      context.orchestrationEventStore?.readSessionByThread(threadId)?.cwd,
     projectIdForSlug: (slug) => {
       const id = context.storageAdapter.getProject(slug).id;
       return typeof id === 'string' && id ? id : undefined;

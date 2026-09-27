@@ -852,7 +852,10 @@ export interface StationControlPolicyCaller {
  * - `project`: its session-record Project (`ProjectConfig.id`, stamped when
  *   it started).
  * - `global`: it has no Project at all; the operator's "global space", a
- *   scope of its own. A plain folder (`{kind:'directory'}`) target is global.
+ *   scope of its own. A plain folder (`{kind:'directory'}`) is global only
+ *   when no Project's working directory contains it; otherwise it is that
+ *   Project's (`stationControlDirectoryScope`), so a global agent never
+ *   reaches into a Project implicitly.
  * - `unreadable`: it names a Project Station cannot confirm as a session
  *   record (a slug looked up now, a refused stamp, a slug with no Project).
  *   It matches nothing, so it refuses.

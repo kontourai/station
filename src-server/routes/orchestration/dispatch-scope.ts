@@ -71,6 +71,8 @@ export function foregroundDispatchTarget(
   send: {
     readonly ownerId: string | undefined;
     readonly projectSlug?: string;
+    /** A plain-folder target's `cwd`. */
+    readonly directory?: string;
     readonly conversationId?: string;
     readonly inputReplyThreadId?: string;
     readonly remote: boolean;
@@ -95,6 +97,7 @@ export function foregroundDispatchTarget(
     ...(send.projectSlug !== undefined
       ? { projectSlug: send.projectSlug }
       : {}),
+    ...(send.directory !== undefined ? { directory: send.directory } : {}),
     remote,
   };
 }

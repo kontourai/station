@@ -14,7 +14,10 @@
  *   only (unreadable); anything else project-a;
  * - `new-*` has no session yet; `support.hostThreads` run unconfined.
  */
+import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -47,6 +50,10 @@ const support = vi.hoisted(() => ({
   slugOnly: new Map<string, string>(),
   /** The account member's actions in project-acct. */
   accountActions: ['view', 'discuss', 'edit', 'execute'] as string[],
+  /** Projects with a working directory, for a folder's scope. */
+  projectDirs: [] as { id: string; slug: string; workingDirectory: string }[],
+  /** The working directory each session recorded. */
+  cwds: new Map<string, string>(),
 }));
 
 vi.mock('../runtime-route-support.js', () => {
@@ -117,6 +124,7 @@ function ownerOf(threadId: string): string | undefined {
 
 function projectOf(threadId: string): string | undefined {
   if (threadId.endsWith('-global')) return undefined;
+  if (threadId.endsWith('-n')) return 'project-n';
   if (threadId.endsWith('-b')) return 'project-b';
   if (threadId.endsWith('-acct')) return 'project-acct';
   return 'project-a';
@@ -134,6 +142,8 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
     support.hostThreads.clear();
     support.slugOnly.clear();
     support.accountActions = ['view', 'discuss', 'edit', 'execute'];
+    support.projectDirs = [];
+    support.cwds.clear();
     for (const close of closers.splice(0)) await close();
   });
 
@@ -174,6 +184,10 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
           reconcile: () => ({ kind: 'available', interrupted: [] }),
         }),
         conversationForSession: () => undefined,
+        readSessionByThread: (threadId: string) => {
+          const cwd = support.cwds.get(threadId);
+          return cwd ? { threadId, cwd } : undefined;
+        },
       }),
       orchestrationService: deepStub({
         // The production caller derivation reads the session's owner here.
@@ -235,7 +249,7 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       // No Project names a default Environment: a Project dispatch stays on
       // this Station unless the body names one.
       projectService: {
-        listProjects: () => [],
+        listProjects: () => support.projectDirs,
         getProject: (slug: string) => ({ slug }),
       },
       environmentSecurityService: deepStub({
@@ -397,7 +411,8 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
   const P = { kind: 'project', projectSlug: 'project-a-slug' };
   const Q = { kind: 'project', projectSlug: 'project-b-slug' };
   const UNREADABLE = { kind: 'project', projectSlug: 'no-such-slug' };
-  const FOLDER = { kind: 'directory', cwd: '/tmp/somewhere' };
+  // A folder that exists and lies in no Project: the global space.
+  const FOLDER = { kind: 'directory', cwd: tmpdir() };
   const ASSURANCE = 'station_control_assurance_insufficient';
   const ROLE = 'station_control_role_required';
 
@@ -810,6 +825,145 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
           body,
         ),
       ).toBe('station_control_route_unmapped');
+  });
+
+  // Owner decision: a global agent never reaches into a Project implicitly.
+  // A plain folder's scope is the Project whose working directory contains
+  // it (canonical paths, whole segments, the deepest Project), else global;
+  // a folder Station cannot resolve refuses.
+  test('a plain folder is scoped by the Project that contains it', async () => {
+    const { base } = await setup();
+    const root = realpathSync(makeTempDir('dispatch-folder-scope-'));
+    const project = join(root, 'proj');
+    const nested = join(project, 'inner');
+    const sibling = join(root, 'proj-2');
+    for (const dir of [join(project, 'sub'), join(nested, 'deep'), sibling])
+      mkdirSync(dir, { recursive: true });
+    symlinkSync(join(project, 'sub'), join(root, 'link'));
+    support.projectDirs = [
+      {
+        id: 'project-a',
+        slug: 'project-a-slug',
+        workingDirectory: `${project}/`,
+      },
+      { id: 'project-n', slug: 'project-n-slug', workingDirectory: nested },
+    ];
+    const toFolder = (cwd: string) =>
+      ROUTES['POST /chat']!({
+        kind: 'new',
+        workspace: { kind: 'directory', cwd },
+      })!;
+    const cases: Array<[string, string, string, string]> = [
+      [
+        'global caller → folder inside P',
+        'op-caller-global',
+        join(project, 'sub'),
+        ASSURANCE,
+      ],
+      [
+        'caller in P → folder inside P',
+        'op-caller-a',
+        join(project, 'sub'),
+        'reached',
+      ],
+      ['caller in P → P’s own folder', 'op-caller-a', project, 'reached'],
+      [
+        'global caller → sibling-prefix folder',
+        'op-caller-global',
+        sibling,
+        'reached',
+      ],
+      [
+        'caller in P → sibling-prefix folder',
+        'op-caller-a',
+        sibling,
+        ASSURANCE,
+      ],
+      [
+        'global caller → symlink into P',
+        'op-caller-global',
+        join(root, 'link'),
+        ASSURANCE,
+      ],
+      [
+        'caller in P → symlink into P',
+        'op-caller-a',
+        join(root, 'link'),
+        'reached',
+      ],
+      [
+        'caller in P → nested Project',
+        'op-caller-a',
+        join(nested, 'deep'),
+        ASSURANCE,
+      ],
+      [
+        'caller in nested → nested Project',
+        'op-caller-n',
+        join(nested, 'deep'),
+        'reached',
+      ],
+      [
+        'caller in P → unresolvable folder',
+        'op-caller-a',
+        join(project, 'missing'),
+        ROLE,
+      ],
+      [
+        'global caller → unresolvable folder',
+        'op-caller-global',
+        join(root, 'missing'),
+        ROLE,
+      ],
+    ];
+    for (const [label, caller, cwd, expected] of cases) {
+      const request = toFolder(cwd);
+      expect([
+        label,
+        await outcome(
+          base,
+          request.path,
+          as('bearer-exposed', caller)(),
+          request.body,
+        ),
+      ]).toEqual([label, expected]);
+    }
+    // /delegations applies the same folder scope.
+    const delegation = ROUTES['POST /delegations']!({
+      kind: 'new',
+      workspace: { kind: 'directory', cwd: join(project, 'sub') },
+    })!;
+    expect(
+      await outcome(
+        base,
+        delegation.path,
+        as('bearer-exposed', 'op-caller-global')(),
+        delegation.body,
+      ),
+    ).toBe(ASSURANCE);
+    // A follow-up to a session with no Project record that runs in P's
+    // folder is P's, not the global space's.
+    support.cwds.set('op-folder-global', join(project, 'sub'));
+    const followUp = ROUTES['POST /chat/:conversationId/continue']!({
+      kind: 'thread',
+      threadId: 'op-folder-global',
+    })!;
+    expect(
+      await outcome(
+        base,
+        followUp.path,
+        as('bearer-exposed', 'op-caller-global')(),
+        followUp.body,
+      ),
+    ).toBe(ASSURANCE);
+    expect(
+      await outcome(
+        base,
+        followUp.path,
+        as('bearer-exposed', 'op-caller-a')(),
+        followUp.body,
+      ),
+    ).toBe('reached');
   });
 
   test('the remote-target leaves are the bound operator’s alone', async () => {

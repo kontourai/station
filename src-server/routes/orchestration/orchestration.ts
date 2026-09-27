@@ -1730,6 +1730,9 @@ export function createOrchestrationRoutes(
           foregroundDispatchTarget(deps.stationControlDispatchScope, {
             ownerId,
             ...(projectSlug !== undefined ? { projectSlug } : {}),
+            ...(body.target.workspace?.kind === 'directory'
+              ? { directory: body.target.workspace.cwd }
+              : {}),
             ...(body.conversationId
               ? { conversationId: body.conversationId }
               : {}),
@@ -2291,7 +2294,7 @@ export function createOrchestrationRoutes(
         body as {
           target?: {
             environment?: { kind: string };
-            workspace?: { kind: string; projectSlug?: string };
+            workspace?: { kind: string; projectSlug?: string; cwd?: string };
           };
         }
       ).target;
@@ -2307,6 +2310,10 @@ export function createOrchestrationRoutes(
                 kind: 'new',
                 ownerId,
                 ...(projectSlug !== undefined ? { projectSlug } : {}),
+                ...(workspace?.kind === 'directory' &&
+                typeof workspace.cwd === 'string'
+                  ? { directory: workspace.cwd }
+                  : {}),
                 remote:
                   namesAnotherStation(delegationTarget?.environment) ||
                   workspace?.kind === 'project-portable',
