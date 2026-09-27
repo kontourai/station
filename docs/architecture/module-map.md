@@ -85,129 +85,149 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 ## DeploymentAuthentication
 
+This boundary answers who signed in to a Station. Account identity augments Device and
+Project authorization; it does not replace either. Follow the [authentication
+service](../../src-server/services/identity/deployment-authentication-service.ts),
+[application-session
+service](../../src-server/services/identity/application-session-service.ts) and [HTTP
+admission](../../src-server/runtime/bootstrap/runtime-http.ts).
+
 `ApplicationSessionService` owns the proof-bound continuation store and current
-provider-session/Device composition. `application-session-routes.ts` exposes its
-bounded control surface, and `application-session-runtime.ts` installs it before
-request admission. `account-response-guard.ts` rechecks delivery with zero
-prefetch. The SDK application-session client owns key/proof construction; a relay
-only carries the authenticated encrypted request/response stream. Provider hooks
-resolve private session references; no virtual response installs a browser cookie.
+provider-session/Device composition. `application-session-routes.ts` exposes its bounded
+control surface, and `application-session-runtime.ts` installs it before request
+admission. `account-response-guard.ts` rechecks delivery with zero prefetch. The SDK
+application-session client owns key/proof construction; a relay only carries the
+authenticated encrypted request/response stream. Provider hooks resolve private session
+references; no virtual response installs a browser cookie.
 
 **Intent and Interface.** The public `deployment-authentication` contract lets an
-operator supply a versioned authentication module at startup. Its factory receives
-the selected Station identity, public origin, fixed authentication base path and
-private state directory. It declares exact account cookies and operation paths;
-Project plugins and requests cannot install an authority. Verified issuer/subject
-pairs produce bounded stable principals; contact and display fields grant no access.
+operator supply a versioned authentication module at startup. Its factory receives the
+selected Station identity, public origin, fixed authentication base path and private
+state directory. It declares exact account cookies and operation paths; Project plugins
+and requests cannot install an authority. Verified issuer/subject pairs produce bounded
+stable principals; contact and display fields grant no access.
 
-**Implementation and callers.** `deployment-authentication-loader.ts` validates
-explicit startup configuration and storage custody. `DeploymentAuthenticationService`
-validates provider results, bounds waits, rejects expired/malformed credentials and
-keeps request identity through bounded-body replacement. `runtime-http.ts` composes
-this before personal-device admission, while `runtime-routes.ts` refuses conflicting
-verified people and supplies the actual account principal to existing execution and
-room authority. `deployment-authentication-routes.ts` owns the narrow login/self
-surface, its origin/body/attempt bounds and declared-operation dispatch. Account
-authentication does not bypass device scope or implement Project membership.
+**Implementation and callers.** `deployment-authentication-loader.ts` validates explicit
+startup configuration and storage custody. `DeploymentAuthenticationService` validates
+provider results, bounds authentication and declared-operation response waits, rejects
+expired/malformed credentials and keeps request identity through bounded-body
+replacement. `runtime-http.ts` composes this before personal-device admission, while
+`runtime-routes.ts` refuses conflicting verified people and supplies the actual account
+principal to existing execution and room authority.
+`deployment-authentication-routes.ts` owns the narrow login/self surface, its
+origin/body/attempt bounds and declared-operation dispatch. Account authentication does
+not bypass device scope or implement Project membership. The ten-second request
+acceptance deadlines do not bound module import, provider startup or provider close, and
+do not undo an external effect already invoked.
 
-`local-account-runtime.ts` composes the built-in username/password provider,
-private persistent signing authority and real Project enrollment eligibility.
+`local-account-runtime.ts` composes the built-in username/password provider, private
+persistent signing authority and real Project enrollment eligibility.
 `local-account-administration-routes.ts` exposes operator-only account disabling,
-session revocation and recovery links. `ProjectMembershipService` holds the
-current local Project revision while `ProjectMembershipStore` atomically manages
-scoped members, invitation acceptance and ownership transfer. The SDK's
-`project-access`, `local-accounts` and `account-authentication` subpaths serve
-the Project/admin controls and the separate browser account entry. Account
-entry does not mount personal connection providers or persisted Project caches.
+session revocation and recovery links. `ProjectMembershipService` holds the current
+local Project revision while `ProjectMembershipStore` atomically manages scoped members,
+invitation acceptance and ownership transfer. The SDK's `project-access`,
+`local-accounts` and `account-authentication` subpaths serve the Project/admin controls
+and the separate browser account entry. Account entry does not mount personal connection
+providers or persisted Project caches.
 
 **Evidence and limits.** External-module HTTP fixtures and the real runtime
-principal-composition suite exercise refusal and identity propagation. They do not
-prove a production identity provider, email delivery, visual design or physical
-two-human acceptance. See [deployment authentication](../guides/deployment-authentication.md)
-for the operator contract and the remaining account/member delivery boundaries.
+principal-composition suite exercise refusal and identity propagation. They do not prove
+a production identity provider, email delivery, visual design or physical two-human
+acceptance. See [deployment authentication](../guides/deployment-authentication.md) for
+the operator contract and the remaining account/member delivery boundaries.
 
 ### Optional local-account OIDC
 
-`local-account-oidc.ts` reads bounded operator configuration and secret references.
-The local account provider composes pinned Better Auth verification and
-server-controlled invitation state with the private session/administration
-owners. The descriptor, SDK and account entry view expose configured browser
-choices alongside passwords. A failed or mismatched discovery response disables
-the external choice. A stalled discovery request can instead delay all account
-startup; optional OIDC has no independent Station-owned discovery deadline.
-The HTTP issuer fixture in `local-account-oidc.test.ts` exercises identity and
-callback failures. It does not qualify a production issuer or Windows custody.
+`local-account-oidc.ts` reads bounded operator configuration and secret references. The
+local account provider composes pinned Better Auth verification and server-controlled
+invitation state with the private session/administration owners. The descriptor, SDK and
+account entry view expose configured browser choices alongside passwords. A failed or
+mismatched discovery response disables the external choice. A stalled discovery request
+can instead delay all account startup; optional OIDC has no independent Station-owned
+discovery deadline. The HTTP issuer fixture in `local-account-oidc.test.ts` exercises
+identity and callback failures. It does not qualify a production issuer or Windows
+custody.
 
 ## VirtualApplicationIngress
 
-**Intent and Interface.** A trusted connector receives the protected Station
-application through `StationRuntimeOptions.virtualApplication` only after
-startup completes. Its Fetch-compatible dispatcher and retirement signal do not
-supply account, Device or Project authority. The canonical Station origin is
-fixed at composition time; the connector supplies actual client Origin and the
-existing scoped credentials inside its authenticated encrypted channel.
+[VirtualApplicationIngress](../../src-server/services/connections/virtual-application.ts)
+lets an admitted connector call the protected application without inventing a local
+socket or bypassing its middleware.
 
-**Implementation and callers.** `services/connections/virtual-application.ts`
-under `src-server` constructs fresh Requests, refuses cookie and proxy authority,
-limits open response custody, and fences late or streaming delivery.
-`runtime/bootstrap/station-runtime.ts` captures the already protected Hono app
-at route composition, publishes after initialization, and retires it at
-replacement or shutdown. No Node socket metadata is synthesized. See
-[protected application dispatch](../design/connection-broker.md#protected-application-dispatch)
-for lifecycle, limits and the remaining encrypted-path acceptance.
+**Intent and Interface.** A trusted connector receives the protected Station application
+through `StationRuntimeOptions.virtualApplication` only after startup completes. Its
+Fetch-compatible dispatcher and retirement signal do not supply account, Device or
+Project authority. The canonical Station origin is fixed at composition time; the
+connector supplies actual client Origin and the existing scoped credentials inside its
+authenticated encrypted channel.
+
+**Implementation and callers.** `services/connections/virtual-application.ts` under
+`src-server` constructs fresh Requests, refuses cookie and proxy authority, limits open
+response custody to 32 requests, and fences late or streaming delivery. Abort rejects
+delivery; a handler that has not settled still occupies its request slot. This is not a
+guarantee that its application effect stopped. `runtime/bootstrap/station-runtime.ts`
+captures the already protected Hono app at route composition, publishes after
+initialization, and retires it at replacement or shutdown. No Node socket metadata is
+synthesized. See [protected application
+dispatch](../design/connection-broker.md#protected-application-dispatch) for lifecycle,
+limits and the remaining encrypted-path acceptance.
+
 ## Registry trust policy decisions
 
-`registry-trust-policy.ts` owns bounded policy identity and EventStore CAS decision
-publication. `registryTrust` in AppConfig is only candidate configuration; the
-existing applied startup/reload owner publishes its epoch after successful
-configuration construction and rechecks the candidate under the existing mutation
-authority. Observations use `observeAppConfigFile` without initialization or
-migration. The journal stores SPKI fingerprints, not PEM keys. The applied decision, acquisition receipt, and local admission fences are described in
-[Applied registry trust policy](../design/registry-trust-policy.md).
+[Registry trust policy](../../src-server/services/plugins/registry-trust-policy.ts) owns
+bounded policy identity and EventStore compare-and-set decision publication.
+`registryTrust` in AppConfig is only candidate configuration; the existing applied
+startup/reload owner publishes its epoch after successful configuration construction and
+rechecks the candidate under the existing mutation authority. Observations use
+`observeAppConfigFile` without initialization or migration. The journal stores SPKI
+fingerprints, not PEM keys. The applied decision, acquisition receipt, and local
+admission fences are described in [Applied registry trust
+policy](../design/registry-trust-policy.md).
 
 ## AgentPluginLoader
 
-**Intent and Interface.** `AgentPluginLoader` selects only locally vendored
-Agent Plugins 1.0 schemas, reports bounded component failures, and projects
-read-only Skill sources and live ToolDefs from installed package bytes.
-Manifest-only parsing is shared with public author builds through
-`packages/shared/src/agent-plugin-manifest.ts`; it has no home/data provisioning
-side effects. Its generated standalone validators retain vendored schema hashes
-and are checked by `scripts/agent-plugin-validators-gate.mjs`. Runtime component
-discovery remains with this loader.
-`ConfigLoader` accepts that projection through its read-only integration-source
-Interface; Station-owned files retain collision precedence.
-Package ToolDefs remain definition-read-only: probes may return ephemeral
-health, while mutations refuse until an owner-bound overlay exists, so no
-Station integration snapshot can mask an updated or uninstalled package.
+[AgentPluginLoader](../../src-server/services/plugins/agent-plugin-loader.ts) reads
+portable package components in place. It is distinct from installation, permission
+grants and provider/server-module activation.
 
-**Contract.** Fatal manifest failures discover nothing. Unknown root fields and
-a non-object `extensions` value are reported and ignored; only
-`io.kontourai.station` is validated. An object-valued `extensions` map still
-requires every namespace member to be an object, without inspecting unknown
-namespace contents. Vendored schemas resolve from the source or bundled module
-asset tree and immutable compiled validators are shared across reads. Skill, MCP-document, MCP-entry, and
-unsupported-transport failures remain isolated at their specified boundary.
-Every recognized package root is excluded from legacy recursive Skill discovery,
-even when the package fails fatally or none of its portable Skills validate.
-Unreadable Skill enumeration is isolated to that component. Recognized packages never enter
-the legacy `prompts` or copied-`integrations` contribution paths, and the shared
-hidden-content manifest scan runs before format dispatch.
-Stdio path and environment projection owns containment, default cwd,
-single-pass placeholders, and persistent plugin data. Streamable HTTP owns URL
-and literal-header validation and refuses redirects so package headers cannot
-cross origins. No portable component is copied into a Station integration or
-Skill directory.
+**Intent and Interface.** `AgentPluginLoader` selects only locally vendored Agent
+Plugins 1.0 schemas, reports component failures, and projects read-only Skill sources
+and live ToolDefs from installed package bytes. Manifest-only parsing is shared with
+public author builds through `packages/shared/src/agent-plugin-manifest.ts`; it has no
+home/data provisioning side effects. Its generated standalone validators retain vendored
+schema hashes and are checked by `scripts/agent-plugin-validators-gate.mjs`. Runtime
+component discovery remains with this loader. `ConfigLoader` accepts that projection
+through its read-only integration-source Interface; Station-owned files retain collision
+precedence. Package ToolDefs remain definition-read-only: probes may return ephemeral
+health, while mutations refuse until an owner-bound overlay exists, so no Station
+integration snapshot can mask an updated or uninstalled package.
 
-**Seam, Implementation, callers, and tests.** Runtime bootstrap composes the
-loader into `SkillService` and `ConfigLoader`; the shared MCP transport consumes
-the projected cwd and headers. Directory/git install validates recognized
-packages through the same loader while the legacy parser remains an explicit
-#346 fallback. Behavioral and real-child-process evidence lives in
-`agent-plugin-loader.test.ts`, `plugin-install-transaction.test.ts`, and
-`mcp-v2.test.ts`. **Do not reintroduce:** recursive Agent Plugin Skill discovery,
-copied MCP snapshots, schema fetching, whole-plugin failure for an invalid
-Skill/server, or placeholder expansion in commands/URLs/headers.
+**Contract.** Fatal manifest failures discover nothing. Retired Station root fields
+`layout`/`layouts` are fatal; other unknown root fields and a non-object `extensions`
+value are reported and ignored. Only `io.kontourai.station` is validated. An
+object-valued `extensions` map still requires every namespace member to be an object,
+without inspecting unknown namespace contents. Vendored schemas resolve from the source
+or bundled module asset tree and immutable compiled validators are shared across reads.
+Skill, MCP-document, MCP-entry, and unsupported-transport failures remain isolated at
+their specified boundary. Every recognized package root is excluded from legacy
+recursive Skill discovery, even when the package fails fatally or none of its portable
+Skills validate. Unreadable Skill enumeration is isolated to that component. Recognized
+packages never enter the legacy `prompts` or copied-`integrations` contribution paths,
+and the shared hidden-content manifest scan runs before format dispatch. Stdio path and
+environment projection owns containment, default cwd, single-pass placeholders, and
+persistent plugin data. Streamable HTTP owns URL and literal-header validation and
+refuses redirects so package headers cannot cross origins. No portable component is
+copied into a Station integration or Skill directory.
+
+**Seam, Implementation, callers, and tests.** Runtime bootstrap composes the loader into
+`SkillService` and `ConfigLoader`; the shared MCP transport consumes the projected cwd
+and headers. Directory/git install validates recognized packages through the same loader
+while the legacy parser remains an explicit #346 fallback. Behavioral and
+real-child-process evidence lives in `agent-plugin-loader.test.ts`,
+`plugin-install-transaction.test.ts`, and `mcp-v2.test.ts`. **Do not reintroduce:**
+recursive Agent Plugin Skill discovery, copied MCP snapshots, schema fetching,
+whole-plugin failure for an invalid Skill/server, or placeholder expansion in
+commands/URLs/headers.
 
 ## DestinationRegistry
 
@@ -530,78 +550,113 @@ database authority or an automatic retry after possible invocation.
 
 ## PackageMcpAdmissionJournal
 
-**Intent and Interface.** EventStore composes one journal on its existing SQLite
-handle. Host installation observations mint exact incarnation identities;
-`reserve` retains a pre-effect claim, `enterEffectBoundary` is one-way, and
-`requestRetirement` fences new admission for that package. The returned claim
-alone may release a proved never-started reservation. SDK settlement retains
-possible effects, and foreign, crashed or PID-reused owners are never pruned.
+[The admission journal](../../src-server/services/plugins/package-mcp-admission.ts)
+remembers selected package generations and whether an MCP effect may have started. Its
+records constrain later admission; they are not proof that a process tree or remote
+effect has stopped.
 
-**Contract.** State, generations and claims are bounded; corrupt or oversized
-metadata and uncertain commit acknowledgement fail closed. No filesystem path,
-integration definition or secret is duplicated. `inspectMutationImpact` reports
-positive recorded history or unclassified/unavailable, never a negative safety
-proof. Every inspection says `mutationAllowed: false`: compatibility and
-native/descendant/remote terminal proofs are absent. No destructive permit API
-exists. This is shared control-plane evidence, not a supervisor or sandbox.
+**Intent and Interface.** EventStore composes one journal on its existing SQLite handle.
+Host installation observations mint exact incarnation identities; `reserve` retains a
+pre-effect claim, `enterEffectBoundary` is one-way, and `requestRetirement` fences new
+admission for that package. The returned claim alone may release a proved never-started
+reservation. SDK settlement retains possible effects, and foreign, crashed or PID-reused
+owners are never pruned.
 
-**Seam and tests.** EventStore owns schema/open/transaction lifetime and exposes
-the memoized journal before later runtime service composition. `PluginInstallationService` composes asynchronous installation-state and
-materialization backends; the local implementation reuses this journal. Portable
-loader definitions carry captured admission into existing MCP custody, and
-portable install/remove routes publish or withdraw generation selection while
-retaining old code and the independent data scope. Two
-real EventStore processes in `package-mcp-admission.test.ts` cover concurrent
-reservation/fencing, owner crash, exact no-effect release, same-content
-incarnation ABA, commit uncertainty and fixed-capacity refusal. See
-[MCP UI host](../design/mcp-ui-host.md#shared-package-admission-evidence-control-plane-prerequisite).
+**Contract.** The active journal bounds generations and claims; settled effects and
+retired empty generations move into separate SQLite history tables. That compaction is
+not a bounded total-history or safe-deletion guarantee. Corrupt or oversized metadata
+and uncertain commit acknowledgement fail closed. No filesystem path, integration
+definition or secret is duplicated. `inspectMutationImpact` reports positive recorded
+history or unclassified/unavailable, never a negative safety proof. Every inspection
+says `mutationAllowed: false`: compatibility and native/descendant/remote terminal
+proofs are absent. No destructive permit API exists. This is shared control-plane
+evidence, not a supervisor or sandbox.
+
+**Seam and tests.** EventStore owns schema/open/transaction lifetime and exposes the
+memoized journal before later runtime service composition. `PluginInstallationService`
+composes asynchronous installation-state and materialization backends; the local
+implementation reuses this journal. Portable loader definitions carry captured admission
+into existing MCP custody, and portable install/remove routes publish or withdraw
+generation selection while retaining old code and the independent data scope. Two real
+EventStore processes in `package-mcp-admission.test.ts` cover concurrent
+reservation/fencing, owner crash, exact no-effect release, same-content incarnation ABA,
+commit uncertainty and fixed-capacity refusal. See [MCP UI
+host](../design/mcp-ui-host.md#shared-package-admission-evidence-control-plane-prerequisite).
 **Do not reintroduce:** new database opens, bare SDK-close drain receipts,
-dead-parent/TTL release, declaration absence as historical proof, or a mutable
-caller flag that upgrades this evidence into package deletion authority.
+dead-parent/TTL release, declaration absence as historical proof, or a mutable caller
+flag that upgrades this evidence into package deletion authority.
 
 Public executable readers use `capturePluginRuntimeArtifact()` in
-`src-server/services/plugins/plugin-runtime-artifact.ts`: the local installation
-adapter supplies the selected physical root and admission state, and the reader
-checks its fresh content digest. Pending activation cannot supply manifests,
-bundles, or server imports. Public routes retain the captured artifact through
-module acquisition and recheck currentness and grants before plugin callbacks;
-bundle delivery checks currentness again after the asynchronous read. The
-runtime helper has no activation bypass and no independent persisted state.
-`plugin-runtime-readiness.test.ts` exercises the real journal and HTTP routes
-across pending/ready selection, content mutation, and stale caller declarations. Operational
-subscription discovery unions journal-selected identities with legacy inventory,
-binds each observer to the captured generation and digest, and rechecks before
-dispatch. Reviewed-source resolution carries the same capture through owner
-module reads and the final contribution publication. Neither background reader
-accepts the installer's private pending-activation composition capability. Ordinary provider boot also passes
-ready captured manifests to the existing provider resolver, carries the physical
-artifact into preparation, and checks grants/currentness before construction and
-at registry publication. An object exported before a failed post-import check
-is disposed through the existing provider owner; a refused factory is not run. Registry entries retain a separate
-ordinary readiness guard and explicit activation-view predicate. Ordinary
-getters hide pending entries; a view expires with its issuing activation owner.
-Returned methods recheck that same authority, including previously captured
-method references. The existing retirement owner can still call cleanup methods
-after revocation. A failed replacement keeps registry ownership unchanged but
-does not leave changed source bytes callable through an older handle.
+`src-server/services/plugins/plugin-runtime-artifact.ts`: the local installation adapter
+supplies the selected physical root and admission state, and the reader checks its fresh
+content digest. Pending activation cannot supply manifests, bundles, or server imports.
+Public routes retain the captured artifact through module acquisition and recheck
+currentness and grants before plugin callbacks; bundle delivery checks currentness again
+after the asynchronous read. The runtime helper has no activation bypass and no
+independent persisted state. `plugin-runtime-readiness.test.ts` exercises the real
+journal and HTTP routes across pending/ready selection, content mutation, and stale
+caller declarations. Operational subscription discovery unions journal-selected
+identities with legacy inventory, binds each observer to the captured generation and
+digest, and rechecks before dispatch. Reviewed-source resolution carries the same
+capture through owner module reads and the final contribution publication. Neither
+background reader accepts the installer's private pending-activation composition
+capability. Ordinary provider boot also passes ready captured manifests to the existing
+provider resolver, carries the physical artifact into preparation, and checks
+grants/currentness before construction and at registry publication. An object exported
+before a failed post-import check is disposed through the existing provider owner; a
+refused factory is not run. Registry entries retain a separate ordinary readiness guard
+and explicit activation-view predicate. Ordinary getters hide pending entries; a view
+expires with its issuing activation owner. Returned methods recheck that same authority,
+including previously captured method references. The existing retirement owner can still
+call cleanup methods after revocation. A failed replacement keeps registry ownership
+unchanged but does not leave changed source bytes callable through an older handle.
 
 Inert installation discovery is separate from invocation capture:
-`plugin-catalog-installation.ts` may project a validated pending declaration
-with typed readiness, while executable readers still require ready admission.
-Plugin inventory finishes awaited Git metadata reads before its synchronous
-current-selection projection. Distribution catalogs discover journal-selected
-identities without aliases and preserve disabled pending Panes with an explicit
-availability reason. The UI does not fetch pending bundles, and recovery uses
-the SDK's fresh-preview consent flow. Post-ready events refresh Project Pane and
-host-action queries as well as plugin inventory; they do not authorize retries.
+`plugin-catalog-installation.ts` may project a validated pending declaration with typed
+readiness, while executable readers still require ready admission. Plugin inventory
+finishes awaited Git metadata reads before its synchronous current-selection projection.
+Distribution catalogs discover journal-selected identities without aliases and preserve
+disabled pending Panes with an explicit availability reason. The UI does not fetch
+pending bundles, and recovery uses the SDK's fresh-preview consent flow. Post-ready
+events refresh Project Pane and host-action queries as well as plugin inventory; they do
+not authorize retries.
 
 ## InstalledPluginInventory
 
-**Intent and Interface.** `scanInstalledPluginInventory()` performs one fresh deterministic scan of the existing installed-plugin directory. A readable valid manifest returns its parsed manifest; a missing, unreadable, unsafe, malformed, or invalid manifest returns a rejected entry naming only the directory plus a bounded path-free reason and recovery instruction. Rejections are not persisted in a second registry.
+[The inventory scanner](../../src-server/services/plugins/installed-plugin-inventory.ts)
+keeps broken installations visible so a user can repair them. It does not make a
+directory name into a validated plugin identity.
 
-**Contract.** The scanner reuses the canonical manifest loader, including its Agent Plugins dispatch when that loader is present. Hidden staging directories remain absent. Malformed JSON never echoes source bytes, and filesystem diagnostics never reach the collection response. Every rejection emits one structured warning through the Station logger supplied by the caller. Provider resolution and Registry installed-state consume only valid scan entries, while `GET /api/plugins` projects both valid and rejected entries. A rejected directory has no trustworthy plugin version, permissions, bundle, settings, update, or removal claim. The Plugins surface therefore gives it a distinct selection identity, renders the exact rejection and repair instruction, and offers only the existing Reload plugins recovery action.
+**Intent and Interface.** `scanInstalledPluginInventory()` freshly scans installed
+directories and local managed aliases in deterministic order. A readable valid manifest
+returns its parsed manifest; a missing, unreadable, unsafe, malformed, or invalid
+manifest returns a rejected entry naming only the directory plus a bounded path-free
+reason and recovery instruction. Rejections are not persisted in a second registry.
 
-**Seam, Implementation, callers, and tests.** The canonical collection route, provider resolver, and JSON manifest registry share this scanner; the SDK validates the rejected-row union and the existing Plugins view renders it. Unit tests cover classification, secret/path suppression, fresh repair recovery, logger routing, SDK validation, view-model reload ordering, and visible detail controls. `tests/plugin-rejection-visibility.spec.ts` defines the managed-browser repair/reload proof; its local execution remains `NOT_VERIFIED` when the configured Playwright Chromium installation is absent. **Do not reintroduce:** catch-and-continue inventory loss, `console.debug` rejection reporting, a persisted rejection cache, a fake version, valid-plugin controls on a rejected row, raw JSON parse snippets, filesystem paths, or treating a directory name as validated plugin identity.
+**Contract.** The scanner reuses the canonical manifest loader, including its Agent
+Plugins dispatch when that loader is present. Hidden staging directories remain absent.
+Malformed JSON never echoes source bytes, and filesystem diagnostics never reach the
+collection response. Missing-manifest and manifest-read/validation rejections emit a
+structured warning through the supplied logger. A failure resolving a managed alias
+currently returns a rejected row without that warning; collection visibility and logging
+are separate. Provider resolution and Registry installed-state consume only valid scan
+entries, while `GET /api/plugins` projects both valid and rejected entries. A rejected
+directory has no trustworthy plugin version, permissions, bundle, settings, update, or
+removal claim. The Plugins surface therefore gives it a distinct selection identity,
+renders the exact rejection and repair instruction, and offers only the existing Reload
+plugins recovery action.
+
+**Seam, Implementation, callers, and tests.** The canonical collection route, provider
+resolver, and JSON manifest registry share this scanner; the SDK validates the
+rejected-row union and the existing Plugins view renders it. Unit tests cover
+classification, secret/path suppression, fresh repair recovery, logger routing, SDK
+validation, view-model reload ordering, and visible detail controls.
+`tests/plugin-rejection-visibility.spec.ts` is the managed-browser repair/reload
+acceptance route; unit tests do not establish that browser journey. **Do not
+reintroduce:** catch-and-continue inventory loss, `console.debug` rejection reporting, a
+persisted rejection cache, a fake version, valid-plugin controls on a rejected row, raw
+JSON parse snippets, filesystem paths, or treating a directory name as validated plugin
+identity.
 
 ## DesktopStartupReadiness
 
@@ -656,11 +711,38 @@ separate.
 
 ## PendingPairingCompletion
 
-**Intent and Interface.** `completePendingPairing(pending, { completePaired, signal?, onProgress? })` returns one total `PendingPairingCompletion`: paired, post-exchange failure, declined, expired, identity changed, failed, or aborted. `completePaired` is caller-owned durable local completion and also returns a total result.
+[The completion owner](../../packages/connect/src/core/pendingPairingCompletion.ts)
+shares one pending pairing exchange across screens, then hands the accepted credential
+to the first caller's durable completion policy.
 
-**Contract.** A flight is exact to endpoint, request kind, offer, proof, request, expected environment, and browser session. Its first subscriber owns completion policy; later subscribers join rather than compete. The public entrypoint first uses a cached dynamic loader, so initial application startup does not pay for polling/retry code. One in-flight import is shared; a rejected import clears only the loader cache, leaves the persisted bearer request untouched, and makes a later call retry before any exchange starts. After load, retry delays are bounded, respect rate limiting, and wake only after their floor. A subscriber may abort without cancelling a flight another subscriber needs. Terminal remote results clear the stored pending exchange best-effort and local cleanup cannot reject a classified completion.
+**Intent and Interface.** `completePendingPairing(pending, { completePaired, signal?,
+onProgress? })` returns one total `PendingPairingCompletion`: paired, post-exchange
+failure, declined, expired, unavailable, identity changed, failed, or aborted.
+`completePaired` is caller-owned durable local completion and also returns a total
+result.
 
-**Seam, Implementation, callers, and tests.** The package entrypoint publishes the cached `completePendingPairing` loader. Its implementation is `createPendingPairingCompletion`; that constructor is an Implementation-private test seam for exchange, clock, waiting, and local-clear Adapters. Production callers are the Connect pairing flows. Real loader and Interface coverage is `packages/connect/src/__tests__/pendingPairingCompletion.test.ts`. **Do not reintroduce:** eager pairing import at shell startup, per-screen polling, competing `completePaired` policies, or caller-owned retry timing.
+**Contract.** A flight is exact to endpoint, request kind, offer, proof, request,
+expected environment, browser session, client instance and required account binding. Its
+first subscriber owns completion policy; later subscribers join rather than compete. The
+public entrypoint first uses a cached dynamic loader, so initial application startup
+does not pay for polling/retry code. One in-flight import is shared; a rejected import
+clears only the loader cache, leaves the persisted bearer request untouched, and makes a
+later call retry before any exchange starts. After load, retry delays are bounded,
+respect rate limiting, and wake only after their floor. A subscriber may abort without
+cancelling a flight another subscriber needs. Terminal remote results clear the stored
+pending exchange best-effort and local cleanup cannot reject a classified completion. A
+successful exchange spends the remote proof; later local persistence failure is
+`post-exchange-failed`, not permission to exchange again. Subscriber abort does not
+reverse that completed exchange.
+
+**Seam, Implementation, callers, and tests.** The package entrypoint publishes the
+cached `completePendingPairing` loader. Its implementation is
+`createPendingPairingCompletion`; that constructor is an Implementation-private test
+seam for exchange, clock, waiting, and local-clear Adapters. Production callers are the
+Connect pairing flows. Real loader and Interface coverage is
+`packages/connect/src/__tests__/pendingPairingCompletion.test.ts`. **Do not
+reintroduce:** eager pairing import at shell startup, per-screen polling, competing
+`completePaired` policies, or caller-owned retry timing.
 
 ## SessionQueryModule
 
@@ -806,27 +888,107 @@ An automatic profile change is a compensation protocol, not a switch followed by
 
 ## ConnectionInspector
 
-**Intent and Interface.** `inspect(request)` returns a total inventory: `inspected` with freshness/provenance/partial facts, or `timed-out`, `aborted`, or `unavailable` with an honest empty partial inventory.
+[ConnectionInspector](../../src-server/services/connections/connection-inspector.ts)
+turns adapter observations into an inventory with explicit freshness and gaps.
+[ConnectionService](../../src-server/services/connections/connection-service.ts) owns
+when that observation may be published.
 
-**Contract.** Every call is a fresh bounded Adapter observation. Caller signal, timeout, concurrency, command/prerequisite inclusion, and discovery policy are part of the Interface. Public connection identity is mapped at the composition Seam from the Adapter's canonical EngineId. Partial results state whether facts came from live observation, built-in fallback, or neither. Adapter failure cannot throw through the total Interface or make diagnostics break inspection.
+**Intent and Interface.** `inspect(request)` returns a total inventory: `inspected` with
+freshness/provenance/partial facts, or `timed-out`, `aborted`, or `unavailable` with an
+honest empty partial inventory.
 
-**Seam, Implementation, callers, and tests.** `ConnectionService` composes provider Adapters, app/ACP configuration readers, public identity mapping, and clock, then keeps `ConnectionInspector` private to its inventory publication path. A non-`inspected` outcome rejects publication with an explicit retry-before-publish error; routes receive the resulting projection rather than classify inspection facts themselves. `src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout, abort, provenance, partiality, identity isolation, and bounded concurrency. **Do not reintroduce:** route-local Adapter loops, runtime-id-as-public-id, a cache that claims freshness it did not observe, or route-level mapping of inspection failure.
+**Contract.** Each call performs a fresh Adapter observation with bounded concurrency
+and result projection. Cancellation and a deadline come from the optional caller signal;
+the inspector does not start its own timeout. It distinguishes a `TimeoutError` abort
+from other aborts. Built-in adapters declaring awaited abort settlement get a separate
+bounded cleanup wait; arbitrary asynchronous work is not forcibly stopped. The
+launchable-model refresh supplies a signal, while ordinary runtime inventory calls can
+omit one. Command/prerequisite inclusion and discovery policy are explicit inputs.
+Public connection identity is mapped at the composition Seam from the Adapter's
+canonical EngineId. Partial results state whether facts came from live observation,
+built-in fallback, or neither. Adapter failure cannot throw through the total Interface
+or make diagnostics break inspection.
+
+**Seam, Implementation, callers, and tests.** `ConnectionService` composes provider
+Adapters, app/ACP configuration readers, public identity mapping, and clock, then keeps
+`ConnectionInspector` private to its inventory publication path. A non-`inspected`
+outcome rejects publication with an explicit retry-before-publish error; routes receive
+the resulting projection rather than classify inspection facts themselves.
+`src-server/services/connections/__tests__/connection-inspector.test.ts` covers timeout,
+abort, provenance, partiality, identity isolation, and bounded concurrency. **Do not
+reintroduce:** route-local Adapter loops, runtime-id-as-public-id, a cache that claims
+freshness it did not observe, or route-level mapping of inspection failure.
 
 ## SecretBindingAdministration and IntegrationSecretResolver
 
-**Intent and Interface.** `SecretBindingAdministration` owns metadata-only create, replace, grant, ungrant, revoke, list, and get operations. `IntegrationSecretResolver.resolveForIntegration` is a separate, narrower capability that resolves only the exact bindings selected for one MCP child establishment.
+[Secret binding
+administration](../../src-server/services/secrets/secret-binding-administration.ts)
+stores references and grants. The [MCP establishment
+adapter](../../src-server/services/secrets/mcp-secret-child-env.ts) materializes
+selected secrets only for a new child connection; metadata reads do not fetch secret
+bytes.
 
-**Contract.** The private file Adapter accepts only a bounded v1 document at `<STATION_HOME>/security/secret-bindings.json`, with a private real directory/file, strict ids/grants/timestamps, and Datum-parsed `AuthRef` values. Binding ids are never reused; revoke is terminal. Every mutable operation performs its expected-revision comparison while it owns the file mutation lock and increments the binding revision. List/get derive non-secret backend availability with Datum only; they never materialize. Resolution requires one current, non-revoked exact integration/env grant, materializes each distinct binding at most once per call, returns no cache, and maps Datum failures to Station-safe reason codes.
+**Intent and Interface.** `SecretBindingAdministration` owns metadata-only create,
+replace, grant, ungrant, revoke, list, and get operations.
+`IntegrationSecretResolver.resolveForIntegration` is a separate, narrower capability
+that resolves only the exact bindings selected for one MCP child establishment.
 
-**Seam, Implementation, callers, and tests.** Runtime composition will retain the administration capability for operator management and inject only the resolver into stdio-MCP establishment seams. The Datum adapter is the contracts subpath `datum-secret-reference`, keeping Datum's public reference grammar and runner private from the contracts root and browser consumers. Focused storage/resolution proofs are `src-server/services/secrets/__tests__/secret-binding-administration.test.ts`. **Do not reintroduce:** inline secret bytes in the binding store, local AuthRef parsing or backend switches, a resolver list/get capability, materialization during inspection, unscoped grants, process-wide secret caches, delete/reactivate, or raw Datum error messages beyond this module.
+**Contract.** The private file Adapter accepts only a bounded v1 document at
+`<STATION_HOME>/security/secret-bindings.json`, with a private real directory/file,
+strict ids/grants/timestamps, and Datum-parsed `AuthRef` values. Binding ids are never
+reused; revoke is terminal. Replacement, grant changes and revocation compare the
+expected revision under the file mutation lock and increment that binding revision;
+creation allocates a new identity. List/get derive non-secret backend availability with
+Datum only; they never materialize. Resolution requires one current, non-revoked exact
+integration/env grant, materializes each distinct binding at most once per call, returns
+no cache, and maps Datum failures to Station-safe reason codes.
+
+**Seam, Implementation, callers, and tests.** Runtime bootstrap constructs
+`FileSecretBindingAdministration`, retains administration for `/api/secret-bindings`,
+and injects the narrow resolver into MCP establishment. `establishMcpSecretChild()`
+resolves fresh child-only environment values and records success only after
+connection/handshake succeeds; unsupported transports and the built-in station-control
+child refuse authored injection. Changing grants does not erase values already delivered
+to a running child. The same store separately implements `resolveForAcpProvider()` for
+exact connection/provider/header grants, consumed by the ACP provider-configuration
+route; that is not generic MCP header injection. The Datum adapter is the contracts
+subpath `datum-secret-reference`, keeping Datum's public reference grammar and runner
+private from the contracts root and browser consumers. Focused storage/resolution proofs
+are `src-server/services/secrets/__tests__/secret-binding-administration.test.ts`. **Do
+not reintroduce:** inline secret bytes in the binding store, local AuthRef parsing or
+backend switches, a resolver list/get capability, materialization during inspection,
+unscoped grants, process-wide secret caches, delete/reactivate, or raw Datum error
+messages beyond this module.
 
 ### Engine identity boundaries
 
-`EngineId` is the single canonical engine-implementation identity used by Adapters, connection types, and capability-matrix keys. `EngineConnectionId` remains a separate branded identity for a configured, navigable connection instance, and `AgentId` remains a distinct branded Agent namespace. `adapter-identity.ts` derives an Adapter's canonical EngineId and optional public connection identity without a private runtime selector. `ConnectionService.listEngineConnectionStates()` publishes canonical `engineId`, navigable `engineConnectionId`, and enabled state directly. The enriched-Agent API, SDK query, and UI share `EnrichedAgentProjection`, which likewise carries capability `engineId` separately from `execution.agentConnectionId`. Built-in Adapters use the contract factories, while the plugin loader validates untyped metadata at admission and ACP connection identities are validated before persistence and again on load. **Do not reintroduce:** a generated runtime suffix, a second Adapter engine selector, provider-name reconciliation, or read-time identity aliases.
+`EngineId` is the single canonical engine-implementation identity used by Adapters,
+connection types, and capability-matrix keys. `EngineConnectionId` remains a separate
+branded identity for a configured, navigable connection instance, and `AgentId` remains
+a distinct branded Agent namespace. `adapter-identity.ts` derives an Adapter's canonical
+EngineId and optional public connection identity without a private runtime selector.
+`ConnectionService.listEngineConnectionStates()` publishes canonical `engineId`,
+navigable `engineConnectionId`, and enabled state directly. The enriched-Agent API, SDK
+query, and UI share `EnrichedAgentProjection`, which likewise carries capability
+`engineId` separately from `execution.agentConnectionId`. Built-in Adapters use the
+contract factories, while the plugin loader validates untyped metadata at admission and
+ACP connection identities are validated before persistence and again on load. **Do not
+reintroduce:** a generated runtime suffix, a second Adapter engine selector,
+provider-name reconciliation, or read-time identity aliases.
 
 ### Finish-reason clear authority
 
-`providers/finish-reason-authority.ts` owns `PROVIDER_PROVEN_FINISH_REASONS`: the allowlist of `turn.completed` finish reasons that positively prove a provider ran a whole turn — the single decision point for every "does this completion clear a recorded failure" question. Two consumers: runtime auth-health clearing (`runtime-auth-health-monitor.ts`) and session-scoped `runtime.error` supersession in both event-store projection folds (station#3485). Membership is typed against the contracts `finishReason` union, and each consumer pins its own stake with tests, so widening the set is a decision made once, visibly, for all of them. **Do not reintroduce:** a per-consumer copy of the set, an exclusion-list ("everything except `cancelled`/`other`") formulation (fail-open — station#3509), or clear authority granted to `'other'`/absent reasons without a decision recorded here.
+`providers/finish-reason-authority.ts` owns `PROVIDER_PROVEN_FINISH_REASONS`: the
+allowlist of `turn.completed` finish reasons that positively prove a provider ran a
+whole turn — the single decision point for every "does this completion clear a recorded
+failure" question. Two consumers: runtime auth-health clearing
+(`runtime-auth-health-monitor.ts`) and session-scoped `runtime.error` supersession in
+both event-store projection folds (station#3485). Membership is typed against the
+contracts `finishReason` union, and each consumer pins its own stake with tests, so
+widening the set is a decision made once, visibly, for all of them. **Do not
+reintroduce:** a per-consumer copy of the set, an exclusion-list ("everything except
+`cancelled`/`other`") formulation (fail-open — station#3509), or clear authority granted
+to `'other'`/absent reasons without a decision recorded here.
 
 ## ExtensionNotificationBindings
 
@@ -915,11 +1077,61 @@ transaction and await its result instead of adding a second mutation protocol.
 
 ## LocalSkillMutationAuthority and SetupImportEffectJournal
 
-**Intent and Interface.** `SkillService` owns one cross-process capability for every local Skill create, update, rename, remove, revision read, create-if-absent, and compare-delete. `ExistingAgentSetupImportModule` persists one bounded effect record for every reviewed import item before it may publish a Skill, then exposes that journal as the sole itemized receipt projection: relative source ID, reviewed target, state/outcome, stable reason/repair codes, known canonical target revision, and retryable rollback state—never source bytes or filesystem identities.
+[Local Skill mutation](../../src-server/services/agents/skill-local-mutation.ts)
+serializes writers to the same discovered directory. [Setup
+import](../../src-server/services/setup/existing-agent-setup-import.ts) records each
+intended effect and its recovery outcome instead of treating a whole import as an
+all-or-nothing success.
 
-**Contract.** Capabilities are keyed by canonical local Skill directory and acquired in deterministic order for a rename, so ordinary, conditional, and registry callers cannot bypass each other or deadlock. Registry providers write only to an exclusive sibling stage; its bounded safe tree is validated and conditionally published without replacing a target that another capability holder created. Create-if-absent and compare-delete read their condition under that same capability. The canonical revision is versioned and domain-separated, framing each sorted entry's type, UTF-8 relative path, and content lengths/bytes; directory entries commit tree shape, and unsafe, linked, oversized, or overly deep trees refuse revision. A two-file local publication either completes or compensates its just-created package; a compensation failure is indeterminate, never a false success. `expectedLocalSkillRevision()` is the pure companion for recovery only when it has the exact canonical publication entries, including directories; ordinary recovery reads the owned filesystem revision. A target-review Interface issues an expiring witness for the exhaustive final target set (including renames), binding each target's exact absence or revision before Apply; changing choices resets it. Each reviewed item records source digest, adapter version, intended target, and `pending` before moving through `applying`, `applied`, `skipped`, `failed`, `compensating`, `compensated`, or `indeterminate`; pending recovery is failed with `re-preview`, and applying is attributed only when the precomputed exact canonical revision matches. Receipt reads and apply restart reconciliation inspect the canonical Skill revision: incomplete publication is failed, a created package becomes applied with its exact revision, and incomplete compensation is retained as an explicit indeterminate item. Bounded receipt retention remains 64 entries/30 days.
+**Intent and Interface.** `SkillService` owns one cross-process capability for every
+local Skill create, update, rename, remove, revision read, create-if-absent, and
+compare-delete. `ExistingAgentSetupImportModule` persists one bounded effect record for
+every reviewed import item before it may publish a Skill, then exposes that journal as
+the sole itemized receipt projection: relative source ID, reviewed target,
+state/outcome, stable reason/repair codes, known canonical target revision, and
+retryable rollback state—never source bytes or filesystem identities.
 
-**Seam, Implementation, callers, and tests.** `skill-local-mutation.ts` is the one local writer/revision capability; `SkillService`, registry installation, and the setup-import module compose it with their owned helpers and the guarded receipt-store Adapter. Routes, React-free SDK transport, React query Adapter, CLI JSON, and the shared stepper pass that canonical receipt through without client reconstruction. Focused evidence is `src-server/services/agents/__tests__/skill-revision.test.ts`, `src-server/services/agents/__tests__/skill-service-install.test.ts`, `src-server/services/agents/__tests__/skill-service.test.ts`, `src-server/services/setup/__tests__/existing-agent-setup-import.test.ts`, and `src-ui/src/components/setup/__tests__/ExistingSetupImportStepper.test.tsx`. **Do not reintroduce:** a setup-only lock, a conditional check outside the local capability, direct import target writes, pre-effect consumption without a durable item record, a terminal aggregate that hides an unresolved item, browser-invented receipt rows, or a retry that assumes an `applying` effect did not publish.
+**Contract.** Capabilities are keyed by the discovered local Skill directory and
+acquired in deterministic order for a rename, so ordinary, conditional, and registry
+callers cannot bypass each other or deadlock. Registry providers write only to an
+exclusive sibling stage; its bounded safe tree is validated and conditionally published
+without replacing a target that another capability holder created. Create-if-absent and
+compare-delete read their condition under that same capability. The canonical revision
+is versioned and domain-separated, framing each sorted entry's type, UTF-8 relative
+path, and content lengths/bytes; directory entries commit tree shape, and unsafe,
+linked, oversized, or overly deep trees refuse revision. A two-file local publication
+either completes or compensates its just-created package; a compensation failure is
+indeterminate, never a false success. `expectedLocalSkillRevision()` is the pure
+companion for recovery only when it has the exact canonical publication entries,
+including directories; ordinary recovery reads the owned filesystem revision. A
+target-review Interface issues an expiring witness for the exhaustive final target set
+(including renames), binding each target's exact absence or revision before Apply;
+changing choices resets it. Each reviewed item records source digest, adapter version,
+intended target, and `pending` before moving through `applying`, `applied`, `skipped`,
+`failed`, `compensating`, `compensated`, or `indeterminate`; pending recovery is failed
+with `re-preview`, and applying is attributed only when the precomputed exact canonical
+revision matches. Receipt reads and apply restart reconciliation inspect the canonical
+Skill revision: incomplete publication is failed, a created package becomes applied with
+its exact revision, and incomplete compensation is retained as an explicit indeterminate
+item. Bounded receipt retention remains 64 entries/30 days. Workspace Skill lock paths
+now follow the discovered Project directory; mixed old/new processes using the earlier
+machine-root lock name do not share exclusion for those packages. This is a
+same-protocol coordination guarantee, not an upgrade-wide filesystem lock.
+
+**Seam, Implementation, callers, and tests.** `skill-local-mutation.ts` is the one local
+writer/revision capability; `SkillService`, registry installation, and the setup-import
+module compose it with their owned helpers and the guarded receipt-store Adapter.
+Routes, React-free SDK transport, React query Adapter, CLI JSON, and the shared stepper
+pass that canonical receipt through without client reconstruction. Focused evidence is
+`src-server/services/agents/__tests__/skill-revision.test.ts`,
+`src-server/services/agents/__tests__/skill-service-install.test.ts`,
+`src-server/services/agents/__tests__/skill-service.test.ts`,
+`src-server/services/setup/__tests__/existing-agent-setup-import.test.ts`, and
+`src-ui/src/components/setup/__tests__/ExistingSetupImportStepper.test.tsx`. **Do not
+reintroduce:** a setup-only lock, a conditional check outside the local capability,
+direct import target writes, pre-effect consumption without a durable item record, a
+terminal aggregate that hides an unresolved item, browser-invented receipt rows, or a
+retry that assumes an `applying` effect did not publish.
 
 ## StationHomeArchive
 
@@ -1069,63 +1281,123 @@ acceptance remain separate from these tests.
 
 ## KnowledgeStoreProvider
 
-**Purpose and interface.** `KnowledgeStoreProvider` registers roots and their
-adapters, resolves a root by ID, and exposes the adapter that owns its records.
-It also publishes notifications after mutations through its wrapped adapters.
-It does not own semantic retrieval or watch arbitrary external file edits.
+**Purpose and interface.** `KnowledgeStoreProvider` registers roots and their adapters,
+resolves a root by ID, and exposes the adapter that owns its records. It also publishes
+notifications after mutations through its wrapped adapters. There is currently no
+production subscriber that turns `onRecordsChanged` into index updates. It does not own
+semantic retrieval or watch arbitrary external file edits; the separate index requires
+its own write/rebuild path.
 
-**Current behavior.** Roots are persisted through the injected storage adapter.
-The built-in default-file and Obsidian adapters implement the checked-in Kit
-record contract; the conversation adapter is a read-only projection of Session
-history. Personal and Project are scope tags, not a universal uniqueness or
-authorization proof: the registry can allocate suffixed personal IDs, and the
-conversation root also has personal scope. The Settings card currently selects
-the first personal root. Root removal clears the cached adapter, but there is
-no atomic replacement operation exposed by this interface.
+**Current behavior.** Roots are persisted through the injected storage adapter. The
+built-in default-file and Obsidian adapters implement the checked-in Kit record
+contract; the conversation adapter is a read-only projection of Session history.
+Personal and Project are scope tags, not a universal uniqueness or authorization proof:
+the registry can allocate suffixed personal IDs, and the conversation root also has
+personal scope. The Settings card currently selects the first personal root. Root
+removal clears the cached adapter, but there is no atomic replacement operation exposed
+by this interface.
 
-**Follow the code.** [The provider](../../src-server/knowledge-store/knowledge-store-provider.ts)
-is constructed by [service bootstrap](../../src-server/runtime/bootstrap/runtime-service-bootstrap.ts)
-and passed into the store/record routes. [The guide](../guides/knowledge.md)
-explains disk formats, setup, migration, and the separate index.
-[Provider tests](../../src-server/knowledge-store/__tests__/knowledge-store-provider.test.ts),
-[store-route tests](../../src-server/routes/knowledge/__tests__/knowledge-store.routes.test.ts),
-and [Settings tests](../../src-ui/src/__tests__/KnowledgeStoreSection.test.tsx)
-cover those interfaces; they do not establish live external-provider behavior.
+**Follow the code.** [The
+provider](../../src-server/knowledge-store/knowledge-store-provider.ts) is constructed
+by [service bootstrap](../../src-server/runtime/bootstrap/runtime-service-bootstrap.ts)
+and passed into the store/record routes. [The guide](../guides/knowledge.md) explains
+disk formats, setup, migration, and the separate index. [Provider
+tests](../../src-server/knowledge-store/__tests__/knowledge-store-provider.test.ts),
+[store-route
+tests](../../src-server/routes/knowledge/__tests__/knowledge-store.routes.test.ts), and
+[Settings tests](../../src-ui/src/__tests__/KnowledgeStoreSection.test.tsx) cover those
+interfaces; they do not establish live external-provider behavior.
 
 ## SqliteVecIndexProvider
 
 **Purpose and interface.** `SqliteVecIndexProvider` owns a derived vector index:
-upsert/remove, scoped search, explicit root rebuild, and statistics. Callers
-supply the store and embedder for a rebuild. Runtime composition selects this
-built-in index for the store/index routes; the older `KnowledgeService` has a
-different, configured-provider interface.
+upsert/remove, scoped search, explicit root rebuild, and statistics. Callers supply the
+store and embedder for a rebuild. Runtime composition selects this built-in index for
+the store/index routes; the older `KnowledgeService` has a different,
+configured-provider interface.
 
-**Current behavior and limits.** One SQLite table contains partitions keyed by
-root ID. A rebuild reads and embeds source records before deleting that root's
-rows. Changing vector width recreates the whole table and clears all roots'
-rebuild timestamps. The index does not record embedding-model identity, so a
-same-width model change needs an explicit rebuild. The search route checks
-root access and re-reads each record, but combines its current title/category
-with the cached index excerpt; it does not compare that excerpt with the
-current body. A successful lookup therefore establishes neither text freshness
+**Current behavior and limits.** One SQLite table contains partitions keyed by root ID.
+A rebuild reads and embeds source records before deleting that root's rows. Embedding
+failure therefore leaves the old partition intact, but a later write failure can leave
+an incomplete rebuild: the replacement is not one atomic transaction. Changing vector
+width recreates the whole table and clears all roots' rebuild timestamps. The index does
+not record embedding-model identity, so a same-width model change needs an explicit
+rebuild. The search route checks root access and re-reads each record, but combines its
+current title/category with the cached index excerpt; it does not compare that excerpt
+with the current body. A successful lookup therefore establishes neither text freshness
 nor an active lifecycle state.
 
-**Follow the code.** [Index implementation](../../src-server/knowledge-index/sqlite-vec-index-provider.ts),
-[HTTP callers](../../src-server/routes/knowledge/knowledge-index-routes.ts),
-and [runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
-show the ownership and access checks. [Provider tests](../../src-server/knowledge-index/__tests__/sqlite-vec-index-provider.test.ts),
+**Follow the code.** [Index
+implementation](../../src-server/knowledge-index/sqlite-vec-index-provider.ts), [HTTP
+callers](../../src-server/routes/knowledge/knowledge-index-routes.ts), and [runtime
+composition](../../src-server/runtime/routes/runtime-routes.ts) show the ownership and
+access checks. [Provider
+tests](../../src-server/knowledge-index/__tests__/sqlite-vec-index-provider.test.ts),
 [partition tests](../../src-server/knowledge-index/__tests__/partition-scoping.test.ts),
-and [lossless-rebuild tests](../../src-server/knowledge-index/__tests__/lossless-rebuild.test.ts)
-use controlled records and embeddings. They do not guarantee equal ranking
-after a model/source change or prove live embedding-service availability.
+and [lossless-rebuild
+tests](../../src-server/knowledge-index/__tests__/lossless-rebuild.test.ts) use
+controlled records and embeddings. They do not guarantee equal ranking after a
+model/source change or prove live embedding-service availability.
 
 ## KnowledgeFileTransactions
 
-**Intent and Interface.** `KnowledgeFileTransactions.mutate(operation, body)` gives one writable knowledge root a serialized publication capability. The body reads and stages files through the capability; it never receives a lock token, journal path, or raw commit operation. `read` supplies the same recovery gate to read-only work. The built-in Kit default and Obsidian adapters and the project `KnowledgeDocumentFileTransaction` all use this one shared Implementation.
+[KnowledgeFileTransactions](../../src-server/knowledge-store/adapters/shared/file-transactions.ts)
+keeps Station file writers and recovery on one protocol. Ordinary locked reads can
+repair pending work; the separate source-observation path deliberately cannot.
 
-**Contract.** A Station-owned coordination directory under `STATION_HOME` holds process-identity file locks keyed by each root's real path, device, and inode. This serializes Station writers across processes without requiring write authority over the root's parent or reserving a sibling pathname. Every acquired capability enters a release-owned `finally`. A mutation stages every change, verifies its file, directory, and observed legacy-source read set, then durably records one prepared rollback journal before publishing authoritative record or document files first, metadata and derived graph/alias/path indexes second, and removals last. The composed root's device, inode, and real path are revalidated before lock acquisition and immediately before every rename or unlink. Every replacement is same-directory temp write, file sync, rename, and directory sync. A callback rejection publishes nothing; a partial publication failure rolls back exact bytes. Startup or the next locked read rolls back a prepared journal and only cleans a committed journal. Recovery never overwrites bytes that match neither the recorded before nor after hash; it fails closed as a conflict. Only `ENOENT` means absent. Authoritative records, nested provenance and mutation logs, requested record identity, document metadata identity/path relationships, and Obsidian path metadata are runtime-schema validated; journal paths are canonical and unique under host-native path rules (so POSIX backslashes remain literal filename characters). A corrupt journal or authoritative file is unavailable, never an empty store. Derived indexes may be rebuilt from validated records through the adapter's explicit reindex path. Symlinked roots, directory entries, and publication paths are refused.
+**Intent and Interface.** `KnowledgeFileTransactions.mutate(operation, body)` gives one
+writable knowledge root a serialized publication capability. The callback uses the
+coordinator’s checked read/write methods within its owned transaction context; it
+receives no lock token, journal path or raw commit operation. `read` supplies the same
+recovery gate to read-only work. The built-in Kit default and Obsidian adapters and the
+project `KnowledgeDocumentFileTransaction` all use this one shared Implementation.
 
-**Seam, Implementation, callers, and tests.** Each writable adapter constructs the coordinator at its root and routes record, graph, alias, path, archive, relocation, project-document content, project-document metadata, and authoritative directory-tree reads through it. Project-document vectors are a post-commit derived Adapter effect. Every vector carries the authoritative content hash; search, content reconstruction, and injected context join derived hits back to transaction-gated metadata and reject a stale or missing hash. Legacy metadata without a hash is not authority for vector text and must be rebuilt. A vector failure cannot roll back or replace committed files, and vectors remain rebuildable from those files. The public KnowledgeStoreAdapter and API/SDK/CLI/MCP record verbs remain unchanged; storage conflict/corruption is projected at the existing API boundary with stable copy. Real child-process crash recovery, cross-process lock interoperability, conflict, journal corruption, publication-order, root/path symlink, and post-commit ambiguity proofs live in `src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts`; adapter contract and project-document service tests cover both caller families. **Do not reintroduce:** adapter-local `writeFileSync`/`renameSync`/`unlinkSync`, raw authoritative directory traversal, whole-file mutation without the shared capability, treating permission/I/O/schema errors as empty, deleting an Obsidian source before publishing its replacement, splitting project document content from metadata publication, returning an unverified vector hit, mutating vectors before authority commits, or storing authoritative knowledge only in the derived vector index.
+**Contract.** A Station-owned coordination directory under `STATION_HOME` holds
+process-identity file locks keyed by each root's real path, device, and inode. This
+serializes Station writers across processes without requiring write authority over the
+root's parent or reserving a sibling pathname. Every acquired capability enters a
+release-owned `finally`. A mutation stages every change, verifies its file, directory,
+and observed legacy-source read set, then durably records one prepared rollback journal
+before publishing authoritative record or document files first, metadata and derived
+graph/alias/path indexes second, and removals last. The composed root's device, inode,
+and real path are revalidated before lock acquisition and immediately before every
+rename or unlink. Every replacement is same-directory temp write, file sync, rename, and
+directory sync. A callback rejection publishes none of its staged changes; a partial
+publication failure rolls back exact bytes. On the next locked read or mutation,
+recovery preserves a prepared journal whose complete after-image already matches disk;
+otherwise it attempts exact rollback. A committed journal needs cleanup only. A rollback
+conflict or storage failure can leave the obligation for a later attempt rather than
+proving cleanup succeeded. Recovery never overwrites bytes that match neither the
+recorded before nor after hash; it fails closed as a conflict. Only `ENOENT` means
+absent. Authoritative records, nested provenance and mutation logs, requested record
+identity, document metadata identity/path relationships, and Obsidian path metadata are
+runtime-schema validated; journal paths are canonical and unique under host-native path
+rules (so POSIX backslashes remain literal filename characters). A corrupt journal or
+authoritative file is unavailable, never an empty store. Derived indexes may be rebuilt
+from validated records through the adapter's explicit reindex path. Symlinked roots,
+directory entries, and publication paths are refused.
+
+**Seam, Implementation, callers, and tests.** Each writable adapter constructs the
+coordinator at its root and routes record, graph, alias, path, archive, relocation,
+project-document content, project-document metadata, and authoritative directory-tree
+reads through it. Project-document vectors are a post-commit derived Adapter effect.
+Every vector carries the authoritative content hash; search, content reconstruction, and
+injected context join derived hits back to transaction-gated metadata and reject a stale
+or missing hash. Legacy metadata without a hash is not authority for vector text and
+must be rebuilt. A vector failure cannot roll back or replace committed files, and
+vectors remain rebuildable from those files. The public KnowledgeStoreAdapter and
+API/SDK/CLI/MCP record verbs remain unchanged; storage conflict/corruption is projected
+at the existing API boundary with stable copy. Real child-process crash recovery,
+cross-process lock interoperability, conflict, journal corruption, publication-order,
+root/path symlink, and post-commit ambiguity proofs live in
+`src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts`; adapter
+contract and project-document service tests cover both caller families. **Do not
+reintroduce:** adapter-local `writeFileSync`/`renameSync`/`unlinkSync`, raw
+authoritative directory traversal, whole-file mutation without the shared capability,
+treating permission/I/O/schema errors as empty, deleting an Obsidian source before
+publishing its replacement, splitting project document content from metadata
+publication, returning an unverified vector hit, mutating vectors before authority
+commits, or storing authoritative knowledge only in the derived vector index.
 
 ## SharedWorkingState
 
@@ -1436,11 +1708,57 @@ or claims that an Activity status independently proves the underlying work.
 
 ## PluginForegroundRuns
 
-**Intent and Interface.** `createPluginForegroundRuns()` admits one declared, user-initiated plugin work request under a host-bound plugin installation, generation, account, and process owner. A caller receives a safe `plugin:*` run projection and, only for a new admission, an opaque claim that can cross the effect boundary and record one terminal outcome. A deterministic identity joins a repeated idempotency key; the same identity with different input or correlation is equivocation. The plugin receives no coordinator, owner identity, persisted input, or Action Operation service.
+[PluginForegroundRuns](../../src-server/services/plugins/plugin-foreground-runs.ts) is a
+retained foreground-work mechanism with controlled coordinator fixtures. No runtime
+bootstrap, manifest, HTTP or UI path starts this work today; ordinary plugin host
+actions use Session commands instead.
 
-**Contract.** Declarations, capabilities, JSON input, identifiers, and public copy are bounded. Registration alone grants no execution authority: the host authorizer runs before admission and again immediately before effect. Run identity includes installation, account, and optional machine scope before applying the plugin's idempotency key. The durable coordinator is the sole run authority and records `admitted`, `running`, `completed`, `failed`, `cancelled`, or `indeterminate` with explicit `uninvoked`, `possible-effect`, or `confirmed-effect` depth. A dead admitted owner is definitely failed before effect; a dead running owner is indeterminate and is never replayed. Each composed authority owns a scoped execution-owner epoch; releasing one cannot release another authority that happens to use the same display identity, and every admission, effect, or terminal claim from the released epoch is stale. A live owner, or one whose process identity cannot be checked, is not stolen. Cancellation targets the exact recorded process owner, coalesces concurrent requests, retains its outcome across uncertain settlement without reinvoking the Adapter, and lets the coordinator atomically derive terminal effect depth from current state; refusal preserves current truth and uncertainty becomes indeterminate. `RunService` can project the same identity with `source: 'plugin'`; input, idempotency material, installation keys, and process facts remain private. Action Operations are deadline-bounded best-effort observers and cannot indefinitely delay, overturn, or replace the canonical run outcome; a begin that resolves after its deadline attaches first and reconciles against current canonical state so it cannot leave orphan activity.
+**Intent and Interface.** `createPluginForegroundRuns()` admits one declared,
+user-initiated plugin work request under a host-bound plugin installation, generation,
+account, and process owner. A caller receives a safe `plugin:*` run projection and, only
+for a new admission, an opaque claim that can cross the effect boundary and record one
+terminal outcome. A deterministic identity joins a repeated idempotency key; the same
+identity with different input or correlation is equivocation. The plugin receives no
+coordinator, owner identity, persisted input, or Action Operation service.
 
-**Seam, Implementation, callers, and tests.** Public declarations, start intents, limits, states, and safe projections live in `@kontourai/station-contracts/plugin-foreground-work`. The server implementation depends on an injected `PluginForegroundRunCoordinator`, dynamic authorizer, reader authorizer, process-identity Adapter, and optional cancellation/Action Operation observers. This first #1360 tracer deliberately has no EventStore coordinator, manifest parser, worker Adapter, runtime bootstrap, route, SDK, CLI, station-control, pane, or shutdown wiring, so it is not user-facing and `RunService` composition remains optional. The next slice must implement the coordinator inside the existing EventStore/run authority, bind worker execution with `AbortSignal`, close admission and drain exact owners through plugin replacement lifecycle, then expose the existing operator surfaces without a second ledger. Focused state-machine, recovery, cancellation, observer, and RunService projection evidence lives in `plugin-foreground-runs.test.ts`. **Do not reintroduce:** plugin-owned job files, an in-memory canonical registry, registration-as-authorization, raw worker errors in public copy, process-ID-only cancellation, replay after possible effect, Action Operations as run truth, or scheduler ownership for foreground work.
+**Contract.** Declarations, capabilities, JSON input, identifiers, and public copy are
+bounded. Registration alone grants no execution authority: the host authorizer runs
+before admission and again immediately before effect. Run identity includes
+installation, account, and optional machine scope before applying the plugin's
+idempotency key. The durable coordinator is the sole run authority and records
+`admitted`, `running`, `completed`, `failed`, `cancelled`, or `indeterminate` with
+explicit `uninvoked`, `possible-effect`, or `confirmed-effect` depth. A dead admitted
+owner is definitely failed before effect; a dead running owner is indeterminate and is
+never replayed. Each composed authority owns a scoped execution-owner epoch; releasing
+one cannot release another authority that happens to use the same display identity, and
+every admission, effect, or terminal claim from the released epoch is stale. A live
+owner, or one whose process identity cannot be checked, is not stolen. Cancellation
+targets the exact recorded process owner, coalesces concurrent requests, retains its
+outcome across uncertain settlement without reinvoking the Adapter, and lets the
+coordinator atomically derive terminal effect depth from current state; refusal
+preserves current truth and uncertainty becomes indeterminate. `RunService` can project
+the same identity with `source: 'plugin'`; input, idempotency material, installation
+keys, and process facts remain private. Action Operations are deadline-bounded
+best-effort observers and cannot indefinitely delay, overturn, or replace the canonical
+run outcome; a begin that resolves after its deadline attaches first and reconciles
+against current canonical state so it cannot leave orphan activity.
+
+**Seam, Implementation, callers, and tests.** Public declarations, start intents,
+limits, states, and safe projections live in
+`@kontourai/station-contracts/plugin-foreground-work`. The server implementation depends
+on an injected `PluginForegroundRunCoordinator`, dynamic authorizer, reader authorizer,
+process-identity Adapter, and optional cancellation/Action Operation observers. This
+retained #1360 component has no EventStore coordinator, manifest parser, worker Adapter,
+runtime bootstrap, route, SDK, CLI, station-control, pane, or shutdown wiring, so it is
+not user-facing and `RunService` composition remains optional. The next slice must
+implement the coordinator inside the existing EventStore/run authority, bind worker
+execution with `AbortSignal`, close admission and drain exact owners through plugin
+replacement lifecycle, then expose the existing operator surfaces without a second
+ledger. Focused state-machine, recovery, cancellation, observer, and RunService
+projection evidence lives in `plugin-foreground-runs.test.ts`. **Do not reintroduce:**
+plugin-owned job files, an in-memory canonical registry, registration-as-authorization,
+raw worker errors in public copy, process-ID-only cancellation, replay after possible
+effect, Action Operations as run truth, or scheduler ownership for foreground work.
 
 ## OperationalEventOutbox
 
@@ -1589,62 +1907,337 @@ visible.
 
 ## KnowledgeSourceObservation
 
-**Intent and Interface.** The existing `KnowledgeStoreProvider` owns `observeExactRecord(rootId, recordId, authority)`. It defaults to `restricted` and admits only an exact target approved by its constructor-captured host policy, rechecked before file access and before returning content. Caller-supplied booleans, principal-shaped objects, localhost, and registry membership do not confer access. The runtime constructor captures a personal-root policy requiring a real middleware-bound home-possession Request, single-operator deployment without request or execution tenant context, current credentials and route scope, an exact route target, and matching registered root identity. The source-observation GET and SDK query feed the Memory record browser's optional host action and source-only dialog. No project-root authority or ordinary-get fallback is inferred.
+[The observation
+policy](../../src-server/knowledge-store/knowledge-source-observation-policy.ts) and
+[exact source route](../../src-server/routes/knowledge/knowledge-source-routes.ts) let
+the local operator inspect one canonical record without read repair or invented learning
+state.
 
-**Contract.** The first slice supports only registered built-in `kit-default-store` roots and exact path-safe record IDs, not alias/prefix resolution. `FileStorageAdapter.observeKnowledgeStoreRoots()` reads bounded registry bytes without repair or bootstrap. A separate construction-free observation port inside `KnowledgeFileTransactions` shares the writer's journal/lock identity rules. It opens no journal/lock payload, acquires/reaps no lease, launches no process, and writes no data, events or indexes. Any observed transaction artifact, unsafe path, corrupt data, detected replacement, or exceeded budget refuses the read. Every existing ancestor and leaf identity is checked; leaves must be regular, single-link files, opened no-follow/nonblocking and read with a fixed byte budget. The shared YAML codec applies parser depth/alias/merge limits; bounded schema validation checks exact filename/id before projecting only source fields.
+**Intent and Interface.** The existing `KnowledgeStoreProvider` owns
+`observeExactRecord(rootId, recordId, authority)`. It defaults to `restricted` and
+admits only an exact target approved by its constructor-captured host policy, rechecked
+before file access and before returning content. Caller-supplied booleans,
+principal-shaped objects, localhost, and registry membership do not confer access. The
+runtime captures a personal-root policy requiring a real middleware-bound local-operator
+Request: an internal principal or a credential with home possession. It also requires
+personal runtime/request context, current credentials and route scope, an exact route
+target, and the matching registered root incarnation. The source-observation GET and SDK
+query feed the Memory record browser's optional host action and source-only dialog. No
+project-root authority or ordinary-get fallback is inferred.
 
-**Truth boundary.** Before/after checks are not an atomic filesystem capability or snapshot; an intervening transaction may start and finish between checks. Every result therefore declares `consistency: non-atomic`, unknown transaction state and unknown owner revision. Its content digest/time describe Station's observation, never owner revision, commit proof or mutation CAS. Record type/provenance/status retain published meanings; absent status stays absent. No source text becomes instruction, candidate, approval, activation, deployment scope, evaluation or effect evidence. Unsupported, restricted and unavailable outcomes carry no record identity or payload.
+**Contract.** The first slice supports only registered built-in `kit-default-store`
+roots and exact path-safe record IDs, not alias/prefix resolution.
+`FileStorageAdapter.observeKnowledgeStoreRoots()` reads bounded registry bytes without
+repair or bootstrap. A separate construction-free observation port inside
+`KnowledgeFileTransactions` shares the writer's journal/lock identity rules. It opens no
+journal/lock payload, acquires/reaps no lease, launches no process, and writes no data,
+events or indexes. Any observed transaction artifact, unsafe path, corrupt data,
+detected replacement, or exceeded budget refuses the read. Every existing ancestor and
+leaf identity is checked; leaves must be regular, single-link files, opened
+no-follow/nonblocking and read with a fixed byte budget. The shared YAML codec applies
+parser depth/alias/merge limits; bounded schema validation checks exact filename/id
+before projecting only source fields.
 
-**Seam and tests.** Real registry → provider → canonical-file proofs live in `knowledge-record-observation.test.ts`; actual writer lock/journal interoperability and a real FIFO swapped at native open live in `knowledge-record-observation.process.test.ts`. Only synthetic disposable fixtures are used. Windows FIFO behavior is explicitly not verified. The public LearningSourceObservation shape is explicitly source-only and does not populate the full LearningReviewProjection below. Production-constructor/authenticated-route proofs are in knowledge-source.routes.test.ts; managed desktop/mobile and replacement-root proof is in tests/learning-source.spec.ts. **Do not reintroduce:** ordinary read-repair under a read-only name, private Kit imports, raw route-owned file reads, inferred learning lifecycle, caller-created authority, unbounded scans, or an atomicity claim based on absence of a journal.
+**Truth boundary.** Before/after checks are not an atomic filesystem capability or
+snapshot; an intervening transaction may start and finish between checks. Every result
+therefore declares `consistency: non-atomic`, unknown transaction state and unknown
+owner revision. Its content digest/time describe Station's observation, never owner
+revision, commit proof or mutation CAS. Record type/provenance/status retain published
+meanings; absent status stays absent. No source text becomes instruction, candidate,
+approval, activation, deployment scope, evaluation or effect evidence. Unsupported,
+restricted and unavailable outcomes carry no record identity or payload.
+
+**Seam and tests.** Real registry → provider → canonical-file proofs live in
+`knowledge-record-observation.test.ts`; actual writer lock/journal interoperability and
+a real FIFO swapped at native open live in
+`knowledge-record-observation.process.test.ts`. Only synthetic disposable fixtures are
+used. Windows FIFO behavior is explicitly not verified. The public
+LearningSourceObservation shape is explicitly source-only and does not populate the full
+LearningReviewProjection below. Production-constructor/authenticated-route proofs are in
+knowledge-source.routes.test.ts; managed-browser desktop/mobile viewport and
+replacement-root acceptance is in `tests/learning-source.spec.ts`; this is separate from
+physical mobile-device qualification. **Do not reintroduce:** ordinary read-repair under
+a read-only name, private Kit imports, raw route-owned file reads, inferred learning
+lifecycle, caller-created authority, unbounded scans, or an atomicity claim based on
+absence of a journal.
 
 ## LearningReviewProjection
 
-**Intent and Interface.** `@kontourai/station-contracts/learning-review` describes one read-only owner projection from source feedback or receipt through candidate, evaluation, decision, active revision, effect observations, supersession, and retirement. Every available identity remains an opaque owner reference. Top-level `not-captured`, `restricted`, `unavailable`, `unsupported-version`, and `corrupt` outcomes carry no projection or protected owner identity; partial stage gaps carry no stage value. The UI-ready `learningReviewViewModel()` preserved the seven-stage order and supplied honest presentation states without fetching or mutating owner data; it has since been deleted (see below), so no view model of this projection currently ships.
+**Status and purpose.** [The learning-review
+contract](../../packages/contracts/src/learning-review.ts) defines a read-only,
+owner-supplied lifecycle projection. It is retained contract work: no runtime producer
+or mounted view supplies the complete projection. The earlier
+`learningReviewViewModel()` and its unmounted UI were deleted. The working
+[source-observation path](#knowledgesourceobservation) returns a separate
+`LearningSourceObservation`; it does not populate missing lifecycle stages.
 
-**Contract.** Approval does not imply activation: only an owner-issued activation record with `status: active` plus an explicit `not-retired` record presents current activity. A later retirement ends current activity while preserving that historical activation stage, while any retirement gap leaves current activity unknown. Effect is derived solely from explicit owner observations; an empty observation set is `not-observed`, supporting plus counter evidence is mixed, and any unresolved observation keeps the conclusion unresolved. Partial `corrupt` and `unsupported-version` stages remain distinct from owner unavailability. Retirement requires its own owner record and preserves the historical source, candidate, decision, and active-revision references. Exact per-turn contribution disclosures link a Turn owner reference to the exact active learning revision; Station infers no relationship from text similarity. Promotion, rejection, rollback, editing, and retirement remain absent until an owner publishes typed intents and decision receipts.
+**Declared semantics.** The seven stages are source, candidate, evaluation, decision,
+activation, effect and retirement. Available stages carry exact owner references;
+absent, restricted, unavailable, corrupt and unsupported-version states carry no stage
+value. Approval and activation are different facts. Activation needs its exact revision
+and contribution disclosures; retirement has a separate owner receipt. Empty effect
+observations mean not observed, never success. The historical view-model design required
+mixed or unresolved observations and retirement gaps to remain visible rather than
+converting them into a positive outcome. Those presentation rules are requirements for a
+future consumer, not calculations currently performed by Station.
 
-**Seam, Implementation, callers, and tests.** The current Flow Agents package publishes a CLI-generated, explicitly non-authoritative workflow-learning projection containing source refs, outcome, routing, and correction data, but its stable `console-contract` subpath does not export that learning shape. The portable Kit observability contract declares a `learning` projection kind while leaving its data owner-defined. No installed Knowledge Kit contract supplies candidate revisions, evaluation, activation, effect, or retirement records. The full lifecycle projection still has no runtime mutation consumer. A separate source-only observation route/query/dialog can inspect actual canonical records without inventing the missing lifecycle fields. Contract tests live in `packages/contracts/src/__tests__/learning-review.test.ts`. The UI-ready view model described above was implemented once under `src-ui/src/views/learning-review/`, acquired no caller while the runtime projection stayed absent, and has been deleted; the next slice reintroduces it against a real projection rather than ahead of one. The next slice requires an owner-published, runtime-validated projection or Adapter with the complete identity and access-state semantics above. **Do not reintroduce:** a Station learning ledger, inferred promotion, success from zero observations, protected identity in restricted/unavailable outcomes, or consumer-owned replicas of upstream learning schemas.
+The TypeScript unions describe identity and access-state boundaries. This file is not a
+runtime parser for arbitrary incoming data. A future owner adapter must validate those
+boundaries before presentation, including exact revision references and explicit
+activation/retirement/effect evidence. No Station learning ledger, text-similarity
+inference or mutation authority follows from these types.
+
+**Current integration limits.** The installed Flow Agents package has a CLI-generated
+workflow-learning projection, explicitly non-authoritative, but its stable
+`console-contract` export does not publish that shape. Its portable Kit observability
+contract admits a `learning` kind with owner-defined data. That is not the full Station
+lifecycle projection or a Knowledge Kit activation contract. Promotion, rejection,
+rollback and retirement UI remain unwired.
+
+**Evidence.** `packages/contracts/src/__tests__/learning-review.test.ts` checks the
+schema/version and seven-stage constants plus typed restricted/unavailable examples. It
+does not test a runtime validator, live owner integration or lifecycle presentation.
+Source-observation owner, route and SDK tests establish only the separate source-only
+feature.
+
 ## PluginCompositionModule
 
-**Intent and Interface.** `createPluginCompositionModule()` accepts one named Project- or Agent-scoped profile and publishes a generation only after every selected contribution has been authorized and staged. Contribution-instance identity binds profile, scope, plugin, contribution, and local instance while configuration has a separate content digest, so reconfiguration preserves identity without sharing state across scopes. `inspect(scope)` projects active, pending, failed, and explicitly shadowed contributions without exposing staged handles or disposer authority.
+[PluginCompositionModule](../../src-server/services/plugins/plugin-composition.ts) is a
+retained server-side composition mechanism, with fixture callers and no production
+profile loader or activation route. Its guarantees describe the injected authorities
+below, not the current global plugin provider registry.
 
-**Contract.** Each capability has one selected provider; multiple implementations require an explicit selection and remain visible as shadowed. Exact-version dependency edges are resolved inside one profile scope, topologically staged, and rejected before activation for cycles, incompatible versions, duplicate local instances or plugin contribution identities, invalid selections, or cross-scope references. `station.identity`, `station.authorization`, `station.evidence-admission`, `station.receipts`, and `station.event-store` are fixed host authorities and cannot be provided by a profile. One whole-plan authorization lease binds every selected declaration to its exact plugin owner, installed generation, and host staging factory; a missing, mismatched, malformed, or stale binding cannot stage or publish. Host capability wrappers preserve their original receiver. The prior generation remains active through staging. Every staged handle receives a unique host-owned occurrence lease, and the Module fences all prior or rollback occurrences synchronously before any disposer begins. A failed stage, malformed-but-disposable stage result, or changed plan lease reverses acquired handles, while a successful stage publishes the next generation synchronously before retiring the prior generation in deterministic reverse dependency order. Shared handle or disposer identities cannot be claimed by a second scope, so retiring one Project cannot cross-dispose another Project's occurrence. Every selected contribution remains visible after whole-plan refusal or rollback. Disposal is deadline-bounded; an unresolved disposer remains visible by exact generation and instance, and that identity cannot be reused until settlement. Activation attempts serialize per scope and release their chain on settlement. Retained scopes are bounded; `retire(scope)` closes a scope, disposes its active generation, and releases its retained state when no disposal fence remains.
+**Intent and Interface.** `createPluginCompositionModule()` accepts one named Project-
+or Agent-scoped profile and publishes a generation only after every selected
+contribution has been authorized and staged. Contribution-instance identity binds
+profile, scope, plugin, contribution, and local instance while configuration has a
+separate content digest, so reconfiguration preserves identity without sharing state
+across scopes. `inspect(scope)` projects active, pending, failed, and explicitly
+shadowed contributions without exposing staged handles or disposer authority.
 
-**Seam, Implementation, callers, and tests.** This first #1362 tracer is server-internal and composes one whole-plan authorizer whose granted lease carries host-owned installed-contribution factories; it adds no manifest field, persistence, route, SDK, CLI, UI, provider registry, hook registry, or Session override. Those later adapters must stage behind this generation boundary rather than registering directly. Focused proof lives in `src-server/services/plugins/__tests__/plugin-composition.test.ts`, covering scope and occurrence isolation, owner-qualified bindings, exact authorization outcomes, stable identities, dependency restoration, cycle/version/scope refusal, shadowing, fixed authorities, atomic rollback, synchronous fences, reverse disposal, live fences, shared-handle refusal, and concurrent activation ordering. **Do not reintroduce:** mutable global registration, plugin-owned generation numbers, implementation-only factory lookup, per-contribution authorization snapshots, implicit provider choice, cross-scope lookup, replaceable trust authorities, disposal in dependency order, or staging that mutates the active generation.
+**Contract.** Each capability has one selected provider; multiple implementations
+require an explicit selection and remain visible as shadowed. Exact-version dependency
+edges are resolved inside one profile scope, topologically staged, and rejected before
+activation for cycles, incompatible versions, duplicate local instances or plugin
+contribution identities, invalid selections, or cross-scope references.
+`station.identity`, `station.authorization`, `station.evidence-admission`,
+`station.receipts`, and `station.event-store` are fixed host authorities and cannot be
+provided by a profile. One whole-plan authorization lease binds every selected
+declaration to its exact plugin owner, installed generation, and host staging factory; a
+missing, mismatched, malformed, or stale binding cannot stage or publish. Host
+capability wrappers preserve their original receiver. The prior generation remains
+active through staging. Every staged handle receives a unique host-owned occurrence
+lease, and the Module fences all prior or rollback occurrences synchronously before any
+disposer begins. A failed stage, malformed-but-disposable stage result, or changed plan
+lease reverses acquired handles, while a successful stage publishes the next generation
+synchronously before retiring the prior generation in deterministic reverse dependency
+order. Shared handle or disposer identities cannot be claimed by a second scope, so
+retiring one Project cannot cross-dispose another Project's occurrence. Every selected
+contribution remains visible after whole-plan refusal or rollback. Disposal is
+deadline-bounded; an unresolved disposer remains visible by exact generation and
+instance, and that identity cannot be reused until settlement. Activation attempts
+serialize per scope and release their chain on settlement. Retained scopes are bounded;
+`retire(scope)` closes a scope, disposes its active generation, and releases its
+retained state when no disposal fence remains.
 
-**Admission and retirement receipts.** A retained-scope capacity refusal returns a transient inspection of the requested selected and shadowed contributions, with `scope-capacity` on blocked selected rows, without retaining another scope or invoking the authorizer. Retirement remains `pending` while lifecycle or disposal fences survive, including failed disposers; only settled cleanup reports `retired`. Queue admission bookkeeping settles before that completion receipt becomes observable, so freed capacity can be reused immediately unless a queued successor already owns it.
+**Seam, Implementation, callers, and tests.** This retained #1362 component is
+server-internal and composes one whole-plan authorizer whose granted lease carries
+host-owned installed-contribution factories; it adds no manifest field, persistence,
+route, SDK, CLI, UI, provider registry, hook registry, or Session override. Those later
+adapters must stage behind this generation boundary rather than registering directly.
+Focused proof lives in
+`src-server/services/plugins/__tests__/plugin-composition.test.ts`, covering scope and
+occurrence isolation, owner-qualified bindings, exact authorization outcomes, stable
+identities, dependency restoration, cycle/version/scope refusal, shadowing, fixed
+authorities, atomic rollback, synchronous fences, reverse disposal, live fences,
+shared-handle refusal, and concurrent activation ordering. **Do not reintroduce:**
+mutable global registration, plugin-owned generation numbers, implementation-only
+factory lookup, per-contribution authorization snapshots, implicit provider choice,
+cross-scope lookup, replaceable trust authorities, disposal in dependency order, or
+staging that mutates the active generation.
 
-**Authorization cleanup custody.** Every owned authorization release uses one memoized actual operation, including published generations, missing bindings, recognizable-invalid grants, late authorization, and rollback. A bounded wait does not erase that obligation: `authorization-release-pending` or `authorization-release-failed` remains inspectable, retains scope admission, and keeps retirement pending until actual release succeeds. Published contributions remain available during this cleanup debt. Rollback releases only after all owned disposers settle successfully; unleased denial creates no release obligation. Public fence lists are snapshots, and simultaneous release/disposer failures remain separately visible.
+**Admission and retirement receipts.** A retained-scope capacity refusal returns a
+transient inspection of the requested selected and shadowed contributions, with
+`scope-capacity` on blocked selected rows, without retaining another scope or invoking
+the authorizer. Retirement remains `pending` while lifecycle or disposal fences survive,
+including failed disposers; only settled cleanup reports `retired`. Queue admission
+bookkeeping settles before that completion receipt becomes observable, so freed capacity
+can be reused immediately unless a queued successor already owns it.
 
-Empty profiles still pass through whole-plan authorization and can retire a prior generation. With no selected contribution, retained authorization or release debt is projected in `inspection.scopeLifecycle` with its exact scope generation, status, and reason; contribution rows and `liveFences` remain contribution-only, never synthetic placeholders. Late authorization hands that scope diagnostic to the actual release owner, and it disappears only on proved settlement. Configuration validation checks remaining structural key/node capacity before sorting object keys or collecting array descriptors, including extra array properties; accessors, symbols, and non-data structures remain refused.
+**Authorization cleanup custody.** Every owned authorization release uses one memoized
+actual operation, including published generations, missing bindings,
+recognizable-invalid grants, late authorization, and rollback. A bounded wait does not
+erase that obligation: `authorization-release-pending` or `authorization-release-failed`
+remains inspectable, retains scope admission, and keeps retirement pending until actual
+release succeeds. Published contributions remain available during this cleanup debt.
+Rollback releases only after all owned disposers settle successfully; unleased denial
+creates no release obligation. Public fence lists are snapshots, and simultaneous
+release/disposer failures remain separately visible.
 
-**Captured authority, bounded configuration and disputed resources.** Construction captures the exact data-method authorizer and original receiver, including prototype methods, without executing accessor capabilities or unrelated getters; later options/method replacement cannot change the trust authority. Configuration canonicalization counts JSON-escaped UTF-8 bytes incrementally before sorting keys or allocating a complete serialization, including punctuation, control escapes and lone surrogates. Oversized configuration is not retained; bounded declaration metadata still projects every selected contribution on refusal. Structural/malformed-profile refusal remains separate. Intrinsic own-key enumeration and hostile synchronous Proxy traps are not preemptible by these data bounds.
+Empty profiles still pass through whole-plan authorization and can retire a prior
+generation. With no selected contribution, retained authorization or release debt is
+projected in `inspection.scopeLifecycle` with its exact scope generation, status, and
+reason; contribution rows and `liveFences` remain contribution-only, never synthetic
+placeholders. Late authorization hands that scope diagnostic to the actual release
+owner, and it disappears only on proved settlement. Configuration validation checks
+remaining structural key/node capacity before sorting object keys or collecting array
+descriptors, including extra array properties; accessors, symbols, and non-data
+structures remain refused.
 
-An exact handle already in host custody is borrowed, not a newly acquired resource: a late borrowed return completes its staging obligation and releases only that plan's lease after all earlier rollback settles. A distinct handle sharing an owned disposer is different. Its real handle/capability, exact handle identity, and whole-plan authorization remain retained with `staged-resource-conflict`; admission and retirement stay pending. The active owner's occurrence is neither fenced nor disposed by that conflict. A separate disputed-disposer reservation survives retirement of the original active claim, so fresh handles cannot adopt that cleanup function while disputed resources remain. Retirement of the original disposer owner does not silently authorize cleanup or adoption of the disputed resource. This tracer has no separate recovery authority for that case and must not manufacture cleanup success.
+**Captured authority, bounded configuration and disputed resources.** Construction
+captures the exact data-method authorizer and original receiver, including prototype
+methods, without executing accessor capabilities or unrelated getters; later
+options/method replacement cannot change the trust authority. Configuration
+canonicalization counts JSON-escaped UTF-8 bytes incrementally before sorting keys or
+allocating a complete serialization, including punctuation, control escapes and lone
+surrogates. Oversized configuration is not retained; bounded declaration metadata still
+projects every selected contribution on refusal. Structural/malformed-profile refusal
+remains separate. Intrinsic own-key enumeration and hostile synchronous Proxy traps are
+not preemptible by these data bounds.
 
-Late null/undefined/primitive returns settle the no-returned-handle obligation, just like rejection, without releasing ahead of earlier rollback or actual lease cleanup. Invalid object/function returns are not proof of absence: ordinary and late paths retain the actual opaque value, its identity and lease with `staged-resource-ambiguous`, without invoking unknown cleanup capabilities. Recognizable disposers still follow normal rollback; disputed identities retain their separate fences. Retained ambiguous resources remain bounded by the existing per-scope admission gate and cannot be silently adopted by a later scope.
+An exact handle already in host custody is borrowed, not a newly acquired resource: a
+late borrowed return completes its staging obligation and releases only that plan's
+lease after all earlier rollback settles. A distinct handle sharing an owned disposer is
+different. Its real handle/capability, exact handle identity, and whole-plan
+authorization remain retained with `staged-resource-conflict`; admission and retirement
+stay pending. The active owner's occurrence is neither fenced nor disposed by that
+conflict. A separate disputed-disposer reservation survives retirement of the original
+active claim, so fresh handles cannot adopt that cleanup function while disputed
+resources remain. Retirement of the original disposer owner does not silently authorize
+cleanup or adoption of the disputed resource. This tracer has no separate recovery
+authority for that case and must not manufacture cleanup success.
+
+Late null/undefined/primitive returns settle the no-returned-handle obligation, just
+like rejection, without releasing ahead of earlier rollback or actual lease cleanup.
+Invalid object/function returns are not proof of absence: ordinary and late paths retain
+the actual opaque value, its identity and lease with `staged-resource-ambiguous`,
+without invoking unknown cleanup capabilities. Recognizable disposers still follow
+normal rollback; disputed identities retain their separate fences. Retained ambiguous
+resources remain bounded by the existing per-scope admission gate and cannot be silently
+adopted by a later scope.
 
 ## PluginGrantReconciliation
 
-Whole-registry reloads capture their candidate resolution, registry epoch, and complete home-bound grant-state fingerprint under one grant read lease. That lease is released before importing plugin code. Publication checks the captured grant fingerprint again under the ordinary grant publication lease before any registry mutation, including empty generations and absent-plugin-directory clears. A changed grant snapshot refuses the old reload and retains cleanup ownership of its staged resources; it cannot bump a newly granted source's generation and strand the newer reconciliation. The fingerprint proves current state equivalence, not a monotonic grant revision or detection of every intermediate ABA transition. An unavailable grant store refuses the reload without inventing an empty authority set.
+[Grant reconciliation](../../src-server/services/plugins/plugin-grant-reconciliation.ts)
+updates runtime contributions after a permission decision. [Plugin
+routes](../../src-server/routes/plugins/plugins.ts) compose its real module,
+subscription, provider and connection adapters.
 
-Provider publication additionally acquires the same cross-process grants-store lock used by revoke, rebind, approval, and restoration writes. It re-reads effective `providers.register` under that lock and retains it through the provider registry commit. The common install/rollback loader and bootstrap/full reload use this same authority; source and whole-registry generation checks refuse staging superseded during preparation, and refused adapters retain exact cleanup ownership. Reconciliation additionally encloses preparation and publication in the installed-content lease. This orders publication against durable grant writes even before the route resumes to advance its in-memory reconciliation generation. This does not claim synchronous retirement of already-published providers in another runtime.
+Whole-registry reloads capture their candidate resolution, registry epoch, and complete
+home-bound grant-state fingerprint under one grant read lease. That lease is released
+before importing plugin code. Publication checks the captured grant fingerprint again
+under the ordinary grant publication lease before any registry mutation, including empty
+generations and absent-plugin-directory clears. A changed grant snapshot refuses the old
+reload and retains cleanup ownership of its staged resources; it cannot bump a newly
+granted source's generation and strand the newer reconciliation. The fingerprint proves
+current state equivalence, not a monotonic grant revision or detection of every
+intermediate ABA transition. An unavailable grant store refuses the reload without
+inventing an empty authority set.
 
-Response-independent reconciliation starts without inherited re-entrant content-lock context. Its authority-bearing adapters acquire the same actual content mutex for their complete preparation/publication span. A caller that still owns a live content guard receives `winding-down` immediately, allowing the consent decision guard to release without a forced deadline wait; the retained work then owns its own lease. Ordinary awaited nesting remains re-entrant, and callers outside a live guard retain the fast completed-response path. This is cooperative, process-local exclusion, not cross-runtime package coordination or a sandbox for arbitrary plugin background work.
+Provider publication additionally acquires the same cross-process grants-store lock used
+by revoke, rebind, approval, and restoration writes. It re-reads effective
+`providers.register` under that lock and retains it through the provider registry
+commit. The common install/rollback loader and bootstrap/full reload use this same
+authority; source and whole-registry generation checks refuse staging superseded during
+preparation, and refused adapters retain exact cleanup ownership. Reconciliation
+additionally encloses preparation and publication in the installed-content lease. This
+orders publication against durable grant writes even before the route resumes to advance
+its in-memory reconciliation generation. This does not claim synchronous retirement of
+already-published providers in another runtime.
 
-**Intent and Interface.** `PluginGrantReconciliationService.reconcile({ pluginName, permissions })` converges the runtime generation for one installed plugin after its durable grant state changes. It returns `completed`, `superseded`, `incomplete`, or `winding-down` with a stable operation identity and generation; it never rewrites the grant store.
+Response-independent reconciliation starts without inherited re-entrant content-lock
+context. Its authority-bearing adapters acquire the same actual content mutex for their
+complete preparation/publication span. A caller that still owns a live content guard
+receives `winding-down` immediately, allowing the consent decision guard to release
+without a forced deadline wait; the retained work then owns its own lease. Ordinary
+awaited nesting remains re-entrant, and callers outside a live guard retain the fast
+completed-response path. This is cooperative, process-local exclusion, not cross-runtime
+package coordination or a sandbox for arbitrary plugin background work.
 
-**Contract.** Reconciliation is serialized per plugin and bound to the exact installed content generation. A newer revoke, regrant, update, or removal supersedes stale work rather than letting it publish over the newer generation; the newer operation inherits the complete pending lifecycle-permission vector, so a disjoint grant change cannot abandon earlier provider, module, or subscription cleanup. Revoking event authority first quiesces and closes that plugin's operational-event consumers; revoking server authority advances the existing module-generation fence and drains active leases. Provider revocation atomically removes only that plugin's registrations, waits for provider-adapter retirement, and removes its engine connections while holding both the exact installed-content lock and provider-generation CAS; a replacement cannot publish between the final check and connection deletion. Regrant holds the same content-generation lock through manifest read and provider preparation, then publishes only while both its reconciliation generation and exact provider-source generation remain current at the synchronous registry commit boundary before reconciling connections. Independent cleanup stages continue after a sibling failure and report their exact bounded stage names. The HTTP response waits for a bounded interval; work exceeding it stays owned by the service and returns `winding-down` rather than a false completion. Releasing subscription quiescence is followed by an awaited reconciliation, so the revoke path never relies only on the EventBus observer. Trusted-approval records retain the exact reconciliation projection after they become approved, rather than leaving it only on a transient event.
+**Intent and Interface.** `PluginGrantReconciliationService.reconcile({ pluginName,
+permissions })` converges the runtime generation for one installed plugin after its
+durable grant state changes. It returns `completed`, `superseded`, `incomplete`, or
+`winding-down` with a stable operation identity and generation; it never rewrites the
+grant store.
 
-**Seam, Implementation, callers, and tests.** Runtime route composition supplies the existing plugin-module quiescence, operational-event subscription quiescence/reconcile, provider registry, Adapter retirement, and engine-connection Adapters. Both direct revocation and the distinct-origin trusted regrant path invoke the same service. The Plugins surface renders terminal, winding, and incomplete truth with an actionable idempotent check/retry path. Adversarial evidence covers drain ordering, disjoint supersession, stale revoke/regrant generations, content-locked activation, content-generation replacement, timeout ownership, partial failure, retained consent projection, durable-write-before-retirement, and truthful HTTP 200/202 projection in `plugin-grant-reconciliation.test.ts`, `plugin-installation-generation-fence.test.ts`, `plugin-public-routes.test.ts`, and `plugin-host-approval-routes.test.ts`. **Do not reintroduce:** grant-route provider mutation, fire-and-forget subscription retirement as completion evidence, unbounded response waits, source-wide provider clearing, implementation import outside the content-generation lease, or cleanup that can publish after its installation generation was replaced.
+**Contract.** Reconciliation is serialized per plugin and bound to the exact installed
+content generation. A newer revoke, regrant, update, or removal supersedes stale work
+rather than letting it publish over the newer generation; the newer operation inherits
+the complete pending lifecycle-permission vector, so a disjoint grant change cannot
+abandon earlier provider, module, or subscription cleanup. Revoking event authority
+first quiesces and closes that plugin's operational-event consumers; revoking server
+authority advances the existing module-generation fence and drains active leases.
+Provider revocation atomically removes only that plugin's registrations, waits for
+provider-adapter retirement, and removes its engine connections while holding both the
+exact installed-content lock and provider-generation CAS; a replacement cannot publish
+between the final check and connection deletion. Regrant holds the same
+content-generation lock through manifest read and provider preparation, then publishes
+only while both its reconciliation generation and exact provider-source generation
+remain current at the synchronous registry commit boundary before reconciling
+connections. Independent cleanup stages continue after a sibling failure and report
+their exact bounded stage names. The HTTP response waits for a bounded interval; work
+exceeding it stays owned by the service and returns `winding-down` rather than a false
+completion. Releasing subscription quiescence is followed by an awaited reconciliation,
+so the revoke path never relies only on the EventBus observer. Trusted-approval records
+retain the exact reconciliation projection after they become approved, rather than
+leaving it only on a transient event.
+
+**Seam, Implementation, callers, and tests.** Runtime route composition supplies the
+existing plugin-module quiescence, operational-event subscription quiescence/reconcile,
+provider registry, Adapter retirement, and engine-connection Adapters. Both direct
+revocation and the distinct-origin trusted regrant path invoke the same service. The
+Plugins surface renders terminal, winding, and incomplete truth with an actionable
+idempotent check/retry path. Adversarial evidence covers drain ordering, disjoint
+supersession, stale revoke/regrant generations, content-locked activation,
+content-generation replacement, timeout ownership, partial failure, retained consent
+projection, durable-write-before-retirement, and truthful HTTP 200/202 projection in
+`plugin-grant-reconciliation.test.ts`, `plugin-installation-generation-fence.test.ts`,
+`plugin-public-routes.test.ts`, and `plugin-host-approval-routes.test.ts`. **Do not
+reintroduce:** grant-route provider mutation, fire-and-forget subscription retirement as
+completion evidence, unbounded response waits, source-wide provider clearing,
+implementation import outside the content-generation lease, or cleanup that can publish
+after its installation generation was replaced.
 
 ## RegistrySupplyChainPolicy
 
-**Intent and Interface.** `verifyRegistryPackage()` checks a fresh registry claim against host-selected Ed25519 keys and observed source bytes. `registry-acquisition.ts` binds that result to the applied policy epoch and exact signing principal. Public Node leaves own the canonical source-tree digest and signature payload; the server keeps installed-root resolution in its existing wrapper.
+[Package verification](../../src-server/services/plugins/registry-supply-chain.ts) and
+[acquisition receipts](../../src-server/services/plugins/registry-acquisition.ts)
+connect the host's registry policy to the source bytes reviewed for installation.
 
-**Contract.** Preview and the central installer obtain a fresh coherent host-provider observation. Root and dependency consent carry an opaque trust revision. The existing selected-generation journal binds the activation receipt digest; aliases cannot authenticate or remove this binding. Exact replay remains supported, while changed source/claim/key/policy continuity refuses with retained data. Offline recovery reuses captured built bytes and original verification under the same policy, never a new registry lookup. Source-tree and installed-artifact digests are distinct. Local ready/pending/MCP admission checks the authoritative applied epoch; a candidate edit alone is not completed withdrawal, and no check claims to terminate started effects.
+**Intent and Interface.** `verifyRegistryPackage()` checks the source digest and
+validates a declared or required Ed25519 signature against host-selected keys.
+`registry-acquisition.ts` binds a configured profile's result to the applied policy
+epoch and exact signing principal, or an explicit unsigned result when that profile
+permits one. Public Node leaves own the canonical source-tree digest and signature
+payload; the server keeps installed-root resolution in its existing wrapper.
 
-**Seam, implementation, callers, and tests.** Runtime configuration publication, registry resolution, preview/install/dependency/recovery routes, provider preparation, and EventStore custody compose these owners. Signed graphs, alias/receipt loss, offline recovery, stale preview, signing-key rotation, provider cleanup, and pinned-provider startup are exercised by the registry policy, installer, loader, and cold-start tests. The older alias-pin/LKG helper remains compatibility/tracer code, not the production pin authority; its `invalidateExistingGrants` flag alone does not establish signing-principal continuity. See [Applied registry trust policy](../design/registry-trust-policy.md) for the supported profile and explicit hosted/migration limits. **Do not reintroduce:** registry-supplied trust anchors, alias authority, content-only signer comparisons, unchecked legacy dependency builds, synchronous remote-cache revocation claims, or direct live-tree rollback.
+A registry without a matching applied profile can take the compatibility path only
+without a supplied claim or retained trust receipt. A claim with no policy is refused;
+an existing verified installation cannot silently lose its trust continuity. Registry
+discovery alone does not mean a package was signed.
+
+**Contract.** Preview and the central installer obtain a fresh coherent host-provider
+observation. Root and dependency consent carry an opaque trust revision. The existing
+selected-generation journal binds the activation receipt digest; aliases cannot
+authenticate or remove this binding. Exact replay remains supported, while changed
+source/claim/key/policy continuity refuses with retained data. Offline recovery reuses
+captured built bytes and original verification under the same policy, never a new
+registry lookup. Source-tree and installed-artifact digests are distinct. Local
+ready/pending/MCP admission checks the authoritative applied epoch; a candidate edit
+alone is not completed withdrawal, and no check claims to terminate started effects.
+
+**Seam, implementation, callers, and tests.** Runtime configuration publication,
+registry resolution, preview/install/dependency/recovery routes, provider preparation,
+and EventStore custody compose these owners. Signed graphs, alias/receipt loss, offline
+recovery, stale preview, signing-key rotation, provider cleanup, and pinned-provider
+startup are exercised by the registry policy, installer, loader, and cold-start tests.
+The older alias-pin/LKG helper remains compatibility/tracer code, not the production pin
+authority; its `invalidateExistingGrants` flag alone does not establish
+signing-principal continuity. See [Applied registry trust
+policy](../design/registry-trust-policy.md) for the supported profile and explicit
+hosted/migration limits. **Do not reintroduce:** registry-supplied trust anchors, alias
+authority, content-only signer comparisons, unchecked legacy dependency builds,
+synchronous remote-cache revocation claims, or direct live-tree rollback.
 
 ## ReviewEvidenceModule
 
