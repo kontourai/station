@@ -206,17 +206,30 @@ A skill can also declare itself runnable as a slash command, which is how a reus
 
 Station speaks the Model Context Protocol for tools. An integration is an MCP server that exposes tools; a tool is one callable function from that server.
 
-Station ships two built-in servers. `station-control` exposes Station's own platform operations — agents, skills, integrations, jobs, plugins, providers — as tools, which is how an agent can manage Station itself. `station-docs` is this documentation server: static shipped prose, no credential, no live state.
+Two built-in servers serve different purposes here. `station-control` exposes
+Station operations as tools; `station-docs` serves static shipped prose without
+credentials or live state. This is not an exhaustive server inventory: the
+[Station Browser MCP server](../../src-server/tools/station-browser-mcp-server.ts)
+has its own delivery and authorization boundary.
 
 Third-party MCP servers are configured as integrations and can be attached to an Agent. Delivery to an external engine follows that engine's transport and credential-custody policy; an empty environment does not grant a server arbitrary authority. The built-in Station Docs server has a verified runtime identity and no credential requirement. Station Control is a separate capability with its own authorization and delivery requirements.
 
-Mutating tool calls are governed work. Platform mutations can require approval, are recorded, and produce receipts when they run inside a gated session; approvals surface in an approval inbox where the decision and its resolution are both kept.
+Mutating tools remain subject to their authorization and approval rules.
+Inspect the specific tool result and the approval or execution evidence
+available for that operation. A successful tool response alone does not prove
+that a Flow receipt was persisted or that a gate passed. See the
+[Session API](session-api.md) for the current request, decision, and evidence
+surfaces.
 
 ## Trust, gates, evidence, and receipts
 
 A gate is a condition that must be satisfied by evidence, routed back, blocked, or explicitly excepted. Gate verdicts are computed from evidence, not from an agent saying it finished.
 
-Evidence is an artifact that supports or refutes a claim about work: command output, files, test results, readiness checks, human attestations, trust artifacts. A receipt is the durable record connecting a claim, its evidence, and the resulting verdict, so a future reader can see why work was allowed to continue.
+Evidence is an artifact that supports or refutes a claim about work: command
+output, files, test results, readiness checks, human attestations, or trust
+artifacts. A receipt records an operation, decision, or evidence handoff. Read
+its kind, owner, outcome, and references before deciding what it proves; an
+execution receipt is not automatically a gate verdict.
 
 Two outcomes are first-class and deliberately visible. A route-back means the work can continue but is not complete. An exception is a human-accepted override of missing or failing evidence — explicit debt in the receipt trail, never a silent bypass. And when something simply has not been checked, the honest statement is NOT_VERIFIED.
 
@@ -431,7 +444,12 @@ Engine — what executes an Agent: Station's own engine, or an external engine s
 
 Project — the working context an agent operates in. Task — a durable work identity owned by a project. Session — one bounded execution episode. Turn — one interaction inside a session. Run — the execution accounting for work.
 
-Gate — a condition satisfied by evidence. Gate verdict — the outcome (pass, wait, route-back, block, exception), never "done" as a vibe. Evidence — an artifact supporting or refuting a claim. Receipt — the durable claim-evidence-verdict record. Exception — an explicitly accepted override. NOT_VERIFIED — the honest statement when something has not been checked.
+Gate — a condition evaluated against evidence. Gate verdict — the reported
+outcome, such as pass, wait, route-back, block, or exception. Evidence — an
+artifact supporting or refuting a claim. Receipt — a record of an operation,
+decision, or evidence handoff; its kind and owner determine what it establishes.
+Exception — an explicitly accepted override. NOT_VERIFIED — a claim that has
+not been checked.
 
 Skill — a reusable bundle of instructions and behavior, optionally runnable as a slash command. Integration — an MCP server exposing tools. Tool — one callable. Plugin — an installable platform extension.
 

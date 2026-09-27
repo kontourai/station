@@ -165,7 +165,7 @@
     {
       "id": "tool-servers",
       "title": "MCP tool servers, integrations, and tools",
-      "summary": "An integration is an MCP server that exposes tools; a tool is one callable within it, and Station ships two built-in servers — station-control (operate Station) and station-docs (explain Station).",
+      "summary": "An integration is an MCP server exposing tools. Station Control and Station Docs are two built-in examples with different authority; other servers, such as Station Browser, have their own delivery boundaries.",
       "tags": [
         "mcp",
         "tool server",
