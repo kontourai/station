@@ -100,12 +100,17 @@ describe('PluginModalStack folder picker (plugin management)', () => {
     ).toBeTruthy();
     expect(document.querySelector('.plugins__modal-header')).toBeTruthy();
     expect(document.querySelector('.plugins__folder-path')).toBeTruthy();
-    expect(screen.getByText('project').closest('button')?.className).toBe(
-      'plugins__folder-entry',
-    );
-    expect(screen.getByText('Select This Folder').className).toBe(
-      'plugins__folder-select-btn',
-    );
+    expect(
+      screen
+        .getByText('project')
+        .closest('button')
+        ?.classList.contains('plugins__folder-entry'),
+    ).toBe(true);
+    expect(
+      screen
+        .getByText('Select This Folder')
+        .classList.contains('plugins__folder-select-btn'),
+    ).toBe(true);
     expect(screen.getByRole('heading', { name: 'Select Folder' }).id).toBe(
       'folder-picker-title',
     );
@@ -148,9 +153,8 @@ describe('PluginModalStack folder picker (plugin management)', () => {
 
     renderFolderPicker();
 
-    const message = screen.getByText('Permission denied');
-    expect(message.className).toBe(
-      'plugins__modal-message plugins__message--error',
-    );
+    const { classList } = screen.getByText('Permission denied');
+    expect(classList.contains('plugins__modal-message')).toBe(true);
+    expect(classList.contains('plugins__message--error')).toBe(true);
   });
 });

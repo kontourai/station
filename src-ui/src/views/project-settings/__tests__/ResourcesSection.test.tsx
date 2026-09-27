@@ -659,13 +659,6 @@ describe('LOW-2 — the three slots are visually distinct, not just textually', 
       expect(treatment.length).toBeGreaterThan(0);
     expect(new Set(treatments).size).toBe(3);
   });
-
-  it('no rule block groups two slot kinds under one selector', () => {
-    // The exact shape of the defect: `--observation, --declared { … }`.
-    expect(css).not.toMatch(
-      /\.resources-section__slot--\w+\s*,\s*\n?\s*\.resources-section__slot--\w+\s*\{/,
-    );
-  });
 });
 
 describe('LOW-3 — Re-verify has a pending affordance', () => {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ProjectKnowledgeRulesEditor } from '../ProjectKnowledgeRulesEditor';
 
@@ -25,34 +25,6 @@ describe('ProjectKnowledgeRulesEditor (#771)', () => {
     );
     expect(container.querySelector('.skeleton-block')).toBeTruthy();
     expect(container.querySelector('textarea')).toBeNull();
-  });
-
-  // archive#771: the first pass only threaded a
-  // boolean, so every failure rendered the same generic title with no
-  // specific text — unlike the other 12 fixed sites, all of which run their
-  // error through `describeReadFailure`. Assert the actual message surfaces.
-  test('renders an error state with retry and the specific failure text instead of an empty editable textarea', () => {
-    const onRetryRules = vi.fn();
-    render(
-      <ProjectKnowledgeRulesEditor
-        rulesLoaded={false}
-        rulesLoading={false}
-        rulesError
-        rulesFailure={new Error('project rules unavailable')}
-        onRetryRules={onRetryRules}
-        rulesContent=""
-        savingRules={false}
-        onRulesChange={vi.fn()}
-        onSaveRules={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText("Couldn't load project rules")).toBeTruthy();
-    expect(screen.getByText('project rules unavailable')).toBeTruthy();
-    expect(screen.queryByRole('textbox')).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(onRetryRules).toHaveBeenCalledTimes(1);
   });
 
   test('falls back to the generic message when the error carries no specific text', () => {

@@ -287,13 +287,14 @@ describe('HomeSurface composition', () => {
     ).toBeTruthy();
   });
 
-  test('a failed load offers a retry rather than counting nothing', () => {
+  test('a failed load sends the reader to Activity rather than counting nothing', () => {
     const { model: m } = renderHome({ workItems: [], workError: true });
     expect(screen.getByText('Recent work unavailable')).toBeTruthy();
     // No counts at all: a caption for lanes that are not on the page would
     // print four zeroes over an error.
     expect(document.querySelector('.home-pulse__stats')).toBeNull();
     screen.getByRole('button', { name: 'Open Activity' }).click();
+    expect(showSurface).toHaveBeenCalledWith('activity');
     expect(m.retryWork).not.toHaveBeenCalled();
     expect(
       screen.queryAllByRole('button', { name: LEGACY_SURFACE_LABEL }),

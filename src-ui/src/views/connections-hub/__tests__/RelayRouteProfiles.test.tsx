@@ -39,27 +39,19 @@ vi.mock('../../../platform/PlatformProfileContext', () => ({
   }),
 }));
 
-vi.mock('@kontourai/station-connect/connection-trust', () => ({
-  openDeviceConnectionTrustStore: async () => ({
-    read: mocks.read,
-    close: mocks.close,
+vi.mock(
+  '@kontourai/station-connect/connection-trust',
+  async (importOriginal) => ({
+    // The real `stationRelayRouteTrustStatus` runs; only the device store is faked.
+    ...(await importOriginal<
+      typeof import('@kontourai/station-connect/connection-trust')
+    >()),
+    openDeviceConnectionTrustStore: async () => ({
+      read: mocks.read,
+      close: mocks.close,
+    }),
   }),
-  stationRelayRouteTrustStatus: (
-    record: {
-      status: 'approved' | 'revoked';
-      trust: { stationId: string; enrollmentId: string };
-    } | null,
-    route: { stationId: string; enrollmentId: string },
-  ) => {
-    if (!record) return 'untrusted';
-    if (
-      record.trust.stationId !== route.stationId ||
-      record.trust.enrollmentId !== route.enrollmentId
-    )
-      return 'mismatch';
-    return record.status;
-  },
-}));
+);
 
 vi.mock('../../../platform/native/relayKeyApproval', () => ({
   nativeRelayKeyApproval: {

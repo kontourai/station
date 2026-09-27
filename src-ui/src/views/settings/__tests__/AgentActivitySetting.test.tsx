@@ -124,15 +124,21 @@ describe('AgentActivitySetting', () => {
     expect(load).not.toHaveBeenCalled();
   });
 
-  it('is absent when the host does not report remote-push as enabled', async () => {
-    // The real runtime: under jsdom the platform adapter is the web one.
-    const { agentActivityController } = await import(
-      '../../../platform/native/agentActivityRuntime'
-    );
-    renderWith(agentActivityController);
-    await act(async () => {});
-    expect(screen.queryByTestId('agent-activity')).toBeNull();
-  });
+  it.each(['android', 'ios'])(
+    'is absent on %s when the host does not report remote-push as enabled',
+    async (phoneTarget) => {
+      target = phoneTarget;
+      // The real runtime: under jsdom the platform adapter is the web one.
+      const { agentActivityController } = await import(
+        '../../../platform/native/agentActivityRuntime'
+      );
+      const load = vi.fn(agentActivityController);
+      renderWith(load);
+      await act(async () => {});
+      expect(load).toHaveBeenCalled();
+      expect(screen.queryByTestId('agent-activity')).toBeNull();
+    },
+  );
 
   it('turns on through the plugin and the Station, and turns off again', async () => {
     const { controller, commands, unregister } = await controllerFor();
@@ -295,14 +301,6 @@ describe('AgentActivitySetting on iOS', () => {
       'https://station.test',
     );
     expect(screen.queryByRole('alert')).toBeNull();
-  });
-
-  it('shows nothing, and no error, when the host has no Live Activity half', async () => {
-    const load = vi.fn(async () => null);
-    renderWith(load);
-    await act(async () => {});
-    expect(load).toHaveBeenCalled();
-    expect(screen.queryByTestId('agent-activity')).toBeNull();
   });
 
   it('shows nothing, and no error, when the build is not signed for push', async () => {

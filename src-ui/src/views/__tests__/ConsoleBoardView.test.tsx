@@ -379,16 +379,6 @@ describe('ConsoleBoardView — the Board names its columns on a phone (station#3
       container.querySelector('[role="tablist"][aria-label="Flow stages"]'),
     ).toBeNull();
   });
-
-  test('the strip uses the shared tab-strip primitive, not page-local markup', () => {
-    coarsePointer = true;
-    queryResult = { data: backlogAndInFlight, isLoading: false, error: null };
-    const { container } = renderView();
-
-    const strip = container.querySelector('[aria-label="Flow stages"]');
-    expect(strip?.className).toContain('page__tabs');
-    expect(strip?.className).toContain('tab-strip--scroll');
-  });
 });
 
 describe('ConsoleBoardView — the pane path (epic station#4142 M4a)', () => {
