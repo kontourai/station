@@ -27,8 +27,8 @@ The adapter is intended to receive an approved target separately from persisted
 Pane data, reject native geometry/handles, and return an explicit external-open
 action when no host is available. The Node tests cover these adapter decisions,
 not a running Tauri or Electron host. See the
-[fixture](scripts/workspace-pane-adapter.node.ts),
-[adapter](scripts/workspace-pane-adapter.ts), and
+[fixture](./scripts/workspace-pane-adapter.node.ts),
+[adapter](./scripts/workspace-pane-adapter.ts), and
 [current descriptor contract](../../packages/contracts/src/workspace-pane.ts).
 
 The separate-window crate proves that the stable Tauri API type-checks. The

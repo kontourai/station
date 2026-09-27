@@ -104,32 +104,25 @@ the save/compile behavior has not been changed in this pass.
 Tracked in [#2729: capture source identity](https://github.com/kontourai/station/issues/2729),
 with delayed-response, root-change, and source-edit acceptance cases.
 
-### Notification alert suppression has two different owners
+### Notification suppression now shares its policy owner
 
-The Android [FCM channel](../../src-server/services/notifications/delivery/fcm-alert-channel.ts)
-has a private `isCardAlerted` predicate. The iOS
-[APNs channel](../../src-server/services/notifications/delivery/apns-alert-channel.ts)
-uses [card-alerted-categories](../../src-server/services/notifications/delivery/card-alerted-categories.ts).
-The shared predicate requires an explicit `onActivityCard: true` marker and
-recognizes a registry approval tied to an orchestration thread. The FCM copy
-uses the older category/session-kind rule without that marker.
+The initial audit found different Android and iOS predicates. At
+`3c655ae4cb3223a5c7b5438edb95f14c7a917d94`, an orchestration approval without
+an activity-card marker was suppressed by FCM and accepted by APNs. That was a
+classification finding, not proof of a missed alert on a phone.
 
-This is a confirmed policy difference, not just similar-looking code. Calling
-both channels' public `accepts` method with an `approval-request`, runtime
-Session ID, orchestration request kind, and no activity-card marker yields
-`false` for FCM and `true` for APNs at the audited revision. That observation
-tests classification only; it does not prove a missing or duplicate alert on
-a real phone.
+The upstream fix [#2738](https://github.com/kontourai/station/pull/2738)
+removed the FCM copy. Both channels now call
+[card-alerted-categories](../../src-server/services/notifications/delivery/card-alerted-categories.ts),
+which requires the writer's `onActivityCard` marker and handles registry twins.
+The audit merged that implementation and ran the FCM/shared-predicate tests.
+[#2730](https://github.com/kontourai/station/issues/2730) retains the original
+finding and documentation acceptance.
 
-Next implementation review: trace the notification writers and audience rules,
-decide the intended cross-platform suppression rule, and place it behind one
-owner with tests for ephemeral Sessions and registry twins. Changing that rule
-would change behavior, so this documentation pass records the difference and
-corrects the stale “same rule” comment without choosing a policy silently.
-
-Tracked in [#2730: cross-platform suppression policy](https://github.com/kontourai/station/issues/2730)
-under the notification epic. Classification proof and physical delivery proof
-remain separate acceptance items.
+The shared predicate still describes card membership, not proof that a card
+alert appeared. Coalescing, delayed sends, and a disabled card can affect the
+actual experience. Those remaining timing and device boundaries need their
+own evidence; sharing a helper does not resolve them automatically.
 
 ### CLI request assembly does not always use the shared client contract
 

@@ -256,26 +256,15 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
   // cannot do this while the gate is showing a blocking connection error.
   _setApiBase(apiBase);
 
-  // The native host notification watch is **dormant** — deliberately not
-  // started. The live blocker is archive#917 (the FCM/APNs dependency decision;
-  // archive#3088, which corrected this record, is closed). It is blocked
-  // three ways on Android (the cached-app
-  // freezer kills the poller thread when backgrounded, the foreground service
-  // that would prevent that is blocked by tauri#11609/archive#15671, and native Rust
-  // cannot resolve DNS there at all). Calling it today would fail every poll
-  // and log an error on every launch.
+  // This context does not start the legacy notification_watch: that reader
+  // bypasses delivery-envelope/privacy decisions. Desktop uses notification_feed;
+  // mobile uses FCM/APNs. Earlier Android limitations are dated evidence in
+  // docs/guides/native-shell-verification.md (archive#3088), not a current DNS rule.
   //
-  // This is where it goes when it is switched on: an effect that starts the
-  // watch from `platform/native/notify` with `apiBase` and the active
-  // credential, guarded on `profile.isTauri`, stopping it on cleanup.
-  //
-  // One trap worth keeping: read the credential during *render*, not inside
-  // the effect. `credentialProvider` keeps a stable identity across a pairing
-  // completing, so depending on the provider rather than the value it returns
-  // leaves the watch unstarted until something unrelated re-runs the effect.
-  //
-  // (Written prose rather than commented-out code on purpose — the dormancy
-  // guard in native-notification-watch.test.ts greps for the call.)
+  // Preserve the old pairing lesson: credentialProvider can keep the same
+  // function identity while its credential changes. An effect depending only
+  // on that function misses the change. The request boundary below captures
+  // current credential evidence when a request is issued.
 
   // Install the process-wide SDK boundary before any descendant layout effect
   // can start a connection-health probe. A parent layout effect runs after its

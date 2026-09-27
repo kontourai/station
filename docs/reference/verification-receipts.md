@@ -70,7 +70,7 @@ of them invalidates the key:
 | `environmentDigest` | SHA-256 of allowlisted behavior toggles only | changing `STATION_CI_FAST_BASE`, `STATION_CI_FAST_SCOPE`, `STATION_E2E_SEED_REGRESSION`, `STATION_FEATURES`, `STATION_SERVICE_ITEST`, or the effective `PRODUCT_LAW_OBSERVATION_TIMEOUT_MS` |
 | `laneId` / `command` | lane catalog | selecting a different lane |
 | `manifestDigest` | prepush test groups, the E2E spec→bucket assignment, or the command | a test-file list or E2E bucket assignment change |
-| `dependencyDigest` | `package-lock.json` at the **repository root** (resolved from the Git toplevel, not `process.cwd()`) | a lockfile change |
+| `dependencyDigest` | repository-root dependency contract, described below | lockfile, workspace, lifecycle policy, patch or manifest changes |
 | `nodeVersion` | `process.version` | switching the Node runtime |
 | `toolchain` | detected package manager, e.g. `npm@<version>` | switching the package manager / its version |
 | `toolchainIdentity` | SHA-256 digest of the canonical Node and npm executable identities | replacing or removing either bound executable, even at the same path/version |
@@ -82,10 +82,13 @@ without `.git`, or with embedded credentials derives one identity independent
 of where it lives on disk. The common git directory is used only as a fallback
 for a local repository with no origin. `collectRepositoryIdentity` resolves
 the git root and common git dir correctly even when invoked from a
-subdirectory. `collectVerificationProvenance` defaults its lockfile to the
-**repository-root** `package-lock.json` (via that resolved toplevel), so a
-subdirectory invocation digests the same lockfile as a root invocation rather
-than pointing at a `package-lock.json` that does not exist. Likewise,
+subdirectory. In this pnpm repository, dependency identity includes root
+`package.json`, `pnpm-lock.yaml` and `pnpm-workspace.yaml`, plus the present
+`.npmrc`, lifecycle script/allowlist, prebuild manifest and patch files. An
+explicit lockfile override is an additional input. The retained non-pnpm path
+uses its root npm lockfile; it is not Station's current default. See
+[the dependency identity owner](../../scripts/lib/test-reliability.mjs).
+A subdirectory invocation resolves the same repository inputs. Likewise,
 `collectWorkspaceProvenance` roots every git command and untracked-file read
 at the Git top-level (not `process.cwd()`): `git ls-files` from a subdirectory
 lists only that subtree with invocation-relative paths, so a coordinator that
@@ -325,8 +328,10 @@ Two of those statuses mean the run was **stopped**, not judged: `timed_out` and
 `canceled`. No step failed and no test verdict exists, so the bounded summary
 names the step that was still running as `inFlightStep` rather than
 `failingStep`, and `failingStep` is absent. Every other non-passing status
-still reports `failingStep` as before. Read `inFlightStep` as "give this phase
-more budget, or shard it further" — not as "this step is broken".
+still reports `failingStep` as before. Read `inFlightStep` as the phase that
+was still running. Inspect host load, owned processes and phase progress
+before choosing a fix; its presence does not justify increasing a budget or
+imply a failed product assertion.
 
 This distinction is load-bearing. Eight consecutive tagged releases reported
 `failingStep: test:full:ordinary:raw` alongside a `[vitest-corpus] ordinary:
@@ -432,6 +437,12 @@ as conservative patterns scoped to `e2e-*` so they cannot match another lane's
 the artifact-path contract.
 
 ## Canonical completion lane
+
+The [testing guide](../guides/testing.md#available-escalation-lanes) owns when
+to run each lane. Ordinary pull requests use focused evidence and `ci:fast`,
+then the required merge queue checks. Hosted Nightly/tagged promotions own
+canonical full-regression completion. A local `full:regression` run is an
+explicit diagnostic escalation, not a routine response to upstream movement.
 
 Only one lane can certify the final exact workspace: `full-regression`, whose
 literal command is `npm run full:regression`. That command string is the sole
@@ -660,7 +671,7 @@ Validate a receipt against the schema with the draft 2020-12 Ajv build (the
 schema uses `if`/`then`, `const`, and `$defs`):
 
 ```sh
-npx vitest run scripts/__tests__/verification-receipt.test.ts \
+npm run test:focused -- scripts/__tests__/verification-receipt.test.ts \
   scripts/__tests__/verification-lanes.test.ts
 ```
 
@@ -673,8 +684,10 @@ outputs.
 
 ## Relationship to Flow Agents
 
-This is the Station-side producer contract. Flow Agents issue **#1111** is
-separate consumer work: it will read verification receipts as Builder evidence
-through the trust-reconcile manifest, not by reaching into these modules. Until
-that consumer lands, a verification receipt is a recorded artifact that
-informs, but does not by itself satisfy, a Builder gate.
+This is the Station-side producer contract. The root package's
+`trust-reconcile-manifest` declares the exact `full-regression` command for
+published consumers. That declaration is neither an executed receipt nor a
+Builder gate verdict. Consumers must validate the evidence and apply their
+own gate contract; Station does not own those external decisions. See the
+[integration guide](../guides/integrating-station.md) and the installed
+consumer's public contract for its current evidence requirements.
