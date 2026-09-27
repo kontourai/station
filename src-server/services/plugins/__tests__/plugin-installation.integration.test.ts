@@ -447,6 +447,43 @@ test.each([false, true])(
   },
 );
 
+test('the Update route finds no source for a package without its own repository, even inside another checkout', async () => {
+  const f = fixture();
+  // A distinct plugin the enclosing checkout's origin points at.
+  const decoy = mkdtempSync(join(tmpdir(), 'station-enclosing-origin-'));
+  homes.push(decoy);
+  writeFileSync(
+    join(decoy, 'plugin.json'),
+    JSON.stringify({
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'fixture',
+      version: '9.0.0',
+    }),
+  );
+  // The Station home is itself inside a git checkout with that origin.
+  execFileSync('git', ['-C', f.home, 'init', '-b', 'main'], {
+    windowsHide: true,
+    stdio: 'ignore',
+  });
+  execFileSync('git', ['-C', f.home, 'remote', 'add', 'origin', decoy], {
+    windowsHide: true,
+    stdio: 'ignore',
+  });
+  await installPluginFromSource(f.source, [], f.deps);
+  const before = resolveInstalledPluginRoot(f.plugins, 'fixture')!;
+  expect(before.kind).toBe('incarnation');
+  expect(existsSync(join(before.packageRoot, '.git'))).toBe(false);
+  const app = new Hono();
+  registerPluginLifecycleRoutes(app, f.deps);
+  const response = await app.request('/fixture/update', { method: 'POST' });
+  const body = await response.json();
+  expect(response.status, JSON.stringify(body)).toBe(409);
+  expect(body.error).toMatch(/no update source/);
+  expect(resolveInstalledPluginRoot(f.plugins, 'fixture')!.packageRoot).toBe(
+    before.packageRoot,
+  );
+});
+
 /**
  * #2323 S5: an update that names a proposal completes it through the real
  * store, only when the proposal asked to update the plugin that was updated.
@@ -1436,12 +1473,15 @@ test.each(['registry', 'source', 'mutation'] as const)(
         .spyOn(gitExecution, 'execGit')
         .mockImplementation(async (...args) => {
           const result = await originalGit(...args);
-          if (args[1]?.cwd === before.root.packageRoot && args[0][0] === 'pull')
+          if (
+            args[1]?.cwd === before.root.packageRoot &&
+            gitExecution.gitSubcommand(args[0]) === 'pull'
+          )
             retiredPulls.push(before.root.packageRoot);
           if (
             barrier === 'source' &&
             args[1]?.cwd === before.root.packageRoot &&
-            args[0].join(' ') === 'remote get-url origin'
+            args[0].slice(-3).join(' ') === 'remote get-url origin'
           )
             await wait();
           return result;
