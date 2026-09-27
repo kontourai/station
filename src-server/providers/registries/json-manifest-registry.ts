@@ -279,6 +279,23 @@ function assertLocalGitRepositoryConfined(
   physicalRoot: string,
   repository: string,
 ): void {
+  // The source must itself be a directory. git resolves a local clone path by
+  // probing: a regular file at the path is read as a gitfile, and a missing
+  // path falls through to `<path>.git`, `<path>.git/.git` or `<path>.bundle`.
+  // Once the path is a directory git uses it (or its `.git`), so requiring a
+  // directory here leaves only the metadata checked below.
+  let isDirectory = false;
+  try {
+    isDirectory = lstatSync(repository).isDirectory();
+  } catch {
+    // Missing: refused below.
+  }
+  if (!isDirectory) {
+    throw new RegistrySourceConfinementError(
+      source,
+      'a local git source must be a directory',
+    );
+  }
   const readPointer = (file: string, prefix: string): string | null => {
     let stat: ReturnType<typeof lstatSync>;
     try {
@@ -502,6 +519,12 @@ export class JsonManifestRegistryProvider
         this.getLocalRegistryRoot(),
         location,
       );
+      // A git-shaped local source clones whatever its git metadata names, so
+      // that is confined here too; resolvePackage's callers clone it with
+      // their own installer and never reach this provider's install path.
+      if (isGitSource(location)) {
+        assertLocalGitRepositoryConfined(source, physicalRoot, physical);
+      }
       return { kind: 'local', location, physical, root: physicalRoot };
     }
 
@@ -602,9 +625,6 @@ export class JsonManifestRegistryProvider
           throw new Error(
             `Plugin source ${url} uses plain http://. Use an https:// address: code installed over http can be tampered with in transit.`,
           );
-        }
-        if (resolved.kind === 'local') {
-          assertLocalGitRepositoryConfined(source, resolved.root, url);
         }
         const cloneArgs = ['clone', '--depth', '1'];
         if (branch) cloneArgs.push('--branch', branch);

@@ -17,7 +17,7 @@ import {
 } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { listStationTempEntries } from '@kontourai/station-shared/temp-dir';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
@@ -40,6 +40,7 @@ vi.mock('@kontourai/station-shared/temp-dir', async (importOriginal) => {
   };
 });
 
+import { fetchPluginSource } from '../../../services/plugins/plugin-source.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import {
   JsonManifestRegistryProvider,
@@ -1266,6 +1267,9 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
     // latter is O(everything on the machine) and took 3.1s per call once
     // unrelated processes had filled it with ~790k entries.
     const before = new Set(await listStationTempEntries('registry-plugin'));
+    // A contained directory that is not a repository: it passes source
+    // confinement and fails inside `git clone`, after staging began.
+    mkdirSync(resolve(projectHome, 'missing-source.git'));
     writeFileSync(
       manifestPath,
       JSON.stringify({
@@ -2088,5 +2092,122 @@ describe('JsonManifestRegistryProvider source confinement', () => {
     expect(existsSync(resolve(projectHome, 'plugins', 'good-git-plugin'))).toBe(
       true,
     );
+  });
+
+  /** An outside repository and bare clone whose plugin is `secret-plugin`. */
+  function outsideRepos(outside: string) {
+    const work = resolve(outside, 'secret-repo');
+    commitPluginRepo(work, 'secret-plugin');
+    const bare = resolve(outside, 'secret-bare.git');
+    execGitSync(['clone', '--bare', work, bare], {
+      hardening: { allowFileProtocol: true },
+    });
+    const bundle = resolve(outside, 'secret.bundle');
+    execGitSync(['bundle', 'create', bundle, '--all'], { cwd: work });
+    return { work, bare, bundle };
+  }
+
+  test.each([['file'], ['probe'], ['bundled']])(
+    'refuses local git source %s.git: a gitfile, or missing with a probed suffix beside it',
+    async (name) => {
+      const { root, outside, projectHome, provider } =
+        await confinementLayout();
+      const repos = outsideRepos(outside);
+      const plugins = resolve(root, 'plugins');
+      // B1: the source path is itself a gitfile, with a relative pointer.
+      writeFileSync(
+        resolve(plugins, 'file.git'),
+        `gitdir: ${relative(plugins, resolve(repos.work, '.git'))}\n`,
+      );
+      // B2: the named path is missing; git would probe these siblings.
+      symlinkSync(repos.bare, resolve(plugins, 'probe.git.git'));
+      symlinkSync(repos.bundle, resolve(plugins, 'bundled.git.bundle'));
+      const registry = provider([
+        { id: name, source: `../plugins/${name}.git` },
+      ]);
+      const result = await registry.install(name);
+      expect(result.success).toBe(false);
+      expect(result.message).toMatch(/a local git source must be a directory$/);
+      await expect(registry.resolvePackage(name)).rejects.toBeInstanceOf(
+        RegistrySourceConfinementError,
+      );
+      expect(existsSync(resolve(projectHome, 'plugins', 'secret-plugin'))).toBe(
+        false,
+      );
+    },
+  );
+
+  /**
+   * The install and preview routes take `resolvePackage`'s source and clone it
+   * with the generic installer (`fetchPluginSource`), never this provider's
+   * install. Refusal must therefore happen at resolution.
+   */
+  async function stageThroughInstaller(
+    registry: JsonManifestRegistryProvider,
+    id: string,
+    pluginsDir: string,
+  ): Promise<string> {
+    const resolved = await registry.resolvePackage(id);
+    const staged = await fetchPluginSource(resolved!.source, pluginsDir, {
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    } as never);
+    if ('error' in staged) throw new Error(staged.error);
+    try {
+      return JSON.parse(
+        readFileSync(join(staged.tempDir, 'plugin.json'), 'utf8'),
+      ).name;
+    } finally {
+      rmSync(staged.tempDir, { recursive: true, force: true });
+    }
+  }
+
+  test('refuses git indirection at resolvePackage, before the generic installer clones', async () => {
+    const { root, outside, projectHome, provider } = await confinementLayout();
+    const repos = outsideRepos(outside);
+    const plugins = resolve(root, 'plugins');
+    const pluginsDir = resolve(projectHome, 'plugins');
+    const gitfileRepo = resolve(plugins, 'gitfile.git');
+    mkdirSync(gitfileRepo);
+    writeFileSync(
+      resolve(gitfileRepo, '.git'),
+      `gitdir: ${resolve(repos.work, '.git')}\n`,
+    );
+    execGitSync(
+      [
+        'clone',
+        '--bare',
+        '--shared',
+        repos.work,
+        resolve(plugins, 'shared.git'),
+      ],
+      { hardening: { allowFileProtocol: true } },
+    );
+    for (const [id, reason] of [
+      ['gitfile', /outside the registry root through a symlink$/],
+      ['shared', /git object alternates are not allowed/],
+    ] as const) {
+      const registry = provider([{ id, source: `../plugins/${id}.git` }]);
+      await expect(
+        stageThroughInstaller(registry, id, pluginsDir),
+      ).rejects.toThrow(reason);
+    }
+
+    // Positive control: a contained bare repository stages through the same
+    // installer path.
+    const work = resolve(root, 'work', 'good-repo');
+    commitPluginRepo(work, 'good-git-plugin');
+    execGitSync(['clone', '--bare', work, resolve(plugins, 'good.git')], {
+      hardening: { allowFileProtocol: true },
+    });
+    await expect(
+      stageThroughInstaller(
+        provider([{ id: 'good', source: '../plugins/good.git' }]),
+        'good',
+        pluginsDir,
+      ),
+    ).resolves.toBe('good-git-plugin');
   });
 });
