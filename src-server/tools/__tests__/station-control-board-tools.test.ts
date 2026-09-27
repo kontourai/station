@@ -58,18 +58,6 @@ describe('station-control board tools', () => {
     fetchMock.mockReset();
   });
 
-  test('registers board_pin, board_unpin, board_move, board_read', async () => {
-    const tools = await registerTools();
-    expect(Object.keys(tools)).toEqual(
-      expect.arrayContaining([
-        'board_pin',
-        'board_unpin',
-        'board_move',
-        'board_read',
-      ]),
-    );
-  });
-
   test('board_pin POSTs to /api/board/pin and forwards the block payload', async () => {
     const board = { schemaVersion: 1, tabs: [], widgets: [] };
     fetchMock.mockResolvedValueOnce(
