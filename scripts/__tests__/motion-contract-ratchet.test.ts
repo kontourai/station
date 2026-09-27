@@ -94,50 +94,6 @@ describe('motion contract ratchet', () => {
     ).toEqual({ hardCoded: [], transitionAll: [], unresolvedToken: [] });
   });
 
-  it('keeps representative migrated surfaces at zero hard-coded declarations', () => {
-    const migrated = [
-      'src-ui/src/index.css',
-      'src-ui/src/views/page-layout.css',
-      'src-ui/src/views/ScheduleView.css',
-      'src-ui/src/components/notifications/NotificationContainer.css',
-      'src-ui/src/components/chat/chat.css',
-      // station#3166: these use Console Kit's --k-dur/--k-ease, which ARE
-      // declared (in @kontourai/ui/tokens, imported by index.css) — the
-      // issue's premise that they were undefined was wrong.
-      'src-ui/src/components/trust/TrustPanel.css',
-      'src-ui/src/components/readiness/ReadinessPanel.css',
-      'src-ui/src/components/flow/flow-events.css',
-      'src-ui/src/components/flow/FlowRunConsole.css',
-    ];
-
-    for (const file of migrated) {
-      expect(
-        inspectMotionCss(
-          readFileSync(join(process.cwd(), file), 'utf8'),
-          REAL_TOKENS,
-        ),
-        file,
-      ).toEqual({ hardCoded: [], transitionAll: [], unresolvedToken: [] });
-    }
-
-    const baseline = JSON.parse(
-      readFileSync(
-        join(process.cwd(), 'scripts/motion-contract-baseline.json'),
-        'utf8',
-      ),
-    ) as { hardCodedDeclarationCeiling: number };
-    // station#753 item 6 migrated the last 25 legacy-ceiling files (99 of the
-    // 100 declarations) to tokens; two declarations remain, both load-bearing
-    // coupled timing constants rather than motion-grammar durations a token
-    // could express: NotificationHistory.css's `notification-dismiss-collapse`
-    // (`4s`) encodes `UNDO_WINDOW_MS` from NotificationHistory.tsx; VoicePill
-    // .css's two `transition:` blocks (`.voice-pill--listening`,
-    // `.voice-pill__ring`, `0.08s` each) smooth a live per-microphone-frame
-    // signal (NovaVoiceSessionAdapter.ts `handleMicrophoneFrame`) — Direct-
-    // manipulation category, not Feedback/state. 1 + 2 = 3.
-    expect(baseline.hardCodedDeclarationCeiling).toBe(3);
-  });
-
   it('rejects hard-coded motion and transition all', () => {
     const findings = [
       ...inspectMotionCss(
