@@ -1713,6 +1713,7 @@ function prepareCiFastExecution({ cwd, env }) {
  *   signal?: AbortSignal;
  *   headSha?: string;
  *   shardCount?: number;
+ *   now?: () => number;
  * }} [options]
  */
 export async function planChangedVerificationShards(
@@ -1728,6 +1729,7 @@ export async function planChangedVerificationShards(
     signal,
     headSha = git(root, ['rev-parse', 'HEAD']).trim(),
     shardCount = FAST_CHECKS_SHARD_COUNT,
+    now = Date.now,
   } = {},
 ) {
   assertDependencyProvenance({ cwd: root });
@@ -1740,6 +1742,7 @@ export async function planChangedVerificationShards(
   let { selection } = prepared;
   let groups = [];
   let emptyRelatedSelection;
+  let relatedDiscovery;
   if (
     executionSelection.tests.length ||
     executionSelection.relatedPaths.length
@@ -1751,9 +1754,17 @@ export async function planChangedVerificationShards(
         discoverRelatedTestFiles(rootPath, paths, { ...options, run, signal }));
     const planned = await planChangedVitestGroups(root, executionSelection, {
       discoverRelated: async (discoveryRoot, relatedPaths) => {
+        const startedAt = now();
         const files = await discover(discoveryRoot, relatedPaths, {
           base: changed.mergeBase,
         });
+        // #2803: discovery now runs on far more pull requests and has a
+        // fixed cap. Record its cost in every plan, so the hosted margin is
+        // measured per run rather than argued.
+        relatedDiscovery = {
+          milliseconds: now() - startedAt,
+          capMilliseconds: RELATED_DISCOVERY_TIMEOUT_MS,
+        };
         relatedDiscoveryCount = files.length;
         return files;
       },
@@ -1784,6 +1795,7 @@ export async function planChangedVerificationShards(
     escalated: selection.escalated,
     productLaws: productLawRouting.productLaws,
     ...(emptyRelatedSelection ? { emptyRelatedSelection } : {}),
+    ...(relatedDiscovery ? { relatedDiscovery } : {}),
     groups,
     fileCount: groups.reduce((total, group) => total + group.files.length, 0),
   };
