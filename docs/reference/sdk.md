@@ -623,6 +623,13 @@ searched; hosted Task reads are restricted until a tenant-owned Task store is
 composed. Files, receipts, external projections and arbitrary plugin sources
 are not supported by this initial runtime composition.
 
+The [SDK parser](../../packages/sdk/src/client/unified-search.ts),
+[HTTP routes](../../src-server/routes/search.ts),
+[runtime composition](../../src-server/services/search/runtime-search.ts),
+[canonical message reader](../../src-server/services/orchestration/transcript-search-queries.ts),
+and [palette](../../src-ui/src/components/search/WorkspaceSearchPalette.tsx)
+show the request-to-inspection path.
+
 These React Query wrappers define operation-specific keys and freshness policy.
 Many legacy readers resolve an ambient API base; protected readers require an
 explicit captured scope. The generic wrapper does not add authority, validate a
@@ -740,11 +747,12 @@ Fetches a single project by slug. It accepts the same scoped configuration as
 Unscoped callers retain the legacy key and ambient API-base behavior for
 compatibility. Station's main-app Project list/detail consumers capture this
 scope through `ProjectsContext`.
-The current host scope represents Connect's authenticated connection authority
-generation (and a native binding when present). It does not independently name
-an account principal or tenant. A same-origin cookie-account change that leaves
-that connection generation unchanged is therefore outside this tranche; full
-account/principal cache lifetime composition remains required.
+The host scope includes Connect's connection authority generation, plus a native
+binding or the browser relay's account-continuation scope when applicable. A
+direct browser cookie-account change that leaves the connection generation
+unchanged is not independently detected by that scope. The durable cache
+namespace below additionally uses the server's observed principal; that
+observation still has to be refreshed after an account change.
 
 ### `useProjectIdentityQuery(slug: string, config?)`
 
@@ -752,7 +760,9 @@ Reads a Project's portable identity for personal-peer placement (#480). It
 accepts the same scoped configuration as `useProjectQuery` — the cache key
 carries the API base, authority key and slug, so a late identity response
 for a previous Home or authority can never satisfy the current selection,
-and a missing scope fails closed instead of reading ambient state. Callers
+and `{ requireRequestScope: true }` disables a missing-scope read. Without that
+flag, legacy calls retain the ambient API base. Station's
+`useScopedProjectIdentityQuery` supplies the flag. Callers
 that know the local Project record they selected should also pass
 `expectedProjectId`: it joins the cache key and validates the response's
 `association.localProjectId`, so a same-slug delete/recreate (or a stale
@@ -786,10 +796,11 @@ Dispatches one delegated task. The mutation variable is backwards
 compatible with the original published shape — a plain `DelegateTaskInput`,
 which resolves against the hook's `apiBase` default and the ambient
 authority exactly as before. The recommended form is the per-invocation
-envelope — `{ input, apiBase?, requestScope? }` — which freezes the Home
-address and authority the caller captured for that dispatch: a rotation
-across the awaits refuses instead of sending the old intent under new
-credentials, and a late option change cannot redirect an in-flight call.
+envelope — `{ input, apiBase?, requestScope? }`. When the mutation function
+begins, it copies the supplied address and authority before transport awaits:
+a later authority rotation refuses instead of sending the old intent under new
+credentials. Treat mutation variables as immutable after calling `mutate` or
+`mutateAsync`; this wrapper does not snapshot the whole input at that public call.
 The public request body stays exactly the input (prompt, target, optional
 parent task) in both forms; the scope is transport-only and never sent.
 
@@ -821,6 +832,12 @@ origin and request authority before fetching; its guard verifies both that
 captured authority and the destination client. Seeding checks it before every
 cache write and preserves newer individual reads. The ambient legacy boot helper
 remains available for existing callers; it is not the multi-home host path.
+
+The [SDK Project queries](../../packages/sdk/src/query-domains/workspaceProjects.ts),
+[host Project context](../../src-ui/src/contexts/ProjectsContext.tsx),
+[authority namespace](../../src-ui/src/lib/authorityNamespace.ts), and
+[query-client owner](../../src-ui/src/contexts/AuthorityQueryContext.tsx)
+separate live request admission from persisted data identity.
 
 ### `useProjectLayoutsQuery(projectSlug: string, config?)`
 
@@ -1242,8 +1259,10 @@ async function attachProjectOnStation(
 }
 ```
 
-The destination directory must already exist on that Station and satisfy the
-primary resource. Attachment does not clone, synchronize files, copy credentials
+When supplied, `workingDirectory` must already exist on that Station and satisfy
+the primary resource. The field is optional: omitting it uses the local Project
+creation default and does not verify a checkout. Attachment does not clone,
+synchronize files, copy credentials
 or move a room's authority. The server publishes the new local Project and its
 identity together; the result distinguishes `created` from an unchanged
 `existing` attachment. Its association contains the shared `portableProjectId`
@@ -1268,6 +1287,11 @@ resource and repo-relative directory, or clears the selection with `null`.
 current identity view; a concurrent Project or identity change returns a conflict. The mutation
 is idempotent and does not inspect, create, or bind a checkout. The selected
 directory is verified only when execution later resolves it on that Station.
+
+See the [client](../../packages/sdk/src/client/project-identity.ts),
+[route](../../src-server/routes/projects/project-identity-routes.ts),
+[identity service](../../src-server/services/projects/project-identity-service.ts),
+and [execution resolver](../../src-server/services/execution-target/execution-target-resolver.ts).
 
 ## Project access administration and account entry
 
@@ -1362,8 +1386,9 @@ not imply edit, execution or administration support.
 `@kontourai/station-sdk/project-shared-tasks` exposes the first bounded shared
 Task read surface. `listProjectSharedTasks(apiBase, slug, options)` returns only
 Tasks an operator explicitly published for the caller's current Project scope.
-`readProjectSharedTaskHistory(...)` returns a closed projection of bounded human
-messages and attribution; structured tool events, attachment metadata and room
+`readProjectSharedTaskHistory(...)` returns bounded `human-message` bodies with
+human or agent attribution; this body-kind filter does not mean every author is
+human. Structured tool events, attachment metadata and room
 write authority are excluded. Human messages and shared documents are returned
 verbatim without redaction and may themselves contain paths, secrets, or other
 private text. `readProjectSharedTaskDocument(...)` returns the current text
@@ -1470,6 +1495,18 @@ authority and grants nothing — and fails closed on absent, conflicting, or
 revoked authority, never a guessed identity. Pass the SAME `ClientRequestOptions`
 (request scope, credential, headers) as the caller's other protected requests;
 validate the closed shape before caching or comparing the public identity tuple.
+
+The account/Project boundary is implemented by the
+[application-session client](../../packages/sdk/src/client/application-session.ts)
+and [service](../../src-server/services/identity/application-session-service.ts),
+[relay enrollment helpers](../../packages/sdk/src/client/relay-enrollment.ts)
+and [service](../../src-server/services/identity/relay-enrollment-service.ts),
+[Project access client](../../packages/sdk/src/client/project-access.ts)
+and [membership service](../../src-server/services/projects/project-membership-service.ts),
+and [shared Task routes](../../src-server/routes/projects/project-shared-tasks.ts).
+The separate [account client](../../packages/sdk/src/client/account-authentication.ts)
+and [authority reader](../../packages/sdk/src/client/authority-observation.ts)
+keep account login and the current request's observed authority distinct.
 
 ## Plugin Query Hooks
 
