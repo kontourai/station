@@ -259,6 +259,7 @@ export interface NativeStationProfileRepository {
   ): Promise<void>;
   getRelayRouteProfiles(): readonly StationProfile[];
   subscribeRelayRouteProfiles(listener: () => void): () => void;
+  subscribeActiveConnection(listener: () => void): () => void;
   saveRelayRouteProfile(input: SaveRelayRouteProfileInput): Promise<string>;
   removeRelayRouteProfile(
     connectionId: string,
@@ -396,6 +397,7 @@ export class NativeStationProfileStorage
   private profileStore: StationProfileStore = emptyStationProfileStore();
   private relayRouteProfileSnapshot: readonly StationProfile[] = [];
   private relayRouteProfileListeners = new Set<() => void>();
+  private activeConnectionListeners = new Set<() => void>();
   /**
    * The shared default initially projects into `ACTIVE_KEY` for the legacy
    * connection-store view, but it is not an explicit choice made by this
@@ -504,13 +506,13 @@ export class NativeStationProfileStorage
         )
       : undefined;
     if (this.explicitProcessSelection && explicitStillExists) {
-      this.values.set(ACTIVE_KEY, this.explicitProcessSelection);
+      this.setActiveConnection(this.explicitProcessSelection);
     } else if (selectedStillExists) {
-      this.values.set(ACTIVE_KEY, selectedConnectionId!);
+      this.setActiveConnection(selectedConnectionId!);
     } else if (defaultProfile) {
-      this.values.set(ACTIVE_KEY, profileConnectionId(defaultProfile));
+      this.setActiveConnection(profileConnectionId(defaultProfile));
     } else {
-      this.values.delete(ACTIVE_KEY);
+      this.setActiveConnection(undefined);
     }
     for (const listener of this.relayRouteProfileListeners) listener();
   }
@@ -737,7 +739,7 @@ export class NativeStationProfileStorage
       this.clearExplicitProcessSelection();
     }
     const resolved = profileConnectionId(profile);
-    this.values.set(ACTIVE_KEY, resolved);
+    this.setActiveConnection(resolved);
     return resolved;
   }
 
@@ -749,11 +751,21 @@ export class NativeStationProfileStorage
     // `ConnectionStore` records a temporary selected connection through this
     // key. Retaining it only in memory is intentional: navigation and a
     // one-off selection never rewrite the shared CLI default.
-    this.values.set(key, value);
+    if (key === ACTIVE_KEY) this.setActiveConnection(value);
+    else this.values.set(key, value);
   }
 
   remove(key: string): void {
-    this.values.delete(key);
+    if (key === ACTIVE_KEY) this.setActiveConnection(undefined);
+    else this.values.delete(key);
+  }
+
+  private setActiveConnection(connectionId: string | undefined): void {
+    const previous = this.values.get(ACTIVE_KEY);
+    if (previous === connectionId) return;
+    if (connectionId === undefined) this.values.delete(ACTIVE_KEY);
+    else this.values.set(ACTIVE_KEY, connectionId);
+    for (const listener of this.activeConnectionListeners) listener();
   }
 
   async updateProfile(
@@ -833,7 +845,7 @@ export class NativeStationProfileStorage
         committed = true;
         const nextId = profileConnectionId(updated);
         if (this.values.get(ACTIVE_KEY) === input.connectionId)
-          this.values.set(ACTIVE_KEY, nextId);
+          this.setActiveConnection(nextId);
         if (this.explicitProcessSelection === input.connectionId) {
           this.explicitProcessSelection = nextId;
           this.persistExplicitSelection(nextId);
@@ -967,7 +979,7 @@ export class NativeStationProfileStorage
             );
           }
         } else if (fallback) {
-          this.values.set(ACTIVE_KEY, fallback);
+          this.setActiveConnection(fallback);
         }
       }
       if (failures.length > 0)
@@ -984,6 +996,11 @@ export class NativeStationProfileStorage
   subscribeRelayRouteProfiles(listener: () => void): () => void {
     this.relayRouteProfileListeners.add(listener);
     return () => this.relayRouteProfileListeners.delete(listener);
+  }
+
+  subscribeActiveConnection(listener: () => void): () => void {
+    this.activeConnectionListeners.add(listener);
+    return () => this.activeConnectionListeners.delete(listener);
   }
 
   /** Saves routing intent only; this never adds a direct HTTP connection. */
@@ -1105,7 +1122,7 @@ export class NativeStationProfileStorage
       this.persistExplicitSelection(connectionId);
     else if (explicit && this.persistsClientSelection)
       this.clientSelectionStorage.remove(EXPLICIT_SELECTION_KEY);
-    this.values.set(ACTIVE_KEY, connectionId);
+    this.setActiveConnection(connectionId);
     if (!profile.credentialRef) return false;
     try {
       const exactOrigin = normalizedPairingEndpoint(
@@ -1134,8 +1151,7 @@ export class NativeStationProfileStorage
       };
       return true;
     } catch (error) {
-      if (previousActive === undefined) this.values.delete(ACTIVE_KEY);
-      else this.values.set(ACTIVE_KEY, previousActive);
+      this.setActiveConnection(previousActive);
       throw error;
     }
   }
