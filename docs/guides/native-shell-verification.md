@@ -144,8 +144,9 @@ ID, boot ID, and API base. Native bootstrap retains and replays page/mount facts
 that arrive before desktop readiness state exists, so the eager mount is not a
 browser retry loop. For an owned sidecar, the native host performs the
 authenticated local identity proof and rechecks both the saved profile binding
-and current ticket before committing it. Renderer code requests that native
-proof; it does not own the credential check. For a service-owned or unowned
+and current ticket before committing it. Native page-start/ticket callbacks
+request that proof; the renderer reports its mounted tree separately and does
+not drive the startup identity check. For a service-owned or unowned
 backend, a recovery-surface commit can admit the mounted shell without a
 sidecar ticket. This establishes recovery UI readiness, not backend availability.
 
@@ -179,7 +180,7 @@ Interpret evidence narrowly:
 | Observation | It establishes | It does not establish |
 | --- | --- | --- |
 | Rust readiness/supervisor test passes | State-machine transition contract | Tauri window visibility, dialog rendering, real process lifetime, or package behavior |
-| Renderer startup-readiness test passes | Browser-side ticket/identity proof logic and post-layout mount invocation | Authenticated IPC behavior inside a Tauri WebView or correct pixels |
+| Startup-readiness static test passes | Source wiring for native proof and renderer-mount separation | An executed authenticated Tauri IPC exchange, a visible window, or correct pixels |
 | Browser hostile-plugin spec passes | Isolated browser-frame containment | Native plugin IPC denial or a release-shell sandbox |
 | Sidecar status reaches `failed` after five attempts | Supervisor exhausted automatic sidecar restarts | Cause of the child failure or renderer recovery |
 | `STATION_HOME_RESET_REQUIRED` is logged | An incompatible home blocked sidecar startup | Which files may safely be deleted; use backup/reset policy before acting |

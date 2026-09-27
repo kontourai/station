@@ -12,8 +12,9 @@ Contributor and operator procedures are in the repository's
 Stable, Beta, and Nightly configure their main desktop window to start hidden.
 For a Desktop-owned sidecar, the native host proves its exact generation,
 instance ID, boot ID, and local API base. Revealing application content also
-requires the main renderer to have mounted. The renderer requests the native
-proof; an old ticket cannot reveal a newer sidecar.
+requires the main renderer to have mounted. The native shell starts the
+identity proof; the renderer separately reports that it mounted. An old ticket
+cannot reveal a newer sidecar.
 
 If an installed service owns the home, or Desktop owns no sidecar, the host can
 instead reveal the mounted connection/recovery surface. That does not establish
