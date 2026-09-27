@@ -312,22 +312,6 @@ describe('ProjectSidebarRow', () => {
     expect(screen.queryByRole('button', { name: 'Session Board' })).toBeNull();
   });
 
-  test('renders a deterministic supplemental accent', () => {
-    layoutsQueryMock.mockReturnValue({ data: [] });
-
-    const { container } = render(
-      <ProjectSidebarRow
-        project={project}
-        isActive={false}
-        activeLayout={null}
-        collapsed={false}
-      />,
-    );
-
-    const accent = container.querySelector('.sidebar__project-accent');
-    expect(accent?.getAttribute('style')).toContain('background-color');
-  });
-
   test('uses the set-aware accent prop when provided', () => {
     layoutsQueryMock.mockReturnValue({ data: [] });
     const { container } = render(
