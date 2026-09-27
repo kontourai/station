@@ -591,6 +591,49 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test.each([
+    [
+      'omits the unsafe checkout opt-in',
+      (checkout: Record<string, unknown>) => {
+        delete (checkout.with as Record<string, unknown>)[
+          'allow-unsafe-pr-checkout'
+        ];
+      },
+    ],
+    [
+      'disables the unsafe checkout opt-in',
+      (checkout: Record<string, unknown>) => {
+        (checkout.with as Record<string, unknown>)['allow-unsafe-pr-checkout'] =
+          false;
+      },
+    ],
+  ])('rejects a fork router checkout that %s', (_name, mutate) => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiFixture((forkSmoke) => {
+          const steps = forkSmoke.steps as Array<Record<string, unknown>>;
+          const titleIndex = steps.findIndex(
+            (step) =>
+              step.name === 'Validate base-controlled pull-request title',
+          );
+          const candidateCheckout = steps.find(
+            (step, index) =>
+              index > titleIndex &&
+              String(step.uses).startsWith('actions/checkout@'),
+          );
+          if (!candidateCheckout)
+            throw new Error('Expected fork-smoke candidate checkout.');
+          mutate(candidateCheckout);
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fork-smoke',
+      message:
+        'fork-smoke must validate the pull-request title from exact base policy before candidate checkout',
+    });
+  });
+
   test('requires checksummed actionlint provisioning before fork smoke', () => {
     expect(
       persistentRunnerPolicyFindings(
