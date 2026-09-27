@@ -165,6 +165,16 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
                   source: 'session-owner' as const,
                 }
               : undefined,
+        // The owner each session's start recorded (slice C2a reads it).
+        sessionRecordedOwnerId: (threadId: string) =>
+          threadId.startsWith('op-')
+            ? LOCAL_OPERATOR_PRINCIPAL_ID
+            : threadId.startsWith('person-')
+              ? 'human:local:someone-else'
+              : undefined,
+        hasSessionStartRecord: () => true,
+        currentConversationSessionId: (conversationId: string) =>
+          conversationId,
         canUserReadSession: () => true,
         // The real `/commands` route's hand-off: "reached the service".
         dispatchWithReceipt: async (command: {
@@ -187,7 +197,7 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
             : 'project-a';
           return project
             ? { [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: project }
-            : undefined;
+            : {};
         },
         sessionRunsHost: (threadId: string) =>
           support.hostThreads.has(threadId),
@@ -429,11 +439,13 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
         ],
         // Its slug names the caller's Project now, but a slug lookup is not
         // the record Station stamped at its start.
+        // Slice C2a: an unreadable Project proves no `execute` held there,
+        // so no credential would admit it.
         [
           'bearer slug-lookup Project',
           bearer,
           'op-thread-slug',
-          'station_control_assurance_insufficient',
+          'station_control_role_required',
         ],
         // A host thread needs a bound caller.
         [

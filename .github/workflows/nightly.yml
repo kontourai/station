@@ -148,6 +148,24 @@ jobs:
       reservation_tag: ${{ needs.native-stage.outputs.reservation_tag }}
     secrets: inherit
 
+  # #2675 slice E: the portable server archives under the native Nightly's
+  # reserved version (X.Y.Z-nightly.<version code>). It needs the plan's
+  # reservation, not native build health, so a failed native leg does not hold
+  # the server back. The callee is a dry run unless the owner sets the
+  # STATION_PORTABLE_NIGHTLY_PUBLISH repository variable to `enabled`.
+  portable-nightly:
+    name: 3 · Portable server Nightly (dry run unless enabled)
+    needs: [test-gate, full-regression, native-stage]
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha && needs['native-stage'].outputs.build == 'true' && needs['native-stage'].outputs.bundle_version != '' }}
+    # Reusable workflows can only reduce the caller's token. Only the callee's
+    # owner-gated publish job uses the write scope.
+    permissions: { contents: write }
+    uses: ./.github/workflows/portable-nightly-publish.yml
+    with:
+      source_sha: ${{ needs.test-gate.outputs.source_sha }}
+      marketing_version: ${{ needs.native-stage.outputs.marketing_version }}
+      version_code: ${{ needs.native-stage.outputs.bundle_version }}
+
   nightly-cli:
     name: 3 · Publish CLI to npm nightly
     needs: [test-gate, full-regression]
