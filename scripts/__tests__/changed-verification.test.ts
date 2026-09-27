@@ -461,12 +461,7 @@ describe('changed verification selection', () => {
       ]),
     );
   });
-  test('uses a bounded named gate for docs and fails closed for risky selection', () => {
-    expect(
-      selectChangedVerification([scenarios.deferredEdges.docs]).lanes,
-    ).toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: 'prepush' })]),
-    );
+  test('fails closed for risky selection', () => {
     for (const paths of [
       [scenarios.escalations.rootConfig],
       [scenarios.escalations.vitestConfig],
@@ -965,15 +960,15 @@ describe('changed verification selection', () => {
   });
   test('retains every sorted reason for a shared named lane', () => {
     const selection = selectChangedVerification([
-      'docs/z-last.md',
-      'docs/a-first.md',
+      'src-desktop/z-last.rs',
+      'src-desktop/a-first.rs',
     ]);
     expect(selection.lanes).toEqual([
       {
-        id: 'prepush',
+        id: 'verify-local',
         reasons: [
-          'documentation bounded gate: docs/a-first.md',
-          'documentation bounded gate: docs/z-last.md',
+          'native boundary: src-desktop/a-first.rs',
+          'native boundary: src-desktop/z-last.rs',
         ],
       },
     ]);
@@ -2773,5 +2768,73 @@ describe('release metadata and code-health baselines are known paths (#2781)', (
     expect(result.executed.flatMap((execution) => execution.command)).toContain(
       `./${CHANGESET_SUITE}`,
     );
+  });
+});
+
+describe('documentation is evidence, not a whole-diff deferral (#2803)', () => {
+  const manifest = buildTestImpactManifest({ root: process.cwd() });
+  const select = (paths: string[]) =>
+    selectChangedVerification(paths, manifest);
+  const DOC = 'docs/reference/sdk.md';
+  const SDK = 'packages/sdk/src/client/plugins.ts';
+  const DOC_SUITES = [
+    'scripts/__tests__/docs-index-reachability.test.ts',
+    'scripts/__tests__/docs-reference-gate.test.ts',
+    'scripts/__tests__/docs-snippets.test.ts',
+    'scripts/__tests__/product-docs-source-links.test.ts',
+    'scripts/__tests__/repo-docs-hygiene.test.ts',
+  ];
+
+  test('a docs-only diff selects the live-docs suites, names its evidence, and does not defer', () => {
+    for (const path of [DOC, 'docs/guide.md', 'docs/design/new-note.md']) {
+      const selection = select([path]);
+      expect(selection.lanes, path).toEqual([]);
+      expect(selection.escalated, path).toBe(false);
+      expect(selection.relatedPaths, path).toEqual([]);
+      expect(
+        selection.tests.map(({ path: test }) => test),
+        path,
+      ).toEqual(expect.arrayContaining(DOC_SUITES));
+      const reasons = selection.tests
+        .flatMap(({ reasons }) => reasons)
+        .join(' ');
+      expect(reasons, path).toContain('docs:reference:gate');
+      expect(reasons, path).toContain('docs:links:check');
+    }
+  });
+
+  test('an SDK change with its reference doc keeps the SDK related selection', () => {
+    const alone = select([SDK]);
+    const mixed = select([SDK, DOC]);
+    expect(mixed.lanes).toEqual([]);
+    expect(mixed.escalated).toBe(false);
+    expect(mixed.relatedPaths).toEqual(alone.relatedPaths);
+    expect(mixed.tests.map(({ path }) => path)).toEqual(
+      expect.arrayContaining([
+        ...alone.tests.map(({ path }) => path),
+        ...DOC_SUITES,
+      ]),
+    );
+  });
+
+  test('a docs change beside a truly unknown path still defers', () => {
+    const selection = select([DOC, 'docs-private/notes.bin']);
+    expect(selection.escalated).toBe(true);
+    expect(selection.lanes.map(({ id }) => id)).toEqual(['ci-fast']);
+  });
+
+  test('end to end, a docs-only diff runs its suites and completes', async () => {
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: reportedRun(),
+      changedPathsFn: () => ({ mergeBase: 'base-sha', paths: [DOC] }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    expect(result.selection.lanes).toEqual([]);
+    expect(result.exitCode).toBe(0);
+    expect(result.receipt.terminal.status).toBe('completed');
+    const commands = result.executed.flatMap((execution) => execution.command);
+    for (const suite of DOC_SUITES) expect(commands).toContain(`./${suite}`);
   });
 });

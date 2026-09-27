@@ -379,7 +379,8 @@ export function computeStreakStats(stats: UsageStats): void {
     const key = current.toISOString().split('T')[0];
     if (!stats.byDate[key]) break;
     streak++;
-    current.setDate(current.getDate() - 1);
+    // byDate keys are UTC dates; stepping by local days skips one across DST.
+    current.setUTCDate(current.getUTCDate() - 1);
   }
   stats.lifetime.streak = streak;
 }

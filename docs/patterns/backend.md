@@ -715,7 +715,6 @@ scheduler.runJob(target)                  // typed manual receipt with runId
 scheduler.enableJob(target) / disableJob(target)
 scheduler.getJobLogs(target, count?)      // last N log entries
 scheduler.getRunOutput(target)            // stdout of last run
-scheduler.previewSchedule(cron, count?)  // next N fire times as ISO strings
 scheduler.subscribe(send)                 // SSE subscription; returns unsubscribe fn
 ```
 
