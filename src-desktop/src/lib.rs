@@ -8,8 +8,6 @@ mod android_dns;
 mod bundled_server_state;
 mod channel_ports_generated;
 #[cfg(not(mobile))]
-mod notification_feed;
-#[cfg(not(mobile))]
 mod desktop_companion;
 #[cfg(not(mobile))]
 mod desktop_installation;
@@ -17,9 +15,13 @@ mod desktop_installation;
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
 mod login_shell;
+#[cfg(not(mobile))]
+mod notification_feed;
 mod notification_watch;
 // Foundation only: this module owns native proof-key custody and signing but
 // is intentionally not registered as renderer IPC or wired to app traffic.
+#[cfg(not(mobile))]
+mod native_relay_key_approval;
 #[cfg(not(mobile))]
 pub(crate) mod native_relay_proof_key;
 #[cfg(not(mobile))]
@@ -27,8 +29,6 @@ mod native_relay_redemption;
 #[cfg(not(mobile))]
 mod native_station_key_custody;
 mod pairing_deep_link_channels_generated;
-#[cfg(not(mobile))]
-mod native_relay_key_approval;
 #[cfg(not(mobile))]
 mod relay_grant_vault;
 mod service_state;
@@ -5359,7 +5359,9 @@ fn station_profile_store_write_internal(
         let app = app.clone();
         let _ = tauri::async_runtime::spawn_blocking(move || {
             if let Err(error) = native_relay_redemption::retry_pending_cleanup_for_app(&app) {
-                log::warn!("could not resume native relay grant cleanup after profile write: {error:?}");
+                log::warn!(
+                    "could not resume native relay grant cleanup after profile write: {error:?}"
+                );
             }
         });
     }
