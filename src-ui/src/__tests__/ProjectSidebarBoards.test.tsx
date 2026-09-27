@@ -720,11 +720,10 @@ describe('creating a Board from the panel', () => {
 /**
  * #2062 review M1 — the row menu's trigger must be VISIBLE on touch.
  *
- * Modelled on `ProjectSidebarReorder.test.tsx`'s coarse-pointer assertion,
- * including its limits: jsdom evaluates no media query and computes no
- * layout, so this pins the stylesheet's own text, and every assertion is
- * scoped to the rule it is about — an unscoped `css.toContain('opacity: 1')`
- * is satisfied by any rule in the file and discriminates nothing.
+ * jsdom evaluates no media query and computes no layout, so the trigger's
+ * coarse-pointer visibility, size and hit testing are measured in Chromium by
+ * ProjectSidebarBoards.coarseGeometry.test.tsx; this block pins only the DOM
+ * containment that geometry depends on.
  *
  * It matters because of what the rest of this file establishes: the section
  * is hidden when the viewer owns no Boards, so the `+` is unreachable; the
@@ -1080,8 +1079,8 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
     await renderSidebar(<ProjectSidebar />);
 
     // The rows this component actually renders wear the shared class. This
-    // is a DOM observation of the real panel, and it is the half
-    // that used to be false — the rows carried no class at all and took their
+    // is a DOM observation of the real panel, and it is the part that used
+    // to be false — the rows carried no class at all and took their
     // `padding: 6px 8px` at `--text-sm` from a descendant selector in
     // `ProjectSidebarBoards.css`, about 26px against a 44px requirement.
     const rowClasses = () =>
