@@ -1,9 +1,10 @@
 # Documentation and architecture audit
 
-Status: in progress. Baseline: `ff2d743b4e45605d0a8500bd15ca4e1a86185ca6`
-(2026-09-26). This is the execution ledger, not a completion receipt. GitHub
-owns live delivery state; no deployment or comprehensive semantic audit is
-implied by this plan.
+Status: final integration and verification. Baseline:
+`ff2d743b4e45605d0a8500bd15ca4e1a86185ca6` (2026-09-26); upstream changes
+reviewed through `f3954615e965964aefc9a70a251a714433754f0c`.
+This is the audit record, not a deployment receipt. GitHub owns live delivery
+state; the review ledger records each document's scope and evidence limits.
 
 ## Outcome
 
@@ -69,10 +70,11 @@ and external prerequisites.
 
 The [review ledger](../learn/review-ledger.json) records each inspected file's
 purpose, review scope, source revision, supporting code/tests, and limits.
-Classification is separate from source review. Most documents still await a
-complete source review; individual findings below do not verify their entire
-containing page. The reader shows this limit above each document and flags
-records whose document or supporting code has changed.
+Classification is separate from source review. Current explanations have
+documented-claim reviews; historical records, proposals, policies and fixtures
+retain their separate purpose. The reader shows each review's scope and limits
+above the document and flags changed prose or supporting code. A review of a
+document's claims is not a proof of every possible implementation behavior.
 
 ## Abstraction review
 
@@ -243,10 +245,10 @@ comments removed. A separate
 run passed all 32 tests, including the refusal to reset or migrate a
 future-version home. Neither run changes application behavior.
 
-Browser-session ownership and the shared live-surface boundary are undergoing
-a dedicated source review. The glossary correction alone does not close it:
-acquisition, profiles, target admission, agent grants, cleanup, Device producer
-composition, and their current guides need to agree.
+The later Browser and live-surface review covered acquisition, profiles, target
+admission, Agent grants, cleanup, Device producers and current guides. Its scope
+and separate execution limits are recorded in the review ledger; the earlier
+glossary correction alone did not establish those claims.
 
 ### Monitoring, notifications, native recovery, and disclosure review
 
@@ -301,8 +303,9 @@ new, unpublished reader, not evidence of a released Station vulnerability.
   pipeline and documentation aggregate have identical emitted executable code
   before and after comment removal.
 
-This is the foundation and initial correction tranche. It does not close the
-repository-wide semantic audit or comment review.
+These were the initial changes. Later subsystem reviews, contextual comment
+cleanup, examples, captures and source-delta reviews extend this foundation;
+their evidence belongs to the corresponding document records.
 
 ### Code-health disposition
 
@@ -318,7 +321,7 @@ architecture topic from the compiled bundle without credentials.
 Splitting the validation conditions solely to lower a function score would
 relocate the same obligations. Revisit the boundaries when another consumer or
 new catalog shape adds a separate responsibility. These findings do not certify
-the prose's semantic accuracy; that remains the program's open review work.
+the prose's semantic accuracy; that comes from the separate claim reviews.
 
 Later reader changes add three advisory findings: the local-link resolver,
 rendered-link checker, and explicit-anchor visitor. Their branches distinguish
@@ -366,14 +369,20 @@ human authority, duplicate Veritas's evaluator, or weaken existing checks.
 
 ## Completion ledger
 
-- CONFIRMED: baseline inventory, initial source traces and corrections, shared
-  reader/MCP content generation, and the maintenance workflow.
-- In progress: the remaining subsystem claim reviews, full comment review,
-  and the Veritas policy proposal. Foundation verification receipts are reported
-  separately from those open program requirements.
-- NOT_VERIFIED: exhaustive semantic review of all 388 baseline files; all
-  subsystem journeys and diagrams; repository-wide comment review; new Veritas
-  enforcement; physical platforms, live providers, and hosted publication.
+- Reviewed: all tracked Markdown dispositions, current documented claims and
+  canonical reading routes, module interfaces, diagrams, affected comments,
+  READMEs and examples. The library grew from 388 to 415 Markdown files and
+  now includes 74 module sections. Each record retains its own evidence limits.
+- Implemented: shared reader/MCP generation, source-impact and catch-up reports,
+  an audit skill, source-bound screenshots and short clips, and a tested Veritas
+  policy proposal. Proposed product improvements live in linked GitHub issues.
+- Final verification: combined checks and reader acceptance must bind to the
+  final integrated revision. Earlier focused results remain their own receipts;
+  failed or timed-out checks are not counted as passes.
+- Separate owner work: protected Veritas promotion, Knowledge Kit publication,
+  privacy inventory completeness and legal/store approval. The audit does not
+  establish live provider behavior, physical-platform results, hosted deployment,
+  every possible code path, or the absence of further defects.
 
 Completion requires resolving or explicitly accepting every finding and giving
 every file and review unit a final disposition. A green docs gate is supporting

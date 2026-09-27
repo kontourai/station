@@ -16,8 +16,9 @@ Builder/delivery tree manifests before and after viewing; that fixture's
 existence is not a new live result for this checkout.
 
 Station does not yet mediate raw server-module filesystem access through an
-enforceable host capability; [Station #36](https://github.com/kontourai/station/issues/36), folded into [#162](https://github.com/kontourai/station/issues/162),
-owns that platform boundary. This plugin's read-only claim therefore describes
+enforceable host capability. [Station #162](https://github.com/kontourai/station/issues/162)
+owns that platform boundary, including the detail folded in from
+[#36](https://github.com/kontourai/station/issues/36). This plugin's read-only claim describes
 the reviewed implementation and its gates, not a process sandbox.
 
 Install it from Station's example registry, approve the separate host-owned

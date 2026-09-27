@@ -353,6 +353,51 @@ stubs survive the observation that registered them
 the actual provider/context probes and distinguish them from live app or
 physical audio evidence.
 
+### Failed observations must remain distinguishable from empty results
+
+Directory search catches provider failures and returns an empty success
+([#2857](https://github.com/kontourai/station/issues/2857)). Plugin update
+discovery loses completeness across the checker, route, SDK and management view
+([#2858](https://github.com/kontourai/station/issues/2858)). These are traced
+caller contracts; no directory outage or missed installed update was observed.
+The fix belongs in those owners, with distinct complete, partial and unavailable
+outcomes where needed. Insights has separate placeholder values
+([#463](https://github.com/kontourai/station/issues/463)); neither invented zeroes
+nor successful empty responses establish an observation.
+
+### Durable operations need an operation-level outcome
+
+`station import` can publish several records before a later write or final
+ledger fails ([#2859](https://github.com/kontourai/station/issues/2859)). The
+source establishes a recovery gap, not an observed data-loss incident. Decide
+the import owner's recovery guarantee and test interruption between actual
+writes in a disposable home.
+
+The Survey example also needs a committed revision for save and projection
+([#1359](https://github.com/kontourai/station/issues/1359)). A real route probe
+accepted replacement events without a prior count; competing writers and
+pending-save projection remain separate acceptance cases. Fieldwork availability
+polling invokes a public export/read/event path, whose cost was not measured
+([#2860](https://github.com/kontourai/station/issues/2860)). Measure that caller
+and decide the public observation contract before adding caching.
+
+### Units, lifetime and transport policy belong in shared contracts
+
+Bedrock pricing parsers copy amounts without validating their source unit
+([#1127](https://github.com/kontourai/station/issues/1127)). Pairing offers can
+contain LAN HTTP URLs that the browser decoder refuses
+([#177](https://github.com/kontourai/station/issues/177)). Preserve that refusal
+until the producer/consumer transport policy is resolved; LAN reachability does
+not establish trust.
+
+Other owners retain independent findings: long notification timers can lose
+wakeups ([#2810](https://github.com/kontourai/station/issues/2810)); mutations
+need an explicit stale-connection admission policy
+([#2815](https://github.com/kontourai/station/issues/2815)); and update queries
+ignore a boolean currentness result
+([#2831](https://github.com/kontourai/station/issues/2831)). Their evidence and
+acceptance cases remain in the issues, rather than a second live status list.
+
 ### Documentation sometimes hides an abstraction that already exists
 
 The architecture overview described knowledge as a fixed sqlite-vec store even

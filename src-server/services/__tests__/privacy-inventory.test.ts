@@ -228,7 +228,9 @@ describe('privacy inventory', () => {
     expect(
       renderPlayDataSafety([entry(true)]),
       'a linked inventory entry did not flip the Play headline answer to Yes',
-    ).toContain('- **Does this inventory declare any data as linked to a user identity?** Yes.');
+    ).toContain(
+      '- **Does this inventory declare any data as linked to a user identity?** Yes.',
+    );
     expect(
       renderPlayDataSafety([entry(true)]),
       'a linked inventory entry did not render Linked=Yes in the Play summary table',
@@ -236,6 +238,8 @@ describe('privacy inventory', () => {
     expect(
       renderPlayDataSafety([entry(false)]),
       'an unlinked inventory entry did not render the Play headline answer as No',
-    ).toContain('- **Does this inventory declare any data as linked to a user identity?** No.');
+    ).toContain(
+      '- **Does this inventory declare any data as linked to a user identity?** No.',
+    );
   });
 });

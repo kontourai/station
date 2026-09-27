@@ -346,9 +346,7 @@
           "digest": "b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5"
         }
       ],
-      "documents": [
-        "docs/guides/connections.md"
-      ]
+      "documents": ["docs/guides/connections.md"]
     },
     {
       "path": "docs/learn/media/repository-knowledge.png",
