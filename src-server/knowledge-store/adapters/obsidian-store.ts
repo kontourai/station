@@ -12,15 +12,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  join,
-  relative,
-  resolve,
-  sep,
-} from 'node:path';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type {
   ApplyEvidence,
   CreateInput,
@@ -390,6 +382,10 @@ interface KitObsidianStoreOptions {
   sourcesDir?: string;
 }
 
+const CREATE_IDENTITY_MAX_ENTRIES = 10_000;
+const CREATE_IDENTITY_MAX_FILE_BYTES = 16 * 1024 * 1024;
+const CREATE_IDENTITY_MAX_TOTAL_BYTES = 64 * 1024 * 1024;
+
 export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
   private readonly root: string;
   private readonly sourcesDir: string;
@@ -496,7 +492,19 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
     while (true) {
       const relPath = `${catDir}/${slug}.md`;
       const existingId = pathIndex.by_path[relPath];
-      if (!existingId || existingId === id) return relPath;
+      if (!existingId) {
+        if (
+          this.files.readText(
+            this.resolveStorePath(relPath),
+            CREATE_IDENTITY_MAX_FILE_BYTES,
+          ) !== null
+        )
+          throw new KnowledgeStoreCorruptionError(
+            'Obsidian destination is occupied by an unindexed file',
+          );
+        return relPath;
+      }
+      if (existingId === id) return relPath;
       slug = `${baseSlug}-${suffix++}`;
     }
   }
@@ -513,7 +521,10 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
     const absPath = this.getAbsPath(id, pathIndex);
     if (!absPath) return null;
     const text = this.files.readText(absPath);
-    if (text === null) return null;
+    if (text === null)
+      throw new KnowledgeStoreCorruptionError(
+        'Obsidian path index names a missing record',
+      );
     let meta: Record<string, unknown>;
     let renderedText: string;
     try {
@@ -523,7 +534,10 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
         cause: error,
       });
     }
-    if (!meta.id) return null;
+    if (!meta.id)
+      throw new KnowledgeStoreCorruptionError(
+        'Indexed Obsidian record has no id',
+      );
 
     const rawSentinelValue = meta[BODY_SENTINEL_FRONTMATTER_KEY];
     let sentinel = BODY_END_SENTINEL_BASE;
@@ -656,7 +670,6 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
     );
 
     const absPath = this.resolveStorePath(targetRelPath);
-    mkdirSync(dirname(absPath), { recursive: true });
     this.files.writeText(absPath, text);
   }
 
@@ -667,7 +680,6 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
 
     const archiveRelPath = `archive/${entry.path}`;
     const archiveAbs = this.resolveStorePath(archiveRelPath);
-    mkdirSync(dirname(archiveAbs), { recursive: true });
 
     const currentAbs = this.resolveStorePath(entry.path);
     this.files.move(currentAbs, archiveAbs);
@@ -990,6 +1002,7 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
     if (this.readRecord(id, pathIndex)) {
       throw new MissingEvidenceError('create: record id already exists');
     }
+    this.assertCreateIdentityAvailable(id, pathIndex);
     const now = new Date().toISOString();
 
     const aliases = normalizeAliases(input.aliases);
@@ -1041,6 +1054,87 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
     if (aliasIndex) this.saveAliasIndex(aliasIndex);
 
     return id;
+  }
+
+  /** The path index accelerates lookup; only physical records can prove absence. */
+  private assertCreateIdentityAvailable(
+    id: string,
+    pathIndex: PathIndex,
+  ): void {
+    const directories = [this.root];
+    const indexedPaths = new Set(Object.keys(pathIndex.by_path));
+    let unindexedRecord = false;
+    let entries = 0;
+    let remainingBytes = CREATE_IDENTITY_MAX_TOTAL_BYTES;
+    while (directories.length > 0) {
+      const directory = directories.pop()!;
+      for (const entry of this.files.listDirectoryEntries(directory)) {
+        if (++entries > CREATE_IDENTITY_MAX_ENTRIES)
+          throw new KnowledgeStoreCorruptionError(
+            'Obsidian identity inspection exceeds its entry bound',
+          );
+        const path = join(directory, entry.name);
+        if (entry.kind === 'directory') {
+          directories.push(path);
+          continue;
+        }
+        if (!entry.name.toLowerCase().endsWith('.md')) continue;
+        const text = this.files.readText(
+          path,
+          Math.min(CREATE_IDENTITY_MAX_FILE_BYTES, remainingBytes),
+        );
+        if (text === null)
+          throw new KnowledgeStoreCorruptionError(
+            'Obsidian file disappeared during identity inspection',
+          );
+        remainingBytes -= Buffer.byteLength(text);
+        if (remainingBytes < 0)
+          throw new KnowledgeStoreCorruptionError(
+            'Obsidian identity inspection exceeds its byte bound',
+          );
+        let meta: Record<string, unknown>;
+        let body: string;
+        try {
+          if (
+            /^(?:\uFEFF)?---(?:\r?\n|$)/.test(text) &&
+            (!text.startsWith('---\n') || text.indexOf('\n---\n', 4) === -1)
+          )
+            throw new Error('Unsupported or unterminated frontmatter');
+          ({ meta, body } = parseMarkdown(text, {
+            maxDepth: 32,
+            maxAliases: 50,
+            maxTotalMergeKeys: 1000,
+          }));
+        } catch (error) {
+          throw new KnowledgeStoreCorruptionError(
+            'Obsidian identity inspection encountered invalid frontmatter',
+            { cause: error },
+          );
+        }
+        const rel = relative(this.root, path).split(sep).join('/');
+        const indexedId = pathIndex.by_path[rel];
+        if (meta.id === id)
+          throw new MissingEvidenceError('create: record id already exists');
+        if (indexedId) {
+          const record = assertKitRecord(meta, body, path);
+          if (record.id !== indexedId)
+            throw new KnowledgeStoreCorruptionError(
+              'Obsidian record identity differs from its path index',
+            );
+          indexedPaths.delete(rel);
+        } else if (meta.provenance !== undefined && meta.type !== undefined) {
+          unindexedRecord = true;
+        }
+      }
+    }
+    if (indexedPaths.size > 0)
+      throw new KnowledgeStoreCorruptionError(
+        'Obsidian path index names an unobserved record',
+      );
+    if (unindexedRecord)
+      throw new KnowledgeStoreCorruptionError(
+        'Obsidian path index omits an owned record',
+      );
   }
 
   // ── update (§6.2) ──────────────────────────────────────────────────────

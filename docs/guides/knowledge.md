@@ -18,6 +18,22 @@ Creation assigns a new identity. Station's optional caller-supplied `id` must
 also be new: the default and Obsidian adapters refuse an existing ID, including
 a retired record, instead of replacing its body, creation provenance, mutation
 history, aliases or links. A duplicate create is an invalid input (HTTP 400).
+For Obsidian, an index miss alone does not prove that an ID is unused. Creation
+checks physical Markdown identities, including archived records, inside the
+same file transaction. It refuses unreadable or inconsistent indexed records,
+unindexed record-like frontmatter (both `type` and `provenance`), malformed
+frontmatter, symlinked or unsupported directory entries, and occupied unindexed
+destination paths. A refusal preserves the existing record and index bytes; it does not
+repair the path index. The current reindex command rebuilds graph/alias indexes
+from path-index entries and cannot recover a lost path index.
+
+The physical inspection admits at most 10,000 directory entries, 16 MiB per
+Markdown file and 64 MiB of Markdown in total. Exceeding a bound or being unable
+to establish identity returns storage-unavailable (HTTP 503), rather than
+creating over uncertain data. Ordinary unindexed notes can remain in the vault,
+but creation will not overwrite them. These are coordinated transaction checks,
+not a lock on edits made outside Station.
+
 After an uncertain create response, read that exact ID and compare the intended
 record before deciding what remains to do. Use the adapter's evidence-bearing
 update/link operations for an intentional change, not another create request.

@@ -112,6 +112,44 @@ afterEach(async () => {
 });
 
 describe('KnowledgeFileTransactions', () => {
+  test('bounded reads preserve their limit through commit revalidation', async () => {
+    const root = await temporaryRoot();
+    const source = join(root, 'source.md');
+    const output = join(root, 'new.md');
+    await writeFile(source, 'old');
+    const files = new KnowledgeFileTransactions(root);
+    await expect(
+      files.mutate('bounded-read', async () => {
+        expect(files.readText(source, 4)).toBe('old');
+        files.writeText(output, 'must not publish');
+        await writeFile(source, 'external growth beyond the admitted bound');
+      }),
+    ).rejects.toBeInstanceOf(KnowledgeStoreCorruptionError);
+    expect(existsSync(output)).toBe(false);
+    expect(await readFile(source, 'utf8')).toBe(
+      'external growth beyond the admitted bound',
+    );
+  });
+
+  test('bounded reads admit an exact-size file and reject oversized bytes before publication', async () => {
+    const root = await temporaryRoot();
+    const source = join(root, 'source.md');
+    const output = join(root, 'new.md');
+    await writeFile(source, 'four');
+    const files = new KnowledgeFileTransactions(root);
+    await files.mutate('bounded-read', () => {
+      expect(files.readText(source, 4)).toBe('four');
+      files.writeText(output, 'original');
+    });
+    await expect(
+      files.mutate('bounded-read', () => {
+        files.writeText(output, 'replacement');
+        files.readText(source, 3);
+      }),
+    ).rejects.toBeInstanceOf(KnowledgeStoreCorruptionError);
+    expect(await readFile(output, 'utf8')).toBe('original');
+  });
+
   test('every writable knowledge adapter uses the shared seam and owns no raw mutation calls', async () => {
     for (const file of [
       'src-server/knowledge-store/adapters/default-store.ts',
