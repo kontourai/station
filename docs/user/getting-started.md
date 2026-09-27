@@ -77,6 +77,11 @@ runs its own agent loop.
    External agent in the same confirmed action.
 3. Follow its setup action until it reports **Ready**.
 
+Read the accompanying evidence too. A saved connection or a live model catalog
+does not prove that a chat turn completed. An explicit one-turn smoke supplies
+that narrower proof and can incur provider charges; opening Connections or
+New Chat does not run it.
+
 For a credential-free first path, use a supported local model service and then
 return to Connections. Startup can register detected Claude Code, Codex, and
 Muse engines and their default Agents. An engine you explicitly removed is
@@ -98,7 +103,9 @@ Choose the simplest path for what you want to do:
 
 At the end of first-run setup, choose **Start your first chat**. Station saves
 any personalization answers you selected, then opens New Chat. Unanswered
-questions add no profile. A failed save keeps setup open so you can retry.
+questions add no profile. If saving those answers fails, setup stays open so
+you can retry. Closing setup or navigating back during that save cancels the
+next navigation; answers that already saved remain saved.
 
 New Chat lets you choose an Agent, Model, and workspace. It shows loading,
 connection errors, or setup actions when a choice is not ready. Opening it does
@@ -121,19 +128,23 @@ flow. Connection changes you already saved remain saved.
 ### Reference project files and earlier conversations
 
 In a project chat, type `@` followed by part of a file or folder path, then
-choose a result. Station keeps a compact chip in the draft. When you send the message, it
+choose a result. A message can contain up to 64 file or folder mentions.
+Station keeps a compact chip in the draft. When you send the message, it
 expands the selection to a quoted full path within the selected workspace. Saved drafts retain the chip. If the
 workspace changes, or you reconnect or re-pair with different access, Station
 refuses to send the stale reference until you remove it or return to its
 original scope.
 
 Use the conversation-reference button beside the composer actions to choose an
-earlier conversation. You can also drag a result from that picker into the
-composer. A message can contain at most eight conversation references. Station
+earlier conversation. The picker searches the 25 most recent conversations
+returned for your access and shows up to eight matches; it does not search
+older history. You can also drag a result into the composer. A message can
+contain at most eight conversation references. Station
 sends a link to the selected conversation; it never copies that conversation's
 transcript into the prompt. Titles are displayed as plain text, and the link is
-generated from Station's conversation identity. A reference is available only
-while the current signed-in access can still see its source metadata. If access
+generated from Station's conversation identity. The picker only offers source
+metadata allowed by the current access. At send time, Station checks the
+reference's captured Station and access scope. If that scope
 changes before send, Station refuses it instead of silently resolving it under
 the new account. Hosted/shared destinations do not offer conversation
 references until the server can prove that exposing the source title and link
