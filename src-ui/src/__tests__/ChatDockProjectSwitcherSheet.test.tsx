@@ -115,7 +115,7 @@ describe('ChatDockProjectSwitcherSheet', () => {
     expect(within(row('Beta')).queryByText('Current')).toBeNull();
   });
 
-  test('"Open project" closes the sheet and delegates to onOpenProject with the row\'s slug, never the row Switch action (#3319)', () => {
+  test('"Open project" closes the sheet and delegates to onOpenProject with the row\'s slug, never the row Switch action (archive#3319)', () => {
     const { onOpenProject, onSwitchProject, onClose } = renderSheet();
 
     fireEvent.click(

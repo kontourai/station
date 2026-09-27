@@ -216,8 +216,8 @@ describe('September 8 visual feedback regressions', () => {
     },
   );
 
-  // #3319: the row is a flexible name column beside a fixed Open icon. A long
-  // name must be cut short inside its column, never run under the icon.
+  // archive#3319: the row is a flexible name column beside a fixed Open icon.
+  // A long name must be cut short inside its column, never run under the icon.
   test('a long project name truncates instead of displacing the Open icon', async () => {
     const anchor = document.createElement('button');
     document.body.appendChild(anchor);
