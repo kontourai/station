@@ -208,8 +208,13 @@ test('a grant planted in localStorage — the self-grant attack — cannot stand
     { wrapper },
   );
 
-  // The read is in flight and unanswered: the hook sits on the floor.
+  // The read is in flight and unanswered: the hook sits on the floor. Let
+  // timers and later promises settle while the response is still held, so a
+  // grant surfaced asynchronously during the pending window is also caught.
   await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
   expect(rendered.result.current).toBeUndefined();
   expect(seen.length).toBeGreaterThan(0);
   expect(seen.every((status) => status === undefined)).toBe(true);
