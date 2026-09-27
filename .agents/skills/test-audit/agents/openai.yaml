@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Audit"
+  short_description: "Gate new tests and audit low-value, duplicative, or implementation-coupled tests"
+  default_prompt: "Use $test-audit to gate new or changed tests, or to run a read-only audit of low-value tests with full candidate evidence before editing."

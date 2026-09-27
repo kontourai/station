@@ -57,6 +57,10 @@ import {
   ownedDependencyInstallerUnavailable,
 } from '@kontourai/station-shared/owned-dependency-installer';
 import {
+  STATION_RELEASE_RINGS,
+  type StationReleaseRing,
+} from '@kontourai/station-shared/ports';
+import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
 } from '@kontourai/station-shared/process-identity';
@@ -322,6 +326,9 @@ export function uiRequestHandler(deps: UiServerDeps) {
   // authorizes it — scoped by host, not origin — is never sent.
   const INTERNAL_PROXY_FORWARDED_HOST_HEADER = 'x-station-proxy-forwarded-host';
   const INTERNAL_TENANT_HEADER = 'x-station-internal-tenant';
+  // #2589: the Station-agent relay's orchestration thread. The backend
+  // already ignores it from a `remote` caller; stripped here too.
+  const INTERNAL_ORCHESTRATION_THREAD_HEADER = 'x-station-orchestration-thread';
   const TAILSCALE_HEADERS_INFO_URL = 'https://tailscale.com/s/serve-headers';
   const isLoopbackAddress = (value: string | undefined) => {
     const normalized = (value ?? '').trim().toLowerCase();
@@ -576,6 +583,7 @@ export function uiRequestHandler(deps: UiServerDeps) {
     delete headers[INTERNAL_PROXY_PEER_HEADER];
     delete headers[INTERNAL_PROXY_FORWARDED_HOST_HEADER];
     delete headers[INTERNAL_TENANT_HEADER];
+    delete headers[INTERNAL_ORCHESTRATION_THREAD_HEADER];
     for (const name of Object.keys(headers)) {
       if (name.startsWith('tailscale-')) delete headers[name];
     }
@@ -1125,9 +1133,35 @@ interface PackagedReleaseManifest {
   sha: string;
   ref: string;
   createdAt: string;
-  channel: 'stable' | 'beta';
-  releaseChannel: 'stable' | 'preview';
+  channel: PackagedRuntimeChannel;
+  releaseChannel: PackagedReleaseChannel;
   prerelease: boolean;
+}
+
+type PackagedReleaseChannel = StationReleaseRing;
+type PackagedRuntimeChannel =
+  (typeof STATION_RELEASE_RINGS)[PackagedReleaseChannel]['runtimeChannel'];
+
+/**
+ * The installable packaged rings come from config/channel-ports.json (via the
+ * generated STATION_RELEASE_RINGS); a Nightly-staging bundle is evidence-only
+ * and deliberately absent. A prerelease ring's tag is `vX.Y.Z-<ring>.N`.
+ */
+function packagedReleaseTag(ring: PackagedReleaseChannel): RegExp {
+  const label = STATION_RELEASE_RINGS[ring].prerelease
+    ? `-${ring}\\.(?:[1-9]\\d*)`
+    : '';
+  return new RegExp(
+    `^v(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)${label}$`,
+  );
+}
+
+function isPackagedReleaseChannel(
+  value: unknown,
+): value is PackagedReleaseChannel {
+  return (
+    typeof value === 'string' && Object.hasOwn(STATION_RELEASE_RINGS, value)
+  );
 }
 
 export interface InstanceStateRecord {
@@ -2008,17 +2042,7 @@ function stopRecord(
   // A --temp-home instance is ephemeral; drop its per-instance build dirs too
   // so they don't accumulate. Persistent instances keep theirs for fast restarts.
   if (record.homeSource === '--temp-home') {
-    const buildPaths = resolveBuildPaths(record.instanceId);
-    // Finder can create .DS_Store during removal. Let Node retry transient
-    // ENOTEMPTY/EBUSY for these owned outputs; a persistent failure still fails.
-    for (const output of [buildPaths.server, buildPaths.ui]) {
-      rmSync(join(CWD, output), {
-        recursive: true,
-        force: true,
-        maxRetries: 3,
-        retryDelay: 100,
-      });
-    }
+    removeOwnedBuildOutputs(resolveBuildPaths(record.instanceId));
   }
   if (announce) {
     console.log('  ✓ Stopped');
@@ -2245,6 +2269,13 @@ export function isRunning(selector: StopOptions = {}): boolean {
 interface BuildPaths {
   server: string;
   ui: string;
+  /**
+   * True when these directories are not the instance's own: every instance
+   * of a prebuilt archive serves the archive's one build. A shared build is
+   * never removed, replaced or promoted over on an instance's behalf; see
+   * removeOwnedBuildOutputs and promoteCandidateBuild.
+   */
+  shared?: true;
 }
 
 const BUILD_MANIFEST_FILENAME = 'station-build.json';
@@ -2709,6 +2740,12 @@ function warnOnSharedHome(instanceId: string, projectHome: string): void {
 }
 
 export function resolveBuildPaths(instanceId: string): BuildPaths {
+  // A prebuilt archive ships one build and no toolchain to make another.
+  // Nothing in a build is instance-specific (buildApplication varies only its
+  // output directories), so every instance of an archive serves that build.
+  if (isPrebuiltArchiveRoot(CWD)) {
+    return { server: 'dist-server', ui: 'dist-ui', shared: true };
+  }
   if (instanceId === DEFAULT_INSTANCE_ID) {
     return { server: 'dist-server', ui: 'dist-ui' };
   }
@@ -2716,6 +2753,24 @@ export function resolveBuildPaths(instanceId: string): BuildPaths {
     server: `dist-server-${instanceId}`,
     ui: `dist-ui-${instanceId}`,
   };
+}
+
+/**
+ * Removes an instance's own build directories. The one place build outputs
+ * are deleted on an instance's behalf; a shared build is left untouched.
+ */
+function removeOwnedBuildOutputs(buildPaths: BuildPaths): void {
+  if (buildPaths.shared) return;
+  // Finder can create .DS_Store during removal. Let Node retry transient
+  // ENOTEMPTY/EBUSY for these owned outputs; a persistent failure still fails.
+  for (const output of [buildPaths.server, buildPaths.ui]) {
+    rmSync(join(CWD, output), {
+      recursive: true,
+      force: true,
+      maxRetries: 3,
+      retryDelay: 100,
+    });
+  }
 }
 
 function getBuildManifestPath(buildPaths: BuildPaths): string {
@@ -2812,6 +2867,11 @@ function promoteCandidateBuild(
   candidate: BuildPaths,
   active: BuildPaths,
 ): void {
+  if (active.shared) {
+    throw new Error(
+      `Refusing to replace the shared build ${active.server}/ and ${active.ui}/ on one instance's behalf.`,
+    );
+  }
   // Both candidates and both backups live on the checkout filesystem, so
   // each rename is atomic. The pair cannot be one filesystem transaction;
   // explicit rollback restores both prior directories if any rename fails.
@@ -2919,17 +2979,12 @@ export function validatePackagedReleaseManifest(
     !Number.isFinite(Date.parse(candidate.createdAt)) ||
     new Date(Date.parse(candidate.createdAt)).toISOString() !==
       candidate.createdAt ||
-    (candidate.channel !== 'stable' && candidate.channel !== 'beta') ||
-    (candidate.releaseChannel !== 'stable' &&
-      candidate.releaseChannel !== 'preview') ||
+    !isPackagedReleaseChannel(candidate.releaseChannel) ||
     candidate.channel !==
-      (candidate.releaseChannel === 'preview' ? 'beta' : 'stable') ||
-    candidate.prerelease !== (candidate.releaseChannel === 'preview') ||
-    (candidate.releaseChannel === 'stable'
-      ? !/^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(candidate.ref)
-      : !/^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-preview\.(?:[1-9]\d*)$/.test(
-          candidate.ref,
-        ))
+      STATION_RELEASE_RINGS[candidate.releaseChannel].runtimeChannel ||
+    candidate.prerelease !==
+      STATION_RELEASE_RINGS[candidate.releaseChannel].prerelease ||
+    !packagedReleaseTag(candidate.releaseChannel).test(candidate.ref)
   ) {
     return null;
   }
@@ -2938,14 +2993,46 @@ export function validatePackagedReleaseManifest(
     sha: candidate.sha,
     ref: candidate.ref,
     createdAt: candidate.createdAt,
-    channel: candidate.channel,
+    channel: STATION_RELEASE_RINGS[candidate.releaseChannel].runtimeChannel,
     releaseChannel: candidate.releaseChannel,
-    prerelease: candidate.prerelease,
+    prerelease: STATION_RELEASE_RINGS[candidate.releaseChannel].prerelease,
   };
 }
 
 /** Bound on every checkout HEAD read (stamp writer and checker). */
 const SOURCE_HEAD_READ_TIMEOUT_MS = 5_000;
+
+/**
+ * Written only by the portable server archive builder
+ * (scripts/lib/portable-server-archive.mjs), whose trees ship dist-server and
+ * dist-ui prebuilt and carry no toolchain to rebuild them. install.sh's
+ * source release trees also have `.station-release.json` and no `.git`, but
+ * they are built on the host and never contain this marker.
+ */
+export const PREBUILT_ARCHIVE_MARKER_FILENAME = '.station-prebuilt-archive';
+export const PREBUILT_ARCHIVE_MARKER_CONTENT = 'station-prebuilt-archive-v1\n';
+
+/** A prebuilt archive: marker, valid release provenance, and no checkout. */
+export function isPrebuiltArchiveRoot(root: string): boolean {
+  if (existsSync(join(root, '.git'))) return false;
+  try {
+    if (
+      readFileSync(join(root, PREBUILT_ARCHIVE_MARKER_FILENAME), 'utf-8') !==
+      PREBUILT_ARCHIVE_MARKER_CONTENT
+    ) {
+      return false;
+    }
+    return (
+      validatePackagedReleaseManifest(
+        JSON.parse(
+          readFileSync(join(root, PACKAGED_RELEASE_MANIFEST_FILENAME), 'utf-8'),
+        ),
+      ) !== null
+    );
+  } catch {
+    return false;
+  }
+}
 
 function resolveSourceBuildManifest(): BuildManifest {
   if (existsSync(join(CWD, '.git'))) {
@@ -3115,6 +3202,15 @@ export async function buildApplication(
 ): Promise<BuildManifest> {
   const { instanceId, buildPaths: activeBuildPaths } =
     resolveBuildTarget(options);
+  if (isPrebuiltArchiveRoot(CWD)) {
+    throw new Error(
+      [
+        `This is a prebuilt Station archive (${CWD}): nothing to build.`,
+        `It ships its server and UI already built in ${activeBuildPaths.server}/ and ${activeBuildPaths.ui}/, which every instance uses.`,
+        'Run `station start` without --build.',
+      ].join('\n'),
+    );
+  }
   // station#1869: a supervisor (launchd/systemd KeepAlive) killed mid-build
   // leaves orphan candidate dirs under `.station/build-candidates/`. They do
   // not collide with a fresh `mkdtempSync`, but they accumulate, and a
@@ -4627,9 +4723,7 @@ export async function clean(
 
   stop({ instanceId, serverPort, uiPort, baseDir: projectHome });
   rmSync(projectHome, { recursive: true, force: true });
-  const buildPaths = resolveBuildPaths(instanceId);
-  rmSync(join(CWD, buildPaths.server), { recursive: true, force: true });
-  rmSync(join(CWD, buildPaths.ui), { recursive: true, force: true });
+  removeOwnedBuildOutputs(resolveBuildPaths(instanceId));
   console.log('  ✓ Cleaned');
 }
 
@@ -4808,8 +4902,8 @@ export function homeRestore(
 
 interface PackagedInstallState {
   schemaVersion: 3;
-  channel: 'stable' | 'beta';
-  releaseChannel: 'stable' | 'preview';
+  channel: PackagedRuntimeChannel;
+  releaseChannel: PackagedReleaseChannel;
   installRoot: string;
   stationHome: string;
   stationRoot: string;
@@ -4847,10 +4941,8 @@ function readSafePackagedInstallState(path: string): PackagedInstallState {
   }
   if (
     value.schemaVersion !== 3 ||
-    !(
-      (value.channel === 'stable' && value.releaseChannel === 'stable') ||
-      (value.channel === 'beta' && value.releaseChannel === 'preview')
-    )
+    !isPackagedReleaseChannel(value.releaseChannel) ||
+    value.channel !== STATION_RELEASE_RINGS[value.releaseChannel].runtimeChannel
   ) {
     throw new Error('packaged install state is malformed');
   }
@@ -4901,7 +4993,7 @@ function delegatePackagedUpgradeIfPresent(
   const state = readSafePackagedInstallState(
     join(installRoot, '.station-release-state.json'),
   );
-  // The manifest's `channel` is the runtime channel (stable|beta); the
+  // The manifest's `channel` is the runtime channel (stable|beta|nightly); the
   // persisted ring is a release channel, so compare releaseChannel to
   // releaseChannel.
   if (manifest.releaseChannel !== state.releaseChannel) {

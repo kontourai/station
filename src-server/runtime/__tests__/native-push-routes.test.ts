@@ -613,6 +613,64 @@ describe('native push routes', () => {
         expect(statSync(iosPath(harness)).mode & 0o777).toBe(0o600);
     });
 
+    test('an alert token (#2589) is stored lower-cased beside the push-to-start token; without one nothing changes', async () => {
+      const harness = createHarness();
+      const paired = await pairDevice(harness, 'iPhone');
+      const alertToken = 'cd'.repeat(32);
+      const response = await harness.register(paired.credential, {
+        ...iosBody(),
+        alertToken: alertToken.toUpperCase(),
+      });
+      expect(response.status).toBe(200);
+      const first = (await response.json()) as Record<string, string>;
+      const stored = () =>
+        JSON.parse(readFileSync(iosPath(harness), 'utf8')).registrations[
+          paired.device.id
+        ];
+      expect(stored()).toMatchObject({ token: IOS_TOKEN, alertToken });
+      // The answer is the same shape: the alert token is not echoed.
+      expect(Object.keys(first).sort()).toEqual([
+        'payloadKey',
+        'registrationId',
+        'stationId',
+        'stationKey',
+      ]);
+      // Re-registering without one keeps the registration and drops it.
+      const again = await harness.register(paired.credential, iosBody());
+      expect(again.status).toBe(200);
+      const second = (await again.json()) as Record<string, string>;
+      expect(second.registrationId).toBe(first.registrationId);
+      expect(stored()).not.toHaveProperty('alertToken');
+    });
+
+    test.each([
+      ['not hex', 'zz'.repeat(32)],
+      ['shorter than 32 bytes', 'cd'.repeat(31)],
+      ['not a string', 42],
+    ])('refuses an alert token that is %s', async (_label, alertToken) => {
+      const harness = createHarness();
+      const paired = await pairDevice(harness);
+      const response = await harness.register(paired.credential, {
+        ...iosBody(),
+        alertToken,
+      });
+      expect(response.status).toBe(400);
+      expect(existsSync(iosPath(harness))).toBe(false);
+    });
+
+    test('an Android registration never stores an alert token', async () => {
+      const harness = createHarness();
+      const paired = await pairDevice(harness);
+      const response = await harness.register(paired.credential, {
+        ...androidBody(TOKEN_A),
+        alertToken: 'cd'.repeat(32),
+      });
+      expect(response.status).toBe(200);
+      expect(readFileSync(harness.sidecarPath, 'utf8')).not.toContain(
+        'alertToken',
+      );
+    });
+
     test('a device that moves from Android to iOS keeps one registration', async () => {
       const harness = createHarness();
       const paired = await pairDevice(harness);

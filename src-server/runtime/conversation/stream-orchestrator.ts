@@ -37,6 +37,13 @@ export function createElicitationCallback(
   injectableStream: InjectableStream,
   logger: any,
   getConversationId: () => string | undefined = () => undefined,
+  /**
+   * #2589: set when this stream is the Station-agent adapter's relay for an
+   * orchestration thread. The adapter republishes each tool-approval request
+   * below as that thread's `request.opened`, so the approval is on the
+   * agent-activity card; the stamp says so on the registry twin.
+   */
+  orchestrationThreadId?: string,
 ) {
   const autoApprove = agentSpec?.tools?.autoApprove || [];
 
@@ -99,10 +106,15 @@ export function createElicitationCallback(
       } as unknown as any);
 
       // Wait for user approval
+      const conversationId = getConversationId();
       return approvalRegistry.register(approvalId, {
         metadata: {
           agentName: agentSpec.name,
-          conversationId: getConversationId(),
+          conversationId,
+          // Only for the relayed conversation itself.
+          ...(orchestrationThreadId && orchestrationThreadId === conversationId
+            ? { orchestrationThreadId }
+            : {}),
           description:
             typeof request.toolDescription === 'string'
               ? request.toolDescription
