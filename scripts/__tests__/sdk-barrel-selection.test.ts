@@ -659,6 +659,146 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
       }
     });
 
+    // #2782 review: an import move between already-evaluated pure modules is
+    // still observable when the moved closure enters an import cycle at a
+    // different module, or snapshots a binding its declarer reassigns while
+    // other modules load. Runtime-verified shapes from the review.
+    describe('order-sensitive closures', () => {
+      const X = 'packages/sdk/src/client/x.ts';
+      const decideMove = (
+        files: Record<string, string>,
+        xBase: string,
+        xHead: string,
+        changed: string[] = [X],
+      ) => {
+        const sources = new Map(Object.entries({ ...files, [X]: xHead }));
+        const graph = buildSdkImportGraph({
+          sources,
+          fileSet: [...sources.keys()],
+          sdkExports: { '.': './src/index.ts' },
+        });
+        return refineSdkBarrelRelatedPaths('/repo', [X], {
+          base: 'merge-base',
+          loadGraph: () => graph,
+          changedSdkPaths: changed,
+          readBase: (_root: string, _base: string, path: string) =>
+            path === X ? xBase : (files[path] ?? null),
+        }).decisions[0];
+      };
+      const liveFiles = (
+        q: string,
+        s = 'export let count = 0;\nexport function inc() { count++; }',
+      ) => ({
+        [ROOT_BARREL]:
+          "export * from './client/index';\nexport * from './r';\nexport * from './q';",
+        [CLIENT_BARREL]: "export * from './x';",
+        'packages/sdk/src/s.ts': s,
+        'packages/sdk/src/r.ts':
+          "import { inc } from './s';\ninc();\nexport const rv = 1;",
+        'packages/sdk/src/q.ts': q,
+      });
+      const qReadsCount =
+        "import { count } from './s';\nexport const snap = count;";
+      const xWithQ =
+        "import { snap } from '../q';\nexport const xv = 1;\nexport function g() { return snap; }";
+      const xAlone = 'export const xv = 1;';
+
+      test('B: an added import moves a snapshot of a reassignable binding', () => {
+        const decision = decideMove(liveFiles(qReadsCount), xAlone, xWithQ);
+        expect(decision.reason).toMatch(
+          /live binding: .*q\.ts, loaded by .*q\.ts, reads count, which .*s\.ts declares reassignable/,
+        );
+      });
+
+      test('C: a removed import moves the same snapshot the other way', () => {
+        const decision = decideMove(liveFiles(qReadsCount), xWithQ, xAlone);
+        expect(decision.reason).toMatch(/live binding: .*reads count/);
+      });
+
+      test.each([
+        [
+          'through a re-export chain',
+          "import { count } from './mid';\nexport const snap = count;",
+          { 'packages/sdk/src/mid.ts': "export { count } from './s';" },
+        ],
+        [
+          'declared by a renamed local export',
+          qReadsCount,
+          {
+            'packages/sdk/src/s.ts':
+              'let total = 0;\nexport function inc() { total++; }\nexport { total as count };',
+          },
+        ],
+        [
+          'of a function the module reassigns',
+          "import { count } from './s';\nexport const snap = count;",
+          {
+            'packages/sdk/src/s.ts':
+              'export function count() { return 0; }\nexport function inc() { count = () => 1; }',
+          },
+        ],
+      ])('B, %s', (_label, q, extra) => {
+        const decision = decideMove(
+          { ...liveFiles(q), ...extra },
+          xAlone,
+          xWithQ,
+        );
+        expect(decision.reason).toMatch(/live binding: .*reads count/);
+      });
+
+      test('control: a snapshot of an imported `export const` still refines', () => {
+        const decision = decideMove(
+          liveFiles(
+            qReadsCount,
+            'export const count = 0;\nexport function inc() { return count; }',
+          ),
+          xAlone,
+          xWithQ,
+        );
+        expect(decision.disposition).toBe('refined');
+      });
+
+      test.each([
+        ['var', 'export var pv = 1;'],
+        ['const', 'export const pv = 1;'],
+      ])(
+        'A: an added import enters a P/Q import cycle at P (%s)',
+        (_kind, pv) => {
+          const decision = decideMove(
+            {
+              [ROOT_BARREL]:
+                "export * from './client/index';\nexport * from './q';\nexport * from './p';",
+              [CLIENT_BARREL]: "export * from './x';",
+              'packages/sdk/src/q.ts':
+                "import { pv } from './p';\nexport const snap = [pv];",
+              'packages/sdk/src/p.ts': `import { snap } from './q';\n${pv}\nexport function useSnap() { return snap; }`,
+            },
+            xAlone,
+            "import { pv } from '../p';\nexport const xv = 1;\nexport function g() { return pv; }",
+          );
+          expect(decision.reason).toMatch(
+            /import cycle: .*p\.ts, loaded by .*p\.ts, is in a cycle with .*q\.ts/,
+          );
+        },
+      );
+
+      test('a changed SDK exports map makes base reachability unknown', () => {
+        const files = liveFiles(
+          "import { fixed } from './s';\nexport const snap = fixed;",
+          'export const fixed = 0;',
+        );
+        const decision = decideMove(files, xAlone, xWithQ, [
+          X,
+          'packages/sdk/package.json',
+        ]);
+        expect(decision.reason).toMatch(
+          /base reachability is unknown \(packages\/sdk\/package\.json changed/,
+        );
+        // Control: the same change with the exports map unchanged refines.
+        expect(decideMove(files, xAlone, xWithQ).disposition).toBe('refined');
+      });
+    });
+
     test('reachability is judged at the BASE: a target another changed file just exposed is new', () => {
       // At the head the client barrel re-exports fresh.ts, so it is
       // reachable there; at the base it was not.
@@ -716,7 +856,9 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
         decide(() => {
           throw new Error('git cannot read the base');
         }).reason,
-      ).toMatch(/board\.ts is not barrel-reachable at the base/);
+      ).toMatch(
+        /base reachability is unknown \(a changed SDK file is unreadable at the base: git cannot read the base\)/,
+      );
       // Control: readable, the same change refines.
       expect(decide(() => SDK_SOURCES[BOARD]).disposition).toBe('refined');
     });

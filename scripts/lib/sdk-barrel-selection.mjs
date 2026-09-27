@@ -62,6 +62,7 @@ import ts from 'typescript';
 
 const SDK_SOURCE_PREFIX = 'packages/sdk/src/';
 const SDK_PACKAGE_NAME = '@kontourai/station-sdk';
+const SDK_PACKAGE_JSON = 'packages/sdk/package.json';
 const SDK_BARREL_PATHS = Object.freeze([
   'packages/sdk/src/index.ts',
   'packages/sdk/src/client/index.ts',
@@ -1273,6 +1274,8 @@ function importChangeBlocker(context, path, baseSource, head) {
     if (target.startsWith('external:'))
       return `${target.slice('external:'.length)} is outside the SDK`;
   }
+  if (added.length && context.baseUnknown)
+    return `base reachability is unknown (${context.baseUnknown})`;
   for (const target of added)
     if (!context.baseReachable().has(target))
       return `added import ${target} is not barrel-reachable at the base`;
@@ -1294,6 +1297,19 @@ function importChangeBlocker(context, path, baseSource, head) {
       if (topLevelSideEffect(module, graph.sources.get(module)))
         return `${module}, loaded by ${target}, has a top-level side effect`;
     }
+  // Moving a pure, readable closure earlier or later is still observable
+  // when what it reads at load can differ with the order (#2782 review):
+  // entering an import cycle at a different module, or snapshotting a
+  // binding its declaring module can reassign while other modules load.
+  for (const target of [...added, ...removed])
+    for (const module of context.closureOf(target)) {
+      const cycle = context.cycleOf(module);
+      if (cycle)
+        return `import cycle: ${module}, loaded by ${target}, is in a cycle with ${cycle.filter((m) => m !== module).join(', ')}`;
+      const live = context.liveBindingRead(module);
+      if (live)
+        return `live binding: ${module}, loaded by ${target}, reads ${live.name}, which ${live.declarer} declares reassignable`;
+    }
   return null;
 }
 
@@ -1302,7 +1318,7 @@ function importChangeBlocker(context, path, baseSource, head) {
  * `baseSources` maps each changed SDK file to its base content (null when
  * absent there); null for the whole map means the changed set is unknown.
  */
-function importChangeContext(graph, baseSources) {
+function importChangeContext(graph, baseSources, baseUnknown = null) {
   const closure = (starts, next) => {
     const seen = new Set();
     const queue = [...starts];
@@ -1319,11 +1335,206 @@ function importChangeContext(graph, baseSources) {
   let headReach;
   const closures = new Map();
   const loaders = new Map();
+  // Strongly connected components of the static load graph (Tarjan),
+  // computed once: module -> its component when larger than one module.
+  let components;
+  const componentOf = () => {
+    if (components) return components;
+    components = new Map();
+    const index = new Map();
+    const low = new Map();
+    const stack = [];
+    const onStack = new Set();
+    let counter = 0;
+    const connect = (module) => {
+      index.set(module, counter);
+      low.set(module, counter);
+      counter += 1;
+      stack.push(module);
+      onStack.add(module);
+      for (const target of headTargets(module)) {
+        if (!index.has(target)) {
+          connect(target);
+          low.set(module, Math.min(low.get(module), low.get(target)));
+        } else if (onStack.has(target))
+          low.set(module, Math.min(low.get(module), index.get(target)));
+      }
+      if (low.get(module) === index.get(module)) {
+        const component = [];
+        let member;
+        do {
+          member = stack.pop();
+          onStack.delete(member);
+          component.push(member);
+        } while (member !== module);
+        if (component.length > 1)
+          for (const entry of component) components.set(entry, component);
+      }
+    };
+    for (const module of graph.loads.keys())
+      if (!index.has(module)) connect(module);
+    return components;
+  };
+
+  // Exported names a module can reassign after it loads: `let`/`var`
+  // bindings, and any local (a function or class too) that the module
+  // assigns anywhere, exported directly or through `export { a as b }`.
+  const reassignable = new Map();
+  const reassignableExports = (module) => {
+    if (reassignable.has(module)) return reassignable.get(module);
+    const source = graph.sources.get(module);
+    let names = null; // null: unreadable, so any name may be
+    if (source !== undefined) {
+      const file = parse(module, source);
+      const mutable = new Set();
+      const assigned = (node) => {
+        if (
+          ts.isBinaryExpression(node) &&
+          IMPURE_OPERATORS.has(node.operatorToken.kind) &&
+          ts.isIdentifier(node.left)
+        )
+          mutable.add(node.left.text);
+        if (
+          (ts.isPrefixUnaryExpression(node) ||
+            ts.isPostfixUnaryExpression(node)) &&
+          (node.operator === ts.SyntaxKind.PlusPlusToken ||
+            node.operator === ts.SyntaxKind.MinusMinusToken) &&
+          ts.isIdentifier(node.operand)
+        )
+          mutable.add(node.operand.text);
+        ts.forEachChild(node, assigned);
+      };
+      assigned(file);
+      for (const statement of file.statements)
+        if (
+          ts.isVariableStatement(statement) &&
+          !(statement.declarationList.flags & ts.NodeFlags.Const)
+        )
+          for (const declaration of statement.declarationList.declarations)
+            for (const name of bindingNames(declaration.name, []))
+              mutable.add(name);
+      names = new Set();
+      for (const statement of file.statements) {
+        if (
+          ts.isExportDeclaration(statement) &&
+          !statement.moduleSpecifier &&
+          statement.exportClause &&
+          ts.isNamedExports(statement.exportClause)
+        )
+          for (const element of statement.exportClause.elements) {
+            if (mutable.has((element.propertyName ?? element.name).text))
+              names.add(element.name.text);
+          }
+        else if (
+          hasModifier(statement, ts.SyntaxKind.ExportKeyword) &&
+          !hasModifier(statement, ts.SyntaxKind.DefaultKeyword)
+        ) {
+          const declared = ts.isVariableStatement(statement)
+            ? statement.declarationList.declarations.flatMap((declaration) =>
+                bindingNames(declaration.name, []),
+              )
+            : statement.name && ts.isIdentifier(statement.name)
+              ? [statement.name.text]
+              : [];
+          for (const name of declared) if (mutable.has(name)) names.add(name);
+        }
+      }
+    }
+    reassignable.set(module, names);
+    return names;
+  };
+  // The module that declares `name` as exported by `module`, when that
+  // binding is reassignable; follows re-export chains and stars. Unknown
+  // (unreadable, unresolvable) counts as reassignable.
+  const reassignableDeclarer = (module, name, seen = new Set()) => {
+    const key = `${module}\0${name}`;
+    if (seen.has(key)) return null;
+    seen.add(key);
+    const table = graph.exportsOf(module);
+    const own = reassignableExports(module);
+    if (!table || own === null) return module;
+    if (own.has(name)) return module;
+    if (table.local.has(name)) return null;
+    const entry = table.named.get(name);
+    if (entry) {
+      if (entry.name === null) return null; // a namespace object is not a binding read
+      const target = graph.resolveSpecifier(module, entry.specifier);
+      if (target === null) return null; // outside the SDK: blocked elsewhere
+      if (target === UNKNOWN) return module;
+      return reassignableDeclarer(target, entry.name, seen);
+    }
+    if (name === 'default') return null;
+    for (const specifier of table.stars) {
+      const target = graph.resolveSpecifier(module, specifier);
+      if (target === null) continue;
+      if (target === UNKNOWN) return module;
+      const found = reassignableDeclarer(target, name, seen);
+      if (found) return found;
+    }
+    return null;
+  };
+  const liveReads = new Map();
+
   return {
     graph,
+    baseUnknown,
+    cycleOf(module) {
+      return componentOf().get(module) ?? null;
+    },
+    /**
+     * The first imported binding `module` reads by bare identifier (anywhere
+     * in the module: an over-approximation of what it reads at load) that
+     * its declaring module can reassign, or null.
+     */
+    liveBindingRead(module) {
+      if (liveReads.has(module)) return liveReads.get(module);
+      let found = null;
+      const source = graph.sources.get(module);
+      if (source !== undefined) {
+        const file = parse(module, source);
+        const imports = new Map();
+        for (const statement of file.statements) {
+          if (!ts.isImportDeclaration(statement)) continue;
+          const clause = statement.importClause;
+          if (!clause || clause.isTypeOnly) continue;
+          const target = graph.resolveSpecifier(
+            module,
+            statement.moduleSpecifier.text,
+          );
+          if (target === null) continue;
+          if (clause.name) imports.set(clause.name.text, [target, 'default']);
+          const bindings = clause.namedBindings;
+          if (bindings && ts.isNamedImports(bindings))
+            for (const element of bindings.elements)
+              if (!element.isTypeOnly)
+                imports.set(element.name.text, [
+                  target,
+                  (element.propertyName ?? element.name).text,
+                ]);
+        }
+        const read = new Set();
+        for (const statement of file.statements)
+          if (!ts.isImportDeclaration(statement))
+            referencedIdentifiers(statement, read);
+        for (const identifier of read) {
+          const source = imports.get(identifier);
+          if (!source) continue;
+          const [target, name] = source;
+          const declarer =
+            target === UNKNOWN ? module : reassignableDeclarer(target, name);
+          if (declarer) {
+            found = { name: identifier, declarer };
+            break;
+          }
+        }
+      }
+      liveReads.set(module, found);
+      return found;
+    },
     baseReachable() {
       if (base === undefined) {
-        if (baseSources === null) base = new Set();
+        if (baseSources === null)
+          base = new Set(); // see baseUnknown
         else {
           const absent = new Set(
             [...baseSources]
@@ -1387,7 +1598,15 @@ function changedSdkFiles(root, base) {
   return [
     ...new Set([
       ...split(
-        git(root, ['diff', '--name-only', '-z', base, '--', SDK_SOURCE_PREFIX]),
+        git(root, [
+          'diff',
+          '--name-only',
+          '-z',
+          base,
+          '--',
+          SDK_SOURCE_PREFIX,
+          SDK_PACKAGE_JSON,
+        ]),
       ),
       ...split(
         git(root, [
@@ -1400,7 +1619,7 @@ function changedSdkFiles(root, base) {
         ]),
       ),
     ]),
-  ].filter((path) => CODE_FILE.test(path));
+  ].filter((path) => CODE_FILE.test(path) || path === SDK_PACKAGE_JSON);
 }
 
 /** Runtime module specifiers a module loads, as a comparable key. */
@@ -1883,9 +2102,13 @@ export function refineSdkBarrelRelatedPaths(
     let contents;
     let failure;
     try {
-      contents = readAllAtBase(root, base, [
-        ...new Set([...candidates, ...changed]),
-      ]);
+      contents = readAllAtBase(
+        root,
+        base,
+        [...new Set([...candidates, ...changed])].filter(
+          (path) => path !== SDK_PACKAGE_JSON,
+        ),
+      );
     } catch (error) {
       failure = error;
     }
@@ -1895,8 +2118,15 @@ export function refineSdkBarrelRelatedPaths(
     };
   }
   // Base content of every changed SDK file; null when that set is unknown.
+  // Base content is resolved with the head resolver, so a changed SDK
+  // `exports` map makes base reachability unknown rather than guessed.
   let baseSources = null;
-  if (!changedFailure)
+  let baseUnknown = null;
+  if (changedFailure)
+    baseUnknown = `the changed SDK files are unknown: ${changedFailure instanceof Error ? changedFailure.message : String(changedFailure)}`;
+  else if (changed.includes(SDK_PACKAGE_JSON))
+    baseUnknown = `${SDK_PACKAGE_JSON} changed, so base imports cannot be resolved with the head exports map`;
+  else
     try {
       baseSources = new Map(
         [...new Set([...candidates, ...changed])].map((path) => [
@@ -1904,10 +2134,10 @@ export function refineSdkBarrelRelatedPaths(
           readCandidate(root, base, path) ?? null,
         ]),
       );
-    } catch {
-      baseSources = null;
+    } catch (error) {
+      baseUnknown = `a changed SDK file is unreadable at the base: ${error instanceof Error ? error.message : String(error)}`;
     }
-  const importContext = importChangeContext(graph, baseSources);
+  const importContext = importChangeContext(graph, baseSources, baseUnknown);
   for (const path of candidates) {
     let decision;
     try {
