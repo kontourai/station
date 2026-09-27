@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-27T22:14:54Z | nightly-npm | 0.6.0-nightly.2461.36350925838 | `9d39d40` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36350925838) |
 | 2026-09-27T18:18:23Z | nightly-desktop | 0.1.11-nightly.2461.2 | `73e3cda` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36334655311) |
 | 2026-09-27T18:18:20Z | nightly-android | 0.1.11-nightly.2461.2 | `73e3cda` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36334655311) |
 | 2026-09-27T17:55:24Z | nightly-npm | 0.6.0-nightly.2461.36334655311 | `73e3cda` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36334655311) |
@@ -173,6 +174,35 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-27T22:14:54Z · nightly-npm · 0.6.0-nightly.2461.36350925838
+
+- Ship SHA: `9d39d40b9a11564902f7b8ee33a03a7c99bc9dee`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2461.36350925838 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `73e3cda` ([full sha](https://github.com/kontourai/station/commit/73e3cdac817704360eded65049732a26e9658962)):
+
+**Fixes**
+
+- [#2817](https://github.com/kontourai/station/pull/2817) fix(plugins): bound plugin git discovery and share .git name matching
+
+**Other**
+
+- [#2850](https://github.com/kontourai/station/pull/2850) test(broker): cover multiple scoped Stations on one database
+- [#2837](https://github.com/kontourai/station/pull/2837) test: audit batch 22 - prune dead and duplicate tests, strengthen weak assertions, fix DST streak
+- [#2835](https://github.com/kontourai/station/pull/2835) test(examples): make batch 23 example-plugin tests reach their seams
+- [#2839](https://github.com/kontourai/station/pull/2839) chore(ui): remove the unmounted Coding inspector Reviews tab
+- [#2838](https://github.com/kontourai/station/pull/2838) test(relay): qualify two-Station encrypted isolation
+- [#2829](https://github.com/kontourai/station/pull/2829) test(server): prune and sharpen agents route tests (test-audit batch 24)
+- [#2827](https://github.com/kontourai/station/pull/2827) test(ui): test-audit batch 20, chat dock and composer tests at their owners
+- [#2825](https://github.com/kontourai/station/pull/2825) test(ui): test-audit batch 19, settings, plugin and skills tests at their owners
+- [#2820](https://github.com/kontourai/station/pull/2820) test(ui): test-audit batch 16 — retire UI test-only seams and measure layout in Chromium
+- [#2819](https://github.com/kontourai/station/pull/2819) test(ui): test-audit batch 17, view tests at their owner boundaries
+- [#2818](https://github.com/kontourai/station/pull/2818) test(server): route runtime helper tests through their owners (test-audit batch 18)
 
 ## 2026-09-27T18:18:23Z · nightly-desktop · 0.1.11-nightly.2461.2
 
