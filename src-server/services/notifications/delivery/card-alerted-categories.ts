@@ -2,8 +2,9 @@
  * Which notifications the agent-activity card already announces, so a
  * per-notification alert channel on a phone that gets the card (Live
  * Activity on iOS, the card on Android) can skip exactly those and one event
- * is not alerted twice. Shared by both platforms: the Android FCM alert
- * channel (#2588) is to call the same predicate.
+ * is not alerted twice. Shared by both platforms: the iOS alert channel
+ * (apns-alert-channel.ts, #2589) and the Android one (fcm-alert-channel.ts,
+ * #2588) both call it.
  *
  * The card is built from the session read model (`listSessionReadModel`),
  * and it alerts on an entry into approval or input and on a turn that

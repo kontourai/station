@@ -4,10 +4,9 @@ import {
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
 
-// The coding-layout inspector is now tabbed + collapsible. Seed the sibling
-// config-detection endpoints (Flow + Trust) as not-configured so the rail's
-// default-collapsed-when-nothing-configured logic is deterministic, then open
-// the Readiness tab (expanding from the slim strip first if collapsed).
+// Seed the sibling config-detection endpoints (Flow + Trust) as
+// not-configured so the code layout's other panes read a deterministic state,
+// then open the Readiness pane's tab.
 async function seedSiblingConfig(page: Page) {
   await page.route('**/api/projects/*/flow/definitions**', (route) =>
     route.fulfill({
@@ -29,12 +28,7 @@ async function seedSiblingConfig(page: Page) {
 }
 
 async function openReadinessTab(page: Page) {
-  const strip = page.locator('.coding-inspector-strip');
-  if (await strip.isVisible().catch(() => false)) {
-    await page.getByRole('button', { name: /Open Readiness/ }).click();
-  } else {
-    await page.getByRole('tab', { name: 'Readiness' }).click();
-  }
+  await page.getByRole('tab', { name: 'Readiness' }).click();
 }
 
 const READINESS_SNAPSHOT = {

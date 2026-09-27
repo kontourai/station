@@ -6214,14 +6214,6 @@
         "count": 1
       }
     },
-    "src-ui/src/components/coding-layout/CodingInspectorPanel.tsx": {
-      "complexity_moderate": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "src-ui/src/components/coding-layout/CodingTerminalPane.tsx": {
       "complexity_moderate": {
         "count": 1
