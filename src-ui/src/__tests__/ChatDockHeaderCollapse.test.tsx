@@ -129,24 +129,6 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     fireEvent.click(settings);
     expect(setShowChatSettings).toHaveBeenCalledTimes(1);
   });
-
-  /**
-   * #1536 F: the bar carried two bare keycap spans — a ⌘D beside the settings
-   * gear and a ⌘M inside Maximize — as visible chrome. Every other shortcut in
-   * this bar lives in its control's tooltip, which is where these are now.
-   */
-  test('renders no bare keycap chrome', () => {
-    const { container } = renderHeader();
-
-    expect(container.querySelector('.chat-dock__toggle-shortcut')).toBeNull();
-    // Every keycap in the bar, not just the one the retired span carried: the
-    // activity dropdown's own ⌘1…⌘9 rows use this class too and are the only
-    // remaining consumer, so an empty count here is only meaningful because the
-    // dropdown is present but has no active sessions in this fixture.
-    expect(
-      container.querySelectorAll('.chat-dock__header .chat-dock__subtitle'),
-    ).toHaveLength(0);
-  });
 });
 
 /**

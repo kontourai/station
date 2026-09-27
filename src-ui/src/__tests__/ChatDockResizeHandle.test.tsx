@@ -194,20 +194,24 @@ describe('ChatDockResizeHandle', () => {
   });
 
   test('pointercancel releases the drag deterministically', () => {
-    const removeSpy = vi.spyOn(window, 'removeEventListener');
-    const { handle, onDragStateChange } = renderHandle({ snap: 'half' });
+    const { handle, onDragStateChange, onLiveHeight, onSnap, onCommitHeight } =
+      renderHandle({ snap: 'half' });
 
     fireEvent.pointerDown(handle, { pointerId: 1, clientY: 700 });
-    fireEvent.pointerCancel(window, { pointerId: 1, clientY: 650 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientY: 600 });
+    fireEvent.pointerCancel(window, { pointerId: 1, clientY: 600 });
 
     expect(onDragStateChange).toHaveBeenLastCalledWith(false);
-    expect(removeSpy).toHaveBeenCalledWith('pointermove', expect.any(Function));
-    expect(removeSpy).toHaveBeenCalledWith('pointerup', expect.any(Function));
-    expect(removeSpy).toHaveBeenCalledWith(
-      'pointercancel',
-      expect.any(Function),
-    );
-    removeSpy.mockRestore();
+    expect(onLiveHeight).toHaveBeenLastCalledWith(null);
+
+    // A stray move or release after the cancel must not resurrect the drag or
+    // commit a size the user abandoned.
+    fireEvent.pointerMove(window, { pointerId: 1, clientY: 200 });
+    fireEvent.pointerUp(window, { pointerId: 1, clientY: 200 });
+    expect(onLiveHeight).toHaveBeenCalledTimes(2);
+    expect(onDragStateChange).toHaveBeenLastCalledWith(false);
+    expect(onSnap).not.toHaveBeenCalled();
+    expect(onCommitHeight).not.toHaveBeenCalled();
   });
 
   test('ignores move/up events from a different pointer', () => {
