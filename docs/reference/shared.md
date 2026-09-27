@@ -508,6 +508,9 @@ interface LayoutTemplate {
 ## notification types
 
 Re-exported from `@kontourai/station-contracts/notification` for compatibility.
+`delivered` is the notification service's record state, not a receipt that a
+browser or phone displayed it. For example, an immediate record receives
+`deliveredAt` when it is stored, before downstream surface delivery.
 
 ```ts
 type NotificationStatus =
@@ -541,6 +544,23 @@ interface Notification {
   updatedAt: string;
 }
 ```
+
+The current unified envelope lives at `metadata.envelope`; it adds source,
+audience, urgency, target and read/dismiss markers without replacing these
+legacy top-level fields. Read it with `readNotificationEnvelope` from
+`@kontourai/station-shared/notification-envelope`. Missing, unknown-version or
+malformed envelopes return `undefined`. Valid v1 reads ignore unknown keys;
+an unknown source or audience kind forces silent presentation, and an unknown
+target kind drops that target.
+
+Trusted in-process producers use `parseNotificationEnvelopeForWrite`: exact
+keys, known kinds, no unresolved `principal` audience, and no producer-authored
+read/dismiss markers. Passing that parser is shape validation, not caller
+authorization. The notification service owns the trusted write path and derives
+session metadata from the envelope. See the
+[parser](../../packages/shared/src/notification-envelope.ts),
+[service](../../src-server/services/notifications/notification-service.ts), and
+[UI reader](../../src-ui/src/components/notifications/NotificationEnvelopeControls.tsx).
 
 ---
 
@@ -703,6 +723,15 @@ interface AgentInvokeResponse {
 ---
 
 ## session / memory types
+
+These are legacy compatibility shapes from the
+[runtime contract](../../packages/contracts/src/runtime.ts). `SessionMetadata`
+and `MemoryEvent` do not describe the canonical orchestration event stream or
+its durable Session identity. The required numeric fields in `ConversationStats`
+also differ from the current `ConversationStatsResponse`: that API allows
+unreported measurements to be absent. Use its parser and measurement provenance
+instead of filling missing engine observations with zero. See
+[conversation measurements](contracts.md#conversation-measurements).
 
 ```ts
 interface WorkflowMetadata {
@@ -969,7 +998,18 @@ implementing those hooks.
 
 ### `connectMCP(def: ToolDef, opts?: MCPManagerOptions): Promise<MCPConnection>`
 
-Creates and connects an MCP client from a `ToolDef`. Supports `stdio`, `sse`, and `streamable-http` transports. Discovers available tools on connect.
+Creates and connects an MCP client from a normalized `ToolDef`. Supports
+`stdio`, `sse`, and `streamable-http` transports. It asks for automatic protocol
+negotiation and then calls `listTools` without a cursor. The pinned MCP client
+aggregates pages on that path, with its default 64-page bound. Station maps that
+response into a connection-local catalog; it does not refresh that stored
+`tools` array when the server later changes its catalog.
+
+The `connected` status callback fires after transport connection and before
+tool discovery. Discovery can still fail and produce a later `failed` callback;
+await the returned connection before using its catalog. `onNegotiated` receives
+the SDK's protocol version/era, server capabilities, extension IDs and optional
+discovery result, not a guarantee that every advertised capability works.
 
 ```ts
 import { connectMCP } from '@kontourai/station-shared/mcp';
@@ -997,6 +1037,10 @@ Calls a tool on an existing connection. Accepts both prefixed (`"server_tool"`) 
 ```ts
 const result = await callTool(conn, 'my-server_list_files', { path: '/tmp' });
 ```
+
+This helper returns the MCP result as supplied by the client. It does not turn
+`isError` content into an exception or apply Station's tool permission policy.
+Callers must interpret the result and retain their own authorization boundary.
 
 ### `MCPManager`
 
@@ -1041,3 +1085,21 @@ await manager.closeAll();
 | `streamable-http` | `endpoint` required |
 | `process` (legacy) | treated as `stdio` |
 | omitted | inferred as `stdio` if `command` is set |
+
+Stdio children inherit the host process environment plus the definition's
+overrides and optional working directory. Streamable HTTP applies literal
+headers only at the configured origin, lets SDK headers take precedence, and
+refuses redirects. The SSE constructor receives the OAuth provider but not
+`ToolDef.headers`; do not assume the transports have identical header behavior.
+These are low-level transport choices, not installation consent.
+
+Owners that need to retain cleanup through partial connection or OAuth failure
+use `prepareMCPConnection` and `MCPLocalConnectionCustody`. Retirement fences
+new local operations before waiting for existing ones. A pending or failed
+close remains owned; a bounded cleanup return does not mean a child process,
+its descendants or a remote effect has stopped. The simple CLI development
+host uses `MCPManager`, while Station's runtime supplies its own custody owner.
+See the [connection factory](../../packages/shared/src/mcp-connection.ts),
+[custody owner](../../packages/shared/src/mcp-local-custody.ts),
+[CLI caller](../../packages/cli/src/dev/mcp.ts), and
+[Station MCP composition](../../src-server/runtime/mcp/mcp-manager.ts).

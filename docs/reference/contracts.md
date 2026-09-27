@@ -123,7 +123,7 @@ value as terminal rather than keeping a job running indefinitely. `admitted`,
 `job.deferred` wire values. See [Monitoring](../guides/monitoring.md) for the
 complete metric vocabulary and parked-depth formula.
 
-**Removed in this release.** Station previously emitted `job.deferred` — and
+**Compatibility with older scheduler events.** Station previously emitted `job.deferred` — and
 `job.refused` for a manual run — with `reason: 'resource_posture'` plus
 `posture` and `busy_percent`, when host CPU load gated scheduled work. Host
 load no longer gates any work, so those events are gone: a consumer branching
@@ -138,12 +138,15 @@ TURN — a follow-up turn gets its own budget; nothing here promises an
 aggregate limit across a whole task or conversation. Station does not end a
 live turn on a schedule it chose itself: each bound exists only when a
 server-owned caller declares it, and no production caller does today
-(`station-runtime.ts` builds the Muse adapter with neither `turnIdleTimeoutMs`
+([runtime composition](../../src-server/runtime/bootstrap/station-runtime.ts)
+builds the Muse adapter with neither `turnIdleTimeoutMs`
 nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
 bound. A turn that goes silent is surfaced instead: the stall watchdog's
 `progressSilence` (below) shows "No output for …" and the stall notice with a
-Stop button, and the user decides. Stop signals the child's process group
-and settles the turn `turn.aborted`.
+Stop button, and the user decides. On the exec fallback, Stop signals the
+child's process group and settles the turn `turn.aborted`; the serve transport
+uses its interrupt protocol, described below. The following idle/total timer
+details describe the [exec adapter](../../src-server/providers/adapters/muse-adapter.ts).
 
 | Bound | Owner | Semantics | Muse default |
 |---|---|---|---|
@@ -249,22 +252,34 @@ Muse's own terminal (a `cancelled` terminal nobody in Station asked for is
 after background work is adopted as a provider turn as above; tool approvals,
 a workflow subagent's included, are `request.opened` events (attributed to
 the child by `payload.childWork`), resolved from Muse's own
-`approval/resolved`. Muse never expires an unanswered approval, so Station
-declines one after 30 minutes (`muse-approval-expired`) and resolves it
-`expired`. Workflow subagents are `child-work.updated` deltas, and an exec
+`approval/resolved`. Station's serve adapter owns an unanswered-approval
+deadline, defaulting to 30 minutes (`muse-approval-expired`), after which it
+declines the request and publishes `expired`. That local publication does not
+prove Muse accepted the decline: if the engine does not settle it, the adapter
+first requests a child stop or turn interrupt, then can end the host after
+another bounded wait. These actions produce warnings. See the
+[approval owner](../../src-server/providers/adapters/muse-serve-session.ts).
+Workflow subagents are `child-work.updated` deltas, and an exec
 session reports its child work `not-reported`.
 
-The shared 3-minute stall watchdog (`TurnStallWatchdog` /
-`TurnProgressTracker`) stays observe-only: its `progressSilence` marker says
+The shared stall watchdog (`TurnStallWatchdog` / `TurnProgressTracker`)
+defaults to three minutes. An Agent's positive, finite
+`execution.turnStallWindowMs` overrides that window; absent or invalid values
+use the default. It stays observe-only: its `progressSilence` marker says
 no progress was *observed* — quiet providers (for example a Muse build
 older than 1.3, which emits no `tool.started`) may be working quietly, and
 the marker must never be rendered as proof of a stall. It keys on the
 events the parent turn publishes (streamed text, reasoning, tool start,
-progress, and completion); a tool in flight does not suspend it (only an open
-approval request does). So a Muse turn whose subagent is waiting on
+progress and completion, or a session-state transition). A tool in flight does
+not suspend it. `request.opened`, including input requests, suspends observation;
+`request.resolved` restarts it. So a Muse turn whose subagent is waiting on
 something writes only to that subagent's own session log, not to the
 parent's stdout, and reads as silent after the window, which is the
 signal the user acts on now that no idle timer ends it.
+
+The source route is the [window resolver](../../packages/contracts/src/turn-stall-window.ts),
+[watchdog](../../src-server/services/orchestration/turn-stall-watchdog.ts), and
+[progress projection](../../src-server/services/orchestration/turn-progress-tracker.ts).
 
 An interrupted adapter event consumer is also observation loss, not a turn
 terminal. The shared consumer publishes `runtime.warning` with code
@@ -304,6 +319,13 @@ Surfaces (`orchestration.ts`: `TurnSupervisionFacts`; delegation
   attribution details, and provider logs are never forwarded.
 - `transitionReason` crosses only when it names the
   `SessionTransitionReason` vocabulary; anything else is dropped.
+
+The [delegation projection](../../src-server/tools/station-control-delegation.ts)
+and [CLI formatter](../../packages/cli/src/commands/delegate.ts) own these
+bounded status fields. Protocol version numbers and captures cited above are
+historical observations, not a claim that a current installation runs those
+engine versions. Adapter fixture tests and real-provider journeys provide
+different evidence.
 
 ## Provider plan quota (#2265)
 
@@ -364,6 +386,13 @@ Surfaces (`snapshotFor` → `DelegatedTaskSnapshot.reason`;
   lines. The reset text is repeated verbatim for display — never parsed
   as UTC/machine-local, never a countdown, never an invented instant.
 
+Follow the [classifier](../../src-server/providers/provider-plan-quota.ts),
+[ACP rejection caller](../../src-server/providers/adapters/acp-adapter.ts),
+[lifecycle attribution](../../src-server/services/orchestration/session-lifecycle-service.ts),
+and [delegation projection](../../src-server/tools/station-control-delegation.ts)
+for the implemented boundary. This classifier recognizes the named wire form;
+it does not discover every provider's quota policy.
+
 ## Compatibility
 
 `conversation-pull-request-links` defines exact provider, host, repository, and
@@ -387,6 +416,10 @@ every model measurement must handle absence as unreported, distinct from a
 measured zero. The server projects the stored null cost marker to an omitted
 wire field; supplied null, negative, or non-finite wire measurements remain
 invalid under `parseConversationStatsResponse` in the `runtime` subpath.
+The [wire parser](../../packages/contracts/src/runtime.ts) checks those numeric
+fields; the [server projection](../../src-server/runtime/conversation/conversation-stats-view.ts)
+owns the storage-to-wire conversion. Neither proves that an engine measured
+every token or that an estimated cost matches a bill.
 
 ### Source-only learning inspection
 
@@ -427,7 +460,9 @@ separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
 `MobileDeviceSummary`, `MobileDeviceInventory`, and `MobileDeviceCapture`.
 Host/device IDs are descriptive and carry no credentials, paths, or execution
 authority. A capture is one observed frame, not stream health or app/build
-identity. Runtime validation belongs to the helper, route, and SDK boundaries;
+identity. The contract also exports the pure `isMobileDeviceHostId` grammar
+check; full response and request validation belongs to the helper, route, and
+SDK boundaries;
 see [Mobile device inspection](../guides/mobile-device-workspace.md).
 
 ## Native push registration
@@ -436,8 +471,17 @@ see [Mobile device inspection](../guides/mobile-device-workspace.md).
 registration routes (`NATIVE_PUSH_REGISTER_PATH`,
 `NATIVE_PUSH_REGISTRATION_PATH`), the Android package allowlist the push
 gateway delivers to, and the request/response shapes. The response's
-`registrationId`, `stationId` and `stationKey` are the values the phone checks
-on every push; none of them is a credential. See
+`registrationId`, `stationId` and `stationKey` are public identity checks for
+incoming pushes; none of those three is a credential. The response also includes
+`payloadKey`, a secret 32-byte AES-GCM key the phone uses to open sealed content.
+Do not log or expose the full registration response. Android package and iOS
+bundle allowlists are separate constants.
+
+The [registration route](../../src-server/routes/operations/native-push-routes.ts)
+requires the caller's paired-device identity and agent-activity eligibility;
+an operator bearer alone is insufficient. Hosted mode disables these routes.
+Registration records configuration and invokes the publisher callback; it
+does not confirm gateway acceptance or delivery to a phone. See
 [Notification delivery](../design/notification-delivery.md#station-contract).
 
 ## System status and update provenance
