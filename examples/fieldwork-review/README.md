@@ -19,9 +19,11 @@ opens Fieldwork's protected review application in a sandboxed frame.
   replacement, update, uninstall, reload, and host shutdown. The host blocks
   new requests, drains active requests and queued project mutations, then
   closes every capability service before plugin authority is changed.
-- Station returns only bounded run summaries and a capability-bearing review
+- The browser routes return run summaries and a capability-bearing review
   URL. It does not proxy source text, task content, prompts, credentials,
-  provider receipts, or reviewed-output contents.
+  provider receipts, or reviewed-output contents. The separate reviewed-source
+  owner interface returns parsed descriptors and currentness assessments to
+  Station's source-resolution service.
 
 ## Try it
 
@@ -52,10 +54,19 @@ no-referrer policy; Fieldwork retains its own review UI and theme inside that
 separate loopback origin.
 
 Run storage rejects symlinked owned-path components and corrupt indexes fail
-closed without being replaced. Request bodies, concurrent review services, and
-idle service lifetime are bounded. Idle and host-driven closes persist the
-closed state before teardown completes. The host polls only reviewed-output
-availability while a review is open; it does not read the output contents.
+closed without being replaced. Request bodies are limited to 8 KiB. Before
+opening a review the plugin checks limits of eight open services overall and
+four per project; project mutations are serialized, while different projects
+can run concurrently. Each open schedules a close after 30 minutes, with a
+30-second retry after a failed close. A successful close first awaits the
+service close, then persists `open: false`; disposal reports incomplete closes.
+The browser polls availability while a review is open. The server obtains
+Fieldwork's reviewed output and discards its contents, returning only a boolean;
+an unclassified facade error also becomes `available: false`.
+
+The browser query keys contain the project and run, but not the selected
+Station. Switching Stations with matching IDs needs separate cache and state
+qualification, as well as the transport qualification above.
 
 ## Verification
 

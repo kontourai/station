@@ -2,22 +2,22 @@
 
 Kontour Survey's Review Workbench as a Station layout plugin. A reviewer works a
 queue of extracted candidates (`@kontourai/survey/review-workbench`),
-sessions persist per project on the Station server, and a completed review
-projects into a Surface trust bundle.
+sessions persist per project on the Station server, and a review with at least
+one resolved item can project into a Surface trust bundle.
 
 ## What it contributes
 
 - **Layout** `survey-review` with one tab mounting
   `mountReviewWorkbench` (Survey's DOM mount function) plus Station chrome
   for sessions and projection.
-- **Server module** (`server/plugin.mjs`, dependency-free ESM) providing the
+- **Server module** (`server/plugin.mjs`, ESM with lazy Survey imports) providing the
   per-project persistence behind Survey's `ReviewSessionEventStore` contract:
   - `GET  /api/plugins/survey-review-workbench/projects/:projectSlug/review-sessions`
   - `GET  /api/plugins/survey-review-workbench/projects/:projectSlug/review-sessions/:sessionName`
   - `PUT  /api/plugins/survey-review-workbench/projects/:projectSlug/review-sessions/:sessionName`
     — body `{ snapshot?, events, expectedEventCount? }`, optimistic
-    concurrency via `expectedEventCount` (409 on conflict, current events
-    returned)
+    count check when `expectedEventCount` is a number (409 on mismatch, current
+    events returned)
   - `POST /api/plugins/survey-review-workbench/projects/:projectSlug/trust-bundles`
     — body `{ sessionName }`; the server derives the bundle from persisted
     review state rather than accepting a client-authored verdict
@@ -27,10 +27,13 @@ projects into a Surface trust bundle.
 - Review sessions (Station-owned, shared per project):
   `<STATION_HOME>/projects/<projectSlug>/plugin-data/survey-review-workbench/review-sessions/<sessionName>.json`
   holding `{ name, snapshot, events, updatedAt }` — the pre-decision queue
-  snapshot plus the append-only event log Survey's replay helpers expect.
+  snapshot plus the event array Survey's replay helpers consume. The PUT
+  replaces that array; it does not enforce append-only history, require the
+  count check, or serialize concurrent read/check/write operations. Atomic
+  file replacement is not a transaction across competing saves.
 - Trust bundles (the hand-off the trust panel renders):
   `<project workingDirectory>/.station/trust-bundles/survey-<sessionName>.json`.
-  If the project has no working directory, the bundle is stored under the
+  If the configured working directory is absent or does not exist, the bundle is stored under the
   plugin-data directory instead and the response flags
   `location: "station-home"`.
 
@@ -66,3 +69,9 @@ Use **Load example review** to seed a session from Survey's published example
 data (`@kontourai/survey/example-data/public-directory-review-resource`) —
 clearly demo content. Make decisions, reload to confirm persistence, then
 **Project to Trust Bundle**.
+
+Projection reads the persisted snapshot and events and requires at least one
+resolved item, not completion of every queued item. Wait for saves to finish:
+the projection button is not disabled while event persistence is pending.
+Session selection is local component state and is not reset on every Project
+or Station change; select the intended session again after changing context.

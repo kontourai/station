@@ -5,8 +5,8 @@
  *
  * Persistence routes are dependency-free and always run. The example-session
  * and trust-bundle routes import `@kontourai/survey` from the plugin's own
- * node_modules, so those tests skip when the plugin's deps are not installed
- * (run `npm install` in examples/survey-review-workbench to enable them).
+ * dependency graph, so those tests skip when Survey cannot be imported.
+ * Run the repository's managed `npm run dependencies:ci` setup first.
  */
 
 import {

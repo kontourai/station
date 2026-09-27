@@ -53,7 +53,9 @@ the provider does not invoke those mutations. Missing commands or failed list
 calls yield an empty list, not verified absence of packages.
 
 ### External Links
-The `links` array in `plugin.json` adds navigation items to the Station UI (e.g., an admin dashboard link).
+The `links` array contributes link metadata. This example's `achievements`
+placement is read by the Profile page and displays the placeholder admin
+dashboard link there; it does not create a general sidebar item.
 
 ## File Structure
 
