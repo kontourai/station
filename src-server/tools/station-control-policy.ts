@@ -1133,28 +1133,41 @@ function threadCommandRefusal(
   const caller = context.caller;
   if (!caller) return stationControlRefusal('station_control_caller_required');
   const operator = isOperatorCaller(caller, context);
-  const bound = caller.assurance === 'bound';
-  if (operator && bound) return undefined;
+  if (operator && caller.assurance === 'bound') return undefined;
   const thread = context.commandThread;
-  // Only a recorded owner owns anything (`elevationEligible`).
-  const owner = caller.principal?.elevationEligible
-    ? caller.principal.id
-    : undefined;
-  if (!thread || owner === undefined || thread.ownerId !== owner)
+  if (!thread || !ownsThread(caller, thread))
     return stationControlRefusal(
       operator
         ? 'station_control_assurance_insufficient'
         : 'station_control_role_required',
     );
-  if (bound) return undefined;
-  const sameProject =
+  return caller.assurance === 'bound' ||
+    (!thread.host && sharesSessionRecordProject(caller, thread))
+    ? undefined
+    : stationControlRefusal('station_control_assurance_insufficient');
+}
+
+/** Only a recorded owner (`elevationEligible`) owns a thread. */
+function ownsThread(
+  caller: StationControlPolicyCaller,
+  thread: StationControlCommandThread,
+): boolean {
+  return (
+    caller.principal?.elevationEligible === true &&
+    thread.ownerId === caller.principal.id
+  );
+}
+
+/** Both Projects are session records, and they are the same one. */
+function sharesSessionRecordProject(
+  caller: StationControlPolicyCaller,
+  thread: StationControlCommandThread,
+): boolean {
+  return (
     caller.projectIdSource === 'session-record' &&
     caller.localProjectId !== undefined &&
-    thread.localProjectId !== undefined &&
-    caller.localProjectId === thread.localProjectId;
-  return thread.host || !sameProject
-    ? stationControlRefusal('station_control_assurance_insufficient')
-    : undefined;
+    caller.localProjectId === thread.localProjectId
+  );
 }
 
 const ROUTE_RULE_REFUSALS: Record<

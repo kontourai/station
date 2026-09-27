@@ -223,27 +223,28 @@ function commandThread(
   path: string,
   body: unknown,
 ): StationControlCommandThread | undefined {
-  if (
-    !matchStationControlRoute(method, path)?.rules.includes(
-      'thread-commands-stay-in-scope',
-    ) ||
-    !body ||
-    typeof body !== 'object'
+  const threadId = matchStationControlRoute(method, path)?.rules.includes(
+    'thread-commands-stay-in-scope',
   )
-    return undefined;
-  const record = body as Record<string, unknown>;
-  const field =
-    typeof record.type === 'string' &&
-    Object.hasOwn(COMMAND_THREAD_FIELD, record.type)
-      ? COMMAND_THREAD_FIELD[record.type]
-      : undefined;
-  const threadId = field ? record[field] : undefined;
-  if (typeof threadId !== 'string') return undefined;
+    ? scopedCommandThreadId(body)
+    : undefined;
+  if (threadId === undefined) return undefined;
   try {
     return options.commandThread?.(threadId);
   } catch {
     return undefined;
   }
+}
+
+/** The thread a scoped command's body names, if it is one. */
+function scopedCommandThreadId(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const record = body as Record<string, unknown>;
+  const type = record.type;
+  if (typeof type !== 'string' || !Object.hasOwn(COMMAND_THREAD_FIELD, type))
+    return undefined;
+  const threadId = record[COMMAND_THREAD_FIELD[type]!];
+  return typeof threadId === 'string' ? threadId : undefined;
 }
 
 /**
