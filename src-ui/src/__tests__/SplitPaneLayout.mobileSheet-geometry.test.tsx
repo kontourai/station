@@ -2,15 +2,19 @@
  * @vitest-environment jsdom
  *
  * A framed mobile detail sheet is portaled out of the route and fixed to the
- * viewport, between the app toolbar and the chat dock. Its Back control and
- * its last row must both be reachable: the sheet stops above the dock instead
- * of scrolling its end underneath it, starts below the toolbar, and nothing
- * sticky inside it covers Back once the sheet scrolls.
+ * viewport, between the app toolbar plus banner stack and the chat dock plus
+ * the bottom safe area and on-screen keyboard. Its Back control and its last
+ * row must both be reachable: the sheet stops above the dock, safe area, and
+ * keyboard instead of scrolling its end underneath them, starts below the
+ * toolbar and banners, and nothing sticky inside it covers Back once the
+ * sheet scrolls.
  *
  * jsdom lays out nothing, so this renders the real framed `SplitPaneLayout`,
  * puts the portaled sheet's markup into Chromium with the cascade-resolved
- * stylesheets, stands a toolbar and a dock over it as fixed blocks sized by
- * the same tokens the shell sets, and hit-tests.
+ * stylesheets, stands a toolbar, a banner stack, a dock, a safe-area strip,
+ * and a keyboard over it as fixed blocks sized by the same tokens the shell
+ * sets, and hit-tests. Each token is nonzero, so dropping any term from the
+ * sheet's insets lets one of those blocks cover Back or the last row.
  *
  * WHAT THIS FIXTURE DOES NOT REPRODUCE: the shell's positioned and
  * transformed ancestors. With none present, `position: absolute` resolves
@@ -74,7 +78,10 @@ const CSS_PATHS = [
 ];
 
 const TOOLBAR_HEIGHT = 46;
+const BANNER_HEIGHT = 40;
 const DOCK_HEIGHT = 120;
+const SAFE_BOTTOM = 34;
+const KEYBOARD_INSET = 60;
 const VIEWPORT = { width: 390, height: 700 };
 
 function sheetMarkup(): string {
@@ -114,12 +121,15 @@ function fixtureHtml(sheet: string): string {
   const css = CSS_PATHS.map((path) => resolveCssImports(path)).join('\n');
   assertNoImportsSurvive(css);
   return `<!doctype html>
-<html style="--app-toolbar-total-height:${TOOLBAR_HEIGHT}px;--dock-slot-size:${DOCK_HEIGHT}px">
+<html style="--app-toolbar-total-height:${TOOLBAR_HEIGHT}px;--banner-stack-height:${BANNER_HEIGHT}px;--dock-slot-size:${DOCK_HEIGHT}px;--safe-bottom:${SAFE_BOTTOM}px;--visual-viewport-bottom-inset:${KEYBOARD_INSET}px">
   <head><style>${css}</style></head>
   <body style="margin:0">
     <div id="toolbar" style="position:fixed;top:0;left:0;right:0;height:${TOOLBAR_HEIGHT}px;z-index:1000;background:#333"></div>
+    <div id="banners" style="position:fixed;top:${TOOLBAR_HEIGHT}px;left:0;right:0;height:${BANNER_HEIGHT}px;z-index:1000;background:#633"></div>
     ${sheet}
-    <div id="dock" style="position:fixed;bottom:0;left:0;right:0;height:${DOCK_HEIGHT}px;z-index:1000;background:#333"></div>
+    <div id="dock" style="position:fixed;bottom:${SAFE_BOTTOM + KEYBOARD_INSET}px;left:0;right:0;height:${DOCK_HEIGHT}px;z-index:1000;background:#333"></div>
+    <div id="safe-area" style="position:fixed;bottom:${KEYBOARD_INSET}px;left:0;right:0;height:${SAFE_BOTTOM}px;z-index:1000;background:#363"></div>
+    <div id="keyboard" style="position:fixed;bottom:0;left:0;right:0;height:${KEYBOARD_INSET}px;z-index:1000;background:#336"></div>
   </body>
 </html>`;
 }
