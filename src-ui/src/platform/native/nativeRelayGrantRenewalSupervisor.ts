@@ -123,6 +123,9 @@ export class NativeRelayGrantRenewalSupervisor {
   private selected: SelectedRoute | null = null;
   private inFlight: Promise<void> | undefined;
   private inFlightGeneration: number | undefined;
+  private refreshFlight:
+    | { generation: number; promise: Promise<void> }
+    | undefined;
   private retryKey: string | undefined;
   private retryCount = 0;
   private readonly onWake = () => {
@@ -189,7 +192,27 @@ export class NativeRelayGrantRenewalSupervisor {
   async refresh(): Promise<void> {
     if (!this.started) return;
     this.selectionChanged();
-    await this.observeAndRenew();
+    const selected = this.selected;
+    const generation = this.generation;
+    if (!selected) return;
+    if (this.refreshFlight?.generation === generation)
+      return this.refreshFlight.promise;
+
+    const current =
+      this.inFlightGeneration === generation ? this.inFlight : undefined;
+    if (!current) return this.observeAndRenew();
+
+    const promise = (async () => {
+      await current;
+      if (this.isCurrent(selected, generation)) await this.observeAndRenew();
+    })();
+    this.refreshFlight = { generation, promise };
+    try {
+      await promise;
+    } finally {
+      if (this.refreshFlight?.promise === promise)
+        this.refreshFlight = undefined;
+    }
   }
 
   private selectionChanged(): void {

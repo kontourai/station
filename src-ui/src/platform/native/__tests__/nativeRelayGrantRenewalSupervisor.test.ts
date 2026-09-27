@@ -221,4 +221,33 @@ describe('native relay grant renewal supervisor', () => {
     expect(status).toHaveBeenCalledTimes(2);
     expect(renew).toHaveBeenCalledTimes(1);
   });
+
+  test('coalesces refresh during an in-flight no-grant status and observes the redeemed grant afterward', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof adapter.status>>>();
+    status.mockReturnValueOnce(pending.promise).mockResolvedValueOnce({
+      profileName: 'Home Station',
+      ...route,
+      profileRevision: 7,
+      grant: { expiresAt: Date.now() + 100_000, lifetimeMs: 100_000 },
+    });
+    supervisor.start();
+    const firstRefresh = supervisor.refresh();
+    const secondRefresh = supervisor.refresh();
+    expect(status).toHaveBeenCalledTimes(1);
+
+    pending.resolve({
+      profileName: 'Home Station',
+      ...route,
+      profileRevision: 7,
+      grant: null,
+    });
+    await Promise.all([firstRefresh, secondRefresh]);
+
+    expect(status).toHaveBeenCalledTimes(2);
+    expect(renew).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(49_999);
+    expect(renew).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(renew).toHaveBeenCalledTimes(1);
+  });
 });
