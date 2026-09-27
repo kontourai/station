@@ -163,7 +163,7 @@ describe('resolveRuntimeCorsOrigin', () => {
     ).toBeUndefined();
   });
 
-  test('station#169: the preflight allowlist admits Last-Event-ID and the stream liveness header so cross-origin SSE reconnects survive', async () => {
+  test('archive#169: the preflight allowlist admits Last-Event-ID and the stream liveness header so cross-origin SSE reconnects survive', async () => {
     const logger: Logger = {
       info: vi.fn(),
       warn: vi.fn(),

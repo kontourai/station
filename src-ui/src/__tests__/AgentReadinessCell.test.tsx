@@ -133,7 +133,8 @@ describe('AgentReadinessCell — the compact header form (station#4521)', () => 
 
   // The full form for the same agent still carries the server's sentence —
   // the compact form is a DIFFERENT read, not a mutation of the shared
-  // derivation every other consumer (the New Chat picker) still renders.
+  // derivation every other consumer (the list row, the New Chat picker) still
+  // renders.
   test.each([
     [
       'a caution row shortens ONLY its label, keeping its caution tone',

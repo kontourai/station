@@ -154,7 +154,7 @@ describe('AgentEditorForm', () => {
     );
   });
 
-  test('codex-bound agent with nothing authored shows Skills and tools but no Commands or Engine connection section (station#1195: toolServers is now deliverable)', () => {
+  test('codex-bound agent with nothing authored shows Skills and tools but no Commands or Engine connection section (archive#1195: toolServers is now deliverable)', () => {
     agentConnections = [
       {
         id: 'codex',
