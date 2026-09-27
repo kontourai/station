@@ -108,8 +108,9 @@ vi.mock('../hooks/useCloseShortcut', () => ({
 import { SkillsView } from '../views/SkillsView';
 
 /**
- * A skill as the list and detail reads hand it over. The view fills `id` and
- * `installed` itself, so a fixture need not.
+ * A skill as the list and detail reads hand it over. The view sets
+ * `installed` itself, and nothing here reads the registry `id`, so a fixture
+ * carries neither.
  */
 type SkillFixture = Partial<Skill> & { name: string };
 

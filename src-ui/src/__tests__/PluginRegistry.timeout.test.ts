@@ -88,7 +88,8 @@ describe('PluginRegistry inventory timeout', () => {
             });
           }
           if (url.endsWith(hungPath)) {
-            // The deadline this request was issued under, if it has one.
+            // The newest deadline issued so far: this request's own, if it
+            // has one.
             hungDeadline = deadlines.at(-1);
             markHung();
             return new Promise<Response>((_resolve, reject) => {
@@ -109,9 +110,9 @@ describe('PluginRegistry inventory timeout', () => {
       const reloading = registry.reload();
 
       await hung;
-      // Fire the newest deadline at the moment the bundle was requested. Without
-      // a deadline of its own that is an earlier request's, whose firing cannot
-      // reach this fetch, and the reload stays pending.
+      // A bundle fetch without a deadline of its own captured an earlier
+      // request's, whose firing cannot reach this fetch, so the reload stays
+      // pending and the race below reds.
       hungDeadline?.abort();
 
       const pending = Symbol('still pending');
