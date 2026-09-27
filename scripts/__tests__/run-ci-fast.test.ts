@@ -21,11 +21,9 @@ import {
   classifyCiFastCommandResult,
   describeCiFastCommand,
   FAST_FEEDBACK_TIMEOUT_MS,
-  FAST_SCOPE_ENV,
   FAST_STATIC_COMMANDS,
   FAST_STATIC_RESERVE_MS,
   fastBase,
-  fastScope,
   formatCiFastElapsedSeconds,
   runCiFast,
   runCiFastCli,
@@ -133,46 +131,6 @@ describe('bounded ci:fast runner', () => {
         timeout: FAST_FEEDBACK_TIMEOUT_MS,
       })),
     ]);
-  });
-
-  it('drops only the selector when scoped to statics (#2709), and refuses any other scope', () => {
-    const calls: Array<{ command: string; args: string[]; timeout: number }> =
-      [];
-    const status = runCiFast({
-      cwd: '/fixture',
-      env: { STATION_CI_FAST_BASE: 'base-sha', [FAST_SCOPE_ENV]: 'statics' },
-      now: () => 1_000,
-      execute(command, args, { timeout }) {
-        calls.push({ command, args, timeout });
-        return 0;
-      },
-    });
-    expect(status).toBe(0);
-    // Every static invariant, in order, each with the whole budget: the
-    // selector's reserve applies only to the selector itself.
-    expect(calls).toEqual(
-      FAST_STATIC_COMMANDS.map(([command, args]) => ({
-        command,
-        args,
-        timeout: FAST_FEEDBACK_TIMEOUT_MS,
-      })),
-    );
-    expect(fastScope({})).toBe('all');
-    expect(fastScope({ [FAST_SCOPE_ENV]: '' })).toBe('all');
-    for (const scope of ['static', 'STATICS', 'selection', 'all'])
-      expect(() => fastScope({ [FAST_SCOPE_ENV]: scope }), scope).toThrow(
-        `${FAST_SCOPE_ENV} must be unset or 'statics'`,
-      );
-    expect(
-      runCiFastCli({
-        run: () =>
-          runCiFast({
-            env: { [FAST_SCOPE_ENV]: 'selection' },
-            execute: () => 0,
-          }),
-        error: () => {},
-      }),
-    ).toBe(2);
   });
 
   it('pins a small static invariant allowlist with no broad static or full Vitest lane', () => {

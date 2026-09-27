@@ -9,13 +9,11 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
-import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { __verificationCoordinatorInternals } from '../lib/verification-coordinator.mjs';
 import { reportExecution } from '../lib/verification-terminal-receipt.mjs';
 import { CI_FAST_BUDGET_EXCEEDED_CAUSE } from '../run-ci-fast.mjs';
 
 const roots: string[] = [];
-const makeTempDir = trackTempDirs();
 
 /** The terminal escape byte, spelled rather than embedded in source. */
 const ESC = String.fromCharCode(27);
@@ -637,37 +635,6 @@ test('names why a ci-fast diagnostic was unavailable instead of a file extension
   expect(reported.summary.firstCausalExcerpt).toBe(
     'verification reporting failed: required attachment unavailable: changed-test-diagnostics (this run wrote no readable changed-verification diagnostic and receipt)',
   );
-});
-
-test('requires no selector diagnostic from a statics-scoped ci-fast run, and only then (#2709)', () => {
-  const worktree = makeTempDir('station-ci-fast-diagnostic-');
-  const raw = { output: { stdout: { text: '' }, stderr: { text: '' } } };
-  const attach = (env: Record<string, string>) =>
-    __verificationCoordinatorInternals.attachCiFastDiagnostics(
-      { lane: { id: 'ci-fast' }, before: { worktree }, env },
-      raw,
-    );
-  // fast-checks-statics runs no selector; the shards carry that evidence.
-  const statics = attach({ STATION_CI_FAST_SCOPE: 'statics' });
-  expect(statics).toBe(raw);
-  expect(
-    reportExecution({
-      raw: statics,
-      result: {
-        status: 'completed',
-        exitCode: 0,
-        counts: { executed: 1, passed: 1, failed: 0, infrastructureErrors: 0 },
-      },
-      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
-      worktree,
-      request: { key: '3'.repeat(64) },
-    }).result.status,
-  ).toBe('completed');
-  // The whole lane, and any scope ci:fast itself refuses, still require it.
-  for (const env of [{}, { STATION_CI_FAST_SCOPE: 'static' }])
-    expect(attach(env).unavailableAttachments, JSON.stringify(env)).toEqual([
-      expect.objectContaining({ name: 'changed-test-diagnostics' }),
-    ]);
 });
 
 test('fails a ci-fast owner result closed for wrong-kind diagnostics', () => {
