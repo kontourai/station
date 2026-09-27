@@ -56,6 +56,8 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions with explicit freshness limits. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
 | [Workspace checkpoints](#workspace-checkpoints) | Capture turn-associated file snapshots and restore one through current workspace and caller checks. | `src-server/services/checkpoints/checkpoint-restore.ts` |
 | [Personal Work Board](#personal-work-board) | Arrange exact work references without copying their owners' state. | `src-server/services/spatial-board/spatial-board-store.ts` |
+| [BrowserSessionService](#browsersessionservice) | Own browser acquisition, profile-scoped sessions and authorized automation independently of viewers. | `src-server/services/browser/browser-service.ts` |
+| [Shared live surface](#shared-live-surface) | Fan out current frames and arbitrate input through producer-owned authorization and a fenced lease. | `src-server/services/live-surface/registry.ts` |
 | [KnowledgeFileTransactions](#knowledgefiletransactions) | Publish one multi-file knowledge mutation with durable rollback and exact conflict detection. | `src-server/knowledge-store/adapters/shared/file-transactions.ts` |
 | [SharedWorkingState](#sharedworkingstate) | Converge one authorized text document through versioned causal operations and bounded resync. | `src-server/domain/shared-working-state.ts` |
 | [LiveWorkSession](#liveworksession) | Project bounded, separately authorized ephemeral work presence for one exact Project/Task/surface/session. | `src-server/domain/live-work-session.ts` |
@@ -1260,20 +1262,138 @@ a five-second deadline, and a 64 KiB output budget. Its framed PATH value exclud
 startup banners. Native sidecar error details retain at most 64 KiB and 16 lines,
 including after lossy UTF-8 decoding; an I/O error stops the reader.
 
+## BrowserSessionService
+
+**Intent and Interface.** A Browser pane and authorized Agent act on the same
+server-owned page. `browser-service.ts` composes acquisition, session registry,
+profile-specific host resolution, local-target permissions and live-surface
+binding. `BrowserHostResolver`/`BrowserHost` in `browser-host.ts` are the host
+seam; only the local server-Chromium adapter is implemented. The selected
+Station may be remote from its viewer, but a peer Browser host and desktop CEF
+adapter are not implemented by naming them in the contract.
+
+**Ownership and authorization.** `browser-session-registry.ts` owns session
+records, browser generations and bounded action history. Profiles are keyed by
+canonical Project ID and principal under `browser/profiles/`, with separate
+cookie jars/processes for the operator and each Project admin.
+`browser-access.ts` admits the operator or active Project admins/owners;
+`actorOwnsSessionProfile` lets the operator see all profiles and restricts other
+callers to their own. The personal-host gate is necessary, not authority by
+itself. Internal credentials do not become human Pane authority.
+
+**Composition and effects.** `runtime-routes.ts` mounts `/api/browser`,
+`/api/browser-agent` and `/api/live-surfaces` on personal hosts.
+`chromium-acquisition.ts` prefers installed browsers, otherwise requires
+operator consent before fetching a pinned archive with size/SHA-256 and path
+checks. `hosts/chromium-server-host.ts` launches through `spawnOwnedChild`, with
+an allowlisted environment, a private CDP pipe and the profile's egress proxy.
+`egress-policy.ts` refuses known Station listeners and ordinary DNS names that
+resolve to private addresses. Operator profiles otherwise have broad reach;
+Project-admin profiles need operator-registered local targets for non-public
+addresses. `browser-service.ts` composes the listener inventory, including
+device helpers; an unreadable sibling registry does not establish all-host
+listener coverage. This boundary does not isolate arbitrary same-OS-user code.
+
+**Callers and lifecycle.** `BrowserPreviewWorkspacePane.tsx` resolves bound
+Project identity and migrates legacy state; `browser-pane/BrowserPane.tsx` and
+`browserPaneApi.ts` own the human workflow. The built-in
+`station-browser-mcp-server.ts` registers `station-control-browser-tools.ts`;
+`browser-agent.ts` re-derives the verified caller, and
+`browser-agent-authority.ts` mints the exact Project/profile grant consumed by
+`BrowserAutomation`. Control operations capture a lease fence and check it
+around asynchronous steps. JavaScript evaluation additionally needs the
+Project's default-off permission; timeout/preemption does not undo an effect
+already sent to Chromium. Closing a viewer only stops its capture subscription.
+Host exit/restart produces `needs-reopen`, and old-generation live surfaces are
+unregistered. Idle host shutdown runs after its last live target closes,
+not merely when nobody watches.
+
+**Evidence and limits.** Synthetic tests include `chromium-acquisition.test.ts`,
+`browser-session-registry.test.ts`, `egress-policy.test.ts`,
+`browser-live-surfaces.test.ts`, `browser-agent-authority.store.test.ts`, and
+`BrowserPane.test.tsx`; real-host suites are separate `.real.test.ts` files.
+Synthetic PASS is not browser-version compatibility, hostile-page completeness,
+Windows process-tree cleanup, mobile viewing or release evidence. Keep
+`desktop-cef`/peer-host plans and the ADR's original research distinct from the
+current [Browser guide](../guides/browser-workspace.md).
+
+**Do not reintroduce:** profiles keyed only by slug or shared across principals;
+caller identity supplied as tool arguments; a live claim from a saved Pane
+reference; Chromium launched without its egress policy; or unlimited-history,
+instant-cancellation or all-platform claims inferred from a fixture.
+
+## Shared live surface
+
+**Intent and Interface.** `packages/contracts/src/live-surface.ts` defines the
+binary frame/state records and typed input. `producer.ts` defines the frame and
+dispatch adapter; `registry.ts` registers a producer with its authorizer, hub
+and read-only lease. A live surface is not a placement Surface or a second
+Project authorization system. Browser and Device callers supply their own
+view/input/control decisions; absent authority fails closed.
+
+**State and ordering.** `surface-hub.ts` fans one producer out to viewers with
+one pending frame per viewer, latest-frame replacement, acknowledgments and
+adaptive delivery. Capture starts with the first viewer and stops at zero;
+session lifetime remains with its Browser/Device owner. `control-lease.ts`
+allows one controller: current-epoch human input can preempt an Agent, while
+an Agent cannot preempt a live human. Epoch identifies controller succession;
+the separate fence changes on release/expiry as well, so reclaiming cannot
+resurrect old work. The registry serializes and fences input, cancels held
+buttons/keys on handoff, and marks a timed-out dispatch wedged until it settles.
+It cannot cancel an arbitrary producer effect already in flight.
+
+**Real adapters and callers.** `browser-live-surfaces.ts` binds each live
+browser generation to `ChromiumScreencastProducer` and its profile authorizer.
+`DeviceSessionService` binds `DeviceLiveSurfaceProducer` to host-qualified
+simulator/emulator sessions and device-share authorization. Device video and
+input have separate liveness: iOS uses MJPEG; Android uses server-side H.264
+decoding or a labelled PNG-poll fallback. A successful Device dispatch means
+the hub socket accepted bytes, not that the application applied them. The
+shared live-surface Agent grant path is wired for Browser tools; the Device
+surface authorizer currently requires a human request.
+
+`routes/live-surface.ts` serves one authenticated frame response per viewer and
+separate input/lease requests. It rechecks stream authorization; a transient
+busy authorizer is distinct from denial and retains a prior allow only within
+a bounded grace. `useLiveSurface.ts` suspends hidden viewers, reconnects, and
+coalesces input through one in-flight POST. `LiveSurfaceCanvas.tsx` is used by
+the Browser pane, Device pane and float-over-chat. Shown-source tracking avoids
+duplicating the same pane in its floater, but there is no single multiplexed
+frame transport across all visible viewers. The input-slot requirement in
+[ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)
+is an unqualified design constraint, not a measured production starvation
+finding or a guaranteed latency bound.
+
+**Evidence and limits.** `services/live-surface/__tests__/registry.test.ts`,
+`control-lease.test.ts`, `surface-hub.test.ts`,
+`routes/__tests__/live-surface.routes.test.ts`,
+`runtime-routes-live-surface.test.ts` and `LiveSurfaceCanvas.test.tsx` exercise
+synthetic producers, authorization, fencing and viewer lifecycle. Device
+producer and session-route fixtures remain distinct from physical application
+control. Do not infer input effect, device/app identity, relay throughput or
+native platform parity from a decoded frame or an accepted socket write.
+
 ## MobileDeviceHost
 
 **Owner:** `src-server/services/mobile-device/mobile-device-host.ts`.
 **Contract:** `packages/contracts/src/mobile-device.ts`. The personal runtime
-composes an explicitly configured loopback helper adapter; hosted tenant
-execution does not mount it. `src-server/routes/mobile-device.ts` publishes
-inventory and explicit single-frame captures only after current request
+composes the bounded helper adapter through the device-host resolver: a
+configured local endpoint, consented managed helper, or admitted SSH host.
+Hosted tenant execution does not mount it. `src-server/routes/mobile-device.ts`
+publishes inventory and explicit single-frame captures only after current request
 authorization, with the screenshot leaf requiring terminal authority. The
 helper adapter owns target validation, fresh membership checks, redirect refusal,
-response/deadline bounds and image metadata; it launches no processes and
-forwards no generic routes. `packages/sdk/src/mobile-device.ts` validates
-responses and preserves the selected Station's HTTP authority. The Device pane
-and control/lifecycle service are separate follow-ups; the API does not infer
-app identity from a screen or live readiness from a snapshot.
+response/deadline bounds and image metadata, and forwards no generic routes.
+Its per-use connection resolver may start an already-consented managed helper;
+process ownership stays with the toolchain/host service.
+`packages/sdk/src/mobile-device.ts` validates
+responses and preserves the selected Station's HTTP authority. This single-frame
+API does not infer app identity from a screen or live readiness from a snapshot.
+
+`DeviceSessionService` and `DeviceLiveSurfaceProducer` now supply the separate
+live view/control path; they are callers of the shared live-surface module
+above. Toolchain consent, operator-owned host registration and Project device
+shares remain separate from the capture adapter's bounded read interface.
 
 **Evidence:** `src-server/services/mobile-device/__tests__/mobile-device-host.test.ts`,
 `src-server/routes/__tests__/mobile-device.routes.test.ts`, and

@@ -4,6 +4,8 @@
 > to the dated desktop experiment. For the current server-hosted pane,
 > per-profile access boundary, and code/test references, use the
 > [glossary's Browser pane section](../glossary.md#browser-pane-live-surface-control-lease).
+> Current operator instructions and source boundaries are in the
+> [Browser workspace guide](../guides/browser-workspace.md).
 
 **Status (2026-09-22):** This is the archive#1376 spike. It is superseded in
 part by

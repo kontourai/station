@@ -76,6 +76,8 @@
         "WorkspacePaneHostActions",
         "CollaborativeEditorPane",
         "MobileDeviceHost",
+        "BrowserSessionService",
+        "Shared live surface",
         "Personal Work Board"
       ],
       "questions": [

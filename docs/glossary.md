@@ -330,6 +330,12 @@ The current code composes the Browser pane and live-surface routes on personal
 hosts; hosted tenant runtimes do not mount those routes. The ADR retains its
 original design and verification gaps and is not a current availability report.
 
+Use the [Browser workspace guide](guides/browser-workspace.md) for acquisition,
+profiles, target access and Agent permissions, the
+[Device guide](guides/mobile-device-workspace.md) for simulator/emulator setup,
+and the [module map](architecture/module-map.md#shared-live-surface) for shared
+frame, input and lifecycle ownership.
+
 - **Browser pane** — a Workspace Pane that displays a browser session running
   on the Station host. Authorized Devices view its streamed frames. The
   Station operator can view and control sessions across profiles; active

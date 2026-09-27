@@ -69,7 +69,8 @@ clearly mark the stale document.
 
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
 - **[Starter Work](guides/starter-work.md)** — how first-use actions bind to real Tasks, Sessions, approvals, and Scheduler receipts, including recovery.
-- **[Mobile device inspection](guides/mobile-device-workspace.md)** — configure an explicit device host and capture native app screens through the authenticated API/SDK.
+- **[Browser workspace](guides/browser-workspace.md)** — server-owned browser sessions, profile and target boundaries, Agent permissions and live viewing.
+- **[Mobile device workspace](guides/mobile-device-workspace.md)** — managed or SSH device hosts, shared live viewing/control, and the separate single-frame API.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
 - **[Monitoring](guides/monitoring.md)** — recording paths, retention, dashboard limits, and the generated [metric declarations](reference/metrics.md).
 - **[Settings deep links](reference/settings-deep-links.md)** — the `?view=&highlight=` URL shape, the registry endpoint that enumerates every control, and the rule for answering with one.

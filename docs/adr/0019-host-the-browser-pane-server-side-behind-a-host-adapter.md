@@ -7,6 +7,8 @@
 > “Planned,” “does not exist yet,” and NOT_VERIFIED below retain their dated
 > meaning; they are not a current feature inventory or a completed audit of
 > those original gaps.
+> Current operator instructions and source boundaries are in the
+> [Browser workspace guide](../guides/browser-workspace.md).
 
 **Status:** Accepted, 2026-09-22. It records six owner decisions (D1–D6) made
 that day for epic [#90](https://github.com/kontourai/station/issues/90). It
