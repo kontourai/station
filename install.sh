@@ -1803,9 +1803,10 @@ umask 077
 # packaged `station upgrade` re-runs the same verified path without the
 # caller's environment (#2675). The authenticated GitHub-release path has no
 # manifest URL and keeps writing schema 3, which released CLIs and installers
-# (they accept schema 3 only) can still read. Both record the ports Station
-# was started on, so an upgrade that does not name them keeps them; readers
-# ignore fields they do not know.
+# (they accept schema 3 only) can still read. Both record the ports this run
+# resolved (those Station was started on, or would be under
+# STATION_INSTALL_NO_START=1), so an upgrade that does not name ports keeps
+# them; readers ignore fields they do not know.
 node -e '
   const fs = require("node:fs");
   const [path, channel, releaseChannel, installRoot, stationRoot, stationHome, manifestUrl, server, ui] = process.argv.slice(1);
