@@ -186,14 +186,21 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
 /**
  * Package-scoped subtrees the packaged server never reads (#2694). Each rule
  * names one package and the top-level entries of it that are dropped; the
- * target is the platform/arch the staged tree runs on, which is always the
- * staging host (desktop and portable builds both stage on their own target).
+ * target is the platform/arch the tree is staged for (the staging host unless
+ * a caller says otherwise).
  *
  * - node-pty's loader (lib/utils.js `loadNativeModule`) tries `build/Release`,
  *   `build/Debug`, then exactly `prebuilds/${process.platform}-${process.arch}`,
  *   and Station's spawn-helper chmod (src-server/adapters/node-pty-adapter.ts)
- *   probes only that same directory. Every other platform's prebuild is dead
- *   weight: on darwin that is the two win32 trees, ~58 MB.
+ *   probes only that same directory. That is the arch of the Node that runs
+ *   the server, which is NOT always the staging arch: the desktop app spawns
+ *   the user's own `node` from their login-shell PATH (src-desktop
+ *   `build_sidecar_command`), so an arm64 Mac build can run under a Rosetta
+ *   x64 node, or an x64 MSI under an arm64 node on Windows-on-ARM, and
+ *   darwin/win32 have no `build/Release` to fall back to. So only other
+ *   OSes' prebuilds are dropped and every arch of the target OS is kept: on
+ *   darwin that removes the two win32 trees (~58 MB) and keeps ~64 KB of
+ *   darwin-x64.
  * - `@kontourai/flow-agents/dist/<runtime>` are the per-harness install
  *   bundles its `init`/`kit`/`workflow doctor` CLI verbs copy into a project.
  *   Station runs none of those verbs; it imports the package's exports, spawns
@@ -211,7 +218,7 @@ export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
     excludes: (segments, target) =>
       segments[0] === 'prebuilds' &&
       segments.length > 1 &&
-      segments[1] !== `${target.platform}-${target.arch}`,
+      !segments[1].startsWith(`${target.platform}-`),
   }),
   Object.freeze({
     id: 'flow-agents-harness-bundles',

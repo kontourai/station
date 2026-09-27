@@ -614,19 +614,22 @@ async function runPortLeaseChild(
 function assertRealRuntimePrune(release: string) {
   const modules = join(release, 'node_modules');
   const host = `${process.platform}-${process.arch}`;
+  const sameOs = (entry: string) => entry.startsWith(`${process.platform}-`);
   const sourcePty = join(repoRoot, 'node_modules', 'node-pty');
   const stagedPty = join(modules, 'node-pty');
   const sourcePrebuilds = join(sourcePty, 'prebuilds');
   const stagedPrebuilds = join(stagedPty, 'prebuilds');
   if (existsSync(sourcePrebuilds)) {
-    expect(readdirSync(sourcePrebuilds).some((entry) => entry !== host)).toBe(
-      true,
-    );
+    const source = readdirSync(sourcePrebuilds).sort();
+    // The rule must have something to remove on this host.
+    expect(source.some((entry) => !sameOs(entry))).toBe(true);
     const kept = existsSync(stagedPrebuilds)
-      ? readdirSync(stagedPrebuilds)
+      ? readdirSync(stagedPrebuilds).sort()
       : [];
-    expect(kept.filter((entry) => entry !== host)).toEqual([]);
-    expect(kept.includes(host)).toBe(existsSync(join(sourcePrebuilds, host)));
+    // Every arch of this OS survives (the desktop app runs the user's own
+    // node, whose arch can differ from the build's); no other OS does.
+    expect(kept).toEqual(source.filter(sameOs));
+    expect(kept.includes(host)).toBe(source.includes(host));
   }
   // The loader resolves the native module from whatever survived the prune,
   // in a separate process so the addon never loads into this worker.
@@ -944,7 +947,7 @@ describe('server build package portability', () => {
     ]);
   });
 
-  it('stages only the target platform node-pty prebuild (node-pty-foreign-prebuilds)', () => {
+  it('stages every arch of the target OS node-pty prebuilds and no other OS (node-pty-foreign-prebuilds)', () => {
     const root = makeTempDir('station-runtime-pty-');
     const project = join(root, 'project');
     const files: Record<string, string> = {
@@ -986,7 +989,11 @@ describe('server build package portability', () => {
       });
       const pty = join(output, 'node_modules/node-pty');
       const kept = readdirSync(join(pty, 'prebuilds'));
-      expect(kept).toEqual(platform === 'win32' ? ['win32-x64'] : []);
+      // Both win32 arches: an x64 MSI can run under an arm64 node on
+      // Windows-on-ARM. linux has only the one arch in the fixture.
+      expect(kept.sort()).toEqual(
+        platform === 'win32' ? ['win32-arm64', 'win32-x64'] : ['linux-x64'],
+      );
       expect(existsSync(join(pty, 'build/Release/pty.node'))).toBe(true);
       expect(existsSync(join(pty, 'lib/utils.js'))).toBe(true);
       expect(existsSync(join(pty, 'LICENSE'))).toBe(true);
