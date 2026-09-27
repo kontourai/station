@@ -58,7 +58,7 @@ function repository() {
     writeFileSync(join(root, path), content);
   };
   const modules =
-    '# Modules\n\n## Alpha\n\nReads exact records.\n\n~~~md\n## Beta\n~~~\n\n[Owner](../../src-server/alpha.js) [Test](../../tests/alpha.test.js) [Decision](../adr/alpha.md) [Issue](https://github.com/kontourai/station/issues/9999)\n\n## Beta\n\nPreserves uncertain work.\n';
+    '# Modules\n\n## Shared language\n\nVocabulary.\n\n## Index\n\nNavigation.\n\n## Alpha\n\nReads exact records.\n\n~~~md\n## Beta\n~~~\n\n[Owner](../../src-server/alpha.js) [Test](../../tests/alpha.test.js) [Decision](../adr/alpha.md) [Issue](https://github.com/kontourai/station/issues/9999)\n\n## Beta\n\nPreserves uncertain work.\n';
   put('docs/architecture/module-map.md', modules);
   put(
     'docs/learn/atlas.json',

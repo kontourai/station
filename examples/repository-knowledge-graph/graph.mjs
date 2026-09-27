@@ -5,7 +5,10 @@ import { resolve } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import Markdown from 'react-markdown';
-import { validateCatalog } from '../../scripts/lib/documentation-model.mjs';
+import {
+  extractModules,
+  validateCatalog,
+} from '../../scripts/lib/documentation-model.mjs';
 import { renderLearningDocument } from '../../scripts/lib/learning-markdown.mjs';
 import { createLearningSourceReader } from '../../scripts/lib/learning-source-reader.mjs';
 
@@ -157,11 +160,7 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
   )
     throw new Error('Atlas module identities must be unique.');
   const sections = moduleSections(moduleText);
-  validateCatalog(
-    atlas,
-    [...sections.keys()].map((title) => ({ title })),
-    tracked,
-  );
+  validateCatalog(atlas, extractModules(moduleText), tracked);
   const nodes = new Map();
   const edges = new Map();
   const documents = new Set();
