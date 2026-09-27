@@ -181,18 +181,50 @@ test('a grant planted in localStorage — the self-grant attack — cannot stand
     JSON.stringify(grant),
   );
   _setApiBase('http://station.test');
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ success: true, status: { state: 'none' } }),
-    })),
+  // The server read is held open so the pending window is observable: a
+  // regression that trusts the planted record only until the server answers
+  // would mount untrusted Home code for exactly that window.
+  let answer: (() => void) | undefined;
+  const fetchMock = vi.fn(
+    () =>
+      new Promise((resolve) => {
+        answer = () =>
+          resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ success: true, status: { state: 'none' } }),
+          });
+      }),
   );
+  vi.stubGlobal('fetch', fetchMock);
   const { wrapper } = harness();
-  const rendered = renderHook(() => useWorkspaceHomeRoleStatus(), { wrapper });
+  const seen: unknown[] = [];
+  const rendered = renderHook(
+    () => {
+      const status = useWorkspaceHomeRoleStatus();
+      seen.push(status);
+      return status;
+    },
+    { wrapper },
+  );
 
+  // The read is in flight and unanswered: the hook sits on the floor.
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  expect(rendered.result.current).toBeUndefined();
+  expect(seen.length).toBeGreaterThan(0);
+  expect(seen.every((status) => status === undefined)).toBe(true);
+
+  await act(async () => {
+    answer?.();
+  });
   await waitFor(() =>
     expect(rendered.result.current).toEqual({ state: 'none' }),
   );
+  // No render, before or after the answer, ever carried the planted grant.
+  expect(
+    seen.filter(
+      (status) =>
+        (status as { state?: string } | undefined)?.state === 'granted',
+    ),
+  ).toEqual([]);
 });
