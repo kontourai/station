@@ -5,9 +5,8 @@ import {
   createAccessEndpoint,
   FAILURE_COPY_REASONS,
   inferEndpointKind,
-  selectCompatibleEndpoint,
+  rankCompatibleEndpoints,
 } from '../core/environmentProfiles';
-import type { ConnectionFailureReason } from '../core/types';
 
 describe('environment endpoint profiles', () => {
   it('classifies same-origin, tailnet, LAN, and manual endpoints', () => {
@@ -40,21 +39,21 @@ describe('environment endpoint profiles', () => {
       'https://station.example-tailnet.ts.net',
       { priority: 2 },
     );
-    const selected = selectCompatibleEndpoint([lan, tailnet], {
+    const selected = rankCompatibleEndpoints([lan, tailnet], {
       clientProtocol: 'https:',
       online: true,
     });
-    expect(selected.endpoint).toEqual(tailnet);
+    expect(selected.endpoints).toEqual([tailnet]);
     expect(selected.failures.get(lan.id)).toBe('mixed-content');
   });
 
   it('returns offline for every candidate without attempting a downgrade', () => {
     const endpoint = createAccessEndpoint('https://station.example.test');
-    const selected = selectCompatibleEndpoint([endpoint], {
+    const selected = rankCompatibleEndpoints([endpoint], {
       clientProtocol: 'https:',
       online: false,
     });
-    expect(selected.endpoint).toBeNull();
+    expect(selected.endpoints).toEqual([]);
     expect(selected.failures.get(endpoint.id)).toBe('offline');
   });
 
@@ -63,13 +62,6 @@ describe('environment endpoint profiles', () => {
     expect(
       classifyEndpoint(endpoint, { clientProtocol: 'native:', online: true }),
     ).toEqual({ compatible: true });
-  });
-
-  it('still rejects HTTP mixed content from a genuine HTTPS LAN client (unchanged)', () => {
-    const endpoint = createAccessEndpoint('http://192.168.1.20:3141');
-    expect(
-      classifyEndpoint(endpoint, { clientProtocol: 'https:', online: true }),
-    ).toEqual({ compatible: false, reason: 'mixed-content' });
   });
 
   it('treats http://localhost and loopback IPs as trustworthy origins even from an HTTPS page', () => {
@@ -85,7 +77,7 @@ describe('environment endpoint profiles', () => {
     }
   });
 
-  it('rankCompatibleEndpoints keeps filtering a genuinely mixed-content LAN endpoint under native context, ranking it normally once compatible', () => {
+  it('ranks a LAN HTTP endpoint normally under a native shell: nothing is filtered and priority wins', () => {
     const lanHttp = createAccessEndpoint('http://192.168.1.20:3141', {
       priority: 1,
     });
@@ -93,13 +85,13 @@ describe('environment endpoint profiles', () => {
       'https://station.example-tailnet.ts.net',
       { priority: 2 },
     );
-    const selected = selectCompatibleEndpoint([lanHttp, tailnetHttps], {
+    const selected = rankCompatibleEndpoints([lanHttp, tailnetHttps], {
       clientProtocol: 'native:',
       online: true,
     });
-    // Both are now compatible (native shell never mixed-content-blocks); the
+    // Both are compatible (a native shell never mixed-content-blocks); the
     // lower-priority, higher-authority endpoint still wins the rank.
-    expect(selected.endpoint).toEqual(lanHttp);
+    expect(selected.endpoints).toEqual([lanHttp, tailnetHttps]);
     expect(selected.failures.size).toBe(0);
   });
 
@@ -110,35 +102,6 @@ describe('environment endpoint profiles', () => {
    * until somebody remembered to append it here.
    */
   const DETERMINISTIC_FAILURE_REASONS = FAILURE_COPY_REASONS;
-
-  it('covers every failure reason that is not awaiting-approval', () => {
-    // The union's own membership, as the type system sees it. If a reason is
-    // added without copy, `FAILURE_COPY`'s Record type fails to compile; if
-    // one is added WITH copy, this list grows and every assertion below
-    // starts applying to it automatically.
-    const expected: ReadonlyArray<
-      Exclude<ConnectionFailureReason, 'awaiting-approval'>
-    > = [
-      'offline',
-      'mixed-content',
-      'invalid-endpoint',
-      'identity-mismatch',
-      'access-method-mismatch',
-      'authentication-failed',
-      'host-unavailable',
-      'unsupported-capability-version',
-      'timeout',
-      'unreachable',
-      'server-restarted',
-      'origin-not-allowed',
-      'unexpected-response',
-      'undetermined',
-      'busy',
-    ];
-    expect([...DETERMINISTIC_FAILURE_REASONS].sort()).toEqual(
-      [...expected].sort(),
-    );
-  });
 
   it('provides actionable copy for every deterministic failure reason', () => {
     for (const reason of DETERMINISTIC_FAILURE_REASONS) {

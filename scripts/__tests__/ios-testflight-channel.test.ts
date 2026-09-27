@@ -94,12 +94,18 @@ describe('iOS TestFlight channel config', () => {
     },
   );
 
-  test('names a Live Activity extension for Beta and Nightly only, derived from the app', () => {
+  test('names both extensions for Beta and Nightly only, derived from the app', () => {
     expect(IOS_TESTFLIGHT_CHANNELS.stable.agentActivityBundleId).toBeNull();
+    expect(
+      IOS_TESTFLIGHT_CHANNELS.stable.notificationServiceBundleId,
+    ).toBeNull();
     for (const channel of ['beta', 'nightly'] as const) {
       const identity = IOS_TESTFLIGHT_CHANNELS[channel];
       expect(identity.agentActivityBundleId).toBe(
         `${identity.bundleId}.AgentActivity`,
+      );
+      expect(identity.notificationServiceBundleId).toBe(
+        `${identity.bundleId}.NotificationService`,
       );
     }
   });

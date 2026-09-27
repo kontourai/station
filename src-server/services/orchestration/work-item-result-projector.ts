@@ -211,19 +211,6 @@ function issueNumberFromCanonicalUrl(
   }
 }
 
-/** Safe browser link derived from a validated durable association only. */
-export function deriveGithubIssueHttpsLink(
-  association: SessionWorkItemAssociation,
-): string | null {
-  const parsed = parseSessionWorkItemAssociation(association);
-  if (!parsed) return null;
-  const match = /^github:([^/]+)\/([^#]+)#([1-9]\d*)$/.exec(parsed.workItemRef);
-  if (!match) return null;
-  const number = Number(match[3]);
-  if (!Number.isSafeInteger(number)) return null;
-  return `https://github.com/${parsed.repository.owner}/${parsed.repository.name}/issues/${number}`;
-}
-
 function projectGithubCreateIssue(
   input: WorkItemResultProjectorInput,
 ): SessionWorkItemCandidateFields | null {

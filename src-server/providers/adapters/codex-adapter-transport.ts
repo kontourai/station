@@ -1112,24 +1112,6 @@ export class CodexAdapterTransport {
   }
 }
 
-/** archive#896 wave 2: layered subprocess env for a codex session pointed at an
- * app-home profile. Always a copy: boot-internal secrets are scrubbed.
- *
- * #2663: PATH is the augmented search PATH the `codex` binary was resolved
- * from, as the Claude and ACP spawns already get through `augmentedSpawnEnv`.
- * An npm-installed codex is `#!/usr/bin/env node`; found through a login-shell
- * or mise directory the service PATH lacks, it was adopted and then died with
- * `env: node: No such file or directory`. Layered UNDER `extraEnv`, so a
- * per-connection override still wins, and the scrub still runs last. */
-export function codexSpawnEnv(
-  extraEnv?: Record<string, string>,
-): NodeJS.ProcessEnv {
-  return childProcessEnvironment({
-    PATH: resolveAugmentedPathSync(),
-    ...extraEnv,
-  });
-}
-
 function spawnCodexProcess(
   extraEnv?: Record<string, string>,
   extraArgs?: string[],
@@ -1141,11 +1123,19 @@ function spawnCodexProcess(
   // file and never touching the user's real `~/.codex/config.toml` (see
   // that module's header comment for why this is the wire-safe channel).
   //
-  // archive#1908: `TMPDIR` is merged into the spawn env HERE, at the one
-  // real spawn call site, rather than inside `codexSpawnEnv` itself — every
-  // real Codex `app-server` child still gets a Station-owned tmp dir
-  // Station reaps on a schedule (see `reapEngineSpawnTmpDir`). Boot-internal
-  // secrets are scrubbed by `codexSpawnEnv`.
+  // archive#896 wave 2: `extraEnv` layers an app-home profile
+  // (`CODEX_HOME`) over a copy of the process env; `childProcessEnvironment`
+  // scrubs boot-internal secrets from that copy.
+  //
+  // #2663: PATH is the augmented search PATH the `codex` binary was resolved
+  // from, as the Claude and ACP spawns already get through
+  // `augmentedSpawnEnv`. An npm-installed codex is `#!/usr/bin/env node`;
+  // found through a login-shell or mise directory the service PATH lacks, it
+  // was adopted and then died with `env: node: No such file or directory`.
+  // Layered UNDER `extraEnv`, so a per-connection override still wins.
+  //
+  // archive#1908: every real Codex `app-server` child gets a Station-owned
+  // tmp dir Station reaps on a schedule (see `reapEngineSpawnTmpDir`).
   //
   // station#2072: `extraEnv` now carries per-connection env overrides, so
   // TMPDIR is merged LAST — matching the claude seam's documented "TMPDIR
@@ -1154,7 +1144,11 @@ function spawnCodexProcess(
   // spawn tmp dir authoritative even if one arrives anyway.
   return spawn(binary, ['app-server', ...(extraArgs ?? [])], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: codexSpawnEnv({ ...extraEnv, TMPDIR: ensureEngineSpawnTmpDir() }),
+    env: childProcessEnvironment({
+      PATH: resolveAugmentedPathSync(),
+      ...extraEnv,
+      TMPDIR: ensureEngineSpawnTmpDir(),
+    }),
     windowsHide: true,
     detached: true,
   });

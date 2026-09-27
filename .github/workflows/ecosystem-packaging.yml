@@ -6,6 +6,8 @@ on:
       - 'install.sh'
       - 'packaging/**'
       - 'scripts/ecosystem-manifest.mjs'
+      - 'packages/shared/src/release-manifest.mjs'
+      - 'packages/shared/src/portable-server-targets.mjs'
       - 'scripts/channel-ports.mjs'
       - 'config/channel-ports.json'
       - 'config/release-manifest-keys.json'

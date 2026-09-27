@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  bindHostTunnelAccess,
   createDirectHttpAccessMethod,
   createHostTunnelAccessMethod,
-  requiresHostAdapter,
 } from '../core/accessMethods';
 import { createAccessEndpoint } from '../core/environmentProfiles';
 
@@ -36,7 +34,6 @@ describe('environment access methods', () => {
       hostAlias: 'brian-media',
       remoteProjectPath: '~/dev/github/kontourai/station',
     });
-    expect(requiresHostAdapter(method)).toBe(true);
     expect(JSON.stringify(method)).not.toMatch(
       /privateKey|identityFile|bearer|secret|token|controlPath|localForward/i,
     );
@@ -54,41 +51,5 @@ describe('environment access methods', () => {
         remoteProjectPath,
       }),
     ).toThrow();
-  });
-
-  it('binds only loopback adapter output with the exact remote project root', () => {
-    const method = createHostTunnelAccessMethod({
-      id: 'access:ssh:media-station',
-      hostAlias: 'brian-media',
-      remoteProjectPath: '/srv/station',
-    });
-    const endpoint = createAccessEndpoint('http://127.0.0.1:43141');
-
-    expect(
-      bindHostTunnelAccess(method, {
-        endpoint,
-        hostIdentity: 'SHA256:fixture-host-key',
-        remoteProjectPath: '/srv/station',
-      }),
-    ).toEqual({
-      accessMethodId: method.id,
-      endpoint,
-      hostIdentity: 'SHA256:fixture-host-key',
-      remoteProjectPath: '/srv/station',
-    });
-    expect(() =>
-      bindHostTunnelAccess(method, {
-        endpoint: createAccessEndpoint('http://192.168.1.20:3141'),
-        hostIdentity: 'SHA256:fixture-host-key',
-        remoteProjectPath: '/srv/station',
-      }),
-    ).toThrow('loopback');
-    expect(() =>
-      bindHostTunnelAccess(method, {
-        endpoint,
-        hostIdentity: 'SHA256:fixture-host-key',
-        remoteProjectPath: '/srv/other',
-      }),
-    ).toThrow('does not match');
   });
 });

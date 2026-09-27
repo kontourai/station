@@ -23,7 +23,6 @@ import {
   mapClaudeDecisionToPermissionResult,
   mapClaudeSdkMessage,
   mapClaudeSessionState,
-  mapClaudeTaskStatus,
   settleUnresolvedClaudeToolCalls,
   summarizeClaudeToolResult,
 } from '../adapters/claude-adapter-events.js';
@@ -1193,16 +1192,6 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
       task('task_notification', { task_id: 'task-a', status: 'completed' }),
     ]);
     expect(onTaskSettled.mock.calls).toEqual([['task-a'], ['task-a']]);
-  });
-
-  test('mapClaudeTaskStatus is defensive on unknown/non-terminal values', () => {
-    expect(mapClaudeTaskStatus('completed')).toBe('success');
-    expect(mapClaudeTaskStatus('failed')).toBe('error');
-    expect(mapClaudeTaskStatus('stopped')).toBe('cancelled');
-    expect(mapClaudeTaskStatus('killed')).toBe('cancelled');
-    expect(mapClaudeTaskStatus('running')).toBeUndefined();
-    expect(mapClaudeTaskStatus(undefined)).toBeUndefined();
-    expect(mapClaudeTaskStatus('some-future-status')).toBeUndefined();
   });
 });
 

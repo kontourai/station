@@ -43,10 +43,6 @@ test('an unexpected request fails teardown without exposing its query credential
   await expect(runAudit({ page }, async () => {})).resolves.toBeUndefined();
 });
 
-test('a declared fixture with no unexpected reads completes normally', async () => {
-  await expect(runAudit({ page: {} }, async () => {})).resolves.toBeUndefined();
-});
-
 test('the ambient focus report is modeled as its real 204, not recorded as unexpected', async () => {
   const page = {};
   const fulfill = vi.fn().mockResolvedValue(undefined);

@@ -27,7 +27,6 @@ import {
   pnpmInvocation,
   preflightInstalledLifecycle,
   reportCliFailure,
-  resolveNpmCli,
   runApprovedHooks,
   verifyLifecycleArtifacts,
 } from '../dependency-lifecycle.mjs';
@@ -1950,23 +1949,6 @@ describe('dependency lifecycle policy', () => {
           { mustExist: false },
         ),
       ).toThrow(/redirected by a symlink or junction/);
-    } finally {
-      rmSync(fixtureRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('refuses Windows npm command shims and resolves npm through node', () => {
-    expect(() => resolveNpmCli({ npm_execpath: 'C:\\npm.cmd' })).toThrow(
-      /npm_execpath/,
-    );
-    const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-npm-cli-'));
-    try {
-      const node = resolve(fixtureRoot, 'node.exe');
-      const npmCli = resolve(fixtureRoot, 'node_modules/npm/bin/npm-cli.js');
-      mkdirSync(resolve(npmCli, '..'), { recursive: true });
-      writeFileSync(node, 'node');
-      writeFileSync(npmCli, 'console.log("npm")');
-      expect(resolveNpmCli({}, node)).toBe(npmCli);
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }

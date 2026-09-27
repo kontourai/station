@@ -18,6 +18,7 @@ vi.mock('../api', () => ({
   _getApiBase: vi.fn().mockResolvedValue('http://example.test'),
 }));
 
+import { StationHttpError } from '../client/http';
 import {
   deleteJob,
   disableJob,
@@ -233,7 +234,11 @@ describe('scheduler query domain', () => {
     );
 
     expect(error).toBeInstanceOf(SchedulerRunIndeterminateError);
+    // #2708: a run error is the StationHttpError the envelope helper built,
+    // so it keeps the status the response carried.
+    expect(error).toBeInstanceOf(StationHttpError);
     expect(error).toMatchObject({
+      status: 409,
       code: 'scheduler_run_indeterminate',
       outcome: 'indeterminate',
       retryable: false,
@@ -267,7 +272,9 @@ describe('scheduler query domain', () => {
     );
 
     expect(error).toBeInstanceOf(SchedulerRunFailedError);
+    expect(error).toBeInstanceOf(StationHttpError);
     expect(error).toMatchObject({
+      status: 422,
       code: 'scheduler_run_failed',
       outcome: 'failed',
       receipt: {
@@ -302,7 +309,9 @@ describe('scheduler query domain', () => {
     );
 
     expect(error).toBeInstanceOf(SchedulerRunRefusedError);
+    expect(error).toBeInstanceOf(StationHttpError);
     expect(error).toMatchObject({
+      status: 422,
       code: 'scheduler_run_refused',
       outcome: 'refused',
       retryable: true,

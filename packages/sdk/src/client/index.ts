@@ -29,6 +29,10 @@ export * from './analytics';
 export * from './answer-basis';
 export * from './answer-narrative-binding';
 export * from './answer-support';
+export {
+  envelopeDetailsMessage,
+  envelopeReasons,
+} from './api-error-message';
 export * from './attachment-staging';
 export * from './board';
 export { ChatHttpError } from './chatHttpError';

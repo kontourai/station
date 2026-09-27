@@ -541,6 +541,23 @@ const SOURCE_READ_SCRIPT_EDGE_REASON =
 const GENERATED_SETTINGS_REGISTRY_TEST =
   'scripts/__tests__/gen-settings-registry.test.ts';
 export const UNMODELLED_INPUT_EDGES = Object.freeze([
+  // The signer CLI imports these shared modules, and ecosystem-manifest.test.ts
+  // reaches them only through that CLI as a child process, which the import
+  // graph cannot see. (The vectors test imports them directly.)
+  ...[
+    'packages/shared/src/release-manifest.mjs',
+    'packages/shared/src/portable-server-targets.mjs',
+    'packages/shared/src/release-rings.generated.mjs',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze(['scripts/__tests__/ecosystem-manifest.test.ts']),
+      reason:
+        'the release-manifest signer CLI imports this module; its tests ' +
+        'reach it only through the CLI child process (#2675)',
+    }),
+  ),
   // The generator loads its sources through a computed specifier (so the
   // scripts typecheck never follows it into `.tsx`), and `--check` reads the
   // checked-in artifact by path. `REGISTRY_SOURCE_PATHS` in the generator is
@@ -631,6 +648,7 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/proof-family-route-error-egress.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/random-uuid-guard.test.ts',
+  'scripts/__tests__/sdk-barrel-selection.repo.test.ts',
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
   'scripts/__tests__/test-import-existence-gate.scan.test.ts',
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
@@ -688,7 +706,10 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
   Object.freeze({
     pattern: 'scripts/ecosystem-manifest.mjs',
     related: true,
-    tests: Object.freeze(['scripts/__tests__/ecosystem-manifest.test.ts']),
+    tests: Object.freeze([
+      'scripts/__tests__/ecosystem-manifest.test.ts',
+      'scripts/__tests__/release-manifest-vectors.test.ts',
+    ]),
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({
@@ -865,9 +886,8 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'scripts/__tests__/agent-instructions-gate.test.ts',
       'scripts/__tests__/verification-policy-gate.test.ts',
-      'scripts/__tests__/trust-reconcile-manifest.test.ts',
     ],
-    reason: 'root instruction routing, completion evidence, and wrapper policy',
+    reason: 'root instruction routing and wrapper policy',
   },
   {
     pattern: 'CLAUDE.md',
@@ -1226,19 +1246,9 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'Nightly hidden-window documentation source seam',
   },
   {
-    pattern: 'src-ui/src/platform/native/startupReadiness.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'renderer readiness documentation source seam',
-  },
-  {
     pattern: 'scripts/__tests__/startup-readiness-static.test.ts',
     tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
     reason: 'native startup static verification command contract',
-  },
-  {
-    pattern: 'src-ui/src/platform/native/__tests__/startupReadiness.test.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'renderer startup verification command contract',
   },
   {
     pattern: 'tests/plugin-host-security.spec.ts',

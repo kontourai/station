@@ -114,14 +114,6 @@ export type EnvironmentAccessMethod =
   | DirectHttpAccessMethod
   | HostTunnelAccessMethod;
 
-/** Transient adapter output. Persist the method, never the resolved endpoint. */
-export interface ResolvedHostTunnelAccess {
-  accessMethodId: string;
-  endpoint: AccessEndpoint;
-  hostIdentity: string;
-  remoteProjectPath: string;
-}
-
 export type AccessEndpointKind =
   | 'same-origin'
   | 'tailnet-https'

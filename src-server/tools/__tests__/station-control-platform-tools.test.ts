@@ -126,6 +126,7 @@ describe('station-control platform tools (characterization)', () => {
           ),
         },
       ],
+      isError: true,
     });
   });
 
@@ -177,6 +178,7 @@ describe('station-control platform tools (characterization)', () => {
           ),
         },
       ],
+      isError: true,
     });
   });
 
@@ -230,6 +232,7 @@ describe('station-control platform tools (characterization)', () => {
           ),
         },
       ],
+      isError: true,
     });
   });
 

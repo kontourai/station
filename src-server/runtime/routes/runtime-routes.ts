@@ -295,7 +295,7 @@ import {
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
 import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
-import { canRelayPluginIdentityEvent } from '../../routes/plugins/plugin-identity-enumeration.js';
+import { createPluginEventRelayGate } from '../../routes/plugins/plugin-identity-enumeration.js';
 import { isNonPersonCaller } from '../../routes/plugins/plugin-person-approval.js';
 import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal-routes.js';
 import { createPluginSourceStatusRoutes } from '../../routes/plugins/plugin-source-status-routes.js';
@@ -5816,26 +5816,12 @@ export function configureRuntimeRoutes(
        * Every failure path denies: an unattributable caller, a payload that
        * names no plugin, a grant record that cannot be read.
        */
-      canReadPluginEvent: (event, data, c) =>
-        canRelayPluginIdentityEvent({
-          event,
-          data,
-          principal: resolveSubscriberPrincipal(c),
-          canSee: (principal, pluginName) => {
-            try {
-              return pluginVisibility.canSee(principal, pluginName);
-            } catch (error) {
-              context.logger.debug?.(
-                'Plugin event relay denied: the visibility record could not be read',
-                {
-                  event,
-                  error: error instanceof Error ? error.message : error,
-                },
-              );
-              return false;
-            }
-          },
-        }),
+      canReadPluginEvent: createPluginEventRelayGate({
+        resolvePrincipal: resolveSubscriberPrincipal,
+        canSee: (principal, pluginName) =>
+          pluginVisibility.canSee(principal, pluginName),
+        logger: context.logger,
+      }),
       // Epic #2323 S3: a draft revision event names a Project, so it reaches
       // only subscribers who may read that Project — the same membership
       // check the Project read guard applies to the draft routes themselves.

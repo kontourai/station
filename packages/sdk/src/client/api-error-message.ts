@@ -3,8 +3,9 @@
  *
  * Lives in `client/` deliberately (station#3749): the React-free client entry
  * may only import its own siblings, and every fetcher under `client/` routes
- * its refusals through this function. `api-core` re-exports it, so the rest of
- * the SDK has one import site and the whole package has one rule.
+ * its refusals through this module. `api-core` re-exports `apiErrorMessage`,
+ * so the rest of the SDK has one import site and the whole package has one
+ * rule.
  *
  * The shared zod middleware answers a rejected body with
  * `{ error: 'Validation failed', details: { fieldErrors } }` — the sentence
@@ -13,44 +14,299 @@
  * untypable command word therefore reached the editor with nothing to say
  * (station#3737).
  *
- * Reads the details when they are there and falls back to the envelope's own
- * message when they are not. Every refusal in this package goes through here —
- * the 152 hand-rolled `result.error || 'Something failed'` lines were swept in
- * station#3749 and `scripts/sdk-error-message-ratchet.mjs` keeps the count at
- * zero, because an unadopted helper regrows silently.
+ * The runtime's own auth refusal is a second shape:
+ * `{"error":{"code":"authentication_required"}}` — an OBJECT `error`, and no
+ * `success` key at all. A fetcher that assumes the string shape renders
+ * `[object Object]` (station#4-HOME-006).
+ *
+ * There used to be one rule per shape (`apiErrorMessage` read details,
+ * `envelopeErrorMessage` read the object). Both are now thin wrappers over
+ * `envelopeMessage` below, so every client derives the same sentence from the
+ * same body (#2708). `StationHttpError` is defined here too (re-exported by
+ * `http.ts`), so the rule and the error it builds need no import cycle.
+ * `scripts/sdk-error-message-ratchet.mjs` holds the
+ * hand-rolled reads at or below a per-file baseline, because an unadopted
+ * helper regrows silently.
  */
-export function apiErrorMessage(
-  result: {
-    error?: unknown;
-    message?: unknown;
-    details?: { formErrors?: unknown; fieldErrors?: unknown };
-  },
+
+/** A Station HTTP response failure whose status is safe for callers to branch on. */
+export class StationHttpError extends Error {
+  readonly status: number;
+
+  /**
+   * The response's `Retry-After` in milliseconds, when it sent one. Station's
+   * runtime sends it with every 429 (`runtime-http.ts`'s auth-failure
+   * limiter), which is the server stating exactly when a client may return —
+   * an instruction a reconnecting stream should follow rather than guess past.
+   */
+  readonly retryAfterMs?: number;
+
+  /**
+   * The envelope's machine `code`, when it sent one (`{success:false,
+   * error, code}`). Status says WHAT happened (404); the code says WHICH
+   * one (a verified not-prepared Project vs. a removed one) — branch on
+   * this, never on the message text. Absent on old servers, proxies and
+   * non-JSON bodies, which is itself the signal that nothing is verified.
+   */
+  readonly code?: string;
+
+  /**
+   * The envelope's `details`, exactly as sent (#2708) — for a validation
+   * refusal, `{ formErrors, fieldErrors }`. The message already carries the
+   * sentences; this keeps the structure for a caller that renders per field.
+   */
+  readonly details?: unknown;
+
+  constructor(
+    status: number,
+    message?: string,
+    options?: { retryAfterMs?: number; code?: string; details?: unknown },
+  ) {
+    super(message ?? `HTTP ${status}`);
+    this.name = 'StationHttpError';
+    this.status = status;
+    if (options?.retryAfterMs !== undefined) {
+      this.retryAfterMs = options.retryAfterMs;
+    }
+    if (options?.code !== undefined) {
+      this.code = options.code;
+    }
+    if (options?.details !== undefined) {
+      this.details = options.details;
+    }
+  }
+}
+
+/**
+ * Parses an HTTP `Retry-After` header. Only the delta-seconds form is honored:
+ * the HTTP-date form depends on the client's clock agreeing with the server's,
+ * and a skewed clock would produce a wait this code cannot bound. An
+ * unparseable or negative value yields `undefined`, which leaves the caller on
+ * its ordinary backoff.
+ */
+export function parseRetryAfterMs(header: string | null): number | undefined {
+  if (header === null) return undefined;
+  // Digits only, deliberately. `Number()` would accept far more than the
+  // delta-seconds grammar this claims to parse — `'0x10'` as 16 seconds,
+  // `'1e3'` as 1000, `' '` and `''` as 0 — turning a malformed header into a
+  // confident, wrong wait instead of falling through to the ordinary ladder.
+  const trimmed = header.trim();
+  if (!/^\d+$/.test(trimmed)) return undefined;
+  const seconds = Number(trimmed);
+  if (!Number.isFinite(seconds)) return undefined;
+  return seconds * 1000;
+}
+
+/** Just enough of a `Response` to describe its failure. */
+export interface EnvelopeFailureResponse {
+  status: number;
+  headers?: { get(name: string): string | null } | null;
+}
+
+/** Everything a failure envelope said, with the status it arrived under. */
+export interface EnvelopeFailure {
+  /** The observed HTTP status — a 2xx too, for a `success:false` body. */
+  status: number;
+  message: string;
+  /** Top-level `code`, else the object `error`'s own `code`. */
+  code?: string;
+  /** The body's `details`, exactly as sent. */
+  details?: unknown;
+  /** `Retry-After` (delta-seconds only), in milliseconds. */
+  retryAfterMs?: number;
+}
+
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function nonBlank(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function stringEntries(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter(nonBlank) : [];
+}
+
+/**
+ * The validation sentences in a zod `flatten()` `details`, each qualified by
+ * the field it is about: `command Required, name Required`. Field errors come
+ * first (several reasons for one field joined with `; `), then form-level
+ * errors. `undefined` when there are none. This is the shape the CLI printed
+ * first (station#2871, `Validation failed: command Required`); the CLI now
+ * reads it from here, so the two agree.
+ */
+export function envelopeDetailsMessage(details: unknown): string | undefined {
+  const flattened = record(details);
+  if (!flattened) return undefined;
+  const parts: string[] = [];
+  const fieldErrors = record(flattened.fieldErrors);
+  if (fieldErrors) {
+    for (const [field, messages] of Object.entries(fieldErrors)) {
+      const reasons = stringEntries(messages);
+      if (reasons.length > 0) parts.push(`${field} ${reasons.join('; ')}`);
+    }
+  }
+  parts.push(...stringEntries(flattened.formErrors));
+  return parts.length > 0 ? parts.join(', ') : undefined;
+}
+
+/**
+ * The validation sentences in a zod `flatten()` `details`, for a person to
+ * read: the server's own reasons, form-level first, each said once, with no
+ * field keys (`command` is a schema key, not copy). Empty when there are none.
+ * The UI renders these from `StationHttpError.details`; the thrown message
+ * keeps the field-qualified form for CLI and agent readers.
+ */
+export function envelopeReasons(details: unknown): string[] {
+  const flattened = record(details);
+  if (!flattened) return [];
+  const reasons = stringEntries(flattened.formErrors);
+  const fieldErrors = record(flattened.fieldErrors);
+  if (fieldErrors) {
+    for (const messages of Object.values(fieldErrors)) {
+      reasons.push(...stringEntries(messages));
+    }
+  }
+  return [...new Set(reasons)];
+}
+
+/**
+ * The one message rule. The summary is, in order: a string `error`; an object
+ * `error`'s `message`, then its `code` (a machine token, still shown rather
+ * than swapped for an invention — it is what the server computed); the
+ * top-level `message`; and only then `fallback`. When `details` carries
+ * validation sentences they follow it, field-qualified —
+ * `Validation failed: command Required, name Required` — so a refusal names
+ * the field and the rule instead of "Validation failed" alone (station#3737)
+ * or two bare "Required"s that could be about anything.
+ */
+export function envelopeMessage(body: unknown, fallback: string): string {
+  const envelope = record(body);
+  if (!envelope) return fallback;
+  const summary = envelopeSummary(envelope, fallback);
+  const fields = envelopeDetailsMessage(envelope.details);
+  return fields ? `${summary}: ${fields}` : summary;
+}
+
+/**
+ * The same rule for a message that is SHOWN, not thrown with its details: the
+ * server's reason sentences when there are any (`envelopeReasons`), else the
+ * summary. `apiErrorMessage` and `envelopeErrorMessage` return this because
+ * their callers throw a plain `Error` carrying only the text — which the UI
+ * renders as-is, and which cannot be curated later because the `details` are
+ * gone. Once a fetcher throws `envelopeError` instead, its error carries both
+ * the field-qualified message and the `details` the UI curates from.
+ */
+export function envelopeSentence(body: unknown, fallback: string): string {
+  const envelope = record(body);
+  if (!envelope) return fallback;
+  const reasons = envelopeReasons(envelope.details);
+  return reasons.length > 0
+    ? reasons.join(' ')
+    : envelopeSummary(envelope, fallback);
+}
+
+function envelopeSummary(
+  envelope: Record<string, unknown>,
   fallback: string,
 ): string {
-  const parts: string[] = [];
-  const formErrors = result.details?.formErrors;
-  if (Array.isArray(formErrors)) {
-    for (const entry of formErrors) {
-      if (typeof entry === 'string' && entry.trim()) parts.push(entry);
-    }
-  }
-  const fieldErrors = result.details?.fieldErrors;
-  if (fieldErrors && typeof fieldErrors === 'object') {
-    for (const messages of Object.values(
-      fieldErrors as Record<string, unknown>,
-    )) {
-      if (!Array.isArray(messages)) continue;
-      for (const entry of messages) {
-        if (typeof entry === 'string' && entry.trim()) parts.push(entry);
-      }
-    }
-  }
-  if (parts.length > 0) return parts.join(' ');
-  if (typeof result.error === 'string' && result.error.trim()) {
-    return result.error;
-  }
-  if (typeof result.message === 'string' && result.message.trim()) {
-    return result.message;
-  }
+  const { error, message } = envelope;
+  if (nonBlank(error)) return error;
+  const detail = record(error);
+  if (nonBlank(detail?.message)) return detail.message;
+  if (nonBlank(detail?.code)) return detail.code;
+  if (nonBlank(message)) return message;
   return fallback;
+}
+
+/**
+ * The envelope's machine `code`: the top-level one, else the object `error`'s
+ * own. Only a non-blank string counts — absence (an old server, a proxy page,
+ * a non-JSON body) is the unverified signal, never a default.
+ */
+export function envelopeCode(body: unknown): string | undefined {
+  const envelope = record(body);
+  if (nonBlank(envelope?.code)) return envelope.code;
+  const code = record(envelope?.error)?.code;
+  return nonBlank(code) ? code : undefined;
+}
+
+/**
+ * Reads a failure envelope into its parts. `body` is the parsed JSON, or
+ * `undefined` when there was none; `status` is always the one observed.
+ */
+export function readEnvelopeFailure(
+  response: EnvelopeFailureResponse,
+  body: unknown,
+  fallback: string,
+): EnvelopeFailure {
+  const failure: EnvelopeFailure = {
+    status: response.status,
+    message: envelopeMessage(body, fallback),
+  };
+  const code = envelopeCode(body);
+  if (code !== undefined) failure.code = code;
+  const details = record(body)?.details;
+  if (details !== undefined && details !== null) failure.details = details;
+  // Test doubles and some native transports hand back a bare object with no
+  // `headers`; that is "no Retry-After", not a reason to lose the failure.
+  const retryAfter =
+    typeof response.headers?.get === 'function'
+      ? response.headers.get('retry-after')
+      : null;
+  const retryAfterMs = parseRetryAfterMs(retryAfter);
+  if (retryAfterMs !== undefined) failure.retryAfterMs = retryAfterMs;
+  return failure;
+}
+
+/**
+ * `readEnvelopeFailure` as the error a fetcher throws.
+ *
+ * `options.message` is for a fetcher that withholds the server's words on
+ * purpose (a fixed "Input request unavailable" that must not echo whatever a
+ * peer sent): the error then carries that fixed message and no `details`
+ * (which are server text too), and still keeps the observed status, `code`
+ * and `Retry-After` — the fields a caller branches on.
+ */
+export function envelopeError(
+  response: EnvelopeFailureResponse,
+  body: unknown,
+  fallback: string,
+  options?: { message?: string },
+): StationHttpError {
+  const { status, message, details, ...rest } = readEnvelopeFailure(
+    response,
+    body,
+    fallback,
+  );
+  if (options?.message !== undefined) {
+    return new StationHttpError(status, options.message, rest);
+  }
+  return new StationHttpError(
+    status,
+    message,
+    details === undefined ? rest : { ...rest, details },
+  );
+}
+
+/**
+ * The message for a body a caller has already parsed and will throw as a
+ * plain `Error`. Kept for its existing callers and the `api-core` export; it
+ * is `envelopeSentence` (see there for why not the field-qualified form).
+ */
+export function apiErrorMessage(
+  result:
+    | {
+        error?: unknown;
+        message?: unknown;
+        details?: { formErrors?: unknown; fieldErrors?: unknown };
+      }
+    | null
+    | undefined,
+  fallback: string,
+): string {
+  return envelopeSentence(result, fallback);
 }

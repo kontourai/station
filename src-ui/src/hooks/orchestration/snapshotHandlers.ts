@@ -122,7 +122,7 @@ function reconnectCatchUpUpdates(
   };
 }
 
-export type OrchestrationSnapshotSyncPlan = {
+type OrchestrationSnapshotSyncPlan = {
   sessionUpdates: Array<{
     /** The chat STORE key the updates apply to (see `selectSnapshotRows`). */
     threadId: string;
@@ -537,13 +537,6 @@ function planSnapshot(
   };
 }
 
-export function buildOrchestrationSnapshotSyncPlan(
-  payload: OrchestrationSnapshotPayload,
-  chats: Record<string, SnapshotChatState>,
-): OrchestrationSnapshotSyncPlan {
-  return planSnapshot(payload, chats).plan;
-}
-
 export interface ApplyOrchestrationSnapshotOptions {
   replayThreadId?: string;
   apiBase: string;
@@ -552,10 +545,10 @@ export interface ApplyOrchestrationSnapshotOptions {
    * fallback on a RECONNECT (`resolveStreamResumePlan`'s `gap_exceeded`/
    * `invalid_cursor` outcomes), not the ordinary snapshot every fresh
    * connect (including first-ever mount) also sends. A snapshot only
-   * carries per-session STATUS fields (`buildOrchestrationSnapshotSyncPlan`
-   * above) — never the turns that happened during the gap — so a
-   * currently-open chat's message transcript needs an explicit full
-   * refetch or it stays stale forever. Omitted/false keeps this a pure
+   * carries per-session STATUS fields (`planSnapshot` above) — never the
+   * turns that happened during the gap — so a currently-open chat's
+   * message transcript needs an explicit full refetch or it stays stale
+   * forever. Omitted/false keeps this a pure
    * status sync, exactly matching pre-archive#1225 behavior (a first connect has
    * nothing stale to refresh — `ChatDock`'s own mount-time
    * `rehydrateSessions` already covers that case).

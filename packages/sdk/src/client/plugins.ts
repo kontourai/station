@@ -8,9 +8,11 @@ import type {
 } from '@kontourai/station-contracts/plugin';
 import {
   type ClientRequestOptions,
+  envelopeErrorCode,
   envelopeErrorMessage,
   getJson,
   mutateJson,
+  StationHttpError,
 } from './http';
 
 export type InstalledPluginRecord =
@@ -114,17 +116,36 @@ function isRejectedInstalledPlugin(value: Record<string, unknown>): boolean {
 export interface PluginCollectionFailure {
   success: false;
   error: string;
+  /**
+   * The envelope's machine `code`, when it sent one — a station-control
+   * authority refusal (#2377) such as `station_control_caller_required`.
+   * `list_plugins` relays this envelope whole, so without it an agent got the
+   * refusal's words and not the code it branches on (#2708).
+   */
+  code?: string;
   grantsUnavailable?: true;
 }
 
-export class PluginCollectionHttpError extends Error {
-  readonly status: number;
+/**
+ * The plugin collection read failed. A `StationHttpError` (#2708), so a caller
+ * branching on status or `code` treats it like every other refused request;
+ * `envelope` is the failure as `list_plugins` relays it.
+ */
+export class PluginCollectionHttpError extends StationHttpError {
   readonly envelope: PluginCollectionFailure;
 
-  constructor(status: number, envelope: PluginCollectionFailure) {
-    super(envelope.error);
+  constructor(
+    status: number,
+    envelope: PluginCollectionFailure,
+    options?: { details?: unknown },
+  ) {
+    super(status, envelope.error, {
+      ...(envelope.code === undefined ? {} : { code: envelope.code }),
+      ...(options?.details === undefined || options.details === null
+        ? {}
+        : { details: options.details }),
+    });
     this.name = 'PluginCollectionHttpError';
-    this.status = status;
     this.envelope = envelope;
   }
 }
@@ -140,27 +161,42 @@ export async function listPlugins(
     plugins?: unknown;
     error?: unknown;
     grantsUnavailable?: unknown;
+    details?: unknown;
   };
+  const code = envelopeErrorCode(result);
+  // `Retry-After` joins in #2708 A-2, through the shared parser, once this
+  // module can import it (#2782).
+  const failureOptions = { details: result.details };
   if (!response.ok) {
-    throw new PluginCollectionHttpError(response.status, {
-      success: false,
-      error:
-        typeof result.error === 'string' && result.error.length > 0
-          ? result.error
-          : `Plugin request failed with HTTP ${response.status}`,
-      ...(result.grantsUnavailable === true
-        ? { grantsUnavailable: true as const }
-        : {}),
-    });
+    throw new PluginCollectionHttpError(
+      response.status,
+      {
+        success: false,
+        error:
+          typeof result.error === 'string' && result.error.length > 0
+            ? result.error
+            : `Plugin request failed with HTTP ${response.status}`,
+        ...(code === undefined ? {} : { code }),
+        ...(result.grantsUnavailable === true
+          ? { grantsUnavailable: true as const }
+          : {}),
+      },
+      failureOptions,
+    );
   }
   if (result.success === false) {
-    throw new PluginCollectionHttpError(200, {
-      success: false,
-      error:
-        typeof result.error === 'string' && result.error.length > 0
-          ? result.error
-          : 'Plugin collection request was rejected',
-    });
+    throw new PluginCollectionHttpError(
+      200,
+      {
+        success: false,
+        error:
+          typeof result.error === 'string' && result.error.length > 0
+            ? result.error
+            : 'Plugin collection request was rejected',
+        ...(code === undefined ? {} : { code }),
+      },
+      failureOptions,
+    );
   }
   if (
     !Array.isArray(result.plugins) ||

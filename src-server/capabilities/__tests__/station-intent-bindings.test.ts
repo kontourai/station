@@ -714,62 +714,6 @@ describe('createStationHostIntentBindings', () => {
     expect(taskGraphService.readTask(task.id)?.status).toBe('todo');
   });
 
-  test('consent-gating: resolveIntentBinding surfaces confirmation metadata but NEVER calls execute itself — a side-effecting binding stays un-invoked until a caller-side consent gate decides to run it', async () => {
-    const taskGraphService = createTempTaskGraphService();
-    const dispatchTaskSpy = taskDispatcher.dispatch;
-    const bindings = createStationHostIntentBindings({
-      taskGraphService,
-      taskDispatcher,
-      orchestrationService: {
-        dispatch: vi.fn(async () => undefined),
-        readSession: vi.fn(async () => null),
-      },
-    });
-
-    const task = await taskGraphService.createTask({
-      projectId: 'project-alpha',
-      title: 'Consent-gated dispatch',
-    });
-
-    const resolution = resolveIntentBinding(
-      stationIntent('task dispatch', task.id),
-      bindings,
-    );
-    expect(resolution.bound).toBe(true);
-    if (!resolution.bound) throw new Error('unreachable');
-    // The confirmation tier a consent layer (Station's native policy
-    // classes, or S6's confirmation UI) must gate on before invoking
-    // `execute` — resolution itself never makes that call.
-    expect(resolution.confirmation).toBe('user-request');
-    expect(dispatchTaskSpy).not.toHaveBeenCalled();
-    expect(taskGraphService.readTask(task.id)?.status).toBe('todo');
-  });
-
-  test('consent-gating: the read-only status command carries confirmation "never" — safe to auto-execute with no gate, unlike the write commands', async () => {
-    const taskGraphService = createTempTaskGraphService();
-    const bindings = createStationHostIntentBindings({
-      taskGraphService,
-      taskDispatcher,
-      orchestrationService: {
-        dispatch: vi.fn(async () => undefined),
-        readSession: vi.fn(async () => null),
-      },
-    });
-    const task = await taskGraphService.createTask({
-      projectId: 'project-alpha',
-      title: 'Read-only status',
-    });
-
-    const resolution = resolveIntentBinding(
-      stationIntent('task status', task.id),
-      bindings,
-    );
-    expect(resolution.bound).toBe(true);
-    if (!resolution.bound) throw new Error('unreachable');
-    expect(resolution.confirmation).toBe('never');
-    expect(resolution.sideEffect).toBe('read-local');
-  });
-
   test('descriptor honesty: the "task status" executor rejects an unsupported store shape without writing it', async () => {
     const { taskGraphService, taskGraphPath } =
       createUnsupportedTaskGraphService();

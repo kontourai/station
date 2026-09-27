@@ -15,14 +15,16 @@ const codeToHtml = vi.fn((code: string, opts: { lang: string }) => {
   return `<pre data-lang="${opts.lang}">${code}</pre>`;
 });
 
+// Every LRU miss runs the main-thread highlighter, which awaits `initShiki`
+// first; a hit resolves from the cache without it. `codeToHtml` alone cannot
+// tell the two apart, because the incremental session store beneath the
+// highlighter also serves a repeat of the same code.
+const initShiki = vi.fn(async () => ({ getLoadedLanguages, codeToHtml }));
 vi.mock('../contexts/SyntaxHighlighterContext', () => ({
-  initShiki: async () => ({ getLoadedLanguages, codeToHtml }),
+  initShiki: () => initShiki(),
 }));
 
-import {
-  highlightCacheSize,
-  highlightCode,
-} from '../highlight/highlight-client';
+import { highlightCode } from '../highlight/highlight-client';
 
 beforeAll(() => {
   // jsdom ships no Worker; pin that so the main-thread branch is the one
@@ -33,27 +35,36 @@ beforeAll(() => {
 
 describe('highlightCode (station#3354)', () => {
   test('tokenizes through the main-thread fallback and caches the result', async () => {
-    const before = highlightCacheSize();
     const first = await highlightCode('const cached = 1;', 'ts');
     expect(first).toBe('<pre data-lang="ts">const cached = 1;</pre>');
-    expect(highlightCacheSize()).toBe(before + 1);
 
-    const calls = codeToHtml.mock.calls.length;
+    const misses = initShiki.mock.calls.length;
     const second = await highlightCode('const cached = 1;', 'ts');
     expect(second).toBe(first);
     // Served from the LRU — the highlighter was not asked a second time.
-    expect(codeToHtml.mock.calls.length).toBe(calls);
-    expect(highlightCacheSize()).toBe(before + 1);
+    expect(initShiki.mock.calls.length).toBe(misses);
   });
 
   test('the key is content-addressed, so different code is a different entry', async () => {
-    const before = highlightCacheSize();
-    await highlightCode('let distinct = 1;', 'ts');
-    await highlightCode('let distinct = 2;', 'ts');
-    expect(highlightCacheSize()).toBe(before + 2);
-    // …and the same code under a different language is its own entry too.
-    await highlightCode('let distinct = 1;', 'js');
-    expect(highlightCacheSize()).toBe(before + 3);
+    const inputs = [
+      ['let distinct = 1;', 'ts'],
+      ['let distinct = 2;', 'ts'],
+      // …and the same code under a different language is its own entry too.
+      ['let distinct = 1;', 'js'],
+    ] as const;
+    const start = initShiki.mock.calls.length;
+    const expected = inputs.map(
+      ([code, lang]) => `<pre data-lang="${lang}">${code}</pre>`,
+    );
+    for (const round of [1, 2]) {
+      const results = [];
+      for (const [code, lang] of inputs) {
+        results.push(await highlightCode(code, lang));
+      }
+      expect(results, `round ${round}`).toEqual(expected);
+      // Each input missed once and was highlighted; the second round hits.
+      expect(initShiki.mock.calls.length, `round ${round}`).toBe(start + 3);
+    }
   });
 
   test('an unloaded language resolves to text rather than failing', async () => {
