@@ -18,6 +18,9 @@ import {
   observePluginTreeAsync,
 } from '@kontourai/station-shared/plugin-tree-digest';
 import { expect, test } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
+
+const tempDir = trackTempDirs();
 
 test.each([
   ['sync', computePluginTreeDigest],
@@ -182,33 +185,27 @@ test('a tree observation retains the manifest bytes that contributed to its dige
 });
 
 test('alsoWithout digests the same walk as if the named entries, and everything under them, were absent', async () => {
-  const withEntries = mkdtempSync(join(tmpdir(), 'station-digest-without-'));
-  const plain = mkdtempSync(join(tmpdir(), 'station-digest-plain-'));
-  try {
-    for (const root of [withEntries, plain]) {
-      mkdirSync(join(root, 'lib'), { recursive: true });
-      writeFileSync(join(root, 'plugin.json'), '{"name":"p"}');
-      writeFileSync(join(root, 'lib', 'index.js'), 'export {};');
-    }
-    mkdirSync(join(withEntries, 'vendor', '.git'), { recursive: true });
-    writeFileSync(join(withEntries, 'vendor', '.git', 'HEAD'), 'ref\n');
-    const skip = (name: string) => name === '.git';
-
-    const observed = await observePluginTreeAsync(withEntries, {
-      alsoWithout: skip,
-    });
-    const expected = computePluginTreeDigest(plain);
-    expect(expected).toMatch(/^sha256:[0-9a-f]{64}$/);
-    // `vendor` itself stays; only what the predicate names goes.
-    mkdirSync(join(plain, 'vendor'));
-    expect(observed?.digestWithout).toBe(computePluginTreeDigest(plain));
-    expect(observed?.digest).toBe(computePluginTreeDigest(withEntries));
-    expect(observed?.digest).not.toBe(observed?.digestWithout);
-    expect(
-      (await observePluginTreeAsync(withEntries))?.digestWithout,
-    ).toBeUndefined();
-  } finally {
-    rmSync(withEntries, { recursive: true, force: true });
-    rmSync(plain, { recursive: true, force: true });
+  const withEntries = tempDir('station-digest-without-');
+  const plain = tempDir('station-digest-plain-');
+  for (const root of [withEntries, plain]) {
+    mkdirSync(join(root, 'lib'), { recursive: true });
+    writeFileSync(join(root, 'plugin.json'), '{"name":"p"}');
+    writeFileSync(join(root, 'lib', 'index.js'), 'export {};');
   }
+  mkdirSync(join(withEntries, 'vendor', '.git'), { recursive: true });
+  writeFileSync(join(withEntries, 'vendor', '.git', 'HEAD'), 'ref\n');
+  const skip = (name: string) => name === '.git';
+
+  const observed = await observePluginTreeAsync(withEntries, {
+    alsoWithout: skip,
+  });
+  expect(computePluginTreeDigest(plain)).toMatch(/^sha256:[0-9a-f]{64}$/);
+  // `vendor` itself stays; only what the predicate names goes.
+  mkdirSync(join(plain, 'vendor'));
+  expect(observed?.digestWithout).toBe(computePluginTreeDigest(plain));
+  expect(observed?.digest).toBe(computePluginTreeDigest(withEntries));
+  expect(observed?.digest).not.toBe(observed?.digestWithout);
+  expect(
+    (await observePluginTreeAsync(withEntries))?.digestWithout,
+  ).toBeUndefined();
 });
