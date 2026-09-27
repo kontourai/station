@@ -178,6 +178,10 @@ function isAbort(error: unknown, signal?: AbortSignal): boolean {
 function isConnectionRefused(error: unknown): boolean {
   let current: unknown = error;
   while (current && typeof current === 'object') {
+    // A StationHttpError is an ANSWER, so nothing it carries is a refused
+    // connection — and its `code` is the peer's envelope code (#2708), which a
+    // peer could set to any label, `ECONNREFUSED` included.
+    if (current instanceof StationHttpError) return false;
     if ((current as { code?: unknown }).code === 'ECONNREFUSED') return true;
     current = (current as { cause?: unknown }).cause;
   }

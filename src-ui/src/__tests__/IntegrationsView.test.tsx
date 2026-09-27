@@ -45,12 +45,26 @@ vi.mock('../contexts/NavigationContext', () => {
   };
 });
 
+// The rendered sentence is the same whether the fetcher threw the SDK's
+// StationHttpError or a plain Error carrying the reasons (A-0 made the two
+// agree on purpose), so the copy alone cannot tell a reverted fetcher from a
+// migrated one. What the view hands its curation helper can: the real helper
+// still runs, and the test reads the error it was given.
+vi.mock('../utils/errorText', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/errorText')>();
+  return {
+    ...actual,
+    userFacingErrorMessage: vi.fn(actual.userFacingErrorMessage),
+  };
+});
+
 vi.mock('../components/LazyBoundary', () => ({
   LazyBoundary: () => (
     <section aria-label="Advanced: Secret bindings">Secret bindings</section>
   ),
 }));
 
+import { userFacingErrorMessage } from '../utils/errorText';
 import { IntegrationsView } from '../views/IntegrationsView';
 
 function renderView() {
@@ -120,6 +134,25 @@ describe('IntegrationsView (#771)', () => {
       ).toBeTruthy(),
     );
     expect(screen.queryByText(/Validation failed/)).toBeNull();
+    // #2708 A-1a review gap I8: the view got the fetcher's typed refusal, with
+    // its status and details, not a plain Error with the words only.
+    const { StationHttpError } = await vi.importActual<
+      typeof import('@kontourai/station-sdk/client')
+    >('@kontourai/station-sdk/client');
+    const received = vi
+      .mocked(userFacingErrorMessage)
+      .mock.calls.map(([error]) => error);
+    expect(received).toContainEqual(expect.any(StationHttpError));
+    expect(
+      received.find((error) => error instanceof StationHttpError),
+    ).toMatchObject({
+      status: 400,
+      details: {
+        fieldErrors: {
+          command: ['Command is required for stdio integrations'],
+        },
+      },
+    });
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost/integrations',
       expect.objectContaining({ method: 'POST' }),

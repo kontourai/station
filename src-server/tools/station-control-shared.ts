@@ -504,6 +504,66 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
   }
 }
 
+/**
+ * #2708: THIS Station's own typed refusal of a station-control request —
+ * its guard or route decided it, and nothing else may build one. The
+ * delegation tools reach their current Station through the same helpers they
+ * use for peers; a peer's answer is never trusted as a code (a peer can send
+ * any string, `station_control_caller_required` included), so only the call
+ * sites that KNOW the target is this Station wrap its answer in one of these,
+ * as a `cause` beneath their own sentence. The code is in `refusalCode`, not
+ * `code`, so no route's `errorCode()` and no peer-refusal mapping reads it.
+ */
+export class LocalStationRefusal extends Error {
+  constructor(
+    readonly refusalCode: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'LocalStationRefusal';
+  }
+}
+
+function localRefusalCode(error: unknown): string | undefined {
+  let current: unknown = error;
+  for (let depth = 0; current instanceof Error && depth < 8; depth += 1) {
+    if (current instanceof LocalStationRefusal) return current.refusalCode;
+    current = current.cause;
+  }
+  return undefined;
+}
+
+/**
+ * A delegation tool's result: its value on success, exactly as before, and on
+ * ANY failure `toToolEnvelope`'s failure shape — `{ success: false, error,
+ * code? }` — marked `isError`, so one tool never fails two ways and every
+ * consumer that reads the MCP flag sees the failure. `error` is the tool's own
+ * sentence. `code` is present only when a `LocalStationRefusal` is in the
+ * error's cause chain: this Station decided it. Not `toToolEnvelope` itself:
+ * its success arm would wrap these tools' results as `{ success, data }`, and
+ * its failure arm relays any `.code`, which on these errors can be a peer's.
+ */
+export async function delegationToolResult(
+  run: () => Promise<unknown>,
+): Promise<ReturnType<typeof jsonToolResult> & { isError?: true }> {
+  try {
+    return jsonToolResult(await run());
+  } catch (error) {
+    const code = localRefusalCode(error);
+    // `isError` is load-bearing: the native invoke route recognises a failed
+    // control tool only by it, and without it answered a refusal as a 200
+    // success with success telemetry (catch s5-436).
+    return {
+      ...jsonToolResult({
+        success: false,
+        error: error instanceof Error ? error.message : 'Request failed',
+        ...(code === undefined ? {} : { code }),
+      }),
+      isError: true as const,
+    };
+  }
+}
+
 export async function navigateTo(path: string) {
   return api('/api/ui', {
     method: 'POST',

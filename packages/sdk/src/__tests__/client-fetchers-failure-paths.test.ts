@@ -3,9 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAgent } from '../client/agents';
 import { confirmCheckpointRestore } from '../client/checkpoint-restore';
 import {
+  acknowledgeConversation,
+  deleteConversation,
+  forkConversation,
+  getConversationMessages,
   listAgentConversationPage,
   listAgentConversations,
   listConversationInventory,
+  searchConversationMessages,
 } from '../client/conversations';
 import { StationHttpError, setClientCredentialResolver } from '../client/http';
 import { listIntegrations } from '../client/integrations';
@@ -14,9 +19,12 @@ import {
   rebuildKnowledgeIndex,
 } from '../client/knowledge';
 import {
+  getOrchestrationSession,
   getOrchestrationSessionEventWindow,
   getProviderCommands,
   getSessionFlowRun,
+  interruptTurn,
+  listOrchestrationSessions,
   respondToRequest,
 } from '../client/orchestration';
 import { listPlugins, PluginCollectionHttpError } from '../client/plugins';
@@ -578,8 +586,13 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
    * failure is a 400/409), so this arm is unreachable against Station's own
    * runtime — but the corpus should still name the case rather than leave a
    * silent gap in `!response.ok || !payload.success`'s coverage.
+   *
+   * #2708 A-1b: it now follows the envelope helper's rule (as
+   * `readEnvelopeOrThrow` does): a `success:false` body is a refusal whatever
+   * the status, and the error keeps the status it arrived under — 200 — so a
+   * status check stays exact and nothing reads it as a 401/403.
    */
-  it('orchestration: respondToRequest on an ok (200) response with success:false is still classified a plain Error, not a StationHttpError', async () => {
+  it('orchestration: respondToRequest on an ok (200) response with success:false keeps its observed status', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       status: 200,
@@ -592,9 +605,8 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
       decision: 'accept',
     }).catch((cause: unknown) => cause);
 
-    expect(failure).toBeInstanceOf(Error);
-    expect(failure).not.toBeInstanceOf(StationHttpError);
-    expect((failure as Error).message).toBe('nope');
+    expect(failure).toBeInstanceOf(StationHttpError);
+    expect(failure).toMatchObject({ status: 200, message: 'nope' });
   });
 
   it('projects: listProjects surfaces the server error body on a non-2xx response', async () => {
@@ -719,6 +731,55 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
       () => createKnowledgeRoot(API, { id: 'r' } as never),
     ],
     [
+      'conversations: searchConversationMessages',
+      () => searchConversationMessages(API, 'q'),
+    ],
+    [
+      'conversations: forkConversation',
+      () => forkConversation(API, 'station', 'c1', 'writer'),
+    ],
+    [
+      'conversations: listAgentConversations',
+      () => listAgentConversations(API, 'station'),
+    ],
+    [
+      'conversations: getConversationMessages',
+      () => getConversationMessages(API, 'station', 'c1'),
+    ],
+    [
+      'conversations: deleteConversation',
+      () => deleteConversation(API, 'station', 'c1'),
+    ],
+    [
+      'conversations: listConversationInventory',
+      () => listConversationInventory(API),
+    ],
+    [
+      'conversations: acknowledgeConversation',
+      () => acknowledgeConversation(API, 'c1', '2026-09-01T00:00:00.000Z'),
+    ],
+    [
+      'orchestration: getOrchestrationSession',
+      () => getOrchestrationSession(API, 't1'),
+    ],
+    [
+      'orchestration: listOrchestrationSessions',
+      () => listOrchestrationSessions(API),
+    ],
+    [
+      'orchestration: interruptTurn',
+      () => interruptTurn(API, { threadId: 't1' }),
+    ],
+    [
+      'orchestration: respondToRequest',
+      () =>
+        respondToRequest(API, {
+          threadId: 't1',
+          requestId: 'r1',
+          decision: 'accept',
+        }),
+    ],
+    [
       'secret bindings: createSecretBinding',
       () => createSecretBinding(API, { id: 'b', name: 'B', authRef: 'env:X' }),
     ],
@@ -771,6 +832,33 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
     },
   );
 
+  // #2708 A-1b: both families used to throw a plain Error for a 200 carrying
+  // `success:false`; the envelope helper's rule keeps the observed status.
+  it.each([
+    [
+      'conversations: searchConversationMessages',
+      () => searchConversationMessages(API, 'q'),
+    ],
+    [
+      'orchestration: getOrchestrationSession',
+      () => getOrchestrationSession(API, 't1'),
+    ],
+  ] as const)(
+    '%s: a 200 success:false keeps its status and code',
+    async (_name, call) => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: false, code: 'not_ready', error: 'no' }),
+      } as Response);
+
+      const error = await call().catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(StationHttpError);
+      expect(error).toMatchObject({ status: 200, code: 'not_ready' });
+    },
+  );
+
   it('scheduler: the error stays a SchedulerResponseError whose detail is only a string error', async () => {
     vi.mocked(fetch).mockResolvedValue(
       nonOkJsonResponse({ error: { code: 'insufficient_scope' } }, 403),
@@ -818,6 +906,30 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
     [
       'secret bindings: createSecretBinding',
       () => createSecretBinding(API, { id: 'b', name: 'B', authRef: 'env:X' }),
+    ],
+    [
+      'conversations: forkConversation',
+      () => forkConversation(API, 'station', 'c1', 'writer'),
+    ],
+    [
+      'conversations: listAgentConversations',
+      () => listAgentConversations(API, 'station'),
+    ],
+    [
+      'conversations: getConversationMessages',
+      () => getConversationMessages(API, 'station', 'c1'),
+    ],
+    [
+      'conversations: deleteConversation',
+      () => deleteConversation(API, 'station', 'c1'),
+    ],
+    [
+      'conversations: listConversationInventory',
+      () => listConversationInventory(API),
+    ],
+    [
+      'conversations: acknowledgeConversation',
+      () => acknowledgeConversation(API, 'c1', '2026-09-01T00:00:00.000Z'),
     ],
   ] as const)('%s: a non-JSON 502 keeps its status', async (_name, call) => {
     vi.mocked(fetch).mockResolvedValue(nonJson(502));
