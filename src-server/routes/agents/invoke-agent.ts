@@ -212,7 +212,7 @@ async function invokeAgentToolWithStableConfiguration(
         const text = result.content?.find(
           (entry) => typeof entry.text === 'string' && entry.text.trim(),
         )?.text;
-        throw new Error(text?.trim() || 'Tool call failed');
+        throw new Error(controlToolFailureSentence(text));
       }
     }
     if (isControlTool) {
@@ -242,6 +242,35 @@ async function invokeAgentToolWithStableConfiguration(
       totalDuration: Math.round(performance.now() - startTime),
     },
   });
+}
+
+/**
+ * The sentence a failed control tool reports (#2795). Station-control tools
+ * answer a failure as a JSON envelope (`{ success: false, error, code? }`)
+ * marked `isError`; the agent reads the whole envelope, but the HTTP `error`
+ * and the telemetry `reason` want the sentence, not the stringified JSON: a
+ * string `error`, else a string `message` (`install_skill` and the registry
+ * routes answer `{ success: false, message }`). A text that is not such an
+ * envelope is the sentence itself.
+ */
+function controlToolFailureSentence(text: string | undefined): string {
+  const trimmed = text?.trim();
+  if (!trimmed) return 'Tool call failed';
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const { error, message } = parsed as {
+        error?: unknown;
+        message?: unknown;
+      };
+      for (const sentence of [error, message])
+        if (typeof sentence === 'string' && sentence.trim())
+          return sentence.trim();
+    }
+  } catch {
+    // Not JSON: the text is the sentence.
+  }
+  return trimmed;
 }
 
 export function invokeErrorResponse(

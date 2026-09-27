@@ -496,7 +496,7 @@ async function callTool(
   sessionId: string,
   name: string,
   args: Record<string, unknown>,
-): Promise<{ result: any; hits: string[] }> {
+): Promise<{ result: any; hits: string[]; isError?: unknown }> {
   hits.length = 0;
   const engine = await engineFor(channel, sessionId);
   try {
@@ -518,6 +518,9 @@ async function callTool(
     return {
       result: parsed as any,
       hits: [...hits],
+      // #2795: the MCP flag as the engine received it over the real
+      // transport (HTTP MCP, or in-process for the bound channel).
+      isError: response.result?.isError,
     };
   } finally {
     await engine.close();
@@ -763,19 +766,20 @@ describe('each policy class through the real tools, per delivery channel', () =>
     for (const { channel, prefix, outcome } of cases(row))
       test(`${row.tool}${row.args.trustAllTools ? ' (trustAllTools)' : ''}${row.job ? ` (${row.job} job)` : ''} via ${channel} (${prefix}) → ${outcome}`, async () => {
         const sessionId = nextSession(prefix);
-        const { result, hits: reached } = await callTool(
-          channel,
-          sessionId,
-          row.tool,
-          row.args,
-        );
+        const {
+          result,
+          hits: reached,
+          isError,
+        } = await callTool(channel, sessionId, row.tool, row.args);
         if (outcome === 'allowed') {
           expect(reached).toEqual([row.route]);
           expect(result?.code).toBeUndefined();
         } else {
           expect(reached).toEqual([]);
+          // The engine still reads the typed body, flagged as an MCP error.
           expect(result).toMatchObject({ success: false, code: outcome });
           expect(typeof result.error).toBe('string');
+          expect(isError).toBe(true);
         }
       });
 });

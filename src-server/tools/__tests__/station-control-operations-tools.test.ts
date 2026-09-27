@@ -336,6 +336,7 @@ describe('station-control operations tools (characterization)', () => {
           ),
         },
       ],
+      isError: true,
     });
   });
 
@@ -417,6 +418,7 @@ describe('station-control operations tools (characterization)', () => {
           ),
         },
       ],
+      isError: true,
     });
   });
 
@@ -495,6 +497,7 @@ describe('station-control operations tools (characterization)', () => {
           ),
         },
       ],
+      isError: true,
     });
   });
 
@@ -543,6 +546,7 @@ describe('station-control operations tools (characterization)', () => {
           ),
         },
       ],
+      isError: true,
     });
   });
 
@@ -588,6 +592,7 @@ describe('station-control operations tools (characterization)', () => {
           ),
         },
       ],
+      isError: true,
     });
   });
 
@@ -833,6 +838,7 @@ describe('station-control operations tools (characterization)', () => {
           ),
         },
       ],
+      isError: true,
     });
   });
 
@@ -934,6 +940,7 @@ describe('station-control operations tools (characterization)', () => {
           ),
         },
       ],
+      isError: true,
     });
   });
 
@@ -1062,6 +1069,7 @@ describe('station-control operations tools (characterization)', () => {
           ),
         },
       ],
+      isError: true,
     });
   });
 
@@ -1161,6 +1169,7 @@ describe('station-control operations tools (characterization)', () => {
           ),
         },
       ],
+      isError: true,
     });
   });
 
@@ -1270,6 +1279,7 @@ describe('station-control operations tools (characterization)', () => {
           ),
         },
       ],
+      isError: true,
     });
   });
 

@@ -404,10 +404,36 @@ export async function api(path: string, opts?: RequestInit) {
   return res.json() as Promise<any>;
 }
 
-export function jsonToolResult(data: unknown) {
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
-  };
+/**
+ * A station-control tool result carrying `data` as JSON text.
+ *
+ * #2795 (catch s5-436): a `{ success: false, … }` body is a failure, so the
+ * result also sets MCP `isError`. The native invoke route
+ * (`invoke-agent.ts`) recognises a failed control tool only by that flag;
+ * without it a refusal answered HTTP 200 with success telemetry. This is the
+ * one place every station-control tool builds a JSON result — the tool-side
+ * authority refusal, every `toToolEnvelope` family, the delegation tools and
+ * every tool that forwards a route's envelope — so the rule lives here rather
+ * than at each failure site. Agents still receive the same JSON, typed `code`
+ * included; `isError` only marks it.
+ */
+export function jsonToolResult(data: unknown): {
+  content: { type: 'text'; text: string }[];
+  isError?: true;
+} {
+  const content = [
+    { type: 'text' as const, text: JSON.stringify(data, null, 2) },
+  ];
+  return isFailureEnvelope(data) ? { content, isError: true } : { content };
+}
+
+function isFailureEnvelope(data: unknown): boolean {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    !Array.isArray(data) &&
+    (data as { success?: unknown }).success === false
+  );
 }
 
 /**
@@ -545,22 +571,18 @@ function localRefusalCode(error: unknown): string | undefined {
  */
 export async function delegationToolResult(
   run: () => Promise<unknown>,
-): Promise<ReturnType<typeof jsonToolResult> & { isError?: true }> {
+): Promise<ReturnType<typeof jsonToolResult>> {
   try {
     return jsonToolResult(await run());
   } catch (error) {
     const code = localRefusalCode(error);
-    // `isError` is load-bearing: the native invoke route recognises a failed
-    // control tool only by it, and without it answered a refusal as a 200
-    // success with success telemetry (catch s5-436).
-    return {
-      ...jsonToolResult({
-        success: false,
-        error: error instanceof Error ? error.message : 'Request failed',
-        ...(code === undefined ? {} : { code }),
-      }),
-      isError: true as const,
-    };
+    // A `success: false` body, so `jsonToolResult` marks it `isError`
+    // (catch s5-436).
+    return jsonToolResult({
+      success: false,
+      error: error instanceof Error ? error.message : 'Request failed',
+      ...(code === undefined ? {} : { code }),
+    });
   }
 }
 
