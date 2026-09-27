@@ -17,7 +17,11 @@ import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
 } from '@kontourai/station-contracts/orchestration';
-import { apiErrorMessage } from './api-error-message';
+import {
+  envelopeError,
+  readEnvelopeFailure,
+  StationHttpError,
+} from './api-error-message';
 import { ChatHttpError } from './chatHttpError';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 /**
@@ -88,15 +92,39 @@ export interface ConversationHandoffReceipt {
 
 /** Typed foreground refusal: inspect the returned session; do not retry start. */
 export class ForegroundMessageIndeterminateError extends ChatHttpError {
-  readonly code = FOREGROUND_MESSAGE_INDETERMINATE_CODE;
+  override readonly code = FOREGROUND_MESSAGE_INDETERMINATE_CODE;
   readonly outcome = 'indeterminate' as const;
+  readonly detail: ForegroundMessageIndeterminate;
 
+  /**
+   * The client builds it from the envelope helper's error (#2708), keeping
+   * status, `details` and `Retry-After`; Station's server code keeps the
+   * positional form.
+   */
+  constructor(
+    failure: StationHttpError,
+    detail: ForegroundMessageIndeterminate,
+  );
   constructor(
     status: number,
     message: string,
-    readonly detail: ForegroundMessageIndeterminate,
+    detail: ForegroundMessageIndeterminate,
+  );
+  constructor(
+    first: number | StationHttpError,
+    second: string | ForegroundMessageIndeterminate,
+    third?: ForegroundMessageIndeterminate,
   ) {
-    super(status, message, FOREGROUND_MESSAGE_INDETERMINATE_CODE);
+    super(
+      typeof first === 'number'
+        ? new StationHttpError(first, second as string, {
+            code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+          })
+        : first,
+    );
+    this.detail = (
+      typeof first === 'number' ? third : second
+    ) as ForegroundMessageIndeterminate;
     this.name = 'ForegroundMessageIndeterminateError';
   }
 }
@@ -111,6 +139,23 @@ type ExecutionErrorResponse = {
   receiptStatus?: unknown;
   session?: unknown;
 };
+
+/**
+ * The parsed body. A failure whose body is not JSON (a proxy's HTML 502)
+ * throws a `ChatHttpError` with the status it arrived under (#2708); an
+ * unreadable 2xx is a protocol failure and rethrows the parse error.
+ */
+async function readExecutionBody(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch (error) {
+    if (!response.ok) {
+      const failed = `Execution API error: ${response.status}`;
+      throw new ChatHttpError(envelopeError(response, undefined, failed));
+    }
+    throw error;
+  }
+}
 
 function providerTurnIdentityUnavailable(message: string): ChatHttpError & {
   outcome: 'indeterminate';
@@ -155,8 +200,11 @@ function readExecutionReceipt(
     const detail = indeterminateDetail(result);
     if (detail) {
       throw new ForegroundMessageIndeterminateError(
-        response.status,
-        apiErrorMessage(result, 'Foreground session start is indeterminate.'),
+        envelopeError(
+          response,
+          result,
+          'Foreground session start is indeterminate.',
+        ),
         detail,
       );
     }
@@ -164,15 +212,15 @@ function readExecutionReceipt(
       result.code === FOREGROUND_MESSAGE_INDETERMINATE_CODE &&
       result.outcome === 'indeterminate'
     ) {
-      throw providerTurnIdentityUnavailable(
-        apiErrorMessage(result, 'Foreground message may have started.'),
+      const failure = readEnvelopeFailure(
+        response,
+        result,
+        'Foreground message may have started.',
       );
+      throw providerTurnIdentityUnavailable(failure.message);
     }
-    throw new ChatHttpError(
-      response.status,
-      apiErrorMessage(result, `Execution API error: ${response.status}`),
-      result.code,
-    );
+    const failed = `Execution API error: ${response.status}`;
+    throw new ChatHttpError(envelopeError(response, result, failed));
   }
   if (
     typeof result.data.providerTurnId !== 'string' ||
@@ -201,7 +249,7 @@ export async function sendExecutionMessage(
     opts,
     body,
   );
-  const result = (await response.json()) as ExecutionErrorResponse;
+  const result = (await readExecutionBody(response)) as ExecutionErrorResponse;
   return readExecutionReceipt(response, result);
 }
 
@@ -223,7 +271,7 @@ export async function continueExecutionMessage(
     opts,
     input,
   );
-  const result = (await response.json()) as ExecutionErrorResponse;
+  const result = (await readExecutionBody(response)) as ExecutionErrorResponse;
   return readExecutionReceipt(response, result);
 }
 
@@ -243,7 +291,7 @@ export async function handoffExecutionMessage(
     opts,
     input,
   );
-  const result = (await response.json()) as ExecutionErrorResponse;
+  const result = (await readExecutionBody(response)) as ExecutionErrorResponse;
   const receipt = readExecutionReceipt(response, result);
   if (!receipt.handoff) {
     throw providerTurnIdentityUnavailable(
@@ -266,7 +314,7 @@ export async function getConversationHandoffStatus(
     `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoffs/${encodeURIComponent(idempotencyKey)}`,
     opts,
   );
-  const result = (await response.json()) as {
+  const result = (await readExecutionBody(response)) as {
     success?: boolean;
     data?: ConversationHandoffStatusProjection;
     error?: string;
@@ -274,9 +322,11 @@ export async function getConversationHandoffStatus(
   };
   if (!response.ok || !result.success || !result.data) {
     throw new ChatHttpError(
-      response.status,
-      apiErrorMessage(result, 'Conversation handoff status is unavailable.'),
-      result.code,
+      envelopeError(
+        response,
+        result,
+        'Conversation handoff status is unavailable.',
+      ),
     );
   }
   return result.data;
@@ -295,7 +345,7 @@ export async function reserveConversationContextBoundary(
     opts,
     input,
   );
-  const result = (await response.json()) as {
+  const result = (await readExecutionBody(response)) as {
     success?: boolean;
     data?: ConversationContextBoundaryProjection;
     error?: string;
@@ -303,9 +353,11 @@ export async function reserveConversationContextBoundary(
   };
   if (!response.ok || !result.success || !result.data)
     throw new ChatHttpError(
-      response.status,
-      apiErrorMessage(result, 'Conversation context boundary is unavailable.'),
-      result.code,
+      envelopeError(
+        response,
+        result,
+        'Conversation context boundary is unavailable.',
+      ),
     );
   return result.data;
 }
@@ -320,7 +372,7 @@ export async function getConversationContextBoundaryStatus(
     `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/context-boundary/${encodeURIComponent(idempotencyKey)}`,
     opts,
   );
-  const result = (await response.json()) as {
+  const result = (await readExecutionBody(response)) as {
     success?: boolean;
     data?: ConversationContextBoundaryProjection;
     error?: string;
@@ -328,9 +380,11 @@ export async function getConversationContextBoundaryStatus(
   };
   if (!response.ok || !result.success || !result.data)
     throw new ChatHttpError(
-      response.status,
-      apiErrorMessage(result, 'Conversation context boundary is unavailable.'),
-      result.code,
+      envelopeError(
+        response,
+        result,
+        'Conversation context boundary is unavailable.',
+      ),
     );
   return result.data;
 }
@@ -346,7 +400,7 @@ export async function cancelConversationContextBoundary(
     'DELETE',
     opts,
   );
-  const result = (await response.json()) as {
+  const result = (await readExecutionBody(response)) as {
     success?: boolean;
     data?: ConversationContextBoundaryProjection;
     error?: string;
@@ -354,12 +408,11 @@ export async function cancelConversationContextBoundary(
   };
   if (!response.ok || !result.success || !result.data)
     throw new ChatHttpError(
-      response.status,
-      apiErrorMessage(
+      envelopeError(
+        response,
         result,
         'Conversation context boundary cannot be cancelled.',
       ),
-      result.code,
     );
   return result.data;
 }
