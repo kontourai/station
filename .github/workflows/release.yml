@@ -156,8 +156,28 @@ jobs:
           name: station-release-client-build-provenance-${{ github.run_id }}
           path: release-client-build-provenance
       - name: Setup pinned pnpm
+        # #2675: pnpm v11 ships no working native binary for Intel macOS.
+        if: runner.os != 'macOS' || runner.arch != 'X64'
         uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
+      - name: Setup pinned pnpm from its JS package (Intel macOS)
+        if: runner.os == 'macOS' && runner.arch == 'X64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          manager="$(node -p "require('./package.json').packageManager")"
+          if [[ ! "$manager" =~ ^pnpm@[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "packageManager must pin an exact pnpm version, got: $manager" >&2
+            exit 1
+          fi
+          prefix="$RUNNER_TEMP/pnpm-js"
+          mkdir -p "$prefix/bin"
+          npm pack "$manager" --pack-destination "$prefix" --ignore-scripts
+          tar -xzf "$prefix/pnpm-${manager#pnpm@}.tgz" -C "$prefix"
+          test "$(node -p 'const p = require(process.argv[1]); p.name + "@" + p.version' "$prefix/package/package.json")" = "$manager"
+          chmod +x "$prefix/package/bin/pnpm.mjs"
+          ln -s ../package/bin/pnpm.mjs "$prefix/bin/pnpm"
+          echo "$prefix/bin" >> "$GITHUB_PATH"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }

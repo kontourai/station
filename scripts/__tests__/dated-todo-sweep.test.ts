@@ -45,6 +45,9 @@ describe('buildSweepReport and validateDatedTodoReport', () => {
       [{ file: 'a.ts', line: 1, date: '2026-01-01', due: true, text: 'x' }],
       { today: TODAY, generatedAt: '2026-09-25T00:00:00Z' },
     );
+    // Pinned as a literal: the writer and the validator share one constant, so
+    // a marker format change on both sides would otherwise round-trip green.
+    expect(report.split('\n')[0]).toBe('<!-- dated-todo-sweep 2026-09-25 -->');
     expect(validateDatedTodoReport(report, { expectedDate: TODAY })).toBe(
       TODAY,
     );

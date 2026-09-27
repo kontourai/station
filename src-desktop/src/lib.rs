@@ -8,6 +8,8 @@ mod android_dns;
 mod bundled_server_state;
 mod channel_ports_generated;
 #[cfg(not(mobile))]
+mod notification_feed;
+#[cfg(not(mobile))]
 mod desktop_companion;
 #[cfg(not(mobile))]
 mod desktop_installation;
@@ -25,6 +27,8 @@ mod native_relay_redemption;
 #[cfg(not(mobile))]
 mod native_station_key_custody;
 mod pairing_deep_link_channels_generated;
+#[cfg(not(mobile))]
+mod native_relay_key_approval;
 #[cfg(not(mobile))]
 mod relay_grant_vault;
 mod service_state;
@@ -2240,6 +2244,21 @@ fn authorized_credential_reference(
         ));
     }
     Ok(selected.reference)
+}
+
+/// The host-authorized active Station's exact origin, when there is one.
+/// Native consumers pair it with `native_credential_for_origin`, which
+/// re-validates the whole binding before any bearer is read.
+#[cfg(not(mobile))]
+pub(crate) fn native_active_station_origin(app: &AppHandle) -> Option<String> {
+    let authority = app.try_state::<NativeProfileAuthority>()?;
+    let state = authority.0.lock().ok()?;
+    let active = state.active.as_ref()?;
+    let key = credential_reference_key(&active.reference).ok()?;
+    state
+        .bindings
+        .get(&key)
+        .map(|binding| binding.exact_origin.clone())
 }
 
 /// Native-only credential read for one already-validated origin. It reuses the
@@ -4972,7 +4991,20 @@ fn lock_station_profiles_for_app(
 /// while holding the same interprocess lock used by profile writers. A broker
 /// offer or renderer-supplied route cannot supply this snapshot.
 #[cfg(not(mobile))]
-struct AppNativeTrustProfileProvider<'a>(&'a AppHandle);
+struct AppNativeTrustProfileProvider<'a> {
+    app: &'a AppHandle,
+}
+
+#[cfg(not(mobile))]
+impl<'a> AppNativeTrustProfileProvider<'a> {
+    pub(crate) fn enrollment(app: &'a AppHandle) -> Self {
+        Self { app }
+    }
+
+    pub(crate) fn existing_trust(app: &'a AppHandle) -> Self {
+        Self { app }
+    }
+}
 
 #[cfg(not(mobile))]
 impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustProfileProvider<'_> {
@@ -4989,8 +5021,8 @@ impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustPr
     {
         use native_station_key_custody::CandidateError;
 
-        let path = station_profiles_path(self.0).map_err(|_| CandidateError::ProfileStale)?;
-        let _lock = lock_station_profiles_for_app(self.0, &path)
+        let path = station_profiles_path(self.app).map_err(|_| CandidateError::ProfileStale)?;
+        let _lock = lock_station_profiles_for_app(self.app, &path)
             .map_err(|_| CandidateError::ProfileStale)?;
         let contents =
             read_station_profile_store(&path).map_err(|_| CandidateError::ProfileStale)?;
@@ -5000,8 +5032,8 @@ impl native_station_key_custody::LockedTrustProfileProvider for AppNativeTrustPr
             &store,
             expected_binding,
             expected_profile_revision,
-            &self.0.config().identifier,
-            native_app_channel(&self.0.config().identifier, cfg!(debug_assertions)),
+            &self.app.config().identifier,
+            native_app_channel(&self.app.config().identifier, cfg!(debug_assertions)),
         )?;
         operation(snapshot)
     }
@@ -5314,14 +5346,24 @@ fn station_profile_store_write_internal(
     expected_revision: u64,
     pairing_handle: Option<String>,
 ) -> Result<(), String> {
-    station_profile_store_write_with_host(
+    let result = station_profile_store_write_with_host(
         &AppProfileWriteHost(app),
         authority,
         pending,
         contents,
         expected_revision,
         pairing_handle,
-    )
+    );
+    #[cfg(not(mobile))]
+    {
+        let app = app.clone();
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            if let Err(error) = native_relay_redemption::retry_pending_cleanup_for_app(&app) {
+                log::warn!("could not resume native relay grant cleanup after profile write: {error:?}");
+            }
+        });
+    }
+    result
 }
 
 // Only host I/O varies in tests. The CAS, pending-handle transitions, cleanup,
@@ -5369,7 +5411,8 @@ impl ProfileWriteHost for AppProfileWriteHost<'_> {
     ) -> Result<(), String> {
         #[cfg(not(mobile))]
         {
-            relay_grant_vault::invalidate_removed_routes(self.0, current, next)
+            relay_grant_vault::invalidate_removed_routes(self.0, current, next)?;
+            native_relay_redemption::stage_removed_profile_routes(self.0, current, next)
         }
         #[cfg(mobile)]
         {
@@ -11034,6 +11077,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder
         .manage(NativeStartupBootstrap::default())
+        .manage(native_relay_key_approval::NativeRelayKeyApprovalState::default())
         .manage(desktop_companion::DesktopCompanion::default())
         .menu(desktop_companion::desktop_menu)
         .on_menu_event(|app, event| {
@@ -11048,11 +11092,24 @@ If a stable instance is running, this launch will focus its window and exit.",
             observe_native_startup_page(webview.app_handle(), webview.label(), payload.event());
         })
         .manage(NativeBrowserPreviewGrants::default())
+        .manage(notification_feed::NotificationFeed::default())
         .manage(ssh_launcher::SshLaunches::default());
 
     #[cfg(not(mobile))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        native_relay_key_approval::station_native_relay_key_approval_prepare,
+        native_relay_key_approval::station_native_relay_key_approval_begin,
+        native_relay_key_approval::station_native_relay_key_approval_pending,
+        native_relay_key_approval::station_native_relay_key_approval_cancel,
+        native_relay_key_approval::station_native_relay_key_approval_approve,
+        native_relay_key_approval::station_native_relay_key_approval_revoke,
+        native_relay_key_approval::station_native_relay_key_approval_status,
+        native_relay_redemption::station_native_relay_grant_redeem,
+        native_relay_redemption::station_native_relay_grant_status,
+        native_relay_redemption::station_native_relay_grant_revoke,
+        native_relay_redemption::station_native_relay_grant_cleanup_pending,
+        native_relay_redemption::station_native_relay_grant_cleanup_retry,
         relay_grant_vault::relay_client_grant_store,
         relay_grant_vault::relay_client_grant_revoke,
         relay_grant_vault::relay_client_grant_metadata,
@@ -11073,6 +11130,9 @@ If a stable instance is running, this launch will focus its window and exit.",
         notification_watch_start,
         notification_watch_stop,
         desktop_installation_id,
+        notification_feed::notification_feed_native_consumer,
+        notification_feed::notification_feed_adopt_cursor,
+        notification_feed::take_notification_open_link,
         open_local_browser_preview,
         open_external_link,
         discover_local_browser_preview_target,
@@ -11114,6 +11174,17 @@ If a stable instance is running, this launch will focus its window and exit.",
 
     builder
         .setup(move |app| {
+            #[cfg(not(mobile))]
+            {
+                let app = app.handle().clone();
+                let _ = tauri::async_runtime::spawn_blocking(move || {
+                    if let Err(error) =
+                        native_relay_redemption::retry_pending_cleanup_for_app(&app)
+                    {
+                        log::warn!("could not resume native relay grant cleanup at startup: {error:?}");
+                    }
+                });
+            }
             #[cfg(all(not(mobile), feature = "webdriver"))]
             seed_webdriver_credential_fixture(&app.config().identifier)?;
             if let Some(raw) = &invalid_log_level {
@@ -11292,6 +11363,9 @@ If a stable instance is running, this launch will focus its window and exit.",
                 // fail-closed initialization placeholder and then stop before
                 // the sidecar could publish its healthy state.
                 tray::init(app.handle())?;
+                // The desktop's single consumer of the notification delivery
+                // feed (#2608); the webview defers to it.
+                notification_feed::start(app.handle())?;
                 if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) { reveal_main_window(app.handle()); }
                 if !cfg!(debug_assertions) { arm_startup_deadline(app.handle().clone(), 1); }
                 if owner == DesktopOwner::Sidecar {

@@ -414,6 +414,86 @@ const WINDOWS_PR_EVIDENCE_PATHS =
  */
 export const PNPM_SETUP_ACTION =
   'pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b';
+/**
+ * #2675: pnpm/setup installs only pnpm's native single-executable build, and
+ * for pnpm v11 it refuses Intel macOS ("does not provide a working binary for
+ * Intel macOS (darwin-x64) due to an upstream Node.js SEA bug"). A job that
+ * can land on an Intel macOS runner therefore skips pnpm/setup there, behind
+ * exactly this guard, and provisions the same pinned version from the npm
+ * registry's pure-JS `pnpm` package with the one reviewed step below. Every
+ * other runner keeps pnpm/setup. The step is pinned verbatim so its copies
+ * cannot drift apart: `npm pack` fetches exactly packageManager's version and
+ * verifies the tarball against the registry's integrity, runs no lifecycle
+ * scripts, and the unpacked manifest must name that exact version. The
+ * dependency lifecycle runner then re-checks the version before it installs.
+ */
+export const PNPM_SETUP_NATIVE_GUARD =
+  "runner.os != 'macOS' || runner.arch != 'X64'";
+export const PNPM_JS_SETUP_STEP = Object.freeze({
+  name: 'Setup pinned pnpm from its JS package (Intel macOS)',
+  if: "runner.os == 'macOS' && runner.arch == 'X64'",
+  shell: 'bash',
+  run: `set -euo pipefail
+manager="$(node -p "require('./package.json').packageManager")"
+if [[ ! "$manager" =~ ^pnpm@[0-9]+\\.[0-9]+\\.[0-9]+$ ]]; then
+  echo "packageManager must pin an exact pnpm version, got: $manager" >&2
+  exit 1
+fi
+prefix="$RUNNER_TEMP/pnpm-js"
+mkdir -p "$prefix/bin"
+npm pack "$manager" --pack-destination "$prefix" --ignore-scripts
+tar -xzf "$prefix/pnpm-\${manager#pnpm@}.tgz" -C "$prefix"
+test "$(node -p 'const p = require(process.argv[1]); p.name + "@" + p.version' "$prefix/package/package.json")" = "$manager"
+chmod +x "$prefix/package/bin/pnpm.mjs"
+ln -s ../package/bin/pnpm.mjs "$prefix/bin/pnpm"
+echo "$prefix/bin" >> "$GITHUB_PATH"
+`,
+});
+// GitHub-hosted x64 macOS images: the -intel images, macos-13 and the -large
+// images. Apple silicon images (macos-15, macos-*-xlarge) are not listed.
+const INTEL_MACOS_RUNNER_LABEL =
+  /^macos-(?:\d+-intel|13|(?:\d+|latest)-large)$/;
+const INTEL_MACOS_PNPM_MESSAGE = `a job that can run on Intel macOS must guard pnpm/setup with exactly \`if: ${PNPM_SETUP_NATIVE_GUARD}\` and include the reviewed '${PNPM_JS_SETUP_STEP.name}' step`;
+const PNPM_JS_SETUP_DRIFT_MESSAGE = `'${PNPM_JS_SETUP_STEP.name}' must match PNPM_JS_SETUP_STEP exactly`;
+
+function isExactPnpmJsSetup(step) {
+  return (
+    JSON.stringify(Object.keys(step ?? {}).sort()) ===
+      JSON.stringify(Object.keys(PNPM_JS_SETUP_STEP).sort()) &&
+    Object.entries(PNPM_JS_SETUP_STEP).every(
+      ([key, value]) => step[key] === value,
+    )
+  );
+}
+
+function intelMacosPnpmFindings(file, jobId, job) {
+  const steps = job?.steps ?? [];
+  const findings = steps
+    .filter(
+      (step) =>
+        step?.name === PNPM_JS_SETUP_STEP.name && !isExactPnpmJsSetup(step),
+    )
+    .map(() => ({ file, jobId, message: PNPM_JS_SETUP_DRIFT_MESSAGE }));
+  const nativeSetups = steps.filter(
+    (step) =>
+      typeof step?.uses === 'string' &&
+      step.uses.toLowerCase().startsWith('pnpm/setup@'),
+  );
+  const { labels } = resolvedRunnerLabels(job);
+  if (
+    nativeSetups.length > 0 &&
+    labels.some(
+      (label) =>
+        typeof label === 'string' && INTEL_MACOS_RUNNER_LABEL.test(label),
+    ) &&
+    !(
+      nativeSetups.every((step) => step.if === PNPM_SETUP_NATIVE_GUARD) &&
+      steps.some(isExactPnpmJsSetup)
+    )
+  )
+    findings.push({ file, jobId, message: INTEL_MACOS_PNPM_MESSAGE });
+  return findings;
+}
 const DEPENDENCY_REVIEW_CANDIDATE_GUARD = `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`;
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
 const DEPENDENCY_REVIEW_MERGE_GROUP_GUARD = `\${{ github.event_name == 'merge_group' }}`;
@@ -462,6 +542,7 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/gallery-pr-check.yml',
   '.github/workflows/install-smoke.yml',
   '.github/workflows/merge-queue-regression.yml',
+  '.github/workflows/portable-server-archives.yml',
   '.github/workflows/security-analysis.yml',
   '.github/workflows/windows-pr-verification.yml',
 ]);
@@ -632,6 +713,55 @@ const MERGE_QUEUE_REGRESSION_WORKFLOW =
  * artifact holds what the candidate rendered and nothing the token can reach.
  */
 const GALLERY_PR_WORKFLOW = '.github/workflows/gallery-pr-check.yml';
+/**
+ * #2675: the portable server archive check uploads the archive it built and
+ * smoked, so a reviewer can run the exact bytes. The one admitted upload is
+ * pinned exactly: the archive and its descriptor from the runner's temp
+ * output, never a workspace path or hidden files, and never from a fork's
+ * pull request.
+ */
+const PORTABLE_SERVER_ARCHIVES_WORKFLOW =
+  '.github/workflows/portable-server-archives.yml';
+const PORTABLE_SERVER_ARCHIVES_JOB = 'archive';
+const PORTABLE_SERVER_ARCHIVE_UPLOAD = Object.freeze({
+  name: 'Upload the archive and its descriptor',
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+  if: "${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}",
+  uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+  with: {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    name: 'station-server-${{ matrix.target }}',
+    path:
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      '${{ runner.temp }}/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}\n' +
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      '${{ runner.temp }}/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}.json\n',
+    'if-no-files-found': 'error',
+    'retention-days': 7,
+  },
+});
+
+function isExactPortableServerArchiveUpload(file, jobId, step) {
+  if (
+    file !== PORTABLE_SERVER_ARCHIVES_WORKFLOW ||
+    jobId !== PORTABLE_SERVER_ARCHIVES_JOB
+  )
+    return false;
+  const expected = PORTABLE_SERVER_ARCHIVE_UPLOAD;
+  const sameKeys = (actual, wanted) =>
+    JSON.stringify(Object.keys(actual ?? {}).sort()) ===
+    JSON.stringify(Object.keys(wanted).sort());
+  return (
+    sameKeys(step, expected) &&
+    step.name === expected.name &&
+    step.if === expected.if &&
+    step.uses === expected.uses &&
+    sameKeys(step.with, expected.with) &&
+    Object.entries(expected.with).every(
+      ([key, value]) => step.with[key] === value,
+    )
+  );
+}
 const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
 echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null
@@ -1176,6 +1306,7 @@ export function persistentRunnerPolicyFindings(workflows) {
         continue;
       }
       findings.push(...persistentJobPolicyFindings(file, jobId, document, job));
+      findings.push(...intelMacosPnpmFindings(file, jobId, job));
     }
     findings.push(...candidatePullRequestWorkflowFindings(file, document));
     findings.push(...primaryCiRouterFindings(file, document));
@@ -1705,7 +1836,12 @@ function isPinnedPnpmSetup(step) {
     step?.uses === PNPM_SETUP_ACTION &&
     step?.name === 'Setup pinned pnpm' &&
     Object.keys(step).every(
-      (key) => key === 'name' || key === 'uses' || key === 'with',
+      (key) =>
+        key === 'name' ||
+        key === 'uses' ||
+        key === 'with' ||
+        // Only the Intel macOS exclusion; see PNPM_SETUP_NATIVE_GUARD.
+        (key === 'if' && step.if === PNPM_SETUP_NATIVE_GUARD),
     ) &&
     Object.keys(step.with ?? {}).join(',') === 'install' &&
     step.with.install === false
@@ -2407,6 +2543,7 @@ function baseControlledPrWorkflowFindings(file, document) {
           step.uses.startsWith('actions/upload-artifact@')
         ) &&
         !isExactWindowsPrEvidenceUpload(file, jobId, step) &&
+        !isExactPortableServerArchiveUpload(file, jobId, step) &&
         !isReviewedCacheRestore(file, jobId, step) &&
         !(
           file === SECURITY_ANALYSIS_WORKFLOW &&

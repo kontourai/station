@@ -482,7 +482,9 @@ export function ChatInputArea({
   const placeholder = workspaceRefused
     ? 'This conversation continues from its original workspace — start a new chat to work here'
     : allowDraftWhileDisabled
-      ? 'Draft a follow-up while this turn finishes…'
+      ? turnInFlight
+        ? 'Draft a follow-up while this turn finishes…'
+        : 'Waiting on this chat — check again above to send…'
       : turnInFlight
         ? busyFollowUp === 'steer'
           ? isMobile

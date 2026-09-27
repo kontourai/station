@@ -576,10 +576,10 @@ function runCandidateChecks(family) {
   ];
 }
 
-export function evaluateProofFamily(family, { routeErrorEgressCheck } = {}) {
+export function evaluateProofFamily(family) {
   const findings =
     family.id === 'repo-governance'
-      ? runRepoGovernanceChecks({ routeErrorEgressCheck })
+      ? runRepoGovernanceChecks()
       : runCandidateChecks(family);
   const blockingFindings = findings.filter(
     (finding) => finding.severity === 'block',

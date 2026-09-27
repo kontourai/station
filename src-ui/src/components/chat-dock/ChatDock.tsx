@@ -2231,6 +2231,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   : undefined,
                 onOpenProfile: () => navigate('/profile'),
                 onOpenAppSettings: () => navigate('/settings'),
+                // Mobile parity for the desktop More menu's clipboard rows —
+                // the sheet is a coarse device's only home for these IDs.
+                copyActions,
                 sessionInventory:
                   !conversationOpenRecovery &&
                   inventoryExecutionId &&
