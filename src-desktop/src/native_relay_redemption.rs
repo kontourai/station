@@ -3472,32 +3472,52 @@ mod tests {
         // The application commands reuse the diagnostic input envelopes, so a
         // bearer, private key, broker URL, or project authority must fail
         // deserialization exactly as it does on the diagnostic seam.
-        let mut value = serde_json::json!({
+        let read = serde_json::json!({
             "profileName": "Local",
             "expectedProfileRevision": 7,
             "nonce": "signal-nonce-01",
         });
+        let open = serde_json::json!({
+            "profileName": "Local",
+            "expectedProfileRevision": 7,
+            "nonce": "signal-nonce-01",
+            "offerSdp": "v=0\r\n",
+        });
+        let binding = serde_json::json!({
+            "profileName": "Local",
+            "expectedProfileRevision": 7,
+        });
+        assert!(
+            serde_json::from_value::<NativeRelaySignalDiagnosticOpenInput>(open.clone()).is_ok()
+        );
+        assert!(
+            serde_json::from_value::<NativeRelaySignalDiagnosticReadInput>(read.clone()).is_ok()
+        );
+        assert!(
+            serde_json::from_value::<NativeRelayDiagnosticBindingInput>(binding.clone()).is_ok()
+        );
         for field in ["grantBearer", "privateKey", "brokerUrl", "projectId"] {
-            value[field] = serde_json::json!("must-not-cross-ipc");
+            let mut open_with_field = open.clone();
+            open_with_field[field] = serde_json::json!("must-not-cross-ipc");
             assert!(
-                serde_json::from_value::<NativeRelaySignalDiagnosticOpenInput>(value.clone())
+                serde_json::from_value::<NativeRelaySignalDiagnosticOpenInput>(open_with_field)
                     .is_err()
             );
+            let mut read_with_field = read.clone();
+            read_with_field[field] = serde_json::json!("must-not-cross-ipc");
             assert!(
-                serde_json::from_value::<NativeRelaySignalDiagnosticReadInput>(value.clone())
+                serde_json::from_value::<NativeRelaySignalDiagnosticReadInput>(read_with_field)
                     .is_err()
             );
-            assert!(
-                serde_json::from_value::<NativeRelayDiagnosticBindingInput>(value.clone()).is_err()
-            );
+            let mut binding_with_field = binding.clone();
+            binding_with_field[field] = serde_json::json!("must-not-cross-ipc");
+            assert!(serde_json::from_value::<NativeRelayDiagnosticBindingInput>(
+                binding_with_field
+            )
+            .is_err());
         }
 
-        let binding: NativeRelayDiagnosticBindingInput =
-            serde_json::from_value(serde_json::json!({
-                "profileName": "Local",
-                "expectedProfileRevision": 7,
-            }))
-            .unwrap();
+        let binding: NativeRelayDiagnosticBindingInput = serde_json::from_value(binding).unwrap();
         assert!(validate_native_relay_binding_input(&binding).is_ok());
         let mut stale = binding.clone();
         stale.expected_profile_revision = 0;
