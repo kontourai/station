@@ -6,7 +6,6 @@ import {
   INFO_TTL_MS,
   NOTIFICATION_OUTCOME_PRIORITY,
   NOTIFICATION_TTL_MS,
-  outcomeFirstAllQuietHeadline,
   RUNNING_TTL_MS,
   rankNotificationContent,
   WAITING_TTL_MS,
@@ -183,20 +182,5 @@ describe('notification-priority classifyNotificationCategory', () => {
   test('returns undefined for categories outside this ranking', () => {
     expect(classifyNotificationCategory('general')).toBeUndefined();
     expect(classifyNotificationCategory('')).toBeUndefined();
-  });
-});
-
-describe('notification-priority outcome-first framing (all-quiet headline)', () => {
-  test('never reads as a bare zero count', () => {
-    expect(outcomeFirstAllQuietHeadline('done')).not.toMatch(/0/);
-    expect(outcomeFirstAllQuietHeadline('failed')).not.toMatch(/0/);
-    expect(outcomeFirstAllQuietHeadline('done').toLowerCase()).not.toContain(
-      'active',
-    );
-  });
-
-  test('leads with the outcome', () => {
-    expect(outcomeFirstAllQuietHeadline('done')).toBe('Agent work completed');
-    expect(outcomeFirstAllQuietHeadline('failed')).toBe('Agent work failed');
   });
 });

@@ -346,14 +346,3 @@ export function rankCompatibleEndpoints(
   );
   return { endpoints: compatible, failures };
 }
-
-export function selectCompatibleEndpoint(
-  endpoints: readonly AccessEndpoint[],
-  context: EndpointCompatibilityContext,
-): {
-  endpoint: AccessEndpoint | null;
-  failures: Map<string, ConnectionFailureReason>;
-} {
-  const ranked = rankCompatibleEndpoints(endpoints, context);
-  return { endpoint: ranked.endpoints[0] ?? null, failures: ranked.failures };
-}

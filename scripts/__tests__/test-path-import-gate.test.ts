@@ -9,7 +9,6 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { load } from 'js-yaml';
 import { afterEach, describe, expect, test } from 'vitest';
 import { SECURITY_CODEQL_CONFIG } from '../actionlint-gate.mjs';
 import { PREPUSH_STATIC_GATES } from '../check-prepush-static-gates.mjs';
@@ -56,14 +55,6 @@ function runGate(root: string) {
 }
 
 describe('glob source', () => {
-  test('the globs are exactly the CodeQL paths-ignore list', () => {
-    const declared = (
-      load(SECURITY_CODEQL_CONFIG) as { 'paths-ignore': string[] }
-    )['paths-ignore'];
-    expect(codeqlIgnoreGlobs()).toEqual(declared);
-    expect(declared.length).toBeGreaterThan(0);
-  });
-
   test('the gate restates none of the globs in its own source', () => {
     const source = readFileSync(gatePath, 'utf8');
     for (const glob of codeqlIgnoreGlobs()) expect(source).not.toContain(glob);

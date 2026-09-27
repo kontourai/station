@@ -7,7 +7,6 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   collectWorkspaceProvenance,
   summarizeAttempts,
-  updateHashFromRegularFile,
   writeReceiptSecurely,
 } from './lib/test-reliability.mjs';
 import {
@@ -18,8 +17,6 @@ import {
 const DEFAULT_OUTPUT = '.kontourai/test-reliability/prepush-latest.json';
 const DEFAULT_REPEAT_OUTPUT =
   '.kontourai/test-reliability/prepush-repeat-latest.json';
-
-export { summarizeAttempts, updateHashFromRegularFile, writeReceiptSecurely };
 
 /** Preserve the schema-v2 pre-push provenance projection byte-for-byte. */
 export function collectProvenance() {

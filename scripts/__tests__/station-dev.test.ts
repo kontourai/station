@@ -31,7 +31,7 @@ import {
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const shimPath = join(repoRoot, 'scripts', 'station-dev.mjs');
 
-import { resolveNpmCli } from '../dependency-lifecycle.mjs';
+import { resolveNpmCli } from '../lib/npm-cli.mjs';
 
 beforeAll(() => {
   const built = spawnSync(

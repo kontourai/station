@@ -28,7 +28,7 @@
  * enables a row only where the entry's `instance(context)` is non-null.
  * `region-surface-panes.test.ts` pins the keys to the registry's
  * dock-capable surfaces in both directions and every entry's descriptor to
- * `dockCanSupply`.
+ * what a dock can bind (`project`, `source`, `workspace`).
  *
  * Since #2049 the inventory also resolves INSTANCE-KEYED panes, which are not
  * map entries: `regionSurfacePane` answers for any id whose prefix
@@ -93,8 +93,6 @@ import {
   toWorkspacePaneInstanceId,
   type WorkspacePaneDescriptor,
   type WorkspacePaneInstance,
-  type WorkspacePaneSuppliableContexts,
-  workspacePaneModesSatisfiableBy,
 } from '@kontourai/station-contracts/workspace-pane';
 import {
   createWorkspacePullRequestPaneInstance,
@@ -119,38 +117,6 @@ import {
   readFilePreviewPaneState,
   removeFilePreviewPaneState,
 } from '../workspace-panes/filePreviewPaneStateStorage';
-
-/**
- * What a dock region can bind for a pane (#2047). The active project is the
- * dock's own binding (`chatDockProjectSlug`, else the active project), and
- * the coding instances bind `sourceId` and `workspaceId = projectId` from
- * it. Nothing else: no `task`, no `session` (no docked pane reads one —
- * declare it when one does, not before), no `run`. `dockCanSupply` is what
- * the inventory's own pin asserts of every entry; since #2154 no catalog
- * reads it (the chooser enables a row by minting its occurrence).
- *
- * What a user sees of the `task` exclusion today: NOTHING (review M2). No
- * shipped pane declares BOTH `docked` and a Task requirement — the
- * task-room panes declare `primary`/`secondary` — and since #2154 a region's
- * chooser lists registry surfaces, not catalog descriptors, so a pane that
- * needed a Task would first need a registry entry and an inventory entry
- * whose `instance` returned null for it. The set stays the inventory pin's
- * admission check (`region-surface-panes.test.ts`).
- */
-export const DOCK_HOST_SUPPLIABLE_CONTEXTS: WorkspacePaneSuppliableContexts =
-  new Set(['project', 'source', 'workspace'] as const);
-
-/**
- * Whether some mode of `descriptor` runs on what a dock supplies — the
- * contract's own satisfiability fold over `DOCK_HOST_SUPPLIABLE_CONTEXTS`,
- * not a region word.
- */
-export function dockCanSupply(descriptor: WorkspacePaneDescriptor): boolean {
-  return (
-    workspacePaneModesSatisfiableBy(descriptor, DOCK_HOST_SUPPLIABLE_CONTEXTS)
-      .length > 0
-  );
-}
 
 /** What a region host knows when it builds its panes: the dock's project. */
 export interface RegionPaneContext {

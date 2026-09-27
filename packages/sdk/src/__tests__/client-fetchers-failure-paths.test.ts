@@ -10,13 +10,36 @@ import {
 import { StationHttpError, setClientCredentialResolver } from '../client/http';
 import { listIntegrations } from '../client/integrations';
 import {
+  createKnowledgeRoot,
+  rebuildKnowledgeIndex,
+} from '../client/knowledge';
+import {
   getOrchestrationSessionEventWindow,
   getProviderCommands,
   getSessionFlowRun,
   respondToRequest,
 } from '../client/orchestration';
+import { listPlugins, PluginCollectionHttpError } from '../client/plugins';
 import { createProject, listProjects } from '../client/projects';
-import { fetchSystemSkills, importSkills } from '../client/skills';
+import {
+  createJob,
+  disableJob,
+  listJobs,
+  SchedulerResponseError,
+} from '../client/scheduler';
+import { createSecretBinding } from '../client/secret-bindings';
+import {
+  createLocalSkill,
+  fetchInstalledSkills,
+  fetchRegistrySkills,
+  fetchSkillDetail,
+  fetchSystemSkills,
+  importSkills,
+  installRegistrySkill,
+  recordSkillOutcome,
+  trackSkillRun,
+  updateLocalSkill,
+} from '../client/skills';
 
 /**
  * #167 iteration-2 (H1 sweep): one representative failure-path test per
@@ -651,6 +674,210 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
 
     expect(failure).not.toBeInstanceOf(StationHttpError);
     expect((failure as Error).message).toBe('Project not found');
+  });
+
+  /**
+   * #2708 A-1: every station-control family fetcher this slice moved onto the
+   * envelope helper keeps what the helper keeps. The two bodies are the shapes
+   * two real writers produce: the shared zod middleware's validation refusal
+   * (`schema-validation.ts`) and the station-control authority guard's typed
+   * refusal (`stationControlRefusalBody`). Not every route in these families
+   * validates through the middleware (knowledge roots and secret bindings
+   * answer a plain string); these rows pin the fetcher contract whatever the
+   * route sends. The server-driven counterpart is
+   * `station-control-authority-guard.routes.test.ts` (F2).
+   */
+  const API = 'http://example.test';
+  const familyFetchers: ReadonlyArray<
+    readonly [string, () => Promise<unknown>]
+  > = [
+    ['scheduler: listJobs', () => listJobs(API)],
+    [
+      'scheduler: createJob',
+      () => createJob(API, { name: 'j', prompt: 'p' } as never),
+    ],
+    ['scheduler: disableJob', () => disableJob(API, 'nightly')],
+    ['skills: fetchInstalledSkills', () => fetchInstalledSkills(API)],
+    ['skills: fetchSystemSkills', () => fetchSystemSkills(API)],
+    ['skills: fetchRegistrySkills', () => fetchRegistrySkills(API)],
+    ['skills: installRegistrySkill', () => installRegistrySkill(API, 'x')],
+    ['skills: fetchSkillDetail', () => fetchSkillDetail(API, 'x')],
+    ['skills: trackSkillRun', () => trackSkillRun(API, 'x')],
+    [
+      'skills: recordSkillOutcome',
+      () => recordSkillOutcome(API, 'x', 'success'),
+    ],
+    ['skills: importSkills', () => importSkills(API, [])],
+    [
+      'skills: createLocalSkill',
+      () => createLocalSkill(API, { name: 'x', body: 'b' }),
+    ],
+    ['skills: updateLocalSkill', () => updateLocalSkill(API, 'x', {})],
+    ['knowledge: rebuildKnowledgeIndex', () => rebuildKnowledgeIndex(API)],
+    [
+      'knowledge: createKnowledgeRoot',
+      () => createKnowledgeRoot(API, { id: 'r' } as never),
+    ],
+    [
+      'secret bindings: createSecretBinding',
+      () => createSecretBinding(API, { id: 'b', name: 'B', authRef: 'env:X' }),
+    ],
+  ];
+
+  it.each(familyFetchers)(
+    '%s: a validation refusal keeps status and details, naming each field',
+    async (_name, call) => {
+      const details = {
+        formErrors: [],
+        fieldErrors: { command: ['Required'] },
+      };
+      vi.mocked(fetch).mockResolvedValue(
+        nonOkJsonResponse(
+          { success: false, error: 'Validation failed', details },
+          400,
+        ),
+      );
+
+      const error = await call().catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(StationHttpError);
+      expect(error).toMatchObject({
+        status: 400,
+        details,
+        message: 'Validation failed: command Required',
+      });
+    },
+  );
+
+  it.each(familyFetchers)(
+    '%s: an authority refusal keeps its typed code',
+    async (_name, call) => {
+      vi.mocked(fetch).mockResolvedValue(
+        nonOkJsonResponse(
+          {
+            success: false,
+            code: 'station_control_caller_required',
+            error: 'This action needs a verified calling session.',
+          },
+          403,
+        ),
+      );
+
+      await expect(call()).rejects.toMatchObject({
+        status: 403,
+        code: 'station_control_caller_required',
+        message: 'This action needs a verified calling session.',
+      });
+    },
+  );
+
+  it('scheduler: the error stays a SchedulerResponseError whose detail is only a string error', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      nonOkJsonResponse({ error: { code: 'insufficient_scope' } }, 403),
+    );
+
+    const error = await listJobs(API).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SchedulerResponseError);
+    expect(error).toMatchObject({
+      status: 403,
+      code: 'insufficient_scope',
+      detail: undefined,
+    });
+  });
+
+  it('knowledge: an unreadable body still keeps the status it arrived under', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: async () => {
+        throw new SyntaxError('Unexpected token <');
+      },
+    } as unknown as Response);
+
+    await expect(rebuildKnowledgeIndex(API)).rejects.toMatchObject({
+      status: 502,
+      message: 'Knowledge API error: 502',
+    });
+  });
+
+  // #2708 A-1 review: a failure whose body is not JSON (a proxy's HTML 502)
+  // keeps its status, as knowledge and scheduler already did.
+  const nonJson = (status: number) =>
+    new Response('<html>Bad gateway</html>', {
+      status,
+      headers: { 'content-type': 'text/html' },
+    });
+  it.each([
+    ['skills: fetchSystemSkills', () => fetchSystemSkills(API)],
+    ['skills: installRegistrySkill', () => installRegistrySkill(API, 'x')],
+    [
+      'skills: createLocalSkill',
+      () => createLocalSkill(API, { name: 'x', body: 'b' }),
+    ],
+    [
+      'secret bindings: createSecretBinding',
+      () => createSecretBinding(API, { id: 'b', name: 'B', authRef: 'env:X' }),
+    ],
+  ] as const)('%s: a non-JSON 502 keeps its status', async (_name, call) => {
+    vi.mocked(fetch).mockResolvedValue(nonJson(502));
+
+    await expect(call()).rejects.toMatchObject({
+      name: 'StationHttpError',
+      status: 502,
+    });
+
+    // An unreadable 2xx is a protocol failure: no failure status to carry.
+    vi.mocked(fetch).mockResolvedValue(nonJson(200));
+    const protocol = await call().catch((caught: unknown) => caught);
+    expect(protocol).toBeInstanceOf(SyntaxError);
+  });
+
+  it('plugins: a refused collection read keeps its details', async () => {
+    const details = { formErrors: ['Slow down.'], fieldErrors: {} };
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({ success: false, error: 'Too many requests', details }),
+        {
+          status: 429,
+          headers: { 'content-type': 'application/json', 'retry-after': '7' },
+        },
+      ),
+    );
+
+    await expect(listPlugins(API)).rejects.toMatchObject({
+      status: 429,
+      details,
+    });
+  });
+
+  // `list_plugins` relays `PluginCollectionHttpError.envelope` whole, so the
+  // code has to be ON the envelope, not only on the error.
+  it('plugins: a refused collection read keeps the typed code on its envelope', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      nonOkJsonResponse(
+        {
+          success: false,
+          code: 'station_control_caller_required',
+          error: 'This action needs a verified calling session.',
+        },
+        403,
+      ),
+    );
+
+    const error = await listPlugins(API).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(PluginCollectionHttpError);
+    expect(error).toBeInstanceOf(StationHttpError);
+    expect(error).toMatchObject({
+      status: 403,
+      code: 'station_control_caller_required',
+      envelope: {
+        success: false,
+        code: 'station_control_caller_required',
+        error: 'This action needs a verified calling session.',
+      },
+    });
   });
 
   it('skills: fetchSystemSkills surfaces the server error body on a non-2xx response', async () => {

@@ -313,7 +313,7 @@ export async function superviseService(
       // signal cannot strand children in the publication window.
       await startPromise?.catch(() => undefined);
       try {
-        await stopInstance({ instanceName });
+        await stopInstance({ instanceName, stateHome: lifecycle.baseDir });
       } catch (error) {
         console.error('Station service cleanup failed:', error);
       }
@@ -390,6 +390,8 @@ export async function superviseService(
 
   const expected = await collect(instanceName, {
     probeTimeoutMs: STEADY_PROBE_TIMEOUT_MS,
+    // A prebuilt archive keeps the record in this home's root (#2675).
+    projectHome: lifecycle.baseDir,
   });
   if (!expected.found || !expected.bootId || !expected.sha) {
     console.error('Station service did not publish a managed instance record');
@@ -517,6 +519,8 @@ export async function superviseService(
       );
       const confirmation = await collect(instanceName, {
         probeTimeoutMs: CONFIRMATION_PROBE_TIMEOUT_MS,
+        // A prebuilt archive keeps the record in this home's root (#2675).
+        projectHome: lifecycle.baseDir,
       });
       if (confirmation.found && confirmation[name].probe === 'ok') {
         // station#1846: a single long-budget recovery proves a working child
@@ -588,6 +592,8 @@ export async function superviseService(
     if (shuttingDown) return;
     const current = await collect(instanceName, {
       probeTimeoutMs: STEADY_PROBE_TIMEOUT_MS,
+      // A prebuilt archive keeps the record in this home's root (#2675).
+      projectHome: lifecycle.baseDir,
     });
     if (shuttingDown) return;
     if (!current.found || !sameBoot(current, expected)) {

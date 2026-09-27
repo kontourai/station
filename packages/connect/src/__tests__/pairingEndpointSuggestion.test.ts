@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import {
-  forgetPairingEndpoint,
   rememberPairingEndpoint,
   suggestPairingEndpoint,
 } from '../core/pairingEndpointSuggestion';
@@ -87,16 +86,5 @@ describe('pairing endpoint suggestions (#2228 slice 3)', () => {
       ),
     ).not.toThrow();
     expect(suggestPairingEndpoint(apiBase, throwing)).toBeUndefined();
-  });
-
-  test('forgetPairingEndpoint removes the suggestion', () => {
-    const storage = memoryStorage();
-    rememberPairingEndpoint(
-      apiBase,
-      'https://kontour.python-smelt.ts.net:3773',
-      storage,
-    );
-    forgetPairingEndpoint(apiBase, storage);
-    expect(suggestPairingEndpoint(apiBase, storage)).toBeUndefined();
   });
 });

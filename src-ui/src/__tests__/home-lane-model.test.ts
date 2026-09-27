@@ -10,7 +10,6 @@ import {
   sortSnoozedShelf,
   TERMINAL_LINGER_MS,
   terminalSinceFromRecency,
-  WOKE_PILL_WINDOW_MS,
   withStableIds,
 } from '../views/home/home-lane-model';
 import type { HomeWorkItem } from '../views/home/home-view-model';
@@ -452,12 +451,6 @@ describe('sortSettledTail', () => {
       ['c', 2000],
     ]);
     expect(sortSettledTail([a, b, c], terminalSince)).toEqual([b, c, a]);
-  });
-});
-
-describe('woke-from-snooze pill window', () => {
-  it('is a named, positive constant', () => {
-    expect(WOKE_PILL_WINDOW_MS).toBeGreaterThan(0);
   });
 });
 

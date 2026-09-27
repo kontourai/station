@@ -33,18 +33,6 @@ function ruleBodies(css: string, selector: string): string[] {
 }
 
 describe('the chat dock history-failure notice (station#3427)', () => {
-  it('is a flex child, defensively floored to shrink below its content width', () => {
-    const [rule] = ruleBodies(read('index.css'), '.session-history-error');
-    expect(rule, 'missing .session-history-error rule').toBeDefined();
-    // Measured with `min-width: auto` forced, every
-    // geometry metric was identical — `.chat-dock__body` is a column flex
-    // container, so this notice's auto min-size floor binds min-height, not
-    // min-width, and `auto` already computes to 0 on this axis. The rule is
-    // inert today; kept to match `.session-failure`'s own rule defensively,
-    // in case this notice is ever placed in a row-direction flex parent.
-    expect(rule).toMatch(/min-width:\s*0/);
-  });
-
   it('wraps and clamps the recorded reason instead of widening the pane (the #3203 policy)', () => {
     const css = read('index.css');
     const [rule] = ruleBodies(css, '.session-history-error__detail');

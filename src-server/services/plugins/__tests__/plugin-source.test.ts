@@ -17,7 +17,10 @@ import {
   pluginContentDigest,
   withPluginContentLock,
 } from '../plugin-content-integrity.js';
-import { installPluginDependency } from '../plugin-source.js';
+import {
+  installPluginDependency,
+  resolvePluginDependencySource,
+} from '../plugin-source.js';
 
 const cleanupDirs: string[] = [];
 
@@ -215,6 +218,47 @@ describe('installPluginDependency', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('did not materialize');
+  });
+
+  test('holds a registry-installed dependency to remote-only dependencies of its own', async () => {
+    const root = createRoot();
+    const pluginsDir = join(root, 'plugins');
+    // A local plugin the registry-installed tree names by absolute path.
+    const leafSource = writePluginSource(root, 'leaf-source', {
+      name: 'leaf-dep',
+      version: '1.0.0',
+    });
+    const { buildPlugin, logger } = deps();
+    // The provider installs the tree itself and exposes no source for it.
+    const getAgentRegistryProvider = vi.fn(() => ({
+      install: vi.fn(async () => {
+        writePluginSource(pluginsDir, 'registry-dep', {
+          name: 'registry-dep',
+          version: '1.0.0',
+          dependencies: [{ id: 'leaf-dep', source: leafSource }],
+        });
+        return { message: 'ok', success: true };
+      }),
+    }));
+
+    const result = await installPluginDependency(
+      { id: 'registry-dep' },
+      pluginsDir,
+      getAgentRegistryProvider as any,
+      buildPlugin,
+      logger,
+      new Set(),
+      new Set(),
+      undefined,
+      undefined,
+      root,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(
+      /names a local source under a remote parent source/,
+    );
+    expect(existsSync(join(pluginsDir, 'leaf-dep'))).toBe(false);
   });
 
   test('rejects registry success when the installed manifest name does not match the dependency id', async () => {
@@ -881,5 +925,36 @@ describe('installPluginDependency reports the trees it created', () => {
     expect([...created]).toEqual(['leaf-dep']);
     expect(existsSync(join(pluginsDir, 'leaf-dep', 'plugin.json'))).toBe(true);
     expect(existsSync(join(pluginsDir, 'parent-dep'))).toBe(false);
+  });
+});
+
+describe('resolvePluginDependencySource', () => {
+  test.each([
+    ['an HFS+-ignorable .git suffix', 'shared.g\u200cit'],
+    ['a trailing-ignorable .git suffix', 'shared.git\ufeff'],
+    ['the NTFS short name of .git', 'git~1'],
+    ['an upper-case .GIT name', '.GIT'],
+  ])('refuses %s as a local dependency', (_label, name) => {
+    const root = createRoot();
+    const parent = join(root, 'parent');
+    mkdirSync(join(root, name), { recursive: true });
+    expect(() =>
+      resolvePluginDependencySource(
+        { id: 'shared-dep', source: `../${name}` },
+        parent,
+      ),
+    ).toThrow(/local source must be a plain directory/);
+  });
+
+  test('accepts a plain sibling directory (positive control)', () => {
+    const root = createRoot();
+    const parent = join(root, 'parent');
+    mkdirSync(join(root, 'shared-dep'), { recursive: true });
+    expect(
+      resolvePluginDependencySource(
+        { id: 'shared-dep', source: '../shared-dep' },
+        parent,
+      ).source,
+    ).toBe(join(root, 'shared-dep'));
   });
 });

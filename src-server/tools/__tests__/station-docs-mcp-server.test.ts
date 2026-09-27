@@ -96,9 +96,9 @@ describe('station-docs content', () => {
     // An engine may be given these docs and still be unable to operate
     // Station. If this topic ever stops saying so, an engine reading it will
     // answer about Station as if it could act on it.
-    expect(body).toContain('station-control');
-    expect(body.toLowerCase()).toContain('cannot');
-    expect(body.toLowerCase()).toMatch(/explain/);
+    expect(body).toMatch(
+      /An engine with docs and no `station-control` can explain Station\b[^.]*\bcannot perform it\./,
+    );
   });
 
   test('the install topics name where a person approves a plugin install', () => {

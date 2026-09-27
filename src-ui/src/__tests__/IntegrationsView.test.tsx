@@ -1,14 +1,20 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let integrations: unknown[] = [];
 let integrationsError: Error | null = null;
 const refetchIntegrations = vi.fn();
+let pathname = '/connections/tools';
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  // The REAL save hook, so a refusal travels the real integrations fetcher
+  // (#2708); every other hook is a stub.
+  useSaveIntegrationMutation: (
+    await importOriginal<typeof import('@kontourai/station-sdk')>()
+  ).useSaveIntegrationMutation,
   useIntegrationsQuery: () => ({
     data: integrations,
     isLoading: false,
@@ -16,7 +22,6 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: refetchIntegrations,
   }),
   useIntegrationQuery: () => ({ data: undefined }),
-  useSaveIntegrationMutation: () => ({ mutate: vi.fn(), reset: vi.fn() }),
   useDeleteIntegrationMutation: () => ({ mutate: vi.fn() }),
   useReconnectIntegrationMutation: () => ({ mutate: vi.fn() }),
   useSetIntegrationRenderPermissionMutation: () => ({ mutate: vi.fn() }),
@@ -29,7 +34,7 @@ vi.mock('../contexts/NavigationContext', () => {
   // the store, optionally through a selector) and `useNavigationActions` (the
   // memoized actions, no subscription). This mock answers both from one value.
   const navigation = () => ({
-    pathname: '/connections/tools',
+    pathname,
     navigate: vi.fn(),
   });
   return {
@@ -69,7 +74,56 @@ describe('IntegrationsView (#771)', () => {
   beforeEach(() => {
     integrations = [];
     integrationsError = null;
+    pathname = '/connections/tools';
     refetchIntegrations.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // #2708: the save hook's fetcher throws the SDK's StationHttpError with the
+  // validation `details`, and the view shows the server's reason from them —
+  // not "Validation failed" and not the schema key.
+  test('a refused save shows the server reason, not the field key', async () => {
+    const { _setApiBase } = await vi.importActual<
+      typeof import('@kontourai/station-sdk')
+    >('@kontourai/station-sdk');
+    _setApiBase('http://localhost');
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Validation failed',
+          details: {
+            formErrors: [],
+            fieldErrors: {
+              command: ['Command is required for stdio integrations'],
+            },
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    pathname = '/connections/tools/new';
+
+    renderView();
+    fireEvent.change(screen.getByPlaceholderText('my-tool-server'), {
+      target: { value: 'my-tool-server' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Command is required for stdio integrations'),
+      ).toBeTruthy(),
+    );
+    expect(screen.queryByText(/Validation failed/)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost/integrations',
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 
   test('renders the list error state with retry when the integrations query fails', () => {

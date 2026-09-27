@@ -1,23 +1,16 @@
 // @vitest-environment jsdom
 
 import { StationHttpError } from '@kontourai/station-sdk/client';
+import { listSecretBindings } from '@kontourai/station-sdk/secret-bindings';
 import { render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
-const refusal = new StationHttpError(
-  400,
-  'Validation failed: expectedRevision Expected a non-negative integer.',
-  {
-    details: {
-      fieldErrors: { expectedRevision: ['Expected a non-negative integer.'] },
-    },
-  },
-);
+const query = vi.hoisted(() => ({ error: null as unknown }));
 
 vi.mock('@kontourai/station-sdk/secret-bindings-query', () => ({
   useSecretBindingsQuery: () => ({
     data: [],
-    error: refusal,
+    error: query.error,
     isLoading: false,
     refetch: vi.fn(),
   }),
@@ -34,12 +27,38 @@ vi.mock('@kontourai/station-sdk/secret-bindings-query', () => ({
 
 import { SecretBindingPicker } from '../SecretBindingPicker';
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+  query.error = null;
+});
+
 /**
- * #2708: a validation refusal's thrown message is field-qualified for CLI and
- * agent readers. This surface shows the server's reason, never the schema key.
+ * #2708: the load failure the picker shows is the error the REAL
+ * secret-bindings fetcher throws for the route's own failure body. The route
+ * (`src-server/routes/secret-bindings.ts`) answers a plain string `error` and
+ * no validation `details`, so what the picker shows is that sentence; the
+ * fetcher's error keeps the status it arrived under.
  */
 describe('SecretBindingPicker load failure', () => {
-  test('shows the server reason, not the field key or the validation prefix', () => {
+  test('shows the route reason and keeps the status on the error', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Secret binding consumer service unavailable.',
+          }),
+          { status: 503, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    query.error = await listSecretBindings('http://localhost').catch(
+      (caught: unknown) => caught,
+    );
+    expect(query.error).toBeInstanceOf(StationHttpError);
+    expect(query.error).toMatchObject({ status: 503 });
+
     render(
       <SecretBindingPicker
         integrationId="github"
@@ -47,11 +66,8 @@ describe('SecretBindingPicker load failure', () => {
         requireSave={false}
       />,
     );
-    const alert = screen.getByRole('alert');
-    expect(alert.textContent).toContain(
-      'Binding configuration could not be loaded: Expected a non-negative integer.',
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Binding configuration could not be loaded: Secret binding consumer service unavailable.',
     );
-    expect(alert.textContent).not.toContain('expectedRevision');
-    expect(alert.textContent).not.toContain('Validation failed');
   });
 });

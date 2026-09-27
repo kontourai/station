@@ -34,7 +34,7 @@ import { ArchiveGlyph, BrainGlyph } from '../../components/icons/Glyph';
 import { PathAutocomplete } from '../../components/PathAutocomplete';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { errorText } from '../../utils/errorText';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import './KnowledgeStoreSection.css';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
@@ -144,7 +144,7 @@ function ConnectObsidianVault() {
           className="knowledge-store-section__obsidian-error"
           variant="default"
           title="Couldn't connect that vault"
-          description={errorText(createRoot.error)}
+          description={userFacingErrorMessage(createRoot.error)}
         />
       )}
     </div>
@@ -192,7 +192,7 @@ export function KnowledgeStoreSection() {
         ) : rootsQuery.isError ? (
           <ErrorState
             title="Couldn't load your knowledge store"
-            description={errorText(rootsQuery.error)}
+            description={userFacingErrorMessage(rootsQuery.error)}
             action={
               <button
                 type="button"
@@ -247,7 +247,7 @@ export function KnowledgeStoreSection() {
                       className="knowledge-store-section__create-error"
                       variant="default"
                       title="Couldn't create your knowledge store"
-                      description={errorText(createRoot.error)}
+                      description={userFacingErrorMessage(createRoot.error)}
                     />
                   )}
                   <ConnectObsidianVault />

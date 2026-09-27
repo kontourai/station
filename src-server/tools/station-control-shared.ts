@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
-import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import {
@@ -503,109 +502,6 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
         : {}),
     };
   }
-}
-
-export function buildAnalyticsUsagePath(from?: string, to?: string) {
-  const params = new URLSearchParams();
-  if (from) {
-    params.set('from', from);
-  }
-  if (to) {
-    params.set('to', to);
-  }
-  const query = params.toString();
-  return `/api/analytics/usage${query ? `?${query}` : ''}`;
-}
-
-export function buildChatRequest(
-  message: string,
-  conversationId: string,
-  options?: {
-    delegation?: AgentDelegationContext;
-    userId?: string;
-    model?: string;
-    projectSlug?: string;
-  },
-) {
-  return {
-    input: message,
-    options: {
-      conversationId,
-      ...(options?.delegation ? { delegation: options.delegation } : {}),
-      ...(options?.userId ? { userId: options.userId } : {}),
-      ...(options?.model ? { model: options.model } : {}),
-    },
-    ...(options?.projectSlug ? { projectSlug: options.projectSlug } : {}),
-  };
-}
-
-export function createConversationId(agent: string, conversationId?: string) {
-  return conversationId || `${agent}:${Date.now()}`;
-}
-
-export function buildSentMessageResult(agent: string, conversationId: string) {
-  return jsonToolResult({
-    success: true,
-    conversationId,
-    agent,
-    message: 'Message sent (non-blocking)',
-  });
-}
-
-export async function dispatchAgentMessage(
-  agent: string,
-  message: string,
-  conversationId: string,
-  options?: {
-    delegation?: AgentDelegationContext;
-    userId?: string;
-  },
-) {
-  return dispatchAgentMessageAt(
-    resolveControlApiBase(),
-    agent,
-    message,
-    conversationId,
-    options,
-  );
-}
-
-export async function dispatchAgentMessageAt(
-  apiBase: string,
-  agent: string,
-  message: string,
-  conversationId: string,
-  options?: {
-    delegation?: AgentDelegationContext;
-    userId?: string;
-    model?: string;
-    projectSlug?: string;
-    headers?: Record<string, string>;
-    requireAcceptance?: boolean;
-  },
-) {
-  const request = fetch(
-    `${apiBase}/api/agents/${encodeURIComponent(agent)}/chat`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...options?.headers },
-      body: JSON.stringify(buildChatRequest(message, conversationId, options)),
-    },
-  );
-  if (options?.requireAcceptance) {
-    let response: Response;
-    try {
-      response = await request;
-    } catch {
-      throw new Error(`Agent '${agent}' did not accept the delegated task`);
-    }
-    if (!response.ok) {
-      throw new Error(`Agent '${agent}' did not accept the delegated task`);
-    }
-    return;
-  }
-  request.catch(() => {});
-  await new Promise((resolve) => setTimeout(resolve, 500));
 }
 
 export async function navigateTo(path: string) {

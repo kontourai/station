@@ -44,6 +44,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   }),
 }));
 
+import { AdoptSessionError } from '@kontourai/station-sdk';
 import { AttachedSessionDetail } from '../components/session-detail/AttachedSessionDetail';
 import { ToastProvider } from '../contexts/ToastContext';
 
@@ -485,12 +486,15 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
 
   test('a certainly unsent continuation keeps the sibling recovery copy and retry enabled', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // The SDK's own not-sent failure: its message matches no transport
+    // pattern and its class is not uncertain, so only the certain-not-sent
+    // branch can produce the "isn't responding" copy below.
     adoptOrchestrationSession.mockRejectedValueOnce(
-      classifiedAdoptionError(
-        'certain-not-sent',
-        'Native Station request failed: Station request timed out before response headers arrived.',
-        true,
-      ),
+      new AdoptSessionError({
+        failureClass: 'certain-not-sent',
+        message: 'The continuation request could not reach Station.',
+        retryable: true,
+      }),
     );
     renderAttached();
 
@@ -505,10 +509,10 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
       ).toBeTruthy(),
     );
     expect(
-      screen.getByText(
-        'Native Station request failed: Station request timed out before response headers arrived.',
-      ),
+      screen.getByText('The continuation request could not reach Station.'),
     ).toBeTruthy();
+    // Nothing was sent, so there is no outcome to be unsure about.
+    expect(screen.queryByText(/Retry safely/)).toBeNull();
     expect(
       screen
         .getByRole('button', { name: 'Continue in Station' })
