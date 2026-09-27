@@ -124,21 +124,19 @@ describe('AgentActivitySetting', () => {
     expect(load).not.toHaveBeenCalled();
   });
 
-  it.each(['android', 'ios'])(
-    'is absent on %s when the host does not report remote-push as enabled',
-    async (phoneTarget) => {
-      target = phoneTarget;
-      // The real runtime: under jsdom the platform adapter is the web one.
-      const { agentActivityController } = await import(
-        '../../../platform/native/agentActivityRuntime'
-      );
-      const load = vi.fn(agentActivityController);
-      renderWith(load);
-      await act(async () => {});
-      expect(load).toHaveBeenCalled();
-      expect(screen.queryByTestId('agent-activity')).toBeNull();
-    },
-  );
+  // Android only: on iOS the control also hides while the plugin status is
+  // pending, so an iOS case stays green even when this decision is removed.
+  it('is absent when the host does not report remote-push as enabled', async () => {
+    // The real runtime: under jsdom the platform adapter is the web one.
+    const { agentActivityController } = await import(
+      '../../../platform/native/agentActivityRuntime'
+    );
+    const load = vi.fn(agentActivityController);
+    renderWith(load);
+    await act(async () => {});
+    expect(load).toHaveBeenCalled();
+    expect(screen.queryByTestId('agent-activity')).toBeNull();
+  });
 
   it('turns on through the plugin and the Station, and turns off again', async () => {
     const { controller, commands, unregister } = await controllerFor();
