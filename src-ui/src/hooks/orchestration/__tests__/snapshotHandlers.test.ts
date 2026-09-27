@@ -49,6 +49,10 @@ function applyOrdinarySnapshot(
   if (seed) chats = seed;
   updateChat.mockClear();
   applyOrchestrationSnapshot(payload, { apiBase: 'http://api' });
+  // The owner makes ONE write per thread; a map keyed by thread would hide a
+  // second write, so refuse duplicates before collapsing the calls.
+  const threadIds = updateChat.mock.calls.map(([threadId]) => threadId);
+  expect(threadIds).toEqual([...new Set(threadIds)]);
   return Object.fromEntries(updateChat.mock.calls);
 }
 
@@ -579,40 +583,47 @@ describe('station#1301 slice 1: OrchestrationSnapshotPayload widening is behavio
   // `updateChat` call as a payload that omits them (the pre-widening shape),
   // so the new fields cannot silently perturb the existing chat-status sync.
   test('a session carrying the new fields updates the chat identically to one without them', () => {
-    applyOrchestrationSnapshot({
-      sessions: [
-        {
-          provider: 'claude',
-          threadId: 'thread-1',
-          status: 'running',
-          hasActiveTurn: true,
-          delegation: { taskId: 'thread-1' },
-          createdAt: '2026-07-29T00:00:00.000Z',
-          lastEventAt: '2026-07-29T00:05:00.000Z',
-        },
-      ],
+    const seed = () => ({
+      'thread-1': {
+        provider: 'claude',
+        agentSlug: 'claude-code',
+        conversationId: 'thread-1',
+        orchestrationSessionStarted: true,
+      },
     });
-    const withNewFields = updateChat.mock.calls.at(-1);
+    const withNewFields = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'running',
+            hasActiveTurn: true,
+            delegation: { taskId: 'thread-1' },
+            createdAt: '2026-07-29T00:00:00.000Z',
+            lastEventAt: '2026-07-29T00:05:00.000Z',
+          },
+        ],
+      },
+      seed(),
+    );
+    const withoutNewFields = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'claude',
+            threadId: 'thread-1',
+            status: 'running',
+            hasActiveTurn: true,
+          },
+        ],
+      },
+      seed(),
+    );
 
-    updateChat.mockClear();
-    chats['thread-1'] = {
-      provider: 'claude',
-      agentSlug: 'claude-code',
-      conversationId: 'thread-1',
-      orchestrationSessionStarted: true,
-    };
-    applyOrchestrationSnapshot({
-      sessions: [
-        {
-          provider: 'claude',
-          threadId: 'thread-1',
-          status: 'running',
-          hasActiveTurn: true,
-        },
-      ],
-    });
-    const withoutNewFields = updateChat.mock.calls.at(-1);
-
+    // Both runs must actually write, or undefined would equal undefined.
+    expect(Object.keys(withNewFields)).toEqual(['thread-1']);
+    expect(Object.keys(withoutNewFields)).toEqual(['thread-1']);
     expect(withNewFields).toEqual(withoutNewFields);
   });
 
