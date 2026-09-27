@@ -294,6 +294,8 @@ Entry `source` values (plugins and `tools`) are confined by
 - **Git sources must be remote URLs** (`https://`, `ssh://`, or
   `git@host:path`). A local source whose path ends in `.git`, contains `#`, or
   holds a `.git` entry (a working checkout) is refused, as is a `file:` URL.
+  Both `.git` checks cover every spelling a filesystem may read as `.git`
+  (case, trailing dots, `git~1`, and code points HFS+ ignores).
 - **A hosted manifest never names local paths.** A relative source resolves as
   a URL on the manifest's host.
 
@@ -1027,6 +1029,11 @@ DELETE /api/plugins/:name
 # Check for updates across all plugins
 GET /api/plugins/check-updates
 ```
+
+Update, update checks, git details, and the changelog read only the plugin
+directory's own repository (its `.git`). A plugin without one reports no git
+details and has no git update source, even when the Station home sits inside
+another git checkout.
 
 ### What Happens on Install
 
