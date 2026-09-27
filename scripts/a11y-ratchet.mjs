@@ -27,7 +27,6 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const ROOT = process.cwd();
 const BASELINE_PATH = join(ROOT, 'scripts/a11y-baseline.json');
 const BIOME_CONFIG_PATH = join(ROOT, 'biome.json');
-
 const PACKAGE_JSON_PATH = join(ROOT, 'package.json');
 
 /**

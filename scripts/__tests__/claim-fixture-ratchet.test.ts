@@ -418,7 +418,7 @@ test('lists a paired connection with a source badge', () => {
   });
 
   // #1196 independent review, HIGH finding: a bare substring search treated a value asserted
-  // only through `.not.` as positive coverage. This is the shape that shipped: a paired row's
+  // only through `.not.` as positive coverage. This models the defect that shipped: a paired row's
   // provenance tone mapped to `'ready'`, and the only `ready` in its test file was the
   // regression guard asserting the class is NOT present.
   describe('same-member negative-assertion shadowing', () => {

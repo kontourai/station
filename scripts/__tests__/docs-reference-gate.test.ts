@@ -130,7 +130,7 @@ describe('findBrokenReferences', () => {
   });
 
   // Acceptance of an allowlisted path is owned by the live-docs check below.
-  it('every ALLOWED_MISSING entry carries a real reason', () => {
+  it('every ALLOWED_MISSING entry carries a written reason', () => {
     for (const path of ALLOWED_MISSING.keys()) {
       expect(typeof ALLOWED_MISSING.get(path)).toBe('string');
       expect(ALLOWED_MISSING.get(path)!.length).toBeGreaterThan(10);

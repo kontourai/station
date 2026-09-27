@@ -176,8 +176,9 @@ describe('lifecycle runtime defaults', () => {
   });
 
   test('names the channel server port, not 3141, as the last-resort target', () => {
-    const fallback = 'the active local Station, then http://127.0.0.1:18141.';
-    expect(commandHelpText('agents')).toContain(fallback);
+    expect(commandHelpText('agents')).toContain(
+      'the active local Station, then http://127.0.0.1:18141.',
+    );
     expect(usageText()).toContain(
       'the active local Station, http://127.0.0.1:18141.',
     );
