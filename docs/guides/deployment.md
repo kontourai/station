@@ -1,5 +1,15 @@
 # Deployment Guide
 
+This page distinguishes checkout development, a container template, hosted
+foundations, and a macOS dogfood supervisor. Choose the owning path before
+running commands. Recipes change host state; source inspection or fixture PASS
+is not proof that a particular image, network, cloud account or device is ready.
+
+The [CLI reference](../reference/cli.md), [authentication guide](deployment-authentication.md),
+and [monitoring guide](monitoring.md) own their detailed contracts. The source
+review here covers the named deployment paths; historical platform observations
+and unrun installer/rollback scenarios retain their separate evidence limits.
+
 ## Local Development
 
 Deployment describes how a Station instance is run and reached; it does not
@@ -8,10 +18,15 @@ assign Project membership, room authority, or execution consent. See
 boundaries that deployments must preserve.
 
 ```bash
-./station start                          # Auto-installs, builds, starts server + UI
-./station start --clean --force          # Wipe and rebuild from scratch
-./station start --port=3142 --ui-port=3001  # Custom ports
+./station start --instance=dev-review --temp-home --port=3242 --ui-port=5274
+# For a deliberate reset of this disposable development instance only:
+./station start --instance=dev-review --temp-home --clean --force --port=3242 --ui-port=5274
 ```
+
+Use unused ports and a separate home for development. `--clean` deletes the
+selected home and build outputs; it is not just a rebuild flag. The lifecycle
+owner refuses default-home cleaning without its additional explicit override.
+Do not apply that override to make a disposable recipe work on a real home.
 
 ## Docker Production
 
@@ -27,9 +42,9 @@ docker compose pull
 docker compose up -d
 ```
 
-Open <http://localhost:3000>. The configured host directory is bind-mounted at
-`/workspace`. By default this is the narrow `station-workspace` named volume,
-not the directory containing the Compose file. Bind an explicit project
+Open <http://localhost:3000>. The workspace is mounted at `/workspace`. By default it is the
+`station-workspace` named volume, not a host bind mount or the directory
+containing the Compose file. Bind an explicit project
 directory when Station should edit host files:
 
 ```bash
@@ -109,9 +124,12 @@ the reusable environment credential:
    docker compose exec station ./station environment access approve <request-id> --force
    ```
 
-The browser receives a revocable HttpOnly device session and reconnects
-automatically. Later paired host browsers can approve another browser in the
-UI. Remove a device from Connections when access should end.
+On successful completion the browser receives a revocable HttpOnly Device
+session and can reconnect. A paired browser is not automatically an approver:
+approval requires the route's current operator/local-home authority or an
+explicitly promoted `access:approve` Device. Use the connection manager's
+**Paired devices** view to revoke access. Registration, successful enrollment
+and an authenticated subsequent request are separate observations.
 
 The production Compose file is intentionally not a source-mounted development
 stack. Use `./station start --temp-home` for local development so credentials
@@ -119,27 +137,18 @@ and hot reload stay outside the published image contract.
 
 ## Monitoring Stack
 
-The standalone monitoring stack lives in `monitoring/`:
+The standalone stack in `monitoring/` is independently managed from the
+production Station container. It maps OTLP HTTP to 4318, Prometheus to 9090,
+Grafana to 3333 and Jaeger to 16686. The checked-in template uses mutable image
+tags, host port bindings and a development Grafana password/anonymous viewing;
+it is not a hardened public monitoring deployment.
 
-```bash
-cd monitoring && docker compose up -d
-```
-
-| Service | Port | Description |
-|---------|------|-------------|
-| Collector | `4318` | OTLP HTTP receiver |
-| Prometheus | `9090` | Metrics storage |
-| Grafana | `3333` | Dashboards (admin/station) |
-| Jaeger | `16686` | Distributed traces |
-
-Enable telemetry in the app:
-
-```bash
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 ./station start
-```
-
-The standalone stack in `monitoring/` is independently managed from Station's
-production container.
+Read [the monitoring guide](monitoring.md) before enabling the stack or setting
+`OTEL_EXPORTER_OTLP_ENDPOINT`. `localhost` in a container names that container,
+not an independently launched collector. Choose the intended reachable endpoint
+and private exposure explicitly. Configured export is not collector receipt;
+the guide records the startup meter-binding limitation and separates telemetry
+from durable product outcomes.
 
 ## Private cloud environment
 
@@ -161,11 +170,14 @@ Use a disposable home first, with the same Station release on source and target.
 Record a Project, Task, room message, document edit, its durable edit receipt,
 and the published revision link. Make another edit so the first revision is no
 longer the current document. Stop every runtime using the source home before
-running the [home backup and restore commands](../reference/cli.md#home-backup):
+running the [home backup and restore commands](../reference/cli.md#home-backup)
+from a matching source checkout. These local archive verbs are not a promise
+that the published client can restore a server home:
+
 
 ```bash
-station home backup --home=/srv/station/source-home --output=/srv/backups/station-drill --json
-station home restore --from=/srv/backups/station-drill --home=/srv/station/recovery-home --confirm --json
+./station home backup --home=/srv/station/source-home --output=/srv/backups/station-drill --json
+./station home restore --from=/srv/backups/station-drill --home=/srv/station/recovery-home --confirm --json
 ```
 
 The archive contains sensitive home files and is not an encrypted transport.
@@ -217,12 +229,11 @@ lifecycle proxy. It does not expose the dedicated voice/terminal listeners:
 server {
     listen 443 ssl;
     server_name station.example.com;
+    # Supply the reviewed certificate/key and the rest of your TLS policy.
 
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_buffering off;
     }
@@ -252,7 +263,8 @@ trusted-proxy mode.
 
 ## Hosted tenant ingress (foundation only)
 
-For the first hosted foundation, publish each tenant through Station's
+This is a pre-production request-context foundation, not a hosted-service
+installation recipe. For that foundation, publish each tenant through Station's
 same-origin UI proxy and provide a fixed deployment registry to both child
 processes:
 
@@ -420,11 +432,17 @@ Station discovers projects from `<STATION_HOME>/projects/<slug>/project.json`.
 A distributor or deployment operator can pre-place one or more project
 directories (each with a valid `project.json`, optionally a `layouts/`
 subdirectory) under `<STATION_HOME>/projects/` before the very first server
-boot. `runStartupMigrations` never creates or modifies anything once
-`<STATION_HOME>/projects/` already exists, so pre-placed projects become the
-app's initial state instead of the built-in empty/new-project prompt. This is
+boot. The legacy Project/layout portion of `runStartupMigrations` returns when
+`<STATION_HOME>/projects/` exists. Earlier orchestration migration and default
+provider initialization still run; this is not a no-write guarantee for the
+whole home. Pre-placed valid Projects can become the initial Project inventory. This is
 the supported provisioning mechanism — there is no separate plugin API for
 seeding projects.
+
+The [home-schema gate](../../packages/shared/src/station-home-schema.ts) also
+runs before application loading. Pre-populating files must satisfy that gate's
+supported schema/bootstrap rules; copying a Project directory is not a schema
+migration or a way to grant Project membership.
 
 A brand-new `STATION_HOME` with no `projects/` directory and no pre-#1628
 `<STATION_HOME>/layouts/*` content boots with zero projects, landing on the
@@ -438,84 +456,47 @@ project provisioning.
 
 ## Headless Station on a Windows host over SSH
 
-Reaching a Windows box's Station from another tailnet device (a phone, or
-another host) is not the same as launching the app there, and three things
-bite in a specific order. Verified end to end on a Windows 11 host reached
-over Tailscale SSH.
+Use the owning installed-service or checkout lifecycle path, not the desktop
+GUI executable as a headless server command. The current checkout's
+[service command](../../packages/cli/src/commands/service.ts) has Windows,
+launchd and systemd adapters. Its
+[Windows adapter](../../packages/cli/src/commands/service-windows.ts) owns Task
+Scheduler registration, the command wrapper, process identity and trusted paths.
+The published CLI can control an existing installed service with
+`service status|start|stop`; installing/removing a checkout service remains a
+checkout operation. Follow [CLI availability](../reference/cli.md#invocation)
+and inspect the intended instance/home before changing a service.
 
-**1. `station.exe` is the desktop app and cannot start over SSH.** It is the
-Tauri shell; an SSH session has no interactive desktop, so the process spawns
-and exits immediately with no error worth reading. The install ships the
-headless server alongside it — run that instead:
+Earlier manual SSH notes used `node dist-server/command-station.js` from an
+installed application directory and an ad-hoc highest-privilege scheduled task.
+That was an installation-specific observation, not a portable current package
+contract. Do not assume a present release contains that path, a separate Node
+installation, or the same process-detachment behavior. A source server's schema
+lookups depend on its configured working directory; the service wrapper owns
+that detail. This review did not run a Windows installer or SSH session.
 
-```powershell
-# From an SSH session on the Windows host
-$node = "$env:LOCALAPPDATA\nvm\<version>\node.exe"   # Station requires Node 24.x
-Start-Process -FilePath $node -ArgumentList "dist-server\command-station.js" `
-  -WorkingDirectory "C:\Program Files\Station" -WindowStyle Hidden
-```
+Reachability remains separate from authentication. Inspect the service's actual
+bind address and port, then qualify the intended route from another Device.
+Firewall changes require the operator's chosen interface/source restriction;
+opening a port does not pair the Device. The versioned public handshake can
+confirm an answering Station, while a protected request without credentials is
+expected to be refused. A failed `curl` transport/status `000` can mean DNS,
+TLS, refusal, timeout or routing failure; it is not a unique firewall diagnosis.
 
-**2. The working directory is load-bearing.** The server resolves `schemas/`
-relative to the process CWD, so launching from `$HOME` dies on
-`C:\Users\<user>\schemas\app.schema.json`. `-WorkingDirectory` must be the
-install root, not the script's directory.
-
-**3. A process started from an SSH session dies with that session.** It shares
-the session's job object, so the listener disappears the moment you
-disconnect — which reads as "it started fine and then the host went down."
-Register a scheduled task so it survives:
-
-```powershell
-$node = "$env:LOCALAPPDATA\nvm\<version>\node.exe"
-$action = New-ScheduledTaskAction -Execute $node -Argument "dist-server\command-station.js" `
-  -WorkingDirectory "C:\Program Files\Station"
-Register-ScheduledTask -TaskName "Station Server" -Action $action `
-  -Trigger (New-ScheduledTaskTrigger -AtLogOn) `
-  -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero)) `
-  -User (whoami) -RunLevel Highest -Force
-Start-ScheduledTask -TaskName "Station Server"
-```
-
-`Register-ScheduledTask -UserId "$env:USERDOMAIN\$env:USERNAME"` fails with
-"No mapping between account names and security IDs was done" on a
-non-domain-joined host; `-User (whoami)` resolves correctly.
-
-**Then the firewall.** The server binds `0.0.0.0`, but Windows Firewall blocks
-inbound by default and the installer adds no rule, so the port is open locally
-and invisible from the tailnet. Scope the rule to the Tailscale CGNAT range
-rather than opening it to the LAN:
-
-```powershell
-New-NetFirewallRule -DisplayName "Station API (Tailscale only)" -Direction Inbound `
-  -Action Allow -Protocol TCP -LocalPort 3141 -RemoteAddress 100.64.0.0/10 -Profile Any
-```
-
-**Verify from another tailnet node, not from the host.** A local check passes
-while the firewall still blocks everyone else. `/.well-known/station/v1` should
-return 200 and the protected endpoints 401 — 401 is the correct answer to an
-unauthenticated caller and confirms reachability, whereas `000` means no route
-or a blocked port:
-
-```bash
-curl -s -o /dev/null -w "%{http_code}\n" http://<tailscale-ip>:3141/.well-known/station/v1
-curl -s -o /dev/null -w "%{http_code}\n" http://<tailscale-ip>:3141/api/system/identity
-```
-
-As on every other host, tailnet reachability is not authorization — the phone
-still has to request access and be approved.
-
-**To undo both host changes:**
-
-```powershell
-Unregister-ScheduledTask -TaskName "Station Server" -Confirm:$false
-Remove-NetFirewallRule -DisplayName "Station API (Tailscale only)"
-```
-
-Note this serves whatever build is installed under `C:\Program Files\Station`;
-it does not track `origin/main`, so a Windows host stays on its installed
-version until the app itself is updated.
+Do not replace an existing managed registration or remove a firewall rule by a
+generic display name. Use the exact instance/registration owner and current
+[service recovery guidance](native-shell-verification.md). Packaged Windows
+behavior, cross-Device reachability and authenticated terminal/voice operation
+remain separate qualification steps.
 
 ## Private tailnet dogfood on macOS
+
+The legacy dogfood supervisor below is separate from the desktop channel
+service and ordinary `station service` commands. Its staged dependency install
+still uses `npm ci`; the current checkout uses managed pnpm and has no root npm
+lockfile. Treat current-revision promotion as unqualified until that mismatch
+is corrected and exercised. The retained rollback description is not a claim
+that this audit installed or recovered a live service.
 
 ### Channel desktop apps: ports, homes, and targeting
 
@@ -527,72 +508,73 @@ reconciles `manifest.server_port` against local state), so the port is stable
 across restarts and self-updates in practice, but it is configuration, not a
 compile-time constant: trust the manifest/live process, not the number.
 
-Homes differ per channel: on this deployment model stable runs from
-`STATION_ROOT/instances/stable` (default root `~/.station`; admission logic in
-`service_state.rs`) and nightly from its own isolated `~/.station-nightly` —
-both facts read from the LIVE processes' `STATION_HOME`, which is the only
-ground truth (the split also appears in `src-desktop` fixtures, but the home,
-like the port, comes from the app's service state). Do not infer a channel's
-home from directory
-names on disk — `~/.station/instances/nightly` may exist without being the
-nightly app's home. The ground truth for a running server is its own
-environment: `ps eww -o command -p <server-pid> | tr ' ' '\n' | grep
-STATION_HOME`.
+Default homes are channel-qualified under `STATION_ROOT/instances/` (for
+example `stable`, `beta`, `nightly`); an explicitly configured home or persisted
+service manifest can choose another admitted path. The old `~/.station-nightly`
+example described one deployment, not the current universal Nightly home.
+Inspect the owning service manifest and instance status rather than guessing
+from a directory or dumping a process's complete environment, which can contain
+credentials. [service_state.rs](../../src-desktop/src/service_state.rs) owns
+native home admission and [release channel ports](release-channel-ports.md)
+records the default port families.
 
-Saved CLI profiles map friendly names to each channel's loopback endpoint and
-credential — client-tier commands (`stations`, `setup`, `agents`, `chat`, and
-the rest) work identically from any machine via
-`npx @kontourai/station-cli@<channel> ...`, matching the channel tag to the
-Station you're targeting (`nightly` for a Station Nightly host, `latest` for
-stable); `./station stations` is the same surface from inside this checkout —
-see [the CLI reference's Invocation section](../reference/cli.md#invocation)
-for the full npx / `./station` / `station-dev` story. Environment-security
-verbs (`environment access list|approve|deny`) are host-local (they read
-secrets that only exist on the machine running the Station) and only run
-through `./station` — they are not reachable through `npx`/the published
-CLI, regardless of targeting. They do accept `--station=<name>` (station#4515),
-so once a Station is saved under a name, `./station environment access list
---station=<name>` is equivalent to the explicit `--api-base` pair below; the
-worked example spells out the pair explicitly rather than assuming a
-nightly-channel profile is already saved on this device. The worked example
-for approving a phone against the **nightly** channel is:
+Saved Stations can target a loopback channel by name. Use an actually published
+CLI version/tag; the name of a desktop release channel does not prove a matching
+npm dist-tag exists. Local pairing offer/access list/approve/deny operations are
+supported by the current published CLI as well as the checkout launcher, but
+still require the exact existing local home and a proved loopback Station.
+A remote endpoint or a saved pairing entry without `localService.baseDir` does
+not provide that home. Other host lifecycle/security verbs have their own
+[distribution boundary](../../packages/cli/src/distribution.ts).
+
+For a non-default instance, select the actual home and loopback endpoint:
 
 ```bash
-STATION_HOME=~/.station-nightly \
+STATION_HOME=/absolute/path/to/the/selected/home \
   ./station environment access list --api-base=http://127.0.0.1:38141
-STATION_HOME=~/.station-nightly \
+STATION_HOME=/absolute/path/to/the/selected/home \
   ./station environment access approve <request-id> --api-base=http://127.0.0.1:38141
 ```
 
-When exposing a channel over the tailnet, the Serve mapping must target the
-channel's fixed port, and paired devices embed the *public* port in their saved
-endpoint URLs — so treat an established public port as permanent even if its
-number is historical:
+The example port is the Nightly default, not discovery. The
+[command implementation](../../packages/cli/src/commands/environment.ts) resolves
+saved Station targets and verifies local identity/proof before sending the host
+credential.
+
+When exposing a lifecycle-managed instance over the tailnet, map its configured
+UI proxy port, not an inferred API-plus-offset port. The dogfood installer below
+targets `uiPort`. A native channel's service layout must be inspected separately.
+Paired Devices save the public endpoint, so changing an established public port
+requires an explicit reconnection plan:
 
 ```bash
-tailscale serve --bg --https=<public-port> http://127.0.0.1:38141   # nightly
+tailscale serve --bg --https=<public-port> http://127.0.0.1:<configured-ui-port>
 tailscale serve status                                              # what fronts what
-curl -sk https://<device-fqdn>:<public-port>/api/system/status   # FQDN as shown by `tailscale serve status`
-# {"error":{"code":"authentication_required"}} == alive and gated (healthy)
+curl --silent --show-error https://<device-fqdn>:<public-port>/api/system/status   # FQDN as shown by `tailscale serve status`
+# authentication_required confirms a refusal, not workload health or readiness
 ```
 
 #### Troubleshooting the pairing path
 
 | Symptom | Likely cause | Check |
 | --- | --- | --- |
-| Device stuck "waiting for approval"; host sees no request | Serve mapping fronts a port nothing owns (dangling proxy) | `curl` the public URL (000 = dangling) and `lsof -nP -iTCP:<local-port> -sTCP:LISTEN` |
-| Device: "isn't the one this device paired with" | The public endpoint fronts a different instance (another channel, a rebuilt home, or a stray locally-started server on that port) than the one the device paired with | Confirm which pid owns the mapped local port, then its `STATION_HOME` via `ps eww` |
-| CLI: "loopback Station identity does not match this local Station home" | `STATION_HOME` doesn't match the server behind `--api-base` | Read the server's real home from its process env (above); never guess from directory names |
-| Buttons in the device's connection UI appear dead | Their requests POST into a dangling endpoint and fail silently (station#4475) | Same dangling-proxy check as row one |
+| Device stuck "waiting for approval"; host sees no request | Serve mapping fronts a port nothing owns (dangling proxy) | Inspect the curl transport error and `lsof -nP -iTCP:<local-port> -sTCP:LISTEN`; status 000 alone is not a diagnosis |
+| Device: "isn't the one this device paired with" | The public endpoint fronts a different instance (another channel, a rebuilt home, or a stray locally-started server on that port) than the one the device paired with | Confirm which pid owns the mapped local port, then the owning service/instance record and configured home |
+| CLI: "loopback Station identity does not match this local Station home" | `STATION_HOME` doesn't match the server behind `--api-base` | Read the owning service's configured home; never guess from directory names |
+| Buttons in the device's connection UI appear dead | A failed request, unavailable endpoint or UI failure may be involved; the old station#4475 incident is not a universal diagnosis | Same dangling-proxy check as row one |
 | A CLI invocation boots a whole runtime and collides on ports | `dist-server/command-station.js` is the **server** entry, not an operator CLI — use the repo launcher `./station` | — |
-| A mystery local server answers Station endpoints | Orphaned test/stage instances re-parented to launchd (worktree perf runs, synthetic stage-phone proxies) linger for weeks and answer probes convincingly | `ps -o ppid= -p <pid>` — ppid 1 from a dead lane is an orphan; sweep it |
+| A mystery local server answers Station endpoints | Another legitimate instance or an abandoned process may answer the same probe | Confirm exact instance, PID birth and service ownership before any stop; PPID 1 alone proves neither abandonment nor cleanup authority |
 
 
 The repository-owned dogfood supervisor keeps one named Station instance on
 the exact `origin/main` commit whose GitHub Actions `CI` **push** run completed
-successfully. It stages a detached clean release and runs `npm ci` plus
-`./station build` before stopping the active release. Promotion binds all four
-Station listeners to `127.0.0.1`, verifies the exact build SHA locally and through
+successfully. Its staging code creates a detached release and currently calls
+legacy `npm ci` plus `./station build` before stopping the active release.
+That dependency command is not the repository's managed pinned-pnpm setup path;
+the current root has no npm lockfile. This supervisor's successful staging on a
+current revision needs qualification/correction before use, not a claim inferred
+from its older fixtures. Promotion binds the configured API, terminal, voice,
+consent and UI listeners to `127.0.0.1`, verifies the exact build SHA locally and through
 Tailscale Serve HTTPS, and only then commits `active`/`previous` state. A build
 failure leaves the active process alone; a post-stop failure restarts and
 health-checks the previous built release.
@@ -603,8 +585,9 @@ reset`, and leaves unrelated Serve ports and paths in place.
 
 Tailscale reachability is not authorization. On a direct non-loopback Station
 connection, protected requests require an approved device session or the
-environment credential; only the versioned public handshake and liveness
-document are unauthenticated. Bootstrap a phone without copying a reusable
+environment credential. Public handshake, identity/proof and bootstrap routes have explicit
+bounded exceptions; the [authentication guide](deployment-authentication.md)
+owns that route inventory. Bootstrap a phone without copying a reusable
 credential:
 
 ```bash
@@ -634,8 +617,10 @@ If used, enter the second command's output only into Station Connect's masked
 credential field; never include it in a URL, command example, log, or
 screenshot. Keep the local terminal open until an authenticated protected read
 succeeds. Credential
-rotation preserves the environment ID and invalidates every saved client;
-environment reset rotates both and requires full re-bootstrap. See the
+rotation preserves the environment ID and replaces the operator credential.
+It does not itself revoke separately paired Device grants. Environment reset
+has a different identity/device-grant boundary; inspect the owning operation
+before using either as a recovery step. See the
 [remote access threat model](../security/remote-access-threat-model.md) for the
 surface matrix, recovery, and rollback procedure.
 
@@ -726,23 +711,22 @@ The installer copies the checked-in runner into
 config, configures only the Tailscale HTTPS root proxy to
 `http://127.0.0.1:18000`, and installs
 `~/Library/LaunchAgents/io.kontourai.station-dogfood.plist`. The user agent keeps
-one supervisor process alive; that process reconciles local health every 30
-seconds and survives an individual reconcile failure. Each tick holds one
+one supervisor process alive; that process reconciles local health with a 15-second delay between completed ticks and survives an individual reconcile failure. Each tick holds one
 exclusive lock per supervisor directory; an abandoned lock ages out after 30 minutes.
 A lock whose recorded owner PID is still live is never stolen, regardless of
 age.
 
-Installation is transactional around host state. It snapshots the complete
+The installer stages a transaction around host state. It snapshots the complete
 Tailscale Serve configuration plus the previous runner, config, supervisor
 state, private client shim set, plist, and loaded state before any mutation.
-Failure stops the newly
-active release, restores the prior process/state (or no process/state for a
+Rollback attempts to stop the newly
+active release and restore the prior process/state (or no process/state for a
 fresh install), restores every file byte-for-byte with its owner/mode, and
 verifies the full Serve and launchd state, including restoring the prior client
 targets and plist `PATH`. Reinstall refuses semantic config
 changes; those require the controlled migration path. The installer runs one
-reconcile synchronously and requires state, local status provenance, and all
-four loopback listeners to agree before loading the persistent LaunchAgent or
+reconcile synchronously and requires state, local status provenance, all five
+listener owners and the API/terminal/voice/UI probes to agree before loading the persistent LaunchAgent or
 reporting success. Installation then requires launchd to keep the supervisor
 running before it commits the transaction. That synchronous reconcile defers release pruning so every
 SHA named by the pre-install state remains available for rollback. Only after
@@ -783,9 +767,11 @@ recovery budget is at most 60 seconds from a required listener loss through a
 same-SHA restart and successful API, terminal, voice, UI, and tailnet checks.
 Receipts reserve `intervalAllowanceMs: 15000` for the supervisor loop and
 record both `preDetectionDurationMs` and `postDetectionDurationMs`;
-`worstCaseEndToEndMs` is their sum and must remain at most 60000 before
-readiness is committed.
-A breach is an availability failure, not a healthy `current` check.
+`worstCaseEndToEndMs` adds those two durations and the interval allowance, then
+compares the total with the 60000-ms target. The runner can record runtime health
+as `ready` after successful recovery even when `withinBudget` is false; the
+budget breach remains a separate failed availability objective, not a reason
+to restart a recovered process again.
 
 Same-SHA recovery uses one force-start lifecycle invocation. That invocation
 proves and cleans the stale managed instance, rotates the runtime log only
@@ -809,9 +795,10 @@ RUNNER="$SUPPORT/bin/station-dogfood-reconcile.mjs"
 node "$RUNNER" status --config="$CONFIG"
 jq -r '.active.sha, .active.ci.url, .health.status, .previous.sha // "no previous release"' "$SUPPORT/state.json"
 launchctl print "gui/$UID/io.kontourai.station-dogfood"
-curl --fail --silent --show-error http://127.0.0.1:3141/api/system/identity | jq .
+UI_PORT="$(jq -r .uiPort "$CONFIG")"
+curl --fail --silent --show-error "http://127.0.0.1:$UI_PORT/__station/identity" | jq .
 TAILNET_URL="$(jq -r .tailnetUrl "$CONFIG")"
-curl --fail --silent --show-error "$TAILNET_URL/api/system/identity" | jq .
+curl --fail --silent --show-error "$TAILNET_URL/__station/identity" | jq .
 tailscale serve status --json | jq .
 ```
 
@@ -853,7 +840,7 @@ navigations keep receiving the app instead of the recovery document.
 
 `health.status` is `unavailable` while a required listener is missing,
 `recovering` while the exact recorded release is restarting, and `ready` only
-after all four loopback listeners and tailnet provenance pass. The bounded last
+after all five listener owners and the API/terminal/voice/UI probes and tailnet provenance pass. The bounded last
 20 `recoveryHistory` receipts retain the exact SHA, failed checks, detection,
 attempt, and recovery/failure timestamps, outcome, observed reason, and
 per-stage detection/stop/start/local/tailnet timing. SLA compliance is recorded
@@ -905,7 +892,10 @@ Before any candidate start, active recovery, or rollback, the runner rejects
 symlinked/escaped release paths and requires a detached Git `HEAD` plus a valid
 `main` build manifest whose SHA exactly matches the recorded release.
 
-To trigger one non-destructive reconcile and inspect its exit status:
+To request one reconcile, first review the selected config and current state.
+This is a mutating operation: it may fetch/build, stop/start, promote/roll back
+or prune releases. Use `status` for a read-only inspection. After an authorized
+reconcile, inspect its exit status:
 
 ```bash
 node "$RUNNER" reconcile --config="$CONFIG"
@@ -921,9 +911,13 @@ deleted accidentally:
 ```bash
 launchctl bootout "gui/$UID/io.kontourai.station-dogfood"
 rm "$HOME/Library/LaunchAgents/io.kontourai.station-dogfood.plist"
-rm -rf "$HOME/Library/Application Support/Station Dogfood"
+# After verifying the supervisor and its managed runtime are stopped,
+# archive/remove only this installation's confirmed support directory.
 ```
 
+Stopping the LaunchAgent alone is not proof that every managed child stopped.
+Confirm the exact lifecycle instance and release worktree ownership before
+removing files; preserve rollback/diagnostic evidence if shutdown is uncertain.
 Then inspect `tailscale serve status --json`. Remove the HTTPS handler only if
 it still points at this instance and no other required handler shares that
 listener. Never use a blanket `tailscale serve reset` as dogfood cleanup.
