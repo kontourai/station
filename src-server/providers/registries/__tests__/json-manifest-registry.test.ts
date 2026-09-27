@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -19,6 +20,26 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { listStationTempEntries } from '@kontourai/station-shared/temp-dir';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+
+// Test seam: runs just before the provider creates its staging directory,
+// i.e. after source resolution and before the copy, to model a race.
+const stageHook = vi.hoisted(() => ({
+  before: undefined as (() => void) | undefined,
+}));
+vi.mock('@kontourai/station-shared/temp-dir', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('@kontourai/station-shared/temp-dir')>();
+  return {
+    ...original,
+    createStationTempDirSync: ((...args: unknown[]) => {
+      stageHook.before?.();
+      return (original.createStationTempDirSync as (...a: unknown[]) => string)(
+        ...args,
+      );
+    }) as typeof original.createStationTempDirSync,
+  };
+});
+
 import { execGitSync } from '../../../utils/git-exec.js';
 import {
   JsonManifestRegistryProvider,
@@ -91,20 +112,16 @@ describe('JsonManifestRegistryProvider registry manifest proof', () => {
       );
     write('one');
     const provider = new JsonManifestRegistryProvider(path, home);
-    // Sources resolve to the physical path that containment checked.
-    const physicalHome = realpathSync(home);
-    expect((await provider.listAvailable())[0]?.source).toBe(
-      join(physicalHome, 'one'),
-    );
+    expect((await provider.listAvailable())[0]?.source).toBe(join(home, 'one'));
     write('two');
     const resolved = await provider.resolvePackage('fresh');
     expect(resolved).toEqual({
-      source: join(physicalHome, 'two'),
+      source: join(home, 'two'),
       claim: { version: 'two' },
     });
     (resolved!.claim as { version: string }).version = 'caller-change';
     expect(await provider.resolvePackage('fresh')).toEqual({
-      source: join(physicalHome, 'two'),
+      source: join(home, 'two'),
       claim: { version: 'two' },
     });
     writeFileSync(path, JSON.stringify({ version: 1, plugins: [] }));
@@ -1901,17 +1918,42 @@ describe('JsonManifestRegistryProvider source confinement', () => {
     }
   });
 
-  test('resolves a source to the physical path it checked', async () => {
-    const { root, provider } = await confinementLayout();
-    symlinkSync(resolve(root, 'plugins'), resolve(root, 'alias'));
+  test('copies from the physical path it checked, not a symlink swapped in after the check', async () => {
+    const { root, outside, projectHome, provider } = await confinementLayout();
+    const swapped = resolve(outside, 'good-plugin');
+    mkdirSync(swapped, { recursive: true });
+    writeFileSync(
+      resolve(swapped, 'plugin.json'),
+      JSON.stringify({ name: 'swapped-plugin', version: '1.0.0' }),
+    );
+    const alias = resolve(root, 'alias');
+    symlinkSync(resolve(root, 'plugins'), alias);
     const registry = provider([
       { id: 'aliased', source: '../alias/good-plugin' },
     ]);
-    // The consumer (install routes copy from this later) gets the path the
-    // check validated, not the manifest's symlinked spelling of it.
+    // The source identity stays the manifest's spelling.
     await expect(registry.resolvePackage('aliased')).resolves.toEqual({
-      source: resolve(root, 'plugins', 'good-plugin'),
+      source: resolve(alias, 'good-plugin'),
     });
+    // Between the containment check and the copy (staging starts with the
+    // temp directory), the alias is repointed outside the root.
+    stageHook.before = () => {
+      rmSync(alias);
+      symlinkSync(outside, alias);
+    };
+    try {
+      await expect(registry.install('aliased')).resolves.toMatchObject({
+        success: true,
+      });
+    } finally {
+      stageHook.before = undefined;
+    }
+    expect(existsSync(resolve(projectHome, 'plugins', 'good-plugin'))).toBe(
+      true,
+    );
+    expect(existsSync(resolve(projectHome, 'plugins', 'swapped-plugin'))).toBe(
+      false,
+    );
   });
 
   test.skipIf(!existsSync('/tmp'))(

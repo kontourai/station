@@ -128,14 +128,16 @@ export class RegistrySourceConfinementError extends Error {
 }
 
 /**
- * Where a manifest source resolved. `local` is the PHYSICAL path (symlinks
- * followed) that was proven to be inside `root`, the physical registry root;
- * consumers act on that path, not the manifest's spelling of it. `remote` is a
- * network address (an allowed URL scheme or scp-style `git@host:path`) that
- * never reads local files.
+ * Where a manifest source resolved. For `local`, `location` is the path as
+ * the manifest spells it (resolved, symlinks NOT followed) — the source
+ * identity that install receipts and registry trust continuity compare — and
+ * `physical` is the symlink-free path proven to be inside `root`, the physical
+ * registry root. The provider's own reads and copies use `physical`. `remote`
+ * is a network address (an allowed URL scheme or scp-style `git@host:path`)
+ * that never reads local files.
  */
 type ResolvedManifestSource =
-  | { kind: 'local'; location: string; root: string }
+  | { kind: 'local'; location: string; physical: string; root: string }
   | { kind: 'remote'; location: string };
 
 /** Schemes a manifest source may name. `file:` and everything else refuse. */
@@ -494,12 +496,13 @@ export class JsonManifestRegistryProvider
     }
 
     if (this.isLocalManifest()) {
+      const location = resolve(dirname(this.manifestUrl), source);
       const { physical, physicalRoot } = confineLocalSource(
         source,
         this.getLocalRegistryRoot(),
-        resolve(dirname(this.manifestUrl), source),
+        location,
       );
-      return { kind: 'local', location: physical, root: physicalRoot };
+      return { kind: 'local', location, physical, root: physicalRoot };
     }
 
     if (isAbsolute(source) || isDriveLetterPath(source)) {
@@ -577,7 +580,11 @@ export class JsonManifestRegistryProvider
 
   private async materializeSource(source: string): Promise<string> {
     const resolved = this.resolveManifestSource(source);
-    const resolvedSource = resolved.location;
+    // Copy or clone from the path the containment check validated, so a
+    // symlink swapped into the manifest's spelling of it after the check is
+    // not followed.
+    const resolvedSource =
+      resolved.kind === 'local' ? resolved.physical : resolved.location;
     if (resolved.kind === 'remote' && !isGitSource(resolvedSource)) {
       throw new Error(
         `Plugin source ${resolvedSource} is neither a git repository nor a local path inside the registry root`,
@@ -934,7 +941,7 @@ export class JsonManifestRegistryProvider
           assertPhysicallyInside(
             tool.source,
             resolved.root,
-            join(resolved.location, 'integration.json'),
+            join(resolved.physical, 'integration.json'),
           ),
           'utf-8',
         );
