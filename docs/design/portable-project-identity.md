@@ -420,8 +420,8 @@ Two corrections to make before leaning on it:
 There is also a hardening note worth carrying: the unwired Node
 `StorageAdapter` for `KnownEnvironment` (`packages/connect/src/core/nodeStorage.ts`,
 since removed) recorded that its writer had no symlink/permission hardening,
-"acceptable today only because `KnownEnvironment` holds no secrets." The no-secrets rule is not
-decorative; a future sensitive field silently converts a store into a
+"acceptable today only because `KnownEnvironment` holds no secrets." The
+no-secrets rule is not decorative; a future sensitive field silently converts a store into a
 vulnerability. The binding store (§3.5) holds credential *references*, so it
 inherits the same obligation.
 
