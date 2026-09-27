@@ -2455,14 +2455,22 @@ button:hover {
   .chat-dock__project-switcher-hint {
   color: var(--text-secondary);
 }
+/* The Switch button aligns its lines to the start, so without a max-width the
+   name sizes to its text and a long one runs out of the column, under the
+   Open icon. The ellipsis sits on the label: a flex container's own
+   text-overflow never applies to its text. */
 .chat-dock__project-switcher-name {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  overflow: hidden;
+  max-width: 100%;
   color: var(--text-primary);
   font-weight: 600;
+}
+.chat-dock__project-switcher-label {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

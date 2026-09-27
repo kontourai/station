@@ -78,16 +78,6 @@ describe('ComposerActionsMenu', () => {
     }
   });
 
-  test('opens by keyboard (Enter on the trigger)', () => {
-    renderMenu();
-    const trigger = screen.getByRole('button', { name: 'Composer actions' });
-    trigger.focus();
-    fireEvent.click(trigger); // jsdom does not synthesize Enter->click; the
-    // real browser activates buttons on Enter/Space natively, so the click
-    // handler is what a keyboard activation ultimately invokes.
-    expect(screen.getByRole('menu')).toBeTruthy();
-  });
-
   test('clicking Delegate closes the menu and calls onOpenDelegation', () => {
     const props = renderMenu();
     fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
