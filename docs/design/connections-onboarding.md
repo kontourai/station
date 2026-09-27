@@ -1,5 +1,14 @@
 # Design: Connections onboarding & capability passthrough
 
+> **Reading status: current onboarding direction with dated engine-delivery audits.**
+> [Provider catalog](../../src-ui/src/views/provider-settings/providerCatalog.tsx),
+> [app-home profiles](../../src-server/providers/app-home/app-home-profiles.ts),
+> and [credential-profile registry](../../src-server/providers/app-home/credential-profile-registry.ts)
+> own the named setup mechanisms. Historical CLI probes and security-review
+> dispositions below are not fresh qualifications of installed providers,
+> imported credentials, or every filesystem race. Use the
+> [Connections guide](../guides/connections.md) for the current user journey.
+
 > Status: **direction recorded; onboarding slices shipping**. This doc captures the owner-set
 > direction (2026-07-25/26 working sessions) for how the Connections surface onboards users,
 > which connection types may be auto-surfaced by detection, how provider add-flows get their
@@ -360,8 +369,8 @@ type with prefilled config.
 
 ### 3.1 Bedrock is the sanctioned special case
 
-Bedrock today is region-only over the default AWS credential chain. Target add flow offers
-three auth modes, all inside the §1 principle:
+The implemented Bedrock provider accepts three explicit auth modes, all inside
+the §1 principle:
 
 1. **Default credential chain** — today's behavior; zero input.
 2. **Named profile** — dropdown prefilled from profile *names* parsed out of
@@ -606,7 +615,8 @@ gates, live receipts (partially reachable for Claude Code via hooks; out of scop
 | MCP passthrough productization (explicit per-connection opt-in `provideToolServers`, stdio-only, ACP session/new) | Shipped (2026-07-26, nonce-proven live tool execution via opencode + `filesystem_read_text_file`) |
 | Skills materialization for External agents (claude, `provideSkills`) | Shipped (2026-07-26) |
 | #896 wave 1: config-surface audit doc, global-config refusal guard (receipt-only), claude app-home profile + per-session env layering, explicit import-from-global | Shipped |
-| #896 wave 2: Codex `CODEX_HOME` wiring, opencode/ACP XDG overrides, refused-materialization auto-fallback into app-home | Target |
+| #896 wave 2: Codex `CODEX_HOME` wiring, import/auth/registry and bounded profile GC | Implemented; see §1.1 |
+| opencode/ACP XDG overrides and refused-materialization auto-fallback into app-home | Deferred; see §1.1 |
 | First-run gate: durable `AppConfig.firstRun`, Home dialog + re-offer card, shared dialog/Button/Checkbox (§4.1) | Shipped (UX audit RT-02, SHELL-12) |
 | Azure OpenAI / Vertex shapes | Target, unprioritized |
 

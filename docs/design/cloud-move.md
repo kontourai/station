@@ -1,5 +1,13 @@
 # Move a Station setup to the cloud
 
+> **Reading status: preparation tools plus a proposed complete move.**
+> The [shared preparation owner](../../packages/shared/src/cloud-move.ts) and
+> [SDK target verifier](../../packages/sdk/src/client/cloud-move.ts) expose the
+> implemented boundary. A successful preview or target observation does not
+> copy credentials, grant execution authority, or continue a provider session.
+> No cloud account, instance, billing, or deployment qualification was run in
+> this documentation review.
+
 > Status: staged implementation under [#495](https://github.com/kontourai/station/issues/495)
 > and [#580](https://github.com/kontourai/station/issues/580). The initial slice
 > implements a read-only setup preview, AWS template preparation, and encrypted
@@ -113,8 +121,10 @@ The server-side SSH worker currently sends no Station application credential.
 A 401 or 403 therefore reports `station-authentication-required` and does not
 trigger managed launch. SSH access alone does not enroll that worker. Use an
 enrolled Station API connection for authenticated preparation; the
-[native SSH launcher](ssh-launched-environments.md) separately starts or reuses
-a process and completes the normal pairing exchange. Its remote install uses
+[retained native SSH launcher](ssh-launched-environments.md) can separately
+start or reuse a process and return a pairing offer. Its former creation/pairing
+UI is no longer mounted; that retained module is not the current Add computer
+journey. Its remote install uses
 `dependencies:ci`, including the pinned pnpm lifecycle. Automatic credential
 enrollment for the server-side worker remains unimplemented.
 

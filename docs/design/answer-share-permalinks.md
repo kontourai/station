@@ -1,5 +1,14 @@
 # Scoped answer share permalinks (station#1423)
 
+> **Reading status: current share contract with historical review findings.**
+> [Share routes](../../src-server/routes/share/answer-share-routes.ts),
+> [service](../../src-server/services/share/answer-share-service.ts),
+> [viewer projection](../../packages/shared/src/answer-share-projection.ts), and
+> [standalone page](../../src-ui/src/views/share/SharedAnswerView.tsx) own this path.
+> Later corrections below supersede earlier residuals. Source and focused
+> fixtures do not prove internet reachability, browser cache behavior, or a
+> real recipient's device journey.
+
 > Status: **shipped, v1** — the design contract for `/api/shares`,
 > `/.well-known/station/v1/share/view`, and the standalone `/share` page.
 > Parent: #1391 (per-answer provenance cards). Depends on #1410 (turn
@@ -46,9 +55,9 @@ id-plus-secret split, so possession of the token is the whole authentication.
 **What DOES ride the pairing vocabulary** is the operator's management surface.
 `/api/shares` is gated at `access:manage`, the ceiling `/api/pairing` and
 `/api/environments/peers` use, because *minting a share mints a credential*.
-`access:manage` is the one scope no pairing preset ever grants a paired device,
-so no device — however broadly scoped — can publish the operator's answers or
-revoke their links. The `GET` is deliberately not split down to
+The named pairing presets omit `access:manage`, but historical/default grants
+can include it. This is a scope boundary, not a blanket operator-only identity
+check: share operations also use the request's session-read authority. The `GET` is deliberately not split down to
 `orchestration:read`: the list names which answers have been published and to
 how many live links, which is a relationship fact of the same class
 `/api/environments/peers` is gated for.
@@ -158,13 +167,11 @@ at the 500-record ceiling — roughly 1700 req/s to saturate the runtime,
 unauthenticated. A rate limiter that bounds only *responses* is not a rate
 limiter.
 
-Reserve-then-refund holds both properties independently:
-
-- **Work bound** — a caller past the global budget is refused before the store
-  is touched, so a guess costs a map lookup, not a file read.
-- **Starvation immunity** — a request whose token resolves has its reservation
-  refunded, so legitimate holders never consume the budget an attacker is
-  spending, and exhausting it can never lock them out.
+Reserve-then-refund bounds lookup work: a request past the global budget is
+refused before the store is touched. A recognized token refunds its reservation
+while capacity remains. That refund does not guarantee availability after the
+global budget is exhausted, because every request must reserve before lookup.
+The earlier starvation-immunity claim overstated this mechanism.
 
 The metric `station.answer_share.views` still separates `share_not_found` from
 the rest, because the *response* is deliberately uninformative while the
@@ -297,14 +304,10 @@ accepted with rationale rather than fixed in this slice):
   as a hard per-token bound and it is not one. A keyed sketch or per-share
   storage would make it hard.
 
-- **Allow-by-spread in the viewer projection.**
-  `projectEnvelopeForShareViewer` spreads the envelope and re-checks only the
-  three named reference slots, so a field added to `TurnProvenanceEnvelope`
-  later ships to unauthenticated viewers by default. Tolerable today only
-  because the envelope is secret-free by construction (#1410 R3/AC3); the
-  durable fix is a deny-by-default rewrite that enumerates fields instead of
-  spreading. The hazard is called out inline at the spread so the next person
-  adding a ref slot sees it.
+- **Historical, resolved: allow-by-spread in the viewer projection.**
+  `projectEnvelopeForShareViewer` now enumerates the forwarded envelope fields.
+  The later #1598 note below records that correction; newly added fields are
+  not automatically disclosed to a share holder.
 - **The share recipient downloads the whole operator app** (L-2). Only the
   share VIEW is lazy; `main.tsx` still statically imports the app tree. No
   operator data is fetched or persisted for them, but the bundle is. Fixing it
@@ -331,12 +334,13 @@ Scope residuals:
   read-only excerpt surface and pulling the markdown renderer into a
   standalone, unauthenticated page is a larger decision (sanitisation surface,
   chunk weight) than this slice should make.
-- **No E2E coverage** — hosted CI is down (`local-merge-readiness.md`); the
-  journey is proven by focused component tests against rendered output.
-- **`ownerUserId` is only ever `null` today.** No caller passes one, because
-  the mint route's authenticated caller is the operator and Station has a
-  single cached OS-user identity (#1392 is the identity seam). The re-read
-  threading exists and is tested; it becomes load-bearing when identities do.
+- **Historical verification scope:** the original slice used focused rendered
+  component tests. Its then-current hosted-CI outage is not evidence of today's
+  CI state or of an executed end-to-end recipient journey.
+- **Personal shares record their current request owner.** The mint route now
+  supplies `authority.userId`, and public personal views re-read as that recorded
+  sharer. Hosted minting returns 409 until tenant-bound viewer authority is
+  implemented; it must not be advertised as working hosted sharing.
 - **v2 is the `AnswerShareRefAuthorization` seam.** Kontour-account identities
   (#1392) will answer the three reference questions independently — a viewer
   who is a member of the project may well open its trust report while still
@@ -414,7 +418,6 @@ slice adds or touches:
   rather than degrading sharing alone. The store document's `SCHEMA_VERSION`
   was deliberately NOT bumped and both new fields are absent-tolerant, so no
   existing home is affected by the upgrade itself.
-- **`ownerUserId` is still always `null`**, unchanged by this slice, and the
-  channel binding does not carry an identity of its own — a channel author is
-  a member id in the log, not a Station user, and conflating them is #1392's
-  question rather than this one's.
+- **Historical owner field:** this slice originally recorded `ownerUserId: null`.
+  Current personal minting supplies the request owner's ID, as described above.
+  A channel binding still does not supply a separate member identity.

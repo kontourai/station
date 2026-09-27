@@ -1,5 +1,14 @@
 # Optional Station connection broker
 
+> **Reading status: broker requirements with local implementation milestones.**
+> [Broker service](../../src-server/services/connections/self-hosted-broker-service.ts),
+> [connector](../../src-server/services/connections/self-hosted-broker-connector.ts),
+> [protected application dispatcher](../../src-server/services/connections/virtual-application.ts),
+> and [Device enrollment](../../packages/connect/src/core/brokerRouteEnrollment.ts)
+> own separate parts of the path. The local lab and recorded transport results
+> do not establish production enablement, native activation, or actual remote
+> delivery. Dated target sections preserve their original scope.
+
 > Status: architecture record for [#45](https://github.com/kontourai/station/issues/45).
 > The owner accepted delegated security judgment and required a free local test
 > path on September 12, 2026. Intermediary confidentiality and local testability
