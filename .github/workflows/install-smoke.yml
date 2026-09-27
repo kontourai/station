@@ -6,7 +6,12 @@ on:
       - 'install.sh'
       - '.gitattributes'
       - 'scripts/package-portable-release.sh'
+      - 'scripts/build-portable-server-archive.mjs'
+      - 'scripts/lib/portable-server-archive.mjs'
+      - 'scripts/smoke-install-prebuilt-archive.sh'
+      - 'packaging/portable-server/**'
       - 'packages/cli/src/commands/lifecycle.ts'
+      - 'packages/cli/src/commands/lifecycle-code-root.ts'
       - '.github/workflows/install-smoke.yml'
       - '.github/workflows/release.yml'
   workflow_dispatch:
@@ -20,11 +25,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        # TODO(#2675, PR 3): add a nightly leg once nightly ships as the
-        # prebuilt per-platform server archive (station-server-<os>-<arch>).
-        # This smoke packages the source tarball, which is not a nightly
-        # artifact; install.sh's nightly path is covered by
-        # scripts/__tests__/ecosystem-manifest.test.ts until then.
+        # These legs install the SOURCE release (station-portable.tar.gz,
+        # schema 1 manifest), built on the host. The prebuilt per-platform
+        # archive path, which nightly uses, is install-prebuilt-archive below.
         channel: [stable, preview]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -280,6 +283,71 @@ jobs:
         run: |
           set -uo pipefail
           for log in "$SMOKE_HOME"/.station/instances/*/logs/*.log /tmp/station-*.log; do
+            [ -f "$log" ] || continue
+            echo "===== $log (last 200 lines) ====="
+            tail -200 "$log"
+          done
+
+  # #2675 B2: the public-manifest path installs a prebuilt per-platform
+  # server archive. Builds two archives of this candidate on the runner,
+  # signs schema 2 manifests for them with a throwaway key under the pinned
+  # release key id (install.sh's test-only key override), then installs,
+  # starts, upgrades (`station upgrade`, from the recorded manifest URL) and
+  # uninstalls with NO Node.js on PATH, and fails if anything builds. The
+  # preview ring stands in for nightly: the archive builder stamps
+  # stable/preview provenance only until nightly publication (slice E).
+  install-prebuilt-archive:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: linux-x64
+          - runner: macos-15
+            target: darwin-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with: { install: false }
+      # Node.js builds and signs; install.sh and the launcher never see it.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: npm run dependencies:ci
+      - name: Confirm the runner is the matrix target
+        run: test "$(node -p 'process.platform + "-" + process.arch')" = "${{ matrix.target }}"
+      - run: npm run build
+      - name: Build two archives of this candidate
+        # The provenance SHA is the commit actually checked out: under
+        # pull_request_target GITHUB_SHA is the base tip, not the candidate.
+        run: |
+          set -euo pipefail
+          for build in 1 2; do
+            npm run build:portable-server -- --ref "v0.0.0-preview.$build" \
+              --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-$build"
+          done
+      - name: Install, start, upgrade and uninstall with no Node.js on PATH
+        run: |
+          scripts/smoke-install-prebuilt-archive.sh \
+            "$RUNNER_TEMP/archive-1/station-server-${{ matrix.target }}.tar.gz" \
+            "$RUNNER_TEMP/archive-2/station-server-${{ matrix.target }}.tar.gz" \
+            "$RUNNER_TEMP/prebuilt-install-smoke"
+      - name: Dump Station instance logs on failure
+        if: failure()
+        run: |
+          set -uo pipefail
+          for log in "$RUNNER_TEMP"/prebuilt-install-smoke/home/.station/instances/*/logs/*.log; do
             [ -f "$log" ] || continue
             echo "===== $log (last 200 lines) ====="
             tail -200 "$log"

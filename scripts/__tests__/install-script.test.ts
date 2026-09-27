@@ -1,8 +1,9 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync, type KeyObject } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -16,8 +17,15 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import {
+  buildPrebuiltArchive,
+  hostTarget,
+  type PrebuiltArchive,
+  signArchiveManifest,
+} from './fixtures/prebuilt-archive.js';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
 const installScript = join(repoRoot, 'install.sh');
@@ -568,12 +576,14 @@ describe('one-line Station installer', {
     expect(readlinkSync(current)).toMatch(/\/releases\/[0-9a-f]{64}$/);
     const statePath = join(first.installRoot, '.station-release-state.json');
     expect(JSON.parse(readFileSync(statePath, 'utf8'))).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       channel: 'stable',
       releaseChannel: 'stable',
       installRoot: realpathSync(first.installRoot),
       stationRoot: realpathSync(join(first.home, '.station')),
       stationHome: realpathSync(first.stationHome),
+      // The authenticated GitHub-release path has no public manifest.
+      manifestUrl: null,
     });
     expect(statSync(statePath).mode & 0o777).toBe(0o600);
   });
@@ -672,7 +682,7 @@ describe('one-line Station installer', {
         ),
       ),
     ).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       channel: 'beta',
       releaseChannel: 'preview',
     });
@@ -702,7 +712,7 @@ describe('one-line Station installer', {
         ),
       ),
     ).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       channel: 'beta',
       releaseChannel: 'preview',
     });
@@ -734,7 +744,7 @@ describe('one-line Station installer', {
         ),
       ),
     ).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       channel: 'stable',
       releaseChannel: 'stable',
       stationHome: realpathSync(installed.stationHome),
@@ -1563,5 +1573,525 @@ describe('one-line Station installer', {
     expect(rejected.result.stderr).toContain('no files were removed');
     expect(existsSync(installed.installRoot)).toBe(true);
     expect(existsSync(join(installed.binDir, 'station'))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Prebuilt server archives (#2675 slice B2): the public-manifest path
+// installs a verified per-platform archive into
+// <install root>/versions/<version>, with no build and no host Node.js.
+
+const RELEASE_KEY_ID = 'station-portable-release-2026-09';
+
+type ArchiveHarness = {
+  root: string;
+  home: string;
+  stationRoot: string;
+  installRoot: string;
+  stationHome: string;
+  binDir: string;
+  launcher: string;
+  cliLog: string;
+  privateKey: KeyObject;
+  publicKeyPath: string;
+};
+
+function archiveHarness(root: string): ArchiveHarness {
+  const home = join(root, 'home');
+  const stationRoot = join(home, '.station');
+  mkdirSync(home, { recursive: true });
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  const publicKeyPath = join(root, 'test-public.pem');
+  writeFileSync(
+    publicKeyPath,
+    publicKey.export({ format: 'pem', type: 'spki' }),
+  );
+  return {
+    root,
+    home,
+    stationRoot,
+    installRoot: join(stationRoot, 'installs', 'stable'),
+    stationHome: join(stationRoot, 'instances', 'stable'),
+    binDir: join(home, '.local', 'bin'),
+    launcher: join(home, '.local', 'bin', 'station'),
+    cliLog: join(root, 'cli.log'),
+    privateKey,
+    publicKeyPath,
+  };
+}
+
+/** Runs install.sh against a signed archive manifest, stable ring. */
+function runArchiveInstaller(
+  harness: ArchiveHarness,
+  manifestPath: string,
+  args: string[] = [],
+  env: Record<string, string> = {},
+  script = installScript,
+) {
+  const { STATION_CHANNEL: _channel, ...inherited } = process.env;
+  return spawnSync('sh', [script, ...args], {
+    encoding: 'utf8',
+    timeout: INSTALLER_RUN_TIMEOUT_MS,
+    windowsHide: true,
+    env: {
+      ...inherited,
+      HOME: harness.home,
+      GH_TOKEN: '',
+      GITHUB_TOKEN: '',
+      STATION_ROOT: harness.stationRoot,
+      STATION_HOME: harness.stationHome,
+      STATION_INSTALL_ROOT: harness.installRoot,
+      STATION_BIN_DIR: harness.binDir,
+      STATION_VERSION: '',
+      STATION_INSTALL_ALLOW_ROLLBACK: '',
+      STATION_INSTALL_PUBLIC_MANIFEST_URL: pathToFileURL(manifestPath).href,
+      STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: pathToFileURL(
+        harness.publicKeyPath,
+      ).href,
+      STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '1',
+      STATION_FIXTURE_CLI_LOG: harness.cliLog,
+      // A source release installed through the GitHub path logs here.
+      STATION_TEST_LOG: join(harness.root, 'station.log'),
+      STATION_TEST_RUNNING: join(harness.root, 'station.log.running'),
+      ...env,
+    },
+  });
+}
+
+function archiveManifest(
+  harness: ArchiveHarness,
+  archive: PrebuiltArchive,
+  overrides: Parameters<typeof signArchiveManifest>[4] = {},
+): string {
+  return signArchiveManifest(
+    harness.root,
+    archive,
+    harness.privateKey,
+    RELEASE_KEY_ID,
+    overrides,
+  );
+}
+
+function cliCalls(harness: ArchiveHarness): string[] {
+  return existsSync(harness.cliLog)
+    ? readFileSync(harness.cliLog, 'utf8').trim().split('\n').filter(Boolean)
+    : [];
+}
+
+/** Every regular file and directory under `root` with a write bit set. */
+function writableEntries(root: string): string[] {
+  const writable: string[] = [];
+  const visit = (path: string) => {
+    const info = lstatSync(path);
+    if ((info.mode & 0o222) !== 0) writable.push(path);
+    if (info.isDirectory())
+      for (const entry of readdirSync(path)) visit(join(path, entry));
+  };
+  visit(root);
+  return writable;
+}
+
+/**
+ * A PATH with the base OS tools and no Node.js: a directory that holds node
+ * is replaced by a farm of links to everything else in it.
+ */
+function pathWithoutNode(root: string): string {
+  const entries: string[] = [];
+  for (const dir of ['/usr/bin', '/bin', '/usr/sbin', '/sbin']) {
+    if (!existsSync(dir)) continue;
+    if (!existsSync(join(dir, 'node'))) {
+      entries.push(dir);
+      continue;
+    }
+    const farm = join(root, `no-node${dir.replaceAll('/', '-')}`);
+    mkdirSync(farm, { recursive: true });
+    for (const name of readdirSync(dir))
+      if (!['node', 'npm', 'npx', 'corepack'].includes(name))
+        symlinkSync(join(dir, name), join(farm, name));
+    entries.push(farm);
+  }
+  const path = entries.join(':');
+  expect(
+    spawnSync('/bin/sh', ['-c', 'command -v node'], { env: { PATH: path } })
+      .status,
+  ).not.toBe(0);
+  return path;
+}
+
+describe('prebuilt archive installs (#2675 B2)', {
+  timeout: MAX_INSTALLER_RUNS_PER_TEST * INSTALLER_RUN_TIMEOUT_MS,
+}, () => {
+  const tempDir = trackTempDirs();
+
+  it('installs the host archive as a read-only version with a sentinel, current, launcher v2 and state schema 4, and never builds', () => {
+    const harness = archiveHarness(tempDir('station-archive-install-'));
+    const archive = buildPrebuiltArchive(harness.root, '1.2.3');
+    const manifest = archiveManifest(harness, archive);
+    const result = runArchiveInstaller(harness, manifest);
+    expect(result.status, result.stderr).toBe(0);
+
+    const installRoot = realpathSync(harness.installRoot);
+    const version = join(installRoot, 'versions', '1.2.3');
+    expect(readlinkSync(join(installRoot, 'current'))).toBe(version);
+    expect(
+      readFileSync(join(version, '.station-install-complete'), 'utf8'),
+    ).toBe(`${archive.sha256}\n`);
+    expect(existsSync(join(installRoot, 'releases'))).toBe(false);
+    // The version tree is immutable once installed.
+    expect(writableEntries(version)).toEqual([]);
+    expect(readFileSync(harness.launcher, 'utf8')).toBe(
+      [
+        '#!/bin/sh',
+        '# station-owned-launcher-v2',
+        `export STATION_CHANNEL='stable'`,
+        `export STATION_ROOT='${realpathSync(harness.stationRoot)}'`,
+        `export STATION_HOME='${realpathSync(harness.stationHome)}'`,
+        `export STATION_INSTALL_ROOT='${installRoot}'`,
+        `exec '${installRoot}/current/bin/station' "$@"`,
+        '',
+      ].join('\n'),
+    );
+    expect(
+      JSON.parse(
+        readFileSync(join(installRoot, '.station-release-state.json'), 'utf8'),
+      ),
+    ).toEqual({
+      schemaVersion: 4,
+      channel: 'stable',
+      releaseChannel: 'stable',
+      installRoot,
+      stationRoot: realpathSync(harness.stationRoot),
+      stationHome: realpathSync(harness.stationHome),
+      manifestUrl: pathToFileURL(manifest).href,
+    });
+    // Started through the launcher, from the version, and nothing built.
+    expect(cliCalls(harness)).toEqual([
+      `${version}|start --base=${realpathSync(harness.stationHome)} --port=18141 --ui-port=18000`,
+    ]);
+    expect(result.stdout).not.toMatch(
+      /Building|Installing Station dependencies/,
+    );
+  });
+
+  it('bootstraps the pinned Node.js when none is on PATH, and uninstalls with the installed one', () => {
+    const harness = archiveHarness(tempDir('station-archive-no-node-'));
+    const archive = buildPrebuiltArchive(harness.root, '1.2.3');
+    const manifest = archiveManifest(harness, archive);
+    // A stand-in for the official distribution: bin/node runs this Node.js
+    // and records that it was the one used.
+    const { id } = hostTarget();
+    const file = `node-v24.21.0-${id}.tar.gz`;
+    const distRoot = join(harness.root, 'node-dist');
+    const nodeUses = join(harness.root, 'pinned-node-uses');
+    executable(
+      join(distRoot, 'src', `node-v24.21.0-${id}`, 'bin', 'node'),
+      `#!/bin/sh\nprintf 'x' >> '${nodeUses}'\nexec '${process.execPath}' "$@"\n`,
+    );
+    execFileSync('tar', [
+      '-czf',
+      join(distRoot, file),
+      '-C',
+      join(distRoot, 'src'),
+      `node-v24.21.0-${id}`,
+    ]);
+    const digest = createHash('sha256')
+      .update(readFileSync(join(distRoot, file)))
+      .digest('hex');
+    const pristine = readFileSync(installScript, 'utf8');
+    const pinLine = new RegExp(
+      `(    ${id}\\)\\n      pinned_node_file='${file.replaceAll('.', '\\.')}'\\n      pinned_node_sha256=)[0-9a-f]{64}`,
+    );
+    expect(pristine).toMatch(pinLine);
+    const withPins = (sha256: string) =>
+      pristine
+        .replace(
+          "PINNED_NODE_ORIGIN='https://nodejs.org/dist/v24.21.0/'",
+          `PINNED_NODE_ORIGIN='${pathToFileURL(distRoot).href}/'`,
+        )
+        .replace(pinLine, `$1${sha256}`);
+    const script = join(harness.root, 'install-pinned-node.sh');
+    const noNode = { PATH: pathWithoutNode(harness.root) };
+
+    // A distribution that does not match its pin is refused before use.
+    writeFileSync(script, withPins('0'.repeat(64)));
+    const refused = runArchiveInstaller(harness, manifest, [], noNode, script);
+    expect(refused.stderr).toContain(
+      `${file} does not match its pinned sha256`,
+    );
+    expect(refused.status).toBe(1);
+    expect(existsSync(nodeUses)).toBe(false);
+    expect(existsSync(harness.installRoot)).toBe(false);
+
+    writeFileSync(script, withPins(digest));
+    const installed = runArchiveInstaller(
+      harness,
+      manifest,
+      [],
+      noNode,
+      script,
+    );
+    expect(installed.status, installed.stderr).toBe(0);
+    expect(installed.stdout).toContain(
+      'Downloading Node.js 24.21.0 to verify this install',
+    );
+    expect(readFileSync(nodeUses, 'utf8').length).toBeGreaterThan(0);
+    expect(cliCalls(harness)[0]).toContain('|start ');
+
+    // Uninstall finds the installed archive's own Node.js: no download.
+    rmSync(nodeUses);
+    const removed = runArchiveInstaller(
+      harness,
+      manifest,
+      ['uninstall'],
+      noNode,
+      script,
+    );
+    expect(removed.status, removed.stderr).toBe(0);
+    expect(removed.stdout).not.toContain('Downloading Node.js');
+    expect(existsSync(nodeUses)).toBe(false);
+    expect(existsSync(harness.installRoot)).toBe(false);
+    expect(existsSync(harness.launcher)).toBe(false);
+    expect(existsSync(harness.stationHome)).toBe(true);
+  });
+
+  it.each([
+    {
+      name: 'a size the manifest does not sign',
+      manifest: (archive: PrebuiltArchive) => ({
+        artifact: { size: archive.size + 1 },
+      }),
+      error: 'bytes; the signed manifest says',
+    },
+    {
+      name: 'a digest the manifest does not sign',
+      manifest: () => ({ artifact: { sha256: '0'.repeat(64) } }),
+      error: 'release checksum did not match',
+    },
+    {
+      name: 'no archive for this host',
+      manifest: () => ({
+        artifact:
+          hostTarget().os === 'darwin'
+            ? {
+                os: 'linux',
+                arch: 'x64',
+                name: 'station-server-linux-x64.tar.gz',
+              }
+            : {
+                os: 'darwin',
+                arch: 'arm64',
+                name: 'station-server-darwin-arm64.tar.gz',
+              },
+      }),
+      error: `publishes no server archive for this host (${hostTarget().id})`,
+    },
+    {
+      name: 'a launcher protocol this installer does not write',
+      manifest: () => ({ payload: { launcherProtocol: { min: 2, max: 3 } } }),
+      error: 'the release needs a newer installer',
+    },
+    {
+      name: 'a missing marker',
+      archive: { marker: null },
+      error: 'is not a prebuilt Station archive',
+    },
+    {
+      name: 'a wrong marker',
+      archive: { marker: 'station-prebuilt-archive-v2\n' },
+      error: 'release archive marker is invalid',
+    },
+    {
+      name: 'provenance for another commit',
+      archive: { provenance: { sha: 'b'.repeat(40) } },
+      error: 'release provenance is invalid',
+    },
+    {
+      name: 'provenance for another ring',
+      archive: {
+        provenance: {
+          channel: 'beta',
+          releaseChannel: 'preview',
+          prerelease: true,
+        },
+      },
+      error: 'release provenance is invalid',
+    },
+    {
+      name: 'a launcher that misreports its Node.js',
+      archive: {
+        launcher: `#!/bin/sh\nexec "$(dirname "$0")/../runtime/bin/node" -e 'process.stdout.write(JSON.stringify({ref:"v1.2.3",sha:"${'a'.repeat(40)}",channel:"stable",releaseChannel:"stable",node:"v1.0.0"}))'\n`,
+      },
+      error: 'did not report itself as Station v1.2.3',
+    },
+    {
+      name: 'a launcher that does not run',
+      archive: { launcher: '#!/bin/sh\nexit 3\n' },
+      error: 'did not report itself as Station v1.2.3',
+    },
+  ])('refuses $name and leaves nothing installed', (scenario) => {
+    const harness = archiveHarness(tempDir('station-archive-refuse-'));
+    const archive = buildPrebuiltArchive(
+      harness.root,
+      '1.2.3',
+      scenario.archive ?? {},
+    );
+    const result = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, archive, scenario.manifest?.(archive) ?? {}),
+    );
+    expect(result.stderr).toContain(scenario.error);
+    expect(result.status).toBe(1);
+    expect(existsSync(join(harness.installRoot, 'current'))).toBe(false);
+    expect(existsSync(join(harness.installRoot, 'versions', '1.2.3'))).toBe(
+      false,
+    );
+    expect(existsSync(harness.launcher)).toBe(false);
+    expect(cliCalls(harness)).toEqual([]);
+  });
+
+  it('upgrades a source release to an archive, keeps it as the rollback target, and prunes it after the next upgrade', () => {
+    const root = tempDir('station-archive-upgrade-');
+    const fixture = makeFixtureArchive(root);
+    const source = runInstaller(root, fixture);
+    expect(source.result.status, source.result.stderr).toBe(0);
+    const installRoot = realpathSync(source.installRoot);
+    const sourceRelease = readlinkSync(join(installRoot, 'current'));
+    expect(sourceRelease).toMatch(/\/releases\/[0-9a-f]{64}$/);
+    expect(readFileSync(join(source.binDir, 'station'), 'utf8')).toContain(
+      '# station-owned-launcher-v1\n',
+    );
+
+    const harness = archiveHarness(root);
+    const first = buildPrebuiltArchive(root, '1.2.3');
+    const upgraded = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, first),
+    );
+    expect(upgraded.status, upgraded.stderr).toBe(0);
+    const firstVersion = join(installRoot, 'versions', '1.2.3');
+    expect(readlinkSync(join(installRoot, 'current'))).toBe(firstVersion);
+    // The v1 launcher was this install's own, so it was replaced, not refused.
+    expect(readFileSync(harness.launcher, 'utf8')).toContain(
+      '# station-owned-launcher-v2\n',
+    );
+    // The source release was stopped before the switch and is kept.
+    expect(readFileSync(fixture.log, 'utf8')).toContain(
+      `stop --base=${realpathSync(harness.stationHome)}`,
+    );
+    expect(existsSync(sourceRelease)).toBe(true);
+
+    const second = buildPrebuiltArchive(root, '1.2.4');
+    const next = runArchiveInstaller(harness, archiveManifest(harness, second));
+    expect(next.status, next.stderr).toBe(0);
+    expect(readlinkSync(join(installRoot, 'current'))).toBe(
+      join(installRoot, 'versions', '1.2.4'),
+    );
+    // Active and previous are kept; the older source release is gone.
+    expect(readdirSync(join(installRoot, 'versions')).sort()).toEqual([
+      '1.2.3',
+      '1.2.4',
+    ]);
+    expect(readdirSync(join(installRoot, 'releases'))).toEqual([]);
+    // The stop before the switch ran the previous version's own CLI.
+    expect(cliCalls(harness)).toContain(
+      `${firstVersion}|stop --base=${realpathSync(harness.stationHome)}`,
+    );
+  });
+
+  it('restores the source release, its launcher and state when the archive does not start', () => {
+    const root = tempDir('station-archive-rollback-');
+    const fixture = makeFixtureArchive(root);
+    const source = runInstaller(root, fixture);
+    expect(source.result.status, source.result.stderr).toBe(0);
+    const installRoot = realpathSync(source.installRoot);
+    const sourceRelease = readlinkSync(join(installRoot, 'current'));
+    const launcherBefore = readFileSync(join(source.binDir, 'station'), 'utf8');
+    const statePath = join(installRoot, '.station-release-state.json');
+    const stateBefore = readFileSync(statePath, 'utf8');
+
+    const harness = archiveHarness(root);
+    const archive = buildPrebuiltArchive(root, '1.2.3', { failStart: true });
+    const failed = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, archive),
+    );
+    expect(failed.stderr).toContain(
+      'the new release did not start; the previous release was restored',
+    );
+    expect(failed.status).toBe(1);
+    expect(readlinkSync(join(installRoot, 'current'))).toBe(sourceRelease);
+    expect(readFileSync(harness.launcher, 'utf8')).toBe(launcherBefore);
+    expect(readFileSync(statePath, 'utf8')).toBe(stateBefore);
+    // The restored release was started again.
+    expect(existsSync(`${fixture.log}.running`)).toBe(true);
+  });
+
+  it('puts the running version back when an explicit same-version replacement does not start', () => {
+    const harness = archiveHarness(tempDir('station-archive-replace-'));
+    const original = buildPrebuiltArchive(harness.root, '1.2.3', {
+      variant: 'A',
+    });
+    expect(
+      runArchiveInstaller(harness, archiveManifest(harness, original)).status,
+    ).toBe(0);
+    const version = join(
+      realpathSync(harness.installRoot),
+      'versions',
+      '1.2.3',
+    );
+    const replacement = buildPrebuiltArchive(harness.root, '1.2.3', {
+      variant: 'B',
+      failStart: true,
+    });
+    const failed = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, replacement),
+      [],
+      { STATION_VERSION: 'v1.2.3', STATION_INSTALL_ALLOW_ROLLBACK: '1' },
+    );
+    expect(failed.stderr).toContain(
+      'the new release did not start; the previous release was restored',
+    );
+    expect(failed.status).toBe(1);
+    // The original bytes are back under the version's own name, current
+    // names it, and nothing moved aside is left behind.
+    expect(readlinkSync(join(harness.installRoot, 'current'))).toBe(version);
+    expect(existsSync(join(version, 'variant-A'))).toBe(true);
+    expect(existsSync(join(version, 'variant-B'))).toBe(false);
+    expect(readdirSync(dirname(version))).toEqual(['1.2.3']);
+    expect(
+      readFileSync(join(version, '.station-install-complete'), 'utf8'),
+    ).toBe(`${original.sha256}\n`);
+    // Stopped for the swap, then the restored original was started again.
+    const calls = cliCalls(harness);
+    expect(calls.at(-1)).toMatch(new RegExp(`^${version}\\|start `));
+    expect(calls.filter((call) => call.includes('|stop '))).toHaveLength(1);
+  });
+
+  it('uninstalls a read-only archive install and preserves data', () => {
+    const harness = archiveHarness(tempDir('station-archive-uninstall-'));
+    const archive = buildPrebuiltArchive(harness.root, '1.2.3');
+    const manifest = archiveManifest(harness, archive);
+    expect(runArchiveInstaller(harness, manifest).status).toBe(0);
+    const version = join(
+      realpathSync(harness.installRoot),
+      'versions',
+      '1.2.3',
+    );
+    // The documented uninstall runs the installed version's own install.sh.
+    const removed = runArchiveInstaller(
+      harness,
+      manifest,
+      ['uninstall'],
+      {},
+      join(harness.installRoot, 'current', 'install.sh'),
+    );
+    expect(removed.status, removed.stderr).toBe(0);
+    expect(cliCalls(harness).at(-1)).toBe(
+      `${version}|stop --base=${realpathSync(harness.stationHome)}`,
+    );
+    expect(existsSync(harness.installRoot)).toBe(false);
+    expect(existsSync(harness.launcher)).toBe(false);
+    expect(existsSync(harness.stationHome)).toBe(true);
   });
 });

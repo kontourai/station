@@ -4873,12 +4873,17 @@ export function homeRestore(
 }
 
 interface PackagedInstallState {
-  schemaVersion: 3;
+  schemaVersion: 3 | 4;
   channel: PackagedRuntimeChannel;
   releaseChannel: PackagedReleaseChannel;
   installRoot: string;
   stationHome: string;
   stationRoot: string;
+  /**
+   * Schema 4: the signed public manifest this install came from, or null for
+   * the authenticated GitHub-release path. Schema 3 predates it.
+   */
+  manifestUrl?: string | null;
 }
 
 function readSafePackagedFile(
@@ -4912,7 +4917,10 @@ function readSafePackagedInstallState(path: string): PackagedInstallState {
     throw new Error('packaged install state is malformed');
   }
   if (
-    value.schemaVersion !== 3 ||
+    (value.schemaVersion !== 3 && value.schemaVersion !== 4) ||
+    (value.schemaVersion === 4 &&
+      value.manifestUrl !== null &&
+      typeof value.manifestUrl !== 'string') ||
     !isPackagedReleaseChannel(value.releaseChannel) ||
     value.channel !== STATION_RELEASE_RINGS[value.releaseChannel].runtimeChannel
   ) {
@@ -4939,6 +4947,11 @@ function assertSafePackagedDirectory(path: string, description: string): void {
  * A release without `.git` is never a source checkout. It must prove the
  * installer-owned state before it may touch the network; falling through to
  * Git would turn old or copied release files into an unsigned update path.
+ *
+ * Both installer layouts put the active release two levels below the install
+ * root: `<root>/releases/<sha>` (a source release) and
+ * `<root>/versions/<version>` (a prebuilt archive, #2675 B2). Either one
+ * carries the install.sh that installed it, and the upgrade re-runs it.
  */
 function delegatePackagedUpgradeIfPresent(
   beforeInstall: (stationHome: string) => void,
@@ -4994,6 +5007,12 @@ function delegatePackagedUpgradeIfPresent(
   readSafePackagedFile(installer, 'packaged release installer');
   beforeInstall(state.stationHome);
 
+  // The recorded manifest makes the upgrade follow the same signed path the
+  // install came from with no environment (#2675); an explicit
+  // STATION_INSTALL_PUBLIC_MANIFEST_URL still wins.
+  const manifestUrl =
+    process.env.STATION_INSTALL_PUBLIC_MANIFEST_URL ||
+    (typeof state.manifestUrl === 'string' ? state.manifestUrl : undefined);
   execFileSync('sh', ['./install.sh', 'install'], {
     cwd: CWD,
     env: {
@@ -5002,6 +5021,9 @@ function delegatePackagedUpgradeIfPresent(
       STATION_ROOT: state.stationRoot,
       STATION_HOME: state.stationHome,
       STATION_INSTALL_ROOT: state.installRoot,
+      ...(manifestUrl
+        ? { STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl }
+        : {}),
     },
     stdio: 'inherit',
     windowsHide: true,
@@ -5179,27 +5201,38 @@ export interface UpgradeOptions extends BuildOptions {
 }
 
 /**
- * #2675: a prebuilt archive is neither a git checkout nor an install.sh
- * release tree, so neither upgrade path below applies to it: there is no
- * `git pull`, no toolchain to rebuild with, and no installer-owned
- * `releases/`+`current` layout to delegate to. Installing a newer archive is
- * the installer's job (slice B2). Until it lands, name the manual route.
+ * #2675: a prebuilt archive has no `git pull` and no toolchain to rebuild
+ * with. One that install.sh installed (`<install root>/versions/<version>`
+ * with the installer's state beside it) upgrades by re-running its installer,
+ * like a source release. Any other extracted archive has no installer-owned
+ * layout to update, so name the manual route.
  */
+export function isInstallerOwnedArchiveVersion(root: string): boolean {
+  const versions = resolve(root, '..');
+  return (
+    basename(versions) === 'versions' &&
+    existsSync(join(versions, '..', '.station-release-state.json'))
+  );
+}
+
 export function renderPrebuiltArchiveUpgradeRefusal(
   codeRoot: Extract<LifecycleCodeRoot, { kind: 'prebuilt-archive' }>,
   stateDir: string,
 ): string {
   const { release } = codeRoot;
   return [
-    `station upgrade cannot update a prebuilt Station archive in place: ${codeRoot.root} is ${release.ref} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring). Nothing was changed.`,
-    'Upgrading an archive install is the installer’s job, which arrives with the installer slice (#2675, B2).',
-    'To move to a newer version now: download the newer station-server-<os>-<arch> archive for this ring, run `station stop` here, extract the new archive into its own directory, and run `station start` from there.',
+    `station upgrade cannot update a prebuilt Station archive in place: ${codeRoot.root} is ${release.ref} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring), and install.sh did not install it. Nothing was changed.`,
+    'Install through install.sh to get upgrades (`station upgrade` re-runs the installer that installed the version).',
+    'To move this copy to a newer version by hand: download the newer station-server-<os>-<arch> archive for this ring, run `station stop` here, extract the new archive into its own directory, and run `station start` from there.',
     `Instance state for the ${release.channel} channel lives in ${stateDir}, outside every version directory, so the new version sees and stops what this one started.`,
   ].join('\n');
 }
 
 export async function upgrade(options: UpgradeOptions = {}): Promise<void> {
-  if (LIFECYCLE_CODE_ROOT.kind === 'prebuilt-archive') {
+  if (
+    LIFECYCLE_CODE_ROOT.kind === 'prebuilt-archive' &&
+    !isInstallerOwnedArchiveVersion(LIFECYCLE_CODE_ROOT.root)
+  ) {
     throw new Error(
       renderPrebuiltArchiveUpgradeRefusal(
         LIFECYCLE_CODE_ROOT,

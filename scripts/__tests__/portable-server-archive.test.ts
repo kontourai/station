@@ -308,6 +308,7 @@ describe('portable archive workflow paths filter', () => {
       '.github/workflows/portable-server-archives.yml',
       '.nvmrc',
       'config/portable-server-node-runtime.json',
+      'install.sh',
       'package.json',
       'packages/cli/src/cli.ts',
       'packaging/portable-server/bin/station.mjs',

@@ -390,6 +390,9 @@ function treeFootprint(root) {
  *   .station-release.json   provenance (the installer's schemaVersion 2 shape)
  *   bin/station[.cmd]       launcher that runs runtime/, never a host Node
  *   bin/station.mjs         entry: release identity for --version, else the CLI
+ *   install.sh              the installer that installed this version, which
+ *                           `station upgrade` and the documented uninstall
+ *                           (`<install root>/current/install.sh uninstall`) run
  *   lib/station-cli.mjs     the lifecycle-capable Station CLI, bundled
  *   runtime/                the pinned, digest-verified official Node.js
  *   .station-prebuilt-archive  tells the CLI there is nothing to build
@@ -442,6 +445,11 @@ async function stagePortableServerTree({
   });
   stageNodeRuntime(target, nodeDistributionBytes, join(stageRoot, 'runtime'));
   stageLaunchers(projectRoot, stageRoot);
+  // As in a source release (whose tarball is the repository), the archive
+  // carries the installer: packaged `station upgrade` re-runs it, so the
+  // version that verifies the next one is the installed one (#2675).
+  cpSync(join(projectRoot, 'install.sh'), join(stageRoot, 'install.sh'));
+  chmodSync(join(stageRoot, 'install.sh'), 0o755);
   writeFileSync(
     join(stageRoot, '.station-release.json'),
     `${JSON.stringify(release, null, 2)}\n`,

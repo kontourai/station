@@ -60,6 +60,46 @@ nightly install over a port that is already in use. Stable and beta desktop
 apps share their channels' defaults in the same way; the installer does not
 yet guard those channels.
 
+## Prebuilt archives and source releases
+
+A signed public manifest (schema 2) names one prebuilt server archive per
+platform (`station-server-<os>-<arch>`). `install.sh` verifies the manifest
+against the pinned keys, picks this host's archive, checks its size and
+sha256, its `.station-prebuilt-archive` marker and its `.station-release.json`
+provenance, and extracts it to
+`$STATION_ROOT/installs/<channel>/versions/<version>/`. It then runs the
+version's own `bin/station --version`, which must report the signed version
+on the manifest's Node.js, writes the `.station-install-complete` sentinel,
+and makes the directory read-only. `current` points at the active version,
+and the launcher (`station-owned-launcher-v2`) runs `current/bin/station`.
+Nothing is built, and the archive's bundled Node.js runs Station. After a
+successful start, the installer keeps the active version and the one it
+replaced, and removes the rest.
+
+Verifying the manifest still needs a Node.js at install time. `install.sh`
+uses a Node.js 20 or newer from `PATH`. If there is none, it uses the Node.js
+inside the channel's installed archive, so `station upgrade` and uninstall
+need no host Node.js. Otherwise, only on the public-manifest path, it
+downloads the official Node.js distribution pinned by sha256 in
+`config/portable-server-node-runtime.json` (a generated block in
+`install.sh`), and uses it only to verify and extract.
+
+The install state (`.station-release-state.json`, schema 4) records the
+manifest URL. A packaged `station upgrade` re-runs the installed version's
+`install.sh` with that URL, so it needs no environment variable. An explicit
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` still wins. Under an installed service,
+`station upgrade` refuses, as it does for every packaged install.
+
+Source releases are still supported and are built on the host. They come from
+the authenticated GitHub-release path, which is how stable and beta install
+today, and from a schema 1 public manifest (`station-portable.tar.gz`), which
+stable and preview can publish until those rings ship archives. A source
+release lives in `installs/<channel>/releases/<sha256>/`, needs Node.js 24
+and npm on the host, and uses the v1 launcher. An install can move from a
+source release to an archive: the installer recognises either launcher as its
+own and keeps the source release as the rollback target. Uninstall removes
+both layouts.
+
 ## Platform identity matrix
 
 `config/channel-platform-matrix.json` is the explicit cross-platform contract
