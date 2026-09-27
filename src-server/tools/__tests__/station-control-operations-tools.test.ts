@@ -91,7 +91,10 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-type ToolResult = { content: Array<{ type: 'text'; text: string }> };
+type ToolResult = {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+};
 type ToolHandler = (...args: any[]) => Promise<ToolResult>;
 
 async function registerTools(): Promise<Record<string, ToolHandler>> {
@@ -791,9 +794,14 @@ describe('station-control operations tools (characterization)', () => {
     });
     const tools = await registerTools();
 
-    await expect(tools.list_delegation_targets({})).rejects.toThrow(
-      'Engine connections are unavailable on the selected Station',
-    );
+    // #2795: the failure is an MCP error in the delegation family's shape;
+    // the sentence stays generic (no remote path leaks).
+    const result = await tools.list_delegation_targets({});
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      success: false,
+      error: 'Engine connections are unavailable on the selected Station',
+    });
   });
 
   test('get_project forwards the single-project envelope', async () => {

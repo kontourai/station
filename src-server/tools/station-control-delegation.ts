@@ -1875,7 +1875,8 @@ function foregroundIndeterminateDetail(
 
 /** Preserve no-retry foreground evidence when a remote Station returns it. */
 async function postForegroundMessage(
-  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'>,
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'> &
+    Partial<Pick<DelegationTarget, 'kind'>>,
   path: string,
   body: unknown,
   unavailableMessage: string,
@@ -1919,7 +1920,11 @@ async function postForegroundMessage(
     );
   }
   if (!response.ok || !payload.success || payload.data === undefined) {
-    const error = new Error(payload.error || unavailableMessage) as Error & {
+    const message = payload.error || unavailableMessage;
+    // #2708/#2795: only this Station's own answer is relayed to the agent,
+    // as a `LocalStationRefusal` cause; `code` below is the route contract.
+    const cause = localRefusalOf(target, payload, message);
+    const error = new Error(message, cause ? { cause } : undefined) as Error & {
       status?: number;
       code?: string;
     };

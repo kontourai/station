@@ -35,7 +35,41 @@ function registeredTools(): Record<string, { handler: Handler }> {
   )._registeredTools;
 }
 
+/**
+ * Minimal valid arguments for the tools whose handlers validate their input
+ * before any request: without them a tool throws on its own argument check
+ * and its real refusal path never runs. (The same shapes as
+ * `station-control-policy-routes.test.ts`.) Every other tool runs with `{}`.
+ */
+const MINIMAL_ARGS: Record<string, Record<string, unknown>> = {
+  continue_task: { taskId: 'task:1', message: 'One more thing' },
+  propose_plugin_install: { source: '/tmp/plugin', rationale: 'Needed.' },
+  validate_plugin: { source: '/tmp/plugin' },
+  update_config: { updates: { theme: 'dark' } },
+  run_independent_review: {
+    request: {
+      requestId: 'request-1',
+      mode: 'initial',
+      target: {
+        kind: 'git-range',
+        projectSlug: 'p',
+        baseRevision: 'origin/main',
+        headRevision: 'HEAD',
+      },
+      implementerAgentSlug: 'terra',
+      reviewers: [
+        {
+          reviewerId: 'reviewer-1',
+          executorAgentSlug: 'reviewer-agent',
+          lens: { id: 'failure-totality', instructions: 'Review.' },
+        },
+      ],
+    },
+  },
+};
+
 async function run(
+  name: string,
   handler: Handler,
   caller: 'none' | 'bound',
 ): Promise<unknown> {
@@ -54,7 +88,7 @@ async function run(
             }
           : null,
     },
-    () => handler({}, {}),
+    () => handler(MINIMAL_ARGS[name] ?? {}, {}),
   );
   let timer: NodeJS.Timeout | undefined;
   try {
@@ -116,6 +150,17 @@ const NOT_AN_ERROR_BY_DESIGN: Record<'none' | 'bound', readonly string[]> = {
   bound: ['get_basis', 'get_session_inventory', 'get_task_basis'],
 };
 
+/**
+ * Tools that still answer a refusal by throwing. None today: the delegation
+ * tools answer through `delegationToolResult`, and every other family through
+ * `jsonToolResult`. A throw is still an MCP error, but it reaches the invoke
+ * route as `tool_threw` with no typed code, so a new one must be named here.
+ */
+const STILL_THROWS: Record<'none' | 'bound', readonly string[]> = {
+  none: [],
+  bound: [],
+};
+
 describe('every station-control failure is an MCP error (#2795)', () => {
   test.each(['none', 'bound'] as const)(
     'caller %s: only the pinned app views answer without an MCP error',
@@ -124,13 +169,20 @@ describe('every station-control failure is an MCP error (#2795)', () => {
       const names = Object.keys(tools).sort();
       expect(names.length).toBeGreaterThan(80);
       const notErrors: string[] = [];
+      const threw: string[] = [];
       for (const name of names) {
-        const result = await run(tools[name]!.handler, caller);
-        if (result === 'threw') continue;
+        const result = await run(name, tools[name]!.handler, caller);
+        if (result === 'threw') {
+          threw.push(name);
+          continue;
+        }
         if ((result as ToolResult | undefined)?.isError === true) continue;
         notErrors.push(name);
       }
       expect(notErrors).toEqual(NOT_AN_ERROR_BY_DESIGN[caller]);
+      // A throw is still an MCP error, but it reaches the invoke route as
+      // `tool_threw` with no typed code; the tools that still do are pinned.
+      expect(threw).toEqual(STILL_THROWS[caller]);
     },
     120_000,
   );

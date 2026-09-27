@@ -220,7 +220,16 @@ export class PlatformMutationGate {
    */
   async afterMutation(
     ticket: MutationTicket,
-    result: { outcome: 'success' | 'error'; errorMessage?: string },
+    result: {
+      outcome: 'success' | 'error';
+      errorMessage?: string;
+      /**
+       * #2795: the refusal's bounded machine code, when the tool answered an
+       * `isError` envelope carrying one — so the run evidence tells "refused"
+       * (a code) from "attempted and failed" (none).
+       */
+      code?: string;
+    },
   ): Promise<void> {
     if (!ticket.active) return;
     const outcome: PlatformMutationOutcome =
@@ -229,7 +238,7 @@ export class PlatformMutationGate {
         : ticket.decision === 'warn'
           ? 'warned'
           : 'allowed';
-    await this.audit(ticket, outcome, result.errorMessage);
+    await this.audit(ticket, outcome, result.errorMessage, result.code);
   }
 
   // ── internals ────────────────────────────────────────
@@ -271,6 +280,7 @@ export class PlatformMutationGate {
     ticket: MutationTicket,
     outcome: PlatformMutationOutcome,
     errorMessage?: string,
+    code?: string,
   ): Promise<void> {
     platformMutations.add(1, {
       tool: ticket.tool,
@@ -286,7 +296,7 @@ export class PlatformMutationGate {
       });
     }
     if (ticket.binding && outcome !== 'blocked') {
-      await this.attachRunEvidence(ticket, outcome, errorMessage);
+      await this.attachRunEvidence(ticket, outcome, errorMessage, code);
     }
   }
 
@@ -302,6 +312,7 @@ export class PlatformMutationGate {
     ticket: MutationTicket,
     outcome: PlatformMutationOutcome,
     errorMessage?: string,
+    code?: string,
   ): Promise<void> {
     const flowRunService = this.options.flowRunService;
     const binding = ticket.binding;
@@ -324,9 +335,12 @@ export class PlatformMutationGate {
             claimType: 'station.platform-mutation',
             subjectId: binding.runId,
             value: outcome,
-            fieldOrBehavior: errorMessage
-              ? `${ticket.tool}: ${errorMessage}`
-              : ticket.tool,
+            // A refusal's code rides beside the tool: `update_skill
+            // [station_control_person_only]: …` is refused, `update_skill: …`
+            // attempted and failed.
+            fieldOrBehavior: `${ticket.tool}${code ? ` [${code}]` : ''}${
+              errorMessage ? `: ${errorMessage}` : ''
+            }`,
           }),
           null,
           2,
@@ -440,7 +454,11 @@ export function wrapPlatformMutationGatedTools<T extends GatedToolShape>(
           await gate.afterMutation(
             ticket,
             failure
-              ? { outcome: 'error', errorMessage: failure.sentence }
+              ? {
+                  outcome: 'error',
+                  errorMessage: failure.sentence,
+                  ...(failure.code ? { code: failure.code } : {}),
+                }
               : { outcome: 'success' },
           );
           return result;

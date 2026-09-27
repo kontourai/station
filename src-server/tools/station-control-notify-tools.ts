@@ -24,6 +24,7 @@ import {
 } from '@kontourai/station-contracts/notification';
 import { z } from 'zod';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
+import { stationControlRefusal } from './station-control-policy.js';
 import {
   api,
   jsonToolResult,
@@ -114,8 +115,14 @@ const NOTIFY_USER_FAILURES: ReadonlySet<NotifyUserStatus> = new Set([
   'unavailable',
 ]);
 
-/** `notify_user`'s result, with this Station's refusal code when its guard refused. */
-export type NotifyUserToolResult = NotifyUserResult & { code?: string };
+/**
+ * `notify_user`'s result, with this Station's refusal code (and, for a
+ * missing caller, its sentence) when the call was refused.
+ */
+export type NotifyUserToolResult = NotifyUserResult & {
+  code?: string;
+  error?: string;
+};
 
 export async function notifyUser(args: {
   title: string;
@@ -128,7 +135,15 @@ export async function notifyUser(args: {
     await requireStationControlCaller();
   } catch (error) {
     if (!(error instanceof StationControlCallerRequiredError)) throw error;
-    return { status: 'caller-required' };
+    // #2795: the same refusal the tool-side guard gives a caller-less call —
+    // the same code and sentence — so the invoke route and the agent both
+    // read why.
+    const refusal = stationControlRefusal('station_control_caller_required');
+    return {
+      status: 'caller-required',
+      code: refusal.code,
+      error: refusal.message,
+    };
   }
   let response: unknown;
   try {

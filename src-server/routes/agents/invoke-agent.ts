@@ -9,6 +9,7 @@ import {
 import { createRuntimeModelSelection } from '../../runtime/plugins/runtime-provider-resolution.js';
 import {
   CONTROL_TOOL_FAILED_REASON,
+  CONTROL_TOOL_THREW_REASON,
   ControlToolFailureError,
   readControlToolFailure,
 } from '../../runtime/tools/control-tool-failure.js';
@@ -230,9 +231,9 @@ async function invokeAgentToolWithStableConfiguration(
         tool: invokedToolName,
         outcome: 'failure',
         reason:
-          (error instanceof ControlToolFailureError
-            ? error.failure.code
-            : undefined) ?? CONTROL_TOOL_FAILED_REASON,
+          error instanceof ControlToolFailureError
+            ? (error.failure.code ?? CONTROL_TOOL_FAILED_REASON)
+            : CONTROL_TOOL_THREW_REASON,
       });
     }
     throw error;

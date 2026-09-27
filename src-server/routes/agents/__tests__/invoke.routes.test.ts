@@ -837,7 +837,7 @@ describe('Invoke Routes', () => {
       tool: 'station-control_update_skill',
       outcome: 'failure',
       // #2795: a fixed reason; free text never becomes a metric attribute.
-      reason: 'tool_failed',
+      reason: 'tool_threw',
     });
   });
 
@@ -1157,8 +1157,9 @@ describe('Invoke Routes', () => {
         args: { title: 'Build finished' },
         caller: 'none',
         answer: { status: 200, body: { status: 'sent' } },
-        sentence: 'Tool call failed',
-        reason: 'tool_failed',
+        sentence: 'verified calling session',
+        code: 'station_control_caller_required',
+        reason: 'station_control_caller_required',
       },
       {
         family: 'agent notification, guard refusal (notify_user)',
@@ -1215,6 +1216,24 @@ describe('Invoke Routes', () => {
         },
         sentence: 'Scope is missing.',
         reason: 'insufficient_scope',
+      },
+      {
+        // Upper-case codes are real tokens too (the knowledge routes'
+        // NO_EMBEDDER), not free text.
+        family: 'upper-case code (forwarded envelope)',
+        tool: 'get_usage',
+        args: {},
+        caller: 'bound',
+        answer: {
+          status: 400,
+          body: {
+            success: false,
+            code: 'NO_EMBEDDER',
+            error: 'No embedding provider is configured.',
+          },
+        },
+        sentence: 'No embedding provider is configured.',
+        reason: 'NO_EMBEDDER',
       },
       {
         // A code that is not a bounded token never becomes the attribute.

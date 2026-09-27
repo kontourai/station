@@ -16,11 +16,18 @@
  *   and the caller records a fixed reason instead.
  */
 
-/** A machine token: bounded, no spaces, no identifiers' punctuation. */
-const CODE_TOKEN = /^[a-z][a-z0-9_.-]{0,63}$/;
+/**
+ * A machine token: a letter, then letters, digits and `_ . -`, at most 64
+ * characters. Both cases: Station's routes send `station_control_*` and
+ * `NO_EMBEDDER` / `AGENT_ID_RESERVED` alike.
+ */
+const CODE_TOKEN = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
 
-/** The fixed telemetry reason for a failure with no usable code. */
+/** The fixed telemetry reason for a refusal (`isError`) with no usable code. */
 export const CONTROL_TOOL_FAILED_REASON = 'tool_failed';
+
+/** The fixed telemetry reason for a tool that threw instead of answering. */
+export const CONTROL_TOOL_THREW_REASON = 'tool_threw';
 
 export interface ControlToolFailure {
   sentence: string;

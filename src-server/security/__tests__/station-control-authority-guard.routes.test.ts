@@ -1110,6 +1110,11 @@ describe('the server guard alone gives agents a typed refusal (F2)', () => {
   // orchestration-portable-delegation.test.ts).
   test.each([
     ['list_delegated_tasks', {}],
+    // #2795: the dispatch tools used to throw the guard's refusal, losing
+    // its code for the agent and the invoke telemetry.
+    ['send_message', { agent: 'writer', message: 'hi' }],
+    ['delegate_task', { agent: 'writer', prompt: 'do it' }],
+    ['continue_task', { taskId: 'task:1', message: 'One more thing' }],
     ['get_task', { taskId: 'task:1' }],
     ['get_task_events', { taskId: 'task:1' }],
     ['interrupt_task', { taskId: 'task:1' }],
