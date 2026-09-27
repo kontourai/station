@@ -1711,8 +1711,10 @@ fn station_profile_store_genesis_lock_target(
 /// It is deliberately more conservative than a mere missing `profiles.json`:
 /// an existing runtime, cache, backup, cutover receipt, or config directory is
 /// evidence that an absent profile document could be a partial relocation, not
-/// a fresh install.  `installs/` alone is admitted because the portable
-/// installer materializes its channel release before the first desktop launch.
+/// a fresh install.  `installs/` is admitted because the portable installer
+/// materializes its channel release before the first desktop launch, and
+/// `state/` because a prebuilt server archive keeps its CLI lifecycle state
+/// there (#2675): process bookkeeping, never saved-Station history.
 #[cfg(not(mobile))]
 fn station_profile_store_genesis_admissible(root: &std::path::Path) -> Result<bool, String> {
     station_profile_store_genesis_admissible_with_schema(root, false)
@@ -1731,7 +1733,7 @@ fn station_profile_store_genesis_admissible_with_schema(root: &std::path::Path, 
                 if !metadata.file_type().is_dir() {
                     return Ok(false);
                 }
-                if name == "installs" {
+                if name == "installs" || name == "state" {
                     continue;
                 }
                 // Windows establishes the ACL/reparse boundary before the
@@ -16674,6 +16676,14 @@ mod tests {
         assert!(
             !station_profile_store_genesis_admissible(&root).unwrap(),
             "cutover evidence must fence missing profiles.json"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+
+        std::fs::create_dir_all(root.join("installs/stable")).unwrap();
+        std::fs::create_dir_all(root.join("state/stable/instances")).unwrap();
+        assert!(
+            station_profile_store_genesis_admissible(&root).unwrap(),
+            "installed releases and archive lifecycle state are not history (#2675)"
         );
         std::fs::remove_dir_all(&root).unwrap();
 
