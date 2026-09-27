@@ -22,12 +22,14 @@ import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
 import { PluginLifecycleProposalService } from '../../../services/plugins/plugin-lifecycle-proposals.js';
 import { checkPluginUpdates } from '../../../services/plugins/plugin-update-check.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { isGitMetadataName } from '../../../utils/git-metadata-name.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
+import { createPluginProposalRoutes } from '../plugin-proposal-routes.js';
 
 const tempDir = trackTempDirs();
 
@@ -116,6 +118,20 @@ function harness(root: string) {
     projectHomeDir: home,
     proposals,
   });
+  // The real proposal route, read as the operator, for the digest it records.
+  app.route(
+    '/proposals',
+    createPluginProposalRoutes({
+      proposals,
+      pluginsDir,
+      logger: log,
+      resolvePrincipal: () => ({
+        id: LOCAL_OPERATOR_PRINCIPAL_ID,
+        kind: 'human' as const,
+        display: 'Operator',
+      }),
+    }),
+  );
   const post = async (path: string, body: unknown) => {
     const response = await app.request(path, {
       method: 'POST',
@@ -124,14 +140,13 @@ function harness(root: string) {
     });
     return { status: response.status, body: (await readJson(response)) as any };
   };
-  /** Preview, then install from that preview, as the Plugins view does. */
-  const previewAndInstall = async (source: string, proposalId?: string) => {
-    const preview = await post('/preview', { source });
-    expect(preview.body, JSON.stringify(preview.body)).toMatchObject({
-      valid: true,
-    });
-    const basis = preview.body;
-    const install = await post('/install', {
+  const preview = async (source: string) => {
+    const previewed = await post('/preview', { source });
+    return previewed.body;
+  };
+  /** Install from a preview, sending back what it showed, as the view does. */
+  const installFrom = (basis: any, source: string, proposalId?: string) =>
+    post('/install', {
       source,
       ...(proposalId ? { proposalId } : {}),
       skip: [],
@@ -143,13 +158,18 @@ function harness(root: string) {
           : {}),
         permissions: basis.permissions.required,
         contentDigest: basis.contentDigest,
+        ...(basis.gitMetadata ? { gitMetadata: basis.gitMetadata } : {}),
         dependencies: [],
       },
     });
+  const previewAndInstall = async (source: string, proposalId?: string) => {
+    const basis = await preview(source);
+    expect(basis, JSON.stringify(basis)).toMatchObject({ valid: true });
+    const install = await installFrom(basis, source, proposalId);
     expect(install.body, JSON.stringify(install.body)).toMatchObject({
       success: true,
     });
-    return { preview: preview.body, install: install.body };
+    return { preview: basis, install: install.body };
   };
   const listed = async () => {
     const response = await app.request('/');
@@ -157,37 +177,54 @@ function harness(root: string) {
     const plugins = Array.isArray(body) ? body : body.plugins;
     return plugins.find((plugin: any) => plugin.name === 'checkout-plugin');
   };
-  return { pluginsDir, proposals, log, previewAndInstall, listed };
+  return {
+    pluginsDir,
+    proposals,
+    log,
+    post,
+    preview,
+    installFrom,
+    previewAndInstall,
+    listed,
+  };
 }
+
+/** The agent-proposed folder shape: a gitfile, a `.GIT`, a nested repo. */
+function proposedCheckout(root: string) {
+  const source = checkout(root, { gitfile: true });
+  // A `.GIT` spelling (in a subfolder: a case-insensitive volume cannot
+  // hold it beside `.git`) and a nested repository.
+  mkdirSync(join(source, 'assets', '.GIT'), { recursive: true });
+  writeFileSync(join(source, 'assets', '.GIT', 'config'), '[core]\n');
+  mkdirSync(join(source, 'vendor'));
+  git(join(source, 'vendor'), 'init', '-q');
+  expect(lstatSync(join(source, '.git')).isFile()).toBe(true);
+  expect(gitMetadataEntries(source)).toEqual([
+    '.git',
+    'assets/.GIT',
+    'vendor/.git',
+  ]);
+  return source;
+}
+
+const agent = { principal: 'agent' as const };
 
 describe('git metadata in a proposed local install (#2719)', () => {
   test('an agent-proposed folder installs with no git metadata, and nothing reports git info or updates', async () => {
     const root = tempDir('station-proposed-git-');
-    const source = checkout(root, { gitfile: true });
-    // A `.GIT` spelling (in a subfolder: a case-insensitive volume cannot
-    // hold it beside `.git`) and a nested repository.
-    mkdirSync(join(source, 'assets', '.GIT'), { recursive: true });
-    writeFileSync(join(source, 'assets', '.GIT', 'config'), '[core]\n');
-    mkdirSync(join(source, 'vendor'));
-    git(join(source, 'vendor'), 'init', '-q');
-    expect(lstatSync(join(source, '.git')).isFile()).toBe(true);
-    expect(gitMetadataEntries(source)).toEqual([
-      '.git',
-      'assets/.GIT',
-      'vendor/.git',
-    ]);
-
+    const source = proposedCheckout(root);
     const { pluginsDir, proposals, log, previewAndInstall, listed } =
       harness(root);
     const { proposal } = await proposals.propose({
       kind: 'install',
       source,
       rationale: 'Adds the checkout pane.',
-      author: { principal: 'agent' },
+      author: agent,
     });
 
     const { preview, install } = await previewAndInstall(source, proposal.id);
     expect(preview.git).toBeUndefined();
+    expect(preview.gitMetadata).toBe('excluded');
     expect(install.proposal).toEqual({ id: proposal.id, status: 'completed' });
 
     const installed = join(pluginsDir, 'checkout-plugin');
@@ -206,6 +243,106 @@ describe('git metadata in a proposed local install (#2719)', () => {
     expect(updates.filter((u) => u.name === 'checkout-plugin')).toEqual([]);
   });
 
+  test('a proposal dismissed between preview and install still installs as previewed, without git metadata', async () => {
+    const root = tempDir('station-proposed-dismissed-');
+    const source = proposedCheckout(root);
+    const { pluginsDir, proposals, preview, installFrom } = harness(root);
+    const { proposal } = await proposals.propose({
+      kind: 'install',
+      source,
+      rationale: 'Adds the checkout pane.',
+      author: agent,
+    });
+
+    const basis = await preview(source);
+    expect(basis).toMatchObject({ valid: true, gitMetadata: 'excluded' });
+    await proposals.dismiss(proposal.id);
+    const install = await installFrom(basis, source);
+    expect(install.body, JSON.stringify(install.body)).toMatchObject({
+      success: true,
+    });
+
+    expect(gitMetadataEntries(join(pluginsDir, 'checkout-plugin'))).toEqual([]);
+  });
+
+  test('a source proposed after an ordinary preview is refused until previewed again', async () => {
+    const root = tempDir('station-proposed-late-');
+    const source = proposedCheckout(root);
+    const { pluginsDir, proposals, preview, installFrom } = harness(root);
+
+    const basis = await preview(source);
+    expect(basis.valid).toBe(true);
+    expect(basis.gitMetadata).toBeUndefined();
+    await proposals.propose({
+      kind: 'install',
+      source,
+      rationale: 'Adds the checkout pane.',
+      author: agent,
+    });
+    const refused = await installFrom(basis, source);
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({
+      success: false,
+      consent: { reason: 'git-metadata' },
+    });
+    expect(existsSync(join(pluginsDir, 'checkout-plugin'))).toBe(false);
+
+    const again = await preview(source);
+    expect(again.gitMetadata).toBe('excluded');
+    const installed = await installFrom(again, source);
+    expect(installed.body, JSON.stringify(installed.body)).toMatchObject({
+      success: true,
+    });
+    expect(gitMetadataEntries(join(pluginsDir, 'checkout-plugin'))).toEqual([]);
+  });
+
+  test('a proposed local git repository is refused, not cloned; the operator may still install it', async () => {
+    const root = tempDir('station-proposed-local-git-');
+    const upstream = join(root, 'upstream');
+    mkdirSync(upstream);
+    git(upstream, 'init', '-q', '-b', 'main');
+    commitManifest(upstream, '1.0.0');
+    const repository = join(root, 'checkout-plugin.git');
+    git(root, 'clone', '-q', '--bare', upstream, repository);
+    const { pluginsDir, proposals, preview } = harness(root);
+
+    // Positive control: the operator's own preview of it clones.
+    const ordinary = await preview(repository);
+    expect(ordinary, JSON.stringify(ordinary)).toMatchObject({ valid: true });
+
+    await proposals.propose({
+      kind: 'install',
+      source: repository,
+      rationale: 'Adds the checkout pane.',
+      author: agent,
+    });
+    const refused = await preview(repository);
+    expect(refused.valid).toBe(false);
+    expect(refused.error).toMatch(/cannot be a local git repository/);
+    expect(
+      readdirSync(pluginsDir).filter((name) => name.startsWith('.preview-')),
+    ).toEqual([]);
+  });
+
+  test('the digest a proposal records matches the preview for a folder with nested git metadata', async () => {
+    const root = tempDir('station-proposed-digest-');
+    const source = proposedCheckout(root);
+    const { post, preview } = harness(root);
+
+    const created = await post('/proposals', {
+      kind: 'install',
+      source,
+      rationale: 'Adds the checkout pane.',
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const recorded = created.body.proposal.proposedContentDigest;
+    expect(recorded).toMatch(/^sha256:[0-9a-f]{64}$/);
+
+    const basis = await preview(source);
+    expect(basis.gitMetadata).toBe('excluded');
+    expect(basis.contentDigest).toBe(recorded);
+  });
+
   test('an operator’s own install of a checkout keeps its .git (positive control)', async () => {
     const root = tempDir('station-operator-git-');
     const source = checkout(root, { gitfile: false });
@@ -213,6 +350,7 @@ describe('git metadata in a proposed local install (#2719)', () => {
 
     const { preview } = await previewAndInstall(source);
     expect(preview.git).toMatchObject({ hash: expect.any(String) });
+    expect(preview.gitMetadata).toBeUndefined();
 
     const installed = join(pluginsDir, 'checkout-plugin');
     expect(lstatSync(join(installed, '.git')).isDirectory()).toBe(true);

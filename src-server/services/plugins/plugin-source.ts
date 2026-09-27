@@ -517,9 +517,9 @@ export async function fetchPluginSource(
    * local git is never cloned. An operator's own `station install <path>`
    * keeps its `.git`, which the update route relies on.
    *
-   * `excludeGitMetadata`: copy a local tree the same way without it being a
-   * dependency. For a folder someone other than the operator proposed
-   * (#2719); local git is still cloned only in the operator's own name.
+   * `excludeGitMetadata`: a local source someone other than the operator
+   * proposed (#2719). Copied the same way, and, like a dependency, never a
+   * local git repository.
    */
   options: { dependency?: boolean; excludeGitMetadata?: boolean } = {},
 ): Promise<{ tempDir: string; tempName: string } | { error: string }> {
@@ -572,6 +572,13 @@ export async function fetchPluginSource(
       return {
         error:
           'A plugin dependency cannot be a local git repository; name it by its remote URL',
+      };
+    }
+    if (options.excludeGitMetadata && isLocalGitSource(url)) {
+      rmSync(tempDir, { recursive: true, force: true });
+      return {
+        error:
+          'A proposed plugin install cannot be a local git repository; propose a plain folder or a remote git URL',
       };
     }
     const cloneArgs = ['clone', '--depth', '1'];

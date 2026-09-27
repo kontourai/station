@@ -452,7 +452,18 @@ export class PluginLifecycleProposalService {
    */
   hasOpenInstallProposal(source: string): boolean {
     const wanted = target({ kind: 'install', source });
-    return this.listOpen().some((proposal) => target(proposal) === wanted);
+    let open: PluginLifecycleProposal[];
+    try {
+      open = this.listOpen();
+    } catch (error) {
+      // Fails closed: without the store, whether this source was proposed is
+      // unknown. Name the file to repair, relative to the Station home.
+      throw new Error(
+        `Plugin proposals are unreadable (${PLUGIN_LIFECYCLE_PROPOSALS_FILE} in the Station home), so Station cannot tell whether this source was proposed. Repair or remove that file, then retry.`,
+        { cause: error },
+      );
+    }
+    return open.some((proposal) => target(proposal) === wanted);
   }
 
   get(id: string): PluginLifecycleProposal | null {
