@@ -30,7 +30,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { KnowledgeStoreAdapter } from '@kontourai/station-contracts/knowledge-store';
 import * as yaml from 'js-yaml';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  type Mock,
+  test,
+} from 'vitest';
 
 interface ContractSuiteOptions {
   /** Adapters that route by category-as-path (Obsidian) can't accept dotted collision
@@ -47,10 +54,12 @@ interface ContractSuiteOptions {
    * and record id. Adapter-specific because physical layout differs (`kit-default-
    * store`'s flat `records/<id>.md` vs. `kit-obsidian-store`'s category-path-routed
    * vault layout resolved via its `path-index.json`). Required only by the
-   * unknown-frontmatter-key/unknown-type round-trip pinning test below (M1, Wave-2
-   * review) — every other shared-suite test goes through the public adapter API only.
+   * tests below that tamper with or read the record file directly — every other
+   * shared-suite test goes through the public adapter API only.
    */
   findRecordFilePath: (dir: string, id: string) => string;
+  /** The `warn` spy the calling file installs on the shared logger factory. */
+  loggerWarnSpy: Mock;
 }
 
 /**
@@ -59,7 +68,7 @@ interface ContractSuiteOptions {
  * test. Call from within an adapter's own `*.contract.test.ts` file.
  */
 export function runAdapterContractSuite(options: ContractSuiteOptions): void {
-  const { label, createAdapter, findRecordFilePath } = options;
+  const { label, createAdapter, findRecordFilePath, loggerWarnSpy } = options;
 
   describe(`${label} — shared KnowledgeStoreAdapter contract (store-contract.md §6/§A.5/§B.4/§H)`, () => {
     let dir: string;
@@ -242,6 +251,74 @@ export function runAdapterContractSuite(options: ContractSuiteOptions): void {
       const fm2 = yaml.load(raw.slice(4, end2)) as Record<string, unknown>;
       expect(fm2.custom_future_field).toBe('preserved-value');
       expect(fm2.type).toBe('future-record-type');
+    });
+
+    // A metadata-only mutation such as `retire()` never touches links itself, so
+    // an already-bad legacy or externally authored label would persist unless
+    // `writeRecord` sanitizes on every persisted write.
+    test('a legacy newline-label already on disk is sanitized on the very next write, even through a metadata-only mutation (retire) that never touches links itself', async () => {
+      const targetId = await adapter.create({
+        type: 'concept',
+        title: 'Link target',
+        body: 'target body',
+        category: 'engineering',
+        provenance: { agent: 'agent-1' },
+      });
+      const sourceId = await adapter.create({
+        type: 'concept',
+        title: 'Legacy label source',
+        body: 'Original body.',
+        category: 'engineering',
+        links: [
+          {
+            target_id: targetId,
+            kind: 'related',
+            label: 'SAFE_PLACEHOLDER_LABEL',
+          },
+        ],
+        provenance: { agent: 'agent-1' },
+      });
+      const readLinks = () => {
+        const raw = readFileSync(findRecordFilePath(dir, sourceId), 'utf-8');
+        return yaml.load(raw.slice(4, raw.indexOf('\n---\n', 4))) as {
+          links: Array<{ label?: string }>;
+          status: string;
+        };
+      };
+
+      // Hand-tamper the on-disk frontmatter, bypassing the adapter's own
+      // sanitize-on-write path, and confirm a real embedded newline landed.
+      const filePath = findRecordFilePath(dir, sourceId);
+      const maliciousLabel = 'evil\nlabel\nwith\nnewlines';
+      writeFileSync(
+        filePath,
+        readFileSync(filePath, 'utf-8').replace(
+          'label: SAFE_PLACEHOLDER_LABEL',
+          `label: ${JSON.stringify(maliciousLabel)}`,
+        ),
+        'utf-8',
+      );
+      expect(readLinks().links[0].label).toBe(maliciousLabel);
+
+      loggerWarnSpy.mockClear();
+      await adapter.retire(sourceId, 'retired', {
+        agent: 'agent-1',
+        rationale: 'no longer relevant',
+      });
+
+      const after = readLinks();
+      expect(after.status).toBe('retired');
+      expect(after.links[0].label).toBe('evil label with newlines');
+      expect(loggerWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('embedded line break'),
+        expect.objectContaining({
+          original: maliciousLabel,
+          sanitized: 'evil label with newlines',
+        }),
+      );
+      // The public record carries the same sanitized label, not only the bytes.
+      const record = await adapter.get(sourceId);
+      expect(record?.links?.[0].label).toBe('evil label with newlines');
     });
 
     test('update requires an existing record, evidence.agent, and >=1 mutable field', async () => {
