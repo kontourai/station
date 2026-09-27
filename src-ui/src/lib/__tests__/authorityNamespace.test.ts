@@ -121,6 +121,10 @@ describe('authorityPersistenceKey', () => {
   });
 
   it('never produces the legacy singleton — quarantine is structural', () => {
+    // The prefix IS the legacy singleton key: moving it would strand every
+    // existing namespaced shelf, so pin both the relation and the literal.
+    expect(AUTHORITY_CACHE_KEY_PREFIX).toBe(QUERY_PERSISTENCE_STORAGE_KEY);
+    expect(AUTHORITY_CACHE_KEY_PREFIX).toBe('station-query-cache-v1');
     const namespaced = authorityPersistenceKey(
       buildAuthorityNamespace({ ...operatorObservation }),
     );

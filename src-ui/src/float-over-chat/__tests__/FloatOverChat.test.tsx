@@ -1042,6 +1042,23 @@ describe('placement, keyboard and narrow widths', () => {
       'min-height': '44px',
       'min-width': '44px',
     });
+    // A more specific rule in this sheet (state, media, descendant) must not
+    // restate the size and undercut the base rule. Rendered geometry is
+    // still unproven here; jsdom lays nothing out.
+    const sizing =
+      /(^|;)\s*(height|width|min-height|min-width|max-height|max-width|zoom|transform)\s*:/;
+    for (const [, selector, body] of css
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const trimmed = selector.trim();
+      if (
+        trimmed === '.float-over-chat__handle' ||
+        trimmed === '.float-over-chat__action' ||
+        !/\.float-over-chat__(handle|action)\b/.test(trimmed)
+      )
+        continue;
+      expect(body, trimmed).not.toMatch(sizing);
+    }
   });
 
   test(`below ${FLOAT_NARROW_WIDTH}px the chat gets a notice with the same actions instead of a player`, async () => {
