@@ -18,16 +18,15 @@ cargo check --locked --manifest-path experiments/browser-host/tauri-separate-win
 cargo check --locked --manifest-path experiments/browser-host/tauri-child-webview/Cargo.toml
 ```
 
-The Node experiment imports the current Workspace Pane parser, but its fixture
-still supplies the removed top-level `contextRequirement`. The current parser
-refuses that field and requires `modes`; all four Node tests fail at descriptor
-admission in the documentation audit. Repair the fixture before treating its
-adapter assertions as evidence.
+The Node experiment imports the current Workspace Pane parser and declares its
+project requirement inside `modes`. The audit found that its old top-level
+`contextRequirement` made all four tests fail at descriptor admission; the
+fixture now follows the parser's current shape.
 
 The adapter is intended to receive an approved target separately from persisted
 Pane data, reject native geometry/handles, and return an explicit external-open
-action when no host is available. The failing fixture does not currently reach
-all of those assertions. See the
+action when no host is available. The Node tests cover these adapter decisions,
+not a running Tauri or Electron host. See the
 [fixture](scripts/workspace-pane-adapter.node.ts),
 [adapter](scripts/workspace-pane-adapter.ts), and
 [current descriptor contract](../../packages/contracts/src/workspace-pane.ts).
