@@ -609,6 +609,7 @@ export class ApplicationSessionService {
       if (current.expiresAt <= this.now())
         throw new ApplicationSessionRefusal('invalid');
       if (firstAdmission) {
+        if (!jti) throw new ApplicationSessionRefusal('invalid');
         this.transaction(() => {
           if (this.closed || request.signal.aborted)
             throw new ApplicationSessionRefusal('unavailable');
