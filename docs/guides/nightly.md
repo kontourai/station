@@ -75,6 +75,63 @@ provider outcomes retain their own status; a failed overall run can already have
 published a subset. See the [cohort and recovery contract](native-releases.md#native-nightly-cohort)
 before retrying or changing a marker.
 
+## Portable server nightly (dry run until the owner enables it)
+
+`.github/workflows/portable-nightly-publish.yml`, called by `nightly.yml` as
+`portable-nightly` after full regression, builds the five
+`station-server-<os>-<arch>` archives through the reusable
+`portable-server-archives.yml` under version `X.Y.Z-nightly.<code>`, where
+`<code>` is the native Nightly's reserved version code (re-checked against the
+`nightly-version-code/<code>` tag). It assembles the schema v2 manifest from
+the archive descriptors, signs it with a throwaway key, verifies it, and
+confirms the pinned key table refuses that envelope. That is the whole run
+unless the owner gate is on; nothing is uploaded except short-lived run
+artifacts.
+
+The `publish` job is the only one with `contents: write` or a secret. It runs
+only when the repository variable `STATION_PORTABLE_NIGHTLY_PUBLISH` is exactly
+`enabled`, the run came from `nightly.yml` on `main`, and the version is a
+reservation. A direct dispatch of the publication workflow is always a dry
+run, on any branch:
+
+```bash
+gh workflow run portable-nightly-publish.yml --repo kontourai/station --ref <branch>
+```
+
+When enabled, it signs in the `portable-nightly-signing` environment with the
+pinned `station-portable-nightly-2026-09` key, refuses a version that is not
+newer than the rolling manifest, uploads the archives and the manifest to the
+immutable prerelease `v<version>` (never marked latest), re-downloads them and
+compares digests, replaces `station-portable-nightly-manifest.json` on the
+rolling `portable-nightly` release last, and re-fetches and re-verifies it.
+
+While the gate is off, the dry run cannot turn Nightly red: its jobs are
+`continue-on-error`, so a failed dry-run job shows red in the run but the run
+(and main-health, which reads the run's conclusion) stays green. Publication
+never relies on that: it requires the `verified` output that only the dry
+run's last step sets. Once the gate is enabled, a failure fails Nightly.
+
+Before publishing, the job refuses a payload whose ring, version, tag or
+source SHA is not this run's, and refuses to reuse `v<version>`, including a
+draft a failed run left behind (the error names the release id to delete).
+
+To enable it (owner only):
+
+- Plan retention first. Each publish adds a permanent prerelease and tag
+  `vX.Y.Z-nightly.<code>` (the versioned assets pinned and rollback manifests
+  point at): one for each Nightly that builds, and up to four
+  scheduled runs a day.
+- Create the `portable-nightly` prerelease pointer, then set the variable, for
+  example
+  `gh variable set STATION_PORTABLE_NIGHTLY_PUBLISH --repo kontourai/station --body enabled`.
+- Read the first enabled Nightly's step summary for "Assemble, dry-run sign and
+  verify". It says whether the gate evaluated as enabled for that run. The gate
+  relies on `github.workflow_ref` in a called workflow naming the caller
+  (`nightly.yml`), as GitHub documents, and that is unverified until then. If
+  the summary says dry run, the publish job was skipped, which fails safe.
+
+Deleting the variable returns every run to a dry run.
+
 ## macOS nightly (local install)
 
 The macOS nightly is the local, main-edge macOS lane. It installs alongside

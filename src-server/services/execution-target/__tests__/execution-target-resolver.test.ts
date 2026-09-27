@@ -1,3 +1,5 @@
+import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   agentId,
   engineConnectionId,
@@ -5,6 +7,7 @@ import {
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import { BedrockAdapter } from '../../../providers/adapters/bedrock-adapter.js';
 import { MuseAdapter } from '../../../providers/adapters/muse-adapter.js';
@@ -848,5 +851,49 @@ describe('the model a turn launches with', () => {
       cwd: '/bindings/repo-checkout',
       workspaceIsolation: { mode: 'shared' },
     });
+  });
+});
+
+// #2377 slice C2a (review A1): a Project workspace's `cwd` must lie inside
+// that Project, on canonical paths, for every caller, before anything runs.
+describe('a Project workspace cwd stays inside its Project', () => {
+  const makeTempDir = trackTempDirs();
+  function projects() {
+    const root = realpathSync(makeTempDir('resolver-project-cwd-'));
+    const a = join(root, 'a');
+    const b = join(root, 'b');
+    for (const dir of [join(a, 'sub'), b]) mkdirSync(dir, { recursive: true });
+    symlinkSync(b, join(a, 'link-to-b'));
+    symlinkSync(join(a, 'sub'), join(root, 'link-into-a'));
+    return { root, a, b };
+  }
+  const resolveIn = (projectDirectory: string, cwd: string) =>
+    resolveExecutionTarget(
+      {
+        environment: { kind: 'current' },
+        agent: agentId('station'),
+        workspace: { kind: 'project', projectSlug: 'a', cwd },
+      },
+      dependencies({
+        getProject: async () => ({ workingDirectory: projectDirectory }),
+      }),
+    );
+
+  test('inside the Project resolves; another Project’s folder is refused with a typed code', async () => {
+    const { root, a, b } = projects();
+    await expect(resolveIn(a, join(a, 'sub'))).resolves.toMatchObject({
+      workspace: { kind: 'project', cwd: join(a, 'sub') },
+    });
+    await expect(resolveIn(`${a}/`, a)).resolves.toMatchObject({
+      workspace: { cwd: a },
+    });
+    // A link from outside into the Project is the Project's.
+    await expect(
+      resolveIn(a, join(root, 'link-into-a')),
+    ).resolves.toBeDefined();
+    for (const cwd of [b, join(a, 'link-to-b'), join(a, 'missing')])
+      await expect(resolveIn(a, cwd)).rejects.toMatchObject({
+        code: 'execution_workspace_outside_project',
+      });
   });
 });
