@@ -202,14 +202,20 @@ async function nativeHarness(
       h.nativeOffersRequests.push(
         JSON.parse(init?.body as string) as Record<string, unknown>,
       );
-      const next = h.nativeOffersQueue.shift() ?? null;
+      // The broker keeps an unanswered offer available on later polls.
+      const next = h.nativeOffersQueue[0] ?? null;
       return jsonResponse({ offers: next ? [next] : [] });
     }
     if (url.endsWith('/native/connections/answer')) {
-      h.capturedNativeAnswer = JSON.parse(init?.body as string) as Record<
+      const answer = JSON.parse(init?.body as string) as Record<
         string,
         unknown
       >;
+      const connection = answer.connection as { nonce?: unknown } | undefined;
+      if (h.nativeOffersQueue[0]?.nonce !== connection?.nonce)
+        throw new Error('unexpected_native_answer');
+      h.capturedNativeAnswer = answer;
+      h.nativeOffersQueue.shift();
       return jsonResponse({ accepted: true });
     }
     if (url.endsWith('/connections/offers'))
@@ -471,9 +477,8 @@ describe('self-hosted broker pion runtime native opt-in', () => {
     });
     // Keep a steady supply of fresh offers: without the ceiling, every tick
     // would start another native peer.
-    h.nativeOffersQueue.push(
-      nativeOffer(randomBytes(32).toString('base64url')),
-    );
+    const pendingOffer = nativeOffer(randomBytes(32).toString('base64url'));
+    h.nativeOffersQueue.push(pendingOffer);
     h.nativeOffersQueue.push(
       nativeOffer(randomBytes(32).toString('base64url')),
     );
@@ -489,6 +494,8 @@ describe('self-hosted broker pion runtime native opt-in', () => {
       // runtime stays registered instead of failing.
       await sleep(2_300);
       expect(h.nativeOffersRequests.length).toBe(2);
+      expect(h.nativeOffersQueue).toHaveLength(2);
+      expect(h.nativeOffersQueue[0]).toEqual(pendingOffer);
       expect(h.nativeStartCalls).toBe(1);
       expect(h.statuses.at(-1)).toMatchObject({ state: 'registered' });
     } finally {
