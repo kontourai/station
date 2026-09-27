@@ -105,8 +105,16 @@ both layouts.
 
 The installer checks a schema 1 manifest with the signer's rules, so its
 source SHA and sha256 must be lowercase hex, as the signer writes them. (It
-accepted uppercase before.) Downloads are bounded: the manifest at 1 MiB,
-an archive at its signed size.
+accepted uppercase before.) Downloads are capped with curl's
+`--max-filesize`: the manifest at 1 MiB, an archive at its signed size. curl
+8.4.0 and newer stop any transfer at the cap; older curl (Ubuntu 22.04,
+Debian 12) enforces it only on a declared Content-Length, so a chunked
+response can exceed it there. The size and sha256 checks refuse it after the
+download either way.
+
+Moving between layouts at the same version needs no rollback flag. A replayed
+old signed manifest can therefore swap a source vX for a previously published
+archive vX (or back); both are legitimately signed vX, so this is accepted.
 
 Known limits until later #2675 slices:
 

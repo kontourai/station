@@ -2149,6 +2149,54 @@ describe('prebuilt archive installs (#2675 B2)', {
     expect(writableEntries(join(dirname(version), aside[0]))).toEqual([]);
   });
 
+  it('keeps a version it moved aside even when re-sealing it fails', () => {
+    const harness = archiveHarness(tempDir('station-archive-reseal-'));
+    const original = buildPrebuiltArchive(harness.root, '1.2.3', {
+      variant: 'A',
+    });
+    expect(
+      runArchiveInstaller(harness, archiveManifest(harness, original)).status,
+    ).toBe(0);
+    // A chmod that cannot re-seal a moved-aside version (and only that).
+    const realChmod = spawnSync('sh', ['-c', 'command -v chmod'], {
+      encoding: 'utf8',
+    }).stdout.trim();
+    const shim = join(harness.root, 'chmod-shim');
+    executable(
+      join(shim, 'chmod'),
+      `#!/bin/sh\nif [ "$1" = a-w ]; then case "$2" in *.replaced.*) exit 1 ;; esac; fi\nexec '${realChmod}' "$@"\n`,
+    );
+    const replacement = buildPrebuiltArchive(harness.root, '1.2.3', {
+      variant: 'B',
+    });
+    const replaced = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, replacement),
+      [],
+      {
+        PATH: `${shim}:${harness.guardedPath}`,
+        STATION_VERSION: 'v1.2.3',
+        STATION_INSTALL_ALLOW_ROLLBACK: '1',
+      },
+    );
+    expect(replaced.status, replaced.stderr).toBe(0);
+    expect(replaced.stderr).toContain('could not make');
+    const version = join(
+      realpathSync(harness.installRoot),
+      'versions',
+      '1.2.3',
+    );
+    expect(readlinkSync(join(harness.installRoot, 'current'))).toBe(version);
+    expect(existsSync(join(version, 'variant-B'))).toBe(true);
+    const aside = readdirSync(dirname(version)).filter((name) =>
+      name.startsWith('1.2.3.replaced.'),
+    );
+    expect(aside).toHaveLength(1);
+    expect(existsSync(join(dirname(version), aside[0], 'variant-A'))).toBe(
+      true,
+    );
+  });
+
   it('moves a source release to the archive of the same version without a replacement flag', () => {
     const root = tempDir('station-archive-same-version-');
     const fixture = makeFixtureArchive(root);

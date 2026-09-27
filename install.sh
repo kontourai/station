@@ -639,7 +639,8 @@ restore_previous_launcher() {
 # Some filesystems refuse to rename a directory whose own write bit is clear
 # (it would update the directory's `..`), so the top directory is made
 # writable for the rename and sealed again at its new name. Nothing inside it
-# changes.
+# changes. It fails only when the rename fails: callers depend on where the
+# directory now is, so a failed re-seal is a warning, not a failure.
 move_version_dir() {
   move_sealed=false
   if [ ! -w "$1" ]; then
@@ -650,7 +651,10 @@ move_version_dir() {
     [ "$move_sealed" = false ] || chmod a-w "$1" 2>/dev/null || true
     return 1
   fi
-  [ "$move_sealed" = false ] || chmod a-w "$2"
+  if [ "$move_sealed" = true ] && ! chmod a-w "$2"; then
+    printf 'Warning: could not make %s read-only again after moving it.\n' "$2" >&2
+  fi
+  return 0
 }
 
 restore_previous_release() {
@@ -884,8 +888,8 @@ if [ -n "$public_manifest_url" ]; then
     fail 'the public manifest URL must use HTTPS'
   manifest_file="$tmp_root/station-ecosystem-manifest.json"
   test_key_file=""
-  # A signed manifest is a few kilobytes; a host cannot stream more than
-  # 1 MiB of anything else into the temporary directory.
+  # A signed manifest is a few kilobytes. curl 8.4.0 and newer stop at
+  # 1 MiB; older curl enforces the cap only on a declared Content-Length.
   curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize 1048576 -o "$manifest_file" -- "$public_manifest_url" || \
     fail 'could not download public ecosystem manifest'
   if [ -n "$test_key_url" ]; then
@@ -1051,8 +1055,11 @@ if [ -n "$public_manifest_url" ]; then
   archive="$tmp_root/$archive_name"
   checksum_file="$tmp_root/$archive_name.sha256"
   if [ "$release_kind" = archive ]; then
-    # The signed size bounds the download itself, not only the check after
-    # it: curl stops (exit 63) at one byte past it.
+    # The signed size bounds the download itself where curl can enforce it:
+    # curl 8.4.0 and newer stop any transfer at one byte past it (exit 63);
+    # older curl (Ubuntu 22.04's 7.81, Debian 12's 7.88) only refuses a
+    # response whose Content-Length exceeds it, so a chunked response is
+    # unbounded there. The size and sha256 checks below refuse it either way.
     curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize "$archive_size" -o "$archive" -- "$asset_url" || {
       download_status=$?
       [ "$download_status" != 63 ] || \
@@ -1397,7 +1404,9 @@ check_public_manifest_version() {
       # The same version in the other layout (a source release built on
       # this host, or a prebuilt archive) is a change of packaging, not a
       # republish of the same artifact: no bytes of it are installed to be
-      # replaced.
+      # replaced. Accepted: a replayed old signed manifest can therefore swap
+      # a source vX for a previously published archive vX without a flag;
+      # both are legitimately signed vX.
       if [ "$(dirname -- "$(readlink "$current_link")")" != "$releases_dir" ]; then
         if [ "$release_kind" = archive ]; then
           printf 'Moving Station %s from its source release to the prebuilt archive of the same version.\n' "$release_tag"
