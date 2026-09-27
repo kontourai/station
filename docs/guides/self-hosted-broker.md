@@ -217,6 +217,31 @@ admit the browser. No CORS, membership or authentication permission is added by
 the connector. `maxPeers` and `maxPeerLifetimeMs` are independently optional with
 the defaults shown; heartbeat, renewal and offer polling use 5s, 10s and 1s.
 
+An operator may additionally opt in one exact native v2 client surface by adding
+this field to the connector file:
+
+```json
+{
+  "nativeClient": {
+    "kind": "station-native",
+    "appIdentifier": "io.example.station",
+    "channel": "stable",
+    "clientInstanceId": "8b9c86cf-e65a-4aad-983b-82bb03960ad1",
+    "keyThumbprint": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "maxPeers": 4
+  }
+}
+```
+
+Use the actual approved client identity and proof-key thumbprint; the sample is
+not a credential. The native peer limit defaults to four and is capped at 32.
+Without `nativeClient`, Station does not poll or answer native application
+offers. With it, the connector answers only that surface under its current
+Station signing trust. This opt-in does not issue the native routing grant,
+approve a Device, authenticate a person or grant Project access. A packaged
+native client journey still requires the host-owned grant and account wiring
+described above; this source configuration alone is not onboarding.
+
 The config, credential bundle and certificate/key files must be bounded regular
 files in private owner-held directories, with no symlinks or hardlinks. The
 executable must be owned by the current user or root, executable, and not writable
