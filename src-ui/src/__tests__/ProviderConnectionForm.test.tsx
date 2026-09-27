@@ -4,10 +4,10 @@
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 import {
   modelPreferenceKey,
   readModelPickerPreferences,
-  resetModelPickerPreferencesCacheForTests,
   updateModelPickerPreferences,
 } from '../settings/modelPickerPreferences';
 
@@ -1065,7 +1065,7 @@ describe('ProviderConnectionForm — Anthropic and Google default model (review 
 describe('provider-scoped bulk model visibility', () => {
   beforeEach(() => {
     window.localStorage.clear();
-    resetModelPickerPreferencesCacheForTests();
+    deviceSettingsStore.reloadFromStorage();
   });
 
   test('hides and restores all listed models while preserving preferences and serving configuration', () => {
@@ -1126,7 +1126,7 @@ describe('provider-scoped bulk model visibility', () => {
       (screen.getByLabelText('Default model') as HTMLSelectElement).value,
     ).toBe('shared');
     view.unmount();
-    act(() => resetModelPickerPreferencesCacheForTests());
+    act(() => deviceSettingsStore.reloadFromStorage());
     render(<ProviderConnectionForm {...props} />);
     expect(screen.getByRole('status').textContent).toBe('0 of 2 visible');
     fireEvent.click(screen.getByRole('button', { name: 'Show all (2)' }));

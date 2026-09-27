@@ -22,7 +22,6 @@ import {
   storeAttachmentObjectUrl,
 } from '../components/chat/attachment-object-urls';
 import FilePreviewContent, {
-  filePreviewKind,
   TEXT_PREVIEW_CHAR_LIMIT,
 } from '../components/FilePreviewContent';
 import { PreviewProvider, usePreview } from '../contexts/PreviewContext';
@@ -67,19 +66,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('filePreviewKind', () => {
-  test.each([
-    ['application/pdf', 'pdf'],
-    ['text/markdown', 'markdown'],
-    ['application/json', 'json'],
-    ['text/plain', 'text'],
-    ['text/csv; charset=utf-8', 'text'],
-    ['application/zip', 'none'],
-  ] as const)('%s → %s', (mediaType, kind) => {
-    expect(filePreviewKind(mediaType)).toBe(kind);
-  });
-});
-
 describe('FilePreviewContent', () => {
   test('shows an inline plain-text attachment and offers the bytes', async () => {
     const url = dataUrl('text/plain', 'hello from the phone');
@@ -99,6 +85,23 @@ describe('FilePreviewContent', () => {
     );
     expect(download.getAttribute('download')).toBe('notes.txt');
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test('previews a text type that carries media-type parameters as text', async () => {
+    const url = dataUrl('text/csv', 'name,count\nwidgets,3');
+    render(
+      <FilePreviewContent
+        current={{
+          url,
+          mediaType: 'Text/CSV; charset=utf-8',
+          name: 'counts.csv',
+        }}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/widgets,3/, { selector: 'code' }),
+    ).toBeTruthy();
   });
 
   test('reads a fetched attachment from the cached Blob, never by fetching its blob: URL', async () => {

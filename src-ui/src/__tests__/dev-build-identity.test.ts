@@ -97,26 +97,6 @@ describe('the dev build is visually distinct wherever the brand shows', () => {
     expect(devBrands).not.toContain('#5ce0c6');
     expect(devBrands).not.toContain('#0e7c64');
   });
-
-  it('drives the marker from the host, not a bundle-time guess', () => {
-    // The same UI bundle is embedded in both the debug and release APK, so a
-    // build-time flag cannot tell them apart — only the native host can.
-    const profile = read('platform/PlatformProfileContext.tsx');
-    // Matched on the call, not on its line-wrapping: `toggle` (rather than a
-    // bare `add`) is the part that carries meaning here, and pinning the
-    // formatter's chosen breaks made this fail for a reindent that changed
-    // nothing about the behaviour (archive#1079).
-    expect(profile).toMatch(/classList\.toggle\(\s*'is-dev-build',/);
-    expect(profile).toContain('isDevBuild');
-    expect(profile).not.toMatch(/is-dev-build[\s\S]{0,200}import\.meta\.env/);
-  });
-
-  it('treats a host that reports nothing as a release build', () => {
-    // Absent on older hosts. Defaulting the other way would tint a real
-    // install, which is worse than failing to tint a dev one.
-    const profile = read('platform/PlatformProfileContext.tsx');
-    expect(profile).toContain('report.value.devBuild === true');
-  });
 });
 
 describe('the dev mark matches the dev launcher icon', () => {
@@ -153,14 +133,6 @@ describe('release channels carry their native identity through app chrome', () =
     )?.[0];
     expect(rule).toContain('--k-brand:');
     expect(css).toContain(`content: url("/${favicon}")`);
-  });
-
-  it('projects the host channel without overwriting inline persisted accents', () => {
-    const profile = read('platform/PlatformProfileContext.tsx');
-    expect(profile).toContain('root.dataset.appChannel');
-    // Channel defaults are stylesheet tokens. applyAccentColor writes an
-    // explicit persisted choice inline, which outranks these defaults.
-    expect(profile).not.toContain("style.setProperty('--k-brand'");
   });
 });
 

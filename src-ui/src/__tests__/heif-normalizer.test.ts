@@ -2,9 +2,6 @@
 
 import { describe, expect, test, vi } from 'vitest';
 import {
-  HEIF_MAX_BOXES,
-  HEIF_MAX_EDGE,
-  HEIF_MAX_PIXELS,
   type HeifWorker,
   inspectHeifFile,
   isHeifCandidate,
@@ -59,6 +56,7 @@ function heif(
     mdatBeforeMeta?: boolean;
     unrelatedWidth?: number;
     unrelatedHeight?: number;
+    trailingFreeBoxes?: number;
     name?: string;
   } = {},
 ): File {
@@ -112,6 +110,8 @@ function heif(
   const pieces = options.mdatBeforeMeta
     ? [ftyp, box('mdat', new Uint8Array(64)), meta]
     : [ftyp, meta];
+  for (let index = 0; index < (options.trailingFreeBoxes ?? 0); index += 1)
+    pieces.push(box('free'));
   return new File(blobParts(pieces), options.name ?? 'PHOTO.HEIC', {
     type: '',
   });
@@ -180,17 +180,24 @@ describe('HEIF intake inspector', () => {
     ).resolves.toBeNull();
   });
 
-  test('rejects dimensions beyond both edge and pixel bounds before decode', async () => {
+  // The decode-bomb bounds are pinned as literals (8192 px edge, 32 Mi px
+  // area), so raising either one reds this test instead of moving with it.
+  test('admits dimensions at the edge and pixel bounds and rejects one past them, before decode', async () => {
     await expect(
-      inspectHeifFile(heif({ width: HEIF_MAX_EDGE + 1, height: 1 })),
+      inspectHeifFile(heif({ width: 8192, height: 1 })),
+    ).resolves.toMatchObject({ width: 8192, height: 1 });
+    await expect(
+      inspectHeifFile(heif({ width: 8193, height: 1 })),
     ).resolves.toBeNull();
     await expect(
-      inspectHeifFile(
-        heif({
-          width: HEIF_MAX_EDGE,
-          height: Math.floor(HEIF_MAX_PIXELS / HEIF_MAX_EDGE) + 1,
-        }),
-      ),
+      inspectHeifFile(heif({ width: 1, height: 8193 })),
+    ).resolves.toBeNull();
+    // 8192 x 4096 is exactly 32 Mi pixels.
+    await expect(
+      inspectHeifFile(heif({ width: 8192, height: 4096 })),
+    ).resolves.toMatchObject({ width: 8192, height: 4096 });
+    await expect(
+      inspectHeifFile(heif({ width: 8192, height: 4097 })),
     ).resolves.toBeNull();
   });
 
@@ -198,7 +205,7 @@ describe('HEIF intake inspector', () => {
     await expect(
       inspectHeifFile(
         heif({
-          width: HEIF_MAX_EDGE + 1,
+          width: 8193,
           height: 1,
           unrelatedWidth: 1,
           unrelatedHeight: 1,
@@ -207,14 +214,16 @@ describe('HEIF intake inspector', () => {
     ).resolves.toBeNull();
   });
 
-  test('caps the top-level box walk', async () => {
-    const boxes = Array.from({ length: HEIF_MAX_BOXES + 1 }, () => box('free'));
-    const file = new File(
-      blobParts([box('ftyp', text.encode('heic'), u32(0)), ...boxes]),
-      'too-many.heic',
-      { type: 'image/heic' },
-    );
-    await expect(inspectHeifFile(file)).resolves.toBeNull();
+  // The walk is capped at 1,024 boxes, top-level and metadata together. The
+  // fixture charges 9 (ftyp, meta, pitm, iinf, infe, iprp, ipco, ipma,
+  // ispe), so 1,015 trailing boxes land exactly on the cap.
+  test('caps the box walk at 1,024 boxes, counting metadata children', async () => {
+    await expect(
+      inspectHeifFile(heif({ trailingFreeBoxes: 1015 })),
+    ).resolves.toMatchObject({ width: 4000, height: 3000 });
+    await expect(
+      inspectHeifFile(heif({ trailingFreeBoxes: 1016 })),
+    ).resolves.toBeNull();
   });
 
   test('does not claim a decoder when the host supplies none', async () => {

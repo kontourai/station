@@ -29,7 +29,7 @@ function immutableVersion(value: unknown, label: string) {
   return value;
 }
 
-export function compareVersions(left: string, right: string) {
+function compareVersions(left: string, right: string) {
   return compare(
     immutableVersion(left, 'installed'),
     immutableVersion(right, 'latest'),
@@ -64,7 +64,7 @@ function normalizedOrigin(value: string) {
   return url.origin;
 }
 
-export function validateNativeUpdateFeed(
+function validateNativeUpdateFeed(
   value: unknown,
   _providerOrigin: string,
   channel = 'stable',

@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -43,6 +44,18 @@ function renderWithChrome() {
   );
 }
 
+/**
+ * Lets the launch check finish: the updater import, the check's own answer,
+ * and the React commit it causes. An absence asserted before this proves
+ * only that nothing had arrived yet.
+ */
+async function settleLaunchCheck() {
+  await act(async () => {
+    await import('@tauri-apps/plugin-updater');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 describe('DesktopUpdateLaunchCheck', () => {
   beforeEach(() => {
     isDesktop = true;
@@ -59,7 +72,8 @@ describe('DesktopUpdateLaunchCheck', () => {
   test('renders nothing outside the desktop native shell', async () => {
     isDesktop = false;
     renderWithChrome();
-    await waitFor(() => expect(check).not.toHaveBeenCalled());
+    await settleLaunchCheck();
+    expect(check).not.toHaveBeenCalled();
     expect(bannerStore.getSnapshot()).toHaveLength(0);
   });
 
@@ -95,6 +109,7 @@ describe('DesktopUpdateLaunchCheck', () => {
     check.mockResolvedValue(null);
     renderWithChrome();
     await waitFor(() => expect(check).toHaveBeenCalledOnce());
+    await settleLaunchCheck();
     expect(screen.queryByRole('status')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
   });
@@ -103,6 +118,7 @@ describe('DesktopUpdateLaunchCheck', () => {
     check.mockRejectedValue(new Error('offline'));
     renderWithChrome();
     await waitFor(() => expect(check).toHaveBeenCalledOnce());
+    await settleLaunchCheck();
     expect(screen.queryByRole('status')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(bannerStore.getSnapshot()).toHaveLength(0);
