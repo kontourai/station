@@ -102,14 +102,49 @@ function log(message) {
   console.log(`[portable-smoke] ${message}`);
 }
 
+const WINDOWS_SYSTEM_VARIABLES = [
+  'ALLUSERSPROFILE',
+  'CommonProgramFiles',
+  'CommonProgramFiles(x86)',
+  'CommonProgramW6432',
+  'COMPUTERNAME',
+  'NUMBER_OF_PROCESSORS',
+  'OS',
+  'PROCESSOR_ARCHITECTURE',
+  'PROCESSOR_IDENTIFIER',
+  'PROCESSOR_LEVEL',
+  'PROCESSOR_REVISION',
+  'ProgramData',
+  'ProgramFiles',
+  'ProgramFiles(x86)',
+  'ProgramW6432',
+  'PUBLIC',
+  'SystemDrive',
+  'USERDOMAIN',
+  'USERNAME',
+];
+
 /**
  * The environment of a host that never installed Node.js: only the base OS
- * directories on PATH and a throwaway HOME. Nothing is inherited.
+ * directories on PATH and a throwaway HOME. Only machine-level system
+ * variables are inherited.
  */
 function scrubbedEnvironment(home) {
   if (!WINDOWS) return { HOME: home, PATH: '/usr/bin:/bin' };
   const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
+  // Machine-level variables every Windows session and service has. Without
+  // them Windows PowerShell (which Station runs for process-birth and ACL
+  // checks) starts in a degraded state no real host is in (#2805). PATH stays
+  // minimal, so the archive still proves it needs no Node or PowerShell on
+  // PATH.
+  const system = Object.fromEntries(
+    WINDOWS_SYSTEM_VARIABLES.filter((name) => process.env[name]).map((name) => [
+      name,
+      process.env[name],
+    ]),
+  );
   return {
+    ...system,
     SystemRoot: systemRoot,
     windir: systemRoot,
     ComSpec: join(systemRoot, 'System32', 'cmd.exe'),
