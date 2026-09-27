@@ -180,6 +180,7 @@ export function renderLearningDocument(
   files,
   revision,
   sourceFiles = new Set(),
+  media = new Map(),
 ) {
   const headings = [];
   const links = [];
@@ -220,8 +221,53 @@ export function renderLearningDocument(
       return createElement(`h${level}`, { id }, children);
     };
   }
-  components.img = ({ alt, src }) =>
-    createElement('a', { href: src }, alt || 'Referenced image');
+  const mediaByUrl = new Map(
+    [...media.values()].map((capture) => [capture.url, capture]),
+  );
+  components.img = ({ alt, src }) => {
+    const capture = mediaByUrl.get(src);
+    if (!capture)
+      return createElement('a', { href: src }, alt || 'Referenced image');
+    return createElement(
+      'span',
+      { className: 'learning-capture' },
+      capture.kind === 'video'
+        ? createElement('video', {
+            controls: true,
+            preload: 'none',
+            src,
+            'aria-label': alt || capture.alt,
+          })
+        : createElement(
+            'a',
+            { href: src, target: '_blank', rel: 'noreferrer' },
+            createElement('img', {
+              src,
+              alt: alt || capture.alt,
+              loading: 'lazy',
+              decoding: 'async',
+            }),
+          ),
+      createElement('span', { className: 'capture-caption' }, capture.caption),
+      createElement(
+        'span',
+        { className: 'capture-evidence' },
+        `${capture.scenario}. ${capture.evidence}`,
+      ),
+      createElement(
+        'span',
+        { className: 'capture-revision' },
+        `Captured at ${capture.capturedRevision.slice(0, 12)}; reviewed at ${capture.reviewedRevision.slice(0, 12)}.`,
+      ),
+      capture.changed.length
+        ? createElement(
+            'strong',
+            { className: 'capture-stale' },
+            'Visual review needed: supporting code has changed.',
+          )
+        : null,
+    );
+  };
   components.code = ({ className, children }) =>
     className === 'language-mermaid'
       ? createElement(
@@ -253,7 +299,10 @@ export function renderLearningDocument(
         rehypePlugins: [observeIds],
         components,
         urlTransform: (href, key, node) => {
-          if (key === 'href' && node.tagName === 'a')
+          if (
+            (key === 'href' && node.tagName === 'a') ||
+            (key === 'src' && node.tagName === 'img')
+          )
             links.push({
               target: href,
               label: textOf(node),
@@ -268,6 +317,15 @@ export function renderLearningDocument(
                 sourceFiles,
               ),
             });
+          const destination = resolveLearningLink(
+            href,
+            document,
+            files,
+            revision,
+            sourceFiles,
+          );
+          if (destination.kind === 'local' && media.has(destination.file))
+            return media.get(destination.file).url;
           return learningHref(href, document, files, revision, sourceFiles);
         },
       },

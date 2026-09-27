@@ -1145,6 +1145,12 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'generated contributor command Interface',
   },
   {
+    pattern: 'scripts/lib/learning-media.mjs',
+    tests: ['scripts/__tests__/learning-media.test.ts'],
+    reason:
+      'captured UI media provenance, immutable bytes and source freshness',
+  },
+  {
     pattern: 'scripts/documentation-impact.mjs',
     tests: [
       'scripts/__tests__/documentation-impact.test.ts',

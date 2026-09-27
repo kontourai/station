@@ -1133,3 +1133,35 @@ body:has(#navigation-dialog[open]) {
     transition: none !important;
   }
 }
+
+.learning-capture {
+  display: block;
+  margin: 1.5rem 0;
+}
+.learning-capture img,
+.learning-capture video {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.capture-caption,
+.capture-evidence,
+.capture-revision,
+.capture-stale {
+  display: block;
+  margin-top: 0.5rem;
+}
+.capture-caption {
+  font-weight: 600;
+}
+.capture-evidence,
+.capture-revision {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.capture-stale {
+  color: var(--ink);
+}

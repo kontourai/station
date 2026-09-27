@@ -12,6 +12,10 @@ import { extractModules, validateCatalog } from './lib/documentation-model.mjs';
 import { compileDocumentationReviews } from './lib/documentation-review.mjs';
 import { publishImmutableSnapshot } from './lib/immutable-snapshot.mjs';
 import { renderLearningDocument } from './lib/learning-markdown.mjs';
+import {
+  compileLearningMedia,
+  LEARNING_MEDIA_MANIFEST,
+} from './lib/learning-media.mjs';
 import { createLearningSourceReader } from './lib/learning-source-reader.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
@@ -90,6 +94,16 @@ export async function buildLearningGuide({
       capturedSources.set(file, reader.read(file));
     return capturedSources.get(file);
   }
+  const media = sourceFiles.has(LEARNING_MEDIA_MANIFEST)
+    ? await compileLearningMedia(
+        JSON.parse(
+          (await captureSource(LEARNING_MEDIA_MANIFEST)).toString('utf8'),
+        ),
+        sourceFiles,
+        captureSource,
+        { requireFresh: check },
+      )
+    : new Map();
   const catalog = JSON.parse(
     (await captureSource('docs/learn/atlas.json')).toString('utf8'),
   );
@@ -108,6 +122,7 @@ export async function buildLearningGuide({
       files,
       revision,
       sourceFiles,
+      media,
     );
     renderedDocuments.set(file, rendered);
     documents.push({
@@ -165,6 +180,7 @@ export async function buildLearningGuide({
       files,
       revision,
       sourceFiles,
+      media,
     );
     return {
       ...module,
@@ -176,6 +192,12 @@ export async function buildLearningGuide({
   const sourcePaths = [
     ...new Set([
       ...files,
+      ...(sourceFiles.has(LEARNING_MEDIA_MANIFEST)
+        ? [LEARNING_MEDIA_MANIFEST]
+        : []),
+      ...[...media.values()].flatMap((capture) =>
+        capture.sources.map((source) => source.path),
+      ),
       ...[...reviews.values()].flatMap((review) =>
         review.sources.map((source) => source.path),
       ),
@@ -193,6 +215,7 @@ export async function buildLearningGuide({
       .update(await captureSource(file))
       .digest('hex');
     sourceSnapshots[file] =
+      media.get(file)?.url ??
       `sources/${digest}/${file.split('/').map(encodeURIComponent).join('/')}.txt`;
   }
   function bindSourceLinks(html) {
@@ -236,6 +259,7 @@ export async function buildLearningGuide({
     }),
     documents: snapshots,
     sourceSnapshots,
+    captures: [...media.values()],
   };
   if (!check) {
     const output = path.join(inputRoot, '.kontourai/docs-learning');
@@ -244,6 +268,11 @@ export async function buildLearningGuide({
       await publishImmutableSnapshot(
         path.join(output, decodeURIComponent(sourceSnapshots[file])),
         capturedSources.get(file),
+      );
+    for (const capture of media.values())
+      await publishImmutableSnapshot(
+        path.join(output, capture.url),
+        await captureSource(capture.path),
       );
     for (const asset of ['index.html', 'atlas.css', 'atlas.js'])
       await writeFile(

@@ -56,6 +56,27 @@ diagram rendering need no external network requests. The
 [Mermaid security configuration](https://mermaid.js.org/config/usage) stays strict;
 diagram source cannot enable executable click actions.
 
+## Screenshots and walkthroughs
+
+Selected application captures appear beside the relevant explanation. Each
+caption names the scenario, its evidence limits and the capture/review revisions.
+A browser running sample fixtures is not a live provider or physical-device test.
+Open a screenshot for full size; videos have ordinary playback controls and do
+not autoplay. Keep a written explanation of the steps alongside a video.
+
+`media.json` admits tracked PNG screenshots and WebM recordings under
+`docs/learn/media/`. It records the asset digest, source dependencies and owning
+documents. The builder uses local immutable URLs, preserves original capture
+provenance, and warns when supporting code has changed; the strict check refuses
+stale reviews. Unlisted or remote images remain links and are not fetched inline.
+
+When adding a capture, inspect it for private data, record the actual fixture or
+service used, and add its asset and source dependencies to each owning document's
+review record. This connects UI changes to the impact/catch-up report. Re-capture
+when behavior or presentation changes; if a reviewed code delta leaves the image
+accurate, retain its capture revision and record the new review revision and
+source hashes. Never relabel old media as a new capture.
+
 ## Reading branches
 
 | Branch | Begin with | Questions to bring |
@@ -92,6 +113,14 @@ changes the behavior, then re-review the affected evidence. The audit retains
 the original observation and a link to the fix.
 
 ## Maintaining the atlas
+
+Use `npm run docs:impact -- <changed-paths...>` before an edit and
+`npm run docs:impact -- --catch-up --json` to find accumulated review work.
+The report links changed sources to their documented owners, distinguishes a
+page's last edit from its reviewed source revision, and exposes unmapped changes.
+See [incremental maintenance](../guides/documentation.md#find-affected-documentation-and-catch-up)
+for the comparison baseline and limits.
+
 
 The reader starts with a small navigation manifest. It fetches individual
 document/module bodies, the full-text search index, and the diagram renderer
