@@ -111,6 +111,47 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
   const prepareNativeActiveConnection = useNativeProfileSelection();
   const bundledStatus = useBundledServerStatus(profile.supervisesBundledServer);
 
+  useEffect(() => {
+    if (!profile.isTauri || !profile.isDesktop) return;
+    let disposed = false;
+    let supervisor: { start(): void; stop(): void } | undefined;
+    void Promise.all([
+      import('../platform/native/nativeRelayGrantRenewalSupervisor'),
+      import('../platform/native/nativeRelayGrantRenewalAdapter'),
+    ])
+      .then(
+        ([
+          { NativeRelayGrantRenewalSupervisor },
+          { nativeRelayGrantRenewalAdapter },
+        ]) => {
+          if (disposed) return;
+          supervisor = new NativeRelayGrantRenewalSupervisor(
+            nativeProfileRepository(),
+            nativeRelayGrantRenewalAdapter,
+            undefined,
+            Date.now,
+            undefined,
+            undefined,
+            (issue) => {
+              if (issue)
+                console.error(
+                  `Native relay grant renewal paused: ${issue.routeCount} saved routes exceed the ${issue.maxRoutes}-route limit.`,
+                );
+            },
+          );
+          supervisor.start();
+        },
+      )
+      .catch((error: unknown) => {
+        if (!disposed)
+          console.error('Native relay grant renewal could not start.', error);
+      });
+    return () => {
+      disposed = true;
+      supervisor?.stop();
+    };
+  }, [profile.isDesktop, profile.isTauri]);
+
   // Resolve one host-supplied, never-persisted connection. An explicit CLI
   // base is deliberate user intent and therefore always wins over desktop
   // ownership. Otherwise unified native status supplies the local owner.
