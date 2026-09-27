@@ -217,6 +217,47 @@ describe('installPluginDependency', () => {
     expect(result.error).toContain('did not materialize');
   });
 
+  test('holds a registry-installed dependency to remote-only dependencies of its own', async () => {
+    const root = createRoot();
+    const pluginsDir = join(root, 'plugins');
+    // A local plugin the registry-installed tree names by absolute path.
+    const leafSource = writePluginSource(root, 'leaf-source', {
+      name: 'leaf-dep',
+      version: '1.0.0',
+    });
+    const { buildPlugin, logger } = deps();
+    // The provider installs the tree itself and exposes no source for it.
+    const getAgentRegistryProvider = vi.fn(() => ({
+      install: vi.fn(async () => {
+        writePluginSource(pluginsDir, 'registry-dep', {
+          name: 'registry-dep',
+          version: '1.0.0',
+          dependencies: [{ id: 'leaf-dep', source: leafSource }],
+        });
+        return { message: 'ok', success: true };
+      }),
+    }));
+
+    const result = await installPluginDependency(
+      { id: 'registry-dep' },
+      pluginsDir,
+      getAgentRegistryProvider as any,
+      buildPlugin,
+      logger,
+      new Set(),
+      new Set(),
+      undefined,
+      undefined,
+      root,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(
+      /names a local source under a remote parent source/,
+    );
+    expect(existsSync(join(pluginsDir, 'leaf-dep'))).toBe(false);
+  });
+
   test('rejects registry success when the installed manifest name does not match the dependency id', async () => {
     const root = createRoot();
     const pluginsDir = join(root, 'plugins');

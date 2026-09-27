@@ -180,88 +180,88 @@ function assertSupportedPluginSource(source: string): void {
 }
 
 /**
+ * Parent marker for a dependency a registry provider installed itself without
+ * exposing a source: there is no local parent to confine its own
+ * dependencies against, so they are held to the remote-parent rule.
+ */
+export const REGISTRY_DEPENDENCY_PARENT = '\0registry-dependency-parent';
+
+/**
  * Resolves a dependency's declared `source` against the plugin that declared
  * it. A plugin manifest is untrusted content, so what it may name depends on
  * where the declaring plugin itself came from:
  *
- * - A remote dependency (a URL or `git@host:path`) is kept as written;
- *   {@link fetchPluginSource} admits only git over https or ssh.
- * - A parent fetched from a remote source may name remote dependencies only:
- *   no local path, relative or absolute.
+ * - A remote dependency (a URL or scp-style `git@host:path`) is kept as
+ *   written; {@link fetchPluginSource} admits only git over https or ssh.
+ * - A parent fetched from a remote source, or installed by a registry
+ *   provider that exposed no source ({@link REGISTRY_DEPENDENCY_PARENT}), may
+ *   name remote dependencies only.
  * - A local parent's local dependencies, relative or absolute, must resolve
  *   inside `allowedLocalRoot` (by default the directory holding the parent's
- *   source) with no symbolic link on the way, and must be a plain directory:
- *   not git-shaped (a `.git` suffix or a `#branch`), and holding no `.git`
- *   entry. Local git is never cloned for a dependency.
+ *   source). Containment is judged in the physical frame: the root is taken
+ *   through its realpath, so a root reached via a symlinked ancestor (`/tmp`
+ *   on macOS) works, and no symbolic link may sit below the root on the way.
+ * - A local dependency is a plain directory that is COPIED with every `.git`
+ *   entry left out ({@link fetchPluginSource}'s dependency mode), never
+ *   cloned: a `.git`-suffixed final component or a `#` in the declared
+ *   spelling is refused, since the installer would treat either as git.
  */
 export function resolvePluginDependencySource(
   dependency: { id: string; source?: string; version?: string },
   parentSourceDir: string,
   allowedLocalRoot: string = dirname(resolve(parentSourceDir)),
 ): { id: string; source?: string; version?: string } {
-  if (!dependency.source || dangerousProtocolOrGitSource(dependency.source)) {
+  if (!dependency.source || isRemotePluginSource(dependency.source)) {
     return dependency;
   }
-  if (dangerousProtocolOrGitSource(parentSourceDir)) {
+  if (
+    parentSourceDir === REGISTRY_DEPENDENCY_PARENT ||
+    isRemotePluginSource(parentSourceDir)
+  ) {
     throw new Error(
       `Plugin dependency '${dependency.id}' names a local source under a remote parent source`,
     );
   }
-  const source = resolve(parentSourceDir, dependency.source);
   const kind = isAbsolute(dependency.source) ? 'absolute' : 'relative';
-  const root = resolve(allowedLocalRoot);
-  const sourceRelative = relative(root, source);
-  if (
-    sourceRelative === '' ||
-    sourceRelative === '..' ||
-    sourceRelative.startsWith(`..${sep}`) ||
-    isAbsolute(sourceRelative)
-  ) {
-    throw new Error(
+  const escapes = () =>
+    new Error(
       `Plugin dependency '${dependency.id}' ${kind} source escapes its allowed package root`,
     );
+  const source = resolve(parentSourceDir, dependency.source);
+  if (dependency.source.includes('#') || /\.git$/i.test(basename(source))) {
+    throw new Error(
+      `Plugin dependency '${dependency.id}' local source must be a plain directory; name a git repository by its remote URL`,
+    );
   }
-  for (const path of [dependency.source, source]) {
-    if (path.includes('#') || /\.git$/i.test(path)) {
-      throw new Error(
-        `Plugin dependency '${dependency.id}' local source must be a plain directory; name a git repository by its remote URL`,
-      );
-    }
-  }
-  let current = root;
-  for (const segment of sourceRelative.split(sep)) {
-    if (existsSync(current)) {
-      const status = lstatSync(current);
-      if (status.isSymbolicLink() || !status.isDirectory()) {
-        throw new Error(
-          `Plugin dependency '${dependency.id}' ${kind} source has a non-directory or symbolic-link ancestor`,
-        );
-      }
-    }
-    current = join(current, segment);
-  }
-  let exists = true;
+  const lexicalRoot = resolve(allowedLocalRoot);
+  let physicalRoot: string;
   try {
-    lstatSync(current);
+    physicalRoot = realpathSync(lexicalRoot);
   } catch {
-    exists = false;
+    throw escapes();
   }
-  if (exists) {
-    const status = lstatSync(current);
+  // The spelling may be in either frame: a relative source follows the
+  // parent's lexical path, an absolute one may be spelled physically.
+  const frame = [lexicalRoot, physicalRoot].find((root) =>
+    isStrictlyInside(root, source),
+  );
+  if (!frame) throw escapes();
+  // Below the root, every existing component must be a real directory.
+  let current = frame;
+  const segments = relative(frame, source).split(sep);
+  for (const [index, segment] of segments.entries()) {
+    current = join(current, segment);
+    let status: ReturnType<typeof lstatSync>;
+    try {
+      status = lstatSync(current);
+    } catch {
+      break;
+    }
     if (status.isSymbolicLink() || !status.isDirectory()) {
       throw new Error(
-        `Plugin dependency '${dependency.id}' ${kind} source must be a physical directory`,
-      );
-    }
-    let hasGitEntry = true;
-    try {
-      lstatSync(join(current, '.git'));
-    } catch {
-      hasGitEntry = false;
-    }
-    if (hasGitEntry) {
-      throw new Error(
-        `Plugin dependency '${dependency.id}' local source must not contain git metadata (.git)`,
+        index === segments.length - 1
+          ? `Plugin dependency '${dependency.id}' ${kind} source must be a physical directory`
+          : `Plugin dependency '${dependency.id}' ${kind} source has a non-directory or symbolic-link ancestor`,
       );
     }
   }
@@ -271,8 +271,19 @@ export function resolvePluginDependencySource(
   };
 }
 
-function dangerousProtocolOrGitSource(source: string): boolean {
-  return source.startsWith('git@') || sourceProtocol(source) !== null;
+function isStrictlyInside(root: string, candidate: string): boolean {
+  const rel = relative(root, candidate);
+  return (
+    rel !== '' &&
+    rel !== '..' &&
+    !rel.startsWith(`..${sep}`) &&
+    !isAbsolute(rel)
+  );
+}
+
+/** A URL, or scp-style `git@host:path` (not `git@/path`, which is local). */
+function isRemotePluginSource(source: string): boolean {
+  return /^git@[^/:]+:/.test(source) || sourceProtocol(source) !== null;
 }
 
 function assertPluginDependencyId(id: string): void {
@@ -491,6 +502,13 @@ export async function fetchPluginSource(
   source: string,
   pluginsDir: string,
   logger: Logger,
+  /**
+   * `dependency`: the source was named by a plugin manifest, not the
+   * operator. A local tree is copied with every `.git` entry left out, and
+   * local git is never cloned. An operator's own `station install <path>`
+   * keeps its `.git`, which the update route relies on.
+   */
+  options: { dependency?: boolean } = {},
 ): Promise<{ tempDir: string; tempName: string } | { error: string }> {
   try {
     assertSupportedPluginSource(source);
@@ -536,6 +554,13 @@ export async function fetchPluginSource(
 
   if (isGit) {
     const [url, branch] = source.split('#');
+    if (options.dependency && isLocalGitSource(url)) {
+      rmSync(tempDir, { recursive: true, force: true });
+      return {
+        error:
+          'A plugin dependency cannot be a local git repository; name it by its remote URL',
+      };
+    }
     const cloneArgs = ['clone', '--depth', '1'];
     if (branch) cloneArgs.push('--branch', branch);
     cloneArgs.push(url, tempDir);
@@ -572,7 +597,9 @@ export async function fetchPluginSource(
     try {
       // Async on purpose: `cpSync` aborts the process on an unreadable
       // directory (see `copyPluginTree`).
-      await copyPluginTree(source, tempDir);
+      await copyPluginTree(source, tempDir, {
+        excludeGitMetadata: options.dependency === true,
+      });
     } catch (error: unknown) {
       // A copy that fails part-way (an unreadable file or directory, a FIFO)
       // must not leave the half-copied staging tree behind (#2342).
@@ -729,6 +756,9 @@ export async function resolvePluginDependencies(
       allowedLocalRoot,
     );
     let dependencySourceContext = resolvedDependency.source;
+    // What this dependency's own dependencies resolve against: the source its
+    // tree was fetched from (declared, or the registry's).
+    let transitiveParent = resolvedDependency.source;
 
     const dependencyDir = join(pluginsDir, dependency.id);
     if (existsSync(join(dependencyDir, 'plugin.json'))) {
@@ -766,6 +796,7 @@ export async function resolvePluginDependencies(
         resolvedDependency.source,
         pluginsDir,
         logger,
+        { dependency: true },
       );
       if (!('error' in result)) {
         try {
@@ -812,10 +843,12 @@ export async function resolvePluginDependencies(
           status = 'will-install';
           if (match.source) {
             dependencySourceContext = match.source;
+            transitiveParent = match.source;
             const result = await fetchPluginSource(
               match.source,
               pluginsDir,
               logger,
+              { dependency: true },
             );
             if (!('error' in result)) {
               try {
@@ -903,7 +936,7 @@ export async function resolvePluginDependencies(
           seen,
           // A remote dependency stays the parent of its own dependencies, so
           // they are held to the remote-parent rule (remote sources only).
-          dependencySourceContext ?? dependencyDir,
+          transitiveParent ?? dependencyDir,
           allowedLocalRoot,
           validation,
         )),
@@ -1161,6 +1194,7 @@ export async function installPluginDependency(
         dependencySource,
         pluginsDir,
         logger,
+        { dependency: true },
       );
       if ('error' in result) return { success: false, error: result.error };
       const { tempDir } = result;
@@ -1417,7 +1451,13 @@ export async function installPluginDependency(
         );
         for (const transitive of depManifest.dependencies || []) {
           const transitiveResult = await installPluginDependency(
-            transitive,
+            // Installed by a registry provider that exposed no source, so
+            // there is no local parent to confine against: remote only.
+            resolvePluginDependencySource(
+              transitive,
+              REGISTRY_DEPENDENCY_PARENT,
+              allowedLocalRoot,
+            ),
             pluginsDir,
             getPluginRegistryProvider,
             buildPlugin,

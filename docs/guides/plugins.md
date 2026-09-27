@@ -890,12 +890,13 @@ Plugins can declare dependencies on other plugins. The server resolves and insta
 
 - If `source` is provided and the dependency isn't installed, it's cloned and installed automatically
 - Local dependency sources, relative or absolute, resolve from the declaring
-  local plugin directory and must stay inside its physical sibling package
-  root (the directory holding the declaring plugin). Traversal and symlinked
-  ancestors are refused
-- A local dependency source must be a plain directory. A path ending in `.git`,
-  a `#branch`, or a directory holding a `.git` entry is refused: name a git
-  dependency by its remote URL
+  local plugin directory and must stay inside its sibling package root (the
+  directory holding the declaring plugin, judged through its real path).
+  Traversal and symbolic links below that root are refused
+- A local dependency is copied as a plain directory, never cloned, and every
+  `.git` entry in it is left out, so a sibling that is its own git checkout
+  still works. A declared path ending in `.git` or containing `#` is refused:
+  name a git dependency by its remote URL (`https://…` or `git@host:path`)
 - A plugin fetched from a remote source may declare only remote dependency
   sources, and so may each of its remote dependencies
 - If no `source`, the server tries the configured registry

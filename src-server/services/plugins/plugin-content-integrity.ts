@@ -167,11 +167,19 @@ export const PLUGIN_TREE_COPY = {
 export async function copyPluginTree(
   source: string,
   target: string,
-  options: { skipSpecialFiles?: boolean } = {},
+  options: { skipSpecialFiles?: boolean; excludeGitMetadata?: boolean } = {},
 ): Promise<void> {
+  const filters: Array<(path: string) => boolean> = [];
+  if (options.skipSpecialFiles) filters.push(isCopyableTreeEntry);
+  // Every `.git` entry at any depth (directory, gitfile or link): the copy is
+  // a plain tree, so nothing later can act on repository metadata in it.
+  if (options.excludeGitMetadata)
+    filters.push((path) => basename(path) !== '.git');
   await cp(source, target, {
     ...PLUGIN_TREE_COPY,
-    ...(options.skipSpecialFiles ? { filter: isCopyableTreeEntry } : {}),
+    ...(filters.length > 0
+      ? { filter: (path: string) => filters.every((keep) => keep(path)) }
+      : {}),
   });
 }
 

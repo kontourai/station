@@ -10,7 +10,14 @@
  * The remote transport is simulated: `execGit` clones a local fixture
  * repository when asked for the fixture's https URL, and is otherwise real.
  */
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
@@ -159,12 +166,22 @@ describe('POST /preview confines plugin dependency sources', () => {
     expectRefused(outcome, /local source must be a plain directory/);
   });
 
-  test('refuses a working checkout as a dependency source', async () => {
+  test('copies a working checkout dependency as a plain tree, never through git', async () => {
     const { root, packages, dependency, writeParent } = layout();
-    const checkout = writePlugin(join(packages, 'shared-dep'), dependency);
+    const checkout = writePlugin(join(packages, 'shared-dep'), {
+      ...dependency,
+      description: 'checkout dependency',
+    });
+    // A gitfile pointing outside, as a polyrepo checkout or a hostile tree
+    // might carry; staging must neither follow nor keep it.
     writeFileSync(join(checkout, '.git'), 'gitdir: ../../outside/dep/.git\n');
     const outcome = await preview(root, writeParent('../shared-dep'));
-    expectRefused(outcome, /must not contain git metadata \(\.git\)/);
+    expect(outcome.status).toBe(200);
+    expect(outcome.body.valid).toBe(true);
+    expect(outcome.body.dependencies).toEqual([
+      expect.objectContaining({ id: 'shared-dep', status: 'will-install' }),
+    ]);
+    expect(outcome.text).not.toContain(SECRET);
   });
 
   test('refuses a local dependency declared by a remotely fetched parent', async () => {
@@ -205,4 +222,59 @@ describe('POST /preview confines plugin dependency sources', () => {
     const outcome = await preview(root, writeParent(REMOTE_PARENT));
     expectRefused(outcome, /names a local source under a remote parent source/);
   });
+
+  test('treats git@ as remote only in git@host:path form', async () => {
+    const { root, outsideDep, writeParent } = layout();
+    commitRepo(outsideDep);
+    const bare = join(root, 'outside', 'dep.git');
+    execGitSync(['clone', '--bare', outsideDep, bare], {
+      hardening: { allowFileProtocol: true },
+    });
+    // `git@/abs/path.git` is a local path, never a transport address.
+    const outcome = await preview(root, writeParent(`git@${bare}`));
+    expectRefused(outcome, /local source must be a plain directory/);
+  });
+
+  test('accepts a # in an ancestor of the parent, judging only the declared spelling', async () => {
+    const { root, dependency } = layout();
+    const group = join(root, 'grp#1');
+    writePlugin(join(group, 'shared-dep'), dependency);
+    const parent = writePlugin(join(group, 'parent'), {
+      name: 'parent-plugin',
+      version: '1.0.0',
+      dependencies: [{ id: 'shared-dep', source: '../shared-dep' }],
+    });
+    const outcome = await preview(root, parent);
+    expect(outcome.status, outcome.text).toBe(200);
+    expect(outcome.body.dependencies).toEqual([
+      expect.objectContaining({ id: 'shared-dep', status: 'will-install' }),
+    ]);
+  });
+
+  test.each([
+    ['relative', (_physical: string) => '../shared-dep'],
+    [
+      'absolute (physical spelling)',
+      (physical: string) => join(physical, 'shared-dep'),
+    ],
+  ])(
+    'accepts a %s dependency when the source root is reached through a symlink',
+    async (_label, spell) => {
+      const { root, dependency } = layout();
+      const real = join(root, 'real-group');
+      writePlugin(join(real, 'shared-dep'), dependency);
+      const link = join(root, 'linked-group');
+      symlinkSync(real, link, 'dir');
+      const parent = writePlugin(join(link, 'parent'), {
+        name: 'parent-plugin',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-dep', source: spell(realpathSync(real)) }],
+      });
+      const outcome = await preview(root, parent);
+      expect(outcome.status, outcome.text).toBe(200);
+      expect(outcome.body.dependencies).toEqual([
+        expect.objectContaining({ id: 'shared-dep', status: 'will-install' }),
+      ]);
+    },
+  );
 });
