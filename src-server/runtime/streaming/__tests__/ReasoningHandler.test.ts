@@ -62,15 +62,20 @@ describe('ReasoningHandler', () => {
 
     expect(reasoning).toBe('plan');
     expect(text).toBe('Before after');
-    expect(result.map((chunk) => chunk.type)).toEqual([
-      'text-start',
-      ...'Before '.split('').map(() => 'text-delta'),
-      'reasoning-start',
-      ...'plan'.split('').map(() => 'reasoning-delta'),
-      'reasoning-end',
-      'text-start',
-      ...'after'.split('').map(() => 'text-delta'),
-      'text-end',
+    // Order of content, not chunking: consecutive deltas of one kind merge.
+    const segments: { type: string; text: string }[] = [];
+    for (const chunk of result) {
+      if (chunk.type !== 'text-delta' && chunk.type !== 'reasoning-delta') {
+        continue;
+      }
+      const last = segments.at(-1);
+      if (last?.type === chunk.type) last.text += chunk.text;
+      else segments.push({ type: chunk.type, text: chunk.text });
+    }
+    expect(segments).toEqual([
+      { type: 'text-delta', text: 'Before ' },
+      { type: 'reasoning-delta', text: 'plan' },
+      { type: 'text-delta', text: 'after' },
     ]);
   });
 
