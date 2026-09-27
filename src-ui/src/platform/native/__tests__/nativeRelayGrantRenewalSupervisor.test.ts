@@ -119,14 +119,17 @@ describe('native relay grant renewal supervisor', () => {
   test('schedules renewal at grant half-life, not at expiry', async () => {
     supervisor.start();
     await vi.advanceTimersByTimeAsync(0);
-    expect(status).toHaveBeenCalledWith('Home Station');
+    expect(status).toHaveBeenCalledWith({
+      profileName: 'Home Station',
+      ...route,
+    });
     expect(renew).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(49_999);
     expect(renew).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(renew).toHaveBeenCalledWith({
-      profileName: 'Home Station',
+      selection: { profileName: 'Home Station', ...route },
       expectedProfileRevision: 7,
     });
   });
@@ -193,5 +196,29 @@ describe('native relay grant renewal supervisor', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(renew).toHaveBeenCalledTimes(4);
+  });
+
+  test('refresh observes a newly redeemed grant after an earlier no-grant status', async () => {
+    status
+      .mockResolvedValueOnce({
+        profileName: 'Home Station',
+        ...route,
+        profileRevision: 7,
+        grant: null,
+      })
+      .mockResolvedValueOnce({
+        profileName: 'Home Station',
+        ...route,
+        profileRevision: 7,
+        grant: { expiresAt: Date.now() + 40_000, lifetimeMs: 100_000 },
+      });
+    supervisor.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(renew).not.toHaveBeenCalled();
+
+    await supervisor.refresh();
+
+    expect(status).toHaveBeenCalledTimes(2);
+    expect(renew).toHaveBeenCalledTimes(1);
   });
 });

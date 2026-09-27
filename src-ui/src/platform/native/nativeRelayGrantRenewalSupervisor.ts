@@ -18,14 +18,20 @@ export interface NativeRelayGrantRenewalStatus {
   grant: { expiresAt: number; lifetimeMs: number } | null;
 }
 
-/**
- * Injected native boundary. The status DTO stays local to this seam while the
- * desktop status command's revision receipt is being finalized.
- */
+export interface NativeRelayRouteSelection {
+  profileName: string;
+  brokerOrigin: string;
+  stationId: string;
+  enrollmentId: string;
+}
+
+/** Injected boundary that keeps host DTO parsing outside the supervisor. */
 export interface NativeRelayGrantRenewalAdapter {
-  status(profileName: string): Promise<NativeRelayGrantRenewalStatus>;
+  status(
+    selection: NativeRelayRouteSelection,
+  ): Promise<NativeRelayGrantRenewalStatus>;
   renew(input: {
-    profileName: string;
+    selection: NativeRelayRouteSelection;
     expectedProfileRevision: number;
   }): Promise<{ expiresAt: number; lifetimeMs: number }>;
 }
@@ -124,6 +130,15 @@ export class NativeRelayGrantRenewalSupervisor {
   };
   private readonly onProfileChange = () => this.selectionChanged();
 
+  private routeSelection(selected: SelectedRoute): NativeRelayRouteSelection {
+    return {
+      profileName: selected.profile.name,
+      brokerOrigin: selected.brokerOrigin,
+      stationId: selected.stationId,
+      enrollmentId: selected.enrollmentId,
+    };
+  }
+
   constructor(
     private readonly storage: NativeRelayRouteProfileStorage,
     private readonly adapter: NativeRelayGrantRenewalAdapter,
@@ -170,6 +185,13 @@ export class NativeRelayGrantRenewalSupervisor {
     this.selected = null;
   }
 
+  /** Re-observe the selected route, including after successful redemption. */
+  async refresh(): Promise<void> {
+    if (!this.started) return;
+    this.selectionChanged();
+    await this.observeAndRenew();
+  }
+
   private selectionChanged(): void {
     const next = selectionFrom(this.storage);
     if (sameSelection(this.selected, next)) return;
@@ -214,7 +236,7 @@ export class NativeRelayGrantRenewalSupervisor {
     generation: number,
   ): Promise<void> {
     try {
-      const status = await this.adapter.status(selected.profile.name);
+      const status = await this.adapter.status(this.routeSelection(selected));
       if (!this.isCurrent(selected, generation)) return;
       if (!validStatus(status, selected)) return;
       const grant = status.grant;
@@ -253,7 +275,7 @@ export class NativeRelayGrantRenewalSupervisor {
     if (!this.isCurrent(selected, generation)) return;
     try {
       const renewed = await this.adapter.renew({
-        profileName: selected.profile.name,
+        selection: this.routeSelection(selected),
         expectedProfileRevision: profileRevision,
       });
       if (!this.isCurrent(selected, generation)) return;
