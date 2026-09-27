@@ -534,9 +534,19 @@ describe('createConfiguredDispatchModel wiring', () => {
     expect(plan.candidates[0].evidence.source).toBe(EVIDENCE_SOURCE_ID);
   });
 
-  it('falls back to unavailable, never to declared, when no evidence source is wired for this call path', async () => {
-    await createConfiguredDispatchModel(baseSpec, baseConfig, primaryBinding);
+  it('falls back to unavailable, never to declared, when no evidence source is wired for this call path, without reporting a failed lookup', async () => {
+    const logger = makeLogger();
+    await createConfiguredDispatchModel(
+      baseSpec,
+      { ...baseConfig, logger },
+      primaryBinding,
+    );
     const plan = await resolveCapturedPlan();
+
+    // No source is a legitimately empty grade, not a lookup failure: the
+    // lookup-failed warning (and its uncached `undefined` result) is reserved
+    // for a source that exists and rejects.
+    expect(logger.warn).not.toHaveBeenCalled();
 
     expect(plan.candidates).toHaveLength(1);
     expect(plan.candidates[0].evidence).toEqual({
