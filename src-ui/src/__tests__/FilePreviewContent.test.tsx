@@ -87,21 +87,19 @@ describe('FilePreviewContent', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  test('previews a text type that carries media-type parameters as text', async () => {
-    const url = dataUrl('text/csv', 'name,count\nwidgets,3');
+  test('reads the media type case-insensitively and without its parameters', async () => {
     render(
       <FilePreviewContent
         current={{
-          url,
-          mediaType: 'Text/CSV; charset=utf-8',
-          name: 'counts.csv',
+          url: dataUrl('application/json', '{"a":1}'),
+          mediaType: 'Application/JSON; charset=utf-8',
+          name: 'data.json',
         }}
       />,
     );
 
-    expect(
-      await screen.findByText(/widgets,3/, { selector: 'code' }),
-    ).toBeTruthy();
+    const code = await screen.findByText(/"a": 1/, { selector: 'code' });
+    expect(code.textContent).toBe('{\n  "a": 1\n}');
   });
 
   test('reads a fetched attachment from the cached Blob, never by fetching its blob: URL', async () => {
