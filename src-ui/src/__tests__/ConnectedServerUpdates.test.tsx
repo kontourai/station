@@ -657,7 +657,7 @@ describe('ConnectedServerUpdates', () => {
         store: PAIRED_STORE,
         profileOverrides: { supervisesBundledServer: false },
         identityFailure: failure,
-        ...(identity ? { identity } : {}),
+        identity,
         probeIdentity: () =>
           identityResponseFor({
             instanceId: 'remote-instance',
