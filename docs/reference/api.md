@@ -1,24 +1,30 @@
 # Station API Documentation
 
-This document retains historical REST API narrative and worked examples. It is
-not a complete endpoint inventory.
+This reference explains selected HTTP route families and their current owners.
+It is not a complete endpoint inventory. Request examples use illustrative IDs;
+replace them with identities returned by the selected Station. Response excerpts
+show relevant fields rather than every optional field.
 
 **Base URL**: the selected Station's server origin. The CLI resolves an
 unbootstrapped Stable loopback target to `http://localhost:18141` through the
 shared runtime context; development/bootstrap ports are explicit, not fallback
 documentation. Prefer the endpoint from `station target` instead of assuming a
 channel or port. Protected routes
-require the saved Station's paired credential; loopback is not an
-authentication bypass.
+require a supported credential and the route's authority checks; loopback is not
+an authentication bypass. Paired devices, application sessions, and internal
+server requests have different authority paths.
 
 **Endpoint authority**: See [endpoints.md](./endpoints.md) for OpenAPI and auth
-authorities. This document is historical narrative, not an endpoint inventory.
+authorities. The [runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
+mounts handlers and their request boundaries. A handler existing in source does
+not mean every deployment mounts or admits it.
 
 ## Endpoint Legend
 
-- 🟢 **Custom** - Station-specific extensions
-- ✅ **In Use** - Currently used by frontend
-- ⚪ **Available** - Implemented but not currently used
+- Method and path identify the route, not its permission tier.
+- HTTP success can mean persisted or accepted while activation remains pending.
+- Readiness, health, catalog discovery, and a completed model turn are distinct
+  observations. Response fields and receipts state which one was observed.
 
 ## Table of Contents
 
@@ -28,21 +34,22 @@ authorities. This document is historical narrative, not an endpoint inventory.
 - [Workflow Management](#workflow-management)
 - [Conversation Management](#conversation-management)
 - [Configuration](#configuration)
+- [Connections](#connections)
 - [Fleet Inference](#fleet-inference)
 - [Bedrock Models](#bedrock-models)
 - [Analytics](#analytics)
 - [Monitoring](#monitoring)
 - [Agent Invocation](#agent-invocation)
-- [Auth & Users](#auth--users) *(new)*
-- [Branding](#branding) *(new)*
-- [Events (SSE)](#events-sse) *(new)*
-- [File System](#file-system) *(new)*
-- [Insights](#insights) *(new)*
-- [Standalone Model Capability Routes](#standalone-model-capability-routes) *(new)*
-- [Plugins](#plugins) *(new)*
-- [Registry](#registry) *(new)*
-- [Scheduler](#scheduler) *(new)*
-- [System](#system) *(new)*
+- [Auth & Users](#auth--users)
+- [Branding](#branding)
+- [Events (SSE)](#events-sse)
+- [File System](#file-system)
+- [Insights](#insights)
+- [Standalone Model Capability Routes](#standalone-model-capability-routes)
+- [Plugins](#plugins)
+- [Registry](#registry)
+- [Scheduler](#scheduler)
+- [System](#system)
 - [Starter Work](#starter-work)
 - [Spatial Board](#spatial-board)
 
@@ -157,81 +164,69 @@ seams exist.
 
 ## Agent Management
 
-### 🟢 ✅ Custom Chat Stream
+### Custom Chat Stream
+
 ```http
 POST /api/agents/:slug/chat
 ```
 
-**Custom endpoint** that provides streaming chat with elicitation support and tool approval handling.
+The [chat handler](../../src-server/routes/chat/chat.ts) is Station's managed
+chat stream, with tool approval and elicitation handling. The current chat dock
+primarily enters through [orchestration](#orchestration-model-launch-behavior),
+which owns durable Sessions and engine selection. Do not substitute this route
+for the orchestration lifecycle merely because both stream text.
 
-**Request Body**:
 ```json
 {
-  "input": "Hello, how can you help?",
-  "options": {
-    "userId": "user-123",
-    "conversationId": "conv-456",
-    "temperature": 0.7,
-    "maxOutputTokens": 1000,
-    "model": "anthropic.claude-3-5-sonnet-20240620-v1:0"
-  }
+  "input": "Summarize this project.",
+  "options": { "conversationId": "existing-conversation-id" }
 }
 ```
 
-**Response**: Server-Sent Events stream
+`input` can also carry the supported chat-message array. Options and principal
+handling are prepared by
+[chat-request-preparation](../../src-server/routes/chat/chat-request-preparation.ts).
+A supplied `userId` is not authentication. Explicit model overrides are resolved
+through the selected provider/catalog; absent or unknown selector evidence does
+not create an arbitrary model binding. The response is SSE; failures before
+stream creation use HTTP errors, while failures during a stream must be handled
+as stream outcomes.
 
-**Status**: In use  
-**Used by**: `ConversationsContext.tsx`, `ChatDock.tsx` (primary chat interface)
+<a id="agent-management-1"></a>
 
-**Features**:
-- Elicitation support for gathering user information
-- Tool approval workflow integration
-- Model override capability
-- Conversation history management
+### Default Agent
 
-An explicit model override is accepted only when Station has a configured model catalog that resolves the exact selector. A missing catalog or unknown selector rejects the request instead of constructing an unverified model binding.
+The public built-in Agent ID is **`station`**. `default` remains a private
+Station-engine map key; use public identities returned by `/api/agents`.
+The built-in Agent can be bound to an external engine, or run on Station's own
+engine with a resolvable Model connection and model. A model-less Station still
+starts its configuration and connection surfaces; that does not prove the
+Station-engine Agent is launchable.
 
----
+The [default-Agent builder](../../src-server/runtime/agents/runtime-default-agent.ts)
+loads `station-control` and `station-docs` on the Station-engine path, installs
+approval hooks and memory, and processes the configured system prompt. This is
+not a tool-free text helper. Delivery to an external engine depends on that
+engine's supported delivery mechanisms. The catalog projection is separate
+from proof that a particular engine received its tools.
 
-## Agent Management
-
-### 🟢 ✅ Default Agent
-
-Station creates the **system default agent** only when `defaultModel` is configured and resolves through the current model catalog:
-
-**Agent ID**: `default`  
-**Model**: Uses current `defaultModel` from `app.json`  
-**Tools**: None (simple text generation only)  
-**Instructions**: "You are a helpful AI assistant. Provide clear, concise, and accurate responses."
-
-**Usage**:
-```bash
-# Use with any agent endpoint
-POST /agents/default/invoke
-POST /agents/default/text
-POST /api/agents/default/chat
-```
-
-**Behavior**:
-- A fresh model-less Station still starts its setup, configuration, readiness, and connection surfaces
-- No model-less default agent is registered until a launchable model is configured
-- Once configured, the agent uses the catalog-resolved default model
-- No tools = fast, simple text generation
-- Suitable for utility tasks (prompt generation, text formatting, etc.)
-
-**Used by**: `AgentEditorView.tsx` (prompt generation)
+For a named one-shot invocation, use an available Agent such as
+`POST /agents/station/invoke`; see [Agent Invocation](#agent-invocation) for its
+limits. The global `/invoke` path is described separately below.
 
 ---
 
-### 🟢 ✅ List All Agents (Enriched)
+### List All Agents (Enriched)
 ```http
 GET /api/agents
 ```
 
-**Custom endpoint** that returns enriched agent data including configuration, tools, and metadata.
+The [enriched catalog](../../src-server/routes/agents/enriched-agents.ts) merges
+persisted definitions, registry defaults, and runtime observations. Rows can
+include execution binding, availability/validation findings, and activation
+failures; inclusion in the list is not proof that a chat can launch. The example
+below is a field excerpt, not a fixed response for every Agent.
 
-**Status**: In use  
-**Used by**: `AgentsContext.tsx`, agent selector, layout views
 
 **Response**:
 ```json
@@ -239,9 +234,8 @@ GET /api/agents
   "success": true,
   "data": [
     {
-      "id": "agent-id",
       "slug": "my-agent",
-      "name": "Station Agent",
+      "name": "My Agent",
       "prompt": "System instructions...",
       "description": "Agent description",
       "model": "anthropic.claude-3-5-sonnet-20240620-v1:0",
@@ -250,7 +244,7 @@ GET /api/agents
         "maxTokens": 4096,
         "temperature": 0.7
       },
-      "maxTurns": 10,
+      "maxSteps": 10,
       "icon": "🤖",
       "commands": {},
       "toolsConfig": {
@@ -264,16 +258,19 @@ GET /api/agents
 }
 ```
 
-**Used by**: `AgentsContext.tsx`, agent selector, layout views
 
 ---
 
-### 🟢 ✅ Create Agent
+### Create Agent
 ```http
 POST /agents
 ```
 
-**Custom endpoint** for creating new agents.
+The [Agent routes](../../src-server/routes/agents/agents.ts) validate the body,
+persist the definition through AgentService, and queue runtime reconciliation.
+Creation can succeed with a non-blocking availability warning. Raising the
+default approval posture to full access requires its separate authority.
+See [configuration](config.md#agentjson) for admitted file fields.
 
 **Request Body**:
 ```json
@@ -299,8 +296,7 @@ POST /agents
   "success": true,
   "data": {
     "slug": "my-agent",
-    "name": "My Agent",
-    ...
+    "name": "My Agent"
   }
 }
 ```
@@ -321,7 +317,6 @@ the response is HTTP `202` and also includes this acceptance-time snapshot:
 live status subscription and activation may complete before the response is
 processed.
 
-**Used by**: `AgentsContext.tsx`, agent editor
 
 ---
 
@@ -333,7 +328,7 @@ PUT /agents/:slug
 **Request Body**: Partial agent configuration (same structure as create)
 
 **Response**:
-```json
+```jsonc
 {
   "success": true,
   "data": { /* updated agent */ }
@@ -343,7 +338,6 @@ PUT /agents/:slug
 Updates use the same HTTP `202` `configurationActivation` receipt described
 under Create Agent when persistence completes before runtime activation.
 
-**Used by**: `AgentsContext.tsx`, agent editor
 
 ---
 
@@ -362,7 +356,7 @@ DELETE /agents/:slug
 Deletes use the same HTTP `202` `configurationActivation` receipt described
 under Create Agent when persistence completes before runtime activation.
 
-**Error** (if agent is referenced by layouts):
+**Example refusal** (a definition still referenced by a layout cannot be deleted):
 ```json
 {
   "success": false,
@@ -370,11 +364,17 @@ under Create Agent when persistence completes before runtime activation.
 }
 ```
 
-**Used by**: `AgentsContext.tsx`, agent management view
 
 ---
 
 ### Get Agent Health
+
+This [handler](../../src-server/routes/agents/agent-tools.ts) inspects Station’s
+active Agent/model/memory and recorded MCP status. It does not run a fresh
+provider turn. An external engine can be usable through orchestration without
+appearing in this active-Agent map. Missing identities return 404; known inactive
+ones return 409; pending activation returns 503.
+
 ```http
 GET /agents/:slug/health
 ```
@@ -415,99 +415,51 @@ GET /agents/:slug/health
 }
 ```
 
-**Used by**: Monitoring view, health checks
 
 ---
 
 ## Integration Management
 
+These routes manage MCP integration definitions through the
+[MCP service](../../src-server/services/plugins/mcp-service.ts) and
+[tool routes](../../src-server/routes/agents/tools.ts). A saved definition,
+a successful probe, and tool availability on an Agent are separate states.
+
 ### List All Integrations
-```http
-GET /integrations
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "files",
-      "kind": "mcp",
-      "displayName": "File System",
-      "description": "Read and write files",
-      "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./"]
-    }
-  ]
-}
-```
-
-**Used by**: Integration management view
-
----
+`GET /integrations` returns `{success: true, data}`. Rows are integration metadata
+augmented with `builtin`, `usedBy`, recorded `connected` status, known tool
+names/descriptions, and `renderAllowed`. This is not a complete raw definition
+or proof that every listed tool can currently execute.
 
 ### Create Integration
-```http
-POST /integrations
-```
 
-**Request Body**: Integration definition (same shape as `integration.json`).
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": { /* created integration */ }
-}
-```
-
----
+`POST /integrations` accepts the integration definition schema and returns
+`{success: true}`. The handler saves the definition disabled; creation does not
+automatically connect or enable it. Submitted `env` values enter the service's
+secret-environment write path instead of being echoed as ordinary read data.
 
 ### Get Integration
-```http
-GET /integrations/:id
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": { /* integration definition */ }
-}
-```
-
----
+`GET /integrations/:id` returns `{success: true, data: definition}` through the
+read projection. It withholds raw `env`, `secretEnv`, and credential-binding
+values; clients use the returned metadata when editing. A failed lookup returns
+404 from this handler.
 
 ### Update Integration
-```http
-PUT /integrations/:id
-```
 
-**Request Body**: Partial integration definition.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": { /* updated integration */ }
-}
-```
-
----
+`PUT /integrations/:id` accepts a partial definition and returns
+`{success: true}`. Environment updates are merged by key: omission preserves
+stored values, `{env: {}}` clears nothing, and removal uses
+`removeSecretEnvKeys`. Package-supplied definitions are read-only; the MCP
+service refuses changes that would create a shadow copy.
 
 ### Delete Integration
-```http
-DELETE /integrations/:id
-```
 
-**Response**:
-```json
-{
-  "success": true
-}
-```
+`DELETE /integrations/:id` returns `{success: true}` after deletion.
+Runtime-managed built-ins such as `station-control` and `station-docs` return
+409 because startup recreates them. Package-supplied definitions must be
+removed through their owning package instead.
 
 ---
 
@@ -541,11 +493,13 @@ Returns tools available to a specific agent with full schemas.
 }
 ```
 
-**Errors** — the two reasons an agent has no tool list are separated
-(station#3158): `404` `Agent '<slug>' not found` when neither the persisted
-catalog nor the registry's default agents knows the slug, and `409`
-`Agent '<slug>' exists but is not active` when it does and its runtime is not
-up.
+The [tool-catalog handler](../../src-server/routes/agents/agent-tools.ts) returns
+404 for an unknown Agent, 409 for a known inactive/failed Agent, and 503 with
+`Retry-After: 1` while activation is pending. A persisted external-engine Agent
+returns an empty Station-tool catalog; its external engine owns its tool loop.
+Tool add/remove/allow-list writes can carry the same 202 activation receipt as
+Agent writes. An empty `available` list filters out all loaded tools; omit it or
+use `["*"]` to include all loaded tools.
 
 **Used by**: `ConversationsContext.tsx`, tool displays, agent editor
 
@@ -765,602 +719,265 @@ recognizes the interrupted run, and completes the delete.
 
 ## Workflow Management
 
+These routes manage retained Agent workflow **files**. Saving source does not
+execute it or create a Task/Flow run. The [route mapper](../../src-server/routes/projects/layouts.ts)
+calls [LayoutService](../../src-server/services/projects/layout-service.ts),
+which delegates to the Agent file store.
+
 ### List Agent Workflows
-```http
-GET /agents/:slug/workflows/files
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "filename": "example-simple.ts",
-      "path": ".station/agents/my-agent/workflows/example-simple.ts"
-    }
-  ]
-}
-```
-
-**Used by**: `WorkflowsContext.tsx`, workflow management
-
----
+`GET /agents/:slug/workflows/files` returns `{success: true, data: workflows}`.
+The rows are file metadata, not completed execution receipts.
 
 ### Get Workflow Content
-```http
-GET /agents/:slug/workflows/:workflowId
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "content": "import { Agent } from '@strands-agents/sdk';\n\nexport default andThen(() => 'Hello');"
-  }
-}
-```
-
-**Used by**: Workflow editor
-
----
+`GET /agents/:slug/workflows/:workflowId` returns
+`{success: true, data: {content}}` after the stored-content safety check.
 
 ### Create Workflow
+
 ```http
 POST /agents/:slug/workflows
 ```
 
-**Request Body**:
 ```json
 {
-  "filename": "new-workflow.ts",
-  "content": "import { Agent } from '@strands-agents/sdk';\n\nexport default andThen(() => 'Hello');"
+  "filename": "example.ts",
+  "content": "export default async function example() { return 'Hello'; }"
 }
 ```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "filename": "new-workflow.ts"
-  }
-}
-```
-
-**Used by**: Workflow editor
-
----
+A successful creation returns 201 with `{success: true, data: {filename}}`.
+The example is stored source; this request does not verify a runtime workflow
+contract or invoke its function.
 
 ### Update Workflow
-```http
-PUT /agents/:slug/workflows/:workflowId
-```
 
-**Request Body**:
-```json
-{
-  "content": "// Updated workflow code"
-}
-```
-
-**Response**:
-```json
-{
-  "success": true
-}
-```
-
-**Used by**: Workflow editor
-
----
+`PUT /agents/:slug/workflows/:workflowId` accepts `{content: "..."}` and returns
+`{success: true}` after saving it.
 
 ### Delete Workflow
-```http
-DELETE /agents/:slug/workflows/:workflowId
-```
 
-**Response**:
-```json
-{
-  "success": true
-}
-```
+`DELETE /agents/:slug/workflows/:workflowId` returns `{success: true}` on deletion.
 
-**Used by**: Workflow management
+The typed refusal mapper distinguishes missing files (404), existing files on
+create (409), invalid input (400), and unsafe stored content on read (422).
+Unexpected storage failures reach the runtime's correlated generic 500 boundary;
+they are not all reported as bad requests.
 
 ---
 
 ## Conversation Management
 
+The [conversation routes](../../src-server/routes/chat/conversations.ts) combine
+personal file-memory history with authorized orchestration history. They do not
+make those storage models interchangeable. Reads use request-bound authority;
+file-memory title/context/deletion operations remain unavailable in hosted mode.
+
 ### List Agent Conversations
+
 ```http
-GET /agents/:slug/conversations
+GET /agents/:slug/conversations?limit=100
 ```
 
-**Response**:
 ```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "conv-123",
-      "userId": "agent:my-agent:user:default",
-      "title": "Conversation Title",
-      "createdAt": "2025-12-08T12:00:00Z",
-      "updatedAt": "2025-12-08T12:30:00Z",
-      "metadata": {
-        "stats": {
-          "inputTokens": 1000,
-          "outputTokens": 500,
-          "totalTokens": 1500,
-          "turns": 5,
-          "toolCalls": 2,
-          "estimatedCost": 0.05
-        }
-      }
-    }
-  ]
-}
+{ "success": true, "data": { "items": [], "hasMore": false } }
 ```
 
-**Used by**: `ConversationsContext.tsx`, conversation list
-
----
+`limit` is an integer from 1–100, default 100. Hosted reads may return
+`nextCursor`; the personal compatibility page rejects a supplied cursor.
+The route merges file-memory and orchestration rows by ID, sorts by recency,
+and returns a bounded page. `data` is a page object, not the old bare array.
+Respect `hasMore` rather than assuming one response contains the entire history.
 
 ### Get Conversation Messages
-```http
-GET /agents/:slug/conversations/:conversationId/messages
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "msg-1",
-      "role": "user",
-      "content": "Hello",
-      "timestamp": "2025-12-08T12:00:00Z"
-    },
-    {
-      "id": "msg-2",
-      "role": "assistant",
-      "content": "Hi! How can I help?",
-      "timestamp": "2025-12-08T12:00:05Z"
-    }
-  ]
-}
-```
-
-**Used by**: `ConversationsContext.tsx`, chat view
-
----
+`GET /agents/:slug/conversations/:conversationId/messages` returns
+`{success: true, data: messages}`. The reader can restore authorized messages
+from orchestration when the file-memory path has no usable record. Messages
+carry the owner's current parts/metadata shape; do not depend on every message
+having the old `content: string`/`timestamp` pair.
 
 ### Update Conversation
-```http
-PATCH /agents/:slug/conversations/:conversationId
-```
 
-**Request Body**:
-```json
-{
-  "title": "New Title"
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": { /* updated conversation */ }
-}
-```
-
-**Used by**: Conversation management, title editing
-
----
+`PATCH /agents/:slug/conversations/:conversationId` accepts the supported
+conversation update, such as `{title: "New title"}`, and returns
+`{success: true, data: updated}`. This is the file-memory update path.
+Orchestration-owned titles return 409 here; hosted requests and missing records
+are refused. Use the orchestration operation for its owned history.
 
 ### Delete Conversation
-```http
-DELETE /agents/:slug/conversations/:conversationId
-```
 
-**Response**:
-```json
-{
-  "success": true
-}
-```
-
-**Used by**: Conversation management
-
----
+`DELETE /agents/:slug/conversations/:conversationId` returns `{success: true}`
+after deleting file-memory history and its derived summary. Orchestration
+history is read-only through this path (409), and hosted requests return 404.
+A caller-scoped station-control deletion additionally checks the stored owner.
+This is not a general endpoint for deleting any Session visible in a list.
 
 ### Manage Conversation Context
+
 ```http
-POST /api/agents/:slug/conversations/:conversationId/context
+POST /agents/:slug/conversations/:conversationId/context
 ```
 
-**Request Body** (add system message):
 ```json
-{
-  "action": "add-system-message",
-  "content": "User switched to dark mode"
-}
+{ "action": "add-system-message", "content": "User switched to dark mode" }
 ```
 
-**Request Body** (clear history):
-```json
-{
-  "action": "clear-history"
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "System event added"
-}
-```
-
-**Used by**: Context management features
-
----
+The [context owner](../../src-server/runtime/conversation/conversation-manager.ts)
+implements two actions. `add-system-message` requires content and stores a
+**user-role** message prefixed with `[SYSTEM_EVENT]`; the name does not make it
+a privileged model system instruction. `clear-history` clears the file-memory
+messages. Success returns `{success: true, message}`. Unknown actions or a
+missing adapter throw through this route's error handler. Hosted mode refuses
+these file-memory mutations before invoking the owner.
 
 ### Get Conversation Statistics
-```http
-GET /agents/:slug/conversations/:conversationId/stats
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "inputTokens": 1000,
-    "outputTokens": 500,
-    "totalTokens": 1500,
-    "contextTokens": 1500,
-    "turns": 5,
-    "toolCalls": 2,
-    "estimatedCost": 0.05,
-    "contextWindowPercentage": 0.75,
-    "conversationId": "conv-123",
-    "modelId": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-    "modelStats": {},
-    "systemPromptTokens": 200,
-    "mcpServerTokens": 300,
-    "userMessageTokens": 500,
-    "assistantMessageTokens": 500,
-    "contextFilesTokens": 0
-  }
-}
-```
+`GET /agents/:slug/conversations/:conversationId/stats` returns
+`{success: true, data: stats}` after the shared stats parser. The owner uses
+file-memory stats or authorized orchestration usage when available. Prompt/tool
+estimates, reported tokens, cost, and observed model/context values are distinct
+inputs; missing provider observations are not measurements of zero.
 
-`contextWindowPercentage` is included only when Station can resolve the
-model's context-window size. When it is omitted, clients must treat context
-window usage as unavailable and omit the percentage display rather than
-rendering `0%`.
-
-**Used by**: `StatsContext.tsx`, `ConversationStats.tsx`
+`contextWindowPercentage` is absent when the model's context window cannot be
+resolved. Render that as unavailable. See the
+[stats owner](../../src-server/runtime/conversation/conversation-manager.ts)
+and [response contract](../../packages/contracts/src/runtime.ts).
 
 ---
 
 ## Configuration
 
 ### Get App Configuration
-```http
-GET /config/app
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "region": "us-east-1",
-    "defaultModel": "anthropic.claude-3-5-sonnet-20240620-v1:0"
-  }
-}
-```
-
-**Used by**: `ConfigContext.tsx`, settings view
-
----
+`GET /config/app` returns `{success: true, data, provenance}`. `data` is the
+public app-config projection with applicable runtime-derived fields; it is not
+a raw file dump. `?project=<slug>` adds Project provenance, while the values
+remain this Station's config. It does not automatically return fully composed
+Project-effective settings. Invalid/missing Project selections return 400/404.
 
 ### Update App Configuration
+
 ```http
 PUT /config/app
 ```
 
-**Request Body**:
 ```json
-{
-  "region": "us-west-2",
-  "defaultModel": "anthropic.claude-3-haiku-20240307-v1:0"
-}
+{ "defaultMaxOutputTokens": 8192 }
 ```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": { /* updated config */ }
-}
-```
-
-**Used by**: `ConfigContext.tsx`, settings view
+The [route](../../src-server/routes/system/config.ts) applies the settings
+sanitizer and serialized config mutation. The response contains the public
+updated `data`, optional `ignoredKeys`, and an activation receipt when relevant.
+Ordinary success is 200; persisted changes awaiting activation can return 202.
+A field being present in `AppConfig` does not mean this generic endpoint may
+write it: first-run decisions and revisioned log-level changes have separate
+routes, and contribution/full-access choices have additional checks.
+See [config reference](config.md) for effective defaults and consumer limits.
 
 ---
 
 ## Connections
 
+The [connection routes](../../src-server/routes/connections/connections.ts)
+call [ConnectionService](../../src-server/services/connections/connection-service.ts).
+Model connections configure inference providers. Agent App connections identify
+engines that run Agent loops. A connection ID and its `config.engineId` are
+separate identities.
+
 ### List All Connections
-```http
-GET /api/connections
-```
 
-Returns the merged Connections surface used by the UI, including both model/provider rows and runtime rows.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "bedrock-default",
-      "kind": "model",
-      "type": "bedrock",
-      "name": "Bedrock",
-      "enabled": true,
-      "capabilities": ["llm"],
-      "config": {},
-      "status": "ready",
-      "prerequisites": [],
-      "lastCheckedAt": null
-    },
-    {
-      "id": "codex",
-      "kind": "runtime",
-      "type": "codex",
-      "name": "Codex Runtime",
-      "enabled": true,
-      "capabilities": ["agent-runtime", "resume"],
-      "config": {
-        "provider": "codex",
-        "providerLabel": "Codex",
-        "defaultModel": "gpt-5.3-codex"
-      },
-      "status": "ready",
-      "prerequisites": [],
-      "lastCheckedAt": null
-    }
-  ]
-}
-```
-
-**Used by**: `ConnectionsHub.tsx`
-
----
+`GET /api/connections` returns `{success: true, data: connections}` with connection
+secrets redacted. Current Agent App rows use `kind: "agent"`; `runtime` is retained
+as a write-schema compatibility spelling, not the current row kind.
 
 ### List Model Connections
-```http
-GET /api/connections/models
-```
 
-Returns provider/model-backed connections only.
+`GET /api/connections/models` returns `{success: true, data, failures}`. A row
+that fails discovery is represented in `failures`; an empty `data` array alone
+does not establish that no Model connections exist. Provider-reported
+`config.modelOptions` is a discovery projection, not editable connection config.
 
-LLM-capable rows can include `config.modelOptions` when the provider can enumerate models.
+<a id="list-runtime-connections"></a>
 
-**Used by**: `ProviderSettingsView.tsx`, `KnowledgeConnectionView.tsx`, `NewChatModal.tsx`, `AgentEditorRuntimeTab.tsx`
+### List Agent App Connections
 
----
+`GET /api/connections/agents` returns `{success: true, data, failures}`. The old
+`/api/connections/runtimes` spelling is not registered here.
+`GET /api/connections/agents/catalog` returns the Agent App catalog separately.
 
-### List Runtime Connections
-```http
-GET /api/connections/runtimes
-```
-
-Returns runtime connections only.
-
-Current connected-runtime rows expose runtime-scoped model metadata on the read-only `runtimeCatalog` projection:
-
-- `source`: `live`, `cached`, `built-in`, or `none`
-- `models`: live or cached model entries
-- `builtInModels`: Station's bounded built-in entries
-- `reason`, `fetchedAt`, and `truncated`: status and completeness metadata
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "codex",
-      "kind": "runtime",
-      "type": "codex",
-      "name": "Codex Runtime",
-      "enabled": true,
-      "description": "Codex app-server runtime over the local Codex CLI.",
-      "capabilities": ["agent-runtime", "resume"],
-      "config": {
-        "provider": "codex",
-        "providerLabel": "Codex",
-        "defaultModel": "gpt-5.3-codex"
-      },
-      "runtimeCatalog": {
-        "source": "live",
-        "fetchedAt": "2026-08-09T00:00:00.000Z",
-        "reason": null,
-        "models": [
-          {
-            "id": "gpt-5.4-codex",
-            "name": "GPT-5.4 Codex",
-            "originalId": "gpt-5.4-codex"
-          }
-        ],
-        "builtInModels": [
-          {
-            "id": "gpt-5.3-codex",
-            "name": "GPT-5.3 Codex",
-            "originalId": "gpt-5.3-codex"
-          }
-        ]
-      },
-      "status": "ready",
-      "prerequisites": [],
-      "lastCheckedAt": null
-    }
-  ]
-}
-```
-
-**Used by**: `RuntimeConnectionView.tsx`, `ConnectionsHub.tsx`, `NewChatModal.tsx`, `useChatDockViewModel.ts`, `ChatDock.tsx`, `AgentEditorRuntimeTab.tsx`
-
----
+Rows can include `runtimeCatalog` model observations and readiness evidence.
+A cached catalog, built-in selector, prerequisite check, and successful smoke
+are different facts. Preserve the returned source/freshness/completeness fields;
+do not label every listed selector as a model that completed a turn.
+The [SDK connection query](../../packages/sdk/src/query-domains/workspaceConnections.ts)
+is a current consumer.
 
 ### List Launchable Model Inventory
+
 ```http
 GET /api/connections/model-inventory
 ```
 
-Returns a normalized, secret-free `station.model-inventory/v2` snapshot of model selectors reported by active model and agent connections. The snapshot keeps Station's configured launch binding (`providerId`) separate from adapter-declared runtime identity. `providerModel` is the selector Station passes to invocation, including a resolved Bedrock inference-profile id when required. Missing runtime, context, tool, vision, revision, or quantization facts remain `null`; Station does not infer them from endpoint URLs or model names.
+This compatibility route returns `{success: true, data: manifest}`, where
+`manifest` is the bounded **contributed** `station.fleet-contribution/v1`
+projection. It requires `inference:invoke`. It does not expose the complete
+`station.model-inventory/v2` value.
 
-`availability: "available"` requires current selector evidence. Station's own time-bounded, configuration-fingerprinted provider catalog may remain queryable as `availability: "stale"` with `freshness: "cached"`. Built-in and explicitly configured selectors observed during the current refresh may remain queryable as `"built-in"` or `"configured"`; peer-carried older observations use `"stale-snapshot"`. Bedrock opts out because its invocation selector must be returned by AWS evidence. Caller-provided persisted Agent app catalog fields are ignored; failed Agent app discovery contributes no substitute selector. Disabled and non-ready connections do not contribute model records.
+[ConnectionService](../../src-server/services/connections/connection-service.ts)
+still builds the complete inventory in-process for model resolution and the
+contribution projection. Its [inventory owner](../../src-server/services/connections/launchable-model-inventory.ts)
+contains the selector, completeness, freshness, and output-budget rules. The
+HTTP boundary intentionally returns only the contributed subset. See
+[the fleet manifest](#read-the-contributed-model-manifest); that route wraps the
+same projection as `{manifest}`, so the two response envelopes differ.
 
-Locality is declaration-backed. Station's built-in default Ollama runtime declares `local`; a configurable Ollama model endpoint remains `unknown` unless its connection explicitly declares locality. Station does not infer locality from provider type or endpoint URL.
-
-Refresh work is single-flight, deadline-bound, abortable, and concurrency-limited. Application-config updates are serialized so concurrent field updates cannot overwrite one another. Mutation revisions advance only after provider or application configuration persistence commits; native file events plus periodic semantic fingerprint observation detect out-of-process config commits, and duplicate observations do not double-count Station's own atomic writes. Each generation discovers models and runtimes from immutable provider-configuration and application-configuration snapshots captured with their respective revisions, then rechecks both owner revisions before publication. This prevents an unobserved external A-to-B-to-A file transition from substituting transient launchability input. Provider fingerprints are SHA-256 digests rather than retained serialized configuration.
-
-Mutation, timeout, and sibling-discovery failure abort in-flight network and subprocess work. Station starts deadline cancellation after 4.35 seconds to reserve the final 650 ms of the five-second response target for cleanup. Registration provenance, not adapter-supplied metadata, decides which adapters are trusted built-ins. Built-in model providers and Agent app adapters may declare that their discovery promise settles only after owned resources close; Station aborts on the first branch failure and awaits every active trusted cleanup-declaring branch only within the reserved cleanup window. A defective implementation cannot hold the inventory or orchestration request open indefinitely, and its late rejection remains supervised. Plugin metadata cannot elevate a plugin into this contract or inject plugin-controlled readiness dimensions. Concurrent Codex catalog callers share one process; cancelling one caller preserves work for remaining callers, while cancellation by the final caller terminates the process and confirms settlement before returning. Every Station-owned Codex process path, including catalog discovery, failed session startup, normal session stop, and bulk stop, sends `SIGTERM`, waits a bounded grace period, escalates to `SIGKILL`, and then waits within a second bounded confirmation window. A `kill()` return value is never treated as exit proof.
-
-Provider catalogs are bounded before projection: built-in HTTP and SDK pagination follows only returned cursors, rejects non-advancing cursors, stops after 32 pages or 1,000 accepted entries, and applies one cumulative 2 MiB response budget where raw response bytes are available. Reaching an entry ceiling while a continuation cursor remains is reported as incomplete discovery, never as a complete catalog; built-in Bedrock and Ollama Agent app adapters preserve that truncation signal through the shared adapter contract. Persisted app and provider configuration inputs are independently limited to 2 MiB before parsing. A refresh deterministically selects at most 64 Model connections and 64 Agent app adapters by stable identity. Projection retains only the lexically earliest bounded candidate set while scanning sources, serializes each candidate once for exact incremental byte accounting, and assembles the final response without repeatedly serializing whole candidate inventories. The final inventory contains at most 4,096 model records, and the complete `{success,data}` HTTP response is at most 2 MiB; omitted work produces a bounded `discovery-limited` diagnostic. Inventory discovery does not collect adapter commands.
-
-Catalog observations and the last successful inventory snapshot may be served stale for at most 15 minutes. The aggregate timestamp is no newer than its oldest published model observation; an unknown-age model is omitted rather than receiving the refresh time. A stale response preserves the original `observedAt`, marks records stale, and includes `refresh-unavailable`, including when the prior snapshot contained no models. Connection save and delete operations invalidate the snapshot and configuration-bound catalog cache, so an id reused for another endpoint cannot inherit the former endpoint's models. Adapter registration and plugin removal publish the same invalidation contract, including when a reload occurs during discovery.
-
-Every launch path requires an enabled LLM connection and exact selector evidence. Conversation, project, and application defaults define precedence only; Station does not rank providers, select the first of multiple configured connections, or replace an unsupported selector with the first catalog model. When exactly one enabled LLM connection exists, it is unambiguous and may be used without a separately persisted default. Non-Bedrock chat overrides resolve through the selected provider's bounded catalog, and Ollama sessions reject model-less or server-absent selectors rather than inventing `llama3.2`.
-
-Bedrock launch selectors are evidence-backed through one shared resolver used by inventory, `/bedrock/models`, model detail, validation, configured-model resolution, and the built-in adapter. Runtime initialization constructs the catalog and LLM provider from the same configured region and injects both into the adapter; the adapter has no independent default-region launch path. On-demand foundation-model IDs remain unchanged. An active inference profile is exposed only when its complete returned model-ARN set resolves to exactly one foundation model; every profile satisfying that relationship is exposed as its own selector, and Station does not choose among them. A provisioned-only base ID resolves implicitly only when exactly one such profile matches, including cross-region profiles discovered through bounded pagination; ambiguous or multi-model relationships are rejected. Unknown selectors, missing catalogs, and model-less adapter sessions fail closed before lifecycle events are published. Station does not invent a regional prefix or fall back to a configured selector when evidence is absent. Only streaming, text-capable Bedrock foundation models contribute selectors. Bedrock model, profile, and pricing caches expire after 15 minutes; pricing region ids are validated before AWS access, its per-region cache is capped at 32 LRU entries, and responses exceed neither 32 pages, 1,000 raw entries, nor 2 MiB. Model and pricing routes enforce a 2 MiB serialized-response ceiling. Google models are launchable only when the API explicitly reports `generateContent`, and incomplete Claude catalogs retain truncation metadata rather than being cached as complete.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "schemaVersion": "station.model-inventory/v2",
-    "observedAt": "2026-07-19T13:00:00.000Z",
-    "models": [
-      {
-        "id": "model:ollama-local:qwen3%3A30b",
-        "connectionId": "ollama-local",
-        "connectionKind": "model",
-        "providerId": "ollama-local",
-        "runtime": { "id": "ollama", "version": null },
-        "adapter": { "id": "station-ollama", "version": null },
-        "model": {
-          "id": "qwen3:30b",
-          "revision": null,
-          "quantization": null
-        },
-        "providerModel": "qwen3:30b",
-        "aliases": ["qwen3:30b"],
-        "displayName": "Qwen 3 30B",
-        "locality": "local",
-        "availability": "available",
-        "freshness": "live",
-        "observedAt": "2026-07-19T13:00:00.000Z",
-        "effectiveContextTokens": null,
-        "toolSurface": null,
-        "supportsVision": null
-      }
-    ],
-    "diagnostics": []
-  }
-}
-```
-
-**Consumers**: the Station SDK exports `fetchLaunchableModelInventory()` and `useLaunchableModelInventoryQuery()`. Datum-backed Auto routing is planned in `#423`. Its upstream contract must preserve Station's unknown execution dimensions rather than coercing them into a complete Bearing profile; that prerequisite is tracked in `kontourai/datum#21`. Existing manual model selection does not use or change this endpoint.
-
-> ## ⚠️ Superseded by station#1398 slice 2 — read this before the section above
->
-> **This endpoint no longer returns `station.model-inventory/v2`.** Both halves of §5.3's recorded decision shipped together:
->
-> 1. **Scope**: it requires the **`inference:invoke`** pairing scope instead of inheriting the `/api/connections` family's `orchestration:read` — a longest-prefix leaf override, the same mechanism `GET /api/environments/ssh/sessions` uses.
-> 2. **Payload**: it returns the **contributed-subset projection** (`station.fleet-contribution/v1`) — the same body and the same disclosure surface as [`GET /api/inference/manifest`](#read-the-contributed-model-manifest). Everything documented above about the un-projected inventory now describes an *in-process* value (`ConnectionService#listLaunchableModelInventory()`), not this route's response.
->
-> Shipping only the scope half would have been worse than shipping neither. Raising the tier hands this endpoint to precisely the fleet-peer class the completion route's refusal parity is built to keep from learning what this Station has but has **not** contributed — a peer that cannot discover a withheld model through `POST /api/inference/completions` must not be able to read the whole list here.
->
-> The reasoning for narrowing at all (`docs/design/inference-fleet.md` §5.3, §10 OQ-2): a model name discloses hardware class, spend, and what its owner works on, and the fleet design turns that list into a routing input. Tightening now is reversible; discovering the exposure later is not.
->
-> **Protected routes have no loopback bypass.** A credential-less caller over an SSH local forward receives `401 authentication_required`, just like any other direct caller. The UI proxy relays browser bearer/device-session credentials; Station's exact per-boot internal-token attestation is reserved for genuine internal/MCP callers and is a process credential, not authority inferred from a loopback address.
->
-> **Who this affects.** Direct consumers, including an SSH-forwarded browser, must present a supported credential. No in-repo caller existed — no view, CLI command, MCP tool, or E2E spec. What changes for out-of-repo consumers:
->
-> - The SDK exports are **renamed and re-typed**: `fetchLaunchableModelInventory()` / `useLaunchableModelInventoryQuery()` are now `fetchContributedModelManifest()` / `useContributedModelManifestQuery()`, returning `FleetContributionManifest`. Renamed deliberately rather than silently re-typed — a type change under the old name compiles everywhere while meaning something else. No alias is kept; this repo ships no compat shims.
-> - An embedder holding a `read-only`, `standard`, or `delegation` credential now receives `403 insufficient_scope`. Re-pair with the `inference` preset.
-
----
+The current SDK names are `fetchContributedModelManifest` and
+`useContributedModelManifestQuery`. The old launchable-inventory exports are
+not compatibility aliases.
 
 ### Get One Connection
-```http
-GET /api/connections/:id
-```
 
-Returns a single connection projection with the same shape used by the list endpoints.
-
-**Used by**: `RuntimeConnectionView.tsx`
-
----
+`GET /api/connections/:id` returns `{success: true, data: connection}` or 404 for
+an unknown connection. This read uses the same connection projection and
+secret-redaction path as the merged list.
 
 ### Save a Connection
+
 ```http
 POST /api/connections
 PUT /api/connections/:id
 ```
 
-Creates or updates a connection.
+These accept the [connection write schema](../../src-server/routes/schemas/schema-definitions/runtime.ts):
+`kind`, `type`, `name`, `config`, `enabled`, and `capabilities` are required even
+for PUT. PUT is not a generic partial patch. POST supplies an ID when omitted;
+PUT uses the path ID. Model discovery fields such as `config.modelOptions` are
+not persisted as operator choices. For an Agent App, the service resolves an
+existing engine identity and saves supported overrides; posting an arbitrary
+kind/name does not invent a new engine adapter.
 
-For runtime connections, the writable payload remains the existing editable surface (`name`, `enabled`, `config`). The server-projected `runtimeCatalog` is read-only response state and should not be treated as user-editable input.
-
-**Used by**: `ProviderSettingsView.tsx`, `KnowledgeConnectionView.tsx`, `RuntimeConnectionView.tsx`
-
----
+Creation normally returns 201, update 200, with `{success: true, data}`. A saved
+configuration awaiting runtime activation returns 202 and
+`configurationActivation`, as with Agent writes. The returned definition is
+redacted. Invalid saves return a structured 400 response.
 
 ### Delete or Reset a Connection
-```http
-DELETE /api/connections/:id
-```
 
-Deletes a model connection or resets a runtime connection override.
-
-**Used by**: `ProviderSettingsView.tsx`, `RuntimeConnectionView.tsx`
-
----
+`DELETE /api/connections/:id` deletes a Model connection. For an Agent App it
+removes saved overrides and unregisters the engine connection from the Agent
+registry. This does not uninstall the engine executable. A pending runtime
+reconciliation can return 202 with `configurationActivation`.
 
 ### Test a Connection
-```http
-POST /api/connections/:id/test
-```
 
-Runs a lightweight health check for the selected connection.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "healthy": true,
-    "status": "ready",
-    "prerequisites": []
-  }
-}
-```
-
-**Used by**: `ProviderSettingsView.tsx`, `RuntimeConnectionView.tsx`
+`POST /api/connections/:id/test` returns `{success: true, data}` with
+`healthy`, `status`, `prerequisites`, and optional `reason`/`checkedAt`.
+This is a readiness/health check, not the separate bounded-turn smoke at
+`POST /api/connections/:id/smoke`. A false `healthy` value remains a successful
+HTTP response describing an unsuccessful check. Unknown connections return 404;
+other thrown check failures return 400.
 
 ---
 
@@ -1811,137 +1428,78 @@ data: {"type":"heartbeat","timestamp":"2025-12-08T12:00:30Z"}
 
 ## Agent Invocation
 
-### 🟢 ✅ Silent Invocation (No Memory)
+These [routes](../../src-server/routes/agents/invoke.ts) execute against Station's
+active managed Agent map. An external-engine Agent being listed in the catalog
+does not make it callable through this map; use orchestration for its lifecycle.
+The [request schemas](../../src-server/routes/schemas/schema-definitions/runtime.ts)
+distinguish `input` on named invoke from `prompt` on global/legacy stream invoke.
+
+<a id="silent-invocation-no-memory"></a>
+
+### Named Invocation
+
 ```http
 POST /agents/:slug/invoke
 ```
 
-Invoke agent without loading conversation history. Used for dashboard data fetching and utility tasks.
-
-**Request Body**:
 ```json
-{
-  "prompt": "What's the weather today?",
-  "silent": true,
-  "model": "anthropic.claude-3-haiku-20240307-v1:0",
-  "tools": ["files_read_file"]
-}
+{ "input": "Summarize the supplied text: ...", "tools": [] }
 ```
 
-**Response**:
-```json
-{
-  "success": true,
-  "response": "The weather is sunny...",
-  "usage": {
-    "inputTokens": 100,
-    "outputTokens": 50
-  }
-}
-```
+Optional fields are `model`, `tools`, and `schema`. `silent` is not an admitted
+control. The [owner](../../src-server/routes/agents/invoke-agent.ts) calls the
+existing Agent's `generateText`; the route does not itself guarantee that the
+Agent's memory implementation is disabled. A supplied tool list filters the
+Agent's loaded tools by runtime name; it does not load a new integration.
 
-**Error** (authentication):
-```json
-{
-  "success": false,
-  "error": "authentication failed"
-}
-```
-Status: `401`
+The JSON response contains `success`, `response`, `usage`, `runId`, and any
+returned steps/tool calls/tool results/reasoning. With `schema`, the route adds a
+JSON instruction to the prompt and tries `JSON.parse` on the result. It does
+not validate the parsed object against that schema; a parse failure leaves the
+original text in `response`.
 
-**Status**: In use  
-**Used by**: 
-- Dashboard widgets, background data fetching
-- `station-layout/CRM.tsx` (activity description generation)
-- `AgentEditorView.tsx` (prompt generation with `default` agent)
-
-**Tip**: Use the `default` agent for simple text generation without tools:
-```bash
-POST /agents/default/invoke
-{
-  "prompt": "Generate a professional email subject line",
-  "silent": true
-}
-```
-
----
+The durable native-invocation record is separate from a conversation transcript.
+An indeterminate or partially completed invocation returns a coded 409 with run
+identity; observe that run before retrying. Unavailable record storage returns
+503. A 2xx response is not a claim that a caller's requested JSON shape was
+validated.
 
 ### Raw Tool Call (No LLM)
+
 ```http
 POST /agents/:slug/tools/:toolName
 ```
 
-Execute a tool directly without LLM processing.
-
-**Request Body**: Tool arguments
-```json
-{
-  "startDate": "2025-12-08",
-  "endDate": "2025-12-15"
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "response": { /* tool result */ },
-  "debug": {
-    "toolDuration": 150.5,
-    "totalDuration": 152.3
-  }
-}
-```
-
-**Used by**: Direct tool invocations, testing
-
----
+The body is the tool's arguments. The
+[tool owner](../../src-server/routes/agents/invoke-agent.ts) resolves an existing
+loaded tool, executes it under the captured runtime configuration, and returns
+`{success: true, response, metadata: {toolDuration, totalDuration}}`. Durations
+are rounded milliseconds. MCP text content may be JSON-decoded by the result
+unwrapper. Tool errors, including station-control failure envelopes, are checked
+before success is returned. Unknown Agent/tool identities return 404.
 
 ### Streaming Invocation
+
 ```http
 POST /agents/:slug/invoke/stream
 ```
 
-Invoke agent with streaming response and optional structured output.
+Despite the retained path name, this handler currently returns **buffered JSON,
+not SSE**. Its body uses `prompt`, optional `model`, `tools`, `maxSteps`, and
+`schema`:
 
-**Request Body**:
 ```json
-{
-  "prompt": "List files in the documents folder",
-  "silent": true,
-  "model": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-  "tools": ["files_list_directory"],
-  "maxSteps": 10,
-  "schema": {
-    "type": "object",
-    "properties": {
-      "files": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "name": { "type": "string" },
-            "size": { "type": "number" }
-          }
-        }
-      }
-    }
-  }
-}
+{ "prompt": "Summarize the supplied text: ...", "tools": [], "maxSteps": 5 }
 ```
 
-**Response** (SSE stream):
-```
-data: {"type":"text-delta","text":"Looking"}
-
-data: {"type":"tool-call","toolName":"files_list_directory"}
-
-data: {"type":"tool-result","result":{...}}
-
-data: {"type":"finish","text":"Here are your files..."}
-```
-
-**Used by**: Streaming responses with structured output
+With an explicit tools array, it builds a temporary Agent with the selected
+loaded tools. With a schema on that branch, it asks for JSON and parses the
+text; this is not JSON Schema validation. Without a tools array it calls the
+existing Agent's `generateObject` or `generateText`. Both branches return
+`{success: true, response, usage, runId}`. Schema behavior therefore depends on
+the branch and framework, rather than a universal validated-output guarantee.
+See [Custom Chat Stream](#custom-chat-stream) and orchestration for actual chat
+streaming.
 
 ---
 
@@ -1965,12 +1523,15 @@ downloads rather than renders.
 
 | status | meaning |
 |---|---|
-| `200` | `application/octet-stream`, `ETag: "<ref>"`, `Cache-Control: private, max-age=3600`, plus `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox`, `Cross-Origin-Resource-Policy: same-origin` |
+| `200` | `application/octet-stream`, `ETag: "<ref>"`, `Cache-Control: private, no-cache`, `Vary: Authorization, Cookie`, plus `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox`, `Cross-Origin-Resource-Policy: same-origin` |
 | `400` | `:ref` is not a `sha256-<64 lowercase hex>` reference — refused before it reaches any path |
-| `404` | no such blob: never written, or reclaimed by retention. The transcript renders its chip without a preview |
+| `404` | no readable binding for this caller, or bytes absent/reclaimed. The response does not reveal which case applies; the transcript keeps its attachment chip without a preview |
 
-**Used by**: `FilePartPreview` (fetch → object URL), the chat dock's retry
-recovery.
+Every fetch reauthorizes a readable conversation binding; knowing the digest
+is insufficient. ETag is emitted, but this handler does not implement an
+authorization-skipping 304 path. See the [handler](../../src-server/routes/orchestration/attachments.ts),
+[preview consumer](../../src-ui/src/components/chat/FilePartPreview.tsx), and
+[retry recovery](../../src-ui/src/components/chat-dock/retry-attachments.ts).
 
 ---
 
@@ -1997,64 +1558,40 @@ Full description, including `source` and `complete`:
 
 ## Error Handling
 
-All endpoints follow a consistent error response format:
+There is no universal response envelope across these retained route families.
+Many handlers return `{success: true, data}`, invocation returns `response`,
+some provider-facing reads return plain objects, and fleet routes use
+`manifest`/`completion`/`refusal`. Read each family's contract.
 
-**Success**:
-```json
-{
-  "success": true,
-  "data": { /* response data */ }
-}
-```
+The [runtime error boundary](../../src-server/runtime/bootstrap/runtime-http.ts)
+returns unexpected failures as a generic 500 with
+`{success: false, error: {code: "internal_error", correlationId}}`. A typed
+`RouteError` keeps its status and bounded message, with optional `code`,
+`details`, and a correlation ID. Legacy handlers that catch errors locally can
+still return a string `error`; a message substring is not a universal API error
+code. Authentication, origin, scope, membership, and operation-specific refusals
+also have their own shapes.
 
-**Error**:
-```json
-{
-  "success": false,
-  "error": "Error message"
-}
-```
-
-**HTTP Status Codes**:
-- `200`: Success
-- `201`: Created
-- `400`: Bad Request (validation error)
-- `401`: Unauthorized (authentication error)
-- `404`: Not Found
-- `500`: Internal Server Error
-
-**Authentication Errors** (Status `401`):
-Triggered when error message contains:
-- `authentication failed`
-- `status code 403`
-- `Form action URL not found`
-
----
+Clients must check HTTP status and the family's body/stream result. Treat 202
+as acceptance with pending work when the response says so, 409 indeterminate
+receipts as requiring observation, and a failed health result as different
+from a failed HTTP request. Never retry a mutation solely because its response
+was lost.
 
 ## Frontend Usage Summary
 
-### Contexts Using API Endpoints
+The current public entry point is the [SDK reference](sdk.md). Its source routes
+lead from query hooks and clients to their handlers; the former Context-name
+inventory here no longer described current consumers.
 
-| Context | Endpoints Used |
-|---------|---------------|
-| `AgentsContext` | `/api/agents`, `/agents/:slug`, `/agents` (POST/PUT/DELETE) |
-| `LayoutsContext` | removed during project-layout convergence |
-| `ConversationsContext` | `/agents/:slug/conversations`, `/agents/:slug/conversations/:id/messages`, `/agents/:slug/tools` |
-| `StatsContext` | `/agents/:slug/conversations/:id/stats` |
-| `ConfigContext` | `/config/app` (GET/PUT) |
-| `ModelsContext` | `/bedrock/models` |
-| `AppDataContext` | `/bedrock/models` |
-| `AnalyticsContext` | `/api/analytics/usage`, `/api/analytics/achievements`, `/api/analytics/rescan` |
-| `MonitoringContext` | `/monitoring/stats`, `/monitoring/events` |
-| `ModelCapabilitiesContext` | `/api/models/capabilities` |
-| `WorkflowsContext` | `/agents/:slug/workflows/files` |
+- [SDK client](../../packages/sdk/src/client/index.ts): instance-scoped HTTP APIs.
+- [SDK query domains](../../packages/sdk/src/queries.ts): cache keys and query/mutation hooks.
+- [API-base provider](../../src-ui/src/contexts/ApiBaseContext.tsx): selected Station and transport binding.
+- [Chat dock](../../src-ui/src/components/chat-dock/ChatDock.tsx): current orchestration-based chat consumer.
 
-### Components Using Direct API Calls
-
-- **ChatDock**: Uses the custom `/api/agents/:slug/chat` streaming endpoint
-- **Station Layout**: `/agents/:slug/tools/:toolName`
-- **Agent Editor**: Integration management endpoints
-- **Settings View**: Configuration endpoints
+The legacy imperative SDK functions and direct `fetch` callers do not all share
+the instance client's error/transport behavior. Their individual reference
+entries describe those limits.
 
 ---
 
@@ -3775,30 +3312,29 @@ Open-CORS endpoint that LAN clients can probe to detect a Station server without
 ## Global Routes
 
 ### Global Invoke (No Agent Context)
+
 ```http
 POST /invoke
 ```
 
-Lightweight multi-turn invocation without a named agent. Supports tool calling and structured output.
-
-**Request Body**:
 ```json
-{
-  "prompt": "What is 2+2?",
-  "schema": { "type": "object", "properties": { "answer": { "type": "number" } } },
-  "tools": ["calculator"],
-  "maxSteps": 5,
-  "model": "anthropic.claude-3-5-sonnet-20240620-v1:0"
-}
+{ "prompt": "What is 2+2?", "tools": [], "maxSteps": 5 }
 ```
 
-**Response**:
-```json
-{
-  "success": true,
-  "response": "4"
-}
-```
+The [global owner](../../src-server/routes/agents/invoke-global.ts) builds a
+temporary Agent with selected tools from the runtime's global registry. The
+body also accepts `schema`, `model`, `structureModel`, and `system`. Model
+selection is `model` → configured `invokeModel` → `defaultModel`; structured
+formatting uses `structureModel` → configured `structureModel` → resolved invoke
+model. Both are resolved through Station's model-selection path.
+
+Without a schema, the JSON response carries text, usage, step count, and a
+`runId`. With a schema, a second, tool-free Agent formats the first result using
+`generateObject`; the response includes the primary run ID and
+`relatedRunIds` for that formatting pass. If the first pass completes but
+formatting does not, the route returns a partial 409 receipt rather than
+pretending the whole operation never ran. This is a separate implementation
+from the named-invoke prompt-and-parse behavior above.
 
 ---
 
@@ -3807,7 +3343,10 @@ Lightweight multi-turn invocation without a named agent. Supports tool calling a
 POST /tool-approval/:approvalId
 ```
 
-Approve or reject a pending tool call.
+Resolve a pending tool call using the request-bound Session read authority and
+client origin. Knowing an approval ID alone is not sufficient. The
+[approval handler](../../src-server/routes/agents/invoke.ts) returns 404 when it
+cannot resolve an authorized pending request.
 
 **Request Body**:
 ```json
@@ -4003,43 +3542,34 @@ Receipts and request outcomes are immutable protected evidence. Station never si
 
 ### Custom Endpoint Registration
 
-Custom endpoints are registered via `configureApp` callback in `honoServer()`:
-
-```typescript
-server: honoServer({
-  port: this.port,
-  configureApp: (app) => {
-    // Custom routes registered here
-    app.get('/api/agents', async (c) => { /* ... */ });
-    app.post('/agents', async (c) => { /* ... */ });
-  }
-})
-```
+[Runtime composition](../../src-server/runtime/routes/runtime-routes.ts) mounts
+Station's Hono handlers and supplies their service dependencies. The framework
+server also has its own routes. Follow the composition call and the specific
+handler together; a relative path inside a route factory is not its public URL.
 
 ### Authentication
 
-When authentication is configured, custom routes inherit the same authentication behavior as the core runtime. See your auth provider documentation for details.
+[HTTP security](../../src-server/runtime/bootstrap/runtime-http.ts) is installed
+before the public/custom handlers, with a route-classification gate and the
+[external surface policy](../../src-server/security/pairing-route-scopes.ts).
+Authentication-provider identity, paired-device scope, account membership,
+Session ownership, and operator authority answer different questions. A valid
+credential does not by itself authorize every operation. See
+[endpoints](endpoints.md) for the route/auth authorities and
+[deployment authentication](../guides/deployment-authentication.md) for identity.
 
 ### CORS
 
-CORS is configured to allow localhost origins and any origins specified in `ALLOWED_ORIGINS` environment variable:
-
-```typescript
-app.use('*', cors({
-  origin: (origin) => {
-    if (!origin) return origin;
-    if (origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
-      return origin;
-    }
-    const allowed = process.env.ALLOWED_ORIGINS?.split(',') || [];
-    return allowed.includes(origin) ? origin : null;
-  },
-  credentials: true,
-}));
-```
+The running Station uses the exact browser origins assembled by
+[resolveStationBrowserOrigins](../../src-server/security/station-browser-origins.ts):
+configured additions, its bound-port loopback origins, native shell origins, and
+specific bound-host origins. The CLI adds its UI listener origins. Other origins
+are refused before route dispatch. This is not the permissive helper used when
+HTTP security is absent, and it does not allow every localhost port. Origin
+admission does not replace authentication or scope. See
+[environment settings](env-vars.md#server).
 
 ---
-
 
 ## Bind a paired device to its verified person
 
