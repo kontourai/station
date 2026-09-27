@@ -7,17 +7,32 @@ declarations through existing host contribution owners. Legacy Station manifests
 remain accepted. This does not claim that legacy fallback has been removed or
 that every feature in this source checkpoint is already released.
 
-Station targets the published **Agent Plugins 1.0.0** contract. The upstream
-1.1.0 document is a working draft and is not a supported package version until
-it is published and Station explicitly recognizes it. Runtime loading must use
-vendored schemas; it must never fetch schemas while loading a plugin.
+Station recognizes the **Agent Plugins 1.0.0** schema identifiers recorded in
+its [contract constants](../../packages/contracts/src/agent-plugin.ts). The
+[vendored schema provenance](../../schemas/agent-plugins/1.0.0/UPSTREAM.md)
+records the imported revision. Recognition does not automatically advance when
+upstream publishes another version. Loading uses local schemas, without a
+schema fetch.
 
 Portable package data remains in the closed root `plugin.json` shape. Station
 reserves one client extension namespace, `io.kontourai.station`, for both the
-manifest entry and a future optional top-level extension directory. Runtime
-discovery now exposes that directory only after filesystem containment succeeds;
-later namespace-owned features decide its contents. Every namespace member must
+manifest entry and an optional top-level directory. Runtime discovery exposes
+the directory only after filesystem containment succeeds; discovery alone does
+not execute its contents. Every namespace member must
 be an object. Station leaves unknown objects' contents opaque.
+
+```text
+my-plugin/
+  plugin.json                    # identity and optional Station extension
+  mcp.json                       # optional portable MCP definitions
+  skills/
+    explain-project/SKILL.md     # optional immediate-child Skill
+  io.kontourai.station/           # optional contained namespace directory
+```
+
+The package's code location and persistent `PLUGIN_DATA` directory are separate.
+Updates can select new code while preserving data; a package cannot select its
+own installation revision or grant itself permission by declaring a field.
 
 ## Field classification
 
@@ -32,15 +47,15 @@ be an object. Station leaves unknown objects' contents opaque.
 | `dependencies[].source` | none | dropped; dependency sources are not package authority |
 | `displayName` | `extensions["io.kontourai.station"].title` | Station host |
 | `sdkVersion`, `entrypoint`, `serverModule`, `build` | same key under the Station namespace | Station host |
-| `capabilities`, `commands`, `links`, `agents`, `workspacePanes` | same key under the Station namespace | Station host |
+| `capabilities`, `commands`, `links`, `agents`, `workspacePanes`, `workspacePaneHost` | same key under the Station namespace | Station host |
 | `operationalEventSubscriptions`, `providers`, `integrations`, `tools`, `knowledge`, `prompts` | same key under the Station namespace | Station host |
 | inline `skills` | fixed `skills/<name>/SKILL.md` discovery | dropped |
 | inline MCP/integration configuration | fixed root `mcp.json` | dropped |
 | `layout`, `layouts`, `providers[].layout` | none | dropped |
 
 The generic-candidate label does not make a field portable in Agent Plugins
-1.0. Other clients ignore it. It records names and shapes Station would be
-willing to propose upstream without a later rename.
+1.0. It is a classification for possible upstream proposals; the portable
+schema gives another client no Station-specific behavior for those fields.
 
 Acquisition URL, resolved revision, content integrity, publisher signatures,
 and lifecycle events are host observations—not package self-assertions. They
@@ -62,7 +77,11 @@ servers can still load. A non-object namespace member, including an unknown
 namespace or the Station namespace, is a fatal manifest error in the
 [shared parser](../../packages/shared/src/agent-plugin-manifest.ts). This is
 different from the runtime's warning-and-ignore handling of a non-object
-`extensions` container. Unknown portable root fields are reported and ignored.
+`extensions` container. Unknown portable root fields are reported and ignored,
+except the explicitly retired root fields `layout` and `layouts`, which are
+fatal. A namespace that passes JSON schema can still lose its Station
+contributions during host normalization—for example, duplicate setting keys.
+The portable part remains separate from that normalization result.
 
 ## Identity
 
@@ -103,9 +122,9 @@ inputs remains unimplemented.
 
 ## Current consumer behavior
 
-Station selects the vendored 1.0.0 manifest and MCP schemas from `$schema`; it
+Station requires the recognized manifest and MCP `$schema` identifiers; it
 resolves those assets relative to the source/bundled server module rather than
-the caller's working directory, caches the immutable compiled validators, and
+the caller's working directory, reuses compiled validators, and
 does not fetch schemas during load. Portable Skills are served read-only from
 immediate `skills/*/SKILL.md` children with `agent-plugin:<name>` provenance,
 and a local Project Skill with the same name wins. MCP servers are projected
@@ -117,13 +136,18 @@ health, edits, or deletion are refused until Station has an owner-bound overlay
 store; they never materialize a shadow integration that could outlive or mask
 the package.
 
-The loader supports stdio and Streamable HTTP. It reports and skips SSE,
+The loader supports stdio and Streamable HTTP definitions. It reports and skips SSE,
 invalid Skills, and invalid individual server entries at their narrow failure
 boundaries. Stdio children receive persistent per-plugin `PLUGIN_DATA`, exact
 `PLUGIN_ROOT`, the plugin root as default cwd, and single-pass expansion of
-only those two placeholders. Code updates select a retained materialization
-while preserving the same independently scoped data directory. Removal
-withdraws future contributions and retains code/data; it does not claim that
+only those two placeholders in arguments, environment values, and cwd. HTTP
+headers remain literal. A stdio command is a bare executable token or a
+contained `./` path; cwd must stay within the package or declared data root.
+Those loading checks do not prove a child can launch or a remote server accepts
+the supplied credentials. For managed installations, code updates select a
+retained materialization while preserving the same independently scoped data
+directory. Managed removal withdraws future contributions and retains
+code/data; it does not claim that
 unmanaged descendants or remote work have ended. The separate
 [installation lifecycle](../design/plugin-installation-lifecycle.md) defines
 expected-revision publication, explicit reset, and reclamation limits.
@@ -151,7 +175,8 @@ non-object `extensions` container. Author builds refuse that malformed container
 That runtime recovery behavior is not a claim that the malformed document
 conforms to the upstream schema. Unknown namespace objects remain opaque.
 
-The standalone validators are generated from the unchanged vendored schemas by
+The standalone manifest and Station-extension validators are generated from the
+vendored manifest schema and Station's namespace schema by
 `node scripts/generate-agent-plugin-validators.mjs`. The generated file records
 schema hashes and tool versions and includes the bundled Ajv helper's license.
 `npm run agent-plugin:validators:gate` reproduces and compares the generated
@@ -163,3 +188,13 @@ an editable package and source-checkout CLI commands. Build validation is not
 installation consent or proof that runtime contributions activated. Installation
 still owns acquisition, content review, current permission decisions, and durable
 activation. The CLI carries parent and dependency grant revisions from preview.
+
+## Follow the implementation
+
+| Boundary | Owner and caller |
+| --- | --- |
+| Manifest admission and host normalization | [Shared parser](../../packages/shared/src/agent-plugin-manifest.ts), [server manifest adapter](../../src-server/services/plugins/plugin-manifest-loader.ts) |
+| Package discovery, contained paths, Skills and MCP projection | [Portable loader](../../src-server/services/plugins/agent-plugin-loader.ts), [Skill discovery and mutation policy](../../src-server/services/agents/skill-service.ts), [MCP service](../../src-server/services/plugins/mcp-service.ts) |
+| Selected code and persistent data | [Incarnation paths](../../src-server/services/plugins/plugin-incarnation.ts), [installation adapter](../../src-server/services/plugins/plugin-installation-local.ts) |
+| Author builds | [Shared builder](../../packages/shared/src/build.ts), [CLI build command](../../packages/cli/src/commands/build.ts) |
+| Schema freshness | [Generator](../../scripts/generate-agent-plugin-validators.mjs), [comparison gate](../../scripts/agent-plugin-validators-gate.mjs) |
