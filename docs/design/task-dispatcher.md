@@ -1,5 +1,13 @@
 # Task Dispatcher
 
+> **Reading status: current architecture note retaining the original boundary description.**
+> The [dispatcher](../../src-server/services/projects/task-dispatcher.ts) and
+> [composition](../../src-server/services/projects/task-dispatch-composition.ts)
+> are the current owners. Composition now also accepts execution-authority and
+> live-work publication inputs alongside the four adapters described below; see the
+> [Module map](../architecture/module-map.md#taskdispatcher-and-taskgraph).
+> This note is not an exhaustive caller, cancellation, or authorization audit.
+
 `TaskDispatcher` is the dispatch Module. Its Interface is one operation:
 `dispatch(taskId, intent)`, returning a total `DispatchOutcome`. A missing
 task is explicitly `not-found`; contention and terminal lifecycle states are

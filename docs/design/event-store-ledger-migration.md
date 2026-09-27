@@ -1,5 +1,13 @@
 # EventStore ledger migration order
 
+> **Reading status: current architecture and extraction-disposition note.** This
+> is not a database migration procedure. [EventStore](../../src-server/services/orchestration/event-store.ts)
+> composes the ledgers consumed by
+> [OrchestrationService](../../src-server/services/orchestration/orchestration-service.ts);
+> the [Module map](../architecture/module-map.md#recoveryledger-and-private-credentialapplicationfactoryhandle)
+> owns the contributor-facing composition and evidence route. Classification of
+> this note does not revalidate every transition, failure, or recovery claim below.
+
 Completed behavioural ledger extractions are `TurnDeduplicator`,
 `AdoptionLedger`, and `RecoveryLedger`. RecoveryLedger composes the private
 credential-application factory/handle protocol for exact evidence. Each owns

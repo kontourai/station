@@ -1,5 +1,13 @@
 # Session tape replay
 
+> **Reading status: current implementation note with recorded test evidence.**
+> The [replay controller](../../src-ui/src/hooks/orchestration/replay/controller.ts)
+> owns replay identity and opening/closing; the
+> [player](../../src-ui/src/hooks/orchestration/replay/player.ts) drives the shared
+> event fold. Use the [Session API](../reference/session-api.md) for current
+> archive and streaming contracts. The browser matrix and engine mappings below
+> are not a newly executed test result or proof of native-device behavior.
+
 Status: debugger and read-only execution-timeline implementation. Original
 replay: #1935; event-to-render debugging and shared-device streaming: #1958;
 conversation controls: #563 / #342.
