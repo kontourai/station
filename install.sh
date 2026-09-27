@@ -619,9 +619,14 @@ start_installed_station() {
 # does not rewrite it. So ports the caller names explicitly must be the
 # unit's, or the upgrade refuses rather than silently ignoring them; ports
 # that only come from the recorded state or the channel default do not
-# constrain the unit. Arguments: the explicit server and UI ports, or none.
+# constrain the unit. Arguments: the explicit server and UI ports, each `-`
+# (or absent) when that port was not named.
 archive_services=""
 active_services=""
+# Services whose unit is registered but not running: stopped, or between two
+# of its manager's automatic restarts after a crash. Such a unit can come up
+# on its own, so no separate Station may be started beside it.
+registered_services=""
 list_archive_services() {
   [ -d "$station_home/service" ] || return 0
   node -e '
@@ -647,10 +652,14 @@ list_archive_services() {
         console.error(`Station service manifest names an invalid instance: ${file}`);
         process.exit(1);
       }
-      if (manifest.repoPath !== path.join(real(installRoot), "current") ||
-          (serverPort !== "" &&
-           (manifest.serverPort !== Number(serverPort) || manifest.uiPort !== Number(uiPort)))) {
-        console.error(`Station service ${id} runs this install with a different command or ports than requested (it serves ports ${manifest.serverPort} and ${manifest.uiPort}); reinstall it with the intended ports, or omit the port variables, before upgrading`);
+      if (manifest.repoPath !== path.join(real(installRoot), "current")) {
+        console.error(`Station service ${id} records this install root but runs ${manifest.repoPath}, not its current; reinstall it (station service install --instance=${id}) before upgrading`);
+        process.exit(1);
+      }
+      const mismatched = [["server", serverPort, manifest.serverPort], ["UI", uiPort, manifest.uiPort]]
+        .filter(([, requested, unit]) => requested !== "-" && requested !== "" && unit !== Number(requested));
+      if (mismatched.length > 0) {
+        console.error(`Station service ${id} serves ${mismatched.map(([name, requested, unit]) => `${name} port ${unit}, not the requested ${requested}`).join(" and ")}; reinstall it with the intended ports, or omit the port variables, before upgrading`);
         process.exit(1);
       }
       ids.push(id);
@@ -660,10 +669,17 @@ list_archive_services() {
 }
 
 # The ports this run was explicitly asked for, as list_archive_services'
-# arguments; nothing when neither port was named.
+# arguments: each resolved port when a variable named it, else `-`.
 explicit_port_arguments() {
-  if [ -n "${STATION_INSTALL_SERVER_PORT:-}${STATION_SERVER_PORT:-}${STATION_INSTALL_UI_PORT:-}${STATION_UI_PORT:-}" ]; then
-    printf '%s %s' "$resolved_server_port" "$resolved_ui_port"
+  if [ -n "${STATION_INSTALL_SERVER_PORT:-}${STATION_SERVER_PORT:-}" ]; then
+    printf '%s' "$resolved_server_port"
+  else
+    printf -- '-'
+  fi
+  if [ -n "${STATION_INSTALL_UI_PORT:-}${STATION_UI_PORT:-}" ]; then
+    printf ' %s' "$resolved_ui_port"
+  else
+    printf ' -'
   fi
 }
 
@@ -683,7 +699,9 @@ run_service_command() {
   return 1
 }
 
-# Prints `active` or `inactive` for a service's unit; fails when the service
+# Prints `active`, `registered` (the unit exists but is not running now:
+# stopped, or waiting for its manager to restart it) or `absent` (the
+# manifest names a unit that is gone) for a service; fails when the service
 # backend cannot say.
 service_unit_state() {
   service_status="$(run_service_command status "$1" --json)" || true
@@ -693,9 +711,11 @@ service_unit_state() {
     process.stdin.on("end", () => {
       let value;
       try { value = JSON.parse(text); } catch { process.exit(1); }
-      const active = value?.unit?.active;
-      if (active === true) process.stdout.write("active");
-      else if (active === false) process.stdout.write("inactive");
+      const unit = value?.unit;
+      if (unit?.active === true) process.stdout.write("active");
+      else if (unit?.active !== false) process.exit(1);
+      else if (unit.present === true || unit.enabled === true) process.stdout.write("registered");
+      else if (unit.present === false) process.stdout.write("absent");
       else process.exit(1);
     });
   '
@@ -724,11 +744,16 @@ restart_services() {
   done
 }
 
-# Stops what runs from the active release before `current` moves. With a
-# running service, the service is stopped through its manager: stopping only
-# its Station would make the manager restart it mid-switch (#2674).
+# Stops what runs from the active release before `current` moves. A service
+# is stopped through its manager: stopping only its Station would make the
+# manager restart it mid-switch (#2674). A registered unit that is not running
+# is stopped too, which cancels a pending automatic restart.
 stop_for_switch() {
-  [ -n "$active_services" ] || { stop_installed_station; return 0; }
+  [ -n "$active_services$registered_services" ] || { stop_installed_station; return 0; }
+  for stop_id in $registered_services; do
+    run_service_command stop "$stop_id" >/dev/null || \
+      fail "could not stop Station service $stop_id; the running release was not changed"
+  done
   stopped_services=""
   for stop_id in $active_services; do
     if ! run_service_command stop "$stop_id" >/dev/null; then
@@ -744,11 +769,11 @@ stop_for_switch() {
 }
 
 # Starts the restored release again: the services that were running, or
-# Station itself.
+# Station itself when no service unit is registered for this install.
 restart_previous_station() {
   if [ -n "$active_services" ]; then
     restart_services "$active_services" >/dev/null 2>&1
-  else
+  elif [ -z "$registered_services" ]; then
     start_installed_station >/dev/null 2>&1
   fi
 }
@@ -1646,9 +1671,10 @@ if [ -n "$archive_services" ]; then
   for service_id in $archive_services; do
     service_state="$(service_unit_state "$service_id")" || \
       fail "could not determine whether Station service $service_id is running; nothing was changed (inspect it with: station service status --instance=$service_id --base=$station_home)"
-    if [ "$service_state" = active ]; then
-      active_services="${active_services:+$active_services }$service_id"
-    fi
+    case "$service_state" in
+      active) active_services="${active_services:+$active_services }$service_id" ;;
+      registered) registered_services="${registered_services:+$registered_services }$service_id" ;;
+    esac
   done
 fi
 
@@ -1871,6 +1897,10 @@ if [ "${STATION_INSTALL_NO_START:-0}" != 1 ]; then
         fail_with_rollback "Station service $service_id did not come back as $release_tag"
       fi
     done
+  elif [ -n "$registered_services" ]; then
+    # A registered unit may start on its own at any time; a second Station
+    # beside it would share its home and ports. It stays stopped.
+    :
   elif ! start_installed_station; then
     fail_with_rollback 'the new release did not start'
   fi
@@ -1894,10 +1924,17 @@ case ":$PATH:" in
   *":$bin_dir:"*) ;;
   *) printf 'Add %s to PATH to run station from any directory.\n' "$bin_dir" ;;
 esac
+if [ -n "$registered_services" ]; then
+  for service_id in $registered_services; do
+    printf 'Station service %s was not running and was left stopped; start it with: %s service start --instance=%s\n' "$service_id" "$launcher" "$service_id"
+  done
+fi
 if [ "${STATION_INSTALL_NO_START:-0}" = 1 ] && [ -n "$active_services" ]; then
   for service_id in $active_services; do
     printf 'Station service %s was stopped for the switch; start it with: %s service start --instance=%s\n' "$service_id" "$launcher" "$service_id"
   done
+elif [ -n "$registered_services" ] && [ -z "$active_services" ]; then
+  :
 elif [ "${STATION_INSTALL_NO_START:-0}" = 1 ]; then
   printf 'Start it with: %s start\n' "$launcher"
 elif [ -n "$active_services" ]; then

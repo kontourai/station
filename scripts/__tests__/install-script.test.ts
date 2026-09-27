@@ -2470,14 +2470,79 @@ describe('archive installs with a Station user service (#2675 slice C)', {
       { STATION_INSTALL_SERVER_PORT: '19141' },
     );
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('different command or ports');
+    expect(result.stderr).toContain(
+      'Station service stable serves server port 18141, not the requested 19141; reinstall it with the intended ports',
+    );
     expect(readlinkSync(join(installRoot, 'current'))).toBe(firstVersion);
     expect(cliCalls(harness)).toEqual([]);
   });
 
-  it('leaves a stopped service stopped and starts Station as before', () => {
-    const { harness, nextVersion, firstVersion, home, unit } =
+  it('compares only the port that was named explicitly', () => {
+    const { harness, installRoot, nextVersion, unit } = installedWithService(
+      'station-service-one-port-',
+      { uiPort: 19000 },
+    );
+    // The UI port resolves to the recorded 18000, which the unit does not
+    // serve; it was not named, so it does not constrain the unit.
+    const result = upgradeTo(
+      harness,
+      {},
+      { STATION_INSTALL_SERVER_PORT: '18141' },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(readlinkSync(join(installRoot, 'current'))).toBe(nextVersion);
+    expect(unit()).toEqual({ active: true, sha: NEXT_SHA });
+  });
+
+  it('refuses a service that records this install root but runs a version directory', () => {
+    const { harness, installRoot, firstVersion } = installedWithService(
+      'station-service-version-dir-',
+    );
+    const manifestPath = join(harness.stationHome, 'service', 'stable.json');
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        ...JSON.parse(readFileSync(manifestPath, 'utf8')),
+        repoPath: firstVersion,
+      }),
+    );
+    const result = upgradeTo(harness);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `Station service stable records this install root but runs ${firstVersion}, not its current`,
+    );
+    expect(readlinkSync(join(installRoot, 'current'))).toBe(firstVersion);
+    expect(cliCalls(harness)).toEqual([]);
+  });
+
+  // systemd reports a unit that was stopped, and one waiting out RestartSec
+  // after a crash, alike: not active, but registered. Either may come up on
+  // its own, so no separate Station may start beside it.
+  it('stops a registered unit that is not running, switches, and starts no Station beside it', () => {
+    const { harness, installRoot, nextVersion, firstVersion, home, unit } =
       installedWithService('station-service-inactive-', {}, { active: false });
+    const result = upgradeTo(harness);
+    expect(result.status, result.stderr).toBe(0);
+    expect(readlinkSync(join(installRoot, 'current'))).toBe(nextVersion);
+    expect(cliCalls(harness)).toEqual([
+      `${firstVersion}|${service('status', home, ' --json')}`,
+      `${firstVersion}|${service('stop', home)}`,
+      `${firstVersion}|stop --base=${home}`,
+    ]);
+    expect(unit().active).toBe(false);
+    expect(existsSync(`${harness.cliLog}.running`)).toBe(false);
+    expect(result.stdout).toContain(
+      `Station service stable was not running and was left stopped; start it with: ${join(realpathSync(harness.binDir), 'station')} service start --instance=stable`,
+    );
+    expect(result.stdout).not.toContain('Open http://localhost:');
+  });
+
+  it('treats a manifest whose unit is gone as no service, and starts Station as before', () => {
+    const { harness, nextVersion, firstVersion, home } = installedWithService(
+      'station-service-gone-',
+      {},
+      { active: false, present: false },
+    );
     const result = upgradeTo(harness);
     expect(result.status, result.stderr).toBe(0);
     expect(cliCalls(harness)).toEqual([
@@ -2485,7 +2550,6 @@ describe('archive installs with a Station user service (#2675 slice C)', {
       `${firstVersion}|stop --base=${home}`,
       `${nextVersion}|start --base=${home} --port=18141 --ui-port=18000`,
     ]);
-    expect(unit()).toEqual({ active: false });
   });
 
   it('stops a running service and leaves it stopped under STATION_INSTALL_NO_START=1', () => {
