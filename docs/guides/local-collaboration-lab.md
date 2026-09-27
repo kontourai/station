@@ -247,8 +247,9 @@ new issuance with the retired key. An unreachable Device retaining the old publi
 key cannot learn revocation immediately: a previously minted proof may remain
 verifiable for its remaining 30-second lifetime, and a compromised old private
 key remains dangerous until that Device independently updates or revokes trust.
-Automatic recovery, remote approval, Device trust persistence and established
-channel termination are separate implementation work.
+The operator command does not recover or approve Device trust, or terminate an
+established channel. Device-side persistence and transport retirement have
+separate owners; the browser trust store is described below.
 
 The command requires the existing private-home filesystem authority. It is not
 a tenant sandbox, an OS keychain, or protection from another process running as
@@ -480,10 +481,10 @@ provide the real account adapter without requiring hosted identity.
 
 This fixture does not verify live Tailscale identity, production key admission,
 browser/native trust distribution, internet/NAT reachability, invitation email
-delivery or the [real two-human journey](https://github.com/kontourai/station/issues/497).
+delivery or the [real two-human journey](https://github.com/kontourai/station-archive/issues/497).
 Two security homes in one process and relays running as the same OS user do not
 prove tenant or hostile-code isolation. Those remain separate acceptance under
-[#487](https://github.com/kontourai/station/issues/487).
+[archive#487](https://github.com/kontourai/station-archive/issues/487).
 
 ### Separate self-hosted broker and production browser consumer
 

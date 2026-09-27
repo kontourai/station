@@ -11,7 +11,7 @@ loopback-only Tailscale Serve identity adapter is inside the boundary only as
 pairing-request provenance. Host-confirmed, one-time pairing is
 inside the boundary. Persistent, revocable same-origin browser sessions are the
 mobile continuity baseline; broader reconnect work remains tracked in
-[#303](https://github.com/kontourai/station/issues/303).
+[archive#303](https://github.com/kontourai/station-archive/issues/303).
 
 ## Trust boundary
 
@@ -71,8 +71,10 @@ malformed identity never produce verified provenance.
 | `GET /api/system/liveness` | Public | Public | Public |
 | CORS `OPTIONS` | Allowed only with an allowed Origin | Same | Same |
 | `GET`/`POST /api/account-auth/**` | Public at the Device gate; account router enforces its own endpoint, account, Origin, body-size, and attempt checks, and refuses unknown operations | Same; account authentication does not grant Device or Project authority | Same |
-| Every other HTTP route, including `/api/**`, `/agents/**`, `/acp/**`, `/events/**`, root chat/invoke/stream routes, mutations, and unknown future routes | `401` unless it presents a device session, bearer, or exact direct-internal attestation | `401` | Allowed |
-| HTTP request with a credential-like query parameter | `401` | `401` | `401` |
+| Other explicitly declared authentication contracts: local-secret/bootstrap, relay enrollment, answer sharing, station-control MCP, inbound webhook, and attachment stage upload | Each exact route enforces its own capability; loopback alone does not satisfy it | Same owner-specific checks | An ordinary Device credential does not replace that capability |
+| HTTP routes classified as pairing-scoped, including ordinary `/api/**`, `/agents/**`, `/acp/**`, `/events/**` and chat/invoke/stream routes | `401` unless it presents a device session, bearer, or exact direct-internal attestation | `401` | Subject to current scope and resource authorization |
+| Unknown HTTP routes without a capability-table entry | `403 insufficient_scope` | Same | Same |
+| Pairing-authenticated HTTP request with a credential-like query parameter | `401` | `401` | `401` |
 | HTTP request from a disallowed Origin | `403` | `403` | `403` |
 | Repeated authentication failures | Subject to bounded limiting | `429` with `Retry-After` | A valid credential clears the peer's failure window |
 | Terminal or voice `WS /__station/health` | Identity-only; no business session | Identity-only; no business session | Identity-only; no business session |
@@ -84,9 +86,23 @@ With authentication unconfigured, that router reports unavailable (`501`),
 not a Device-gate authentication failure. This matrix does not extend the
 LAN/private-tailnet qualification above to a production OIDC deployment.
 
+The [external-surface table](../../src-server/security/pairing-route-scopes.ts)
+owns the method/path-specific exceptions; a public classification at the Device
+gate does not waive the endpoint's own checks. The station-control HTTP/SSE
+endpoint has a separately minted, scoped MCP query token. That exception does
+not permit an operator or Device credential in a URL. Inbound webhooks verify
+their named HMAC token, timestamp and nonce; an attachment stage grant authorizes
+only its exact short-lived upload.
+
+The terminal and voice listeners still accept their direct-loopback business
+path without the remote first-frame credential check. Browser-shaped upgrades
+must present an allowed Station Origin, while non-browser local clients have
+no Origin requirement. This retained local path is distinct from protected HTTP
+authorization and is not a paired-Device scope boundary.
+
 The public handshake is deliberately minimal and contains no credential,
 hostname, username, home directory, workspace, endpoint, process identity, or
-build details. Its schema is:
+commit or executable identity. Its schema is:
 
 ```json
 {
@@ -153,10 +169,11 @@ strict loopback names and addresses.
 ## Mutation budget (archive#514)
 
 The runtime security middleware applies a shared body-size ceiling and a
-per-principal mutation-rate budget to every authenticated mutation
+per-principal mutation-rate budget to pairing-authenticated mutations
 (`POST`/`PUT`/`PATCH`/`DELETE`) before route-specific parsing or persistence
-work. This is the shared layer #496's route-local Task field limits sit behind
-as defence in depth; each product route no longer invents its own limit.
+work. This is the shared layer archive#496's route-local Task field limits sit behind
+as defence in depth. Explicit account, webhook, MCP-token and stage-grant
+contracts retain their own admission and body/rate limits.
 
 **Body-size.** `Content-Length` is checked first; an oversized request is
 rejected `413` before any body read. A lying or absent `Content-Length` is
@@ -310,8 +327,10 @@ route the table does not recognize fails closed — denied, with a loud server
 log — rather than defaulting to allowed; a test enumerates the live route
 surface against the table so a new authenticated route shipped without a
 scope entry is caught before merge. A read-only credential can therefore read
-and stream state but is denied every mutation and the terminal route with
-`403 insufficient_scope`. Although the Station operator bootstrap credential
+and stream permitted HTTP state but receives `403 insufficient_scope` for
+pairing-scoped mutations. The remote terminal first-frame check refuses it
+because it lacks `terminal:operate`; the retained direct-loopback WebSocket
+path in the matrix is a separate exception. Although the Station operator bootstrap credential
 is not itself a pairing grant,
 [`resolveGrantedScope`](../../src-server/services/ssh/environment-security-service.ts)
 reports `DEFAULT_GRANT_PAIRING_SCOPE` for it: the frozen four tokens, excluding
@@ -624,12 +643,13 @@ registration followed by server CONNECT specifically; the desktop launcher is
 a separate entry point, pinned above, that profile registration does not
 mediate at all. Registration itself is no longer gated: an
 `orchestration:operate` credential can store a profile naming any
-format-valid host. What it cannot do is reach that host — `connect` fails
-closed on an unconfirmed key. The remaining reachable effect of a hostile
-registration is a profile row in the Computers list and, for a host whose
-key the operator *has* already confirmed, a connection attempt to a machine
-they already trust from this one. Probe-driven outbound attempts are bounded
-separately by the admission control described below.
+format-valid host. `connect` cannot establish an authenticated SSH session when
+the host key is unconfirmed. The handshake can still contact that host before
+refusing its key; host-key verification is not an outbound network allowlist.
+A hostile registration can add a profile row and, for an already trusted host,
+attempt an authenticated connection using the operator's SSH identity.
+Probe-driven outbound attempts are bounded separately by the admission control
+described below.
 
 ### SSH probe admission control (sol review, D5 finding 4)
 
@@ -863,7 +883,7 @@ CLI, API, native, and cross-origin HTTP and fetch-based SSE use
 device credential only as a host-only, persistent `HttpOnly` `SameSite=Strict`
 cookie. JavaScript cannot read that cookie. Cookie-authenticated mutations also
 require an exact allowed browser `Origin`; originless mutations fail closed.
-Credentials in URLs, query parameters, logs, screenshots, WebSocket negotiated
+Operator and Device credentials in URLs, query parameters, logs, screenshots, WebSocket negotiated
 subprotocols, or public handshake responses are forbidden.
 
 Remote terminal and voice WebSockets send this as the first application frame:

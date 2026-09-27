@@ -430,14 +430,19 @@ Connections has one clear home for each relationship:
 
 ## Pairing scopes on this computer
 
-Device-pairing scopes apply even when a desktop app or CLI talks to Station on
-the same computer. A device paired as **Read-only** can view and stream state,
-but cannot create, change, or delete resources and cannot open a terminal. If
-you expected to operate the local Station, revoke that device entry and pair it
-again as **Standard**. Standard can read, operate, and open a terminal.
+Device-pairing scopes apply to protected HTTP requests even when a desktop app
+or CLI talks to Station on the same computer. A **Read-only** Device can view
+and stream permitted state, but cannot mutate resources. Remote terminal
+WebSockets additionally require `terminal:operate`; **Standard** includes that
+scope along with read and operate. Revoke and pair again with the intended
+grant when changing a Device's access.
 
-This tightening makes the permission shown during pairing effective for
-loopback connections as well as remote ones. See the rationale in
+The current terminal and voice listeners retain a separate direct-loopback
+path without credential verification. Browser-shaped upgrades on that path
+must use an allowed Station Origin; this check is not a Device-scope check.
+A read-only pairing is therefore not a sandbox against a local process. See
+the [current transport matrix](../security/remote-access-threat-model.md#surface-matrix)
+and the HTTP-scope rationale in
 [the peer-pairing design decision](../design/station-peer-pairing.md#loopback-scopes-are-not-an-exception-station1198).
 
 ## Simplified setup program

@@ -10,8 +10,8 @@ grants, Project membership, private Session access and execution offers remain
 independent. An account cookie alone cannot load the personal Project catalog.
 Built-in username/password accounts and manually shared invitation links work
 without a mail service. The implemented administration and membership boundaries
-are described below; complete shared-content/device admission remains under #488.
-Optional configured OIDC choices use the same local account/session owner (see below); the official hosted identity service remains #489.
+are described below; complete shared-content/device admission is tracked in archive#488.
+Optional configured OIDC choices use the same local account/session owner (see below); the official hosted identity service is tracked in archive#489.
 Optional provider integration does not make hosted identity a core prerequisite.
 
 ## Enable local accounts without email
@@ -287,8 +287,8 @@ versions, extra fields and malformed member views fail validation.
 Shared Task list/history/document reads are implemented separately from that
 restricted base Project projection. Shared editing and execution, compute-offer
 access, and the fully qualified two-person browser/native journey remain
-separate work under #483/#488 and #497. Tailnet member integration remains under
-#1513 and #488.
+separate work discussed in archive#483, archive#488 and archive#497. Tailnet member integration is discussed in
+#1513 and archive#488.
 
 ## Browser invitation entry
 
@@ -325,7 +325,7 @@ publication and membership, revalidated through guarded response delivery;
 base Project metadata alone grants neither. Shared Task editing and execution
 remain outside this entry. Optional native opening, compatible
 platform downloads and installation continuation are required follow-up
-acceptance under #488 and #497. Their completion requires real browser/native
+acceptance discussed in archive#488 and archive#497. Their completion requires real browser/native
 evidence and published artifacts; the account page does not establish that an
 app is installed or that a device has been approved.
 
@@ -368,8 +368,8 @@ authorization:
 | `Origin` | Actual, explicitly allowed client origin; never omitted to impersonate a native client |
 
 The proof has type `station.application-session+jwt` and signs the protocol
-version, Station id, purpose, server nonce, method, canonical target, credential
-hash for resource requests, random request-proof id and issuance time. Verification
+version, Station id, purpose, server nonce, method, canonical target, continuation
+credential hash for resource requests, random request-proof id and issuance time. Verification
 requires a fresh proof (60 seconds, five-second clock tolerance), exact public key,
 nonce, target including query, method and continuation. This is a Station virtual
 request profile, not a claim that a DataChannel is HTTPS or implements OAuth DPoP.

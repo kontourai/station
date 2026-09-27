@@ -35,7 +35,16 @@ Serving points at the same database and provisions nothing:
 
 `init` publishes the private credential bundle before committing its hashes to SQLite. A retry reuses only an exact existing bundle for the same scope and routing generation. A conflicting or older routing generation refuses. `serve` never provisions or rotates credentials.
 
-Connector and routing credentials are separate 256-bit secrets. Every request must match the credential direction, Station, enrollment, routing generation, and configured Origin. Browser preflight admits only an active configured Origin and the three required headers. Provisioning leaves a Station `offline`; an authenticated connector registration makes the current routing generation `online` for 30 seconds. `online` describes recent connector registration, not application readiness or permission. Registration is the presence heartbeat; lease renewal is separate. A composed supervisor must refresh both.
+Connector and operator routing credentials are separate 256-bit secrets. Their
+requests must match the credential direction, Station, enrollment, routing
+generation, and configured Origin. Browser preflight admits an active configured
+Origin and the exact declared headers: authorization, content type and credential
+ID for credentialed requests; content type alone for invitation redemption.
+Provisioning leaves a Station `offline`; an authenticated connector registration
+makes the current routing generation `online` for 30 seconds. `online` describes
+recent connector registration, not application readiness or permission.
+Registration is the presence heartbeat; lease renewal is separate. A composed
+supervisor must refresh both.
 
 This tranche provisions one operator-owned routing credential for one Station and browser Origin. It is not per-Device enrollment or revocation, does not bootstrap an account, and does not complete routine fresh-client onboarding. The connector and optional Pion runtime below consume this routing scope. The broker cannot mint or replace independently approved connection-signing trust.
 
@@ -77,13 +86,13 @@ single-use JTI, and Unix-second issue/expiry times no more than 30 seconds
 apart. The proof is sent in `X-Station-Native-Proof`; no browser Origin or
 cookie is accepted. The broker atomically consumes the JTI with the signaling
 operation and retains replay entries for five minutes. Native grants can be
-renewed with a fresh request proof at or after half-life (the final 12 hours)
+renewed with a fresh request proof when no more than 12 hours remain
 and for up to seven days after expiry. The renewal body binds a closed
 8-128-character URL-safe `renewalId` and the expected expiry in Unix
 milliseconds. A private SQLite receipt binds that ID to the exact body digest
 and the committed expiry, so retrying the same body after a lost reply returns
 the same receipt. Reusing the ID for another body conflicts; a receipt
-superseded by a later renewal returns the current expiry. Receipt and JTI
+superseded by a later renewal returns a typed conflict with the current expiry. Receipt and JTI
 records have bounded retention and grant-row cleanup cascades them safely.
 Renewal grace is proof-only: `open` and `read` remain unavailable after grant
 expiry, and revocation, withdrawal, or a replaced Station generation makes a
@@ -143,14 +152,22 @@ This composition does not distribute routing credentials, approve a new client s
 
 ## HTTP control contract
 
-Browser v1 control requests are POSTs under `/broker/v1`, with JSON `scope`, an
-exact configured `Origin`, `Authorization: Bearer <routing-or-connector-secret>`
-and `X-Broker-Credential-Id`. These are broker credentials, never Station
-Device or account credentials. The native v2 redemption endpoint is the sole
-exception: it has no browser Origin and accepts no cookies or v1 credentials;
-its authority is the invitation-bound ES256 key proof described above. The
-request body is capped at 256 KiB. Clients refuse redirects and bound each
-response to 1 MiB and 15 seconds.
+Credentialed browser v1 control requests are POSTs under `/broker/v1`, with JSON
+`scope`, an exact configured `Origin`, `Authorization: Bearer <broker-secret>`
+and `X-Broker-Credential-Id`. The credential can belong to the connector,
+operator routing owner or one enrolled browser grant, according to the operation.
+These are broker credentials, never Station Device or account credentials.
+Browser invitation redemption instead requires its invitation and exact allowed
+Origin, and refuses cookies and credential headers.
+
+Native redemption and key-candidate request/read operations require their
+invitation-bound ES256 proof and refuse Origin, cookies and credential headers.
+Native connection open/read and grant renew/retire requests require the native grant credential
+and a fresh request proof; they also refuse Origin and cookies. Native offer
+polling and answer publication are connector operations and retain the
+connector's configured Origin and credential. The request body is capped at
+256 KiB. The connector client refuses redirects and bounds each response to
+1 MiB and 15 seconds.
 
 | Suffix | Credential | Additional body / result |
 | --- | --- | --- |
@@ -158,6 +175,9 @@ response to 1 MiB and 15 seconds.
 | `/leases/renew` | Connector | `expectedRevision`; returns next revision and expiry |
 | `/leases/withdraw` | Connector | Retires this routing generation and pending offers |
 | `/stations/status` | Routing | Returns presence, routing generation and lease expiry |
+| `/grants/redeem` | Browser invitation and allowed Origin | Consumes the one-use invitation and returns its separate browser routing grant; no credential headers or cookies |
+| `/grants/revoke` | Operator routing credential | Revokes one browser grant and retires its connection attempts |
+| `/grants/retire` | Browser routing grant | Retires only the caller's grant |
 | `/native/grants/invitations/issue` | Operator routing credential | Exact native surface and independently approved proof-key thumbprint |
 | `/native/grants/list` | Operator routing credential | Native grant binding metadata and expiry/revocation state; no credentials |
 | `/native/grants/revoke` | Operator routing credential | Exact native `grantId`; retires only that routing grant |
