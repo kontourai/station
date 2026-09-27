@@ -32,6 +32,7 @@ import { SELECTOR_DEFERRED_EXIT_CODE } from '../run-ci-fast.mjs';
 import {
   buildTestImpactManifest,
   E2E_CONTRACT_BOUNDARIES,
+  FALLOW_BASELINE_FILES,
   SPAWNED_SCRIPT_EDGES,
   TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
@@ -2662,4 +2663,115 @@ setInterval(() => {}, 1000);`,
       'src-server/routes/chat/__tests__/chat-context.test.ts',
     );
   }, 35_000);
+});
+
+describe('release metadata and code-health baselines are known paths (#2781)', () => {
+  const manifest = buildTestImpactManifest({ root: process.cwd() });
+  const select = (paths: string[]) =>
+    selectChangedVerification(paths, manifest);
+  const CHANGESET = '.changeset/sdk-envelope-error.md';
+  const CHANGESET_SUITE = 'scripts/__tests__/check-changesets.repo.test.ts';
+  const BASELINE_SUITE = 'scripts/__tests__/code-health-gate.test.ts';
+  // A published SDK client module: its evidence is the related graph.
+  const SDK = 'packages/sdk/src/client/plugins.ts';
+
+  test('the baseline list is exactly what code-health-gate hands fallow', () => {
+    // Literal beside the derived list, so a change to either is deliberate.
+    expect(FALLOW_BASELINE_FILES).toEqual([
+      'fallow-baselines/dead-code.json',
+      'fallow-baselines/dupes.json',
+      'fallow-baselines/health.json',
+    ]);
+    const config = JSON.parse(readFileSync('.fallowrc.json', 'utf8'));
+    expect(
+      Object.entries(config)
+        .flatMap(([, value]) =>
+          value && typeof value === 'object' ? Object.values(value) : [],
+        )
+        .filter(
+          (value) =>
+            typeof value === 'string' && value.startsWith('fallow-baselines/'),
+        )
+        .sort(),
+    ).toEqual([...FALLOW_BASELINE_FILES].sort());
+    for (const path of FALLOW_BASELINE_FILES)
+      expect(existsSync(path), path).toBe(true);
+  });
+
+  test('a changeset-only diff selects its gate suite, names its evidence, and does not defer', () => {
+    const selection = select([CHANGESET]);
+    expect(selection.lanes).toEqual([]);
+    expect(selection.escalated).toBe(false);
+    expect(selection.relatedPaths).toEqual([]);
+    expect(selection.tests.map(({ path }) => path)).toEqual([CHANGESET_SUITE]);
+    expect(selection.tests[0].reasons.join(' ')).toContain(
+      'evidence is check-changesets',
+    );
+  });
+
+  test.each(FALLOW_BASELINE_FILES)(
+    'a baseline-only diff (%s) selects its gate suite, names its evidence, and does not defer',
+    (path) => {
+      const selection = select([path]);
+      expect(selection.lanes).toEqual([]);
+      expect(selection.escalated).toBe(false);
+      expect(selection.tests.map(({ path: test }) => test)).toEqual([
+        BASELINE_SUITE,
+      ]);
+      expect(selection.tests[0].reasons.join(' ')).toContain(
+        'evidence is code-health-gate',
+      );
+    },
+  );
+
+  test('an SDK change with a changeset keeps the SDK related selection', () => {
+    const alone = select([SDK]);
+    const mixed = select([SDK, CHANGESET, FALLOW_BASELINE_FILES[0]]);
+    expect(alone.lanes).toEqual([]);
+    expect(mixed.lanes).toEqual([]);
+    expect(mixed.escalated).toBe(false);
+    expect(mixed.relatedPaths).toEqual(alone.relatedPaths);
+    expect(mixed.relatedPaths).toContain(SDK);
+    expect(mixed.tests.map(({ path }) => path)).toEqual(
+      expect.arrayContaining([
+        ...alone.tests.map(({ path }) => path),
+        CHANGESET_SUITE,
+        BASELINE_SUITE,
+      ]),
+    );
+  });
+
+  test.each([
+    [['docs-private/notes.bin']],
+    [['fallow-baselines/unlisted.json']],
+    [[CHANGESET, 'docs-private/notes.bin']],
+    [['.fallowrc.json']],
+  ])('a truly unknown path still defers the whole diff: %j', (paths) => {
+    const selection = select(paths);
+    expect(selection.escalated).toBe(true);
+    expect(selection.lanes).toEqual([
+      expect.objectContaining({
+        id: 'ci-fast',
+        reasons: expect.arrayContaining([
+          expect.stringMatching(/^unknown changed path: /),
+        ]),
+      }),
+    ]);
+  });
+
+  test('end to end, a changeset-only diff completes rather than going provisional', async () => {
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: reportedRun(),
+      changedPathsFn: () => ({ mergeBase: 'base-sha', paths: [CHANGESET] }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    expect(result.selection.lanes).toEqual([]);
+    expect(result.exitCode).toBe(0);
+    expect(result.receipt.terminal.status).toBe('completed');
+    expect(result.executed.flatMap((execution) => execution.command)).toContain(
+      `./${CHANGESET_SUITE}`,
+    );
+  });
 });

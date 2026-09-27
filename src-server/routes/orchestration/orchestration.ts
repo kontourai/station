@@ -144,7 +144,9 @@ import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
 import {
   fullAccessGrantForRequest,
+  fullAccessRefusalFor,
   refuseUngrantedFullAccess,
+  refuseUngrantedPick,
   requestedApprovalMode,
 } from './approval-authority.js';
 
@@ -1837,7 +1839,8 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
-      const refused = delegationRefusal(c, error);
+      const refused =
+        delegationRefusal(c, error) ?? fullAccessRefusalFor(c, error);
       if (refused) return refused;
       if (error instanceof ForegroundMessageIndeterminateError) {
         return c.json(
@@ -1965,6 +1968,8 @@ export function createOrchestrationRoutes(
         }
         return c.json({ success: true, data });
       } catch (error) {
+        const fullAccessRefused = fullAccessRefusalFor(c, error);
+        if (fullAccessRefused) return fullAccessRefused;
         if (error instanceof ForegroundMessageIndeterminateError) {
           return c.json(
             {
@@ -2164,6 +2169,8 @@ export function createOrchestrationRoutes(
         }
         return c.json({ success: true, data });
       } catch (error) {
+        const fullAccessRefused = fullAccessRefusalFor(c, error);
+        if (fullAccessRefused) return fullAccessRefused;
         if (error instanceof ForegroundMessageIndeterminateError) {
           return c.json(
             {
@@ -3920,8 +3927,15 @@ export function createOrchestrationRoutes(
     async (c) => {
       const command = getBody(c);
       // #2436: full access needs the operator in person or a granted device.
+      // #2377 slice C1: a Default that would run the engine at `never`
+      // unconfined needs the grant too.
       if (command.type === 'setApprovalMode') {
-        const refused = refuseUngrantedFullAccess(c, [command.approvalMode]);
+        const refused = await refuseUngrantedPick(c, command.approvalMode, () =>
+          orchestrationService.approvalPickReachesFullAccess({
+            threadId: command.threadId,
+            pick: command.approvalMode,
+          }),
+        );
         if (refused) return refused;
       }
       // Resolved once and reused for both the read authority below and the

@@ -16,6 +16,7 @@ import {
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   assertBuildSourceIsCheckout,
+  buildPortableServerArchive,
   bundleStationCli,
   obtainNodeDistribution,
   PORTABLE_SERVER_TARGETS,
@@ -80,6 +81,7 @@ describe('portable server Node.js pin', () => {
     for (const id of SUPPORTED_TARGETS) {
       const [platform, arch] = id.split('-');
       const target = resolvePortableServerTarget(platform, arch, runtime);
+      expect([target.platform, target.arch]).toEqual([platform, arch]);
       const windows = platform === 'win32';
       expect(target.archiveName).toBe(
         `station-server-${id}.${windows ? 'zip' : 'tar.gz'}`,
@@ -113,6 +115,36 @@ describe('portable server Node.js pin', () => {
         distributions,
       }),
     ).toThrow(/no pinned Node.js distribution for linux-x64/);
+  });
+});
+
+describe('buildPortableServerArchive target', () => {
+  it('refuses a target other than the build host before writing anything', async () => {
+    // The staged node_modules are the host's install, so a cross-target
+    // archive would ship the host's native modules under another name.
+    const host = `${process.platform}-${process.arch}`;
+    const foreign = SUPPORTED_TARGETS.find((id) => id !== host) ?? '';
+    const [platform, arch] = foreign.split('-') as [
+      NodeJS.Platform,
+      NodeJS.Architecture,
+    ];
+    const outputDir = join(makeTempDir('station-portable-cross-'), 'out');
+    await expect(
+      buildPortableServerArchive({
+        projectRoot: repoRoot,
+        outputDir,
+        platform,
+        arch,
+        tag: 'v0.0.0',
+        sha: '0'.repeat(40),
+        createdAt: '2026-01-01T00:00:00.000Z',
+        // Optional at runtime; the JS signature's inferred type lists it.
+        nodeDistribution: undefined,
+      }),
+    ).rejects.toThrow(
+      new RegExp(`cannot build the ${foreign} portable archive on ${host}`),
+    );
+    expect(existsSync(outputDir)).toBe(false);
   });
 });
 

@@ -297,15 +297,29 @@ async function startBroker(echoMode = false) {
       createSelfHostedBrokerRoutes(service),
     );
     let failRetirement = false;
+    let dropNextRenewalResponse = false;
+    let renewalRequests = 0;
     const server = serve({
-      fetch: (request) => {
+      fetch: async (request) => {
+        const renewalRequest =
+          new URL(request.url).pathname === '/broker/v1/native/grants/renew';
         if (
           failRetirement &&
           new URL(request.url).pathname === '/broker/v1/native/grants/retire'
         ) {
           return new Response('fixture retirement outage', { status: 503 });
         }
-        return app.fetch(request);
+        if (renewalRequest) renewalRequests += 1;
+        const response = await app.fetch(request);
+        if (
+          dropNextRenewalResponse &&
+          response.status === 200 &&
+          renewalRequest
+        ) {
+          dropNextRenewalResponse = false;
+          return new Response('injected lost renewal receipt', { status: 503 });
+        }
+        return response;
       },
       hostname: '127.0.0.1',
       port: 0,
@@ -804,10 +818,17 @@ async function startBroker(echoMode = false) {
           surface,
           stationSigningKeyId: await stationConnectionSigningKeyId(trust),
           stationSigningGeneration: trust.generation,
+          grantTtlMs: echoMode ? 12 * 60 * 60_000 : undefined,
         });
       },
       setFailRetirement: (value: boolean) => {
         failRetirement = value;
+      },
+      dropNextRenewalResponse: () => {
+        dropNextRenewalResponse = true;
+      },
+      get renewalRequests() {
+        return renewalRequests;
       },
       get echoTurn() {
         return echoTurn;
@@ -1100,12 +1121,14 @@ async function main() {
   let expectedProfileRevision = 0;
   let grantCustodyStatusVerified = false;
   let lostRedeemResponseRecovered = false;
+  let lostRenewalResponseRecovered = false;
   let nativeEchoEvidence:
     | {
         readonly negativeProofRejectedBeforeSdp: boolean;
         readonly validProofAppliedOnce: boolean;
         readonly candidatePollerStoppedBeforeEcho: boolean;
         readonly lostRedeemResponseRecovered: boolean;
+        readonly lostRenewalResponseRecovered: boolean;
         readonly echoed: string;
         readonly turnContainerId: string;
       }
@@ -1308,6 +1331,7 @@ async function main() {
     );
     assert.deepEqual(initialStatus.ipcResult.grants, []);
 
+    if (NATIVE_ECHO_LANE) broker.dropNextRenewalResponse();
     const redemption = NATIVE_ECHO_LANE
       ? await invokeDroppingSuccessReply<{
           status?: string;
@@ -1346,8 +1370,10 @@ async function main() {
     }
 
     const afterRedeem = await invoke<{
+      profileRevision?: number;
       grants?: Array<{
         metadata?: {
+          expiresAt?: number;
           route?: {
             brokerOrigin?: string;
             stationId?: string;
@@ -1363,6 +1389,10 @@ async function main() {
     assert.ok(
       afterRedeem.ipcResult,
       afterRedeem.ipcError ?? 'post-redemption status IPC failed',
+    );
+    assert.equal(
+      afterRedeem.ipcResult.profileRevision,
+      expectedProfileRevision,
     );
     assert.equal(afterRedeem.ipcResult.grants?.length, 1);
     const recoveredRoute = afterRedeem.ipcResult.grants?.[0]?.metadata?.route;
@@ -1388,6 +1418,46 @@ async function main() {
     );
 
     if (NATIVE_ECHO_LANE) {
+      await driver.execute(() => {
+        window.dispatchEvent(new Event('focus'));
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await driver.waitUntil(
+        async () => {
+          if (broker.renewalRequests < 2) return false;
+          const current = await invoke<{
+            grants?: Array<{ metadata?: { expiresAt?: number } }>;
+          }>(fixture!, 'station_native_relay_grant_status', {
+            profileName: route.name,
+          });
+          return (
+            (current.ipcResult?.grants?.[0]?.metadata?.expiresAt ?? 0) >
+            Date.now() + 18 * 60 * 60_000
+          );
+        },
+        {
+          timeout: 45_000,
+          timeoutMsg:
+            'native supervisor did not recover the lost renewal receipt',
+        },
+      );
+      const beforeStaleRenewal = broker.renewalRequests;
+      const staleRenewal = await invoke<unknown>(
+        fixture,
+        'station_native_relay_grant_renew',
+        {
+          profileName: route.name,
+          expectedProfileRevision: expectedProfileRevision + 1,
+        },
+      );
+      assert.equal(staleRenewal.ipcResult, undefined);
+      assert.match(staleRenewal.ipcError ?? '', /could not renew/i);
+      assert.equal(
+        broker.renewalRequests,
+        beforeStaleRenewal,
+        'stale profile revision reached broker renewal',
+      );
+      lostRenewalResponseRecovered = true;
       assert.ok(echoBundle, 'test-only WebView echo bundle is missing');
       const echoTurn = broker.echoTurn;
       assert.ok(echoTurn, 'loopback TURN fixture was not started');
@@ -1463,6 +1533,7 @@ async function main() {
         candidatePollerStoppedBeforeEcho:
           broker.echoCleanupReceipt.candidatePollerStoppedBeforeEcho,
         lostRedeemResponseRecovered,
+        lostRenewalResponseRecovered,
         echoed: accepted.webView.sentMessages[0]!,
         turnContainerId: echoContainerId,
       };
@@ -1779,6 +1850,8 @@ async function main() {
               nativeEchoEvidence.candidatePollerStoppedBeforeEcho,
             lostRedeemResponseRecovered:
               nativeEchoEvidence.lostRedeemResponseRecovered,
+            lostRenewalResponseRecovered:
+              nativeEchoEvidence.lostRenewalResponseRecovered,
             dataChannel: 'station-lab-v1',
             echoed: true,
             turnContainerId: nativeEchoEvidence.turnContainerId,

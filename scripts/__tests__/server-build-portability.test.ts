@@ -21,6 +21,7 @@ import { promisify } from 'node:util';
 import * as esbuild from 'esbuild';
 import { load } from 'js-yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { EventStore } from '../../src-server/services/orchestration/event-store.js';
 import { withDesktopRuntimeListenerLease } from '../lib/desktop-runtime-port-lease.mjs';
 import {
@@ -28,6 +29,8 @@ import {
   DESKTOP_SERVER_RUNTIME_PACKAGES,
   inspectDesktopServerRuntime,
   NON_RUNTIME_ARTIFACT,
+  RUNTIME_DEPENDENCY_EXCLUSIONS,
+  RUNTIME_PACKAGE_PRUNE_RULES,
   stageDesktopServerRuntime,
   WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG,
 } from '../lib/desktop-server-runtime.mjs';
@@ -35,6 +38,7 @@ import { STATION_SERVER_EXTERNALS } from '../lib/server-build-config.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const temporaryRoots: string[] = [];
+const makeTempDir = trackTempDirs();
 const execFileAsync = promisify(execFile);
 const DESKTOP_SERVER_BUILD_TIMEOUT_MS = 75_000;
 const DESKTOP_SERVER_READINESS_TIMEOUT_MS = 60_000;
@@ -154,6 +158,7 @@ async function buildDesktopResourceFixture(root: string) {
     staged.filter((path) => path.endsWith(`${sep}SKILL.md`)).length,
   ).toBeGreaterThan(0);
   expect(staged.some((path) => /LICEN[CS]E/i.test(path))).toBe(true);
+  assertRealRuntimePrune(release);
   await execFileAsync(process.execPath, ['esbuild.config.mjs'], {
     cwd: repoRoot,
     env: { ...process.env, STATION_BUILD_SERVER_DIR: serverOutput },
@@ -600,6 +605,81 @@ async function runPortLeaseChild(
   return { code, output };
 }
 
+/**
+ * #2694 against the real dependency closure: each prune rule must actually
+ * fire on the installed tree (a renamed package or moved directory would
+ * otherwise turn a rule into a silent no-op), and what the server does read
+ * from the same packages must still be there and load.
+ */
+function assertRealRuntimePrune(release: string) {
+  const modules = join(release, 'node_modules');
+  const host = `${process.platform}-${process.arch}`;
+  const sameOs = (entry: string) => entry.startsWith(`${process.platform}-`);
+  const sourcePty = join(repoRoot, 'node_modules', 'node-pty');
+  const stagedPty = join(modules, 'node-pty');
+  const sourcePrebuilds = join(sourcePty, 'prebuilds');
+  const stagedPrebuilds = join(stagedPty, 'prebuilds');
+  if (existsSync(sourcePrebuilds)) {
+    const source = readdirSync(sourcePrebuilds).sort();
+    // The rule must have something to remove on this host.
+    expect(source.some((entry) => !sameOs(entry))).toBe(true);
+    const kept = existsSync(stagedPrebuilds)
+      ? readdirSync(stagedPrebuilds).sort()
+      : [];
+    // Every arch of this OS survives (the desktop app runs the user's own
+    // node, whose arch can differ from the build's); no other OS does.
+    expect(kept).toEqual(source.filter(sameOs));
+    expect(kept.includes(host)).toBe(source.includes(host));
+  }
+  // The loader resolves the native module from whatever survived the prune,
+  // in a separate process so the addon never loads into this worker.
+  execFileSync(
+    process.execPath,
+    [
+      '-e',
+      "const pty = require(process.argv[1]); if (typeof pty.spawn !== 'function') process.exit(2);",
+      stagedPty,
+    ],
+    { stdio: 'pipe', windowsHide: true },
+  );
+
+  const flowAgents = join(modules, '@kontourai', 'flow-agents');
+  expect(
+    existsSync(join(repoRoot, 'node_modules/@kontourai/flow-agents/dist')),
+  ).toBe(true);
+  expect(existsSync(join(flowAgents, 'dist'))).toBe(false);
+  for (const required of [
+    'build/src/index.js',
+    'build/src/cli/assignment-provider.js',
+    'build/src/cli/effective-backlog-settings.js',
+    'build/src/cli/pull-work-provider.js',
+    'build/src/cli/workflow-sidecar.js',
+    'scripts/hooks/run-hook.js',
+    'kits/builder/kit.json',
+    'skills',
+    'schemas',
+    'context',
+  ]) {
+    expect(existsSync(join(flowAgents, required)), required).toBe(true);
+  }
+  expect(existsSync(join(flowAgents, 'node_modules', 'esbuild'))).toBe(false);
+  // Station's own externalized esbuild is untouched by the edge exclusion.
+  expect(existsSync(join(modules, 'esbuild', 'package.json'))).toBe(true);
+}
+
+function writeFixturePackage(
+  path: string,
+  manifest: Record<string, unknown>,
+  files: Record<string, string> = {},
+) {
+  mkdirSync(path, { recursive: true });
+  writeFileSync(join(path, 'package.json'), JSON.stringify(manifest));
+  for (const [file, content] of Object.entries(files)) {
+    mkdirSync(dirname(join(path, file)), { recursive: true });
+    writeFileSync(join(path, file), content);
+  }
+}
+
 function createBudgetFixture(root: string) {
   const projectRoot = join(root, 'project');
   const packageRoot = join(projectRoot, 'node_modules', 'fixture-runtime');
@@ -853,6 +933,188 @@ describe('server build package portability', () => {
         budget: { maxBytes: Number.MAX_SAFE_INTEGER, maxFiles: 0 },
       }),
     ).toThrow(/exceeds its release budget/);
+  });
+
+  it('pins the declarative prune rule lists (#2694)', () => {
+    // Every id here has its own behavioural test below. A new rule must add
+    // one; a dropped rule fails its test rather than only this list.
+    expect(RUNTIME_PACKAGE_PRUNE_RULES.map((rule) => rule.id)).toEqual([
+      'node-pty-foreign-prebuilds',
+      'flow-agents-harness-bundles',
+    ]);
+    expect(RUNTIME_DEPENDENCY_EXCLUSIONS.map((rule) => rule.id)).toEqual([
+      'flow-agents-bundle-builder-esbuild',
+    ]);
+  });
+
+  it('stages every arch of the target OS node-pty prebuilds and no other OS (node-pty-foreign-prebuilds)', () => {
+    const root = makeTempDir('station-runtime-pty-');
+    const project = join(root, 'project');
+    const files: Record<string, string> = {
+      'lib/utils.js': 'module.exports = {};',
+      'build/Release/pty.node': 'source build',
+      LICENSE: 'MIT',
+    };
+    for (const prebuild of [
+      'darwin-arm64',
+      'darwin-x64',
+      'linux-x64',
+      'win32-arm64',
+      'win32-x64',
+    ]) {
+      files[`prebuilds/${prebuild}/pty.node`] = prebuild;
+    }
+    writeFixturePackage(
+      join(project, 'node_modules/node-pty'),
+      { name: 'node-pty', version: '1.1.0' },
+      files,
+    );
+    // A different package with the same layout is not node-pty's to prune.
+    writeFixturePackage(
+      join(project, 'node_modules/other-native'),
+      { name: 'other-native', version: '1.0.0' },
+      { 'prebuilds/darwin-x64/addon.node': 'other' },
+    );
+    for (const [platform, arch] of [
+      ['win32', 'x64'],
+      ['linux', 'arm64'],
+    ] as const) {
+      const output = join(root, `release-${platform}-${arch}`);
+      stageDesktopServerRuntime({
+        projectRoot: project,
+        outputRoot: output,
+        packages: ['node-pty', 'other-native'],
+        platform,
+        arch,
+      });
+      const pty = join(output, 'node_modules/node-pty');
+      const kept = readdirSync(join(pty, 'prebuilds'));
+      // Both win32 arches: an x64 MSI can run under an arm64 node on
+      // Windows-on-ARM. linux has only the one arch in the fixture.
+      expect(kept.sort()).toEqual(
+        platform === 'win32' ? ['win32-arm64', 'win32-x64'] : ['linux-x64'],
+      );
+      expect(existsSync(join(pty, 'build/Release/pty.node'))).toBe(true);
+      expect(existsSync(join(pty, 'lib/utils.js'))).toBe(true);
+      expect(existsSync(join(pty, 'LICENSE'))).toBe(true);
+      expect(
+        existsSync(
+          join(
+            output,
+            'node_modules/other-native/prebuilds/darwin-x64/addon.node',
+          ),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('drops flow-agents harness bundles and their esbuild edge but keeps what Station reads', () => {
+    const root = makeTempDir('station-runtime-flow-agents-');
+    const project = join(root, 'project');
+    const flowAgents = join(project, 'node_modules/@kontourai/flow-agents');
+    writeFixturePackage(
+      flowAgents,
+      {
+        name: '@kontourai/flow-agents',
+        version: '6.4.0',
+        dependencies: { esbuild: '0.28.1' },
+      },
+      {
+        'build/src/index.js': 'export {};',
+        'build/src/cli/assignment-provider.js': '',
+        'scripts/hooks/run-hook.js': '',
+        'skills/example/SKILL.md': '# skill',
+        'kits/builder/skills/deliver/SKILL.md': '# kit skill',
+        'schemas/workflow.schema.json': '{}',
+        'context/settings/backlog-provider-settings.json': '{}',
+        'dist/codex/build/src/index.js': 'bundle',
+        'dist/catalog.json': '{}',
+        LICENSE: 'MIT',
+      },
+    );
+    // The edge's own copy, nested because it differs from the root one.
+    writeFixturePackage(join(flowAgents, 'node_modules/esbuild'), {
+      name: 'esbuild',
+      version: '0.28.1',
+    });
+    writeFixturePackage(join(project, 'node_modules/esbuild'), {
+      name: 'esbuild',
+      version: '0.28.2',
+    });
+    // Another package's esbuild edge is not excluded.
+    writeFixturePackage(join(project, 'node_modules/other-builder'), {
+      name: 'other-builder',
+      version: '1.0.0',
+      dependencies: { esbuild: '0.27.0' },
+    });
+    writeFixturePackage(
+      join(project, 'node_modules/other-builder/node_modules/esbuild'),
+      { name: 'esbuild', version: '0.27.0' },
+    );
+    const output = join(root, 'release');
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: ['esbuild', '@kontourai/flow-agents', 'other-builder'],
+    });
+    const staged = join(output, 'node_modules/@kontourai/flow-agents');
+    expect(existsSync(join(staged, 'dist'))).toBe(false);
+    for (const kept of [
+      'build/src/index.js',
+      'build/src/cli/assignment-provider.js',
+      'scripts/hooks/run-hook.js',
+      'skills/example/SKILL.md',
+      'kits/builder/skills/deliver/SKILL.md',
+      'schemas/workflow.schema.json',
+      'context/settings/backlog-provider-settings.json',
+      'LICENSE',
+    ]) {
+      expect(existsSync(join(staged, kept)), kept).toBe(true);
+    }
+    expect(existsSync(join(staged, 'node_modules/esbuild'))).toBe(false);
+    // A stray import from flow-agents still resolves, to Station's copy.
+    expect(
+      JSON.parse(
+        readFileSync(
+          createRequire(join(staged, 'build/src/index.js')).resolve(
+            'esbuild/package.json',
+          ),
+          'utf8',
+        ),
+      ).version,
+    ).toBe('0.28.2');
+    expect(
+      existsSync(
+        join(
+          output,
+          'node_modules/other-builder/node_modules/esbuild/package.json',
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('prunes Windows debug symbols but keeps the binaries beside them', () => {
+    const root = makeTempDir('station-runtime-pdb-');
+    const project = join(root, 'project');
+    writeFixturePackage(
+      join(project, 'node_modules/native-addon'),
+      { name: 'native-addon', version: '1.0.0' },
+      {
+        'bin/addon.node': 'binary',
+        'bin/addon.pdb': 'symbols',
+        'bin/helper.exe': 'binary',
+        'bin/helper.PDB': 'symbols',
+      },
+    );
+    const output = join(root, 'release');
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: ['native-addon'],
+    });
+    expect(
+      readdirSync(join(output, 'node_modules/native-addon/bin')).sort(),
+    ).toEqual(['addon.node', 'helper.exe']);
   });
 
   it('reuses a compatible nearest ancestor instead of duplicating its dependency tree', () => {
