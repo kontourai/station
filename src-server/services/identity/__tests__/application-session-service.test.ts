@@ -4,6 +4,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
+  APPLICATION_SESSION_NATIVE_CHALLENGE_PATH,
+  APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
+  APPLICATION_SESSION_NATIVE_HEADER,
+  APPLICATION_SESSION_NATIVE_PROOF_HEADER,
+  APPLICATION_SESSION_NATIVE_PROOF_TYPE,
+  APPLICATION_SESSION_NATIVE_VERSION,
+} from '@kontourai/station-contracts/application-session';
+import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
+import {
   PAIRING_SCOPE_ORCHESTRATION_READ,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
@@ -12,7 +21,12 @@ import {
   createApplicationSessionKey,
 } from '@kontourai/station-sdk/application-session';
 import { Hono } from 'hono';
-import { calculateJwkThumbprint } from 'jose';
+import {
+  calculateJwkThumbprint,
+  exportJWK,
+  generateKeyPair,
+  SignJWT,
+} from 'jose';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createApplicationSessionRoutes } from '../../../routes/system/application-session-routes.js';
 import { parseSecureDeviceSessionCookie } from '../../../runtime/bootstrap/runtime-http.js';
@@ -20,12 +34,87 @@ import { openPrivateSqlite } from '../../../utils/private-sqlite.js';
 import { VirtualApplicationIngress } from '../../connections/virtual-application.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { createApplicationSessionRuntime } from '../application-session-runtime.js';
+import type { VerifiedNativeApplicationRequest } from '../application-session-service.js';
 import { loadLocalAccounts } from '../local-account-runtime.js';
 
 const origin = 'https://station.example.test';
 const alternateOrigin = 'https://app.example.test';
 const stationId = '33333333-3333-4333-8333-333333333333';
 const cleanup: Array<() => Promise<void>> = [];
+const nativeSurface = {
+  kind: 'station-native' as const,
+  appIdentifier: 'com.kontourai.station',
+  channel: 'dev' as const,
+  clientInstanceId: 'native-instance-1',
+  keyThumbprint: 'r'.repeat(43),
+};
+const nativeFacts = (
+  surface = nativeSurface,
+  targetStationId = stationId,
+  requestOrigin = origin,
+): VerifiedNativeApplicationRequest => ({
+  stationId: targetStationId,
+  surface,
+  connectionEnrollmentId: 'e'.repeat(43),
+  routingGeneration: 1,
+  connectionId: 'native-connection-1',
+  requestOrigin,
+  isCurrent: () => true,
+});
+const nativeHash = (value: string) =>
+  createHash('sha256').update(value).digest('base64url');
+async function signNativeProof(
+  privateKey: CryptoKey,
+  claims: Record<string, unknown>,
+) {
+  return new SignJWT(claims)
+    .setProtectedHeader({
+      alg: 'ES256',
+      typ: APPLICATION_SESSION_NATIVE_PROOF_TYPE,
+    })
+    .sign(privateKey);
+}
+async function nativeAccount(h: Awaited<ReturnType<typeof harness>>) {
+  const login = await h.accounts().service.handle(
+    new Request(`${origin}/api/account-auth/sign-in/username`, {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'alice', password: h.password }),
+    }),
+    '/sign-in/username',
+  );
+  const accountCookie = login.headers.getSetCookie()[0]!.split(';')[0]!;
+  const account = await h.accounts().service.authenticate(
+    new Request(`${origin}/api/account-auth/session`, {
+      headers: { Cookie: accountCookie },
+    }),
+  );
+  if (account.kind !== 'authenticated')
+    throw new Error('Fixture sign-in failed.');
+  h.setNativeAccountBinding({
+    kind: 'account',
+    issuer: account.issuer,
+    subject: account.session.subject,
+    displayName: account.principal.display,
+    approvedAt: Date.now(),
+    approvalId: randomUUID(),
+    approvedBy: account.principal.id,
+  });
+  return account;
+}
+async function nativeKey() {
+  const pair = await generateKeyPair('ES256');
+  const jwk = await exportJWK(pair.publicKey);
+  return {
+    privateKey: pair.privateKey,
+    publicKey: {
+      kty: jwk.kty,
+      crv: jwk.crv,
+      x: jwk.x,
+      y: jwk.y,
+    },
+  };
+}
 afterEach(async () => {
   vi.unstubAllGlobals();
   for (const close of cleanup.splice(0)) await close();
@@ -60,6 +149,15 @@ async function harness(options: { now?: () => number } = {}) {
   };
   const device = pair('First device');
   const second = pair('Second device');
+  let nativeFacts: VerifiedNativeApplicationRequest | undefined;
+  let nativeAccountBinding: PairedDevice['principalBinding'];
+  const identifyDevice = (credential: string) => {
+    const identified = pairing.identifyDevice(credential);
+    return identified?.id === device.device.id && nativeAccountBinding
+      ? { ...identified, principalBinding: nativeAccountBinding }
+      : identified;
+  };
+  const readNativeRequest = () => nativeFacts;
   const configuration = {
     publicOrigin: origin,
     allowedBrowserOrigins: [alternateOrigin],
@@ -87,7 +185,7 @@ async function harness(options: { now?: () => number } = {}) {
     home,
     stationId,
     accounts,
-    (value) => pairing.identifyDevice(value),
+    identifyDevice,
     resolvePending,
     resolveActive,
     options.now,
@@ -110,6 +208,7 @@ async function harness(options: { now?: () => number } = {}) {
       revokeAlias: (deviceId, aliasId) =>
         pairing.revokeRelayCredentialAlias(deviceId, aliasId),
     },
+    readNativeRequest,
   )!;
   const app = () => {
     const result = new Hono();
@@ -201,7 +300,7 @@ async function harness(options: { now?: () => number } = {}) {
         home,
         stationId,
         accounts,
-        (value) => pairing.identifyDevice(value),
+        identifyDevice,
         resolvePending,
         resolveActive,
         options.now,
@@ -224,14 +323,301 @@ async function harness(options: { now?: () => number } = {}) {
           revokeAlias: (deviceId, aliasId) =>
             pairing.revokeRelayCredentialAlias(deviceId, aliasId),
         },
+        readNativeRequest,
       )!;
       currentApp = app();
     },
     setPendingRelayDeviceResolver(resolver: typeof resolvePendingRelayDevice) {
       resolvePendingRelayDevice = resolver;
     },
+    setNativeRequestFacts(facts: VerifiedNativeApplicationRequest | undefined) {
+      nativeFacts = facts;
+    },
+    setNativeAccountBinding(binding: PairedDevice['principalBinding']) {
+      nativeAccountBinding = binding;
+    },
   };
 }
+
+async function nativeContinuationFixture() {
+  const h = await harness();
+  const account = await nativeAccount(h);
+  h.setNativeRequestFacts(nativeFacts());
+  const key = await nativeKey();
+  const challengeRequest = new Request(
+    `${origin}${APPLICATION_SESSION_NATIVE_CHALLENGE_PATH}`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${h.device.credential}` },
+    },
+  );
+  const challenge = await h.sessions().nativeChallenge(challengeRequest, {
+    providerSessionId: account.session.sessionId,
+    publicKey: key.publicKey,
+  });
+  const exchangeRequest = () =>
+    new Request(`${origin}${APPLICATION_SESSION_NATIVE_EXCHANGE_PATH}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${h.device.credential}` },
+    });
+  const exchangeProof = async (signer = key.privateKey) =>
+    signNativeProof(signer, {
+      version: APPLICATION_SESSION_NATIVE_VERSION,
+      purpose: 'exchange',
+      aud: challenge.target.audience,
+      stationId: challenge.target.stationId,
+      surface: challenge.target.surface,
+      deviceId: challenge.deviceId,
+      nonce: challenge.nonce,
+      method: 'POST',
+      path: APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
+      challengeIdHash: nativeHash(challenge.challengeId),
+      providerSessionHash: nativeHash(account.session.sessionId),
+      jti: randomUUID(),
+      iat: Math.floor(Date.now() / 1000),
+    });
+  const establish = async (proof?: string) =>
+    h.sessions().establishNative(exchangeRequest(), {
+      challengeId: challenge.challengeId,
+      providerSessionId: account.session.sessionId,
+      proof: proof ?? (await exchangeProof()),
+    });
+  const continuation = await establish();
+  const authenticateRequest = async (jti = randomUUID()) => {
+    const request = new Request(`${origin}/api/protected/resource?native=1`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${h.device.credential}`,
+        [APPLICATION_SESSION_NATIVE_HEADER]: continuation.credential,
+      },
+    });
+    const proof = await signNativeProof(key.privateKey, {
+      version: APPLICATION_SESSION_NATIVE_VERSION,
+      purpose: 'request',
+      aud: continuation.target.audience,
+      stationId: continuation.target.stationId,
+      surface: continuation.target.surface,
+      deviceId: continuation.deviceId,
+      nonce: continuation.nonce,
+      method: 'GET',
+      path: '/api/protected/resource?native=1',
+      credentialHash: nativeHash(continuation.credential),
+      jti,
+      iat: Math.floor(Date.now() / 1000),
+    });
+    request.headers.set(APPLICATION_SESSION_NATIVE_PROOF_HEADER, proof);
+    return request;
+  };
+  return {
+    h,
+    account,
+    key,
+    challenge,
+    continuation,
+    exchangeProof,
+    exchangeRequest,
+    establish,
+    authenticateRequest,
+  };
+}
+
+describe('native application-session continuation service seam', () => {
+  test('binds exchange to the verified Station surface, provider session, Device and independent proof key', async () => {
+    const f = await nativeContinuationFixture();
+    expect(f.continuation.target).toEqual({
+      kind: 'station-native',
+      stationId,
+      audience: origin,
+      surface: nativeSurface,
+    });
+    expect(f.continuation.keyThumbprint).toBe(
+      await calculateJwkThumbprint(f.key.publicKey),
+    );
+    expect(f.continuation.keyThumbprint).not.toBe(nativeSurface.keyThumbprint);
+    expect(f.continuation).not.toHaveProperty('requestOrigin');
+    expect(f.continuation).not.toHaveProperty('clientOrigin');
+    await expect(f.establish(await f.exchangeProof())).rejects.toMatchObject({
+      code: 'invalid',
+    });
+  });
+
+  test('rejects target changes, proof-key substitution and replayed exchanges', async () => {
+    const f = await nativeContinuationFixture();
+    // The setup already consumed its challenge, so issue an independent challenge for negative target/proof tests.
+    const key = await nativeKey();
+    const challenge = await f.h.sessions().nativeChallenge(
+      new Request(`${origin}${APPLICATION_SESSION_NATIVE_CHALLENGE_PATH}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${f.h.device.credential}` },
+      }),
+      {
+        providerSessionId: f.account.session.sessionId,
+        publicKey: key.publicKey,
+      },
+    );
+    const proofClaims = {
+      version: APPLICATION_SESSION_NATIVE_VERSION,
+      purpose: 'exchange',
+      aud: challenge.target.audience,
+      stationId,
+      surface: challenge.target.surface,
+      deviceId: challenge.deviceId,
+      nonce: challenge.nonce,
+      method: 'POST',
+      path: APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
+      challengeIdHash: nativeHash(challenge.challengeId),
+      providerSessionHash: nativeHash(f.account.session.sessionId),
+      jti: randomUUID(),
+      iat: Math.floor(Date.now() / 1000),
+    };
+    f.h.setNativeRequestFacts(
+      nativeFacts({ ...nativeSurface, clientInstanceId: 'other-instance' }),
+    );
+    await expect(
+      f.h.sessions().establishNative(f.exchangeRequest(), {
+        challengeId: challenge.challengeId,
+        providerSessionId: f.account.session.sessionId,
+        proof: await signNativeProof(key.privateKey, proofClaims),
+      }),
+    ).rejects.toMatchObject({ code: 'invalid' });
+
+    f.h.setNativeRequestFacts(nativeFacts());
+    const wrongKey = await nativeKey();
+    const badProof = await signNativeProof(wrongKey.privateKey, proofClaims);
+    await expect(
+      f.h.sessions().establishNative(f.exchangeRequest(), {
+        challengeId: challenge.challengeId,
+        providerSessionId: f.account.session.sessionId,
+        proof: badProof,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid' });
+    const proof = await signNativeProof(key.privateKey, proofClaims);
+    const established = await f.h
+      .sessions()
+      .establishNative(f.exchangeRequest(), {
+        challengeId: challenge.challengeId,
+        providerSessionId: f.account.session.sessionId,
+        proof,
+      });
+    expect(established.target.surface.clientInstanceId).toBe(
+      nativeSurface.clientInstanceId,
+    );
+    await expect(
+      f.h.sessions().establishNative(f.exchangeRequest(), {
+        challengeId: challenge.challengeId,
+        providerSessionId: f.account.session.sessionId,
+        proof,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid' });
+  });
+
+  test('checks provider session and approved account Device on every native request; request proofs are one-use', async () => {
+    const f = await nativeContinuationFixture();
+    const request = await f.authenticateRequest();
+    expect((await f.h.sessions().authenticateNative(request)).kind).toBe(
+      'authenticated',
+    );
+    expect((await f.h.sessions().authenticateNative(request)).kind).toBe(
+      'invalid',
+    );
+
+    const revokedDeviceId = f.h.device.device.id;
+    f.h.pairing.revokeDevice(revokedDeviceId, 'operator-credential');
+    expect(
+      (await f.h.sessions().authenticateNative(await f.authenticateRequest()))
+        .kind,
+    ).toBe('invalid');
+  });
+
+  test('refuses a revoked provider session and does not accept native credentials on browser authentication', async () => {
+    const f = await nativeContinuationFixture();
+    const browserResult = await f.h
+      .sessions()
+      .authenticate(await f.authenticateRequest());
+    expect(browserResult.kind).toBe('invalid');
+    await f.h
+      .accounts()
+      .service.revokeSessionReference(
+        f.account.session.sessionId,
+        new AbortController().signal,
+      );
+    expect(
+      (await f.h.sessions().authenticateNative(await f.authenticateRequest()))
+        .kind,
+    ).toBe('invalid');
+  });
+
+  test('fails closed when the provider cannot verify account session references or native facts are absent', async () => {
+    const h = await harness();
+    const key = await nativeKey();
+    const unavailable = vi
+      .spyOn(h.accounts().service, 'sessionReferenceCapabilities')
+      .mockReturnValue({ verify: false, login: false });
+    await expect(
+      h.sessions().nativeChallenge(
+        new Request(`${origin}${APPLICATION_SESSION_NATIVE_CHALLENGE_PATH}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${h.device.credential}` },
+        }),
+        { providerSessionId: 'unsupported-session', publicKey: key.publicKey },
+      ),
+    ).rejects.toMatchObject({ code: 'unsupported' });
+    unavailable.mockRestore();
+    const account = await nativeAccount(h);
+    await expect(
+      h.sessions().nativeChallenge(
+        new Request(`${origin}${APPLICATION_SESSION_NATIVE_CHALLENGE_PATH}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${h.device.credential}` },
+        }),
+        {
+          providerSessionId: account.session.sessionId,
+          publicKey: key.publicKey,
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'invalid' });
+  });
+
+  test('refuses a different HTTP audience and stale Pion connection facts', async () => {
+    const h = await harness();
+    const account = await nativeAccount(h);
+    h.setNativeRequestFacts(nativeFacts());
+    const key = await nativeKey();
+    const makeRequest = (requestOrigin: string) =>
+      new Request(
+        `${requestOrigin}${APPLICATION_SESSION_NATIVE_CHALLENGE_PATH}`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${h.device.credential}` },
+        },
+      );
+    await expect(
+      h.sessions().nativeChallenge(makeRequest(alternateOrigin), {
+        providerSessionId: account.session.sessionId,
+        publicKey: key.publicKey,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid' });
+    h.setNativeRequestFacts(
+      nativeFacts(nativeSurface, '44444444-4444-4444-8444-444444444444'),
+    );
+    await expect(
+      h.sessions().nativeChallenge(makeRequest(origin), {
+        providerSessionId: account.session.sessionId,
+        publicKey: key.publicKey,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid' });
+    h.setNativeRequestFacts({
+      ...nativeFacts(),
+      isCurrent: () => false,
+    });
+    await expect(
+      h.sessions().nativeChallenge(makeRequest(origin), {
+        providerSessionId: account.session.sessionId,
+        publicKey: key.publicKey,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid' });
+  });
+});
 
 describe('Device-bound continuation persistence and negative admission', () => {
   test('compensates an alias when continuation persistence faults after mint', async () => {

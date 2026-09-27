@@ -1,4 +1,5 @@
 import type { PrincipalRef } from './principal.js';
+import type { SelfHostedBrokerNativeClientSurfaceV2 } from './self-hosted-broker.js';
 
 export const APPLICATION_SESSION_VERSION =
   'station.application-session/v1' as const;
@@ -12,6 +13,20 @@ export const APPLICATION_SESSION_PROOF_HEADER =
   'X-Station-Account-Proof' as const;
 export const APPLICATION_SESSION_PROOF_TYPE =
   'station.application-session+jwt' as const;
+export const APPLICATION_SESSION_NATIVE_VERSION =
+  'station.application-session-native/v1' as const;
+export const APPLICATION_SESSION_NATIVE_PROOF_TYPE =
+  'station.application-session-native+jwt' as const;
+export const APPLICATION_SESSION_NATIVE_BASE_PATH =
+  `${APPLICATION_SESSION_BASE_PATH}/native` as const;
+export const APPLICATION_SESSION_NATIVE_CHALLENGE_PATH =
+  `${APPLICATION_SESSION_NATIVE_BASE_PATH}/challenge` as const;
+export const APPLICATION_SESSION_NATIVE_EXCHANGE_PATH =
+  `${APPLICATION_SESSION_NATIVE_BASE_PATH}/exchange` as const;
+export const APPLICATION_SESSION_NATIVE_HEADER =
+  'X-Station-Native-Account-Continuation' as const;
+export const APPLICATION_SESSION_NATIVE_PROOF_HEADER =
+  'X-Station-Native-Account-Proof' as const;
 
 /** Public half only. SDK implementations retain the non-extractable signing key. */
 export interface ApplicationSessionPublicKey {
@@ -59,4 +74,68 @@ export interface ApplicationSessionCapabilities {
   proofAlgorithm: 'ES256';
   stationId: string;
   requestOrigin: string;
+}
+
+/** Native continuation has a Station and signed client surface, never a fabricated web Origin. */
+export interface NativeApplicationSessionTargetV1 {
+  readonly kind: 'station-native';
+  readonly stationId: string;
+  /** Canonical Station service audience from trusted VAI facts; never a client Origin. */
+  readonly audience: string;
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+}
+
+export interface NativeApplicationSessionChallengeV1 {
+  readonly version: typeof APPLICATION_SESSION_NATIVE_VERSION;
+  readonly challengeId: string;
+  readonly nonce: string;
+  readonly expiresAt: string;
+  readonly target: NativeApplicationSessionTargetV1;
+  readonly deviceId: string;
+  /** Thumbprint of the independent account-session proof key. */
+  readonly keyThumbprint: string;
+}
+
+export interface NativeApplicationSessionChallengeRequestV1 {
+  readonly version: typeof APPLICATION_SESSION_NATIVE_VERSION;
+  readonly providerSessionId: string;
+  readonly publicKey: ApplicationSessionPublicKey;
+}
+
+/** Opaque provider session references are supplied only to the exchange call and never returned. */
+export interface NativeApplicationSessionExchangeV1 {
+  readonly version: typeof APPLICATION_SESSION_NATIVE_VERSION;
+  readonly challengeId: string;
+  readonly providerSessionId: string;
+  readonly proof: string;
+}
+
+/** Native proof claims bind one exact Station, surface, Device and path without HTTP Origin. */
+export interface NativeApplicationSessionProofClaimsV1 {
+  readonly version: typeof APPLICATION_SESSION_NATIVE_VERSION;
+  readonly purpose: 'exchange' | 'request';
+  readonly aud: string;
+  readonly stationId: string;
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  readonly deviceId: string;
+  readonly nonce: string;
+  readonly method: string;
+  readonly path: string;
+  readonly credentialHash?: string;
+  readonly challengeIdHash?: string;
+  readonly providerSessionHash?: string;
+  readonly jti: string;
+  readonly iat: number;
+}
+
+export interface NativeApplicationSessionContinuationV1 {
+  readonly version: typeof APPLICATION_SESSION_NATIVE_VERSION;
+  readonly credential: string;
+  readonly authorityKey: string;
+  readonly target: NativeApplicationSessionTargetV1;
+  readonly deviceId: string;
+  readonly principal: PrincipalRef;
+  readonly keyThumbprint: string;
+  readonly nonce: string;
+  readonly expiresAt: string;
 }

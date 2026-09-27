@@ -2,6 +2,12 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   APPLICATION_SESSION_HEADER,
+  APPLICATION_SESSION_NATIVE_CHALLENGE_PATH,
+  APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
+  APPLICATION_SESSION_NATIVE_HEADER,
+  APPLICATION_SESSION_NATIVE_PROOF_HEADER,
+  APPLICATION_SESSION_NATIVE_PROOF_TYPE,
+  APPLICATION_SESSION_NATIVE_VERSION,
   APPLICATION_SESSION_PROOF_HEADER,
   APPLICATION_SESSION_PROOF_TYPE,
   APPLICATION_SESSION_VERSION,
@@ -9,10 +15,15 @@ import {
   type ApplicationSessionChallenge,
   type ApplicationSessionContinuation,
   type ApplicationSessionCookieAdoption,
+  type NativeApplicationSessionChallengeV1,
+  type NativeApplicationSessionContinuationV1,
+  type NativeApplicationSessionProofClaimsV1,
+  type NativeApplicationSessionTargetV1,
 } from '@kontourai/station-contracts/application-session';
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import { PAIRING_SCOPE_ORCHESTRATION_READ } from '@kontourai/station-contracts/environment-security';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { calculateJwkThumbprint, importJWK, jwtVerify } from 'jose';
 import { z } from 'zod/v3';
 import { parseStrictBearer } from '../../security/runtime-request-security.js';
@@ -31,6 +42,26 @@ const publicKey = z
     crv: z.literal('P-256'),
     x: opaque,
     y: opaque,
+  })
+  .strict();
+const nativeSurface = z
+  .object({
+    kind: z.literal('station-native'),
+    appIdentifier: z.string().min(1).max(256),
+    channel: z.enum(['dev', 'stable', 'beta', 'nightly']),
+    clientInstanceId: z.string().min(1).max(256),
+    keyThumbprint: opaque,
+  })
+  .strict();
+const nativeTarget = z
+  .object({
+    kind: z.literal('station-native'),
+    stationId: z.string().min(1),
+    audience: z
+      .string()
+      .url()
+      .refine((value) => new URL(value).origin === value),
+    surface: nativeSurface,
   })
   .strict();
 const cookieAdoptionBinding = z
@@ -66,8 +97,27 @@ const continuationRecord = challengeRecord
     relaySubject: z.string().optional(),
   })
   .strict();
+const nativeChallengeRecord = z
+  .object({
+    deviceId: z.string().uuid(),
+    providerSessionId: z.string().min(1).max(512),
+    issuer: z.string().min(1).max(512),
+    sessionId: z.string().min(1).max(512),
+    principalId: z.string().min(1).max(512),
+    subject: z.string().min(1).max(2048),
+    target: nativeTarget,
+    key: publicKey,
+    keyThumbprint: opaque,
+    nonce: opaque,
+    expiresAt: z.number().int().positive(),
+  })
+  .strict();
+const nativeContinuationRecord = nativeChallengeRecord
+  .extend({ authorityKey: z.string().uuid() })
+  .strict();
 type Continuation = z.infer<typeof continuationRecord>;
 type Challenge = z.infer<typeof challengeRecord>;
+type ParsedNativeChallenge = z.infer<typeof nativeChallengeRecord>;
 type Authenticated = Extract<
   ResolvedDeploymentAuthentication,
   { kind: 'authenticated' }
@@ -78,6 +128,33 @@ type RelayAliasIssue = {
   deviceId: string;
   expiresAt: number;
 };
+/** Facts supplied by the trusted Pion ingress reader, never by request headers. */
+export interface VerifiedNativeApplicationRequest {
+  readonly stationId: string;
+  readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
+  readonly connectionEnrollmentId: string;
+  readonly routingGeneration: number;
+  readonly connectionId: string;
+  readonly requestOrigin: string;
+  readonly isCurrent: () => boolean;
+}
+export type ReadVerifiedNativeApplicationRequest = (
+  request: Request,
+) => VerifiedNativeApplicationRequest | undefined;
+type NativeChallenge = {
+  deviceId: string;
+  providerSessionId: string;
+  issuer: string;
+  sessionId: string;
+  principalId: string;
+  subject: string;
+  target: NativeApplicationSessionTargetV1;
+  key: z.infer<typeof publicKey>;
+  keyThumbprint: string;
+  nonce: string;
+  expiresAt: number;
+};
+type NativeContinuationRecord = NativeChallenge & { authorityKey: string };
 export type ApplicationSessionCookieAdoptionCallbacks = {
   readSecureDeviceCookie: (request: Request) => string | undefined;
   issueAlias: (
@@ -140,6 +217,8 @@ export class ApplicationSessionService {
       credential: string,
     ) => string | undefined = () => undefined,
     private readonly adoption?: ApplicationSessionCookieAdoptionCallbacks,
+    private readonly readNativeRequest: ReadVerifiedNativeApplicationRequest = () =>
+      undefined,
   ) {
     if (!stationId.trim() || new URL(requestOrigin).origin !== requestOrigin)
       throw new ApplicationSessionRefusal('unavailable');
@@ -157,14 +236,22 @@ export class ApplicationSessionService {
           'application_sessions',
           'application_session_proofs',
         ];
+        const nativeTables = [
+          'application_session_native_challenges',
+          'application_session_native_sessions',
+          'application_session_native_proofs',
+        ];
         if (
-          (tables.length !== 4 && tables.length !== 5) ||
+          tables.length < requiredTables.length ||
+          tables.length > requiredTables.length + 1 + nativeTables.length ||
           !tableNames.every(
             (name) =>
               typeof name === 'string' &&
-              [...requiredTables, 'application_session_adoptions'].includes(
-                name,
-              ),
+              [
+                ...requiredTables,
+                'application_session_adoptions',
+                ...nativeTables,
+              ].includes(name),
           ) ||
           !requiredTables.every((name) => tableNames.includes(name))
         )
@@ -182,10 +269,16 @@ export class ApplicationSessionService {
         CREATE TABLE IF NOT EXISTS application_sessions (token_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, record TEXT NOT NULL) STRICT;
         CREATE TABLE IF NOT EXISTS application_session_proofs (token_hash TEXT NOT NULL, jti TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(token_hash,jti)) STRICT;
         CREATE TABLE IF NOT EXISTS application_session_adoptions (id TEXT PRIMARY KEY, device_id TEXT NOT NULL, alias_id TEXT NOT NULL UNIQUE, expires_at INTEGER NOT NULL, state TEXT NOT NULL CHECK(state IN ('prepared','issued','active','revoking'))) STRICT;
+        CREATE TABLE IF NOT EXISTS application_session_native_challenges (id TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, record TEXT NOT NULL) STRICT;
+        CREATE TABLE IF NOT EXISTS application_session_native_sessions (token_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, record TEXT NOT NULL) STRICT;
+        CREATE TABLE IF NOT EXISTS application_session_native_proofs (token_hash TEXT NOT NULL, jti TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(token_hash,jti)) STRICT;
         CREATE INDEX IF NOT EXISTS application_challenge_expiry ON application_session_challenges(expires_at);
         CREATE INDEX IF NOT EXISTS application_session_expiry ON application_sessions(expires_at);
         CREATE INDEX IF NOT EXISTS application_proof_expiry ON application_session_proofs(expires_at);
-        CREATE INDEX IF NOT EXISTS application_adoption_expiry ON application_session_adoptions(expires_at);`);
+        CREATE INDEX IF NOT EXISTS application_adoption_expiry ON application_session_adoptions(expires_at);
+        CREATE INDEX IF NOT EXISTS application_native_challenge_expiry ON application_session_native_challenges(expires_at);
+        CREATE INDEX IF NOT EXISTS application_native_session_expiry ON application_session_native_sessions(expires_at);
+        CREATE INDEX IF NOT EXISTS application_native_proof_expiry ON application_session_native_proofs(expires_at);`);
       db.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS application_session_relay_authority ON application_sessions(json_extract(record, '$.authorityKey')) WHERE json_extract(record, '$.relayEnrollmentId') IS NOT NULL",
       );
@@ -221,6 +314,255 @@ export class ApplicationSessionService {
       requestOrigin: this.requestOrigin,
     };
   }
+  /** Create a native challenge from Pion-verified surface facts and an approved account Device. */
+  async nativeChallenge(
+    request: Request,
+    input: { providerSessionId: string; publicKey: unknown },
+  ): Promise<NativeApplicationSessionChallengeV1> {
+    this.requireNativeControlPath(
+      request,
+      APPLICATION_SESSION_NATIVE_CHALLENGE_PATH,
+    );
+    if (!this.authentication.sessionReferenceCapabilities().verify)
+      throw new ApplicationSessionRefusal('unsupported');
+    const target = this.nativeTarget(request);
+    const providerSessionId = z
+      .string()
+      .min(1)
+      .max(512)
+      .parse(input.providerSessionId);
+    const account = await this.nativeAccount(providerSessionId, request.signal);
+    const device = this.nativeDevice(request, target, undefined, account);
+    const key = publicKey.parse(input.publicKey);
+    await importJWK(key, 'ES256');
+    const keyThumbprint = await calculateJwkThumbprint(key);
+    const challengeId = randomBytes(32).toString('base64url');
+    const record: ParsedNativeChallenge = {
+      deviceId: device.id,
+      providerSessionId,
+      issuer: account.issuer,
+      sessionId: account.session.sessionId,
+      principalId: account.principal.id,
+      subject: account.session.subject,
+      target,
+      key,
+      keyThumbprint,
+      nonce: randomBytes(32).toString('base64url'),
+      expiresAt: this.now() + 120_000,
+    };
+    this.nativeDevice(request, target, device.id, account);
+    this.transaction(() => {
+      if (this.closed || request.signal.aborted)
+        throw new ApplicationSessionRefusal('unavailable');
+      this.prune();
+      const total = this.db
+        .prepare(
+          'SELECT count(*) AS n FROM application_session_native_challenges',
+        )
+        .get()?.n;
+      if (typeof total !== 'number' || total >= 1000)
+        throw new ApplicationSessionRefusal('unavailable');
+      this.db
+        .prepare(
+          'INSERT INTO application_session_native_challenges VALUES (?,?,?)',
+        )
+        .run(digest(challengeId), record.expiresAt, JSON.stringify(record));
+    });
+    return {
+      version: APPLICATION_SESSION_NATIVE_VERSION,
+      challengeId,
+      nonce: record.nonce,
+      expiresAt: new Date(record.expiresAt).toISOString(),
+      target,
+      deviceId: record.deviceId,
+      keyThumbprint,
+    };
+  }
+
+  /** Exchange one native challenge into a provider- and Device-bound continuation. */
+  async establishNative(
+    request: Request,
+    input: { challengeId: string; providerSessionId: string; proof: string },
+  ): Promise<NativeApplicationSessionContinuationV1> {
+    this.requireNativeControlPath(
+      request,
+      APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
+    );
+    if (!this.authentication.sessionReferenceCapabilities().verify)
+      throw new ApplicationSessionRefusal('unsupported');
+    const target = this.nativeTarget(request);
+    const challengeId = opaque.parse(input.challengeId);
+    const id = digest(challengeId);
+    const row = this.db
+      .prepare(
+        'SELECT record FROM application_session_native_challenges WHERE id=?',
+      )
+      .get(id);
+    const challenge = this.parse(row?.record, nativeChallengeRecord);
+    if (
+      challenge.expiresAt <= this.now() ||
+      JSON.stringify(challenge.target) !== JSON.stringify(target) ||
+      challenge.providerSessionId !== input.providerSessionId
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    const account = await this.nativeAccount(
+      challenge.providerSessionId,
+      request.signal,
+    );
+    this.nativeDevice(request, target, challenge.deviceId, account);
+    await this.nativeProof(request, input.proof, challenge, 'exchange', {
+      challengeId,
+      providerSessionId: challenge.providerSessionId,
+    });
+    const current = await this.nativeAccount(
+      challenge.providerSessionId,
+      request.signal,
+    );
+    if (
+      current.issuer !== challenge.issuer ||
+      current.session.sessionId !== challenge.sessionId ||
+      current.session.subject !== challenge.subject ||
+      current.principal.id !== challenge.principalId
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    this.nativeDevice(request, target, challenge.deviceId, current);
+    const expiresAt = Math.min(
+      Date.parse(current.session.expiresAt),
+      this.now() + 15 * 60_000,
+    );
+    if (!Number.isFinite(expiresAt) || expiresAt <= this.now())
+      throw new ApplicationSessionRefusal('invalid');
+    const credential = randomBytes(32).toString('base64url');
+    const authorityKey = randomUUID();
+    const continuation: NativeContinuationRecord = {
+      ...challenge,
+      authorityKey,
+      expiresAt,
+    };
+    this.transaction(() => {
+      if (
+        this.closed ||
+        request.signal.aborted ||
+        this.db
+          .prepare(
+            'DELETE FROM application_session_native_challenges WHERE id=? AND expires_at>? ',
+          )
+          .run(id, this.now()).changes !== 1
+      )
+        throw new ApplicationSessionRefusal('invalid');
+      this.nativeTarget(request, target);
+      this.nativeDevice(request, target, challenge.deviceId, current);
+      const count = this.db
+        .prepare(
+          'SELECT count(*) AS n FROM application_session_native_sessions',
+        )
+        .get()?.n;
+      if (typeof count !== 'number' || count >= 10_000)
+        throw new ApplicationSessionRefusal('unavailable');
+      this.db
+        .prepare(
+          'INSERT INTO application_session_native_sessions VALUES (?,?,?)',
+        )
+        .run(digest(credential), expiresAt, JSON.stringify(continuation));
+    });
+    return {
+      version: APPLICATION_SESSION_NATIVE_VERSION,
+      credential,
+      authorityKey,
+      target,
+      deviceId: challenge.deviceId,
+      principal: current.principal,
+      keyThumbprint: challenge.keyThumbprint,
+      nonce: challenge.nonce,
+      expiresAt: new Date(expiresAt).toISOString(),
+    };
+  }
+
+  /** Recheck native proof, provider session and Device on every protected request. */
+  async authenticateNative(
+    request: Request,
+  ): Promise<ResolvedDeploymentAuthentication> {
+    try {
+      const token = request.headers.get(APPLICATION_SESSION_NATIVE_HEADER);
+      const signed = request.headers.get(
+        APPLICATION_SESSION_NATIVE_PROOF_HEADER,
+      );
+      if (!token || !signed) throw new ApplicationSessionRefusal('invalid');
+      const hash = digest(opaque.parse(token));
+      const row = this.db
+        .prepare(
+          'SELECT record FROM application_session_native_sessions WHERE token_hash=? AND expires_at>? ',
+        )
+        .get(hash, this.now());
+      const record = this.parse(row?.record, nativeContinuationRecord);
+      const target = this.nativeTarget(request, record.target);
+      this.nativeDevice(request, target, record.deviceId, {
+        kind: 'authenticated',
+        issuer: record.issuer,
+        principal: deploymentAccountPrincipal(
+          record.issuer,
+          record.subject,
+          record.subject,
+        ),
+        session: {
+          sessionId: record.sessionId,
+          subject: record.subject,
+          displayName: record.subject,
+          expiresAt: new Date(record.expiresAt).toISOString(),
+        },
+      });
+      const jti = await this.nativeProof(request, signed, record, 'request', {
+        credential: token,
+      });
+      this.transaction(() => {
+        if (
+          this.db
+            .prepare(
+              'INSERT OR IGNORE INTO application_session_native_proofs VALUES (?,?,?)',
+            )
+            .run(hash, jti, this.now() + 120_000).changes !== 1
+        )
+          throw new ApplicationSessionRefusal('invalid');
+      });
+      const account = await this.nativeAccount(
+        record.providerSessionId,
+        request.signal,
+      );
+      const currentRow = this.db
+        .prepare(
+          'SELECT record FROM application_session_native_sessions WHERE token_hash=? AND expires_at>? ',
+        )
+        .get(hash, this.now());
+      const current = this.parse(currentRow?.record, nativeContinuationRecord);
+      this.nativeTarget(request, current.target);
+      this.nativeDevice(request, current.target, current.deviceId, account);
+      if (
+        account.issuer !== current.issuer ||
+        account.session.sessionId !== current.sessionId ||
+        account.session.subject !== current.subject ||
+        account.principal.id !== current.principalId ||
+        current.expiresAt <= this.now()
+      )
+        throw new ApplicationSessionRefusal('invalid');
+      return {
+        ...account,
+        session: {
+          ...account.session,
+          expiresAt: new Date(
+            Math.min(Date.parse(account.session.expiresAt), current.expiresAt),
+          ).toISOString(),
+        },
+      };
+    } catch (error) {
+      return error instanceof z.ZodError ||
+        (error instanceof ApplicationSessionRefusal &&
+          error.code !== 'unavailable' &&
+          error.code !== 'unsupported')
+        ? { kind: 'invalid', reason: 'invalid-credential' }
+        : { kind: 'unavailable' };
+    }
+  }
+
   async challenge(
     request: Request,
     key: unknown,
@@ -1230,6 +1572,182 @@ export class ApplicationSessionService {
       throw new ApplicationSessionRefusal('invalid');
     }
   }
+  private nativeTarget(
+    request: Request,
+    expected?: NativeApplicationSessionTargetV1,
+  ): NativeApplicationSessionTargetV1 {
+    if (this.closed || request.signal.aborted)
+      throw new ApplicationSessionRefusal('unavailable');
+    const facts = this.readNativeRequest(request);
+    if (
+      !facts ||
+      typeof facts.isCurrent !== 'function' ||
+      !facts.isCurrent() ||
+      !facts.connectionId ||
+      !facts.connectionEnrollmentId ||
+      !Number.isSafeInteger(facts.routingGeneration) ||
+      facts.routingGeneration < 0
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    if (
+      new URL(facts.requestOrigin).origin !== facts.requestOrigin ||
+      new URL(request.url).origin !== facts.requestOrigin
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    const parsed = nativeTarget.parse({
+      kind: 'station-native',
+      stationId: facts.stationId,
+      audience: facts.requestOrigin,
+      surface: facts.surface,
+    });
+    if (parsed.stationId !== this.stationId || !facts.isCurrent())
+      throw new ApplicationSessionRefusal('invalid');
+    if (
+      expected &&
+      (expected.kind !== parsed.kind ||
+        expected.stationId !== parsed.stationId ||
+        expected.audience !== parsed.audience ||
+        expected.surface.appIdentifier !== parsed.surface.appIdentifier ||
+        expected.surface.channel !== parsed.surface.channel ||
+        expected.surface.clientInstanceId !== parsed.surface.clientInstanceId ||
+        expected.surface.keyThumbprint !== parsed.surface.keyThumbprint)
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    return parsed;
+  }
+
+  private requireNativeControlPath(request: Request, path: string): void {
+    const url = new URL(request.url);
+    if (request.method !== 'POST' || url.pathname !== path || url.search !== '')
+      throw new ApplicationSessionRefusal('invalid');
+  }
+
+  private async nativeAccount(
+    providerSessionId: string,
+    signal: AbortSignal,
+  ): Promise<Authenticated> {
+    if (this.closed || signal.aborted)
+      throw new ApplicationSessionRefusal('unavailable');
+    const sessionId = z.string().min(1).max(512).parse(providerSessionId);
+    const result = this.account(
+      await this.authentication.verifySessionReference(sessionId, signal),
+    );
+    if (
+      result.session.sessionId !== sessionId ||
+      !result.session.subject ||
+      !result.issuer
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    return result;
+  }
+
+  private nativeDevice(
+    request: Request,
+    target: NativeApplicationSessionTargetV1,
+    expectedDeviceId: string | undefined,
+    account: Pick<Authenticated, 'issuer' | 'principal' | 'session'>,
+  ): PairedDevice {
+    this.nativeTarget(request, target);
+    const device = this.device(request, expectedDeviceId, account.principal.id);
+    const binding = device.principalBinding;
+    if (
+      !binding ||
+      !('kind' in binding) ||
+      binding.kind !== 'account' ||
+      binding.issuer !== account.issuer ||
+      binding.subject !== account.session.subject ||
+      deploymentAccountPrincipal(
+        binding.issuer,
+        binding.subject,
+        binding.displayName,
+      ).id !== account.principal.id
+    )
+      throw new ApplicationSessionRefusal('invalid');
+    return device;
+  }
+
+  private async nativeProof(
+    request: Request,
+    signed: string,
+    record: ParsedNativeChallenge | NativeContinuationRecord,
+    purpose: 'exchange' | 'request',
+    binding: {
+      challengeId?: string;
+      providerSessionId?: string;
+      credential?: string;
+    },
+  ): Promise<string> {
+    if (signed.length > 4096 || request.signal.aborted)
+      throw new ApplicationSessionRefusal('invalid');
+    try {
+      const key = await importJWK(record.key, 'ES256');
+      const { payload, protectedHeader } = await jwtVerify(signed, key, {
+        algorithms: ['ES256'],
+        typ: APPLICATION_SESSION_NATIVE_PROOF_TYPE,
+        maxTokenAge: 60,
+        clockTolerance: 5,
+        currentDate: new Date(this.now()),
+      });
+      z.object({
+        alg: z.literal('ES256'),
+        typ: z.literal(APPLICATION_SESSION_NATIVE_PROOF_TYPE),
+      })
+        .strict()
+        .parse(protectedHeader);
+      const claims = z
+        .object({
+          version: z.literal(APPLICATION_SESSION_NATIVE_VERSION),
+          purpose: z.enum(['exchange', 'request']),
+          aud: z
+            .string()
+            .url()
+            .refine((value) => new URL(value).origin === value),
+          stationId: z.string(),
+          surface: nativeSurface,
+          deviceId: z.string().uuid(),
+          nonce: opaque,
+          method: z.string().min(1).max(16),
+          path: z.string().min(1).max(2048),
+          credentialHash: opaque.optional(),
+          challengeIdHash: opaque.optional(),
+          providerSessionHash: opaque.optional(),
+          jti: z.string().min(22).max(128),
+          iat: z.number().int(),
+        })
+        .strict()
+        .parse(payload) satisfies NativeApplicationSessionProofClaimsV1;
+      const expectedPath =
+        new URL(request.url).pathname + new URL(request.url).search;
+      if (
+        claims.version !== APPLICATION_SESSION_NATIVE_VERSION ||
+        claims.purpose !== purpose ||
+        claims.aud !== record.target.audience ||
+        new URL(request.url).origin !== record.target.audience ||
+        claims.stationId !== record.target.stationId ||
+        claims.surface.appIdentifier !== record.target.surface.appIdentifier ||
+        claims.surface.channel !== record.target.surface.channel ||
+        claims.surface.clientInstanceId !==
+          record.target.surface.clientInstanceId ||
+        claims.surface.keyThumbprint !== record.target.surface.keyThumbprint ||
+        claims.deviceId !== record.deviceId ||
+        claims.nonce !== record.nonce ||
+        claims.method !== request.method.toUpperCase() ||
+        claims.path !== expectedPath ||
+        claims.credentialHash !==
+          (binding.credential ? digest(binding.credential) : undefined) ||
+        claims.challengeIdHash !==
+          (binding.challengeId ? digest(binding.challengeId) : undefined) ||
+        claims.providerSessionHash !==
+          (binding.providerSessionId
+            ? digest(binding.providerSessionId)
+            : undefined)
+      )
+        throw new ApplicationSessionRefusal('invalid');
+      return claims.jti;
+    } catch {
+      throw new ApplicationSessionRefusal('invalid');
+    }
+  }
   private device(
     request: Request,
     expected?: string,
@@ -1454,6 +1972,9 @@ export class ApplicationSessionService {
       'application_sessions',
       'application_session_proofs',
       'application_session_adoptions',
+      'application_session_native_challenges',
+      'application_session_native_sessions',
+      'application_session_native_proofs',
     ])
       this.db
         .prepare(`DELETE FROM ${table} WHERE expires_at<=?`)
