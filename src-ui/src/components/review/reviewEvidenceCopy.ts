@@ -3,10 +3,9 @@ import type { SurveyFlowReviewUnavailableReason } from '@kontourai/station-sdk';
 
 /**
  * The operator remedy differs by reason, so the copy names it per project.
- * Extracted from `ReviewQueueView` (#2064 D4) because the project's Coding
- * layout now renders the same per-project unavailability: a project Station
- * could not read must not render as a project with no receipts, and the two
- * surfaces must not describe one root cause two ways.
+ * Extracted from the retired `ReviewQueueView` (#2064 D4). A project Station
+ * could not read must not render as a project with no receipts, and no two
+ * surfaces should describe one root cause two ways.
  *
  * A `Record` over the reason union rather than a lookup with a fallback: a
  * new reason is a type error here until it has its own copy, instead of
