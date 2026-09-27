@@ -135,6 +135,10 @@ interface PluginInstallRouteDeps {
    * #2323 S5: the proposal store `POST /install` completes when the request
    * names a `proposalId`. Optional: a composition without it installs
    * exactly as before and reports the proposal as still open.
+   *
+   * #2719: also what makes a source a proposed one. Preview and install
+   * both stage a source an open install proposal names without its git
+   * metadata, so the approval's digest and the install's agree.
    */
   proposals?: PluginLifecycleProposalService;
 }
@@ -483,7 +487,9 @@ export function registerPluginInstallRoutes(
         );
       }
 
-      const result = await fetchPluginSource(source, pluginsDir, logger);
+      const result = await fetchPluginSource(source, pluginsDir, logger, {
+        excludeGitMetadata: deps.proposals?.hasOpenInstallProposal(source),
+      });
       if ('error' in result) {
         return c.json({
           valid: false,
@@ -899,6 +905,8 @@ export function registerPluginInstallRoutes(
               dataPolicy,
               expectedInstallation,
               activationSession,
+              excludeGitMetadata:
+                deps.proposals?.hasOpenInstallProposal(source),
             },
           );
           return installed;

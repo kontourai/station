@@ -442,6 +442,19 @@ export class PluginLifecycleProposalService {
     );
   }
 
+  /**
+   * Whether an open install proposal asks for exactly `source`, compared the
+   * way completion compares it (#2719). The install routes stage such a
+   * source without its git metadata: the folder came from someone other
+   * than the operator, so its `.git` is not the operator's repository. Any
+   * author counts, because a proposal for a folder already proposed is
+   * deduplicated into the first one whoever made it.
+   */
+  hasOpenInstallProposal(source: string): boolean {
+    const wanted = target({ kind: 'install', source });
+    return this.listOpen().some((proposal) => target(proposal) === wanted);
+  }
+
   get(id: string): PluginLifecycleProposal | null {
     return this.read().proposals.find((proposal) => proposal.id === id) ?? null;
   }

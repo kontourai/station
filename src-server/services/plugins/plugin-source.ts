@@ -517,8 +517,12 @@ export async function fetchPluginSource(
    * operator. A local tree is copied with every `.git` entry left out, and
    * local git is never cloned. An operator's own `station install <path>`
    * keeps its `.git`, which the update route relies on.
+   *
+   * `excludeGitMetadata`: copy a local tree the same way without it being a
+   * dependency. For a folder someone other than the operator proposed
+   * (#2719); local git is still cloned only in the operator's own name.
    */
-  options: { dependency?: boolean } = {},
+  options: { dependency?: boolean; excludeGitMetadata?: boolean } = {},
 ): Promise<{ tempDir: string; tempName: string } | { error: string }> {
   try {
     assertSupportedPluginSource(source);
@@ -608,7 +612,8 @@ export async function fetchPluginSource(
       // Async on purpose: `cpSync` aborts the process on an unreadable
       // directory (see `copyPluginTree`).
       await copyPluginTree(source, tempDir, {
-        excludeGitMetadata: options.dependency === true,
+        excludeGitMetadata:
+          options.dependency === true || options.excludeGitMetadata === true,
       });
     } catch (error: unknown) {
       // A copy that fails part-way (an unreadable file or directory, a FIFO)
