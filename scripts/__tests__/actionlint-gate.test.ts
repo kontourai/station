@@ -1883,6 +1883,16 @@ describe('persistent runner policy', () => {
       'ci.yml jobs with needs must name a status function in their if, or a skipped ancestor silently skips them',
     ],
     [
+      'an explicit success(), which a skipped ancestor defeats the same way',
+      'manual-completion-diagnostics',
+      (job: Record<string, unknown>) => {
+        job.if =
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          "${{ success() && github.event_name == 'workflow_dispatch' }}";
+      },
+      'ci.yml jobs with needs must name a status function in their if, or a skipped ancestor silently skips them',
+    ],
+    [
       'a downstream job with needs and no if',
       'full-regression',
       (job: Record<string, unknown>) => {
@@ -1973,6 +1983,18 @@ describe('persistent runner policy', () => {
     expect(
       persistentRunnerPolicyFindings(primaryCiJobFixture(jobId, mutate)),
     ).toContainEqual({ file: '.github/workflows/ci.yml', jobId, message });
+  });
+
+  test('accepts a status function in any letter case (#2709)', () => {
+    // GitHub function names are case-insensitive: `Always()` is valid.
+    const findings = persistentRunnerPolicyFindings(
+      primaryCiJobFixture('manual-completion-diagnostics', (job) => {
+        job.if = String(job.if).replace('always()', 'Always()');
+      }),
+    );
+    expect(
+      findings.filter(({ message }) => message.includes('status function')),
+    ).toEqual([]);
   });
 
   test('rejects unreviewed fork shell execution', () => {

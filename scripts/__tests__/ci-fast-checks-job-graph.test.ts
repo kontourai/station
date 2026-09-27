@@ -21,17 +21,23 @@ import { describe, expect, test } from 'vitest';
  *   evaluated as `success() && (if)`, and a job with no `if` as `success()`;
  * - `success()` is true only when every transitive ancestor succeeded;
  * - `failure()` is true when any transitive ancestor failed;
- * - `cancelled()` is true only when the run was cancelled;
+ * - `cancelled()` is true once the run has been cancelled;
  * - a job whose condition is false is `skipped`, and its outputs are empty.
+ *
+ * Cancellation is a point in time (review round): jobs that finished before
+ * it keep their results; jobs running at it end `cancelled`; jobs not yet
+ * started are evaluated with `cancelled()` true, so an `always()` job still
+ * runs and one whose condition is now false ends `cancelled` (a reusable
+ * workflow call, `uses:`, ends `skipped`, as GitHub reported on run
+ * 36301149467). The three cancelled dispatch runs below replay through it.
  */
 
 type Result = 'success' | 'failure' | 'cancelled' | 'skipped';
-type Job = { needs?: string | string[]; if?: string };
+type Job = { needs?: string | string[]; if?: string; uses?: string };
 type Context = {
   event: string;
   repository: string;
   headRepository: string;
-  cancelled: boolean;
 };
 type State = {
   results: Map<string, Result>;
@@ -98,7 +104,8 @@ function evaluate(
     if (peek() === '(') {
       next();
       expect_(')');
-      const fn = functions[token];
+      // GitHub function names are case-insensitive.
+      const fn = functions[token.toLowerCase()];
       if (!fn) throw new Error(`unmodelled function ${token}() in ${source}`);
       return fn();
     }
@@ -156,7 +163,10 @@ function truthy(value: unknown) {
   );
 }
 
-const STATUS_FUNCTION = /\b(?:success|always|failure|cancelled)\s*\(/;
+/** Any status function: GitHub prefixes success() only when there is none. */
+const STATUS_FUNCTION = /\b(?:success|always|failure|cancelled)\s*\(/i;
+/** The ones a skipped ancestor cannot defeat; success() is not among them. */
+const SKIP_TOLERANT_STATUS_FUNCTION = /\b(?:always|cancelled|failure)\s*\(/i;
 
 /**
  * Simulates a run: jobs in dependency order, each either skipped by its
@@ -168,6 +178,10 @@ function simulate(
   scenario: {
     outcomes?: Record<string, Result>;
     outputs?: Record<string, Record<string, string>>;
+    /** Jobs that finished before the cancel, and those running at it. */
+    cancel?: { before: string[]; running: string[] };
+    /** A job's outcome derived from the state so far (the aggregator). */
+    resolve?: (id: string, state: State) => Result | undefined;
   } = {},
 ): State {
   const state: State = { results: new Map(), outputs: new Map() };
@@ -179,6 +193,8 @@ function simulate(
     if (!ready)
       throw new Error('ci.yml job graph has a cycle or a missing need');
     pending.delete(ready);
+    const cancelled =
+      scenario.cancel !== undefined && !scenario.cancel.before.includes(ready);
     const upstream = [...ancestors(jobs, ready)].map(
       (id) => state.results.get(id) as Result,
     );
@@ -186,7 +202,7 @@ function simulate(
       success: () => upstream.every((result) => result === 'success'),
       always: () => true,
       failure: () => upstream.some((result) => result === 'failure'),
-      cancelled: () => context.cancelled,
+      cancelled: () => cancelled,
     };
     const lookup = (path: string[]) => {
       const [head, ...rest] = path;
@@ -219,10 +235,25 @@ function simulate(
     const guarded = STATUS_FUNCTION.test(expression)
       ? expression
       : `success() && (${expression})`;
-    const runs = truthy(evaluate(guarded, lookup, functions));
-    const result: Result = runs
-      ? (scenario.outcomes?.[ready] ?? 'success')
-      : 'skipped';
+    // A job running at the cancel was admitted before it.
+    const running = scenario.cancel?.running.includes(ready) ?? false;
+    const runs = truthy(
+      evaluate(guarded, lookup, {
+        ...functions,
+        cancelled: () => cancelled && !running,
+      }),
+    );
+    const result: Result = running
+      ? runs
+        ? 'cancelled'
+        : 'skipped'
+      : runs
+        ? (scenario.resolve?.(ready, state) ??
+          scenario.outcomes?.[ready] ??
+          'success')
+        : cancelled && jobs[ready].uses === undefined
+          ? 'cancelled'
+          : 'skipped';
     state.results.set(ready, result);
     state.outputs.set(
       ready,
@@ -236,7 +267,6 @@ const sameRepositoryPr: Context = {
   event: 'pull_request_target',
   repository: REPOSITORY,
   headRepository: REPOSITORY,
-  cancelled: false,
 };
 const EVENTS: Array<[string, Context, Record<string, Record<string, string>>]> =
   [
@@ -303,6 +333,7 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
       ...jobs,
       'fast-checks-shard': {
         ...jobs['fast-checks-shard'],
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
         if: "${{ needs.fast-checks-plan.outputs.legacy == 'false' }}",
       },
     };
@@ -396,6 +427,112 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     expect(state.results.get('manual-completion-diagnostics')).toBe('success');
   });
 
+  // The three cancelled workflow_dispatch runs of #2797, replayed with their
+  // real order: which jobs had finished at the cancel, which were running,
+  // and each job's recorded conclusion. The aggregator's result is not
+  // assumed: it comes from its real bash/jq step over the simulated needs.
+  const EARLY = ['classify', 'fork-smoke', 'repo-scans', 'ui-bundle-delta'];
+  const REPLAYS: Array<{
+    run: string;
+    outcomes?: Record<string, Result>;
+    cancel: { before: string[]; running: string[] };
+    expected: Record<string, Result>;
+  }> = [
+    {
+      run: '36297788589: cancelled after fast-checks succeeded',
+      cancel: {
+        before: [...EARLY, ...PARTS, 'fast-checks'],
+        running: ['full-regression'],
+      },
+      expected: {
+        'fast-checks-plan': 'success',
+        'fast-checks-shard': 'success',
+        'fast-checks-statics': 'success',
+        'fast-checks': 'success',
+        'full-regression': 'cancelled',
+        'manual-completion-diagnostics': 'cancelled',
+      },
+    },
+    {
+      run: '36299640497: a red shard, then cancelled',
+      outcomes: { 'fast-checks-shard': 'failure' },
+      cancel: {
+        before: [...EARLY, ...PARTS, 'fast-checks'],
+        running: ['full-regression'],
+      },
+      expected: {
+        'fast-checks-shard': 'failure',
+        'fast-checks-statics': 'success',
+        'fast-checks': 'failure',
+        'full-regression': 'cancelled',
+        'manual-completion-diagnostics': 'cancelled',
+      },
+    },
+    {
+      run: '36301149467: cancelled mid-shard; the aggregator ran and failed',
+      cancel: {
+        before: [...EARLY, 'fast-checks-plan'],
+        running: ['fast-checks-shard', 'fast-checks-statics'],
+      },
+      expected: {
+        'fast-checks-plan': 'success',
+        'fast-checks-shard': 'cancelled',
+        'fast-checks-statics': 'cancelled',
+        'fast-checks': 'failure',
+        'full-regression': 'skipped',
+        'manual-completion-diagnostics': 'cancelled',
+      },
+    },
+  ];
+  test.each(REPLAYS)(
+    'replays dispatch run $run',
+    ({ outcomes, cancel, expected }) => {
+      const state = simulate(
+        jobs,
+        { ...sameRepositoryPr, event: 'workflow_dispatch' },
+        {
+          outcomes,
+          cancel,
+          outputs: {
+            classify: { heavy: 'false' },
+            'fast-checks-plan': { legacy: 'false' },
+          },
+          resolve: (id, current) =>
+            id === 'fast-checks'
+              ? aggregatorPartResults(jobs, current) === 0
+                ? 'success'
+                : 'failure'
+              : undefined,
+        },
+      );
+      expect(
+        Object.fromEntries(
+          Object.keys(expected).map((id) => [id, state.results.get(id)]),
+        ),
+      ).toEqual(expected);
+    },
+  );
+
+  test('a cancel before the aggregator starts fails the required check closed', () => {
+    // The general claim behind the replays: whatever part was cut short, the
+    // aggregator still runs (always(), no !cancelled()) and fails.
+    for (const running of PARTS) {
+      // Parts listed before the cut-short one finished before the cancel.
+      const before = [...EARLY, ...PARTS.slice(0, PARTS.indexOf(running))];
+      const state = simulate(jobs, sameRepositoryPr, {
+        cancel: { before, running: [running] },
+        outputs: { 'fast-checks-plan': { legacy: 'false' } },
+        resolve: (id, current) =>
+          id === 'fast-checks'
+            ? aggregatorPartResults(jobs, current) === 0
+              ? 'success'
+              : 'failure'
+            : undefined,
+      });
+      expect(state.results.get('fast-checks'), running).toBe('failure');
+    }
+  });
+
   test('every job that needs another carries a status function, so no skipped ancestor silently skips it', () => {
     // The structural form of the trap, for jobs this file does not simulate
     // by name: a job with `needs` and no status function inherits
@@ -403,7 +540,9 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     // pull_request_target.
     const exposed = Object.entries(jobs)
       .filter(([, job]) => needsOf(job).length > 0)
-      .filter(([, job]) => !STATUS_FUNCTION.test(String(job.if ?? '')))
+      .filter(
+        ([, job]) => !SKIP_TOLERANT_STATUS_FUNCTION.test(String(job.if ?? '')),
+      )
       .map(([id]) => id);
     expect(exposed).toEqual([]);
   });
