@@ -63,7 +63,8 @@ npm run docs:impact -- --catch-up --json
 
 With no explicit paths, it includes branch commits, staged and unstaged changes,
 untracked files, and both sides of renames. It reads dependency records from
-both the comparison baseline and the working tree, so removing a source link
+the comparison baseline, intervening committed ledger revisions, and the
+working tree, so removing a source link
 does not silently erase the old review lead. An unreadable base or malformed
 input fails the report rather than returning an empty impact list.
 

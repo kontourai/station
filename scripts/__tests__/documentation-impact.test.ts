@@ -240,6 +240,36 @@ describe('documentation impact', () => {
       { path: 'guide.md', recordRemoved: false, sourcesRemoved: ['code.ts'] },
     ]);
   });
+  it('keeps a dependency added then removed in committed ledger history visible through the real CLI', () => {
+    const { root, records, base, write } = fixture();
+    write('code.ts', 'changed after review');
+    write(
+      'docs/learn/review-ledger.json',
+      JSON.stringify({
+        ...ledger([{ ...records[0], sources: [] }]),
+        coverageBaseline: base,
+      }),
+    );
+    git(root, ['add', '.']);
+    git(root, [
+      '-c',
+      'core.hooksPath=/dev/null',
+      'commit',
+      '-qm',
+      'drop recorded dependency',
+    ]);
+    const run = spawnSync(
+      process.execPath,
+      [resolve('scripts/documentation-impact.mjs'), '--catch-up', '--json'],
+      { cwd: root, env: cleanEnv, encoding: 'utf8', windowsHide: true },
+    );
+    expect(run.status).toBe(0);
+    const report = JSON.parse(run.stdout);
+    expect(report.catchUp.removedDependencies).toEqual([
+      { path: 'guide.md', recordRemoved: false, sourcesRemoved: ['code.ts'] },
+    ]);
+    expect(report.documents.map((doc) => doc.path)).toContain('guide.md');
+  });
   it('uses the actual generator catalog and refuses a missing canonical input', () => {
     const { root } = fixture();
     const report = readDocumentationImpact({

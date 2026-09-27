@@ -144,6 +144,23 @@ export function documentationImpact({ changedPaths, ledgers, topics }) {
   };
 }
 
+function ledgerRevisionsSince(root, base) {
+  return [
+    base,
+    ...git(root, [
+      'log',
+      '--format=%H',
+      '--reverse',
+      `${base}..HEAD`,
+      '--',
+      ledgerPath,
+    ])
+      .split('\n')
+      .filter(Boolean),
+    'HEAD',
+  ];
+}
+
 function historicalLedgers(root, refs) {
   return [...new Set(refs)].flatMap((ref) => {
     const exists = git(root, [
@@ -166,7 +183,9 @@ export function readDocumentationImpact({
   mergeBase,
 } = {}) {
   const read = (path) => readFileSync(resolve(root, path), 'utf8');
-  const ledgers = mergeBase ? historicalLedgers(root, [mergeBase, 'HEAD']) : [];
+  const ledgers = mergeBase
+    ? historicalLedgers(root, ledgerRevisionsSince(root, mergeBase))
+    : [];
   ledgers.push(JSON.parse(read(ledgerPath)));
   const [manual, catalog, modules, atlas] = STATION_DOCS_INPUT_PATHS.map(read);
   const topics = compileStationDocs(
@@ -234,11 +253,17 @@ export function documentationCatchUp({ root = process.cwd(), base } = {}) {
       'Catch-up requires --base=<ref> or a ledger coverageBaseline.',
     );
   const selection = collectDocumentationChanges(root, coverageBase);
-  const priorRecords = new Map(
-    historicalLedgers(root, [selection.mergeBase, 'HEAD'])
-      .flatMap((previous) => previous.records)
-      .map((record) => [record.path, record]),
-  );
+  const priorRecords = new Map();
+  for (const previous of historicalLedgers(
+    root,
+    ledgerRevisionsSince(root, selection.mergeBase),
+  )) {
+    for (const record of previous.records) {
+      const sources = priorRecords.get(record.path) ?? new Set();
+      for (const source of record.sources) sources.add(source.path);
+      priorRecords.set(record.path, sources);
+    }
+  }
   const currentRecords = new Map(
     ledger.records.map((record) => [record.path, record]),
   );
@@ -248,14 +273,14 @@ export function documentationCatchUp({ root = process.cwd(), base } = {}) {
     const currentSources = new Set(
       current?.sources.map((source) => source.path),
     );
-    const removed = previous.sources.filter(
-      (source) => !currentSources.has(source.path),
+    const removed = [...previous].filter(
+      (source) => !currentSources.has(source),
     );
     if (!current || removed.length)
       removedDependencies.push({
         path,
         recordRemoved: !current,
-        sourcesRemoved: removed.map((source) => source.path),
+        sourcesRemoved: removed,
       });
   }
 
@@ -316,7 +341,10 @@ export function documentationCatchUp({ root = process.cwd(), base } = {}) {
     changedPaths: sorted([...selection.paths, ...stalePaths]),
     mergeBase: selection.mergeBase,
   });
-  const staleDocs = new Set(reviews.map((review) => review.path));
+  const staleDocs = new Set([
+    ...reviews.map((review) => review.path),
+    ...removedDependencies.map((entry) => entry.path),
+  ]);
   // Unchanged recorded bytes need no catch-up review merely because their history changed.
   report.documents = report.documents.filter(
     (doc) => staleDocs.has(doc.path) || doc.reviewState === 'unrecorded',
