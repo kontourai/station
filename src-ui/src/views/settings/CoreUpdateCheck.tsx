@@ -24,13 +24,13 @@ import {
 } from './coreUpdatePresentation';
 
 export const RESTART_STATUS_POLL_INTERVAL_MS = 1_500;
-export const SERVICE_UPDATE_POLL_INTERVAL_MS = 2_000;
+const SERVICE_UPDATE_POLL_INTERVAL_MS = 2_000;
 /**
  * How long the card follows a service update it requested. Staging downloads
  * a release and a trial may take two start attempts plus a home backup, so
  * the bound is generous; past it the card says where to look instead.
  */
-export const SERVICE_UPDATE_FOLLOW_MS = 45 * 60 * 1000;
+const SERVICE_UPDATE_FOLLOW_MS = 45 * 60 * 1000;
 
 interface TrackedServiceUpdate {
   requestId: string;

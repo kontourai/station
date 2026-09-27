@@ -75,7 +75,7 @@ export interface ArchiveUpdateOptions {
  * an install whose launcher does not run this server would update some other
  * process.
  */
-export function isLauncherSupervised(
+function isLauncherSupervised(
   provenance: ArchiveProvenance,
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
@@ -105,7 +105,7 @@ const UPGRADE_ON_HOST =
   'update it on the host with "station upgrade" (a Station service switches to the new version when it restarts)';
 
 /** Why an apply is refused for each method but `service-update`. */
-export function archiveApplyRefusal(
+function archiveApplyRefusal(
   method: Exclude<ArchiveApplyMethod, 'service-update'>,
 ): string {
   return method === 'reinstall'
@@ -155,7 +155,7 @@ async function readBoundedBody(response: Response): Promise<string> {
  * pinned keys for `ring`: the same checks install.sh makes before it stages
  * anything, so "available" here is a version the service can install.
  */
-export async function fetchVerifiedReleaseManifest(
+async function fetchVerifiedReleaseManifest(
   manifestUrl: string,
   ring: string,
   options: ArchiveUpdateOptions = {},
@@ -321,9 +321,7 @@ const IN_FLIGHT: ReadonlySet<ServiceUpdateProgress['state']> = new Set([
   'updating',
 ]);
 
-export function isServiceUpdateInFlight(
-  progress: ServiceUpdateProgress,
-): boolean {
+function isServiceUpdateInFlight(progress: ServiceUpdateProgress): boolean {
   return IN_FLIGHT.has(progress.state);
 }
 
