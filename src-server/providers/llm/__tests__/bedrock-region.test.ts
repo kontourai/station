@@ -201,8 +201,9 @@ describe('the readers cannot diverge again', () => {
   it.each(readers)(
     '%s resolves the region through the shared function',
     (path) => {
-      const source = readFileSync(path, 'utf8');
-      expect(source).toContain('resolveBedrockRegion');
+      // A call, not a mention: an import or a comment alone must not pass.
+      const source = stripComments(readFileSync(path, 'utf8'));
+      expect(source).toMatch(/\bresolveBedrockRegion\s*\(/);
     },
   );
 

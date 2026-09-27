@@ -1826,6 +1826,81 @@ describe('CodexAdapter', () => {
     ).toHaveLength(1);
   });
 
+  // archive#3473: a turn that reaches its own terminal while turn/interrupt
+  // is still out keeps that terminal; the interrupt's confirmation must not
+  // follow it with a contradictory turn.aborted.
+  test.each([
+    { status: 'completed', terminal: 'turn.completed' },
+    { status: 'failed', terminal: 'runtime.error' },
+  ])(
+    'a turn/completed ($status) that lands while turn/interrupt is in flight is the only terminal',
+    async ({ status, terminal }) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-interrupt-race';
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const startSessionPromise = adapter.startSession({
+        provider: 'codex',
+        threadId,
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '2',
+        result: { thread: { id: 'codex-thread-race' }, model: 'gpt-5-codex' },
+      });
+      await withTimeout(startSessionPromise, 'startSession');
+      const sendTurnPromise = adapter.sendTurn({ threadId, input: 'go' });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '3',
+        result: { turn: { id: 'turn-1' } },
+      });
+      await withTimeout(sendTurnPromise, 'sendTurn');
+      await flushIo();
+
+      const interruptPromise = adapter.interruptTurn(threadId, 'turn-1');
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        method: 'turn/completed',
+        params: {
+          threadId: 'codex-thread-race',
+          turn: {
+            id: 'turn-1',
+            status,
+            items: [],
+            error: status === 'failed' ? { message: 'x' } : null,
+          },
+        },
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, { id: '4', result: {} });
+      await withTimeout(interruptPromise, 'interruptTurn');
+
+      const events = await drainEvents(iterator);
+      expect(
+        events
+          .filter(
+            (event) =>
+              event.turnId === 'turn-1' &&
+              ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+                event.method,
+              ),
+          )
+          .map((event) => event.method),
+      ).toEqual([terminal]);
+      await adapter.stopAll();
+    },
+  );
+
   test('steerTurn sends app-server turn/steer on the open turn', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({

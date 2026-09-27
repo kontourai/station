@@ -32,6 +32,7 @@ import { ConnectionStore } from '../core/ConnectionStore';
 import type { StorageAdapter } from '../core/types';
 import {
   ConnectionsProvider,
+  type RequestCredentialEvidence,
   useConnections,
 } from '../react/ConnectionsContext';
 
@@ -57,17 +58,30 @@ afterEach(() => {
   }
 });
 
-function Probe() {
-  const { connections, apiBase } = useConnections();
-  return (
-    <div data-testid="probe">
-      {connections.length}:{apiBase}
-    </div>
+function captureActivationEpoch(): string {
+  const store = new ConnectionStore({ storage: memoryAdapter() });
+  store.setActive(store.add('LAN Station', 'http://192.168.1.50:3141').id);
+  const captured: { evidence: RequestCredentialEvidence | null } = {
+    evidence: null,
+  };
+  function Probe() {
+    const { captureCredentialEvidence } = useConnections();
+    captured.evidence = captureCredentialEvidence();
+    return null;
+  }
+  render(
+    <ConnectionsProvider store={store} defaultUrl="http://192.168.1.50:3141">
+      <Probe />
+    </ConnectionsProvider>,
   );
+  if (!captured.evidence) {
+    throw new Error('provider captured no credential evidence');
+  }
+  return captured.evidence.activationEpoch;
 }
 
 describe('ConnectionsProvider on an insecure (non-localhost, plain HTTP) origin', () => {
-  it('mounts without throwing when crypto.randomUUID is undefined', () => {
+  it('still produces a usable, string activation id with randomUUID absent', () => {
     originalRandomUUID = globalThis.crypto.randomUUID;
     // Simulates the real condition: on `http://192.168.1.50:3141` (or any
     // non-localhost plain-HTTP origin) `Crypto.randomUUID` is absent per the
@@ -78,33 +92,15 @@ describe('ConnectionsProvider on an insecure (non-localhost, plain HTTP) origin'
     // simulate an insecure context.
     globalThis.crypto.randomUUID = undefined;
 
-    const store = new ConnectionStore({ storage: memoryAdapter() });
+    // Two provider mounts stand for two page loads: each must mint its own
+    // instance id, or request authority keys from one load would read as
+    // current in the next.
+    const first = captureActivationEpoch();
+    const second = captureActivationEpoch();
 
-    expect(() =>
-      render(
-        <ConnectionsProvider
-          store={store}
-          defaultUrl="http://192.168.1.50:3141"
-        >
-          <Probe />
-        </ConnectionsProvider>,
-      ),
-    ).not.toThrow();
-  });
-
-  it('still produces a usable, string activation id with randomUUID absent', () => {
-    originalRandomUUID = globalThis.crypto.randomUUID;
-    // @ts-expect-error deliberately overriding a required method to
-    // simulate an insecure context.
-    globalThis.crypto.randomUUID = undefined;
-
-    const store = new ConnectionStore({ storage: memoryAdapter() });
-    const { getByTestId } = render(
-      <ConnectionsProvider store={store} defaultUrl="http://192.168.1.50:3141">
-        <Probe />
-      </ConnectionsProvider>,
-    );
-
-    expect(getByTestId('probe').textContent).toBe('0:http://192.168.1.50:3141');
+    for (const epoch of [first, second]) {
+      expect(epoch).toMatch(/^[0-9a-f-]{36}:\d+$/);
+    }
+    expect(first.split(':')[0]).not.toBe(second.split(':')[0]);
   });
 });

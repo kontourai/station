@@ -68,6 +68,7 @@ export const MONITORING_ENGINE_FILTER_VALUES = [
 import {
   api,
   controlRequestOptions,
+  delegationToolResult,
   jsonToolResult,
   navigateTo,
   resolveControlApiBase,
@@ -891,7 +892,9 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResult(await listDelegatedTasks({ ...input, userId: _userId })),
+      delegationToolResult(() =>
+        listDelegatedTasks({ ...input, userId: _userId }),
+      ),
   );
 
   server.tool(
@@ -1004,7 +1007,9 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResult(await observeDelegatedTask({ ...input, userId: _userId })),
+      delegationToolResult(() =>
+        observeDelegatedTask({ ...input, userId: _userId }),
+      ),
   );
 
   server.tool(
@@ -1026,8 +1031,8 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResult(
-        await observeDelegatedTaskEvents({ ...input, userId: _userId }),
+      delegationToolResult(() =>
+        observeDelegatedTaskEvents({ ...input, userId: _userId }),
       ),
   );
 
@@ -1070,8 +1075,8 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResult(
-        await respondToDelegatedTaskRequest({
+      delegationToolResult(() =>
+        respondToDelegatedTaskRequest({
           ...input,
           userId: _userId,
           clientOrigin: STATION_CONTROL_MCP_ORIGIN,
@@ -1093,8 +1098,8 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResult(
-        await interruptDelegatedTask({
+      delegationToolResult(() =>
+        interruptDelegatedTask({
           ...input,
           userId: _userId,
           clientOrigin: STATION_CONTROL_MCP_ORIGIN,

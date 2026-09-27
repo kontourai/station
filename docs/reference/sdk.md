@@ -2404,8 +2404,12 @@ class StationHttpError extends Error {
 
 Today every field is carried by the integration, review and workspace pane
 host action fetchers (built on `readEnvelopeOrThrow`), and by the scheduler,
-skills, knowledge, secret-binding, plugin and Project fetchers (every fetcher
-built on `unwrapProjectResponse`). `readEnvelopeOrThrow(response)`
+skills, knowledge, secret-binding, conversation, orchestration, plugin and
+Project fetchers (every fetcher built on `unwrapProjectResponse`). The
+conversation, orchestration and Project fetchers used to throw a plain `Error`
+for a `200` carrying `{ success: false }`; that is now a `StationHttpError`
+with status `200` too. `respondToRequest`'s error still carries the failure
+`receipt`. `readEnvelopeOrThrow(response)`
 throws this error for a non-2xx response or for a body that is not
 `success: true`. A body that is not JSON keeps its status on a non-2xx; on a
 2xx it is a protocol failure and throws a plain `Error`. Other fetchers still

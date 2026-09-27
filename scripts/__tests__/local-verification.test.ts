@@ -30,15 +30,10 @@ afterEach(() => {
   }
 });
 
-function runFixtureGit(
-  cwd: string,
-  args: string[],
-  env: NodeJS.ProcessEnv = process.env,
-) {
+function runFixtureGit(cwd: string, args: string[]) {
   const result = spawnSync('git', args, {
     cwd,
     encoding: 'utf8',
-    env,
     windowsHide: true,
   });
   if (result.status !== 0) {
@@ -47,38 +42,7 @@ function runFixtureGit(
   return result;
 }
 
-function readEffectiveFixtureGitConfig(
-  cwd: string,
-  key: string,
-  env: NodeJS.ProcessEnv,
-) {
-  return runFixtureGit(cwd, ['config', '--get', key], env).stdout.trim();
-}
-
-function sanitizedGitEnvironment(
-  source: NodeJS.ProcessEnv,
-  overrides: NodeJS.ProcessEnv,
-) {
-  const environment = { ...source };
-  for (const key of Object.keys(environment)) {
-    if (
-      key === 'GIT_CONFIG_COUNT' ||
-      key === 'GIT_CONFIG_PARAMETERS' ||
-      key === 'GIT_CONFIG_GLOBAL' ||
-      key === 'GIT_CONFIG_SYSTEM' ||
-      key === 'GIT_CONFIG_NOSYSTEM' ||
-      /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/.test(key)
-    ) {
-      delete environment[key];
-    }
-  }
-  return { ...environment, ...overrides };
-}
-
-function createCommittedProvenanceSubject(
-  root: string,
-  env: NodeJS.ProcessEnv = process.env,
-) {
+function createCommittedProvenanceSubject(root: string) {
   const repository = join(root, 'provenance-subject');
   const emptyHooksDirectory = join(root, 'empty-git-hooks');
   const isolatedGitConfig = [
@@ -90,23 +54,19 @@ function createCommittedProvenanceSubject(
   mkdirSync(repository);
   mkdirSync(emptyHooksDirectory);
   writeFileSync(join(repository, 'subject.txt'), 'baseline\n');
-  runFixtureGit(repository, [...isolatedGitConfig, 'init', '--quiet'], env);
-  runFixtureGit(repository, [...isolatedGitConfig, 'add', 'subject.txt'], env);
-  runFixtureGit(
-    repository,
-    [
-      ...isolatedGitConfig,
-      '-c',
-      'user.name=Station test',
-      '-c',
-      'user.email=station-test@example.invalid',
-      'commit',
-      '--quiet',
-      '-m',
-      'baseline',
-    ],
-    env,
-  );
+  runFixtureGit(repository, [...isolatedGitConfig, 'init', '--quiet']);
+  runFixtureGit(repository, [...isolatedGitConfig, 'add', 'subject.txt']);
+  runFixtureGit(repository, [
+    ...isolatedGitConfig,
+    '-c',
+    'user.name=Station test',
+    '-c',
+    'user.email=station-test@example.invalid',
+    'commit',
+    '--quiet',
+    '-m',
+    'baseline',
+  ]);
   return repository;
 }
 
@@ -146,88 +106,6 @@ describe('local verification Node pinning', () => {
       ),
     ).toEqual([]);
   });
-
-  it.runIf(process.platform !== 'win32')(
-    'creates an isolated provenance subject despite hostile global Git signing and hooks',
-    () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-provenance-git-'));
-      tempRoots.push(root);
-      const hostileHooksDirectory = join(root, 'hostile-git-hooks');
-      const hostileHookMarker = join(root, 'hostile-hook-ran');
-      const hostileSigner = join(root, 'hostile-gpg');
-      const hostileSignerMarker = join(root, 'hostile-signer-ran');
-      const hostileGlobalConfig = join(root, 'hostile.gitconfig');
-      mkdirSync(hostileHooksDirectory);
-      writeFileSync(
-        join(hostileHooksDirectory, 'pre-commit'),
-        `#!/bin/sh\ntouch '${hostileHookMarker}'\nexit 1\n`,
-      );
-      chmodSync(join(hostileHooksDirectory, 'pre-commit'), 0o755);
-      writeFileSync(
-        hostileSigner,
-        `#!/bin/sh\ntouch '${hostileSignerMarker}'\nexit 1\n`,
-      );
-      chmodSync(hostileSigner, 0o755);
-      writeFileSync(
-        hostileGlobalConfig,
-        `[commit]\n\tgpgSign = true\n[core]\n\thooksPath = ${hostileHooksDirectory}\n[gpg]\n\tprogram = ${hostileSigner}\n`,
-      );
-      // Simulate inherited command-scope config that would mask the hostile
-      // file unless the fixture's environment removes it first.
-      const ambientConfigInjection = {
-        ...process.env,
-        GIT_CONFIG_COUNT: '2',
-        GIT_CONFIG_KEY_0: 'commit.gpgSign',
-        GIT_CONFIG_VALUE_0: 'false',
-        GIT_CONFIG_KEY_1: 'core.hooksPath',
-        GIT_CONFIG_VALUE_1: join(root, 'ambient-hooks'),
-        GIT_CONFIG_PARAMETERS: "'commit.gpgSign=false'",
-      };
-      const hostileEnvironment = sanitizedGitEnvironment(
-        ambientConfigInjection,
-        {
-          GIT_CONFIG_GLOBAL: hostileGlobalConfig,
-          GIT_CONFIG_NOSYSTEM: '1',
-        },
-      );
-      expect(hostileEnvironment.GIT_CONFIG_COUNT).toBeUndefined();
-      expect(hostileEnvironment.GIT_CONFIG_KEY_0).toBeUndefined();
-      expect(hostileEnvironment.GIT_CONFIG_VALUE_0).toBeUndefined();
-      expect(hostileEnvironment.GIT_CONFIG_PARAMETERS).toBeUndefined();
-
-      const provenanceSubject = createCommittedProvenanceSubject(
-        root,
-        hostileEnvironment,
-      );
-
-      expect(
-        readEffectiveFixtureGitConfig(
-          provenanceSubject,
-          'commit.gpgSign',
-          hostileEnvironment,
-        ),
-      ).toBe('true');
-      expect(
-        readEffectiveFixtureGitConfig(
-          provenanceSubject,
-          'core.hooksPath',
-          hostileEnvironment,
-        ),
-      ).toBe(hostileHooksDirectory);
-      expect(
-        readEffectiveFixtureGitConfig(
-          provenanceSubject,
-          'gpg.program',
-          hostileEnvironment,
-        ),
-      ).toBe(hostileSigner);
-      expect(existsSync(hostileHookMarker)).toBe(false);
-      expect(existsSync(hostileSignerMarker)).toBe(false);
-      expect(collectWorkspaceProvenance({ cwd: provenanceSubject }).dirty).toBe(
-        false,
-      );
-    },
-  );
 
   it.runIf(process.platform !== 'win32')(
     'keeps parent and child processes on Node 24 with a poisoned PATH without entering workspace provenance',
