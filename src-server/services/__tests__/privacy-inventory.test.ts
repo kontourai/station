@@ -101,7 +101,7 @@ describe('privacy inventory', () => {
       const entry = syntheticEntry(linked, tracking);
       const rendered = renderPlayDataSafety([entry]);
       expect(rendered).toContain(
-        `- **Is any data used for tracking?** ${tracking ? 'Yes.' : 'No.'}`,
+        `- **Does this inventory declare any data as used for tracking?** ${tracking ? 'Yes.' : 'No.'}`,
       );
       expect(rendered).toContain(
         `| \`synthetic\` | Other User Content | Conditional as described | synthetic destination | App Functionality | ${linked ? 'Yes' : 'No'} | ${tracking ? 'Yes' : 'No'} |`,
@@ -123,11 +123,11 @@ describe('privacy inventory', () => {
       [untracked, tracked],
     ]) {
       expect(renderPlayDataSafety(inventory)).toContain(
-        '- **Is any data used for tracking?** Yes.',
+        '- **Does this inventory declare any data as used for tracking?** Yes.',
       );
     }
     expect(renderPlayDataSafety([])).toContain(
-      '- **Is any data used for tracking?** No.',
+      '- **Does this inventory declare any data as used for tracking?** No.',
     );
     expect(renderPlayDataSafety([])).not.toContain('| `');
     expect(renderPrivacyInfo([])).toContain(
@@ -228,7 +228,7 @@ describe('privacy inventory', () => {
     expect(
       renderPlayDataSafety([entry(true)]),
       'a linked inventory entry did not flip the Play headline answer to Yes',
-    ).toContain('- **Is any data linked to a user identity?** Yes.');
+    ).toContain('- **Does this inventory declare any data as linked to a user identity?** Yes.');
     expect(
       renderPlayDataSafety([entry(true)]),
       'a linked inventory entry did not render Linked=Yes in the Play summary table',
@@ -236,6 +236,6 @@ describe('privacy inventory', () => {
     expect(
       renderPlayDataSafety([entry(false)]),
       'an unlinked inventory entry did not render the Play headline answer as No',
-    ).toContain('- **Is any data linked to a user identity?** No.');
+    ).toContain('- **Does this inventory declare any data as linked to a user identity?** No.');
   });
 });

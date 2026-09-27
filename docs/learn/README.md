@@ -1,5 +1,10 @@
 # Learn Station
 
+Explore Station from responsibilities to interfaces to implementation. Start
+with [the product concepts](../user/concepts.md) and
+[system overview](../architecture.md), then choose a branch below. The detailed
+module descriptions come from the existing [module map](../architecture/module-map.md).
+
 ## Review status
 
 Each document has a visible review note. The
@@ -13,11 +18,6 @@ It binds the reviewed Markdown and code to content hashes. If either changes,
 the reader shows **Review out of date** and the documentation checks require the
 record to be revisited. Refresh those hashes only after reviewing the changed
 claim and evidence; changing a hash by itself is not a review.
-
-Explore Station from responsibilities to interfaces to implementation. Start
-with [the product concepts](../user/concepts.md) and
-[system overview](../architecture.md), then choose a branch below. The detailed
-module descriptions come from the existing [module map](../architecture/module-map.md).
 
 ## Interactive atlas
 

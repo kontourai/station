@@ -10,7 +10,7 @@
       "scenario": "Create durable work",
       "evidence": "Running isolated Station with sample data and a sample display name. No Agent dispatched.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "fb4cba52d3b36c36e07706b540f496c67f298ea8",
+      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
       "sources": [
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -22,7 +22,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
         },
         {
           "path": "src-ui/src/views/ProjectPage.css",
@@ -30,7 +30,7 @@
         },
         {
           "path": "src-ui/src/views/ProjectPage.tsx",
-          "digest": "278a282cdafb81524af722807368f9d4f9e45c408645df5f2ff998c87e37b84a"
+          "digest": "a5446401470207b9ba884ae50bfe57739fd2f2d7ea372f19ae36280106986c49"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -56,7 +56,7 @@
       "scenario": "Save a shared revision",
       "evidence": "Running isolated Station; the document and revision were persisted. No external Agent or provider. The small editor and clipped heading are the current UI.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "fb4cba52d3b36c36e07706b540f496c67f298ea8",
+      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
       "sources": [
         {
           "path": "src-server/services/orchestration/project-task-room-runtime.ts",
@@ -72,7 +72,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -114,7 +114,7 @@
       "scenario": "Connections \u2192 Models",
       "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "fb4cba52d3b36c36e07706b540f496c67f298ea8",
+      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
       "sources": [
         {
           "path": "src-ui/src/components/SplitPaneLayout.css",
@@ -134,7 +134,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -180,7 +180,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "fb4cba52d3b36c36e07706b540f496c67f298ea8",
+      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -188,7 +188,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "a11490103701a1bbe3fd7d2bcb52318ac0e2911977ec15412bb21ba8b1e796a1"
+          "digest": "a37f32b04e81e484414e62825b13d67327c920bde992d5c3f81a9c9d28b4fd0a"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
@@ -208,7 +208,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -242,7 +242,7 @@
       "scenario": "Open Inspect request, expand Request identity, then Close. No decision is made.",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
+      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -250,7 +250,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "a11490103701a1bbe3fd7d2bcb52318ac0e2911977ec15412bb21ba8b1e796a1"
+          "digest": "a37f32b04e81e484414e62825b13d67327c920bde992d5c3f81a9c9d28b4fd0a"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
@@ -270,7 +270,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -303,7 +303,7 @@
       "scenario": "Browse Models and Engines without testing or invoking a provider.",
       "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
+      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
       "sources": [
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -315,7 +315,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -359,7 +359,7 @@
       "scenario": "Browse the repository-derived record graph and resolve canonical detail.",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at1440x1000 and390x844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "09a56847dd55476180b703c9dd5d0bf1e3ca67e0",
+      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -419,7 +419,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -440,7 +440,7 @@
       "scenario": "Browse the repository-derived record graph and resolve canonical detail at a narrow browser width.",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at1440x1000 and390x844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "09a56847dd55476180b703c9dd5d0bf1e3ca67e0",
+      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -500,7 +500,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "338998481b22e78c18fa81120cdda801f85fdbcda0cb32e4272c4edccc51ae1b"
+          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
         },
         {
           "path": "src-ui/src/views/page-layout.css",

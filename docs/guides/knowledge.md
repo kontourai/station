@@ -23,8 +23,9 @@ checks physical Markdown identities, including archived records, inside the
 same file transaction. It refuses unreadable or inconsistent indexed records,
 unindexed record-like frontmatter (both `type` and `provenance`), malformed
 frontmatter, symlinked or unsupported directory entries, and occupied unindexed
-destination paths. A refusal preserves the existing record and index bytes; it does not
-repair the path index. The current reindex command rebuilds graph/alias indexes
+destination paths. These identity checks refuse before publishing the create
+and do not repair the path index. The shared transaction owner can still recover
+an earlier interrupted write before checking the new request. The current reindex command rebuilds graph/alias indexes
 from path-index entries and cannot recover a lost path index.
 
 The physical inspection admits at most 10,000 directory entries, 16 MiB per

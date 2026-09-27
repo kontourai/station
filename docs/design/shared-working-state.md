@@ -7,7 +7,8 @@
 > and its worker. The harness descriptions below are not newly executed
 > convergence, authorization, performance, or recovery results.
 
-Issue #2889 defines the pre-UI contract for a shared **text document**. This
+The protocol introduced in [archive#2889](https://github.com/kontourai/station-archive/issues/2889)
+defines the pre-UI contract for a shared **text document**. This
 is not the conversation log. [Project/Task room history](project-task-room-history.md)
 describes the current durable room owner; [conversation state](conversation-state.md)
 retains the broader channel-home design and its historical survey.

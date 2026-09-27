@@ -103,6 +103,7 @@
       "modules": [
         "DeploymentAuthentication",
         "VirtualApplicationIngress",
+        "NativeRelayGrantRenewalSupervisor",
         "PendingPairingCompletion",
         "ConnectionInspector",
         "SecretBindingAdministration and IntegrationSecretResolver"

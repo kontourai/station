@@ -2802,9 +2802,9 @@ class StationHttpError extends Error {
 ```
 
 The integration, review and workspace pane host-action catalog/preparation
-fetchers (built on `readEnvelopeOrThrow`), plus the scheduler,
-skills, knowledge, secret-binding, conversation, orchestration, plugin and
-Project fetchers (built on `unwrapProjectResponse`) preserve supplied refusal fields. The
+fetchers (built on `readEnvelopeOrThrow`), plus the scheduler, skills, knowledge,
+secret-binding, conversation, orchestration and plugin fetchers preserve supplied
+refusal fields. Project fetchers use `unwrapProjectResponse` for the same fields. The
 conversation, orchestration and Project fetchers used to throw a plain `Error`
 for a `200` carrying `{ success: false }`; that is now a `StationHttpError`
 with status `200` too. `respondToRequest`'s error still carries the failure
@@ -2826,6 +2826,8 @@ error the envelope helper made of the response, so they keep its status,
 `PluginCollectionHttpError` is built the same way: it keeps the envelope's
 `code` on the error and on its `envelope`, and keeps the refusal's `details`
 and `Retry-After`.
+Its constructor accepts `(failure: StationHttpError, options?: { grantsUnavailable?: boolean })`;
+the earlier `(status, envelope, options)` constructor is no longer supported.
 Host-action execution deliberately returns `indeterminate` after any failed or
 unreadable response; it does not expose the helper's exception to the caller.
 

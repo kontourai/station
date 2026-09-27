@@ -278,7 +278,7 @@ and other implementation responsibilities; counting lines cannot identify a
 safe extraction boundary. The [decomposition map](../design/orchestration-decomposition-map.md)
 and current module interfaces must be reconciled with real callers first.
 
-Next review: distinguish wiring from behavior; inventory callers that still
+Before extracting a module, distinguish wiring from behavior and inventory callers that still
 need several services or raw storage operations for one intent; inspect state
 and cleanup ownership across those calls. A proposed extraction needs a concrete
 reduction in caller obligations and behavioral evidence. Do not introduce a
@@ -369,8 +369,8 @@ an overview and a journey before those details. The atlas adds that navigation
 without asserting that every section is an independently reusable module.
 Its groupings are a learning aid, not a new dependency or ownership authority.
 
-Next review: trace success, refusal, cancellation, restart, and reconnect for
-each major journey. Check whether the reader can reach both the durable owner
+When evaluating a journey, trace success, refusal, cancellation, restart and
+reconnect. Check whether the reader can reach both the durable owner
 and the UI projection. Record an absent explanation separately from missing
 implementation.
 

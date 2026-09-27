@@ -9,9 +9,11 @@
 > device liveness. This owner map is not a fresh proof of every bounded input,
 > transition, durable outcome, or two-device journey.
 
-`LiveWorkSession` is #2914's deep, pure Station module for one exact Project,
+`LiveWorkSession` is the domain module introduced in
+[archive#2914](https://github.com/kontourai/station-archive/issues/2914) for one exact Project,
 Task, surface, session, and configured channel identity. It owns no API, route,
-database, UI, transport, message log, or revision store. #2972 composes its
+database, UI, transport, message log, or revision store.
+[archive#2972](https://github.com/kontourai/station-archive/issues/2972) introduced its
 narrow material-history Adapter; ephemeral presence remains in memory.
 
 ## Authority and live projection
@@ -60,7 +62,7 @@ lifecycle, selected by that lifecycle's exact closure ID.
 
 ## Time, revision, and recovery
 
-Every public entry validates finite safe monotonic time, exact closed input,
+Actor operations validate finite safe monotonic time, exact closed input,
 scope, actor, capability, and rate budget before prune, mutation, authority
 calls, or Adapter effects. Actor reconciliation shares the transition budget.
 Export, restore, and system reconciliation use a separate server-owned recovery
@@ -79,7 +81,7 @@ may begin after an earlier ordinal but never reorders it.
 Participants, panes, and typing are not restored. Missing required Adapters
 refuse restoration rather than create an unrecoverable obligation.
 
-Revision references enter only through an injected #2891 resolver. `AVAILABLE`
+Revision references enter only through an injected revision-evidence resolver. `AVAILABLE`
 must be a closed result for the exact requested revision ID, Project, Task,
 session, and applicable run. Caller-provided verification text alone grants
 nothing. Private work cannot reference a revision. The room adapter resolves

@@ -12,6 +12,7 @@ The [route](../../src-server/routes/starter-work.ts) validates the request;
 keeps the durable correlation. Runtime composition mounts this personal-home
 feature only where those owners are available. Hosted tenant execution has no
 personal-home Starter route.
+All Starter launch routes require the home’s first-run status to be completed.
 
 The technical behavior below accompanies the shorter
 [user instructions](../user/getting-started.md#start-your-first-task).
@@ -26,7 +27,7 @@ action opens that Project's ordinary Task form; it does not create a second
 onboarding task type. In Starter mode, submitting the form calls the Starter
 launch API with a saved operation identity. The server checks readiness,
 creates or retrieves the exact Task idempotently, binds it to the Starter,
-then requests the ordinary Task dispatcher once. If the Agent is deferred or
+then requests the ordinary Task dispatcher once. If the initial readiness check reports the Agent as deferred or
 unavailable, Station creates no Task and shows the recoverable readiness reason;
 retrying reuses the same project-scoped launch identity. After a launch starts,
 a response loss or indeterminate dispatch is **NOT_VERIFIED** — Station never
@@ -76,8 +77,9 @@ continuation; retry after that read recovers instead of guessing an owner path.
 
 ## Inspect Approval And Review Evidence
 
-After first run, Home also offers owner-backed inspection cards when Station
-can identify a real approval notification or independent-review receipt. The
+After first run, Home shows inspection cards when **Developer tools** is enabled
+on this Device. An inspection action becomes available when Station identifies a
+real approval notification or independent-review receipt. The
 approval action opens that exact Notifications row without approving or
 denying it. The review action opens the exact Project and receipt tuple in
 that Project's Review layout at `/projects/<slug>/layouts/review?receipt=...`.
@@ -89,15 +91,17 @@ and a link that names no Project opens Notifications instead.
 These are one-time Starter correlations, not completion checkboxes. Response
 loss reuses a deterministic operation identity, reopening a bound card keeps
 the original target, and every later observation reads Approval Inbox or
-ReviewEvidence again. Missing, stale, unavailable, and `NOT_VERIFIED` owner
-states remain visible. A reviewed receipt is evidence input only and does not
+ReviewEvidence again. Owner observations distinguish missing, stale, unavailable
+and `NOT_VERIFIED` states. The current Home card has no distinct label for a
+`stale` observation. A reviewed receipt is evidence input only and does not
 by itself satisfy a gate.
 
 
 ## Run A Scheduled Readiness Check
 
-Home can create the canonical disabled `station-starter-check` job and run it
-once through the real Scheduler. The job stays disabled unless you explicitly
+After first run, with **Developer tools** enabled on this Device, Home can create
+the canonical disabled `station-starter-check` job and run it once through the
+Scheduler. The job stays disabled unless you explicitly
 enable its daily schedule. Station binds the exact Scheduler run before the
 Agent can be invoked, so a lost response or retry opens the same receipt and
 never starts another check. If Station restarts after binding but before the

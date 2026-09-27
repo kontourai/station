@@ -240,7 +240,11 @@ POST /agents
 The [Agent routes](../../src-server/routes/agents/agents.ts) validate the body,
 persist the definition through AgentService, and queue runtime reconciliation.
 Creation can succeed with a non-blocking availability warning. Raising the
-default approval posture to full access requires its separate authority.
+effective default approval posture to full access requires its separate authority.
+That includes creating an Agent which inherits a Station default of `never`,
+or clearing an Agent override so that it inherits that default. Updating an
+already-effective full-access default without raising it follows the existing
+write authorization; an unreadable prior Agent is not evidence of that state.
 See [configuration](config.md#agentjson) for admitted file fields.
 
 **Request Body**:

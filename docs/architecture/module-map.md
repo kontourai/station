@@ -33,6 +33,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [InstalledPluginInventory](#installedplugininventory) | Keep valid and rejected installed plugin directories visible from one filesystem-backed inventory. | `src-server/services/plugins/installed-plugin-inventory.ts` |
 | [PackageMcpAdmissionJournal](#packagemcpadmissionjournal) | Retain package-incarnation admission evidence without inventing destructive retirement authority. | `src-server/services/plugins/package-mcp-admission.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
+| [NativeRelayGrantRenewalSupervisor](#nativerelaygrantrenewalsupervisor) | Maintain existing saved-route grants while Desktop is visible, without granting new trust or application access. | `src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
 | [ConversationSessionLineage](#conversationsessionlineage) | Establish and inspect durable conversation-to-execution-session lineage. | `src-server/services/orchestration/conversation-session-lineage.ts` |
@@ -707,6 +708,44 @@ cover the decision boundaries. They do not prove AppKit pixels, OS dialogs,
 real IPC or packaged behavior. The [native verification guide](../guides/native-shell-verification.md)
 and [recovery guide](../user/native-recovery.md) keep those platform checks
 separate.
+
+
+## NativeRelayGrantRenewalSupervisor
+
+**Purpose and Interface.** The [supervisor](../../src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts)
+maintains already redeemed native broker routing grants across the saved route
+set. `start()`, `stop()`, `refresh()` and `getIssue()` expose lifecycle, fresh
+observation and the route-limit outcome. The storage and renewal adapters are
+constructor inputs; the currently selected Station does not choose which grants
+are maintained.
+
+**Composition and lifetime.** [ApiBaseProvider](../../src-ui/src/contexts/ApiBaseContext.tsx)
+constructs it only for Desktop Tauri, starts it from the owning effect and stops
+it on cleanup. It listens for saved-profile changes, online, focus, pageshow and
+visibility changes. The work pump runs while the renderer is visible; waking
+requests fresh host status. `stop()` removes listeners and timers and invalidates
+route entries. More than 64 saved routes pauses all maintenance and reports a
+route-limit issue, rather than silently maintaining a subset. The saved-route
+view explains that limit.
+
+**Renewal authority.** The [typed adapter](../../src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts)
+admits one existing grant with no pending cleanup and validates its exact saved
+profile and host revision. The supervisor schedules renewal in the last 12 hours of the
+24-hour renewal window and re-reads host status immediately before renewing.
+Retries are bounded; removed/replaced profile generations cannot publish a stale
+renderer result. This does not cancel a host request already in progress. The
+[Rust renewal owner](../../src-desktop/src/native_relay_redemption.rs) serializes
+renewal with retirement, records an exact retry intent in keyring custody before
+network I/O, and checks profile/trust/grant identity again before accepting the
+receipt. The renderer receives no routing credential or signing key.
+
+**Evidence boundary.** [Supervisor tests](../../src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalSupervisor.test.ts)
+and [adapter tests](../../src-ui/src/platform/native/__tests__/nativeRelayGrantRenewalAdapter.test.ts)
+exercise lifecycle, stale observations and bounded renewal decisions. They do not
+prove background/suspended delivery, OS keyring parity or a deployed broker. This
+module never approves Station trust, redeems an invitation, selects a native
+application route, pairs a Device or grants Project access. See the
+[broker lifecycle](../guides/self-hosted-broker.md#native-routing-grant-foundation-v2).
 
 
 ## PendingPairingCompletion
@@ -1618,8 +1657,11 @@ the authority then attests that exact identity, parents, scope, actor and
 canonical payload. The attestation cannot change the revision ID. Parents and
 proposed-change before/after pairs must have the same scope.
 
-`resolveProposedChange()` reads the existing change owner; it does not create a
-second change lifecycle. It checks canonical decision shape, transitive ancestry,
+`resolveProposedChange()` uses an injected lookup of the existing change owner;
+it does not create a second change lifecycle. Without that lookup it returns
+`UNVERIFIED`. The production room bridge currently supplies attribution only
+and exposes no proposed-change resolution operation.
+With the lookup present, it checks canonical decision shape, transitive ancestry,
 exact correlation and snapshot content. Its diff preserves the owner's supplied
 snapshots/hashes rather than inventing another hash convention.
 

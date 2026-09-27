@@ -211,8 +211,9 @@ The rule now:
   boundary's previous children with `display: none` — when an **urgent** update suspends, and
   Station's navigation is urgent (`App.tsx` calls a plain `setCurrentView` for clicks and
   `popstate` alike; nothing wraps navigation in `startTransition`). Under a transition React keeps
-  the departing content revealed and renders no fallback, which is the #3660 symptom itself; both
-  halves are pinned by test. And the fallback renders if and only if the outlet is suspended, so a
+  the departing content revealed and renders no fallback, which is the #3660 symptom itself.
+  The cold-route tests drive `AppViewContent`, not `App`; they do not catch a later
+  change that wraps App navigation in a transition. The fallback renders only while the outlet is suspended, so a
   warm transition shows no placeholder at all.
 - **A page action goes in the header's action slot**, via `<PageFrameActions>` or
   `SplitPaneLayout`'s `headerActions`/`onAdd` (which portal there when framed). List chrome — a

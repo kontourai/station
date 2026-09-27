@@ -1,12 +1,12 @@
 # Google Play Data Safety — Station
 
-Generated from `src-desktop/gen/apple/PrivacyInfo.xcprivacy`'s source inventory in `src-server/services/privacy-inventory.ts`. These are draft answers derived from the declared inventory, not an approval or a complete data-flow assessment. Review the operational gaps in the [privacy policy](../privacy-policy.md#review-scope) before any submission. Do not edit this generated file by hand.
+Generated from the declared inventory in `src-server/services/privacy-inventory.ts`, which also produces `src-desktop/gen/apple/PrivacyInfo.xcprivacy`. These are draft answers derived from the declared inventory, not an approval or a complete data-flow assessment. Review the operational gaps in the [privacy policy](../privacy-policy.md#review-scope) before any submission. Do not edit this generated file by hand.
 
 ## Declared answers
 
 - **Does the app collect or share any required user data types?** Yes, conditionally: configured telemetry/OTLP exporters, remote embedding providers, voice sessions, and agent-activity push to a registered phone can transmit the data listed below. Local-only behavior does not transmit data.
-- **Is any data used for tracking?** No.
-- **Is any data linked to a user identity?** No.
+- **Does this inventory declare any data as used for tracking?** No.
+- **Does this inventory declare any data as linked to a user identity?** No.
 
 | Inventory entry | Play data type | Collected | Shared/destination | Declared purpose | Declared linkage | Declared tracking |
 | --- | --- | --- | --- | --- | --- | --- |

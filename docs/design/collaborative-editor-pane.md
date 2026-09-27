@@ -10,7 +10,8 @@
 > These are distinct compositions; this note does not certify a live controller
 > renderer or re-run the protocol, authority, or performance evidence.
 
-Issue #2890 is the Workspace Pane projection for shared text/code work. It is
+The [original design](https://github.com/kontourai/station-archive/issues/2890)
+describes a Workspace Pane projection for shared text/code work. It is
 not the durable Project Chat discussion surface and it is not a new event or
 message store.
 
@@ -21,10 +22,10 @@ The module composes replaceable, intent-shaped Adapters:
 - `CollaborativeAuthorityAdapter` resolves the server-owned local actor and
   exact Project/Task/document grant at every ingress. It does not cache a UI
   permission guess.
-- `SharedWorkingStateProjectionAdapter` returns typed #2889 outcomes for only
+- `SharedWorkingStateProjectionAdapter` returns typed `SharedWorkingState` outcomes for only
   accepted operations and exact resync results. The provided direct Station
-  Adapter composes #2889 live/recovery ports; the pane never merges text.
-- `SharedWorkingStateEditingCapability` owns the server-side #2889 snapshot,
+  Adapter composes its live/recovery ports; the pane never merges text.
+- `SharedWorkingStateEditingCapability` owns the server-side working-state snapshot,
   write grant, and atom identity needed to translate textarea edits into exact
   frozen operation batches. It applies those same batches to a cloned
   `SharedWorkingState` for preview; the pane never receives atom snapshots or
@@ -33,7 +34,7 @@ The module composes replaceable, intent-shaped Adapters:
   batch as one idempotent intent. It returns total `accepted`,
   `definitely-not-invoked`, `refused`, or `indeterminate` truth; per-operation
   settlement remains projection-owned. It cannot retain a durable editor log.
-- `CollaborativeRevisionResolverAdapter` resolves a #2891-compatible immutable
+- `CollaborativeRevisionResolverAdapter` resolves a revision-evidence-compatible immutable
   evidence revision only when evidence ID, scope, correlation, returned
   working-state revision, and projection all match.
 - Host navigation, cursor output, and live-room context remain separate
@@ -58,12 +59,12 @@ The pane distinguishes document read/write from room join/read/share/watch/
 follow. Solo read/write remains usable without joining a room. A read-only
 person retains authorized document truth but cannot form a new operation.
 Possible-effect batches remain in a private intent/operation ledger with
-count/byte bounds and exact per-operation settlement until #2889 proves each
+count/byte bounds and exact per-operation settlement until `SharedWorkingState` proves each
 operation non-deferred or releases its ID. Duplicate-but-still-deferred
 operations retain projection; released IDs use the protocol bound rather than
 the old local 32-entry assumption. Public state exposes only non-content intent
 ID, counts, aggregate states, timestamp, and bounded reason. ID/effect digest
-authority stays in #2889, where display/correlation metadata is excluded.
+authority stays in `SharedWorkingState`, where display/correlation metadata is excluded.
 One planned batch is one external effect: all causally ordered delete chunks
 and a replacement insert cross the transport seam together, with a stable
 server-owned canonical SHA-256 digest. Planning is `uninvoked`; only the final
@@ -108,11 +109,12 @@ authority at exact scope/working revision, never `operation.actor.kind` or room
 labels. Kind equivocation rejects the whole update; session/run may change with
 presence, while each accepted edit freezes its own bounded correlations.
 Read/room revocation masks every remote identity and resets watch to `off`.
-Remote selections are rendered in one synchronized textarea-layout `<pre>`
-document copy with all exact `<mark>` ranges. The editing capability transforms
+The former React projection rendered remote selections in a synchronized
+textarea-layout `<pre>` copy with `<mark>` ranges. It merged coincident carets
+and exposed a bounded screen-reader count; those are historical renderer
+details, not a mounted UI in this build. The retained editing capability transforms
 authorized ranges through private pending atom operations into `displayText`
-coordinates; stale ranges are suppressed. Coincident carets merge stable actor
-IDs, and the screen-reader surface reports only a bounded count.
+coordinates and suppresses stale ranges.
 
 Every runtime collection and string has a hard examined-entry, count, UTF-8,
 text, TTL, or cursor/document bound. Duplicate or invalid arrays fail closed;

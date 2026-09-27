@@ -81,8 +81,8 @@ clearly mark the stale document.
   the staged path to verified execution handoff.
 - **[Personal transfer controller](guides/home-transfer-controller.md)** — explicit pairing, authenticated remote room bindings, and current preparation limits.
 - **[Workspace packages](guides/workspace-packages.md)** — encrypted Git checkout copies between hosts, supported content, and recovery.
-- **[Private cloud environment](design/private-cloud-environment.md)** — working
-  single-VM deployment and execution design.
+- **[Private cloud environment](design/private-cloud-environment.md)** — single-VM
+  deployment design; provisioning, workload sizing and recovery drills remain unqualified.
 - **[Design records](design/README.md)** — proposals, accepted decisions, and
   superseded designs. A design file is not current merely because it remains
   in the repository; read its status and follow its named successor.

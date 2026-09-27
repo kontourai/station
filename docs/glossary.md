@@ -86,8 +86,8 @@ OpenCode”, never infer the engine from the agent's name.
 
 ## Connections
 
-The Connections tabs are **Models** and **Engines**, and **the tab owns the
-noun** (#592): the Models tab's user-facing objects are **Model connections**
+Within Connections, **Models** and **Engines** cover model and agent setup.
+**The tab owns the noun** (#592): the Models tab's user-facing objects are **Model connections**
 (list title, add flow, delete confirm — all say "model connection"); the
 Engines tab's objects are **Engines**. "Provider" is no longer a user-facing
 object name anywhere — it survives only as the brand/service word inside
@@ -276,8 +276,7 @@ retired names.
   region as a pane beside Chat (`board:<layoutId>`, #2157;
   [design/placement.md](design/placement.md)).
 
-  The word is overloaded in this codebase and the overload is deliberate to
-  name, not to resolve: the **Session Board** (`BUILTIN_SESSION_BOARD_LAYOUT`,
+  Board has other qualified meanings in this codebase: the **Session Board** (`BUILTIN_SESSION_BOARD_LAYOUT`,
   a layout `type`) and the **board face** (`NavigationView`'s `board` member at
   `/board/task/…`, archive#4079) are unrelated objects that share the English
   word. A Board in the D1 sense routes at `/boards/:slug` and its view type is
