@@ -297,15 +297,25 @@ async function startBroker(echoMode = false) {
       createSelfHostedBrokerRoutes(service),
     );
     let failRetirement = false;
+    let dropNextRenewalResponse = false;
     const server = serve({
-      fetch: (request) => {
+      fetch: async (request) => {
         if (
           failRetirement &&
           new URL(request.url).pathname === '/broker/v1/native/grants/retire'
         ) {
           return new Response('fixture retirement outage', { status: 503 });
         }
-        return app.fetch(request);
+        const response = await app.fetch(request);
+        if (
+          dropNextRenewalResponse &&
+          response.status === 200 &&
+          new URL(request.url).pathname === '/broker/v1/native/grants/renew'
+        ) {
+          dropNextRenewalResponse = false;
+          return new Response('injected lost renewal receipt', { status: 503 });
+        }
+        return response;
       },
       hostname: '127.0.0.1',
       port: 0,
@@ -804,10 +814,14 @@ async function startBroker(echoMode = false) {
           surface,
           stationSigningKeyId: await stationConnectionSigningKeyId(trust),
           stationSigningGeneration: trust.generation,
+          grantTtlMs: echoMode ? 12 * 60 * 60_000 : undefined,
         });
       },
       setFailRetirement: (value: boolean) => {
         failRetirement = value;
+      },
+      dropNextRenewalResponse: () => {
+        dropNextRenewalResponse = true;
       },
       get echoTurn() {
         return echoTurn;
@@ -1100,12 +1114,14 @@ async function main() {
   let expectedProfileRevision = 0;
   let grantCustodyStatusVerified = false;
   let lostRedeemResponseRecovered = false;
+  let lostRenewalResponseRecovered = false;
   let nativeEchoEvidence:
     | {
         readonly negativeProofRejectedBeforeSdp: boolean;
         readonly validProofAppliedOnce: boolean;
         readonly candidatePollerStoppedBeforeEcho: boolean;
         readonly lostRedeemResponseRecovered: boolean;
+        readonly lostRenewalResponseRecovered: boolean;
         readonly echoed: string;
         readonly turnContainerId: string;
       }
@@ -1348,6 +1364,7 @@ async function main() {
     const afterRedeem = await invoke<{
       grants?: Array<{
         metadata?: {
+          expiresAt?: number;
           route?: {
             brokerOrigin?: string;
             stationId?: string;
@@ -1388,6 +1405,38 @@ async function main() {
     );
 
     if (NATIVE_ECHO_LANE) {
+      const initialExpiresAt =
+        afterRedeem.ipcResult.grants?.[0]?.metadata?.expiresAt;
+      assert.ok(initialExpiresAt, 'native grant expiry is missing');
+      broker.dropNextRenewalResponse();
+      const lostRenewal = await invoke<unknown>(
+        fixture,
+        'station_native_relay_grant_renew',
+        {
+          profileName: route.name,
+          expectedProfileRevision,
+        },
+      );
+      assert.equal(lostRenewal.ipcResult, undefined);
+      assert.match(lostRenewal.ipcError ?? '', /could not renew/i);
+      const recoveredRenewal = await invoke<{ expiresAt?: number }>(
+        fixture,
+        'station_native_relay_grant_renew',
+        {
+          profileName: route.name,
+          expectedProfileRevision,
+        },
+      );
+      assert.ok(
+        recoveredRenewal.ipcResult,
+        recoveredRenewal.ipcError ??
+          'lost native renewal receipt was not recovered',
+      );
+      assert.ok(
+        (recoveredRenewal.ipcResult.expiresAt ?? 0) > initialExpiresAt,
+        'recovered native renewal did not extend the saved grant',
+      );
+      lostRenewalResponseRecovered = true;
       assert.ok(echoBundle, 'test-only WebView echo bundle is missing');
       const echoTurn = broker.echoTurn;
       assert.ok(echoTurn, 'loopback TURN fixture was not started');
@@ -1463,6 +1512,7 @@ async function main() {
         candidatePollerStoppedBeforeEcho:
           broker.echoCleanupReceipt.candidatePollerStoppedBeforeEcho,
         lostRedeemResponseRecovered,
+        lostRenewalResponseRecovered,
         echoed: accepted.webView.sentMessages[0]!,
         turnContainerId: echoContainerId,
       };
@@ -1779,6 +1829,8 @@ async function main() {
               nativeEchoEvidence.candidatePollerStoppedBeforeEcho,
             lostRedeemResponseRecovered:
               nativeEchoEvidence.lostRedeemResponseRecovered,
+            lostRenewalResponseRecovered:
+              nativeEchoEvidence.lostRenewalResponseRecovered,
             dataChannel: 'station-lab-v1',
             echoed: true,
             turnContainerId: nativeEchoEvidence.turnContainerId,
