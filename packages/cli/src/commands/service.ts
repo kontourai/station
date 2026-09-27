@@ -331,6 +331,7 @@ async function prepareServiceBuild(
  */
 async function waitForInstalledServiceIdentity(
   instanceId: string,
+  stateHome: string,
   dependencies: ServiceDependencies,
   replacedBootId?: string,
 ): Promise<void> {
@@ -349,6 +350,7 @@ async function waitForInstalledServiceIdentity(
     const remainingBeforeProbe = deadline - monotonicNow();
     if (remainingBeforeProbe <= 0) break;
     const status = await collectInstanceStatus(instanceId, {
+      projectHome: stateHome,
       probeTimeoutMs: Math.max(
         1,
         Math.floor(Math.min(3_000, remainingBeforeProbe)),
@@ -378,6 +380,7 @@ async function waitForInstalledServiceIdentity(
 
 async function waitForWindowsSupervisorExit(
   instanceId: string,
+  stateHome: string,
   registration: ServiceRegistration,
   dependencies: ServiceDependencies,
   fs: ServiceFs,
@@ -390,7 +393,9 @@ async function waitForWindowsSupervisorExit(
         `Cannot confirm Station Task Scheduler stop: ${task.error}`,
       );
     }
-    const instance = await collectInstanceStatus(instanceId);
+    const instance = await collectInstanceStatus(instanceId, {
+      projectHome: stateHome,
+    });
     // `/End` only terminates Task Scheduler's cmd wrapper. The managed Node
     // processes have their own lifecycle record, so both boundaries must be
     // gone before a wrapper can be deleted or restored for this instance.
@@ -406,6 +411,7 @@ async function waitForWindowsSupervisorExit(
 
 async function stopAndWaitForWindowsSupervisorExit(
   instanceId: string,
+  stateHome: string,
   registration: ServiceRegistration,
   dependencies: ServiceDependencies,
   fs: ServiceFs,
@@ -413,10 +419,11 @@ async function stopAndWaitForWindowsSupervisorExit(
 ): Promise<void> {
   // Stop only the resolved Station lifecycle instance; an unqualified process
   // sweep could terminate a different user service sharing this host.
-  stop({ instanceName: instanceId });
+  stop({ instanceName: instanceId, stateHome });
   stopWindowsService(registration, { fs, run });
   await waitForWindowsSupervisorExit(
     instanceId,
+    stateHome,
     registration,
     dependencies,
     fs,
@@ -920,6 +927,9 @@ function createServiceInstancePlatformAdapter(input: {
 }): StationInstancePlatformAdapter {
   const { existing, registration, fs, lifecycle, run, dependencies } = input;
   const target = existing ?? registration;
+  // The home the supervised service runs with (`service run --base=<home>`),
+  // whose Station root holds a prebuilt archive's lifecycle record (#2675).
+  const stateHome = existing?.baseDir ?? lifecycle.baseDir;
   const unitStatus = () =>
     target.platform === 'darwin'
       ? launchdStatus(target, { fs, run })
@@ -959,7 +969,9 @@ function createServiceInstancePlatformAdapter(input: {
     },
     async inspect(ref) {
       const unit = unitStatus();
-      const status = await collectInstanceStatus(ref.instanceId);
+      const status = await collectInstanceStatus(ref.instanceId, {
+        projectHome: stateHome,
+      });
       const supervisor = supervisorState(unit);
       const registry =
         readInstanceRegistry(lifecycle.baseDir).instances[ref.instanceId] ??
@@ -1020,17 +1032,22 @@ function createServiceInstancePlatformAdapter(input: {
       else
         await stopAndWaitForWindowsSupervisorExit(
           existing.instanceId,
+          stateHome,
           existing,
           dependencies,
           fs,
           run,
         );
       if (existing.platform !== 'win32')
-        stop({ instanceName: existing.instanceId });
+        stop({ instanceName: existing.instanceId, stateHome });
     },
     async waitForRunning(ref) {
       try {
-        await waitForInstalledServiceIdentity(ref.instanceId, dependencies);
+        await waitForInstalledServiceIdentity(
+          ref.instanceId,
+          stateHome,
+          dependencies,
+        );
         return true;
       } catch {
         return false;
@@ -1203,7 +1220,9 @@ export async function runServiceCommand(
     // boot identity and require readiness to observe a different one after
     // the backend has stopped and replaced it.
     const priorInstance = existing
-      ? await collectInstanceStatus(instanceId)
+      ? await collectInstanceStatus(instanceId, {
+          projectHome: existing.baseDir ?? lifecycle.baseDir,
+        })
       : undefined;
     const replacedBootId = priorInstance?.healthy
       ? priorInstance.bootId
@@ -1223,6 +1242,7 @@ export async function runServiceCommand(
       // before the backend can replace its wrapper.
       await stopAndWaitForWindowsSupervisorExit(
         instanceId,
+        existing.baseDir ?? lifecycle.baseDir,
         existing,
         dependencies,
         fs,
@@ -1270,10 +1290,13 @@ export async function runServiceCommand(
     ): Promise<void> => {
       let replacementBootId: string | undefined;
       if (manifest.platform === 'win32') {
-        const replacement = await collectInstanceStatus(instanceId);
+        const replacement = await collectInstanceStatus(instanceId, {
+          projectHome: lifecycle.baseDir,
+        });
         replacementBootId = replacement.found ? replacement.bootId : undefined;
         await stopAndWaitForWindowsSupervisorExit(
           instanceId,
+          lifecycle.baseDir,
           manifest,
           dependencies,
           fs,
@@ -1304,6 +1327,7 @@ export async function runServiceCommand(
         // merely inherit the replacement generation that rollback stopped.
         await waitForInstalledServiceIdentity(
           instanceId,
+          lifecycle.baseDir,
           dependencies,
           replacementBootId,
         );
@@ -1402,6 +1426,7 @@ export async function runServiceCommand(
     try {
       await waitForInstalledServiceIdentity(
         instanceId,
+        lifecycle.baseDir,
         dependencies,
         replacedBootId,
       );
@@ -1452,12 +1477,20 @@ export async function runServiceCommand(
           const recoveryRegistryNote = recoveryClaim.written
             ? ''
             : ` Its registry entry could not be recorded: instance id '${instanceId}' is held by a live process (pid ${recoveryClaim.existing.pid}).`;
-          await waitForInstalledServiceIdentity(instanceId, dependencies);
-          const status = await collectInstanceStatus(instanceId);
+          await waitForInstalledServiceIdentity(
+            instanceId,
+            lifecycle.baseDir,
+            dependencies,
+          );
+          const status = await collectInstanceStatus(instanceId, {
+            projectHome: lifecycle.baseDir,
+          });
           recoveryDetail = `A replacement Station generation is running${status.bootId ? ` (boot ID ${status.bootId})` : ''}.${recoveryRegistryNote}`;
         } catch (recoveryError) {
           try {
-            const status = await collectInstanceStatus(instanceId);
+            const status = await collectInstanceStatus(instanceId, {
+              projectHome: lifecycle.baseDir,
+            });
             recoveryDetail = status.healthy
               ? `A Station generation remains running${status.bootId ? ` (boot ID ${status.bootId})` : ''}, but emergency recovery failed: ${(recoveryError as Error).message}`
               : `No healthy Station generation could be confirmed running after emergency recovery failed: ${(recoveryError as Error).message}`;

@@ -1320,7 +1320,10 @@ describe('station service dispatch', () => {
       sleep: vi.fn(),
     });
 
-    expect(stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: baseDir,
+    });
     expect(stop.mock.invocationCallOrder[0]).toBeLessThan(
       installWindowsService.mock.invocationCallOrder[1],
     );
@@ -2870,5 +2873,131 @@ describe('station service dispatch', () => {
     });
 
     expect(process.exitCode).toBe(1);
+  });
+});
+
+/**
+ * #2675: a prebuilt archive keeps an instance's lifecycle record in the
+ * Station root of the home the supervisor runs with (`service run
+ * --base=<home>`). Every status read the service command makes must look
+ * there too, or an install from --home=<raw dir> never observes its own
+ * service and rolls back, and status reports it absent.
+ */
+describe('service reads archive lifecycle state from the service home', () => {
+  // The exact .station-release.json the portable archive builder embeds.
+  const release = {
+    schemaVersion: 2,
+    sha: 'a'.repeat(40),
+    ref: 'v0.0.0',
+    createdAt: '2026-09-26T00:00:00.000Z',
+    channel: 'stable',
+    releaseChannel: 'stable',
+    prerelease: false,
+  };
+
+  async function archiveStatusModel() {
+    const { resolveLifecycleCodeRoot, resolveLifecycleStateLocation } =
+      await import('../commands/lifecycle-code-root.js');
+    const archive = makeTempDir('station-service-archive-');
+    writeFileSync(
+      join(archive, '.station-release.json'),
+      JSON.stringify(release),
+    );
+    writeFileSync(
+      join(archive, '.station-prebuilt-archive'),
+      'station-prebuilt-archive-v1\n',
+    );
+    const codeRoot = resolveLifecycleCodeRoot(archive);
+    // What a bare command would search: some other home's root.
+    const ambientHome = makeTempDir('station-service-ambient-home-');
+    const recordPath = (home: string, instanceId: string) =>
+      join(
+        resolveLifecycleStateLocation(codeRoot, home).instanceStateDir,
+        `${instanceId}.json`,
+      );
+    // The real lookup rule over the real location resolver: found only in
+    // the directory the given (or defaulted) home selects.
+    collectInstanceStatus.mockImplementation(
+      async (instanceId: string, options?: { projectHome?: string }) =>
+        nodeFs.existsSync(
+          recordPath(options?.projectHome ?? ambientHome, instanceId),
+        )
+          ? {
+              found: true,
+              healthy: true,
+              instanceId,
+              server: { pid: 10, reachable: true },
+              ui: { pid: 11, reachable: true },
+            }
+          : {
+              found: false,
+              healthy: false,
+              instanceId,
+              server: { pid: null, reachable: false },
+              ui: { pid: null, reachable: false },
+            },
+    );
+    return { recordPath };
+  }
+
+  /** The record the supervisor writes when the service starts. */
+  function superviseInto(path: string): void {
+    nodeFs.mkdirSync(join(path, '..'), { recursive: true });
+    writeFileSync(path, '{}');
+  }
+
+  test('install readiness observes the service under a non-default --home', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { recordPath } = await archiveStatusModel();
+    const home = makeTempDir('station-service-raw-home-');
+    installLaunchd.mockImplementation((instanceId, input) => {
+      superviseInto(recordPath(home, instanceId));
+      return {
+        host: input.lifecycle.host,
+        installedAt: '',
+        instanceId,
+        label: `io.kontourai.station.${instanceId}`,
+        nodePath: input.nodePath,
+        platform: 'darwin',
+        repoPath: input.repoPath,
+        serverPort: input.lifecycle.serverPort,
+        uiPort: input.lifecycle.uiPort,
+        unitPath: `/tmp/${instanceId}.plist`,
+      };
+    });
+
+    await expect(
+      runServiceCommand(['install'], lifecycle(home), {
+        fs: serviceFs,
+        installReadinessAttempts: 2,
+        platform: 'darwin',
+        run: vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' })),
+        sleep: vi.fn(),
+      }),
+    ).resolves.toBeDefined();
+    expect(recordPath(home, 'service-test')).toBe(
+      join(home, 'state', 'stable', 'instances', 'service-test.json'),
+    );
+  });
+
+  test('status reports the service found under a non-default --home', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { recordPath } = await archiveStatusModel();
+    const home = makeTempDir('station-service-raw-home-');
+    ensureStationHomeSchemaSync(home);
+    superviseInto(recordPath(home, 'service-test'));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await runServiceCommand(['status', '--json'], lifecycle(home), {
+        fs: serviceFs,
+        platform: 'darwin',
+        run: vi.fn(() => ({ status: 0, stdout: '' })),
+      });
+      expect(
+        JSON.parse(String(log.mock.calls.at(-1)?.[0])).instance,
+      ).toMatchObject({ found: true, healthy: true });
+    } finally {
+      log.mockRestore();
+    }
   });
 });

@@ -1644,6 +1644,7 @@ describe('lifecycle instance state', () => {
     });
 
     const reported = await lifecycle.collectInstanceStatus('stale-reporting', {
+      projectHome: undefined,
       reclaimStale: false,
     });
 
@@ -1673,7 +1674,9 @@ describe('lifecycle instance state', () => {
 
     // Default (reclaiming) behaviour is unchanged: this is what proves the
     // read-only path above is a real difference and not a no-op.
-    const reported = await lifecycle.collectInstanceStatus('stale-lifecycle');
+    const reported = await lifecycle.collectInstanceStatus('stale-lifecycle', {
+      projectHome: undefined,
+    });
 
     expect(reported.found).toBe(false);
     expect(existsSync(statePath)).toBe(false);
@@ -2167,7 +2170,9 @@ describe('lifecycle instance state', () => {
         httpRequestMock: httpRequest,
       });
       await expect(
-        lifecycle.collectInstanceStatus('hosted-status'),
+        lifecycle.collectInstanceStatus('hosted-status', {
+          projectHome: undefined,
+        }),
       ).resolves.toMatchObject({
         healthy: true,
         server: { reachable: true },
@@ -2767,6 +2772,7 @@ describe('lifecycle instance state', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     const status = lifecycle.collectInstanceStatus('stalled-probe', {
+      projectHome: undefined,
       probeTimeoutMs: 250,
     });
     await vi.advanceTimersByTimeAsync(250);
@@ -2826,7 +2832,9 @@ describe('lifecycle instance state', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     await expect(
-      lifecycle.collectInstanceStatus('mismatch-probe'),
+      lifecycle.collectInstanceStatus('mismatch-probe', {
+        projectHome: undefined,
+      }),
     ).resolves.toMatchObject({
       found: true,
       healthy: false,
@@ -2857,7 +2865,9 @@ describe('lifecycle instance state', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     await expect(
-      lifecycle.collectInstanceStatus('auth-refused-probe'),
+      lifecycle.collectInstanceStatus('auth-refused-probe', {
+        projectHome: undefined,
+      }),
     ).resolves.toMatchObject({
       server: { listening: true, probe: 'http-auth-refused', reachable: false },
       ui: { listening: true, probe: 'http-auth-refused', reachable: false },
@@ -2908,6 +2918,7 @@ describe('lifecycle instance state', () => {
 
     await expect(
       lifecycle.collectInstanceStatus('degraded-probe', {
+        projectHome: undefined,
         probeTimeoutMs: 45_000,
       }),
     ).resolves.toMatchObject({
@@ -2945,7 +2956,7 @@ describe('lifecycle instance state', () => {
     const { lifecycle } = await loadLifecycleModule();
 
     await expect(
-      lifecycle.collectInstanceStatus('slow-probe'),
+      lifecycle.collectInstanceStatus('slow-probe', { projectHome: undefined }),
     ).resolves.toMatchObject({
       found: true,
       healthy: false,
@@ -2993,7 +3004,9 @@ describe('lifecycle instance state', () => {
     const { lifecycle } = await loadLifecycleModule({ netConnectMock });
 
     await expect(
-      lifecycle.collectInstanceStatus('refused-probe'),
+      lifecycle.collectInstanceStatus('refused-probe', {
+        projectHome: undefined,
+      }),
     ).resolves.toMatchObject({
       found: true,
       healthy: false,
@@ -3051,7 +3064,9 @@ describe('lifecycle instance state', () => {
     const { lifecycle } = await loadLifecycleModule({ netConnectMock });
 
     await expect(
-      lifecycle.collectInstanceStatus('exhausted-probe'),
+      lifecycle.collectInstanceStatus('exhausted-probe', {
+        projectHome: undefined,
+      }),
     ).resolves.toMatchObject({
       found: true,
       healthy: false,

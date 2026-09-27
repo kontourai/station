@@ -3806,9 +3806,15 @@ export async function collectInstanceStatus(
   options: {
     probeTimeoutMs?: number;
     reclaimStale?: boolean;
-    /** The instance's home; see `StopOptions.stateHome` (#2675). */
-    projectHome?: string;
-  } = {},
+    /**
+     * The instance's home; see `StopOptions.stateHome` (#2675). Required, not
+     * optional: a prebuilt archive keeps the record in that home's Station
+     * root, and a caller that forgets it silently reads another root (a
+     * service installed with --home then never looks ready). `undefined`
+     * states "the home a bare command targets".
+     */
+    projectHome: string | undefined;
+  },
 ): Promise<CollectedInstanceStatus> {
   const instanceId = normalizeInstanceName(instanceName);
   const record = listRunningInstances({

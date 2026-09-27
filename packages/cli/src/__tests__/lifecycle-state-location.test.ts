@@ -115,6 +115,7 @@ describe('lifecycle state location through the real helpers (#2675)', () => {
     expect(
       (
         await lifecycle.collectInstanceStatus('spelled', {
+          projectHome: undefined,
           reclaimStale: false,
         })
       ).found,
