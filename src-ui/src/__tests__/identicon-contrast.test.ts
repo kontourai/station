@@ -37,11 +37,8 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
             : hPrime < 5
               ? [x, 0, c]
               : [c, 0, x];
-  return [r1, g1, b1].map((v) => Math.round((v + m) * 255)) as [
-    number,
-    number,
-    number,
-  ];
+  const channel = (v: number) => Math.round((v + m) * 255);
+  return [channel(r1), channel(g1), channel(b1)];
 }
 
 /** WCAG ratio of white text on an HSL swatch, through the product's own math. */
