@@ -404,9 +404,8 @@ describe('ConnectedServerUpdates', () => {
           init as { authorityGuard?: () => void } | undefined
         )?.authorityGuard;
         authorityGuard?.();
-        const livenessProbe = (
-          init as { livenessProbe?: boolean } | undefined
-        )?.livenessProbe;
+        const livenessProbe = (init as { livenessProbe?: boolean } | undefined)
+          ?.livenessProbe;
         if (livenessProbe && probeIdentityBody) {
           return Response.json(probeIdentityBody());
         }
