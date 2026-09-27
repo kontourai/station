@@ -48,12 +48,6 @@ export function signingIdentityRecordsFromSecurityOutput(output) {
   );
 }
 
-export function signingIdentitiesFromSecurityOutput(output) {
-  return signingIdentityRecordsFromSecurityOutput(output).map(
-    (identity) => identity.name,
-  );
-}
-
 function approvedCandidateRecords(discoveredIdentities) {
   const byFingerprint = new Map();
   for (const candidate of discoveredIdentities) {
@@ -148,37 +142,35 @@ export function designatedRequirementFromCodesignOutput(output) {
   return requirement;
 }
 
-export function equivalentDesignatedRequirements(first, second) {
-  return (
-    designatedRequirementFromCodesignOutput(first) ===
-    designatedRequirementFromCodesignOutput(second)
-  );
-}
-
 /**
  * A current ad-hoc Nightly is the known broken state, so its first migration
  * to a stable certificate requirement is deliberately observable and allowed.
  * Once an app is already stable, however, changing the designated requirement
  * would re-prompt its Keychain ACL. Refuse that unreviewed migration rather
- * than silently replacing one prompt storm with another.
+ * than silently replacing one prompt storm with another. The installer passes
+ * the candidate requirement already validated by
+ * --candidate-designated-requirement and pipes the existing app's codesign
+ * output; a thrown refusal exits non-zero and stops the swap.
  */
-export function designatedRequirementTransition(existing, candidate) {
-  const next = designatedRequirementFromCodesignOutput(candidate);
-  const previous = rawDesignatedRequirement(existing);
+export function designatedRequirementTransition(
+  existingCodesignOutput,
+  candidateRequirement,
+) {
+  const previous = rawDesignatedRequirement(existingCodesignOutput);
   if (!previous) {
     throw new Error(
       'Existing Station Nightly has no readable designated requirement; refusing to replace a credential-owning app.',
     );
   }
   if (/\bcdhash\b/i.test(previous)) {
-    return { kind: 'ad-hoc-to-stable', requirement: next };
+    return 'Migrating the existing ad-hoc Station Nightly signature to the stable certificate-backed requirement.';
   }
-  if (previous !== next) {
+  if (previous !== candidateRequirement?.trim()) {
     throw new Error(
       'Existing Station Nightly has a different stable designated requirement. Keep its signing identity or perform an explicit credential migration; replacement is refused.',
     );
   }
-  return { kind: 'equivalent', requirement: next };
+  return undefined;
 }
 
 export function currentStableNightlyMacosSigningIdentity({
@@ -210,6 +202,7 @@ function readStandardInput() {
 
 export async function runMacosSigningIdentityCli({
   command,
+  argument,
   currentIdentity = currentStableNightlyMacosSigningIdentity,
   readInput = readStandardInput,
 }) {
@@ -219,16 +212,21 @@ export async function runMacosSigningIdentityCli({
   if (command === '--candidate-designated-requirement') {
     return designatedRequirementFromCodesignOutput(await readInput());
   }
-  if (command === '--raw-designated-requirement') {
-    const requirement = rawDesignatedRequirement(await readInput());
-    if (!requirement) {
-      throw new Error('codesign did not report a designated requirement.');
-    }
-    return requirement;
+  if (command === '--designated-requirement-transition') {
+    return designatedRequirementTransition(await readInput(), argument);
   }
   return currentIdentity();
 }
 
 if (invokedDirectly(import.meta.url)) {
-  console.log(await runMacosSigningIdentityCli({ command: process.argv[2] }));
+  try {
+    const output = await runMacosSigningIdentityCli({
+      command: process.argv[2],
+      argument: process.argv[3],
+    });
+    if (output !== undefined) console.log(output);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }

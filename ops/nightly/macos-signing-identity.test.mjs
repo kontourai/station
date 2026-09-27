@@ -1,13 +1,14 @@
+import { spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   designatedRequirementFromCodesignOutput,
-  designatedRequirementTransition,
-  equivalentDesignatedRequirements,
   runMacosSigningIdentityCli,
   selectNightlyMacosSigningIdentity,
-  signingIdentitiesFromSecurityOutput,
   signingIdentityRecordsFromSecurityOutput,
 } from './macos-signing-identity.mjs';
+
+const CLI = resolve(import.meta.dirname, 'macos-signing-identity.mjs');
 
 const APPLE_DISTRIBUTION = 'Apple Distribution: Kontour AI LLC (U7KHF2QAC4)';
 const APPLE_DEVELOPMENT = 'Apple Development: Kontour AI LLC (U7KHF2QAC4)';
@@ -31,7 +32,6 @@ describe('Nightly macOS signing identity', () => {
     `;
     const discovered = signingIdentityRecordsFromSecurityOutput(output);
 
-    expect(signingIdentitiesFromSecurityOutput(output)).toEqual([DEVELOPER_ID]);
     expect(discovered).toEqual([
       { fingerprint: DEVELOPER_ID_SHA, name: DEVELOPER_ID },
     ]);
@@ -133,40 +133,47 @@ describe('Nightly macOS signing identity', () => {
     ).toThrow(/Multiple approved Kontour/);
   });
 
-  it('keeps certificate-backed designated requirements equivalent across sequential installs and rejects CDHash-only output', () => {
+  it('parses the certificate-backed designated requirement and rejects CDHash-only output', () => {
     expect(
       designatedRequirementFromCodesignOutput(STABLE_CODESIGN_OUTPUT),
     ).toBe(STABLE_REQUIREMENT.slice('designated => '.length));
-    expect(
-      equivalentDesignatedRequirements(STABLE_REQUIREMENT, STABLE_REQUIREMENT),
-    ).toBe(true);
     expect(() =>
       designatedRequirementFromCodesignOutput(AD_HOC_CODESIGN_OUTPUT),
     ).toThrow(/CDHash-only/);
   });
 
-  it('allows the one observable ad-hoc migration but rejects a stable requirement change', () => {
-    expect(
-      designatedRequirementTransition(
-        AD_HOC_CODESIGN_OUTPUT,
-        STABLE_CODESIGN_OUTPUT,
-      ),
-    ).toEqual({
-      kind: 'ad-hoc-to-stable',
-      requirement: STABLE_REQUIREMENT.slice('designated => '.length),
-    });
-    expect(
-      designatedRequirementTransition(STABLE_REQUIREMENT, STABLE_REQUIREMENT),
-    ).toEqual({
-      kind: 'equivalent',
-      requirement: STABLE_REQUIREMENT.slice('designated => '.length),
-    });
-    expect(() =>
-      designatedRequirementTransition(
-        STABLE_REQUIREMENT,
-        'designated => anchor apple generic and identifier "io.kontourai.station.nightly" and certificate leaf[subject.OU] = "OTHERTEAM"',
-      ),
-    ).toThrow(/different stable designated requirement/);
+  // The installer pipes the existing app's `codesign -d -r-` output into this
+  // CLI mode with the validated candidate requirement and stops on non-zero.
+  it('allows the one observable ad-hoc migration but refuses a stable requirement change at the installer CLI', () => {
+    const candidate = STABLE_REQUIREMENT.slice('designated => '.length);
+    const transition = (existingCodesignOutput, candidateRequirement) =>
+      spawnSync(
+        process.execPath,
+        [CLI, '--designated-requirement-transition', candidateRequirement],
+        { input: existingCodesignOutput, encoding: 'utf8' },
+      );
+
+    const adHoc = transition(AD_HOC_CODESIGN_OUTPUT, candidate);
+    expect(adHoc.status).toBe(0);
+    expect(adHoc.stdout).toContain(
+      'Migrating the existing ad-hoc Station Nightly signature',
+    );
+
+    const unchanged = transition(STABLE_CODESIGN_OUTPUT, candidate);
+    expect(unchanged).toMatchObject({ status: 0, stdout: '', stderr: '' });
+
+    const changed = transition(
+      STABLE_CODESIGN_OUTPUT,
+      'anchor apple generic and identifier "io.kontourai.station.nightly" and certificate leaf[subject.OU] = "OTHERTEAM"',
+    );
+    expect(changed.status).toBe(1);
+    expect(changed.stderr).toContain(
+      'Existing Station Nightly has a different stable designated requirement',
+    );
+
+    const unreadable = transition('Executable=/Applications/x\n', candidate);
+    expect(unreadable.status).toBe(1);
+    expect(unreadable.stderr).toContain('no readable designated requirement');
   });
 
   it('does not read interactive stdin before normal identity selection', async () => {
