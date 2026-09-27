@@ -3,6 +3,7 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
+import { STATUS_GLYPH_BY_STATE } from '../components/status/StatusGlyph';
 import {
   RunBoardSummary,
   summarizeRunBoard,
@@ -79,17 +80,45 @@ describe('RunBoardSummary', () => {
     expect(board.textContent).not.toContain('Unanswerable');
   });
 
-  // 'Ready' was the one state no assertion pinned — the exact
-  // unguarded hole the derived order closes. Every SessionStateLabel member
-  // must appear in board order (derivation makes it so; this test proves it).
-  test('covers every canonical state, Ready included', () => {
+  // 'Ready' was the one state no assertion pinned — the exact unguarded hole
+  // the derived order closes. One member per canonical state, fed in reverse,
+  // must come back as every state in board order.
+  test('covers every canonical state, Ready included, in board order', () => {
     const members = [
-      session('ready', { lifecycleState: 'running', hasActiveTurn: false }),
+      session('completed', { status: 'closed', hasActiveTurn: false }),
+      session('unanswerable', {
+        lifecycleState: 'needs_input',
+        hasActiveTurn: false,
+        answerability: {
+          answerable: false,
+          qualification: 'provider_absent',
+          observedBy: 'run-board-summary-test',
+          observedAt: '2026-08-24T00:00:00.000Z',
+        },
+      }),
+      session('draft', { hasActiveTurn: false, draft: true }),
+      session('ready', { hasActiveTurn: false }),
+      session('running'),
+      session('stopped', { lifecycleState: 'canceled', hasActiveTurn: false }),
+      session('failed', { lifecycleState: 'failed', hasActiveTurn: false }),
+      session('needs', { lifecycleState: 'needs_input', hasActiveTurn: false }),
     ];
-    const board = summarizeRunBoard(members);
-    expect(board).toEqual([
-      expect.objectContaining({ state: 'Ready', count: 1 }),
+    const states = summarizeRunBoard(members).map((bucket) => bucket.state);
+    expect(states).toEqual([
+      'Needs attention',
+      'Failed',
+      'Stopped',
+      'Running',
+      'Ready',
+      'Draft',
+      'Unanswerable',
+      'Completed',
     ]);
+    // A state added to the canonical set without a member here reds, rather
+    // than leaving this test claiming coverage it no longer has.
+    expect(new Set(states)).toEqual(
+      new Set(Object.keys(STATUS_GLYPH_BY_STATE)),
+    );
   });
 
   // a STALE observation (turn no longer active) must not
