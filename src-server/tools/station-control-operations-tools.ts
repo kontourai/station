@@ -726,60 +726,62 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _delegation,
       _delegationAttestation,
       _userId,
-    }) => {
-      const target = {
-        environment: environmentId
-          ? ({ kind: 'saved', id: toEnvironmentId(environmentId) } as const)
-          : ({ kind: 'current' } as const),
-        agent: agentId(agent),
-        ...(model ? { model: { override: model } } : {}),
-        ...(projectSlug
-          ? {
-              workspace: {
-                kind: 'project' as const,
-                projectSlug,
-                ...(projectPath ? { cwd: projectPath } : {}),
-              },
-            }
-          : projectPath
-            ? { workspace: { kind: 'directory' as const, cwd: projectPath } }
+    }) =>
+      // #2795: a refusal (this Station's typed code only) is an MCP error
+      // the agent and the invoke route both read, not a bare throw.
+      delegationToolResult(async () => {
+        const target = {
+          environment: environmentId
+            ? ({ kind: 'saved', id: toEnvironmentId(environmentId) } as const)
+            : ({ kind: 'current' } as const),
+          agent: agentId(agent),
+          ...(model ? { model: { override: model } } : {}),
+          ...(projectSlug
+            ? {
+                workspace: {
+                  kind: 'project' as const,
+                  projectSlug,
+                  ...(projectPath ? { cwd: projectPath } : {}),
+                },
+              }
+            : projectPath
+              ? { workspace: { kind: 'directory' as const, cwd: projectPath } }
+              : {}),
+        };
+        const result = await executeExecutionTargetMessage({
+          target,
+          message,
+          ...(conversationId ? { conversationId } : {}),
+          // #2601: a claim only. Station's route derives the child context
+          // from the verified caller, or keeps this one only when Station's own
+          // runtime attested it.
+          ...(_delegation ? { delegation: _delegation } : {}),
+          ...(_delegation && _delegationAttestation
+            ? { delegationAttestation: _delegationAttestation }
             : {}),
-      };
-      const result = await executeExecutionTargetMessage({
-        target,
-        message,
-        ...(conversationId ? { conversationId } : {}),
-        // #2601: a claim only. Station's route derives the child context
-        // from the verified caller, or keeps this one only when Station's own
-        // runtime attested it.
-        ...(_delegation ? { delegation: _delegation } : {}),
-        ...(_delegation && _delegationAttestation
-          ? { delegationAttestation: _delegationAttestation }
-          : {}),
-        ...(_userId ? { userId: _userId } : {}),
-        stationControlToolCall: true,
-        clientOrigin: STATION_CONTROL_MCP_ORIGIN,
-      });
-      // archive#3567 fix round FIX 1: `navigateTo`'s own result — `{success:
-      // true}` or `{success: false, error}` — was previously discarded, so a
-      // hosted deployment (where `/events` denies UI_NAVIGATE by design,
-      // since the payload carries no destination identity to route it to
-      // one tenant) reported success for a navigation that never reached
-      // any client. Surface the real outcome instead of assuming it.
-      const navigation = shouldNavigate
-        ? await navigateTo(`/agents/${encodeURIComponent(agent)}`)
-        : undefined;
-      return jsonToolResult(
-        navigation === undefined ? result : { ...result, navigation },
-      );
-    },
+          ...(_userId ? { userId: _userId } : {}),
+          stationControlToolCall: true,
+          clientOrigin: STATION_CONTROL_MCP_ORIGIN,
+        });
+        // archive#3567 fix round FIX 1: `navigateTo`'s own result — `{success:
+        // true}` or `{success: false, error}` — was previously discarded, so a
+        // hosted deployment (where `/events` denies UI_NAVIGATE by design,
+        // since the payload carries no destination identity to route it to
+        // one tenant) reported success for a navigation that never reached
+        // any client. Surface the real outcome instead of assuming it.
+        const navigation = shouldNavigate
+          ? await navigateTo(`/agents/${encodeURIComponent(agent)}`)
+          : undefined;
+        return navigation === undefined ? result : { ...result, navigation };
+      }),
   );
 
   server.tool(
     'list_delegation_environments',
     'List the current Station and saved SSH Stations available for delegation without connecting them or exposing credentials, paths, hosts, usernames, or tunnel details',
     {},
-    async () => jsonToolResult(await discoverDelegationEnvironments()),
+    // #2795: its failures are MCP errors in the delegation family's one shape.
+    async () => delegationToolResult(() => discoverDelegationEnvironments()),
   );
 
   server.tool(
@@ -806,7 +808,8 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
           'Verified project path; inferred for a saved SSH environment when omitted',
         ),
     },
-    async (input) => jsonToolResult(await discoverDelegationOptions(input)),
+    async (input) =>
+      delegationToolResult(() => discoverDelegationOptions(input)),
   );
 
   server.toolWithSchema(
@@ -941,57 +944,57 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _delegationAttestation: z.string().optional(),
       _userId: z.string().optional(),
     },
-    async ({ _delegation, _delegationAttestation, _userId, ...input }) => {
-      const target = {
-        environment: input.environmentId
-          ? ({
-              kind: 'saved',
-              id: toEnvironmentId(input.environmentId),
-            } as const)
-          : ({ kind: 'current' } as const),
-        agent: agentId(input.agent),
-        ...(input.model ? { model: { override: input.model } } : {}),
-        ...(input.projectSlug
-          ? {
-              workspace: {
-                kind: 'project' as const,
-                projectSlug: input.projectSlug,
-                ...(input.projectPath ? { cwd: input.projectPath } : {}),
-              },
-            }
-          : input.projectPath
+    async ({ _delegation, _delegationAttestation, _userId, ...input }) =>
+      // #2795: as `send_message`.
+      delegationToolResult(async () => {
+        const target = {
+          environment: input.environmentId
+            ? ({
+                kind: 'saved',
+                id: toEnvironmentId(input.environmentId),
+              } as const)
+            : ({ kind: 'current' } as const),
+          agent: agentId(input.agent),
+          ...(input.model ? { model: { override: input.model } } : {}),
+          ...(input.projectSlug
             ? {
                 workspace: {
-                  kind: 'directory' as const,
-                  cwd: input.projectPath,
+                  kind: 'project' as const,
+                  projectSlug: input.projectSlug,
+                  ...(input.projectPath ? { cwd: input.projectPath } : {}),
                 },
               }
+            : input.projectPath
+              ? {
+                  workspace: {
+                    kind: 'directory' as const,
+                    cwd: input.projectPath,
+                  },
+                }
+              : {}),
+        };
+        const task = await delegateTask({
+          prompt: input.prompt,
+          target,
+          ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+          ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+          // #2601: a claim only, like `send_message`'s.
+          delegation: _delegation,
+          ...(_delegation && _delegationAttestation
+            ? { delegationAttestation: _delegationAttestation }
             : {}),
-      };
-      const task = await delegateTask({
-        prompt: input.prompt,
-        target,
-        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-        ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
-        // #2601: a claim only, like `send_message`'s.
-        delegation: _delegation,
-        ...(_delegation && _delegationAttestation
-          ? { delegationAttestation: _delegationAttestation }
-          : {}),
-        userId: _userId,
-        stationControlToolCall: true,
-        clientOrigin: STATION_CONTROL_MCP_ORIGIN,
-      });
-      // archive#3567 fix round FIX 1: see the matching comment on
-      // `send_message` above — report `navigateTo`'s real outcome instead of
-      // assuming delivery.
-      const navigation = input.navigate
-        ? await navigateTo(`/agents/${encodeURIComponent(task.target.id)}`)
-        : undefined;
-      return jsonToolResult(
-        navigation === undefined ? task : { ...task, navigation },
-      );
-    },
+          userId: _userId,
+          stationControlToolCall: true,
+          clientOrigin: STATION_CONTROL_MCP_ORIGIN,
+        });
+        // archive#3567 fix round FIX 1: see the matching comment on
+        // `send_message` above — report `navigateTo`'s real outcome instead of
+        // assuming delivery.
+        const navigation = input.navigate
+          ? await navigateTo(`/agents/${encodeURIComponent(task.target.id)}`)
+          : undefined;
+        return navigation === undefined ? task : { ...task, navigation };
+      }),
   );
 
   server.tool(
@@ -1051,8 +1054,9 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
       _userId: z.string().optional(),
     },
     async ({ _userId, ...input }) =>
-      jsonToolResult(
-        await continueDelegatedTask({
+      // #2795: one failure shape across the delegation tools.
+      delegationToolResult(() =>
+        continueDelegatedTask({
           ...input,
           userId: _userId,
           clientOrigin: STATION_CONTROL_MCP_ORIGIN,

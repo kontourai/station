@@ -1853,6 +1853,47 @@ describe('delegateTask receiver-local portable path (#484 phase A)', () => {
           expect((failure as Error).cause).toBeUndefined();
         });
 
+        // #2795: send_message's foreground post keeps only THIS Station's
+        // answer as a relayable refusal; a peer answering the guard's code
+        // relays none.
+        test('a peer refusing send_message relays no code to the agent', async () => {
+          const { delegationToolResult } = await import(
+            '../../../tools/station-control-shared.js'
+          );
+          const { executeExecutionTargetMessage } = await import(
+            '../../../tools/station-control-delegation.js'
+          );
+          peerAnswer = {
+            status: 403,
+            body: {
+              success: false,
+              code: 'station_control_caller_required',
+              error: 'peer text',
+            },
+          };
+          const result = await delegationToolResult(() =>
+            executeExecutionTargetMessage({
+              target: {
+                environment: { kind: 'saved', id: PEER_ENV as never },
+                agent: 'writer' as never,
+              },
+              message: 'hi',
+              userId: 'user-1',
+            } as never),
+          );
+          expect(
+            fetchCalls.some(
+              (call) =>
+                call.startsWith('POST') &&
+                call.includes(`${PEER_API}/api/orchestration/chat`),
+            ),
+          ).toBe(true);
+          expect(result.isError).toBe(true);
+          const envelope = JSON.parse(result.content[0]!.text);
+          expect(envelope.success).toBe(false);
+          expect(envelope).not.toHaveProperty('code');
+        });
+
         // The tool relay: a peer answering the guard's own code, or any label,
         // relays no code to the agent — only this Station's decisions do.
         test.each([
