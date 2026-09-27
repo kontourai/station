@@ -339,6 +339,12 @@ estimated complexity score.
 
 ## Veritas adoption
 
+The [tested policy proposal](../../.veritas/init-plans/documentation-maintenance.md)
+contains the exact additive configuration, a recorded-source drift catch,
+restoration controls, costs, and the remaining protected-policy activation step.
+The trial showed that default evidence alone only warns; required evidence
+produces the intended blocking result. It has not been activated.
+
 Proposed guidance: when a feature changes a user journey or contract, name its
 documentation owner, update affected diagrams/READMEs/examples, or give a
 specific source-backed reason no documentation changed. Route that guidance

@@ -1,0 +1,96 @@
+# Documentation maintenance policy proposal
+
+Status: tested proposal; **not active policy**. The protected Repo Map,
+Standards, authority and attestations are unchanged. The accompanying
+[additions](documentation-maintenance-additions.json) are the exact proposed
+entries, not a replacement configuration or an executable migration.
+
+## Proposed behavior
+
+Add `documentation-truth`, running the existing `npm run docs:truth:gate`, to
+both default and required evidence IDs. Preserve all existing checks and
+authority. Add the explanatory `documentation-source-currentness` rule at
+Guide, linking the [audit skill](../../.agents/skills/documentation-audit/SKILL.md)
+and [maintenance guide](../../docs/guides/documentation.md).
+
+This makes stale **recorded** documentation dependencies block readiness even
+when only source code changes. It also checks navigation, generated content,
+examples and publication contracts. A reviewer still needs to judge prose,
+diagrams and missing coverage. A passing check cannot detect an unrecorded
+dependency or prove a live provider/device outcome.
+
+Do not require a Markdown diff for every change. After reviewing affected
+claims, retaining unchanged prose can be correct. Replacing source hashes
+without that review is not maintenance.
+
+## Why this is needed
+
+The required merge-queue regression already reaches `docsTruth` through static
+verification. Ordinary `ci:fast` does not universally run it. The separate
+same-repository PR source-scan job checks freshness, but it is not a required
+check and does not run for every fork or merge-group event. The proposal brings
+that feedback into required local/CI readiness without adding another validator.
+
+Default selection alone is insufficient. The first trial selected and ran the
+check, but Veritas treated its failure as an optional diagnostic warning. The
+revised proposal adds it to `requiredEvidenceCheckIds`; the actual CLI then
+reports an independent required-evidence failure.
+
+## Executed controls
+
+The isolated trial used installed Veritas 1.7.4 and Node 24.19.0 at source
+revision `86e2799a1a20d16ab5d8fc2d77e3c32065118033`. Each run used real
+`readiness --working-tree` with candidate Repo Map/Standards override paths and
+the unchanged authority. No evidence was skipped or replaced, and no approval
+or attestation was invented.
+
+| Case | Documentation check | Blocking documentation failure | Check / total readiness |
+| --- | --- | --- | --- |
+| Default-only, clean | Pass | No | 22.871 / 72.819 seconds |
+| Default-only, recorded source changed | Fail | No; optional warning | 21.852 / 86.479 seconds |
+| Required candidate, recorded source changed | Fail | Yes | 27.691 / 95.913 seconds |
+| Required candidate, exact restoration | Pass | No | 23.533 / 85.849 seconds |
+
+The adverse case appended a comment to `packages/contracts/src/live-surface.ts`,
+a dependency named by 12 records. The real strict ledger test reported the
+stale source: one failure and 148 passing foundation tests. Exact byte
+restoration removed that failure. All 13 documentation subchecks passed in the
+clean/restored cases.
+
+An initial target, `runtime-path-resolver.ts`, was not recorded in that trial's
+ledger. Its passing result is retained as an unrecorded-dependency control and
+target-selection error, not a claimed catch. Both files were restored exactly;
+the final tree was clean.
+
+Every candidate readiness command exited 1 because the override configurations
+had unapproved protected hashes. That expected authority refusal is separate
+from the documentation result. The required adverse case had both failures;
+the restored case retained only the authority refusal. No row is an overall
+readiness pass or activated-policy receipt.
+
+The local receipt digest is
+`38887d185e19690b19e99d8050c570f033789ec07ae7235d5d928226c48e9990`.
+The required adverse/restored Veritas report digests are respectively
+`a24604b3c64895990468fe28e23cc804d296a162e030f1cecbd7ba7dac99d6af`
+and `c50791438c6f6dc9c1637d347ad55e54731f5ae85908e01a50bb34dd8c31d774`.
+Generated evidence remains outside the tracked repository under the existing
+[generated-evidence rules](../GOVERNANCE.md).
+
+## Cost and activation
+
+The command graph has no readiness call beneath `docsTruth`; the executed logs
+show one invocation, with no recursion. The existing aggregate runs 13 subchecks
+at bounded concurrency four. CLI parity overlaps an existing fast check by
+about 0.3 seconds in this trial; the other checks cover distinct contracts.
+
+These are local observations under concurrent host load, not a hosted upper
+bound. The 15-minute `ci:fast` budget and 220-second static reserve are unchanged.
+Before activation, review current CI headroom and run the final integrated
+revision's fast lane. Do not remove checks or increase budgets to hide a failure.
+
+Activation changes protected hashes and adds required evidence. Under
+[GOVERNANCE.md](../GOVERNANCE.md), it needs genuine owner review and the existing
+policy-change attestation process. Apply the additive entries to current
+configuration, preserve unrelated policy, and retain the real approval reference.
+This draft supplies catch/control evidence for that decision; it grants no
+authority to attest on the owner's behalf.
