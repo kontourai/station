@@ -50,7 +50,6 @@
     "packages/cli/src/__tests__/surface-http.test.ts": 1,
     "packages/cli/src/__tests__/target-command.test.ts": 1,
     "packages/cli/src/__tests__/triage.test.ts": 3,
-    "packages/connect/src/__tests__/nodeStorage.test.ts": 2,
     "packages/sdk/src/__tests__/client-entry-portability.test.ts": 1,
     "packages/shared/src/__tests__/cloud-move.test.ts": 1,
     "packages/shared/src/__tests__/durable-json-directory-fsync.test.ts": 1,

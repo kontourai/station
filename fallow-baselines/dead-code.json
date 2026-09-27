@@ -226,7 +226,6 @@
     "src-server/routes/system/system-status-routes.ts:STATUS_PREREQUISITES_REFRESH_BUDGET_MS",
     "src-server/routes/system/system-status-routes.ts:resolveExternalEngineReadiness",
     "src-server/runtime/bootstrap/runtime-http.ts:configureRuntimeRouteClassificationGate",
-    "src-server/runtime/bootstrap/runtime-http.ts:AUTH_RATE_LIMITED_ERROR_CODE",
     "src-server/runtime/bootstrap/runtime-tenant-context.ts:internalTenantHeaderForExecutionContext",
     "src-server/runtime/bootstrap/station-control-runtime-env.ts:BUILTIN_STATION_CONTROL_TOOL_SERVER_ID",
     "src-server/runtime/conversation/dispatch-model-policy.ts:fetchModelToolSurfaceList",

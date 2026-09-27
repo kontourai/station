@@ -22,7 +22,6 @@
     "./pairing-deep-link": "./src/core/pairingDeepLink.ts",
     "./local-self-provision": "./src/core/localSelfProvision.ts",
     "./known-environment": "./src/core/knownEnvironmentRegistry.ts",
-    "./node-storage": "./src/core/nodeStorage.ts",
     "./application-channel": "./src/core/applicationChannel.ts",
     "./self-hosted-browser": "./src/core/selfHostedBrowser.ts"
   },

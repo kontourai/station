@@ -417,9 +417,10 @@ Two corrections to make before leaning on it:
    actually be exchanged between machines cannot repeat this — §3.2 requires
    the version to gate parsing.
 
-There is also a live hardening note worth carrying: `packages/connect/src/core/nodeStorage.ts:26-31`
-records that its writer has no symlink/permission hardening, "acceptable today
-only because `KnownEnvironment` holds no secrets." The no-secrets rule is not
+There is also a hardening note worth carrying: the unwired Node
+`StorageAdapter` for `KnownEnvironment` (`packages/connect/src/core/nodeStorage.ts`,
+since removed) recorded that its writer had no symlink/permission hardening,
+"acceptable today only because `KnownEnvironment` holds no secrets." The no-secrets rule is not
 decorative; a future sensitive field silently converts a store into a
 vulnerability. The binding store (§3.5) holds credential *references*, so it
 inherits the same obligation.
@@ -855,8 +856,8 @@ Properties that are design commitments, not incidental:
   availability and when it was checked; the reference itself lives in the
   manifest, the value in the OS keystore. Per §2.5 this store therefore
   inherits `KnownEnvironment`'s obligation: if a secret ever lands here, the
-  file's write path needs the hardening `packages/connect/src/core/nodeStorage.ts:26-31`
-  says it lacks.
+  file's write path needs the symlink and permission hardening that the
+  removed Node `KnownEnvironment` adapter lacked (see §2.5).
 - **`path` is stored as the user gave it; `remotes` is stored canonicalized.**
   The path stays verbatim to preserve the existing tilde behavior (§2.2) and is
   canonicalized at each read by the resolver, in one place. The remotes are
