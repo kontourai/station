@@ -983,258 +983,216 @@ other thrown check failures return 400.
 
 ## Fleet Inference
 
-Station's serving side of the inference fleet (station#1398, `docs/design/inference-fleet.md`). A peer holding a credential for this Station can read which local models it contributes and ask for a completion on one of them. **This is not `delegate_task`**: a delegated task runs here, with this machine's agents, tools, credentials, and workspace, and persists in this machine's event store. Fleet inference keeps the agent loop, the tools, the files, and the event record on the *consumer* — only token generation happens here. There is no `tools` field, no session, no filesystem access, and no agent slug anywhere in this family.
+The [serving routes](../../src-server/routes/inference/fleet-inference.ts) let an
+authorized peer read contributed models and request token generation. The
+consumer keeps its Agent loop, tools, workspace, and Session; the serving route
+does not create a Session or accept tool/workspace inputs. This differs from
+`delegate_task`, which starts work on the receiving Station. The serving
+Station separately attempts to record a local serve receipt.
 
-**Authorization.** The whole `/api/inference/**` family requires the **`inference:invoke`** pairing scope and nothing else. Only the `inference` pairing preset grants it. It is deliberately absent from the default grant, so an unscoped offer, a credential migrated from a pre-scoping registry, and the Station operator bootstrap credential all lack it — including for local testing, where you must mint an `inference`-preset grant.
+The route-family pairing scope is `inference:invoke`; ordinary authentication,
+origin, and applicable request-authority checks still apply. The `inference`
+preset grants this scope; Standard, Delegation, Read-only, and the historical
+default grant do not. A direct loopback or SSH-forwarded request still needs a
+supported credential. See [scope definitions](../../packages/contracts/src/environment-security.ts)
+and [route mapping](../../src-server/security/pairing-route-scopes.ts).
 
-**No loopback bypass.** Like every protected route family, this one refuses a direct loopback caller that presents no credential (`401 authentication_required`). An SSH local forward is indistinguishable from a genuinely local caller at the TCP layer, so it must use a bearer or device-session credential; the exact Station-owned, per-boot internal-token attestation remains a separate internal credential path.
+The [contract limits](../../packages/contracts/src/fleet-inference.ts) are:
 
-**Bounds.** Request body ≤ 128 KiB, ≤ 64 messages, ≤ 96,000 prompt characters, ≤ 4,096 output tokens, ≤ 64,000 generated characters returned, ≤ 2 concurrent fleet completions, and a **120-second wall-clock deadline per completion**. Values are published on the contract (`FLEET_INFERENCE_LIMITS`, `@kontourai/station-contracts/fleet-inference`) so a caller can size a request rather than discover a limit as a failure.
+| Input/output | Limit |
+| --- | --- |
+| Request body | 128 KiB, checked while reading the stream |
+| Messages | 64 |
+| Total prompt text | 96,000 JavaScript string code units |
+| Output tokens | 4,096 (also the default) |
+| Returned generated text | 64,000 JavaScript string code units |
+| Concurrent completions | 2 |
+| Completion abort deadline | 120 seconds after generation admission |
 
-The deadline is what makes the concurrency cap a bound at all: without it, a provider that accepts a request and never yields holds its slot forever, and two such requests pin the whole fleet surface permanently — for the cost of two requests and no credential beyond `inference:invoke`. It is not caller-tunable, because it protects the serving machine. A client disconnect likewise aborts generation and frees the slot immediately rather than leaving this Station generating tokens nobody will read.
+The deadline and caller disconnect signal are **cooperative**. The
+[service](../../src-server/services/inference/fleet-inference-service.ts) releases
+a concurrency slot only when the provider iteration settles and its `finally`
+runs. An adapter that ignores abort can hold its slot beyond the deadline.
+The response-text ceiling stops accumulation but continues draining for terminal
+usage/finish data under the same cooperative bound.
 
-*The deadline is cooperative, not preemptive.* It fires the `AbortSignal` the provider was handed; it does not kill the generator. A provider that observes the signal settles and its slot is freed — that is every provider Station ships. A provider that accepts the signal and never observes it never settles, and **its slot is not freed**: the leak the deadline exists to prevent, relocated behind a worse-behaved adapter. Reaching that requires an operator to install a plugin-supplied provider which ignores abort *and* mark its connection as contributed, which is why it is disclosed rather than defended against — see `docs/design/inference-fleet.md` §12.
+The handler's domain refusals use `{refusal: {schemaVersion, code, message,
+participation?, refusedAt}}`. Earlier authentication/origin/scope middleware can
+return its own error envelope. A model not contributed and a nonexistent model
+receive the same contribution refusal.
 
-*Ingestion is stream-bounded.* A declared `Content-Length` over the ceiling is refused before a byte is read; past that, the body is read chunk by chunk and the reader is cancelled the moment observed bytes exceed the cap. A caller that lies about its length, or sends a chunked body with no declared length, is stopped mid-stream rather than buffered in full and measured afterwards.
-
-**Refusals are named, never a 404.** Every rejection returns `{ "refusal": { schemaVersion, code, message, participation?, refusedAt } }` with a closed `code`. A model this Station could launch but has not contributed is refused identically to one that does not exist — distinguishing them would let a peer enumerate the models the owner deliberately withheld.
-
-| `code` | Status | Meaning |
-|---|---|---|
-| `contribution-disabled` | 403 | The opt-in is off, or on with no connection marked. |
-| `model-not-contributed` | 403 | That model is not in the contributed subset. |
-| `model-unavailable` | 503 | Contributed, but not routable right now. |
-| `contribution-unavailable` | 503 | This Station cannot currently say what it offers. Unknown, not empty. |
-| `streaming-unsupported` | 400 | `stream: true` — reserved, refused rather than silently buffered. |
-| `request-invalid` | 400 | Malformed body, bad role, empty `messages`, missing `model`. |
-| `request-too-large` | 413 | A published size ceiling was exceeded. |
-| `capacity-exhausted` | 429 | Concurrency limit reached. Retry shortly. |
-| `completion-timeout` | 504 | The 120s deadline elapsed; the stream was aborted and the slot freed. Distinct from `execution-failed` — the provider did not fail, it failed to *finish*. |
-| `request-abandoned` | 499 | The caller disconnected before the completion finished. Nobody receives this; it exists so the outcome is named rather than indistinguishable from a success. |
-| `execution-failed` | 502 | The local provider failed. Upstream error text is never relayed. |
+| Code | HTTP status |
+| --- | --- |
+| `contribution-disabled`, `model-not-contributed` | 403 |
+| `model-unavailable`, `contribution-unavailable` | 503 |
+| `streaming-unsupported`, `request-invalid` | 400 |
+| `request-too-large` | 413 |
+| `capacity-exhausted` | 429 |
+| `completion-timeout` | 504 |
+| `request-abandoned` | 499 (recorded outcome after disconnect) |
+| `execution-failed` | 502 |
 
 ### Read The Contributed Model Manifest
+
 ```http
 GET /api/inference/manifest
 ```
 
-The `station.fleet-contribution/v1` projection (station#1398 slice 1) as it crosses the machine boundary. This is the **only** place participation is readable: the public handshake advertises the static `fleetInference` protocol-support flag and never whether this Station is currently contributing anything, so an unauthenticated LAN or tailnet scanner cannot enumerate which of the owner's machines have GPUs.
+Returns `{manifest}` containing the bounded `station.fleet-contribution/v1`
+projection. `/api/connections/model-inventory` returns the same projection under
+`{success: true, data}`, with the same pairing tier.
 
-`GET /api/connections/model-inventory` serves this same body, for the same scope — that leaf is the compatibility-path spelling of this route, not a wider one.
+`participation` distinguishes `contributing`, `disabled`, `nothing-contributed`,
+and `contributed-unavailable`; an empty `models` array alone cannot distinguish
+them. The boundary carries at most 128 models and 64 diagnostics, adding an
+`inventory-truncated` diagnostic when it trims a list. Diagnostic messages are
+bounded to 240 string code units. `projectedAt` dates the projection;
+`sourceObservedAt` and each model's `observedAt` date its evidence. A new
+projection does not make old evidence fresh.
 
-`participation` is a four-state fact — `contributing`, `disabled`, `nothing-contributed`, `contributed-unavailable` — and three of the four carry `models: []`, so the array is never the signal. `diagnostics[]` names which empty it is, per connection. Foreign diagnostic message text is truncated at 240 characters at this boundary; the `code` is the authoritative fact and the message is supporting prose.
-
-**Response**:
-```json
-{
-  "manifest": {
-    "schemaVersion": "station.fleet-contribution/v1",
-    "projectedAt": "2026-08-01T10:00:01.000Z",
-    "sourceObservedAt": "2026-08-01T10:00:00.000Z",
-    "participation": "contributing",
-    "models": [
-      {
-        "id": "model:ollama-workstation:llama3.3%3A70b",
-        "connectionId": "ollama-workstation",
-        "providerModel": "llama3.3:70b",
-        "model": { "id": "llama3.3", "revision": null, "quantization": null },
-        "aliases": ["llama3.3:70b"],
-        "displayName": "Llama 3.3 70B",
-        "locality": "local",
-        "availability": "available",
-        "freshness": "live",
-        "observedAt": "2026-08-01T10:00:00.000Z",
-        "effectiveContextTokens": 131072,
-        "supportsVision": false
-      }
-    ],
-    "diagnostics": []
-  }
-}
-```
-
-`projectedAt` is when the projection ran and is **not** a freshness input; `sourceObservedAt` and the per-model `observedAt` are. A fresh projection of a stale inventory is a stale claim.
+The public handshake's `fleetInference` capability describes protocol support,
+not current participation. Read the authorized manifest to learn what this
+Station currently contributes.
 
 ### Serve A Completion
+
 ```http
 POST /api/inference/completions
 ```
 
-**Request**:
 ```json
 {
-  "model": "model:ollama-workstation:llama3.3%3A70b",
-  "messages": [
-    { "role": "system", "content": "You summarize changelogs." },
-    { "role": "user", "content": "Summarize the 0.7.0 release." }
-  ],
+  "model": "exact-manifest-model-id",
+  "messages": [{ "role": "user", "content": "Summarize this changelog: ..." }],
   "maxOutputTokens": 512,
   "temperature": 0.2
 }
 ```
 
-`model` is the manifest's `id`, matched exactly — a provider-native id or an alias is refused, so the manifest is the only way to address a contributed model. `role` is `system`, `user`, or `assistant`; there is no `tool` role. `maxOutputTokens` above the ceiling is refused rather than silently clamped, because clamping would let a consumer believe it bounded a cost it did not.
+Use the manifest's exact model `id`, not a provider selector or alias. Roles are
+`system`, `user`, or `assistant`; content is text. `maxOutputTokens` must be a
+positive integer within the ceiling; it is refused rather than clamped above
+it. Temperature, when present, must be finite and within 0–2. `stream: true`
+returns `streaming-unsupported`; current delivery is buffered.
 
-**Response**:
-```json
-{
-  "completion": {
-    "schemaVersion": "station.fleet-inference-completion/v1",
-    "delivery": "buffered",
-    "model": {
-      "id": "model:ollama-workstation:llama3.3%3A70b",
-      "connectionId": "ollama-workstation",
-      "providerModel": "llama3.3:70b",
-      "displayName": "Llama 3.3 70B"
-    },
-    "servedAt": "2026-08-01T10:00:02.000Z",
-    "content": "The 0.7.0 release …",
-    "stop": "provider",
-    "finishReason": "stop",
-    "usage": { "inputTokens": 412, "outputTokens": 88 },
-    "elapsedMs": 1840
-  }
-}
-```
+The response is `{completion}` with schema version, `delivery: "buffered"`,
+model identity, `servedAt`, text `content`, `stop`, `finishReason`, `usage`, and
+`elapsedMs`. `stop: "response-bound"` means Station truncated accumulated text;
+`provider` means the provider ended without that truncation. `finishReason` is
+separate provider output. `usage` is null unless both input and output token
+figures were reported; null does not mean zero.
 
-`stop` reports whether the *provider* ended generation (`provider`) or this Station's own response ceiling did (`response-bound`), separately from the provider's `finishReason` — a truncated answer must not read as a complete one. `usage: null` means the provider reported none; that is unknown, not zero.
-
-**Specified for streaming, buffered in v1** (`inference-fleet.md` §10 OQ-8). `delivery` is the discriminant that makes streaming additive: a future streaming release answers `stream: true` with an event stream whose terminal event is exactly this object carrying `delivery: "stream"`. A consumer that never sets `stream` sees no change; one that branches on `delivery` is correct in both worlds. Until then `stream: true` is refused by name rather than served buffered, because a consumer told it is streaming when it is not has been misinformed about the path it routes over.
+A serve-receipt append failure is logged and counted, but does not replace the
+completion response. Successful delivery therefore does not prove the local
+receipt was durably written. Receipt reading and diagnosis are separate from
+completion execution.
 
 ### Who May Turn Contribution On
 
-Enabling contribution is `PUT /config/app` (`AppConfig.fleetContribution`), which sits in the `/config` family at **`orchestration:operate`** — unchanged by this slice, and stated here rather than left implicit (`inference-fleet.md` §5.4).
+`PUT /config/app` writes `fleetContribution` under its normal
+`orchestration:operate` tier. In addition, the
+[config handler](../../src-server/routes/system/config.ts) refuses a caller
+whose granted scope includes `inference:invoke` when it writes either
+`fleetContribution` or the separate `contribution` map. This covers changing
+connection IDs as well as enabling contribution.
 
-So a `delegation`-scoped peer or a Standard paired device can turn contribution on. That was weighed and accepted rather than overlooked, **on one stated precondition**: the credential that flips the switch must not be the one that benefits from it.
-
-The accepted case is a credential holding `orchestration:operate` and *not* `inference:invoke`. Such a peer already authorizes starting arbitrary agent sessions and driving turns on this Station — strictly *more* authority over this machine's compute than causing it to serve buffered completions — and flipping the opt-in grants it nothing, because it cannot invoke what it enabled. Adding a consent ceremony in front of the lesser of two powers the same credential already holds would teach the wrong lesson about which gate matters.
-
-**That reasoning stops holding the moment one grant carries both scopes**, so the code does not rely on it. A credential presenting `inference:invoke` is **refused (403) any write to `fleetContribution`** through `PUT /config/app`. Otherwise such a peer could enable contribution, name a connection — including a *billable hosted* one, since `connectionIds` rides the same write — and then spend the owner's money through `/api/inference/**` with no operator in the loop at any step. That is not "less authority than running agents here"; it is a self-authorized, self-serving budget. The guard covers `connectionIds` as well as `enabled` (naming a new connection on an already-enabled Station is the same act), is scoped to that one field so the peer's other settings writes are unaffected, and does not touch a caller presenting no credential — the loopback operator, who is exactly who should be making this decision.
-
-What remains true is that `PUT /config/app` is a broad write at a broad tier; narrowing that surface generally is the honest fix, and the scope vocabulary this slice adds makes it cheap to do later.
+An operate-only credential is not refused by that beneficiary check. The
+separate Project `contribution` map also has an operator-authority check for
+changed offers. Neither rule creates a credential-less loopback exception;
+normal request authentication runs first. See the
+[inference design](../design/inference-fleet.md) for the authority decision.
 
 ---
 
- ## Orchestration model launch behavior
+## Orchestration model launch behavior
 
-`POST /api/orchestration/chat` accepts model controls only inside the canonical
-Environment + Agent `target`. They are capability-gated before adapter readiness
-or model discovery is invoked. A launch is either
-Station-resolved with an honest `catalog-pending` selector that becomes
-`catalog-accepted` only after adapter catalog validation, deliberately
-engine-selected with no Station-invented model id, or unavailable with a stable
-reason. Adapters without a model-lifecycle capability declaration receive an explicit
-`capability-absent` omission plan;
-their explicit model overrides fail closed. `modelId` is a request, not a runtime
-observation: session read models keep typed requested/applied facts separate from
-an engine's independently reported model. `appliedModel` is present only after a
-real adapter apply boundary; ACP `session.configured.model` echoes from the earlier
-metadata-only projection never
-become applied. `reportedModel` is never derived from either fact.
-Bound continuation at `POST /api/orchestration/chat/:conversationId/continue`
-accepts no target or model replacement. Unsupported lifecycle overrides
-return `model-override-unsupported` and create no adapter dispatch or
-effective-model receipt. Bedrock/Ollama resume and omitted turns retain the
-accepted session model; an explicit replacement is catalog-validated. ACP model
-overrides are currently unsupported, including automatic recovery of those
-metadata-only model echoes.
+`POST /api/orchestration/chat` carries model selection under
+`target.model: {override?, options?}`, alongside the Agent and Environment target.
+The [route schema](../../src-server/routes/orchestration/orchestration.ts),
+[capability planner](../../packages/contracts/src/provider.ts), and
+[model-launch owner](../../src-server/services/orchestration/model-launch-planning.ts)
+separate requested selection from adapter acceptance.
+
+A plan is `station-resolved`, `engine-selected`, or `unavailable`.
+Station-resolved selectors begin as `catalog-pending`; the adapter marks them
+`catalog-accepted` only after validation. An adapter without a model-launch
+declaration can accept omission as `capability-absent`, but cannot thereby
+claim explicit override support. The orchestration start path checks its plan
+before readiness/discovery; actual selector validation remains adapter-owned.
+
+`POST /api/orchestration/chat/:conversationId/continue` keeps the persisted
+Agent, Environment, and workspace binding. It accepts an optional **object**
+`model: {override?, options?}` for the next turn; legacy scalar model values are
+ignored by this schema. The
+[continuation caller](../../src-server/tools/station-control-delegation.ts)
+rebuilds the target from the authorized conversation binding and forwards that
+model choice. Whether it can apply to an existing Session or requires another
+lifecycle boundary depends on the engine. Unsupported lifecycle overrides have
+the typed `model-override-unsupported` refusal; this is not permission to invent
+an applied model after an unsuccessful request.
+
+The [session projection](../../src-server/services/orchestration/orchestration-session-state.ts)
+keeps `requestedModel`, `appliedModel`, and independently reported model facts
+separate. Old `session.configured.model` echoes alone are not apply receipts.
+A later effective-model boundary also prevents an older reported model from
+being presented as current.
+
+Bedrock and Ollama declare catalog-validated start/resume/per-turn overrides.
+ACP now supports a fresh-start override **when that Session advertises a model
+configuration option and `setConfigOption` returns the requested current
+value**. Its adapter records the verified selection then. ACP does not declare
+new resume/per-turn override support; restating an already retained selector is
+handled separately from requesting a different model. See the
+[ACP apply boundary](../../src-server/providers/adapters/acp-adapter.ts),
+[Bedrock adapter](../../src-server/providers/adapters/bedrock-adapter.ts), and
+[Ollama adapter](../../src-server/providers/adapters/ollama-adapter.ts).
 
 ## Bedrock Models
 
+The [Bedrock routes](../../src-server/routes/connections/bedrock.ts) use the
+shared [model catalog](../../src-server/providers/llm/bedrock-models.ts).
+Catalog discovery is evidence of a selector, not proof that an account can
+complete inference on it.
+
 ### List Available Models
-```http
-GET /bedrock/models
-```
 
-Returns all foundation-model selectors that AWS marks `ON_DEMAND` plus `ACTIVE` inference-profile selectors whose complete returned model-ARN set resolves to one streaming, text-capable foundation model. Profile capability fields are copied from that AWS foundation-model evidence. The route omits relation-unknown or multi-model profiles, does not infer regional relationships, and does not suppress an on-demand selector merely because a related profile exists.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "modelId": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-      "modelArn": "arn:aws:bedrock:...",
-      "modelName": "Claude 3.5 Sonnet",
-      "providerName": "Anthropic",
-      "inputModalities": ["TEXT", "IMAGE"],
-      "outputModalities": ["TEXT"],
-      "responseStreamingSupported": true,
-      "customizationsSupported": [],
-      "inferenceTypesSupported": ["ON_DEMAND"]
-    }
-  ]
-}
-```
-
-**Used by**: `ModelsContext.tsx`, `AppDataContext.tsx`, model selector
-
----
+`GET /bedrock/models` returns `{success: true, data: models}`. It includes
+streaming, text-output foundation models with `ON_DEMAND` support and active
+inference profiles whose complete model-ARN set resolves to one such foundation
+model. Ambiguous/unresolved profile relationships are omitted. Profile rows
+carry their own selector/ARN/name plus `isInferenceProfile`, `profileType`, and
+`status`; their capability fields come from the matched foundation model.
 
 ### Get Model Pricing
-```http
-GET /bedrock/pricing?region=us-east-1
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "anthropic.claude-3-5-sonnet-20240620-v1:0": {
-      "inputTokenPrice": 0.003,
-      "outputTokenPrice": 0.015
-    }
-  }
-}
-```
+`GET /bedrock/pricing?region=us-east-1` returns `{success: true, data: prices}`,
+where `prices` is an **array**, not a map keyed by model ID. Rows include
+`modelId`, optional provider/input/output price values, `region`, and `feature`.
+The catalog groups returned AWS price dimensions by model and feature. The
+numeric fields copy the returned USD price-per-unit value; this parser does
+not normalize its unit, so the field names alone are not proof of a per-token
+or per-1,000-token rate.
 
-**Used by**: Cost calculations, analytics
-
----
+The region falls back through stored app config, `AWS_REGION`, and `us-east-1`;
+an invalid supplied region returns 400 before lookup. Missing catalog or lookup
+failure returns 500. Model/profile/pricing caches expire after 15 minutes;
+pricing uses a bounded regional cache and paginated reads. Route JSON output is
+also size-bounded. The catalog source contains the exact budgets.
 
 ### Validate Model ID
-```http
-GET /bedrock/models/:modelId/validate
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "modelId": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-    "isValid": true
-  }
-}
-```
-
-**Used by**: Model validation in forms
-
----
+`GET /bedrock/models/:modelId/validate` returns
+`{success: true, data: {modelId, isValid}}`. It calls selector resolution: a base
+ID with exactly one eligible profile can validate by resolving to that profile.
+An ambiguous match does not validate. This is catalog validation, not an
+inference smoke.
 
 ### Get Model Info
-```http
-GET /bedrock/models/:modelId
-```
 
-Accepts either a launchable foundation-model selector or an evidence-backed inference-profile selector returned by `GET /bedrock/models`. Detail lookup and list membership use the same bounded launchability projection.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "modelId": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-    "modelName": "Claude 3.5 Sonnet",
-    "providerName": "Anthropic",
-    ...
-  }
-}
-```
-
-**Used by**: Model details, capabilities checking
+`GET /bedrock/models/:modelId` returns `{success: true, data: model}` for an
+**exact selector in the projected list**, otherwise 404. Unlike validation, this
+lookup does not substitute a profile for a base ID. Use a selector returned by
+`GET /bedrock/models` for a predictable detail lookup.
 
 ---
 
@@ -1438,21 +1396,13 @@ authorization-skipping 304 path. See the [handler](../../src-server/routes/orche
 ## Model Capabilities
 
 ### Get Model Capabilities
-```http
-GET /api/models/capabilities
-```
 
-This is a **Bedrock-only** projection of `ListFoundationModels`: it is empty
-without AWS credentials and carries no row for a Claude Code, Codex, ACP, or
-Ollama model. A missing row means the catalog has nothing to say about that
-model, never that the model rejects images — `useModelImageSupport` keeps that
-distinction as a three-state answer (station#3344), and the response envelope
-carries the provenance it needs to (station#3373).
-
-Full description, including `source` and `complete`:
-[Standalone Model Capability Routes](#standalone-model-capability-routes) below.
-
-**Used by**: `ModelCapabilitiesContext.tsx`, the chat composer's attachment gate
+`GET /api/models/capabilities` is the Bedrock-only capability projection described
+under [Standalone Model Capability Routes](#standalone-model-capability-routes).
+An absent model row is unknown; it does not show that a Claude Code, Codex, ACP,
+or Ollama model rejects an attachment. The current
+[UI helper](../../src-ui/src/contexts/ModelCapabilitiesContext.tsx) preserves an
+unknown result for an unmatched model.
 
 ---
 
@@ -1675,80 +1625,50 @@ records, not the server log lines returned by `read_logs`.
 
 ## Standalone Model Capability Routes
 
-> **New section** — routes from `src-server/routes/connections/models.ts`
->
-> **Note**: These standalone routes remain available, but new integrations should use `/bedrock/models` and `/bedrock/pricing` from `bedrock.ts`.
+The [standalone owner](../../src-server/routes/connections/models.ts) is distinct
+from the shared `/bedrock` catalog. Do not assume it has the same pagination,
+cache, selector resolution, pricing normalization, or failure contract.
 
 ### Get Model Capabilities
+
 ```http
 GET /api/models/capabilities
 ```
 
-Lists all ACTIVE and LEGACY **Bedrock** foundation models with capability flags. Results are cached for 1 hour, keyed by the region in effect.
+The handler calls Bedrock `ListFoundationModels`, keeps ACTIVE/LEGACY rows, and
+maps input/output modalities to `supportsImages`, `supportsVideo`,
+`supportsAudio`, and streaming/lifecycle fields. Its one-hour cache is keyed by
+the effective region. Region uses current app config before `AWS_REGION` and the
+default; the runtime supplies Bedrock auth separately.
 
-Scope, stated on the response rather than left to the path (station#3373):
-
-- `source: 'bedrock'` — the one catalogue projected here. There is no row for a
-  Claude Code, Codex, ACP, or Ollama model, so a model absent from `data` is not
-  evidence that it lacks a capability.
-- `complete` — whether that catalogue was actually enumerated. `complete: false`
-  means `data` is **unknown**, not empty. Read an absent row as "unsupported"
-  only when `complete` is `true`.
-
-**Response**:
 ```json
-{
-  "success": true,
-  "source": "bedrock",
-  "complete": true,
-  "data": [
-    {
-      "modelId": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-      "modelName": "Claude 3.5 Sonnet",
-      "provider": "Anthropic",
-      "inputModalities": ["TEXT", "IMAGE"],
-      "outputModalities": ["TEXT"],
-      "supportsStreaming": true,
-      "supportsImages": true,
-      "supportsVideo": false,
-      "supportsAudio": false,
-      "lifecycleStatus": "ACTIVE"
-    }
-  ]
-}
+{ "success": true, "source": "bedrock", "complete": true, "data": [] }
 ```
 
-**No AWS credentials** (`200`): `{ "success": true, "data": [], "source": "bedrock", "complete": false, "warning": "AWS credentials not configured" }` — the catalogue could not be read.
+`complete: true` means this Bedrock catalog fetch succeeded, including a cached
+successful fetch. It is not a cross-provider catalog or proof of live model
+execution. Credential-classified failures return 200 with `data: []`,
+`complete: false`, and an AWS-credentials warning. Other failures return 500.
+Never interpret a missing row as unsupported merely because `complete` is true.
 
-**Error** (`500`): `{ "success": false, "error": "..." }` for any other failure.
-
----
+The current image-support UI helper matches IDs directly or by suffix and
+returns `unknown` when no row matches. For a matched row it treats any of the
+image/video/audio flags as `yes`; otherwise a nonempty modality list produces
+`no`, and an absent/empty list remains `unknown`. That is the helper's current
+attachment-support interpretation, not a promise that every provider accepts
+all attachment media.
 
 ### Get Model Pricing (Standalone Route)
-```http
-GET /api/models/pricing/:modelId?region=us-east-1
-```
 
-Fetches per-token pricing for a specific model from the AWS Pricing API.
+`GET /api/models/pricing/:modelId?region=us-east-1` returns
+`{success: true, data: {modelId, region, inputTokenPrice, outputTokenPrice, currency}}`.
+The region defaults through current app config, environment, and `us-east-1`.
 
-**Path Parameters**:
-- `modelId`: Bedrock model ID
-
-**Query Parameters**:
-- `region`: AWS region (default: `AWS_REGION` env or `us-east-1`)
-
-**Response**:
-```json
-{
-  "data": {
-    "modelId": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-    "region": "us-east-1",
-    "inputTokenPrice": 0.003,
-    "outputTokenPrice": 0.015,
-    "currency": "USD"
-  }
-}
-```
+This handler makes one AWS Pricing `GetProducts` request with `MaxResults: 100`,
+then matches model-name text and reads the first price dimension in each
+matching item. It does not follow pagination or normalize the unit; unmatched
+input/output values remain null. It is not an exhaustive price quote or the
+same implementation as `/bedrock/pricing`.
 
 ---
 
