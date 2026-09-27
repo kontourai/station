@@ -32,7 +32,7 @@ import {
 import { readUntrustedPluginManifestSyncWithFormat } from '../../services/plugins/plugin-manifest-bounded-read.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { errorMessage } from '../../utils/error-message.js';
-import { execGitSync, isLocalGitSource } from '../../utils/git-exec.js';
+import { execGitSync } from '../../utils/git-exec.js';
 import type { Logger } from '../../utils/logger.js';
 import type { InstallResult, RegistryItem } from '../provider-contracts.js';
 import type {
@@ -267,88 +267,37 @@ function assertPhysicallyInside(
 }
 
 /**
- * A local git source clones whatever its git metadata points at, not just the
- * directory named: a `.git` gitfile (`gitdir: <path>`), a worktree
- * `commondir`, or an `objects` directory reached through a symlink can all
- * sit outside the registry root. Those locations must be inside it, and object
- * alternates (`objects/info/alternates`, `http-alternates`) are refused
- * outright — they borrow objects from another repository by design.
+ * A local registry source is a plain directory, copied. Anything git could
+ * treat as a repository is refused rather than inspected: a path git-shaped
+ * by either its manifest spelling or its physical path (both installers pick
+ * git by an `.git` suffix and split `#branch` off the string), and a top-level
+ * `.git` entry, which the plugin update route would later `git pull` through.
+ * Git sources must be remote URLs.
  */
-function assertLocalGitRepositoryConfined(
+function assertPlainLocalDirectorySource(
   source: string,
-  physicalRoot: string,
-  repository: string,
+  location: string,
+  physical: string,
 ): void {
-  // The source must itself be a directory. git resolves a local clone path by
-  // probing: a regular file at the path is read as a gitfile, and a missing
-  // path falls through to `<path>.git`, `<path>.git/.git` or `<path>.bundle`.
-  // Once the path is a directory git uses it (or its `.git`), so requiring a
-  // directory here leaves only the metadata checked below.
-  let isDirectory = false;
-  try {
-    isDirectory = lstatSync(repository).isDirectory();
-  } catch {
-    // Missing: refused below.
+  for (const path of [source, location, physical]) {
+    if (path.includes('#') || /\.git$/i.test(path)) {
+      throw new RegistrySourceConfinementError(
+        source,
+        'a local registry source must be a plain directory; name a git repository by its remote URL',
+      );
+    }
   }
-  if (!isDirectory) {
+  let hasGitEntry = true;
+  try {
+    lstatSync(join(physical, '.git'));
+  } catch {
+    hasGitEntry = false;
+  }
+  if (hasGitEntry) {
     throw new RegistrySourceConfinementError(
       source,
-      'a local git source must be a directory',
+      'a local registry source must not contain git metadata (.git)',
     );
-  }
-  const readPointer = (file: string, prefix: string): string | null => {
-    let stat: ReturnType<typeof lstatSync>;
-    try {
-      stat = lstatSync(file);
-    } catch {
-      return null;
-    }
-    if (!stat.isFile()) {
-      throw new RegistrySourceConfinementError(
-        source,
-        `git metadata ${basename(file)} is not a regular file`,
-      );
-    }
-    const value = readFileSync(file, 'utf-8').trim();
-    if (!value.startsWith(prefix)) {
-      throw new RegistrySourceConfinementError(
-        source,
-        `git metadata ${basename(file)} is malformed`,
-      );
-    }
-    return resolve(dirname(file), value.slice(prefix.length).trim());
-  };
-
-  let gitDir = repository;
-  const dotGit = join(repository, '.git');
-  try {
-    const stat = lstatSync(dotGit);
-    gitDir = stat.isFile()
-      ? (readPointer(dotGit, 'gitdir:') ?? dotGit)
-      : dotGit;
-  } catch {
-    // No `.git` entry: a bare repository, or not a repository at all (git
-    // then fails on its own).
-  }
-  const gitDirs = [assertPhysicallyInside(source, physicalRoot, gitDir)];
-  const commonDir = readPointer(join(gitDirs[0]!, 'commondir'), '');
-  if (commonDir) {
-    gitDirs.push(assertPhysicallyInside(source, physicalRoot, commonDir));
-  }
-  for (const dir of gitDirs) {
-    const objects = assertPhysicallyInside(
-      source,
-      physicalRoot,
-      join(dir, 'objects'),
-    );
-    for (const name of ['alternates', 'http-alternates']) {
-      if (existsSync(join(objects, 'info', name))) {
-        throw new RegistrySourceConfinementError(
-          source,
-          `git object ${name} are not allowed in a local registry source`,
-        );
-      }
-    }
   }
 }
 
@@ -519,12 +468,9 @@ export class JsonManifestRegistryProvider
         this.getLocalRegistryRoot(),
         location,
       );
-      // A git-shaped local source clones whatever its git metadata names, so
-      // that is confined here too; resolvePackage's callers clone it with
-      // their own installer and never reach this provider's install path.
-      if (isGitSource(location)) {
-        assertLocalGitRepositoryConfined(source, physicalRoot, physical);
-      }
+      // Checked here, not at install: resolvePackage's callers stage the
+      // source with their own installer and never reach this provider's.
+      assertPlainLocalDirectorySource(source, location, physical);
       return { kind: 'local', location, physical, root: physicalRoot };
     }
 
@@ -616,7 +562,10 @@ export class JsonManifestRegistryProvider
     const tempDir = createStationTempDirSync('registry-plugin');
 
     try {
-      if (isGitSource(resolvedSource)) {
+      // One classification decides both the checks and the transport: a
+      // remote source is cloned, a local one (already proven a plain
+      // directory) is copied. A local path is never handed to git.
+      if (resolved.kind === 'remote') {
         const [url, branch] = resolvedSource.split('#');
         // #2363: Station's git allows only https and ssh. Refused here, by
         // name, rather than as a transport error deep inside git: code
@@ -630,16 +579,8 @@ export class JsonManifestRegistryProvider
         if (branch) cloneArgs.push('--branch', branch);
         cloneArgs.push(url, tempDir);
 
-        // A local registry may name a contained local git path; git clones
-        // one over its `file` transport, allowed for exactly that case
-        // (#2363). A remote source never gets the `file` transport.
-        execGitSync(cloneArgs, {
-          timeout: 30000,
-          hardening: {
-            allowFileProtocol:
-              resolved.kind === 'local' && isLocalGitSource(url),
-          },
-        });
+        // Remote only: git keeps its `file` transport disabled (#2363).
+        execGitSync(cloneArgs, { timeout: 30000 });
       } else {
         if (!existsSync(resolvedSource)) {
           throw new Error(`Source not found: ${resolvedSource}`);
