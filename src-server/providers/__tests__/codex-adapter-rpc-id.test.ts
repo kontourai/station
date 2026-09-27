@@ -300,4 +300,49 @@ describe('#562: Codex JSON-RPC replies echo the request id with its type', () =>
     await withTimeout(session, 'startSession');
     await adapter.stopAll();
   });
+
+  test('the quota probe takes only its own string ids as replies', async () => {
+    const process = new FakeCodexProcess();
+    const adapter = new CodexAdapter({ processFactory: () => process as never });
+    const read = adapter.readQuotaSnapshot({ connectionId: 'codex-rpc-id' });
+    await flushIo();
+    // Numeric look-alikes of Station's "1"/"2" carry a different payload;
+    // taking them as replies would report 99%.
+    await emit(process, { id: 1, result: {} });
+    await emit(process, {
+      id: 2,
+      result: { rateLimits: { primary: { usedPercent: 99 } } },
+    });
+    await emit(process, { id: '1', result: {} });
+    await emit(process, {
+      id: '2',
+      result: { rateLimits: { primary: { usedPercent: 42 } } },
+    });
+    await expect(withTimeout(read, 'readQuotaSnapshot')).resolves.toMatchObject({
+      kind: 'snapshot',
+      snapshot: { windows: [{ id: 'primary', usedPercent: 42 }] },
+    });
+  });
+
+  test('model discovery takes only its own string ids as replies', async () => {
+    const process = new FakeCodexProcess();
+    const adapter = new CodexAdapter({ processFactory: () => process as never });
+    const models = adapter.listModels();
+    await flushIo();
+    await emit(process, { id: 1, result: {} });
+    await emit(process, {
+      id: 2,
+      result: { data: [{ model: 'wrong-id', displayName: 'Wrong' }] },
+    });
+    await emit(process, { id: '1', result: {} });
+    await emit(process, {
+      id: '2',
+      result: {
+        data: [{ model: 'right-id', displayName: 'Right' }],
+        nextCursor: null,
+      },
+    });
+    const listed = await withTimeout(models, 'listModels');
+    expect(listed.map((model) => model.id)).toEqual(['right-id']);
+  });
 });
