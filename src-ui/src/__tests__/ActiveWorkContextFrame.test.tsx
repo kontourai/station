@@ -155,6 +155,13 @@ describe('ActiveWorkContextFrame', () => {
       screen.getByRole('button', { name: /Open src-ui\/src\/App.tsx/ }),
     );
     expect(onOpenFile).toHaveBeenCalledWith('src-ui/src/App.tsx');
+    // Each row's badge is the change's git status code.
+    expect(
+      Array.from(
+        document.querySelectorAll('.active-work-frame__file-status'),
+        (badge) => badge.textContent,
+      ).slice(0, 2),
+    ).toEqual(['M', 'R']);
     // A rename, a quoted path, and a traversal stay listed but never deep-link.
     for (const displayPath of [
       'old.ts -> new.ts',
