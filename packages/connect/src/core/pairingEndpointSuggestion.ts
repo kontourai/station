@@ -97,16 +97,3 @@ export function suggestPairingEndpoint(
     return undefined;
   }
 }
-
-/** Test seam: forget the remembered address for one host connection. */
-export function forgetPairingEndpoint(
-  apiBase: string,
-  storage?: SuggestionStorage,
-): void {
-  try {
-    const selectedStorage = storage ?? globalThis.localStorage;
-    selectedStorage?.removeItem?.(storageKey(apiBase));
-  } catch {
-    // Storage unavailable — nothing to forget.
-  }
-}
