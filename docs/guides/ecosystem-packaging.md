@@ -1,22 +1,34 @@
-# Ecosystem packaging (owner-gated)
+# Ecosystem packaging
 
-Station has release plumbing for a Homebrew cask and a public `curl | sh`
-fallback, but public distribution is disabled by default. No Homebrew tap,
-package name, release manifest, or signing key is created by this repository.
+Station has tools for signed ecosystem manifests, portable-archive installation
+and Homebrew cask generation. Those tools do not establish a live public
+distribution, an approved tap or production signing-key custody.
 
-The public fallback will obtain its signed manifest from the trust origin and
-the selected artifact from the release origin. The installer rejects an
-artifact served by the manifest authority and verifies the artifact's SHA-256
-against the signed manifest before extracting it. The cask is rendered from
-that same verified manifest, so both installer surfaces pin the exact bytes.
+The installer selects the public-manifest path only when
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` is set; its default path uses GitHub release
+attestation and a GitHub credential. Normal manifest verification uses pinned,
+channel-scoped keys. It does not require different manifest/artifact origins or
+fetch a trust key from a third authority. Signature and hash checks identify the
+signer and artifact bytes, not every aspect of freshness or safe execution.
+See the [manifest contract](../../packaging/manifest/README.md) for version checks
+and the explicit fixture-key override boundary.
 
-`ecosystem-packaging.yml` runs a macOS clean-machine dry-run: it signs an
-ephemeral manifest, renders the cask, installs a freshly packaged artifact with
-no GitHub credential, and then runs the publish boundary in its inert default
-mode. Only a manual dispatch with `publish: true` plus owner-managed publish
-commands may cross the external boundary.
+The [cask renderer](../../packaging/homebrew/README.md) requires a schema-v1
+manifest with a macOS artifact. Schema-v2 portable-only manifests do not imply a
+Homebrew artifact. Rendering a cask does not create a tap or install an app.
 
-Before enabling it, the owner must provision separate release, trust-manifest,
-and trust-key authorities, an offline-held Ed25519 signing key, and an
-explicitly reviewed Homebrew tap destination. These prerequisites are not
-created or claimed by the dry run.
+The [packaging workflow](../../.github/workflows/ecosystem-packaging.yml) is
+configured to run a macOS fixture dry-run: it generates ephemeral signing
+material, verifies/renders a manifest and cask, exercises a packaged installer,
+and reaches the inert publish boundary. Its DMG is a placeholder, and the
+portable install skips starting Station. It does not test a Homebrew install or
+a native application launch. A workflow definition or fixture result
+is not a receipt for a current production release.
+
+External publication is off by default in the
+[boundary script](../../scripts/ecosystem-publish-boundary.sh). When explicitly
+enabled, it requires both manifest and Homebrew publish commands and runs them.
+The workflow supplies those commands from secrets for manual dispatch. The
+script does not verify human approval, protected-environment settings, separate
+origin ownership or key isolation. Those are operator responsibilities to review
+before publication; this documentation audit performed no external publish.

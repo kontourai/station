@@ -2608,7 +2608,12 @@ separate publication/distribution work requiring its own stable-URL evidence.
 
 ### `plugin install <source>`
 
-Install a plugin from a git URL or local path through the configured, running Station server. The server owns the filesystem transaction, registry identities, runtime activation, and rollback. A local path is resolved from the directory where the CLI was invoked and therefore applies only when the CLI and Station server share that filesystem; use a git URL for a remote Station.
+Install a plugin from a git URL or local path through the running Station server.
+The server owns the filesystem transaction, registry identities, runtime activation,
+and rollback. A local path resolves from the CLI's invocation directory and is
+accepted only for an automatically resolved active-local target or the default
+loopback fallback. An explicit `--api-base` or saved-Station selection is refused
+for directory input even when its URL is localhost; use a git URL for those targets.
 
 Dependencies declared in `plugin.json` are resolved and installed automatically.
 

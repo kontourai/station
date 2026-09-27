@@ -3,6 +3,7 @@
 Status: source observations from the documentation audit. Initial baseline:
 `ff2d743b4e45605d0a8500bd15ca4e1a86185ca6`; the linked defect findings below
 were also checked against `3c655ae4cb3223a5c7b5438edb95f14c7a917d94`.
+Later findings name their own source revision in the linked issue.
 This is an investigation guide, not a complete architecture verdict. The
 [learning atlas](../learn/README.md) groups responsibilities; the
 [module map](module-map.md) owns their detailed interfaces.
@@ -265,6 +266,17 @@ the actual browser input path. Finite browser connection pools make contention
 a plausible concern; this audit did not reproduce saturation or measure latency.
 Native and relay transports need separate qualification.
 
+### Staging must use the candidate's dependency contract
+
+Dogfood candidate preparation still runs raw `npm ci` before building a detached
+release, while the current repository has a pnpm lockfile and managed installer.
+Its fixture accepts any npm command, so a green fixture cannot establish
+package-manager compatibility. [#2776](https://github.com/kontourai/station/issues/2776)
+tracks the real candidate caller, a stricter fixture, and a disposable managed
+installation check. This audit inspected the mismatch; it did not stage a live
+release or exercise promotion/rollback. The
+[deployment guide](../guides/deployment.md) retains that qualification limit.
+
 ### Composition owners are difficult to learn as a single page
 
 At the baseline, `station-runtime.ts` has 4,947 lines, `runtime-routes.ts` has
@@ -278,6 +290,25 @@ need several services or raw storage operations for one intent; inspect state
 and cleanup ownership across those calls. A proposed extraction needs a concrete
 reduction in caller obligations and behavioral evidence. Do not introduce a
 generic wrapper merely to shorten a file.
+
+### Published SDK hooks need a complete host implementation
+
+An exported hook can still be unavailable in Station's default plugin host.
+The actual Pane boundary, SDK adapter, and provider do not supply several
+documented context slots; some operation wrappers explicitly reject calls.
+[#2780](https://github.com/kontourai/station/issues/2780) tracks reconciling the
+public SDK contract with these host bindings. The bounded mounted-host probe
+exercised those bindings with mocked surrounding core services; it did not
+install a plugin or run a live Agent.
+
+### Library tests can miss a broken release command
+
+The release workflow calls an assembly CLI whose `sbomContext` function uses
+an unimported filesystem reader. The actual command exits before producing an
+inventory, while nearby tests exercise its library or scan the workflow text.
+[#2783](https://github.com/kontourai/station/issues/2783) records the reproduction
+and requires a regression through both real assembly and validation commands.
+This is a local caller failure, not an observed hosted release attempt.
 
 ### Documentation sometimes hides an abstraction that already exists
 

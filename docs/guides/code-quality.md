@@ -354,7 +354,8 @@ Push only the branch and remote authorized for the task, after its required
 local checks. A configured remote is not publication permission. Do not bypass
 pre-push checks. Follow [AGENTS.md](../../AGENTS.md) for the merge queue and
 current handoff rules; do not manually merge or arm another lane's pull request.
-Inspect the actual CI/queue outcome once and investigate a reported failure.
-Do not poll, repeatedly rerun a failed job, or infer success from silence.
+For the merge queue, arm and confirm once, then stop polling it. When checking
+CI, inspect the actual job and failure before deciding what to rerun; silence is
+not success. Follow the task's required verification through its real outcome.
 Focused checks remain diagnostic; the hosted exact-revision completion receipt
 has its separate scope in [testing](testing.md).

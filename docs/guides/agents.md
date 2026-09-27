@@ -45,7 +45,8 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 
 ### MCP Tool Configuration
 
-`tools` in agent.json controls which MCP servers connect and which tools are exposed:
+For Station-engine Agents, `tools` selects MCP connections and exposed tools.
+External delivery follows the [engine policy contract](../conformance/tool-policy-delivery.md):
 
 ```json
 {
@@ -59,7 +60,7 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 
 - `mcpServers` — IDs of MCP servers to connect (each defined in `<STATION_HOME>/integrations/<id>/tool.json`)
 - `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers
-- `autoApprove` — tools that execute without user confirmation in attended chat; all other tools trigger the approval flow
+- `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
 
 `tools.aliases` is retired. Older files still load because the loader removes
@@ -97,7 +98,7 @@ Station guardrail declaration does not establish external enforcement:
 
 ## Agent Lifecycle
 
-For Station-engine Agents, the native runtime loads and manages this lifecycle.
+For Station-engine Agents, the server loads and manages this lifecycle.
 External-engine Agents use the canonical [Session API](../reference/session-api.md)
 and their own adapter; they are not entries in this native `activeAgents` loop:
 
@@ -130,9 +131,15 @@ legacy SSE approval transport. Canonical orchestration clients instead read
 `request.opened` and send `respondToRequest` through the
 [Session API](../reference/session-api.md#respondtorequest).
 
-Flow:
-1. `beforeToolCall` hook fires — checks `autoApprove` list via `isAutoApproved()`
-2. If not auto-approved, the hook calls `requestApproval` (wired per-request by the chat handler)
+The [staged evaluator](../../src-server/runtime/agents/pre-tool-policy.ts)
+can allow, deny, or request an interactive decision. It checks current runtime
+generation, delegation and configuration protection before grants; the approval
+guardian can also decide a call. The following is the interactive branch, not
+every possible tool outcome:
+
+1. `beforeToolCall` invokes the staged policy with the current invocation.
+2. If the result requires interaction and a requester exists, the hook calls
+   `requestApproval` (wired per conversation by the chat handler).
 3. `requestApproval` injects a `tool-approval-request` SSE event into the stream
 4. The client renders a confirmation UI and `POST /tool-approval/:approvalId` with `{ approved: true/false }`
 5. `ApprovalRegistry.resolve()` unblocks the hook; the tool executes or is skipped

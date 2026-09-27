@@ -428,31 +428,32 @@ STATION_HOSTED_TENANT_REGISTRY_FILE=/run/secrets/station-tenants.json # optional
 
 ### Pre-provisioning projects
 
-Station discovers projects from `<STATION_HOME>/projects/<slug>/project.json`.
-A distributor or deployment operator can pre-place one or more project
-directories (each with a valid `project.json`, optionally a `layouts/`
-subdirectory) under `<STATION_HOME>/projects/` before the very first server
-boot. The legacy Project/layout portion of `runStartupMigrations` returns when
-`<STATION_HOME>/projects/` exists. Earlier orchestration migration and default
-provider initialization still run; this is not a no-write guarantee for the
-whole home. Pre-placed valid Projects can become the initial Project inventory. This is
-the supported provisioning mechanism — there is no separate plugin API for
-seeding projects.
+Station discovers Projects from `<STATION_HOME>/projects/<slug>/project.json`.
+Seed only an initialized home with the current schema. For a manual deployment,
+initialize an isolated home through the supported lifecycle, stop its writers,
+then place valid Project records and any layout files before the next start.
+An already-qualified current-schema home archive is another starting point;
+follow the recovery procedure rather than inventing schema-marker bytes.
 
-The [home-schema gate](../../packages/shared/src/station-home-schema.ts) also
-runs before application loading. Pre-populating files must satisfy that gate's
-supported schema/bootstrap rules; copying a Project directory is not a schema
-migration or a way to grant Project membership.
+A markerless directory containing Projects or legacy layouts is **not** a valid
+fresh home. The [schema gate](../../packages/shared/src/station-home-schema.ts)
+runs in both the CLI lifecycle and server entry before application migrations.
+It refuses those directories instead of treating their contents as disposable
+bootstrap scaffolding. Copying a Project is neither a schema migration nor a
+Project membership grant.
 
-A brand-new `STATION_HOME` with no `projects/` directory and no pre-#1628
-`<STATION_HOME>/layouts/*` content boots with zero projects, landing on the
-Home view's "Start direct chat" / "Open local project" actions rather than a
-seeded `Default` project. A pre-#1628 home with earlier
-`<STATION_HOME>/layouts/*/layout.json` content is the one exception: it still
-migrates to a `Default` project on first boot, carrying its layouts over,
-exactly as before. See [Distribution Profiles](./distribution-profiles.md)
-for starter-layout *catalog* policy, a related but distinct concern from
-project provisioning.
+After schema admission, the Project/layout portion of
+[runStartupMigrations](../../src-server/domain/migration.ts) returns when
+`projects/` already exists. Earlier orchestration migration and default-provider
+initialization still run; this is not a no-write guarantee for the home.
+The helper also retains legacy layout-to-Project conversion for an admitted
+home. That leaf behavior does not make an arbitrary old, markerless home
+upgradeable by starting Station.
+
+A valid new home without Project or legacy layout records starts with zero
+Projects and the Home actions for direct chat or opening a local project.
+[Distribution Profiles](./distribution-profiles.md) covers starter-layout
+catalog policy, which is separate from provisioning saved Project records.
 
 ## Headless Station on a Windows host over SSH
 
@@ -573,7 +574,8 @@ legacy `npm ci` plus `./station build` before stopping the active release.
 That dependency command is not the repository's managed pinned-pnpm setup path;
 the current root has no npm lockfile. This supervisor's successful staging on a
 current revision needs qualification/correction before use, not a claim inferred
-from its older fixtures. Promotion binds the configured API, terminal, voice,
+from its older fixtures. [#2776](https://github.com/kontourai/station/issues/2776)
+tracks that correction. Promotion binds the configured API, terminal, voice,
 consent and UI listeners to `127.0.0.1`, verifies the exact build SHA locally and through
 Tailscale Serve HTTPS, and only then commits `active`/`previous` state. A build
 failure leaves the active process alone; a post-stop failure restarts and

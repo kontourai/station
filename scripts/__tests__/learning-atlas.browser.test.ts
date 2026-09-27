@@ -129,9 +129,12 @@ test('a reader follows a concept into its exact module, searches, and returns th
     'Partially reviewed',
   );
   await browserExpect(page.locator('.review-status')).toContainText(
-    'Reviewed sections do not certify the full catalog.',
+    'the full page is not verified',
   );
   await page.locator('summary').filter({ hasText: 'Sources & review' }).click();
+  await browserExpect(page.locator('.source-details')).toContainText(
+    'Reviewed sections do not certify the full catalog.',
+  );
   await browserExpect(
     page.getByRole('link', { name: 'Source on GitHub' }),
   ).toHaveAttribute(
@@ -180,6 +183,10 @@ test('a reader follows a concept into its exact module, searches, and returns th
     'Policy · Purpose checked',
   );
   await browserExpect(page.locator('.review-status')).toContainText(
+    'Purpose classification does not verify current behavior.',
+  );
+  await page.locator('summary').filter({ hasText: 'Sources & review' }).click();
+  await browserExpect(page.locator('.source-details')).toContainText(
     'not proof that every current feature meets them',
   );
   await page.goto('http://atlas.test/#doc=docs%2Fuser%2Fgetting-started.md');

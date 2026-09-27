@@ -304,8 +304,10 @@ station_checkout=/absolute/path/to/station
 ```
 
 The CLI resolves the selected Station and credential through its normal target
-owner. A directory source must be readable by that Station; this is not a local
-directory upload to an arbitrary remote server. The
+owner. A directory source requires an automatically resolved active-local target
+or the default loopback fallback. Explicit `--api-base` and saved-Station
+selections are refused for directory input even when their URL is localhost.
+Use a Git URL for those selections; the CLI does not upload a local directory. The
 [install command](../cli/src/commands/install.ts) performs preview before install
 and carries the returned content digest, required permissions, registry/grant
 revisions and dependency approvals into the request. Prefer that client over a

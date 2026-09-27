@@ -156,11 +156,20 @@ function showDocument(doc, section, module) {
   const reviewTitle = review
     ? `${kindLabels[review.kind]} · ${stateLabels[review.state]}`
     : 'Full review pending';
+  const stateDescriptions = {
+    classified: 'Purpose classification does not verify current behavior.',
+    partial:
+      'Only selected claims have been checked; the full page is not verified.',
+    'source-reviewed':
+      'Checked within the recorded scope; live outcomes need their own evidence.',
+    'needs-review':
+      'The document or its supporting code changed after this review.',
+  };
   const reviewText = review
-    ? `${review.summary} ${review.state === 'needs-review' ? 'The document or its supporting code changed after this review. ' : ''}${review.limits}`
+    ? stateDescriptions[review.state]
     : 'This page has not been verified in full against the code.';
   const evidence = review
-    ? `<p>Recorded against source revision <code>${escapeText(review.sourceRevision)}</code>.</p>${review.sources.length ? `<ul>${review.sources.map((source) => `<li><a href="${atlas.sourceSnapshots[source.path]}">${escapeText(source.path)}</a></li>`).join('')}</ul>` : ''}${review.checks.length ? `<p>Recorded checks:</p><ul>${review.checks.map((check) => `<li>${escapeText(check)}</li>`).join('')}</ul>` : ''}`
+    ? `<p><strong>Review scope.</strong> ${escapeText(review.summary)}</p><p><strong>Limits.</strong> ${escapeText(review.limits)}</p><p>Recorded against source revision <code>${escapeText(review.sourceRevision)}</code>.</p>${review.sources.length ? `<ul>${review.sources.map((source) => `<li><a href="${atlas.sourceSnapshots[source.path]}">${escapeText(source.path)}</a></li>`).join('')}</ul>` : ''}${review.checks.length ? `<p>Recorded checks:</p><ul>${review.checks.map((check) => `<li>${escapeText(check)}</li>`).join('')}</ul>` : ''}`
     : '';
   readingStatus.innerHTML = `<p class="review-status"><strong>${escapeText(reviewTitle)}.</strong> ${escapeText(reviewText)} <a href="${documentHref('docs/plans/documentation-code-audit.md#initial-findings')}">See reviewed claims and corrections</a>.</p><details class="source-details"><summary>Sources & review</summary><div class="doc-actions"><a href="${doc.sourceUrl}">Markdown source</a><a href="https://github.com/kontourai/station/blob/${atlas.revision}/${sourcePath}${module ? `#${module.id}` : ''}">Source on GitHub</a><a href="${documentHref('docs/plans/documentation-code-audit.md')}">Audit status</a></div>
     <p class="provenance">${escapeText(doc.path)}${atlas.dirty ? ' · Working-tree changes included; unpublished changes may not exist at the GitHub revision.' : ''}</p>${evidence}</details>`;

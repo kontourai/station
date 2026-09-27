@@ -17,7 +17,8 @@ It has no release, package, or image mutation permission.
 `readFileSync` without importing it. A bounded synthetic CLI invocation fails
 before inventory output. The workflow contract below describes the intended
 stage/publish sequence; it is not a claim that this checkout can currently
-complete draft assembly. Fix and test that entry point before release use.
+complete draft assembly. [#2783](https://github.com/kontourai/station/issues/2783)
+tracks the import repair and a regression through the actual CLI entry point.
 
 ## Supported inventory
 
