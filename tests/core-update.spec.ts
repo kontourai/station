@@ -327,6 +327,14 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
       ),
     ).toBeVisible();
     await expect(serverCard.getByText(/Source update/)).toHaveCount(0);
+    // The status names the install, so the connection-only guess is gone,
+    // and a prebuilt release has no source installation to disclose.
+    await expect(
+      serverCard.getByText('Server update method unknown.'),
+    ).toHaveCount(0);
+    await expect(
+      serverCard.getByText('Source installation details'),
+    ).toHaveCount(0);
     await serverCard.scrollIntoViewIfNeeded();
     await serverCard.screenshot({
       path: testInfo.outputPath('archive-update-offer.png'),
@@ -355,6 +363,10 @@ test.describe('Release archive run by the service launcher (#2675 D3)', () => {
         /The update to 0\.8\.0-preview\.2 was rolled back: the new version did not become ready in time\. The server runs 0\.8\.0-preview\.1/,
       ),
     ).toBeVisible({ timeout: 10000 });
+    // After the outcome the offer is either absent (until the re-check
+    // answers) or live again: never a disabled leftover of the accepted POST.
+    const offers = serverCard.getByRole('button', { name: /Update server to/ });
+    await expect(offers).toBeEnabled({ timeout: 10000 });
     await serverCard.screenshot({
       path: testInfo.outputPath('archive-update-rolled-back.png'),
     });

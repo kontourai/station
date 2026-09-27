@@ -472,6 +472,12 @@ describe('ConnectedServerUpdates', () => {
         ),
       ).toBeTruthy();
       expect(screen.queryByText(/[Ss]ource update cannot/)).toBeNull();
+      // The server said it can update itself from here, and it has no
+      // source installation: neither connection-only line stands.
+      expect(screen.queryByText('Manage updates on that host.')).toBeNull();
+      expect(screen.queryByText('Source installation details')).toBeNull();
+      // Paired-server facts that stay true are kept.
+      expect(screen.getByText(/Server on station\.example\.test/)).toBeTruthy();
 
       applyBody = () => ({
         success: true,
@@ -522,7 +528,7 @@ describe('ConnectedServerUpdates', () => {
       );
     });
 
-    it('the source disclosure says an archive has no source, never "Source update cannot be applied"', async () => {
+    it('an archive no launcher runs keeps "Manage updates on that host." and shows no source disclosure', async () => {
       await renderArchive(
         archiveServiceBody({
           installKind: 'archive',
@@ -540,12 +546,8 @@ describe('ConnectedServerUpdates', () => {
       expect(
         screen.queryByRole('button', { name: /Update server/ }),
       ).toBeNull();
-      fireEvent.click(screen.getByText('Source installation details'));
-      expect(
-        await screen.findByText(
-          'This server runs a prebuilt Station release, so it has no source installation.',
-        ),
-      ).toBeTruthy();
+      expect(screen.getByText('Manage updates on that host.')).toBeTruthy();
+      expect(screen.queryByText('Source installation details')).toBeNull();
       expect(
         screen.queryByText(/Source update cannot be applied here/),
       ).toBeNull();
@@ -643,6 +645,52 @@ describe('ConnectedServerUpdates', () => {
         transportCalls.some((url) => url.includes('/api/system/core-update')),
       ).toBe(true),
     );
+  });
+
+  it('a status naming its install kind replaces the unresolved "method unknown" line (#2675 D3)', async () => {
+    await renderHarness({
+      store: PAIRED_STORE,
+      bundledStatus: null,
+      profileOverrides: { supervisesBundledServer: true },
+      identity: () =>
+        identityResponseFor({
+          instanceId: 'remote-instance',
+          bootId: 'remote-boot',
+        }),
+      coreUpdate: () => ({
+        installKind: 'archive-service',
+        applyMethod: 'service-update',
+        channel: 'preview',
+        currentVersion: '0.8.0-preview.1',
+        latestVersion: '0.8.0-preview.2',
+        releaseCheck: 'verified',
+        updateAvailable: true,
+        serverIdentity: {
+          instanceId: 'remote-instance',
+          bootId: 'remote-boot',
+          sha: SHA,
+        },
+        provenanceIssue: null,
+        technicalDetail: null,
+        selfUpdateUnavailableReason: null,
+        serviceUpdate: { state: 'idle' },
+      }),
+    });
+    await waitConnected();
+    await waitIdentitySettled();
+    expect(
+      await screen.findByText('Server update method unknown.'),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check for server updates' }),
+    );
+    expect(
+      await screen.findByText(
+        'Station 0.8.0-preview.2 is available. This server runs 0.8.0-preview.1.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Server update method unknown.')).toBeNull();
+    expect(screen.queryByText('Source installation details')).toBeNull();
   });
 
   it('resolves unresolved when the desktop supervises nothing though identity answers', async () => {

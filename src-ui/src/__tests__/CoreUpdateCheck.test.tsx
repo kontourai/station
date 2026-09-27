@@ -55,6 +55,7 @@ let serviceProgressOptions:
     }
   | undefined;
 const scopeOptionsCalls: Array<{ scopeKey?: string } | undefined> = [];
+const applyReset = vi.fn();
 
 vi.mock('@kontourai/station-sdk', () => ({
   useCoreUpdateStatusQuery: (
@@ -79,6 +80,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     applyOptions = options;
     return {
       mutate: vi.fn(),
+      reset: applyReset,
       isPending: false,
       error: null,
     };
@@ -187,6 +189,8 @@ afterEach(() => {
   serviceProgressState.data = undefined;
   serviceProgressState.isError = false;
   serviceProgressOptions = undefined;
+  applyReset.mockReset();
+  queryState.dataUpdatedAt = 1_786_000_000_000;
 });
 
 describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
@@ -1242,6 +1246,23 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     );
     expect(rolledBack.className).toContain('settings__update-msg--warning');
     expect(queryState.refetch).toHaveBeenCalledTimes(1);
+    // The accepted POST no longer styles anything, and the pre-update
+    // comparison earns no offer until the re-check it triggered answers.
+    expect(applyReset).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole('button', { name: /Update server to/ }),
+    ).toBeNull();
+    queryState.dataUpdatedAt = Date.now() + 1;
+    view.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext()}
+      />,
+    );
+    const again = screen.getByRole('button', {
+      name: 'Update server to 0.8.0-preview.2',
+    }) as HTMLButtonElement;
+    expect(again.disabled).toBe(false);
   });
 
   test('a server that stops answering mid-update says it is restarting, not that the update failed', () => {

@@ -1,7 +1,15 @@
+import {
+  type CoreUpdateStatus,
+  useCoreUpdateStatusQuery,
+} from '@kontourai/station-sdk';
 import type { ConnectedServerUpdateContext } from '../../hooks/useConnectedServerUpdateContext';
-import { useConnectedServerUpdateContext } from '../../hooks/useConnectedServerUpdateContext';
+import {
+  coreUpdateScopeFromContext,
+  useConnectedServerUpdateContext,
+} from '../../hooks/useConnectedServerUpdateContext';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { CoreUpdateCheck } from './CoreUpdateCheck';
+import { isArchiveInstall } from './coreUpdatePresentation';
 import { SourceInstallerDisclosure } from './SourceInstallerDisclosure';
 
 function serverHost(apiBase: string): string {
@@ -12,10 +20,34 @@ function serverHost(apiBase: string): string {
   }
 }
 
+const KNOWN_INSTALL_KINDS: ReadonlySet<CoreUpdateStatus['installKind']> =
+  new Set(['source-checkout', 'desktop-bundle', 'archive', 'archive-service']);
+
+/**
+ * The server's own answer, once it has given one, outranks what the
+ * connection alone can say: a status naming its install kind resolves the
+ * "method unknown" guess, and one that can apply an update from here makes
+ * "manage updates on that host" untrue.
+ */
+function statusResolvesMethod(status: CoreUpdateStatus | undefined): boolean {
+  return KNOWN_INSTALL_KINDS.has(status?.installKind);
+}
+
+function statusAppliesFromHere(status: CoreUpdateStatus | undefined): boolean {
+  return (
+    !!status &&
+    !status.selfUpdateUnavailableReason &&
+    (status.applyMethod === 'service-update' ||
+      status.applyMethod === 'git-pull')
+  );
+}
+
 function ServerIdentitySummary({
   context,
+  status,
 }: {
   context: ConnectedServerUpdateContext;
+  status: CoreUpdateStatus | undefined;
 }) {
   const profile = usePlatformProfile();
 
@@ -38,11 +70,13 @@ function ServerIdentitySummary({
           Connected to {context.connectionName} · {context.apiBase}
         </p>
       )}
-      {context.kind === 'unresolved' && context.identitySettled && (
-        <p className="settings__update-msg settings__update-msg--warning">
-          Server update method unknown.
-        </p>
-      )}
+      {context.kind === 'unresolved' &&
+        context.identitySettled &&
+        !statusResolvesMethod(status) && (
+          <p className="settings__update-msg settings__update-msg--warning">
+            Server update method unknown.
+          </p>
+        )}
       {context.kind === 'installed-local-service' && (
         <>
           <p className="settings__update-msg" role="status">
@@ -60,7 +94,9 @@ function ServerIdentitySummary({
           <p className="settings__update-msg" role="status">
             Server on {serverHost(context.apiBase)}.
           </p>
-          <p className="settings__field-hint">Manage updates on that host.</p>
+          {!statusAppliesFromHere(status) && (
+            <p className="settings__field-hint">Manage updates on that host.</p>
+          )}
           <p className="settings__field-hint">
             Updates apply to the server at this address and affect its connected
             clients.
@@ -79,6 +115,17 @@ function ServerIdentitySummary({
  */
 export function ConnectedServerUpdates() {
   const context = useConnectedServerUpdateContext();
+  // The same query (same key) CoreUpdateCheck and the source disclosure
+  // mount: this observer never fetches on its own, it only reads the answer
+  // they asked for.
+  const { data: status } = useCoreUpdateStatusQuery(
+    context.apiBase,
+    { enabled: false },
+    {
+      scopeKey: coreUpdateScopeFromContext(context),
+      assertCurrent: context.isCurrent,
+    },
+  );
 
   // CoreUpdateCheck owns hooks internally, so this is a conditional RETURN,
   // not a conditional prop: for a built-in sidecar the source check must not
@@ -99,7 +146,7 @@ export function ConnectedServerUpdates() {
 
   return (
     <div>
-      <ServerIdentitySummary context={context} />
+      <ServerIdentitySummary context={context} status={status} />
       {/* Fail-closed enablement: identity SUCCESS (not merely settled), no
         pending native observation on a supervising desktop, no unresolved
         claim on the observed native owner, and a connected server. An
@@ -116,7 +163,10 @@ export function ConnectedServerUpdates() {
           context.reachability === 'connected'
         }
       />
-      <SourceInstallerDisclosure context={context} />
+      {/* A prebuilt release has no source installation to disclose. */}
+      {!(status && isArchiveInstall(status)) && (
+        <SourceInstallerDisclosure context={context} />
+      )}
     </div>
   );
 }

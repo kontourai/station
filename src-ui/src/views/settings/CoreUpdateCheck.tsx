@@ -74,6 +74,10 @@ export function CoreUpdateCheck({
   const connectionScope = `${apiBase}\u0000${context?.scopeKey ?? 'no-scope'}`;
   const [serviceUpdateRequest, setServiceUpdateRequest] =
     useState<TrackedServiceUpdate | null>(null);
+  // When a followed update reached its outcome. The offer stays closed until
+  // a check made after it answers, so the card never shows the pre-update
+  // comparison's button beside the outcome.
+  const [serviceOutcomeAt, setServiceOutcomeAt] = useState<number | null>(null);
   const [restartVerification, setRestartVerification] =
     useState<RestartVerificationState>({ state: 'idle' });
   const [selfUpdating, setSelfUpdating] = useState(false);
@@ -400,11 +404,17 @@ export function CoreUpdateCheck({
     serviceProgressQuery.data.requestId === trackedServiceUpdate.requestId;
   // The tracked update finished: stop following it and re-check, so the
   // versions shown are the ones the service now runs.
+  const resetApply = updateMutation.reset;
   useEffect(() => {
     if (!trackedOutcome) return;
     setServiceUpdateRequest(null);
+    setServiceOutcomeAt(Date.now());
+    // The accepted POST is history now: nothing about it may style the offer.
+    resetApply();
     void check();
-  }, [trackedOutcome, check]);
+  }, [trackedOutcome, check, resetApply]);
+  const awaitingOutcomeRecheck =
+    serviceOutcomeAt !== null && dataUpdatedAt <= serviceOutcomeAt;
   const serviceFollowExpired =
     !!trackedServiceUpdate &&
     serviceUpdateInFlight &&
@@ -440,7 +450,8 @@ export function CoreUpdateCheck({
     status.releaseCheck === 'verified' &&
     !!status.latestVersion &&
     !serviceUpdateInFlight &&
-    !trackedServiceUpdate;
+    !trackedServiceUpdate &&
+    !awaitingOutcomeRecheck;
   const canApply =
     !!status &&
     !comparisonSuperseded &&
