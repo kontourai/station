@@ -1549,7 +1549,7 @@ each writing a receipt (an empty slice passes explicitly with an `empty`
 receipt); `fast-checks-statics` runs `ci:fast` with
 `STATION_CI_FAST_SCOPE=statics` plus the browser smoke, performance smoke and
 UI bundle budget. `fast-checks` fails unless every part job succeeded and
-`scripts/fast-checks-shard.mjs aggregate` proves each shard ran exactly its
+the `aggregate` command of `scripts/fast-checks-shard.mjs` proves each shard ran exactly its
 slice of that plan; a skipped or cancelled part, a missing receipt, or a
 receipt for another plan or head fails it. A deferred selection (the
 selector's exit 3) is reported and passes, as it does in unsharded `ci:fast`.
