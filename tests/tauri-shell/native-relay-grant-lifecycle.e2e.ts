@@ -64,6 +64,9 @@ const NATIVE_ECHO_LANE =
 const INJECT_ECHO_CLEANUP_FAILURE =
   NATIVE_ECHO_LANE &&
   process.env.STATION_TAURI_E2E_INJECT_ECHO_CLEANUP_FAILURE === '1';
+const INJECT_ECHO_JOURNEY_FAILURE =
+  NATIVE_ECHO_LANE &&
+  process.env.STATION_TAURI_E2E_INJECT_ECHO_JOURNEY_FAILURE === '1';
 
 type KeychainItem = { service: string; account: string };
 type NativeEchoPollResult = Awaited<
@@ -1536,6 +1539,11 @@ async function main() {
     console.log(
       `native relay grant lifecycle: main WebView IPC redeemed ${grantId}, persisted status, staged retirement failure ${cleanupId}, then retried cleanup; source ${process.env.STATION_TAURI_E2E_SOURCE_SHA ?? 'unrecorded'}`,
     );
+    if (INJECT_ECHO_JOURNEY_FAILURE)
+      throw new Error('injected native echo journey failure');
+  } catch (error) {
+    journeyFailed = true;
+    journeyError = error;
   } finally {
     try {
       if (fixture && expectedProfileRevision > 0) {
@@ -1694,8 +1702,7 @@ async function main() {
         }
       }
     } catch (error) {
-      journeyFailed = true;
-      journeyError = error;
+      cleanupErrors.push(error);
     } finally {
       try {
         await fixture?.stop();
