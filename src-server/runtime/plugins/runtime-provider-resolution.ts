@@ -129,25 +129,6 @@ export async function createRuntimeModelSelection(
   };
 }
 
-export async function resolveConfiguredModelId(
-  spec: Pick<AgentSpec, 'model'>,
-  options: {
-    appConfig: Pick<AppConfig, 'defaultModel'>;
-    modelCatalog?: BedrockModelResolver;
-  },
-): Promise<string> {
-  const modelId = spec.model || options.appConfig.defaultModel || '';
-  if (!modelId) {
-    throw new Error('A Bedrock model selector is required.');
-  }
-  if (!options.modelCatalog) {
-    throw new Error(
-      'Bedrock model catalog is required to resolve a launchable selector.',
-    );
-  }
-  return options.modelCatalog.resolveModelId(modelId);
-}
-
 export async function resolveManagedModelBinding(
   spec: Pick<AgentSpec, 'model' | 'execution' | 'region'>,
   options: {
@@ -532,6 +513,20 @@ function resolveManagedProviderConnection(
   throw new ManagedModelUnavailableError(resolution.reason);
 }
 
+// The selector is never empty here: `resolveManagedModelIdentity` derives it
+// with the same precedence and refuses an empty one before this runs.
+async function resolveBedrockModelId(
+  modelId: string,
+  modelCatalog: BedrockModelResolver | undefined,
+): Promise<string> {
+  if (!modelCatalog) {
+    throw new Error(
+      'Bedrock model catalog is required to resolve a launchable selector.',
+    );
+  }
+  return modelCatalog.resolveModelId(modelId);
+}
+
 async function resolveManagedModelId(
   spec: Pick<AgentSpec, 'model' | 'execution' | 'region'>,
   options: {
@@ -563,12 +558,9 @@ async function resolveManagedModelId(
     if (auth.authMode && auth.authMode !== 'chain') {
       const perConnectionCatalog = new BedrockModelCatalog(region, auth);
       try {
-        return await resolveConfiguredModelId(
-          { model: preferredModel },
-          {
-            appConfig: { defaultModel: preferredModel },
-            modelCatalog: perConnectionCatalog,
-          },
+        return await resolveBedrockModelId(
+          preferredModel,
+          perConnectionCatalog,
         );
       } finally {
         perConnectionCatalog.dispose();
@@ -576,13 +568,7 @@ async function resolveManagedModelId(
     }
     const regionalCatalog =
       options.modelCatalog?.forRegion?.(region) ?? options.modelCatalog;
-    return resolveConfiguredModelId(
-      { model: preferredModel },
-      {
-        appConfig: { defaultModel: preferredModel },
-        modelCatalog: regionalCatalog,
-      },
-    );
+    return resolveBedrockModelId(preferredModel, regionalCatalog);
   }
 
   const configuredModel = getConnectionDefaultModel(options.providerConnection);

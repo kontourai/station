@@ -12,7 +12,7 @@ import { GENERIC_TOOL_FAILURE_MESSAGE } from '../types.js';
  * content as-is. Without this, a managed Strands agent's render_component output
  * (`{ uiBlock }`) is buried in a content-block array and never renders.
  */
-export function normalizeStrandsToolOutput(content: unknown): unknown {
+function normalizeStrandsToolOutput(content: unknown): unknown {
   if (Array.isArray(content) && content.length === 1) {
     const block = content[0] as Record<string, unknown> | null;
     if (block && typeof block === 'object' && 'json' in block) {
