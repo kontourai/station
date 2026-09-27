@@ -48,47 +48,30 @@ async function temporaryRoot(): Promise<string> {
   return root;
 }
 
-const FS_MUTATIONS = new Set(
-  [
-    'appendFile',
-    'copyFile',
-    'cp',
-    'rename',
-    'rm',
-    'rmdir',
-    'truncate',
-    'unlink',
-    'writeFile',
-  ].flatMap((name) => [name, `${name}Sync`]),
+const FS_MUTATION =
+  '(?:appendFile|copyFile|cp|rename|rmdir|rm|truncate|unlink|writeFile)(?:Sync)?';
+const FS_MODULE = `['"](?:node:)?fs(?:/promises)?['"]`;
+const FS_NAMED_MUTATION_IMPORT = new RegExp(
+  `import\\s*\\{[^}]*?\\b(${FS_MUTATION})\\b[^}]*\\}\\s*from\\s*${FS_MODULE}`,
+  'g',
+);
+const FS_BINDING_IMPORT = new RegExp(
+  `import\\s+(?:\\*\\s+as\\s+)?(\\w+)\\s+from\\s*${FS_MODULE}`,
+  'g',
 );
 
-/** File mutations a module pulls from `fs`, `fs/promises`, or a namespace. */
+/** File mutations a module imports from `fs`/`fs/promises` or calls on its binding. */
 function rawFsMutations(source: string): string[] {
-  const found: string[] = [];
-  const fsImport =
-    /import\s+(type\s+)?([^;]*?)\s+from\s+['"](?:node:)?fs(?:\/promises)?['"]/g;
-  for (const [, typeOnly, clause] of source.matchAll(fsImport)) {
-    if (typeOnly) continue;
-    const named = /\{([^}]*)\}/.exec(clause)?.[1] ?? '';
-    for (const specifier of named.split(',')) {
-      const name = specifier
-        .trim()
-        .replace(/^type\s+/, '')
-        .split(/\s+as\s+/)[0];
-      if (FS_MUTATIONS.has(name)) found.push(name);
-    }
-    const namespace = clause
-      .replace(/\{[^}]*\}/, '')
-      .replace(/[*,]|\bas\b/g, ' ')
-      .trim();
-    for (const binding of namespace.split(/\s+/).filter(Boolean)) {
-      const member = new RegExp(
-        `\\b${binding}(?:\\.promises)?\\.(\\w+)\\s*\\(`,
-        'g',
-      );
-      for (const [, name] of source.matchAll(member)) {
-        if (FS_MUTATIONS.has(name)) found.push(`${binding}.${name}`);
-      }
+  const found = [...source.matchAll(FS_NAMED_MUTATION_IMPORT)].map(
+    ([, name]) => name,
+  );
+  for (const [, binding] of source.matchAll(FS_BINDING_IMPORT)) {
+    const call = new RegExp(
+      `\\b${binding}(?:\\.promises)?\\.(${FS_MUTATION})\\s*\\(`,
+      'g',
+    );
+    for (const [, name] of source.matchAll(call)) {
+      found.push(`${binding}.${name}`);
     }
   }
   return found;
