@@ -3447,6 +3447,66 @@ mod tests {
     }
 
     #[test]
+    fn application_signaling_commands_share_the_diagnostic_host_path_and_registration() {
+        // The application seam is a naming alias over the same host-owned
+        // service path, so its registration and custody boundary must stay
+        // pinned next to the diagnostic commands they mirror.
+        let lib = include_str!("lib.rs");
+        for command in [
+            "native_relay_redemption::station_native_relay_diagnostic_binding",
+            "native_relay_redemption::station_native_relay_signal_diagnostic_open",
+            "native_relay_redemption::station_native_relay_signal_diagnostic_read",
+            "native_relay_redemption::station_native_relay_application_binding",
+            "native_relay_redemption::station_native_relay_application_open",
+            "native_relay_redemption::station_native_relay_application_read",
+        ] {
+            assert!(
+                lib.contains(&format!("        {command},")),
+                "signaling command not registered in lib.rs: {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn application_signaling_ipc_rejects_custody_and_route_fields() {
+        // The application commands reuse the diagnostic input envelopes, so a
+        // bearer, private key, broker URL, or project authority must fail
+        // deserialization exactly as it does on the diagnostic seam.
+        let mut value = serde_json::json!({
+            "profileName": "Local",
+            "expectedProfileRevision": 7,
+            "nonce": "signal-nonce-01",
+        });
+        for field in ["grantBearer", "privateKey", "brokerUrl", "projectId"] {
+            value[field] = serde_json::json!("must-not-cross-ipc");
+            assert!(
+                serde_json::from_value::<NativeRelaySignalDiagnosticOpenInput>(value.clone())
+                    .is_err()
+            );
+            assert!(
+                serde_json::from_value::<NativeRelaySignalDiagnosticReadInput>(value.clone())
+                    .is_err()
+            );
+            assert!(
+                serde_json::from_value::<NativeRelayDiagnosticBindingInput>(value.clone()).is_err()
+            );
+        }
+
+        let binding: NativeRelayDiagnosticBindingInput =
+            serde_json::from_value(serde_json::json!({
+                "profileName": "Local",
+                "expectedProfileRevision": 7,
+            }))
+            .unwrap();
+        assert!(validate_native_relay_binding_input(&binding).is_ok());
+        let mut stale = binding.clone();
+        stale.expected_profile_revision = 0;
+        assert!(validate_native_relay_binding_input(&stale).is_err());
+        stale.expected_profile_revision = JS_SAFE_INTEGER_MAX + 1;
+        assert!(validate_native_relay_binding_input(&stale).is_err());
+    }
+
+    #[test]
     fn native_signal_diagnostic_ipc_accepts_only_bounded_saved_profile_inputs() {
         let open: NativeRelaySignalDiagnosticOpenInput =
             serde_json::from_value(serde_json::json!({
@@ -6873,38 +6933,12 @@ pub(crate) async fn station_native_relay_diagnostic_binding(
     request: NativeRelayDiagnosticBindingInput,
 ) -> Result<NativeRelayDiagnosticBinding, String> {
     crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
-    if !valid_diagnostic_profile_name(&request.profile_name)
-        || request.expected_profile_revision == 0
-        || request.expected_profile_revision > JS_SAFE_INTEGER_MAX
-    {
+    if validate_native_relay_binding_input(&request).is_err() {
         return Err("The native relay diagnostic profile is invalid.".into());
     }
-    tauri::async_runtime::spawn_blocking(move || {
-        let contexts = AppNativeRedemptionContextProvider::new(app.clone());
-        let grants = native_relay_grant_vault();
-        let now = native_now_ms()
-            .map_err(|_| "Station could not verify native relay state.".to_owned())?;
-        contexts
-            .with_current_context(&request.profile_name, |context| {
-                validate_profile_context(&context)?;
-                let owner = NativeProofKeyOwner::new(
-                    &context.profile.app_identifier,
-                    context.profile.channel,
-                    &context.profile.client_instance_id,
-                )
-                .map_err(|_| NativeRedemptionError::InvalidProfile)?;
-                let record = grants.load_request_grant(&owner, &context, now, false)?;
-                diagnostic_binding_from_current(
-                    &request.profile_name,
-                    request.expected_profile_revision,
-                    context,
-                    record.grant,
-                )
-            })
-            .map_err(map_signal_diagnostic_error)
-    })
-    .await
-    .map_err(|_| "Station could not verify native relay diagnostic trust.".to_owned())?
+    tauri::async_runtime::spawn_blocking(move || run_native_relay_binding_request(app, request))
+        .await
+        .map_err(|_| "Station could not verify native relay diagnostic trust.".to_owned())?
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -6917,22 +6951,9 @@ pub(crate) async fn station_native_relay_signal_diagnostic_open(
     if validate_diagnostic_open_input(&request).is_err() {
         return Err("The native relay signaling diagnostic request is invalid.".into());
     }
-    tauri::async_runtime::spawn_blocking(move || {
-        let context = AppNativeRedemptionContextProvider::new(app.clone());
-        let proof_keys = NativeRelayProofKeyVault::new();
-        let http = UreqNativeBrokerTransport::new();
-        let grants = native_relay_grant_vault();
-        NativeRelaySignalService::new(&context, &proof_keys, &http, &grants, native_now_ms_or_zero)
-            .open(&NativeRelaySignalOpenRequest {
-                profile_name: request.profile_name,
-                expected_profile_revision: request.expected_profile_revision,
-                nonce: request.nonce,
-                offer_sdp: request.offer_sdp,
-            })
-            .map_err(map_signal_diagnostic_error)
-    })
-    .await
-    .map_err(|_| "Station could not open the native relay signaling diagnostic.".to_owned())?
+    tauri::async_runtime::spawn_blocking(move || run_native_relay_signal_open_request(app, request))
+        .await
+        .map_err(|_| "Station could not open the native relay signaling diagnostic.".to_owned())?
 }
 
 /// Reads the answer for an existing diagnostic offer. The result contains
@@ -6947,21 +6968,140 @@ pub(crate) async fn station_native_relay_signal_diagnostic_read(
     if validate_diagnostic_read_input(&request).is_err() {
         return Err("The native relay signaling diagnostic request is invalid.".into());
     }
-    tauri::async_runtime::spawn_blocking(move || {
-        let context = AppNativeRedemptionContextProvider::new(app.clone());
-        let proof_keys = NativeRelayProofKeyVault::new();
-        let http = UreqNativeBrokerTransport::new();
-        let grants = native_relay_grant_vault();
-        NativeRelaySignalService::new(&context, &proof_keys, &http, &grants, native_now_ms_or_zero)
-            .read(&NativeRelaySignalReadRequest {
-                profile_name: request.profile_name,
-                expected_profile_revision: request.expected_profile_revision,
-                nonce: request.nonce,
-            })
-            .map_err(map_signal_diagnostic_error)
-    })
-    .await
-    .map_err(|_| "Station could not read the native relay signaling diagnostic.".to_owned())?
+    tauri::async_runtime::spawn_blocking(move || run_native_relay_signal_read_request(app, request))
+        .await
+        .map_err(|_| "Station could not read the native relay signaling diagnostic.".to_owned())?
+}
+
+/// Shared host path for the diagnostic and application signaling commands.
+/// Both names resolve the saved profile, approved Station trust, and the
+/// keyring-held grant in the host; the renderer never supplies custody.
+fn run_native_relay_binding_request(
+    app: AppHandle,
+    request: NativeRelayDiagnosticBindingInput,
+) -> Result<NativeRelayDiagnosticBinding, String> {
+    let contexts = AppNativeRedemptionContextProvider::new(app);
+    let grants = native_relay_grant_vault();
+    let now = native_now_ms().map_err(|_| "Station could not verify native relay state.")?;
+    contexts
+        .with_current_context(&request.profile_name, |context| {
+            validate_profile_context(&context)?;
+            let owner = NativeProofKeyOwner::new(
+                &context.profile.app_identifier,
+                context.profile.channel,
+                &context.profile.client_instance_id,
+            )
+            .map_err(|_| NativeRedemptionError::InvalidProfile)?;
+            let record = grants.load_request_grant(&owner, &context, now, false)?;
+            diagnostic_binding_from_current(
+                &request.profile_name,
+                request.expected_profile_revision,
+                context,
+                record.grant,
+            )
+        })
+        .map_err(map_signal_diagnostic_error)
+}
+
+fn run_native_relay_signal_open_request(
+    app: AppHandle,
+    request: NativeRelaySignalDiagnosticOpenInput,
+) -> Result<NativeRelaySignalOpened, String> {
+    let context = AppNativeRedemptionContextProvider::new(app);
+    let proof_keys = NativeRelayProofKeyVault::new();
+    let http = UreqNativeBrokerTransport::new();
+    let grants = native_relay_grant_vault();
+    NativeRelaySignalService::new(&context, &proof_keys, &http, &grants, native_now_ms_or_zero)
+        .open(&NativeRelaySignalOpenRequest {
+            profile_name: request.profile_name,
+            expected_profile_revision: request.expected_profile_revision,
+            nonce: request.nonce,
+            offer_sdp: request.offer_sdp,
+        })
+        .map_err(map_signal_diagnostic_error)
+}
+
+fn run_native_relay_signal_read_request(
+    app: AppHandle,
+    request: NativeRelaySignalDiagnosticReadInput,
+) -> Result<NativeRelaySignalAnswer, String> {
+    let context = AppNativeRedemptionContextProvider::new(app);
+    let proof_keys = NativeRelayProofKeyVault::new();
+    let http = UreqNativeBrokerTransport::new();
+    let grants = native_relay_grant_vault();
+    NativeRelaySignalService::new(&context, &proof_keys, &http, &grants, native_now_ms_or_zero)
+        .read(&NativeRelaySignalReadRequest {
+            profile_name: request.profile_name,
+            expected_profile_revision: request.expected_profile_revision,
+            nonce: request.nonce,
+        })
+        .map_err(map_signal_diagnostic_error)
+}
+
+/// Validates the shared signaling-command input envelope and binds it to the
+/// application command names. This is custody, not semantics: the exact saved
+/// profile revision, independently approved Station trust, keyring-held grant,
+/// bounded SDP, fixed broker paths, and no route bearer apply identically to
+/// the diagnostic and application seams.
+fn validate_native_relay_binding_input(
+    request: &NativeRelayDiagnosticBindingInput,
+) -> Result<(), ()> {
+    if !valid_diagnostic_profile_name(&request.profile_name)
+        || request.expected_profile_revision == 0
+        || request.expected_profile_revision > JS_SAFE_INTEGER_MAX
+    {
+        return Err(());
+    }
+    Ok(())
+}
+
+/// Signaling-only broker offer for the native application signaling adapter
+/// seam. It is the same host-owned path as the diagnostic commands: main
+/// window only, exact saved-profile revision, approved Station trust, and no
+/// bearer, route, URL, or application DataChannel authority.
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_application_binding(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    request: NativeRelayDiagnosticBindingInput,
+) -> Result<NativeRelayDiagnosticBinding, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if validate_native_relay_binding_input(&request).is_err() {
+        return Err("The native relay application profile is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || run_native_relay_binding_request(app, request))
+        .await
+        .map_err(|_| "Station could not verify native relay application trust.".to_owned())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_application_open(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    request: NativeRelaySignalDiagnosticOpenInput,
+) -> Result<NativeRelaySignalOpened, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if validate_diagnostic_open_input(&request).is_err() {
+        return Err("The native relay application signaling request is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || run_native_relay_signal_open_request(app, request))
+        .await
+        .map_err(|_| "Station could not open native relay application signaling.".to_owned())?
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub(crate) async fn station_native_relay_application_read(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    request: NativeRelaySignalDiagnosticReadInput,
+) -> Result<NativeRelaySignalAnswer, String> {
+    crate::native_relay_key_approval::require_main_app_window(&window, &app)?;
+    if validate_diagnostic_read_input(&request).is_err() {
+        return Err("The native relay application signaling request is invalid.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || run_native_relay_signal_read_request(app, request))
+        .await
+        .map_err(|_| "Station could not read native relay application signaling.".to_owned())?
 }
 
 fn valid_diagnostic_profile_name(profile_name: &str) -> bool {
