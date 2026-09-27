@@ -144,7 +144,12 @@ describe('biome invocation', () => {
     expect(args[1]).toBe('lint');
   });
 
-  it('measures the real tree with no PATH at all, run as the gate process', () => {
+  // Lints the whole tree in a child process, which the spawn allows 120s for.
+  // The test's own budget must outlast that, or a loaded merge-queue runner
+  // kills the test at vitest's 30s default first.
+  it('measures the real tree with no PATH at all, run as the gate process', {
+    timeout: 150_000,
+  }, () => {
     // An empty PATH is the POSIX stand-in for Windows refusing the .cmd shim:
     // spawning `npx` fails here the way `npx.cmd` fails there.
     const result = spawnSync(process.execPath, ['scripts/a11y-ratchet.mjs'], {
