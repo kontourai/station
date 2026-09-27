@@ -1,11 +1,4 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   CreateInput,
@@ -15,12 +8,14 @@ import type {
 import { Hono } from 'hono';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { createKnowledgeRecordRoutes } from '../knowledge-record-routes.js';
 import { createKnowledgeStoreRoutes } from '../knowledge-store-routes.js';
 
 let home: string;
+const makeTempDir = trackTempDirs();
 function storedBytes(root: string): Record<string, string> {
   return Object.fromEntries(
     readdirSync(root, { recursive: true, withFileTypes: true })
@@ -32,12 +27,11 @@ function storedBytes(root: string): Record<string, string> {
   );
 }
 beforeEach(() => {
-  home = mkdtempSync(join(tmpdir(), 'knowledge-create-identity-'));
+  home = makeTempDir('knowledge-create-identity-');
   vi.stubEnv('STATION_HOME', home);
 });
 afterEach(() => {
   vi.unstubAllEnvs();
-  rmSync(home, { recursive: true, force: true });
 });
 
 test.each([
