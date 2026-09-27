@@ -1753,6 +1753,29 @@ describe('CI verification workflow contracts', () => {
       )
       .map((step) => step.run);
     expect(shaping.length).toBeGreaterThanOrEqual(3);
+    // Action steps before the lane, compared with their inputs. Excluded, by
+    // name and with the reason: the base-policy checkout exists only for the
+    // pull-request title gate (fast-checks-statics owns that gate) and is
+    // overwritten by the candidate checkout before any test runs.
+    const REVIEWED_ACTION_EXCLUSIONS = new Map([
+      [
+        'Check out base policy for pull-request title gate',
+        'title gate only; the candidate checkout replaces it before the lane',
+      ],
+    ]);
+    const laneActions = statics
+      .slice(0, laneIndex)
+      .filter(
+        (step) => step.uses && !REVIEWED_ACTION_EXCLUSIONS.has(step.name ?? ''),
+      )
+      .map((step) => JSON.stringify({ uses: step.uses, with: step.with }));
+    // Checkout, pnpm and Node: a shrinking list would pass vacuously.
+    expect(laneActions).toHaveLength(3);
+    for (const name of REVIEWED_ACTION_EXCLUSIONS.keys())
+      expect(
+        statics.some((step) => step.name === name),
+        name,
+      ).toBe(true);
 
     for (const [jobId, entryName] of [
       ['fast-checks-shard', 'Run fast-checks shard'],
@@ -1779,7 +1802,23 @@ describe('CI verification workflow contracts', () => {
         const before = steps.slice(0, entryIndex).map((step) => step.run);
         for (const run of shaping) expect(before, jobId).toContain(run);
       }
+      // Delta review: every action step that sets up the lane's tests
+      // (checkout, pnpm, Node, with its exact inputs) also precedes this
+      // entry, apart from the reviewed exclusions below.
+      const actionsBefore = steps
+        .slice(0, entryIndex)
+        .filter((step) => step.uses)
+        .map((step) => JSON.stringify({ uses: step.uses, with: step.with }));
+      for (const step of laneActions)
+        expect(actionsBefore, `${jobId} ${step}`).toContain(step);
     }
+    // Job-level env reaches every step, tests included; the three jobs
+    // declare the same (today: none), so no job's tests see an extra input.
+    for (const jobId of ['fast-checks-shard', 'fast-checks-plan'])
+      expect(
+        (jobs[jobId] as { env?: unknown }).env,
+        `${jobId} job env`,
+      ).toEqual((jobs['fast-checks-statics'] as { env?: unknown }).env);
     const pkg = JSON.parse(
       readFileSync(resolve(root, 'package.json'), 'utf8'),
     ) as { scripts: Record<string, string> };

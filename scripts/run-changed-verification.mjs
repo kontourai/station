@@ -57,6 +57,7 @@ import {
   createVerificationRequest,
 } from './lib/verification-receipt.mjs';
 import { redactVerificationOutput } from './lib/verification-redaction.mjs';
+import { prepareVerificationExecution } from './lib/verification-request-context.mjs';
 import { groupFiles, VITEST_CORPUS_GROUPS } from './run-vitest-corpus.mjs';
 import {
   buildTestImpactManifest,
@@ -133,6 +134,7 @@ export async function runOwnedChangedCommand(
   args,
   {
     cwd,
+    env,
     execute = executeOwnedCommand,
     emitOutput = false,
     maxBytes = CHANGED_CHILD_OUTPUT_LIMIT_BYTES,
@@ -156,6 +158,9 @@ export async function runOwnedChangedCommand(
   try {
     execution = execute(command, args, spawn, processLabel, {
       cwd,
+      // Undefined inherits this process's environment, as before; a shard
+      // passes the request-bound environment (#2709).
+      ...(env ? { env } : {}),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -885,6 +890,7 @@ async function runVitest(
     planned,
     readReport = readFileSync,
     vitestPath,
+    env,
   } = {},
 ) {
   let plannedExecutions;
@@ -955,6 +961,7 @@ async function runVitest(
             emitOutput: true,
             processLabel: `Changed Vitest ${execution.resourceGroup}`,
             signal: selection.signal,
+            ...(env ? { env } : {}),
           },
         );
       } catch (error) {
@@ -1673,6 +1680,15 @@ export async function runChangedVerification(
           : 1,
   };
 }
+/** The ci-fast lane's execution preparation, as its coordinator applies it. */
+function prepareCiFastExecution({ cwd, env }) {
+  return prepareVerificationExecution({
+    lane: resolveLane('ci-fast'),
+    cwd,
+    env,
+  });
+}
+
 /**
  * #2709: the fast-checks plan. Selection, related discovery, resource
  * partitioning and the empty-discovery escalation run exactly as the
@@ -1785,6 +1801,8 @@ export async function planChangedVerificationShards(
  *   readReport?: typeof readFileSync;
  *   signal?: AbortSignal;
  *   assertDependencyProvenance?: (options: { cwd: string }) => unknown;
+ *   env?: Record<string, string | undefined>;
+ *   prepareExecution?: (options: { cwd: string; env: Record<string, string | undefined> }) => { env: Record<string, string | undefined> };
  * }} [options]
  */
 export async function runChangedVerificationShard(
@@ -1797,11 +1815,19 @@ export async function runChangedVerificationShard(
     readReport,
     signal,
     assertDependencyProvenance = assertWorkspacePackageProvenance,
+    env = process.env,
+    prepareExecution = prepareCiFastExecution,
   } = {},
 ) {
   // The same preflight the unsharded lane runs before any Vitest child: a
   // shared node_modules link must not run the tests of another tree.
   assertDependencyProvenance({ cwd: root });
+  // Review F1/H1: `npm run ci:fast` runs its children under the verification
+  // coordinator, which checks the install against the lockfile and binds
+  // the request environment (STATION_VERIFICATION_HISTORY_REF = this head,
+  // not origin/main). A shard takes the same preparation, from the same
+  // function, so the tests it runs see what the lane's did.
+  const childEnv = prepareExecution({ cwd: root, env }).env;
   const vitest = vitestPath ?? resolve(root, 'node_modules/vitest/vitest.mjs');
   validateSelectedTestFiles(root, slice.files);
   const planned = vitestExecutionsForGroups(slice.groups, {
@@ -1812,7 +1838,7 @@ export async function runChangedVerificationShard(
     root,
     run,
     { signal },
-    { planned, ...(readReport ? { readReport } : {}) },
+    { planned, env: childEnv, ...(readReport ? { readReport } : {}) },
   );
   const counts = countsFor(outcome.executions, outcome.preparation);
   const status = changedVerificationStatus({

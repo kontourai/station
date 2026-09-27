@@ -476,8 +476,11 @@ describe('fast-checks shard execution verdicts', () => {
       numPassedTests: total - failed,
       numFailedTests: failed,
     });
+  const boundExecution = () => ({
+    env: { STATION_VERIFICATION_HISTORY_REF: 'f'.repeat(40) },
+  });
   const fakeRun = (status: number, contents: string) =>
-    vi.fn(async (_command: string, args: string[]) => {
+    vi.fn(async (_command: string, args: string[], _options?: unknown) => {
       const output = args.find((arg) => arg.startsWith('--outputFile='));
       if (output) writeFileSync(output.slice('--outputFile='.length), contents);
       return { status, launch: { started: true } };
@@ -503,7 +506,12 @@ describe('fast-checks shard execution verdicts', () => {
           deferredLanes: deferred ? [{ id: 'test-full', reasons: [] }] : [],
         },
         slice,
-        { root, run: fakeRun(status, contents), vitestPath: 'vitest.mjs' },
+        {
+          root,
+          run: fakeRun(status, contents),
+          vitestPath: 'vitest.mjs',
+          prepareExecution: boundExecution,
+        },
       );
       expect(result.status).toBe(expected);
     },
@@ -524,14 +532,33 @@ describe('fast-checks shard execution verdicts', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  test('runs each file under its resource group profile', async () => {
+  test('runs no child when the execution preparation refuses (stale install)', async () => {
+    const run = fakeRun(0, report(0));
+    await expect(
+      runChangedVerificationShard({ deferredLanes: [] }, slice, {
+        root,
+        run,
+        vitestPath: 'vitest.mjs',
+        prepareExecution: () => {
+          throw new Error('environment-stale: node_modules does not match');
+        },
+      }),
+    ).rejects.toThrow('environment-stale');
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  test('runs each file under its resource group profile, in the prepared environment', async () => {
     const run = fakeRun(0, report(0));
     await runChangedVerificationShard({ deferredLanes: [] }, slice, {
       root,
       run,
       vitestPath: 'vitest.mjs',
+      prepareExecution: boundExecution,
     });
     expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0][2]).toMatchObject({
+      env: { STATION_VERIFICATION_HISTORY_REF: 'f'.repeat(40) },
+    });
     expect(run.mock.calls[0][1]).toEqual(
       expect.arrayContaining([
         'vitest.mjs',
@@ -755,7 +782,10 @@ describe('plan-level empty-discovery escalation (#2709 review F2)', () => {
         encoding: 'utf8',
         windowsHide: true,
       }).trim();
+    // Outside the try: a failed add has nothing to remove, and its own error
+    // surfaces unmasked.
     git(root, 'worktree', 'add', '--detach', worktree, 'HEAD');
+    let failure: unknown;
     try {
       // A directory of links, not one link: `node_modules/` is ignored only
       // as a directory, so the diff stays exactly the committed file.
@@ -844,8 +874,96 @@ describe('plan-level empty-discovery escalation (#2709 review F2)', () => {
       expect(
         unsharded.selection.lanes.map((lane: { id: string }) => lane.id),
       ).toEqual(plan.deferredLanes.map((lane: { id: string }) => lane.id));
-    } finally {
+    } catch (error) {
+      failure = error;
+    }
+    // Review nit: a failing cleanup must not replace the test's own error.
+    try {
       git(root, 'worktree', 'remove', '--force', worktree);
+    } catch (cleanupError) {
+      if (failure === undefined) throw cleanupError;
+    }
+    if (failure !== undefined) throw failure;
+  });
+});
+
+describe("a real shard run inherits the lane coordinator's bindings (review H1)", () => {
+  test('a test in a shard sees STATION_VERIFICATION_HISTORY_REF equal to the head, not origin/main', {
+    timeout: 180_000,
+  }, () => {
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: root,
+      encoding: 'utf8',
+      windowsHide: true,
+    }).trim();
+    // A git-ignored directory Vitest still collects from, so the probe is a
+    // real selected test without touching tracked files.
+    const probeDir = join(
+      root,
+      'test-results',
+      `fast-checks-history-probe-${process.pid}-${Date.now()}`,
+    );
+    mkdirSync(probeDir, { recursive: true });
+    try {
+      const probe = `test-results/${probeDir.split('/').pop()}/history-ref.probe.test.ts`;
+      const observed = join(probeDir, 'observed.json');
+      writeFileSync(
+        join(root, probe),
+        [
+          "import { writeFileSync } from 'node:fs';",
+          "import { test } from 'vitest';",
+          "test('observes the verification history ref', () => {",
+          '  const out = process.env.FAST_CHECKS_PROBE_OUT;',
+          '  if (!out) return;',
+          '  writeFileSync(out, JSON.stringify({ ref: process.env.STATION_VERIFICATION_HISTORY_REF ?? null }));',
+          '});',
+          '',
+        ].join('\n'),
+      );
+      const planPath = join(probeDir, 'plan.json');
+      writeFileSync(planPath, JSON.stringify(planFor(head, [probe])));
+      const env: Record<string, string | undefined> = {
+        ...process.env,
+        GITHUB_RUN_ID: '4242',
+        GITHUB_RUN_ATTEMPT: '1',
+        FAST_CHECKS_PROBE_OUT: observed,
+      };
+      // Inherited from an outer verification run, it would pass vacuously.
+      delete env.STATION_VERIFICATION_HISTORY_REF;
+      const npmCli = process.env.npm_execpath;
+      const [command, prefix] =
+        npmCli && /npm-cli\.js$/.test(npmCli)
+          ? [process.execPath, [npmCli]]
+          : ['npm', []];
+      const result = spawnSync(
+        command,
+        [
+          ...prefix,
+          'run',
+          'fast-checks:shard',
+          '--',
+          'run',
+          `--plan=${planPath}`,
+          '--shard=1/4',
+          `--receipt=${join(probeDir, 'receipt.json')}`,
+        ],
+        {
+          cwd: root,
+          encoding: 'utf8',
+          env,
+          timeout: 170_000,
+          windowsHide: true,
+        },
+      );
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+      expect(JSON.parse(readFileSync(observed, 'utf8'))).toEqual({
+        ref: head,
+      });
+      expect(
+        JSON.parse(readFileSync(join(probeDir, 'receipt.json'), 'utf8')),
+      ).toMatchObject({ status: 'completed', files: [probe] });
+    } finally {
+      rmSync(probeDir, { recursive: true, force: true });
     }
   });
 });
