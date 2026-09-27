@@ -3,12 +3,11 @@ import { useEffect, useRef } from 'react';
 import './review-detail.css';
 
 /**
- * #2064 (D4): one independent-review receipt, extracted verbatim from
- * `ReviewQueueView` so the Coding layout and the Review page render the same
- * evidence with the same input-only framing. The incomplete-evidence branch
- * is the load-bearing part: no findings is only "clean" when every reviewer
- * completed, and a second copy of this component is how that distinction
- * quietly stops being made on one of the two surfaces.
+ * #2064 (D4): one independent-review receipt, extracted verbatim from the
+ * retired `ReviewQueueView`; the Review layout renders it. The
+ * incomplete-evidence branch is the load-bearing part: no findings is only
+ * "clean" when every reviewer completed, and a second copy of this component
+ * on another surface is how that distinction quietly stops being made.
  */
 export function IndependentReviewReceiptDetail({
   receipt,
