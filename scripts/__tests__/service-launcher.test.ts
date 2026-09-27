@@ -815,7 +815,10 @@ describe('an update keeps moving when its pieces fail (#2675 D review F1, F4-F7)
       reason: 'candidate-exited:3',
       restoreAttempts: 3,
     });
-    expect(current.output()).toContain('station service stop --instance=');
+    // The recovery is logged right after the state is written.
+    await waitFor('the recovery instruction', () =>
+      current.output().includes('station service stop --instance='),
+    );
     // It waits, serving nothing, instead of exiting into a restart loop.
     await new Promise((resolve) => setTimeout(resolve, 1_500));
     expect(current.process.exitCode).toBeNull();
