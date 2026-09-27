@@ -1,9 +1,10 @@
 # Deterministic PR browser smoke
 
-Every ordinary pull request runs `npm run test:e2e:pr-smoke` against a unique
-Station instance with a temporary home and dynamically allocated loopback-only
-API/UI ports. It cannot share state or ports with an always-on dogfood
-environment on the same host.
+The required `fast-checks` job runs `npm run test:e2e:pr-smoke` for
+same-repository pull requests and merge-group candidates. Fork pull requests
+use a separate isolated job. The smoke runner creates its own Station instance,
+temporary home, and dynamically allocated loopback API/UI ports, keeping it
+separate from an always-on dogfood environment on the same host.
 
 The normative manifest is
 [`PR_BROWSER_SMOKE_CONTRACT`](../../tests/e2e-manifest.mjs). Its seven selected
