@@ -17,6 +17,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
@@ -172,6 +173,9 @@ function registrySourceFixture(
     },
   ]);
 }
+
+// Removed in an after-hook even when a test fails part-way (#2421).
+const trackedTempDir = trackTempDirs();
 
 function writePlugin(
   sourceDir: string,
@@ -6062,8 +6066,7 @@ describe('plugin install consent gate (station#4288)', () => {
     });
 
     test('refuses an absolute dependency source outside the parent package root', async () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
-      cleanupDirs.push(root);
+      const root = trackedTempDir('station-plugin-dependency-');
       const dependencySource = writeProviderDependency(join(root, 'outside'));
       const parentSource = join(root, 'packages', 'enterprise-layout');
       writePlugin(parentSource, {
@@ -6133,8 +6136,7 @@ describe('plugin install consent gate (station#4288)', () => {
     );
 
     test('rejects a dependency provider collision before grants or bytes land', async () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
-      cleanupDirs.push(root);
+      const root = trackedTempDir('station-plugin-dependency-');
       writePlugin(join(root, 'plugins', 'existing-provider'), {
         name: 'existing-provider',
         version: '1.0.0',

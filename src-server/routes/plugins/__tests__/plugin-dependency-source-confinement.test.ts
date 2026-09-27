@@ -10,19 +10,12 @@
  * The remote transport is simulated: `execGit` clones a local fixture
  * repository when asked for the fixture's https URL, and is otherwise real.
  */
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  writeFileSync,
-} from 'node:fs';
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 
@@ -49,15 +42,7 @@ vi.mock('../../../utils/git-exec.js', async (importOriginal) => {
 });
 
 const SECRET = 'outside-dependency-secret';
-const cleanupDirs: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    cleanupDirs
-      .splice(0)
-      .map((dir) => rm(dir, { recursive: true, force: true })),
-  );
-});
+const tempDir = trackTempDirs();
 
 function logger() {
   return {
@@ -87,8 +72,7 @@ function commitRepo(dir: string): void {
  * source root. `<root>/outside/dep` is a real plugin outside that root.
  */
 function layout() {
-  const root = mkdtempSync(join(tmpdir(), 'station-dependency-confinement-'));
-  cleanupDirs.push(root);
+  const root = tempDir('station-dependency-confinement-');
   mkdirSync(join(root, 'home', 'plugins'), { recursive: true });
   const packages = join(root, 'packages');
   const dependency = {
