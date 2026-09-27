@@ -1233,8 +1233,16 @@ function runtimeImportKey(path, source) {
  * called in the initializer are read; a function in any other position (a
  * variable initializer, an object property value, an array element, a
  * return value, a class method) is not, since nothing calls it while the
- * module loads. Calling such a function later at top level from another
- * module (`queries.resolved()`) is the documented two-hop gap.
+ * module loads. A local class contributes its heritage and static members
+ * wherever it is read (they run when it is declared), and, when it is
+ * constructed with `new`, its constructor and instance field initializers,
+ * with the heritage read as invoked (the base constructor runs). Calling a
+ * function or method later at top level from another module
+ * (`queries.resolved()`) is the documented two-hop gap.
+ *
+ * At a USE site (the side-effect statement itself) everything the statement
+ * reads is taken, including every local binding it names, whole: that side
+ * over-approximates.
  *
  * Resolution fails CLOSED: a star it cannot enumerate, or a module it cannot
  * read, is ANY origin. An import cycle is neither provided nor cached; the
@@ -1273,7 +1281,28 @@ function loadTimeIdentifiers(node, locals, into = new Set(), seen = new Set()) {
     seen.add(key);
     if (ts.isFunctionDeclaration(local)) {
       if (invoked && local.body) visit(local.body, false);
-    } else if (local.initializer) visit(local.initializer, invoked);
+    } else if (ts.isClassDeclaration(local)) visitClass(local, invoked);
+    else if (local.initializer) visit(local.initializer, invoked);
+  };
+  // A class's heritage and static members run when it is declared; `new`
+  // also runs the base constructor (so the heritage counts as invoked), the
+  // constructor and the instance field initializers. Methods run only when
+  // called.
+  const visitClass = (node, constructed) => {
+    for (const clause of node.heritageClauses ?? [])
+      for (const type of clause.types) visit(type.expression, constructed);
+    for (const member of node.members) {
+      const isStatic = hasModifier(member, ts.SyntaxKind.StaticKeyword);
+      if (ts.isClassStaticBlockDeclaration(member)) visit(member.body, false);
+      else if (ts.isPropertyDeclaration(member)) {
+        if (member.initializer && (isStatic || constructed))
+          visit(member.initializer, false);
+      } else if (ts.isConstructorDeclaration(member) && constructed) {
+        for (const parameter of member.parameters)
+          if (parameter.initializer) visit(parameter.initializer, false);
+        if (member.body) visit(member.body, false);
+      }
+    }
   };
   const visit = (current, invoked) => {
     if (ts.isIdentifier(current)) {
@@ -1284,6 +1313,10 @@ function loadTimeIdentifiers(node, locals, into = new Set(), seen = new Set()) {
     if (isFunction(current)) {
       // Its body runs now only when this position invokes it.
       if (invoked) visit(current.body, false);
+      return;
+    }
+    if (ts.isClassExpression(current)) {
+      visitClass(current, invoked);
       return;
     }
     if (
@@ -1380,7 +1413,11 @@ export function topLevelUseAnalysis(graph) {
           for (const declaration of statement.declarationList.declarations)
             if (ts.isIdentifier(declaration.name))
               locals.set(declaration.name.text, declaration);
-        } else if (ts.isFunctionDeclaration(statement) && statement.name)
+        } else if (
+          (ts.isFunctionDeclaration(statement) ||
+            ts.isClassDeclaration(statement)) &&
+          statement.name
+        )
           locals.set(statement.name.text, statement);
       }
       infos.set(module, { file, importedFrom, locals });

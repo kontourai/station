@@ -755,6 +755,73 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
       },
     );
 
+    test.each([
+      [
+        'a local subclass of an imported base, constructed (the ListenerManager shape)',
+        "import { SchedulerResponseError } from './client/scheduler';\nclass Registry extends SchedulerResponseError {}\nexport const registry = new Registry();",
+      ],
+      [
+        'a constructed local class whose constructor calls it',
+        "import { listJobs } from './client/scheduler';\nclass Registry { constructor() { listJobs(); } }\nexport const registry = new Registry();",
+      ],
+      [
+        'a constructed local class whose field initializer calls it',
+        "import { listJobs } from './client/scheduler';\nclass Registry { jobs = listJobs(); }\nexport const registry = new Registry();",
+      ],
+      [
+        'a local array holding it, pushed at top level',
+        "import { listJobs } from './client/scheduler';\nconst list = [listJobs];\nregistry.push(list);",
+      ],
+    ])('a use site reading %s keeps whole-barrel', (_label, registration) => {
+      const result = decide(
+        { [REGISTRATION]: registration },
+        SDK_SOURCES[SCHEDULER],
+      );
+      expect(result.decisions[0].reason).toMatch(
+        /registration\.ts line \d+ uses it in a top-level side effect/,
+      );
+    });
+
+    // mid.ts's initializers are pure at mid.ts (an allowlisted call with a
+    // function argument, or a bare reference), so only the load-time read
+    // of the class decides.
+    test.each([
+      [
+        'constructed in a load-time callback: its field initializer runs',
+        'class Registry { jobs = listJobs(); }\nexport const all = Array.from([1], () => new Registry());',
+        'whole-barrel',
+      ],
+      [
+        'a class expression constructed in a load-time callback',
+        'const Registry = class { jobs = listJobs(); };\nexport const all = Array.from([1], () => new Registry());',
+        'whole-barrel',
+      ],
+      [
+        'never constructed: constructor and fields do not run',
+        'class Registry { jobs = listJobs(); constructor() { listJobs(); } }\nexport const all = Registry;',
+        'refined',
+      ],
+      [
+        'never constructed, but its heritage reads it at declaration',
+        'class Registry extends SchedulerResponseError {}\nexport const all = Registry;',
+        'whole-barrel',
+      ],
+    ])(
+      'a local class read through a re-exporter, %s',
+      (_label, body, disposition) => {
+        const mid = `import { listJobs, SchedulerResponseError } from './client/scheduler';\n${body}`;
+        expect(topLevelSideEffect('mid.ts', mid)).toBeNull();
+        const result = decide(
+          {
+            'packages/sdk/src/mid.ts': mid,
+            [REGISTRATION]: "import { all } from './mid';\nregistry.push(all);",
+          },
+          SDK_SOURCES[SCHEDULER],
+        );
+        expect(result.decisions[0].disposition).toBe(disposition);
+      },
+    );
+
     test('a local const that does not read the import is not a use (control)', () => {
       const result = decide(
         {

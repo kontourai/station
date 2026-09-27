@@ -93,6 +93,25 @@ describe('SDK barrel selection on the real corpus', () => {
       expect(decision.reason).toMatch(/^base content unavailable/);
   });
 
+  test('ListenerManager stays whole: barrel-loaded registries construct its subclasses at top level', () => {
+    // context/registry.ts and voice/registry.ts each declare a local
+    // subclass of ListenerManager and construct it at module top level,
+    // so every barrel load runs ListenerManager's constructor.
+    const [decision] = refineSdkBarrelRelatedPaths(
+      ROOT,
+      ['packages/sdk/src/core/ListenerManager.ts'],
+      {
+        base: 'HEAD',
+        readBase: (_root, _base, path) =>
+          readFileSync(join(ROOT, path), 'utf8'),
+      },
+    ).decisions;
+    expect(decision.disposition).toBe('whole-barrel');
+    expect(decision.reason).toMatch(
+      /packages\/sdk\/src\/(context|voice)\/registry\.ts line \d+ uses it in a top-level side effect/,
+    );
+  });
+
   test('before/after: resolving named imports narrows a single-client edit', () => {
     const refined = refinedSeedsFor(graph, SCHEDULER).seeds;
     // The old behaviour: every barrel import depends on the whole barrel.
