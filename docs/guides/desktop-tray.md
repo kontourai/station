@@ -1,6 +1,6 @@
 # Desktop tray
 
-Station's desktop shell presents a native menubar/tray item for its own local
+Station's desktop shell implements a native menubar/tray item for its own local
 runtime. It reads shared, secret-free saved-Station metadata from
 `$STATION_ROOT/config/profiles.json`, selects the unique local entry whose
 `localService.baseDir` owns this Desktop channel's admitted `STATION_HOME`, and
@@ -45,10 +45,16 @@ liveness does not justify launching a duplicate.
 
 | State | Meaning | Poll cadence | Actions |
 | --- | --- | --- | --- |
-| Not installed | No valid service manifest is available | 60 seconds | Open, Start, and Stop disabled |
-| Stopped | Both installed-service identity probes explicitly refused a connection | 30 seconds | Start |
-| Running | Both identity endpoints returned 200 with the manifest instance ID | 10 seconds | Stop, Open Station UI |
-| Unhealthy | A timeout, DNS/error, partial response, non-200 response, or identity mismatch occurred | 10 seconds | Start, Stop, Open Station UI |
+| Not installed | No valid service manifest is available | 10 seconds | Service destinations and controls disabled |
+| Stopped | Both installed-service identity probes explicitly refused a connection | 10 seconds | Start when the current ownership snapshot admits it |
+| Running | Matching identity responses, or the authenticated local proof described below | 10 seconds | Stop for the attached service; valid browser destinations enabled |
+| Unhealthy | A timeout, error, partial response, non-200 response, or identity mismatch occurred | 10 seconds | Stop only for an owned attached service; valid browser destinations may remain enabled |
+
+These rows describe installed-service health. The built-in sidecar has its own
+supervisor phase and no installed-service Start/Stop control. Health alone does
+not grant a service action: [`tray.rs`](../../src-desktop/src/tray.rs) combines it
+with the current Desktop ownership snapshot. All states use the ten-second
+interval from [`service_state.rs`](../../src-desktop/src/service_state.rs).
 
 The tray reads `/api/system/identity` on the manifest server port and
 `/__station/identity` on the manifest UI port. If API identity requires
@@ -104,19 +110,25 @@ is absent because their native reconstruction path is not implemented.
 Open Station UI uses the owned runtime manifest's UI port. Start and Stop run the
 installed checkout's absolute Node, `tsx`, and `scripts/station-cli.ts` paths
 with an explicit PATH; the desktop process never trusts a GUI-launcher PATH.
-The equivalent terminal commands are:
+For terminal diagnosis, carry the same manifest identity rather than allowing
+the CLI to select a different default. For example, fill these values from
+the admitted service manifest:
 
 ```bash
-station service start --json
-station service stop --json
-station service status --json
+./station service status --instance=<instance-id> --base=<runtime-home> --port=<api-port> --ui-port=<ui-port> --host=<manifest-host> --json
 ```
+
+Use `start` or `stop` in place of `status` only when intending that service
+mutation. The tray supplies these arguments through the manifest's exact
+installed checkout; use that same checkout for the terminal command.
 
 On macOS, Start bootstraps an unloaded LaunchAgent and then uses
 `launchctl kickstart -k`; Stop uses `launchctl bootout` so `KeepAlive` cannot
-immediately relaunch it. Linux uses `systemctl --user start|stop`. Windows
-retains a compile-safe observable tray surface, but Start and Stop remain
-disabled until Station supports a Windows user-service backend.
+immediately relaunch it. Linux uses `systemctl --user start|stop`. Windows now
+has the per-user Task Scheduler backend in
+[`service-windows.ts`](../../packages/cli/src/commands/service-windows.ts), and
+the tray enables admitted service actions there too. This is source wiring,
+not a Windows packaged-tray acceptance result.
 
 After Start or Stop, the tray performs an immediate refresh followed by three
 two-second convergence polls before returning to its normal cadence.
@@ -126,7 +138,7 @@ two-second convergence polls before returning to its normal cadence.
 Run this on a release build from an installed checkout; do not use the bundled
 desktop server as the target.
 
-1. Install a user service and launch the desktop shell. Confirm the initial tray state reaches Running within one 10-second poll interval.
+1. In an authorized disposable setup, install a user service and launch the desktop shell. Record time to Running; ten seconds is the poll interval, not a bound on startup plus identity probes.
 2. Choose Open Station UI and confirm the browser opens the owned runtime manifest's displayed UI port, not another channel's UI port.
 3. Choose Open API docs and confirm Swagger UI opens at `/ui` on the displayed API port.
 4. From the desktop app's More actions menu, choose Open desktop tray. On macOS or Windows, confirm the native menu appears; on Linux, record the explicit unsupported notice and confirm the normal indicator still opens.
@@ -154,15 +166,21 @@ The native shell (Rust/Tauri process — the tray, the notification watch, the
 credential/profile bridge, `bundled_server_status`) logs through
 [`tauri-plugin-log`](https://github.com/tauri-apps/plugins-workspace), not
 `eprintln!`. A terminal launch still sees stdout; a double-clicked `.app` — the
-common case a bare `eprintln!` never reaches — gets a durable file instead.
+common case a bare `eprintln!` never reaches — uses a file target when its
+directory is writable. If that preflight fails, startup continues with stdout
+only. File logging is best effort, not guaranteed crash/panic capture.
 
-**Where the file lives** (Tauri's own `app_log_dir()` convention):
+**Stable channel paths** (Tauri's `app_log_dir()` convention):
 
 | Platform | Path |
 | --- | --- |
 | macOS | `~/Library/Logs/io.kontourai.station/station.log` |
 | Linux | `~/.local/share/io.kontourai.station/logs/station.log` (or `$XDG_DATA_HOME` if set) |
 | Windows | `%LOCALAPPDATA%\io.kontourai.station\logs\station.log` |
+
+Beta, Nightly and Dev use their own application identifier in these paths.
+The [native shell guide](native-shell-verification.md#logs-and-diagnosis-boundary)
+lists the release-channel paths and service-log distinctions.
 
 This is the **desktop shell's own** log — distinct from the per-user Station
 service's log (`$STATION_HOME/logs/<instance>-service.{out,err}.log` on
@@ -179,9 +197,11 @@ unparseable value falls back to `info` — an unparseable value also logs a
 `warn` once at startup naming the invalid value, rather than silently
 swallowing the misconfiguration.
 
-**Rotation**: bounded to 5 files of up to 5MB each (a 25MB ceiling) —
-`RotationStrategy::KeepSome(5)` renames the previous file with a date suffix
-on rotation rather than growing or deleting silently.
+**Rotation**: `RotationStrategy::KeepSome(5)` retains up to five archived files
+plus the active file. The configured 5 MiB threshold triggers rotation; a
+single buffered entry can exceed it. It is not a hard per-file or 25 MiB total
+ceiling. The owner is the log-plugin setup in
+[`lib.rs`](../../src-desktop/src/lib.rs).
 
 For a hidden-window timeout, a sidecar failure, or a distinction between this
 shell log and service/server logs, use [Recover a desktop
