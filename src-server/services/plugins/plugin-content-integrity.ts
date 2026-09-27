@@ -36,6 +36,7 @@ import {
   observePluginTreeAsync,
   type PluginTreeObservation,
 } from '@kontourai/station-shared/plugin-tree-digest';
+import { isGitMetadataName } from '../../utils/git-metadata-name.js';
 import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
 
 /**
@@ -181,16 +182,6 @@ export async function copyPluginTree(
       ? { filter: (path: string) => filters.every((keep) => keep(path)) }
       : {}),
   });
-}
-
-/**
- * A name git — or the filesystem under it — may resolve as `.git`: compared
- * case-insensitively (APFS, NTFS and FAT resolve `.GIT` to `.git`), and with
- * trailing dots and spaces ignored (Win32 path normalization strips them).
- * Over-matching only leaves an oddly named entry out of a dependency copy.
- */
-export function isGitMetadataName(name: string): boolean {
-  return /^\.git[. ]*$/i.test(name);
 }
 
 function isCopyableTreeEntry(path: string): boolean {

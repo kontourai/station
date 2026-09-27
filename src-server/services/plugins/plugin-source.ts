@@ -28,6 +28,7 @@ import {
 import { errorMessage } from '../../routes/schemas/schemas.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
 import { execGit, isLocalGitSource } from '../../utils/git-exec.js';
+import { stripHfsIgnorable } from '../../utils/git-metadata-name.js';
 import type { Logger } from '../../utils/logger.js';
 import { DistributionProfileService } from './distribution-profile-service.js';
 import {
@@ -230,7 +231,7 @@ export function resolvePluginDependencySource(
   const source = resolve(parentSourceDir, dependency.source);
   if (
     dependency.source.includes('#') ||
-    /\.git[. ]*$/i.test(basename(source))
+    /\.git[. ]*$/i.test(stripHfsIgnorable(basename(source)))
   ) {
     throw new Error(
       `Plugin dependency '${dependency.id}' local source must be a plain directory; name a git repository by its remote URL`,
