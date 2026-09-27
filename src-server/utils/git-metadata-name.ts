@@ -26,7 +26,7 @@ function isIgnorable(code: number): boolean {
 }
 
 /** `name` with every HFS+-ignorable code point removed. */
-export function stripHfsIgnorable(name: string): string {
+function stripHfsIgnorable(name: string): string {
   return Array.from(name)
     .filter((character) => !isIgnorable(character.codePointAt(0) ?? 0))
     .join('');
