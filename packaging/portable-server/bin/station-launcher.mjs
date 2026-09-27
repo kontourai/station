@@ -23,11 +23,10 @@
 // signing key is frozen here: the launcher only checks that a version's
 // completion sentinel is present.
 //
-// The design ports T3 Code's service launcher (MIT License, Copyright (c)
-// 2026 T3 Tools Inc.; apps/server/src/serviceLauncher.ts) to Station's
-// topology: the child is a supervisor whose server runs detached, the home
-// snapshot is Station's store registry, and update requests arrive from the
-// server as a file the child picks up, not over this channel.
+// Station's topology shapes it: the child is a supervisor whose server runs
+// detached, the home snapshot is Station's store registry (run with the
+// version's own code), and update requests arrive from the server as a file
+// the child picks up, since the server has no channel to this process.
 import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
@@ -99,43 +98,38 @@ function timings() {
 
 // --- versions ---------------------------------------------------------------
 
-/** SemVer precedence for exact versions; build metadata is ignored. */
+/**
+ * Station's release order, the one install.sh's downgrade check applies:
+ * X.Y.Z, or X.Y.Z-<ring>.N within one ring, and a release outranks every
+ * prerelease of its X.Y.Z. Null when the two cannot be ordered (another
+ * ring's prerelease, or not a Station version at all).
+ */
 // Exported for service-launcher.test.ts, which pins the production values.
 // fallow-ignore-next-line unused-export
 export function compareVersions(left, right) {
-  const parse = (version) => {
-    const withoutBuild = version.split('+', 1)[0];
-    const dash = withoutBuild.indexOf('-');
-    const core = dash === -1 ? withoutBuild : withoutBuild.slice(0, dash);
-    const pre = dash === -1 ? [] : withoutBuild.slice(dash + 1).split('.');
-    return { core: core.split('.').map((part) => BigInt(part)), pre };
+  const shape =
+    /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([a-z]+)\.([1-9][0-9]*))?$/;
+  const read = (version) => {
+    const match = shape.exec(version);
+    if (!match) return null;
+    return {
+      release: match.slice(1, 4).map(BigInt),
+      ring: match[4] ?? null,
+      build: match[5] === undefined ? null : BigInt(match[5]),
+    };
   };
-  const a = parse(left);
-  const b = parse(right);
-  for (let index = 0; index < 3; index += 1) {
-    const x = a.core[index] ?? 0n;
-    const y = b.core[index] ?? 0n;
-    if (x !== y) return x < y ? -1 : 1;
+  const a = read(left);
+  const b = read(right);
+  if (!a || !b) return null;
+  const order = (x, y) => (x === y ? 0 : x < y ? -1 : 1);
+  for (let part = 0; part < 3; part += 1) {
+    const result = order(a.release[part], b.release[part]);
+    if (result !== 0) return result;
   }
-  if (a.pre.length === 0 || b.pre.length === 0) {
-    return a.pre.length === b.pre.length ? 0 : a.pre.length === 0 ? 1 : -1;
-  }
-  for (
-    let index = 0;
-    index < Math.max(a.pre.length, b.pre.length);
-    index += 1
-  ) {
-    const x = a.pre[index];
-    const y = b.pre[index];
-    if (x === undefined || y === undefined) return x === undefined ? -1 : 1;
-    if (x === y) continue;
-    const xn = /^\d+$/.test(x);
-    const yn = /^\d+$/.test(y);
-    if (xn && yn) return BigInt(x) < BigInt(y) ? -1 : 1;
-    if (xn !== yn) return xn ? -1 : 1;
-    return x < y ? -1 : 1;
-  }
-  return 0;
+  if (a.ring === b.ring) return a.ring === null ? 0 : order(a.build, b.build);
+  if (a.ring === null) return 1;
+  if (b.ring === null) return -1;
+  return null;
 }
 
 function versionPaths(installRoot, version) {
@@ -683,7 +677,8 @@ class Launcher {
       return reject('Another update is already in progress.');
     if (typeof target !== 'string' || !VERSION_PATTERN.test(target))
       return reject('The requested target is not an exact version.');
-    if (compareVersions(target, managed.version) <= 0)
+    const order = compareVersions(target, managed.version);
+    if (order === null || order <= 0)
       return reject(
         `Station ${target} is not newer than the running ${managed.version}.`,
       );

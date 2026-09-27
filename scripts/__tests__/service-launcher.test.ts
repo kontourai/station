@@ -30,7 +30,7 @@ import {
 type LauncherModule = {
   DEFAULT_TIMINGS: Record<string, number>;
   MAX_TRIAL_ATTEMPTS: number;
-  compareVersions: (left: string, right: string) => number;
+  compareVersions: (left: string, right: string) => number | null;
 };
 
 const makeTempDir = trackTempDirs();
@@ -119,6 +119,11 @@ describe('the fixed service launcher (#2675 D)', { timeout: 90_000 }, () => {
       launcher.compareVersions('0.6.0-nightly.10', '0.6.0-nightly.9'),
     ).toBe(1);
     expect(launcher.compareVersions('1.0.0', '1.0.0-preview.3')).toBe(1);
+    // Another ring's prerelease cannot be ordered, so it is never "newer".
+    expect(
+      launcher.compareVersions('1.0.0-nightly.1', '1.0.0-preview.3'),
+    ).toBeNull();
+    expect(launcher.compareVersions('1.2.0', '1.10.0')).toBe(-1);
   });
 
   it('commits a trial that reports prepared: state, current and the backup follow', async () => {
@@ -321,6 +326,43 @@ describe('the fixed service launcher (#2675 D)', { timeout: 90_000 }, () => {
       requestId: request.id,
       status: 'up-to-date',
       version: '1.0.0',
+    });
+    expect(readState(install)?.update).toBeUndefined();
+    expect(fixtureLog(install)).not.toContain('1.0.0 term');
+  });
+
+  it('the launcher refuses a staged version that is not newer (a replayed older release)', async () => {
+    const { install, launcher } = await runningV1(
+      { trial: 'prepare' },
+      { stage: '0.9.0' },
+    );
+    addVersion(install, cli, '0.9.0', { trial: 'prepare' });
+    const request = writeServiceUpdateRequest(install.installRoot);
+    const result = await waitFor(
+      'a result',
+      () => {
+        try {
+          return JSON.parse(
+            readFileSync(
+              join(
+                install.installRoot,
+                'runtime',
+                'update-request-result.json',
+              ),
+              'utf8',
+            ),
+          );
+        } catch {
+          return undefined;
+        }
+      },
+      30_000,
+      diagnostics(install, launcher),
+    );
+    expect(result).toMatchObject({
+      requestId: request.id,
+      status: 'rejected',
+      reason: 'Station 0.9.0 is not newer than the running 1.0.0.',
     });
     expect(readState(install)?.update).toBeUndefined();
     expect(fixtureLog(install)).not.toContain('1.0.0 term');
