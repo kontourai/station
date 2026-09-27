@@ -2533,11 +2533,6 @@ export function createOrchestrationRoutes(
           503,
         );
       }
-      const remoteRefused = refuseRemoteForStationControlCaller(
-        c,
-        (getBody(c) as { environmentId?: unknown }).environmentId !== undefined,
-      );
-      if (remoteRefused) return remoteRefused;
       try {
         const data = await deps.discoverDelegationOptions(getBody(c));
         return c.json({ success: true, data });
@@ -2564,14 +2559,6 @@ export function createOrchestrationRoutes(
         400,
       );
     }
-    // #2377 slice C2a (decision 3): another Station needs a bound
-    // operator; refused before the route resolves the Environment as
-    // Station's own server code.
-    const remoteRefused = refuseRemoteForStationControlCaller(
-      c,
-      parsed.data.environmentId !== undefined,
-    );
-    if (remoteRefused) return remoteRefused;
     try {
       const data = await deps.listDelegatedTasks({
         ...parsed.data,
