@@ -86,7 +86,6 @@ describe('pendingAttentionItems', () => {
       ]),
     ).toEqual([]);
   });
-
 });
 
 describe('countPendingAttention', () => {
