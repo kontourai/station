@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-27T06:24:34Z | nightly-android | 0.1.11-nightly.2461 | `bda38d3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36295895609) |
 | 2026-09-27T06:04:02Z | nightly-npm | 0.6.0-nightly.2461.36295895609 | `bda38d3` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36295895609) |
 | 2026-09-26T17:34:01Z | nightly-desktop | 0.1.11-nightly.2460.4 | `719e004` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36254706366) |
 | 2026-09-26T17:33:59Z | nightly-android | 0.1.11-nightly.2460.4 | `719e004` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36254706366) |
@@ -165,6 +166,60 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-27T06:24:34Z · nightly-android · 0.1.11-nightly.2461
+
+- Ship SHA: `bda38d3bcb680fddcba6f2e35a43c05d2caefb8a`
+- Artifact built at: `2026-09-27T05:16:34.844Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36295895609)
+
+### Changelog
+
+Commits since `719e004` ([full sha](https://github.com/kontourai/station/commit/719e0042f6f2941fbc47b402c1df60de2bfc4915)):
+
+**Features**
+
+- [#2740](https://github.com/kontourai/station/pull/2740) feat(ios): open sealed alerts in a Notification Service Extension (#2590)
+- [#2743](https://github.com/kontourai/station/pull/2743) feat(sdk): one envelope-to-error helper keeping status, code and details (#2708 A-0)
+- [#2723](https://github.com/kontourai/station/pull/2723) feat(release): per-platform manifest v2 with one shared verifier (#2675 slice A)
+- [#2711](https://github.com/kontourai/station/pull/2711) feat(desktop): native consumer for the notification delivery feed (#2608)
+- [#2726](https://github.com/kontourai/station/pull/2726) feat(relay): add native signal host and opt-in echo lab
+- [#2725](https://github.com/kontourai/station/pull/2725) feat(relay): add native grant custody and diagnostic signaling
+- [#2705](https://github.com/kontourai/station/pull/2705) feat(packaging): build and smoke prebuilt per-platform server archives (#2675 PR3a)
+- [#2688](https://github.com/kontourai/station/pull/2688) feat(install): nightly release ring for the portable installer (plumbing, nothing published)
+- [#2555](https://github.com/kontourai/station/pull/2555) feat(relay): approve Station keys in native desktop
+- [#2677](https://github.com/kontourai/station/pull/2677) feat(notifications): iOS alert push through APNs, fixed-text interim (#2589)
+- [#2699](https://github.com/kontourai/station/pull/2699) feat(station-control): agent reads act for the session's owner (#2377 slice B)
+
+**Fixes**
+
+- [#2768](https://github.com/kontourai/station/pull/2768) fix(registry): confine manifest plugin sources to the registry root
+- [#2765](https://github.com/kontourai/station/pull/2765) fix(test-changed): refine SDK barrel fan-out in related test selection (#2707)
+- [#2744](https://github.com/kontourai/station/pull/2744) fix(ci): provision JS pnpm on Intel macOS legs (#2675)
+- [#2710](https://github.com/kontourai/station/pull/2710) fix(dogfood): keep the installed health helper import-free
+- [#2712](https://github.com/kontourai/station/pull/2712) fix(chat-dock): check-again way out of a stale busy wait; copy IDs on the phone sheet
+- [#2706](https://github.com/kontourai/station/pull/2706) fix(chat): follow projected streaming turns and honor any scroll device
+- [#2704](https://github.com/kontourai/station/pull/2704) fix(release): run publish-time release policy from the default branch
+- [#2702](https://github.com/kontourai/station/pull/2702) fix(engines): adopt native CLIs with the spawn's lookup, and spawn them with its PATH
+- [#2698](https://github.com/kontourai/station/pull/2698) fix(scripts): decide the entry point by realpath through one helper
+- [#2697](https://github.com/kontourai/station/pull/2697) fix(service): rebuild or refuse an unstamped source install; name checkout services after their dev home
+
+**Other**
+
+- [#2774](https://github.com/kontourai/station/pull/2774) test(server): test-audit batch 03 — prune capability and intent-binding replays
+- [#2773](https://github.com/kontourai/station/pull/2773) test(server): test-audit batch 07 — plugin routes and the mounted plugin-event gate
+- [#2761](https://github.com/kontourai/station/pull/2761) test(android): drop vacuous mobile specs and fold split-pane checks into the sweep
+- [#2748](https://github.com/kontourai/station/pull/2748) test(server): replace source greps and test-only seams with behavioural proofs
+- [#2757](https://github.com/kontourai/station/pull/2757) test(scripts): give the whole-tree a11y ratchet test its spawn's budget
+- [#2749](https://github.com/kontourai/station/pull/2749) test(server): prove project route contracts at real boundaries (audit batch 05)
+- [#2739](https://github.com/kontourai/station/pull/2739) test(ui): consolidate UI hook tests through their owners and drop test-only seams
+- [#2754](https://github.com/kontourai/station/pull/2754) test(server): prune agent/skill service tautologies and dead methods
+- [#2714](https://github.com/kontourai/station/pull/2714) test(scripts): prove the type-laundering gate runs from spaced paths; cover the policy-gate chain
+- [#2738](https://github.com/kontourai/station/pull/2738) refactor(notifications): Android alerts use the shared card-alerted mark (#2588, #2589)
+- [#2742](https://github.com/kontourai/station/pull/2742) test(scripts): move audit-flagged gate tests onto their production boundaries
+- [#2715](https://github.com/kontourai/station/pull/2715) test(ui): replace source-text tests with rendered proofs and delete dead UI code
+- [#2690](https://github.com/kontourai/station/pull/2690) chore(skills): add a test-audit skill adapted from OpenClaw
 
 ## 2026-09-27T06:04:02Z · nightly-npm · 0.6.0-nightly.2461.36295895609
 
