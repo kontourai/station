@@ -504,8 +504,9 @@ updates this index.
 
 ## Where Knowledge Kit comes from
 
-Knowledge Kit ships inside the `@kontourai/flow-agents` npm package under
-`kits/knowledge/`. It is not a separately released npm package. Its
+Knowledge Kit ships inside the `@kontourai/flow-agents` npm package, in its
+[Knowledge Kit directory](https://github.com/kontourai/flow-agents/tree/9696ff6844ca21f81d95efe0885f1bd43dbe02b1/kits/knowledge).
+It is not a separately released npm package. Its
 [manifest](https://github.com/kontourai/flow-agents/blob/9696ff6844ca21f81d95efe0885f1bd43dbe02b1/kits/knowledge/kit.json)
 declares flows, adapters, provider entry points, tests and skills. The package
 release identifies the bundled Kit bytes; the manifest's `schema_version`

@@ -2374,7 +2374,7 @@
     },
     {
       "path": "docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md",
-      "sourceRevision": "668debd7140960ce1c7f47e4ea14ee34c706f7af",
+      "sourceRevision": "1a3b3fd9145e3f4a651809735754abeeac1446c5",
       "kind": "design",
       "state": "classified",
       "summary": "The 2026-07-05 split and sqlite-vec selection remain decision rationale. A new status note distinguishes historical single-store/single-personal-root descriptions from current registered roots, derived index, and coexisting legacy API, and routes operating instructions to the Knowledge guide.",
@@ -2383,7 +2383,7 @@
       "sources": [
         {
           "path": "docs/guides/knowledge.md",
-          "digest": "edfb1166c6f54f0cd013489ba02c5ff663df0b061cd5eaf1adcd3c0f2884bb59"
+          "digest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c"
         },
         {
           "path": "src-server/knowledge-index/sqlite-vec-index-provider.ts",
@@ -2404,7 +2404,8 @@
         "Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
         "Added bounded physical identity admission for Obsidian creates, explicit unrecoverable path-index limit, preserved ordinary empty-frontmatter notes, and linked graph walkthrough. Current store/index ownership remains unchanged.",
         "Reviewed integration deltas: docs/guides/knowledge.md: Documented actual create-admission repair of an earlier interrupted transaction; duplicate-identity refusal does not publish the new create or repair the index. Existing public boundaries retained. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture.",
-        "Reviewed the added distribution section in the canonical Knowledge guide. Historical store/index decision and its current-guide route remain accurate; no ADR prose change needed."
+        "Reviewed the added distribution section in the canonical Knowledge guide. Historical store/index decision and its current-guide route remain accurate; no ADR prose change needed.",
+        "Clarified the external Kit directory as a pinned upstream link after the live reference gate correctly rejected it as an absent local path; meaning and caller claims unchanged."
       ]
     },
     {
@@ -13909,8 +13910,8 @@
     },
     {
       "path": "docs/guides/knowledge.md",
-      "documentDigest": "edfb1166c6f54f0cd013489ba02c5ff663df0b061cd5eaf1adcd3c0f2884bb59",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
+      "sourceRevision": "1a3b3fd9145e3f4a651809735754abeeac1446c5",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14060,7 +14061,8 @@
         "Formatter-only change; parsed media metadata is identical.",
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
         "Reviewed Flow Agents 6.4.0 package files, catalog, manifest, install/update/status callers and separate Station runtime provider composition. The Kit alias and update passed in an isolated local candidate install; installer/catalog bytes match 6.4.0. Pinned upstream links record the distribution source; this does not claim a new registry release or universal compatibility.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
+        "Clarified the external Kit directory as a pinned upstream link after the live reference gate correctly rejected it as an absent local path; meaning and caller claims unchanged."
       ]
     },
     {
