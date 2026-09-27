@@ -51,33 +51,46 @@ describe('channel-aware pairing deep links', () => {
       expect(parsed.message).toContain(PAIRING_LINK_REMEDY);
   });
 
+  function deepLinkWithOffer(extra: Record<string, unknown>): string {
+    const encoded = btoa(
+      JSON.stringify({
+        protocolVersion: 1,
+        environmentId: 'backend-identity-is-independent',
+        offerId: 'offer-test',
+        challenge: 'challenge-test',
+        endpoint: 'https://station.example.test',
+        scope: 'orchestration:read',
+        expiresAt: Date.now() + 60_000,
+        ...extra,
+      }),
+    )
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    return `station-stable://pair?linkVersion=1&clientChannel=stable&payload=${encodeURIComponent(`station-pairing:v1:${encoded}`)}`;
+  }
+
+  test('admits a hand-encoded offer carrying only canonical fields', () => {
+    expect(
+      parsePairingDeepLink(deepLinkWithOffer({}), { clientChannel: 'stable' })
+        .status,
+    ).toBe('ok');
+  });
+
+  // The rejection comes from canonical-field enforcement, not from scanning
+  // for credentials: benign additive data is refused the same way, so no
+  // extra field reaches URL admission whatever it carries.
   test.each([
+    { metadata: { note: 'plain' } },
     { metadata: { credential: 'must-not-enter-url-admission' } },
     { metadata: { authorization: { bearer: 'must-not-enter-url-admission' } } },
   ])(
-    'rejects nested credential-bearing additive data at the deep-link boundary',
-    (metadata) => {
-      const encoded = btoa(
-        JSON.stringify({
-          protocolVersion: 1,
-          environmentId: 'backend-identity-is-independent',
-          offerId: 'offer-test',
-          challenge: 'challenge-test',
-          endpoint: 'https://station.example.test',
-          scope: 'orchestration:read',
-          expiresAt: Date.now() + 60_000,
-          metadata,
-        }),
-      )
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/, '');
-      const credentialPayload = `station-pairing:v1:${encoded}`;
+    'rejects any non-canonical offer field at the deep-link boundary',
+    (extra) => {
       expect(
-        parsePairingDeepLink(
-          `station-stable://pair?linkVersion=1&clientChannel=stable&payload=${encodeURIComponent(credentialPayload)}`,
-          { clientChannel: 'stable' },
-        ).status,
+        parsePairingDeepLink(deepLinkWithOffer(extra), {
+          clientChannel: 'stable',
+        }).status,
       ).toBe('error');
     },
   );

@@ -24,6 +24,7 @@ import {
 } from '@kontourai/station-contracts/notification';
 import { z } from 'zod';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
+import { stationControlRefusal } from './station-control-policy.js';
 import {
   api,
   jsonToolResult,
@@ -102,18 +103,47 @@ function parseResult(value: unknown): NotifyUserResult | undefined {
   };
 }
 
+/**
+ * The statuses that mean the tool could not do its job (#2795): no verified
+ * caller, or Station did not take the notification. `muted`,
+ * `rate_limited` and `deduped` are Station's own deliberate answers to a
+ * delivered request — the user's preference, the route's limit, an update of
+ * an earlier notification — so they are results, not tool failures.
+ */
+const NOTIFY_USER_FAILURES: ReadonlySet<NotifyUserStatus> = new Set([
+  'caller-required',
+  'unavailable',
+]);
+
+/**
+ * `notify_user`'s result, with this Station's refusal code (and, for a
+ * missing caller, its sentence) when the call was refused.
+ */
+export type NotifyUserToolResult = NotifyUserResult & {
+  code?: string;
+  error?: string;
+};
+
 export async function notifyUser(args: {
   title: string;
   body?: string;
   urgency?: 'info' | 'attention' | 'done' | 'failed';
   dedupeKey?: string;
   link?: string;
-}): Promise<NotifyUserResult> {
+}): Promise<NotifyUserToolResult> {
   try {
     await requireStationControlCaller();
   } catch (error) {
     if (!(error instanceof StationControlCallerRequiredError)) throw error;
-    return { status: 'caller-required' };
+    // #2795: the same refusal the tool-side guard gives a caller-less call —
+    // the same code and sentence — so the invoke route and the agent both
+    // read why.
+    const refusal = stationControlRefusal('station_control_caller_required');
+    return {
+      status: 'caller-required',
+      code: refusal.code,
+      error: refusal.message,
+    };
   }
   let response: unknown;
   try {
@@ -132,8 +162,18 @@ export async function notifyUser(args: {
     return { status: 'unavailable' };
   }
   // Anything but the route's own answer (an unmounted path, an error
-  // envelope) reads as unavailable rather than as a claim it was sent.
-  return parseResult(response) ?? { status: 'unavailable' };
+  // envelope) reads as unavailable rather than as a claim it was sent. `api`
+  // speaks only to THIS Station's control API, so an error envelope's code
+  // is this Station's own decision (the station-control guard's typed
+  // refusal, #2708) and is kept.
+  const parsed = parseResult(response);
+  if (parsed) return parsed;
+  const code = (response as { success?: unknown; code?: unknown } | null)?.code;
+  return (response as { success?: unknown } | null)?.success === false &&
+    typeof code === 'string' &&
+    code
+    ? { status: 'unavailable', code }
+    : { status: 'unavailable' };
 }
 
 export function registerNotifyTools(registry: StationControlToolRegistry) {
@@ -141,6 +181,11 @@ export function registerNotifyTools(registry: StationControlToolRegistry) {
     NOTIFY_USER_TOOL_NAME,
     NOTIFY_USER_DESCRIPTION,
     notifyUserShape,
-    async (args) => jsonToolResult(await notifyUser(args)),
+    async (args) => {
+      const result = await notifyUser(args);
+      return jsonToolResult(result, {
+        failed: NOTIFY_USER_FAILURES.has(result.status),
+      });
+    },
   );
 }

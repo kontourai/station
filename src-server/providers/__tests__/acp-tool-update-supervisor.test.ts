@@ -671,6 +671,35 @@ describe('AcpToolUpdateSupervisor — images a tool returned', () => {
 
   test('a later content redraw replaces the images of the earlier one', () => {
     const { events, supervisor } = harness();
+    const replacement = Buffer.concat([
+      Buffer.from(PNG_1X1_BASE64, 'base64'),
+      Buffer.alloc(8),
+    ]).toString('base64');
+    supervisor.acceptStarted({ toolCallId: 'redraw' });
+    supervisor.acceptUpdate({
+      toolCallId: 'redraw',
+      hasContent: true,
+      content: [imageBlock()],
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'redraw',
+      hasContent: true,
+      content: [imageBlock(replacement)],
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'redraw',
+      status: 'completed',
+      hasStatus: true,
+    });
+    const completed = events.at(-1) as any;
+    expect(completed.method).toBe('tool.completed');
+    expect(
+      completed.attachments.map((attachment: any) => attachment.dataUrl),
+    ).toEqual([`data:image/png;base64,${replacement}`]);
+  });
+
+  test('a later image-free content redraw drops the images of the earlier one', () => {
+    const { events, supervisor } = harness();
     supervisor.acceptStarted({ toolCallId: 'redraw' });
     supervisor.acceptUpdate({
       toolCallId: 'redraw',
@@ -687,7 +716,12 @@ describe('AcpToolUpdateSupervisor — images a tool returned', () => {
       status: 'completed',
       hasStatus: true,
     });
-    expect(events.at(-1)).not.toHaveProperty('attachments');
+    const completed = events.at(-1);
+    expect(completed).toMatchObject({
+      method: 'tool.completed',
+      status: 'success',
+    });
+    expect(completed).not.toHaveProperty('attachments');
   });
 
   test('images beyond the session hold budget are named, not kept', () => {

@@ -200,7 +200,11 @@ function report() {
 }
 
 test('estimated-coverage and complexity verdicts remain review evidence, not forced refactors', () => {
-  expect(evaluateCodeHealthAudit(report(), base, head).passed).toBe(true);
+  // A normal comparison also reports that it compared something.
+  expect(evaluateCodeHealthAudit(report(), base, head)).toMatchObject({
+    passed: true,
+    emptyComparison: false,
+  });
 });
 
 test.each(['base', 'head', 'attribution', 'metrics', 'findings'])(
@@ -298,11 +302,4 @@ test('claiming findings while reporting no changed file is still refused', () =>
   delete value.dead_code;
   value.changed_files_count = 0;
   expect(() => evaluateCodeHealthAudit(value, base, head)).toThrow();
-});
-
-/** A normal comparison still reports that it compared something. */
-test('a comparison with changed files is not an empty comparison', () => {
-  expect(evaluateCodeHealthAudit(report(), base, head).emptyComparison).toBe(
-    false,
-  );
 });

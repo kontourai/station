@@ -30,6 +30,10 @@ describe('browser fixture syntax policy', () => {
       'removes-interaction-guard',
     ],
     [
+      "await panel.evaluate(el => el.removeAttribute('inert'));",
+      'removes-interaction-guard',
+    ],
+    [
       "await page.evaluate(() => document.querySelector('button').click());",
       'dom-click-bypasses-actionability',
     ],
@@ -90,15 +94,6 @@ describe('browser fixture syntax policy', () => {
     );
     expect(fixturePolicyCommands(['src-server/main.ts'])).toEqual([]);
   });
-});
-
-test('removing a disabled guard in browser evaluation is an interaction bypass', () => {
-  expect(
-    inspectBrowserFixture(
-      "await textarea.evaluate(el => el.removeAttribute('disabled'));",
-      'tests/settings.spec.ts',
-    ).map((entry) => entry.rule),
-  ).toEqual(['removes-interaction-guard']);
 });
 
 test('catches assertions skipped when a browser storage observation is absent', () => {

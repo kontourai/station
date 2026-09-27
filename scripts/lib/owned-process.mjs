@@ -361,14 +361,6 @@ function observeOwnedOutputEOF(child) {
   };
 }
 
-/** Receiver-side barrier: IPC cannot outrun the captured pipe EOFs. */
-export function waitForOwnedOutputEOF(
-  child,
-  timeoutMs = WINDOWS_OUTPUT_EOF_TIMEOUT_MS,
-) {
-  return observeOwnedOutputEOF(child).wait(timeoutMs);
-}
-
 /**
  * Cross-platform command ownership. On Windows, a live Node IPC wrapper stays
  * above the command tree after the command reports completion. The caller's

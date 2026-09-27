@@ -37,7 +37,17 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
-import { collectRequiredBrowserSmokeFindings } from './ci-workflow-governance.mjs';
+import {
+  collectRequiredBrowserSmokeFindings,
+  FAST_CHECKS_AGGREGATE_RUN,
+  FAST_CHECKS_LEGACY_DETECT_RUN,
+  FAST_CHECKS_PART_RESULTS_RUN,
+  FAST_CHECKS_PLAN_RUN,
+  FAST_CHECKS_SHARD_IF,
+  FAST_CHECKS_SHARD_RUN,
+  FAST_CHECKS_SLICE_RUN,
+  REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
+} from './ci-workflow-governance.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -329,6 +339,9 @@ const UI_BUNDLE_DELTA_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}
 const PRIMARY_ROUTER_JOBS = new Set([
   'classify',
   'fast-checks',
+  'fast-checks-plan',
+  'fast-checks-shard',
+  'fast-checks-statics',
   'fork-smoke',
   UI_BUNDLE_DELTA_JOB,
   'full-regression',
@@ -642,6 +655,9 @@ const MISSING_CALLEE_MESSAGE =
 const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
   'actions/checkout': noCacheFindings,
   'actions/upload-artifact': noCacheFindings,
+  // Reads this run's own artifacts (#2709: the fast-checks plan and shard
+  // receipts); it has no cache input or cache side effect.
+  'actions/download-artifact': noCacheFindings,
   'actions/dependency-review-action': noCacheFindings,
   'dtolnay/rust-toolchain': noCacheFindings,
   'github/codeql-action/analyze': noCacheFindings,
@@ -871,13 +887,6 @@ function isLinuxRunner(labels) {
 
 function isFastFeedbackJob(file, jobId) {
   return file === FAST_FEEDBACK_JOB.file && jobId === FAST_FEEDBACK_JOB.jobId;
-}
-
-function hasExactSameRepositoryFastChecksGuard(file, jobId, condition) {
-  return (
-    isFastFeedbackJob(file, jobId) &&
-    condition === SAME_REPOSITORY_FAST_CHECKS_CONDITION
-  );
 }
 
 /**
@@ -2197,6 +2206,154 @@ function fullRegressionActionlintFindings(file, document) {
   ];
 }
 
+const FAST_CHECKS_STATICS_JOB = 'fast-checks-statics';
+const FAST_CHECKS_PLAN_JOB = 'fast-checks-plan';
+const FAST_CHECKS_SHARD_JOB = 'fast-checks-shard';
+const FAST_CHECKS_AGGREGATE_JOB = 'fast-checks';
+const CHANGED_SET_CHROMIUM_STEP = Object.freeze({
+  // station#4170: reviewed with its workflow step in the same change.
+  // Marginal surface over the already-reviewed lane is nil: the job runs
+  // `npm run dependencies:ci` + the candidate's test corpus wholesale; this
+  // pins the exact browser-provisioning script (persistent-$HOME convention,
+  // #3453; bounded retry, #3517). fast-checks-shard runs the same script.
+  name: 'Install Chromium for changed-set touch-target checks',
+  run: 'echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"\nfor attempt in 1 2 3; do\n  echo "Playwright install attempt $attempt"\n  if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then\n    exit 0\n  fi\n  echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"\n  sleep 15\ndone\necho "::error::Playwright install failed after 3 attempts"\nexit 1\n',
+});
+
+/**
+ * #2709: the plan, the shards and the `fast-checks` aggregator all run
+ * pull-request head code under pull_request_target, so each carries the same
+ * isolation as fast-checks-statics: read-only contents, a hosted runner, one
+ * credential-free checkout of exactly the candidate, and only reviewed
+ * actions and shell. Admission: the plan uses the exact same-repository
+ * guard; a shard runs only after the plan succeeded (needs it, no `if`); the
+ * aggregator uses the reviewed aggregate guard, whose event clause is the
+ * same. The verdict shape of these jobs is ci-workflow-governance's.
+ */
+function fastChecksShardingFindings(file, jobs) {
+  const findings = [];
+  const finding = (jobId, message) => findings.push({ file, jobId, message });
+  const isolated = (jobId, job, actions, runs) => {
+    if (!hasOnlyReadContentsPermission(job.permissions))
+      finding(
+        jobId,
+        `${jobId} must declare only permissions: { contents: read }`,
+      );
+    if (job['runs-on'] !== 'ubuntu-22.04')
+      finding(jobId, `${jobId} must run on a hosted ubuntu-22.04 image`);
+    if (!hasExplicitCheckout(job, FAST_CHECKOUT_REPOSITORY, FAST_CHECKOUT_REF))
+      finding(
+        jobId,
+        `${jobId} must check out exactly the candidate head once with persist-credentials: false`,
+      );
+    findings.push(
+      ...unapprovedActionFindings(file, jobId, job, actions),
+      ...unapprovedShellFindings(file, jobId, job, runs),
+    );
+  };
+  const plan = jobs[FAST_CHECKS_PLAN_JOB];
+  if (plan) {
+    if (plan.if !== SAME_REPOSITORY_FAST_CHECKS_CONDITION)
+      finding(
+        FAST_CHECKS_PLAN_JOB,
+        'ci.yml fast-checks-plan must use the exact same-repository pull_request_target guard',
+      );
+    isolated(
+      FAST_CHECKS_PLAN_JOB,
+      plan,
+      ['actions/checkout@', 'actions/setup-node@', 'actions/upload-artifact@'],
+      [
+        // TRANSITIONAL (#2709): detection plus the legacy candidate's own
+        // unsharded lane, the same commands fast-checks-statics runs.
+        {
+          name: 'Detect a candidate without the sharded lane',
+          run: FAST_CHECKS_LEGACY_DETECT_RUN,
+        },
+        {
+          name: 'Install pinned actionlint',
+          run: PINNED_ACTIONLINT_PROVISION_RUN,
+        },
+        { name: undefined, run: 'npm run dependencies:ci' },
+        CHANGED_SET_CHROMIUM_STEP,
+        { name: 'Run legacy unsharded ci:fast', run: 'npm run ci:fast' },
+        { name: 'Plan the affected-test selection', run: FAST_CHECKS_PLAN_RUN },
+      ],
+    );
+    if (!hasPinnedActionlintProvision(plan, 'Run legacy unsharded ci:fast'))
+      finding(
+        FAST_CHECKS_PLAN_JOB,
+        'fast-checks-plan must provision pinned and checksummed actionlint before its legacy ci:fast',
+      );
+  }
+  const shard = jobs[FAST_CHECKS_SHARD_JOB];
+  if (shard) {
+    const needs = typeof shard.needs === 'string' ? [shard.needs] : shard.needs;
+    if (
+      shard.if !== FAST_CHECKS_SHARD_IF ||
+      !Array.isArray(needs) ||
+      needs.length !== 1 ||
+      needs[0] !== FAST_CHECKS_PLAN_JOB
+    )
+      finding(
+        FAST_CHECKS_SHARD_JOB,
+        'ci.yml fast-checks-shard must be admitted only by a successful, non-legacy fast-checks-plan',
+      );
+    isolated(
+      FAST_CHECKS_SHARD_JOB,
+      shard,
+      [
+        'actions/checkout@',
+        'actions/setup-node@',
+        'actions/download-artifact@',
+        'actions/upload-artifact@',
+      ],
+      [
+        { name: 'Resolve fast-checks shard slice', run: FAST_CHECKS_SLICE_RUN },
+        {
+          name: 'Install pinned actionlint',
+          run: PINNED_ACTIONLINT_PROVISION_RUN,
+        },
+        { name: undefined, run: 'npm run dependencies:ci' },
+        CHANGED_SET_CHROMIUM_STEP,
+        { name: 'Run fast-checks shard', run: FAST_CHECKS_SHARD_RUN },
+      ],
+    );
+  }
+  if (shard && !hasPinnedActionlintProvision(shard, 'Run fast-checks shard'))
+    finding(
+      FAST_CHECKS_SHARD_JOB,
+      'fast-checks-shard must provision pinned and checksummed actionlint before its tests',
+    );
+  const aggregate = jobs[FAST_CHECKS_AGGREGATE_JOB];
+  if (aggregate) {
+    if (aggregate.if !== REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION)
+      finding(
+        FAST_CHECKS_AGGREGATE_JOB,
+        'ci.yml fast-checks must use the exact reviewed aggregate guard',
+      );
+    isolated(
+      FAST_CHECKS_AGGREGATE_JOB,
+      aggregate,
+      [
+        'actions/checkout@',
+        'actions/setup-node@',
+        'actions/download-artifact@',
+      ],
+      [
+        {
+          name: 'Require every fast-checks part job to succeed',
+          run: FAST_CHECKS_PART_RESULTS_RUN,
+        },
+        {
+          name: 'Verify fast-checks shard receipts',
+          run: FAST_CHECKS_AGGREGATE_RUN,
+        },
+      ],
+    );
+  }
+  return findings;
+}
+
 function primaryCiRouterFindings(file, document) {
   if (!workflowHasTrigger(document, PULL_REQUEST_TARGET)) {
     if (file !== '.github/workflows/ci.yml' || !hasCiRouterTrigger(document))
@@ -2269,24 +2426,27 @@ function primaryCiRouterFindings(file, document) {
 
   findings.push(...ciCredentialFindings(file, jobs));
 
-  const fast = jobs['fast-checks'];
+  // #2709: the old single fast-checks job is now fast-checks-statics; the
+  // required `fast-checks` id belongs to the aggregator checked below.
+  const fast = jobs[FAST_CHECKS_STATICS_JOB];
   const fork = jobs['fork-smoke'];
   const scans = jobs['repo-scans'];
   if (scans) findings.push(...repoScansFindings(file, scans));
+  findings.push(...fastChecksShardingFindings(file, jobs));
   if (fast) {
-    if (!hasExactSameRepositoryFastChecksGuard(file, 'fast-checks', fast.if))
+    if (fast.if !== SAME_REPOSITORY_FAST_CHECKS_CONDITION)
       findings.push({
         file,
-        jobId: 'fast-checks',
+        jobId: FAST_CHECKS_STATICS_JOB,
         message:
-          'ci.yml fast-checks must use the exact same-repository pull_request_target guard',
+          'ci.yml fast-checks-statics must use the exact same-repository pull_request_target guard',
       });
     if (!hasOnlyReadContentsPermission(fast.permissions))
       findings.push({
         file,
-        jobId: 'fast-checks',
+        jobId: FAST_CHECKS_STATICS_JOB,
         message:
-          'fast-checks must declare only permissions: { contents: read }',
+          'fast-checks-statics must declare only permissions: { contents: read }',
       });
     if (
       !hasExactPullRequestTitleGateTopology(
@@ -2298,19 +2458,19 @@ function primaryCiRouterFindings(file, document) {
     )
       findings.push({
         file,
-        jobId: 'fast-checks',
+        jobId: FAST_CHECKS_STATICS_JOB,
         message:
-          'fast-checks must validate the pull-request title from exact base policy before candidate checkout',
+          'fast-checks-statics must validate the pull-request title from exact base policy before candidate checkout',
       });
     if (!hasPinnedActionlintProvision(fast, 'Run fast CI lane'))
       findings.push({
         file,
-        jobId: 'fast-checks',
+        jobId: FAST_CHECKS_STATICS_JOB,
         message:
-          'fast-checks must provision pinned and checksummed actionlint before fast CI execution',
+          'fast-checks-statics must provision pinned and checksummed actionlint before fast CI execution',
       });
     findings.push(
-      ...unapprovedActionFindings(file, 'fast-checks', fast, [
+      ...unapprovedActionFindings(file, FAST_CHECKS_STATICS_JOB, fast, [
         'actions/checkout@',
         'actions/setup-node@',
         'actions/upload-artifact@',
@@ -2319,7 +2479,7 @@ function primaryCiRouterFindings(file, document) {
       ]),
     );
     findings.push(
-      ...unapprovedShellFindings(file, 'fast-checks', fast, [
+      ...unapprovedShellFindings(file, FAST_CHECKS_STATICS_JOB, fast, [
         { name: PR_TITLE_GATE_NAME, run: PR_TITLE_GATE_RUN },
         { name: undefined, run: 'npm run dependencies:ci' },
         {
@@ -2335,8 +2495,8 @@ function primaryCiRouterFindings(file, document) {
           // runs `npm run dependencies:ci` + the candidate's test corpus wholesale; this pins
           // the exact browser-provisioning script (persistent-$HOME
           // convention, #3453; bounded retry, #3517).
-          name: 'Install Chromium for changed-set touch-target checks',
-          run: 'echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"\nfor attempt in 1 2 3; do\n  echo "Playwright install attempt $attempt"\n  if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then\n    exit 0\n  fi\n  echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"\n  sleep 15\ndone\necho "::error::Playwright install failed after 3 attempts"\nexit 1\n',
+          name: CHANGED_SET_CHROMIUM_STEP.name,
+          run: CHANGED_SET_CHROMIUM_STEP.run,
         },
         { name: 'Run fast CI lane', run: 'npm run ci:fast' },
         // #1540: these exact commands run on the same isolated, read-only

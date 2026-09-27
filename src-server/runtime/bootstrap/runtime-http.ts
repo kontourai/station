@@ -8,7 +8,10 @@ import {
 import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
 import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
-import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
+import {
+  AUTH_RATE_LIMITED_ERROR_CODE,
+  STATION_PLUGIN_HEADER,
+} from '@kontourai/station-contracts/http';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { KNOWLEDGE_ROOT_IDENTITY_HEADER } from '@kontourai/station-shared/knowledge-root-identity';
 import {
@@ -429,28 +432,6 @@ function isInteractiveWorkspacePerformanceDiagnostic(c: {
       INTERACTIVE_WORKSPACE_TIMING_MODE
   );
 }
-
-/**
- * The code the AUTH-failure limiter answers with, distinct from the mutation
- * budget's `rate_limited` (archive#3903).
- *
- * Both used to say `rate_limited`, and they are not the same fact. This one is
- * only ever reached after `maxFailures` REJECTED CREDENTIALS from one peer
- * inside the window — it is this Station saying no to this device's access,
- * throttled — while the budget's is an already-authorised principal writing
- * too fast. One code for both left no way for a client to tell them apart, so
- * `packages/connect`'s classifier could only fall through to
- * `unexpected-response`, whose copy reads "answered, but not as a Station.
- * Something else may be answering at that address." A revoked phone was told
- * to go looking for a wrong server while the right one was refusing it by
- * name.
- *
- * The name is not new: `src-server/security/websocket-auth.ts` already closes
- * a throttled socket with `authentication_rate_limited`, and the pairing
- * routes already audit `station.pairing.authentication_rate_limited`. This is
- * the HTTP boundary joining a vocabulary the rest of the runtime has.
- */
-export const AUTH_RATE_LIMITED_ERROR_CODE = 'authentication_rate_limited';
 
 function configureRuntimeSecurity(
   app: RuntimeApp,

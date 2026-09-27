@@ -200,10 +200,6 @@ async function loadCliWithLifecycleMocks() {
     createPlugin: vi.fn(),
     init: vi.fn(),
   }));
-  vi.doMock('../commands/install-registry.js', () => ({
-    recordRegistryInstall: vi.fn(),
-    resolveRegistryPluginSource: vi.fn(),
-  }));
   vi.doMock('../commands/install.js', () => ({
     info: vi.fn(),
     install: vi.fn(),
@@ -712,7 +708,6 @@ describe('runCli', () => {
       init: vi.fn(),
     }));
     vi.doMock('../commands/import.js', () => ({ importConfig: vi.fn() }));
-    vi.doMock('../commands/install-registry.js', () => ({}));
     vi.doMock('../commands/install.js', () => ({
       info: vi.fn(),
       install: vi.fn(),
@@ -760,10 +755,6 @@ describe('runCli', () => {
       init: vi.fn(),
     }));
     vi.doMock('../commands/import.js', () => ({ importConfig: vi.fn() }));
-    vi.doMock('../commands/install-registry.js', () => ({
-      recordRegistryInstall: vi.fn(),
-      resolveRegistryPluginSource: vi.fn(),
-    }));
     vi.doMock('../commands/install.js', () => ({
       info: vi.fn(),
       install: vi.fn(),
@@ -859,10 +850,6 @@ describe('runCli', () => {
     vi.doMock('../commands/init.js', () => ({
       createPlugin: vi.fn(),
       init: vi.fn(),
-    }));
-    vi.doMock('../commands/install-registry.js', () => ({
-      recordRegistryInstall: vi.fn(),
-      resolveRegistryPluginSource: vi.fn(),
     }));
     vi.doMock('../commands/install.js', () => ({
       info: vi.fn(),
@@ -1147,10 +1134,6 @@ describe('runCli', () => {
       createPlugin: vi.fn(),
       init: vi.fn(),
     }));
-    vi.doMock('../commands/install-registry.js', () => ({
-      recordRegistryInstall: vi.fn(),
-      resolveRegistryPluginSource: vi.fn(),
-    }));
     vi.doMock('../commands/install.js', () => ({
       info: vi.fn(),
       install: vi.fn(),
@@ -1370,10 +1353,6 @@ describe('runCli', () => {
         createPlugin: vi.fn(),
         init: vi.fn(),
       }));
-      vi.doMock('../commands/install-registry.js', () => ({
-        recordRegistryInstall: vi.fn(),
-        resolveRegistryPluginSource: vi.fn(),
-      }));
       vi.doMock('../commands/install.js', () => ({
         info: vi.fn(),
         install: vi.fn(),
@@ -1419,10 +1398,6 @@ describe('runCli', () => {
       vi.doMock('../commands/init.js', () => ({
         createPlugin: vi.fn(),
         init: vi.fn(),
-      }));
-      vi.doMock('../commands/install-registry.js', () => ({
-        recordRegistryInstall: vi.fn(),
-        resolveRegistryPluginSource: vi.fn(),
       }));
       vi.doMock('../commands/install.js', () => ({
         info: vi.fn(),

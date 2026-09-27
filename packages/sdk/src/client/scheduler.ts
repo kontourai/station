@@ -19,7 +19,7 @@ export type {
   ExternalMonitorState,
 } from '@kontourai/station-contracts/external-monitor';
 
-import { apiErrorMessage } from './api-error-message';
+import { envelopeError } from './api-error-message';
 import {
   type ClientRequestOptions,
   getJson,
@@ -89,17 +89,25 @@ export type SchedulerManualRunReceiptResult =
       reason: 'missing_or_invalid_run_receipt';
     }>;
 
+/**
+ * The run errors below are built from the `StationHttpError` the envelope
+ * helper made of the response (#2708), so each keeps the observed status, the
+ * server's `details` and `Retry-After` beside its own fixed `code`. Their
+ * constructors take that error rather than a message: a message argument is
+ * how a fetcher used to drop everything but the text.
+ */
+
 /** A manual scheduler run may have invoked its provider; never retry it automatically. */
-export class SchedulerRunIndeterminateError extends Error {
-  readonly code = 'scheduler_run_indeterminate';
+export class SchedulerRunIndeterminateError extends StationHttpError {
+  override readonly code = 'scheduler_run_indeterminate';
   readonly outcome = 'indeterminate' as const;
   readonly retryable = false as const;
 
   constructor(
-    message: string,
+    failure: StationHttpError,
     readonly observation: SchedulerManualRunObservation,
   ) {
-    super(message);
+    super(failure.status, failure.message, failure);
     this.name = 'SchedulerRunIndeterminateError';
   }
 
@@ -112,15 +120,15 @@ export class SchedulerRunIndeterminateError extends Error {
 }
 
 /** A manual scheduler run failed definitely; its exact run remains observable. */
-export class SchedulerRunFailedError extends Error {
-  readonly code = 'scheduler_run_failed';
+export class SchedulerRunFailedError extends StationHttpError {
+  override readonly code = 'scheduler_run_failed';
   readonly outcome = 'failed' as const;
 
   constructor(
-    message: string,
+    failure: StationHttpError,
     readonly receipt: SchedulerManualRunReceipt & { outcome: 'failed' },
   ) {
-    super(message);
+    super(failure.status, failure.message, failure);
     this.name = 'SchedulerRunFailedError';
   }
 }
@@ -148,29 +156,37 @@ export class SchedulerRunFailedError extends Error {
  * `status` is the observed response status verbatim, which may legitimately be
  * 200: the scheduler routes can answer `{success:false, error}` with a 2xx, and
  * that is still an answer. Do not read `status` as "non-2xx".
+ *
+ * It is built from the `StationHttpError` the envelope helper made of the
+ * response (#2708), so the server's `code` (a station-control authority
+ * refusal, #2377), `details` and `Retry-After` survive too.
  */
 export class SchedulerResponseError extends StationHttpError {
   constructor(
-    status: number,
-    message: string,
+    failure: StationHttpError,
     readonly detail: string | undefined,
   ) {
-    super(status, message);
+    super(failure.status, failure.message, failure);
     this.name = 'SchedulerResponseError';
   }
 }
 
+/** The body's own non-empty string `error` — `SchedulerResponseError.detail`. */
+function stringDetail(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
 /** A manual run was intentionally refused before provider invocation. */
-export class SchedulerRunRefusedError extends Error {
-  readonly code = 'scheduler_run_refused';
+export class SchedulerRunRefusedError extends StationHttpError {
+  override readonly code = 'scheduler_run_refused';
   readonly outcome = 'refused' as const;
   readonly retryable = true as const;
 
   constructor(
-    message: string,
+    failure: StationHttpError,
     readonly receipt: SchedulerManualRunReceipt & { outcome: 'refused' },
   ) {
-    super(message);
+    super(failure.status, failure.message, failure);
     this.name = 'SchedulerRunRefusedError';
   }
 }
@@ -193,6 +209,7 @@ export class SchedulerRunRefusedError extends Error {
  * outside this file called `listJobs`/`createJob`/`runJob` before Wave 3).
  */
 async function unwrapSchedulerResponse<T>(response: Response): Promise<T> {
+  const fallback = `Scheduler API error: ${response.status}`;
   let result: SchedulerEnvelope<T> | null = null;
   try {
     result = (await response.json()) as SchedulerEnvelope<T>;
@@ -200,8 +217,7 @@ async function unwrapSchedulerResponse<T>(response: Response): Promise<T> {
     // The body was unreadable, but a response still arrived: keep the status
     // so callers can tell this apart from never having reached the server.
     throw new SchedulerResponseError(
-      response.status,
-      `Scheduler API error: ${response.status}`,
+      envelopeError(response, undefined, fallback),
       undefined,
     );
   }
@@ -212,22 +228,25 @@ async function unwrapSchedulerResponse<T>(response: Response): Promise<T> {
     ) {
       const receipt = manualRunPayload(result.data).receipt;
       throw new SchedulerRunIndeterminateError(
-        apiErrorMessage(result, 'Scheduler run may have started.'),
+        envelopeError(response, result, 'Scheduler run may have started.'),
         receipt?.outcome === 'indeterminate'
           ? { kind: 'run', receipt }
           : { kind: 'unavailable', reason: 'missing_or_invalid_run_receipt' },
       );
     }
     const failedReceipt = manualRunPayload(result.data).receipt;
+    // The receipt's own sentence is the fallback when the body says nothing.
     if (failedReceipt?.outcome === 'refused') {
+      const failure = envelopeError(response, result, failedReceipt.message);
       throw new SchedulerRunRefusedError(
-        apiErrorMessage(result, failedReceipt.message),
+        failure,
         failedReceipt as SchedulerManualRunReceipt & { outcome: 'refused' },
       );
     }
     if (failedReceipt?.outcome === 'failed') {
+      const failure = envelopeError(response, result, failedReceipt.message);
       throw new SchedulerRunFailedError(
-        apiErrorMessage(result, failedReceipt.message),
+        failure,
         failedReceipt as SchedulerManualRunReceipt & { outcome: 'failed' },
       );
     }
@@ -237,17 +256,12 @@ async function unwrapSchedulerResponse<T>(response: Response): Promise<T> {
     // (`{ code: 'insufficient_scope' }`), and interpolating that into the
     // banner renders "[object Object]" — a detail that explains nothing, in a
     // change whose whole rule is that the copy may only say what the error
-    // proves (station#3252 review).
-    const explanation =
-      typeof result.error === 'string' && result.error.length > 0
-        ? result.error
-        : undefined;
+    // proves (station#3252 review). The error itself still carries that
+    // object's `code`.
+    const detail = stringDetail(result.error);
     throw new SchedulerResponseError(
-      response.status,
-      // Message expression left byte-identical: station-control-operations-
-      // tools reconstructs its envelope from it.
-      apiErrorMessage(result, `Scheduler API error: ${response.status}`),
-      explanation,
+      envelopeError(response, result, fallback),
+      detail,
     );
   }
   return result.data as T;

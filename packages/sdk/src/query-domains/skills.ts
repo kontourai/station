@@ -7,6 +7,7 @@ import { useCallback } from 'react';
 import { _getApiBase } from '../api';
 import { apiErrorMessage } from '../api-core';
 import {
+  createLocalSkill,
   fetchRegistrySkills,
   fetchSkillDetail,
   fetchSystemSkills,
@@ -15,6 +16,7 @@ import {
   recordSkillOutcome,
   type SkillImportFile,
   trackSkillRun,
+  updateLocalSkill,
 } from '../client/skills';
 import { type QueryConfig, useApiQuery } from '../query-core';
 
@@ -72,7 +74,7 @@ export function useUninstallSkillMutation() {
       );
       const result = await response.json();
       if (!result.success) {
-        throw new Error(result.message || 'Uninstall failed');
+        throw new Error(apiErrorMessage(result, 'Uninstall failed'));
       }
       return result;
     },
@@ -93,7 +95,7 @@ export function useUpdateSkillMutation() {
       );
       const result = await response.json();
       if (!result.success) {
-        throw new Error(result.message || 'Update failed');
+        throw new Error(apiErrorMessage(result, 'Update failed'));
       }
       return result;
     },
@@ -116,16 +118,7 @@ export function useCreateLocalSkillMutation() {
       variables?: SkillVariable[];
     }) => {
       const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(`${apiBase}/api/skills/local`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      });
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(apiErrorMessage(result, 'Create failed'));
-      }
-      return result;
+      return createLocalSkill(apiBase, input);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   });
@@ -149,19 +142,7 @@ export function useUpdateLocalSkillMutation() {
       variables?: SkillVariable[];
     }) => {
       const apiBase = await _getApiBase();
-      const response = await authenticatedFetch(
-        `${apiBase}/api/skills/${name}`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updates),
-        },
-      );
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(apiErrorMessage(result, 'Update failed'));
-      }
-      return result;
+      return updateLocalSkill(apiBase, name, updates);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   });
@@ -180,7 +161,9 @@ export function useSkillContentQuery(
       );
       const result = await response.json();
       if (!result.success) {
-        throw new Error(result.error);
+        throw new Error(
+          apiErrorMessage(result, 'Failed to load skill content'),
+        );
       }
       return result.data as string;
     },

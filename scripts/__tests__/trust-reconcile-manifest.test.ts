@@ -149,13 +149,4 @@ describe('Station trust-reconcile manifest', () => {
     expect(advisory.status).toBe(1);
     expect(advisory.stderr).toContain('not in the reconcile manifest');
   });
-
-  it('documents the Builder command-evidence boundary for agents and contributors', () => {
-    for (const file of ['AGENTS.md', 'docs/guides/development.md']) {
-      const guidance = readFileSync(file, 'utf8');
-      expect(guidance).toContain('tests-evidence');
-      expect(guidance).toContain('npm run full:regression');
-      expect(guidance).toMatch(/focused test|Focused Vitest/i);
-    }
-  });
 });

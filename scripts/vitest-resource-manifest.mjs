@@ -312,6 +312,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Drives the changed-verification CLI through spawnSync against a real
   // fixture worktree to prove its dependency and selection behavior.
   'scripts/__tests__/changed-verification.test.ts',
+  // #2709: drives the sharded fast-checks CLI (plan identity via `git
+  // rev-parse`, the aggregator's exit status) as child processes against
+  // throwaway Git repositories, and plans one real selection through related
+  // discovery, which is itself a Vitest child. Single-shot spawns, no
+  // wall-clock assertion.
+  'scripts/__tests__/fast-checks-shard-cli.test.ts',
   // Builds a disposable diverged Git graph and runs real Git commands to
   // distinguish candidate-only changes from base-only and direct-push ranges.
   'scripts/__tests__/classify-ci-change.test.ts',
@@ -336,9 +342,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // read. Both are the contract — the reporter must never fail a job it only
   // reports on — and neither is observable from an imported function.
   'scripts/__tests__/verification-gate-summary.test.ts',
-  // #3208: same shape one gate over — runs each static gate it lists as a real
-  // child process, so the list cannot name a script that no longer resolves.
+  // archive#3208: same shape one gate over — parses each static gate it lists in a
+  // real child process, so the list cannot name a script that no longer
+  // resolves, and runs the guard's own CLI against stub gates.
   'scripts/__tests__/prepush-static-gates.test.ts',
+  // Runs the lazy-boundary ratchet against this repository as one bounded
+  // single-shot node child.
+  'scripts/__tests__/lazy-boundary-ratchet.test.ts',
   // station 2026-08-28: same shape again — the commit-subject gate's CLI and
   // its .githooks/commit-msg wrapper run as bounded single-shot children so
   // the refusal path's exit STATUS is proven, not just the pure validator;
@@ -426,10 +436,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // point as one bounded single-shot node child; everything else in the file
   // exercises pure decision composition.
   'scripts/__tests__/gate-for.test.ts',
-  // station#2543: proves the instruction-topology gate's build-output skip
-  // holds when the gate module runs as a real child process, not just
-  // in-process — one bounded single-shot node child per fixture root.
-  'scripts/__tests__/agent-instructions-gate.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
   'scripts/__tests__/e2e-manifest.test.ts',

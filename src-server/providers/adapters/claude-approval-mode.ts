@@ -36,23 +36,17 @@ const CLAUDE_APPROVAL_MODE_MAP: Record<
 };
 
 /**
- * Pure mapping: a resolved `ApprovalMode` to Claude Code's native
- * `PermissionMode`. Returns `undefined` for `'connection-default'` (or an
- * absent/unrecognized mode) so callers can fall back to their own existing
- * default without this module asserting one.
+ * Reads `approvalMode` out of a `modelOptions` bag and maps it to Claude
+ * Code's native `PermissionMode`. Returns `undefined` for
+ * `'connection-default'` (or an absent/unrecognized mode) so callers can fall
+ * back to their own existing default without this module asserting one.
  */
-export function mapApprovalModeToPermissionMode(
-  mode: ApprovalMode | undefined,
-): PermissionMode | undefined {
-  if (!mode || mode === 'connection-default') return undefined;
-  return CLAUDE_APPROVAL_MODE_MAP[mode];
-}
-
-/** Reads `approvalMode` out of a `modelOptions` bag and maps it directly. */
 export function resolveClaudePermissionMode(
   modelOptions?: Record<string, unknown>,
 ): PermissionMode | undefined {
-  return mapApprovalModeToPermissionMode(readApprovalMode(modelOptions));
+  const mode = readApprovalMode(modelOptions);
+  if (!mode || mode === 'connection-default') return undefined;
+  return CLAUDE_APPROVAL_MODE_MAP[mode];
 }
 
 /**

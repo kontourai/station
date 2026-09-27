@@ -105,11 +105,6 @@ paired phone gets a push, and tapping it lands on the attention inbox
     falling back to the generic attention inbox (`/notifications`, the
     fallback the manual checklist below still exercises) when metadata
     doesn't carry enough to resolve one.
-  - **All-quiet framing**: `outcomeFirstAllQuietHeadline` produces an
-    outcome-first headline ("Agent work completed" / "Agent work failed"),
-    never a bare zero count like "0 active agents". No summary/badge surface
-    in the product reads it yet — it exists as a tested, reusable composer,
-    disclosed rather than silently wired into a surface that doesn't exist.
 - **Client**: `usePushNotifications` (`src-ui/src/hooks/usePushNotifications.ts`)
   registers `public/sw.js`, requests permission, subscribes, and POSTs the
   subscription. A `403 device_pairing_required` response — or the

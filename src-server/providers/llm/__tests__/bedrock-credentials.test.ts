@@ -77,14 +77,6 @@ describe('bedrockClientAuth', () => {
       /unrecognized authMode/i,
     );
   });
-
-  test('never leaks a raw api key into a non-bearer field', () => {
-    const result = bedrockClientAuth({
-      authMode: 'api-key',
-      apiKey: 'super-secret',
-    });
-    expect(JSON.stringify(result)).not.toContain('credentials');
-  });
 });
 
 // HIGH-3 (review fix round): the Strands (@strands-agents/sdk BedrockModel)

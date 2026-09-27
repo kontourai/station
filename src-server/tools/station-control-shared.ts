@@ -404,10 +404,48 @@ export async function api(path: string, opts?: RequestInit) {
   return res.json() as Promise<any>;
 }
 
-export function jsonToolResult(data: unknown) {
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
-  };
+/**
+ * A station-control tool result carrying `data` as JSON text.
+ *
+ * #2795 (catch s5-436): a `{ success: false, … }` body is a failure, so the
+ * result also sets MCP `isError`. The native invoke route
+ * (`invoke-agent.ts`) recognises a failed control tool only by that flag;
+ * without it a refusal answered HTTP 200 with success telemetry. This is the
+ * one place every station-control tool builds a JSON result — the tool-side
+ * authority refusal, every `toToolEnvelope` family, the delegation tools and
+ * every tool that forwards a route's envelope — so the rule lives here rather
+ * than at each failure site. Agents still receive the same JSON, typed `code`
+ * included; `isError` only marks it.
+ */
+export function jsonToolResult(
+  data: unknown,
+  options?: {
+    /**
+     * A refusal whose body is not a `success: false` envelope (`notify_user`'s
+     * `caller-required`, `install_plugin`'s `installed: false`): the caller
+     * states it, since only it knows the shape means "did not happen".
+     */
+    failed?: boolean;
+  },
+): {
+  content: { type: 'text'; text: string }[];
+  isError?: true;
+} {
+  const content = [
+    { type: 'text' as const, text: JSON.stringify(data, null, 2) },
+  ];
+  return options?.failed === true || isFailureEnvelope(data)
+    ? { content, isError: true }
+    : { content };
+}
+
+function isFailureEnvelope(data: unknown): boolean {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    !Array.isArray(data) &&
+    (data as { success?: unknown }).success === false
+  );
 }
 
 /**
@@ -501,6 +539,62 @@ export async function toToolEnvelope<T>(promise: Promise<T>): Promise<
         ? { code: typed.code }
         : {}),
     };
+  }
+}
+
+/**
+ * #2708: THIS Station's own typed refusal of a station-control request —
+ * its guard or route decided it, and nothing else may build one. The
+ * delegation tools reach their current Station through the same helpers they
+ * use for peers; a peer's answer is never trusted as a code (a peer can send
+ * any string, `station_control_caller_required` included), so only the call
+ * sites that KNOW the target is this Station wrap its answer in one of these,
+ * as a `cause` beneath their own sentence. The code is in `refusalCode`, not
+ * `code`, so no route's `errorCode()` and no peer-refusal mapping reads it.
+ */
+export class LocalStationRefusal extends Error {
+  constructor(
+    readonly refusalCode: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'LocalStationRefusal';
+  }
+}
+
+function localRefusalCode(error: unknown): string | undefined {
+  let current: unknown = error;
+  for (let depth = 0; current instanceof Error && depth < 8; depth += 1) {
+    if (current instanceof LocalStationRefusal) return current.refusalCode;
+    current = current.cause;
+  }
+  return undefined;
+}
+
+/**
+ * A delegation tool's result: its value on success, exactly as before, and on
+ * ANY failure `toToolEnvelope`'s failure shape — `{ success: false, error,
+ * code? }` — marked `isError`, so one tool never fails two ways and every
+ * consumer that reads the MCP flag sees the failure. `error` is the tool's own
+ * sentence. `code` is present only when a `LocalStationRefusal` is in the
+ * error's cause chain: this Station decided it. Not `toToolEnvelope` itself:
+ * its success arm would wrap these tools' results as `{ success, data }`, and
+ * its failure arm relays any `.code`, which on these errors can be a peer's.
+ */
+export async function delegationToolResult(
+  run: () => Promise<unknown>,
+): Promise<ReturnType<typeof jsonToolResult>> {
+  try {
+    return jsonToolResult(await run());
+  } catch (error) {
+    const code = localRefusalCode(error);
+    // A `success: false` body, so `jsonToolResult` marks it `isError`
+    // (catch s5-436).
+    return jsonToolResult({
+      success: false,
+      error: error instanceof Error ? error.message : 'Request failed',
+      ...(code === undefined ? {} : { code }),
+    });
   }
 }
 

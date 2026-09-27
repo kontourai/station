@@ -88,7 +88,7 @@ describe('promotion full-regression workflow', () => {
     ).toContain('git rev-parse HEAD');
     const gateSteps = gate.steps ?? [];
     const actionlint = namedStep(gate, 'Install pinned actionlint');
-    const ciFast = workflow('ci.yml').jobs?.['fast-checks'] ?? {};
+    const ciFast = workflow('ci.yml').jobs?.['fast-checks-statics'] ?? {};
     expect(actionlint).toEqual(namedStep(ciFast, 'Install pinned actionlint'));
     expect(actionlint).not.toHaveProperty('continue-on-error');
     const actionlintIndex = gateSteps.indexOf(actionlint);

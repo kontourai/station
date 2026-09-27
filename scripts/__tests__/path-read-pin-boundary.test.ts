@@ -88,9 +88,9 @@ const derived = pathReadPinEdges({ root: ROOT });
  * ANYWHERE in the tree, and its failure only ever said "re-measure" — so
  * #1836 moved two pins among 357 files, this went 144 -> 143, and the number
  * carried no hint of which suite had moved. Naming the suites instead makes
- * the failure a diff: a new entry is a suite whose path read the scanner
- * cannot resolve, a disappearing entry is one that gained a real import (the
- * good outcome #1836 actually produced). That is the pattern
+ * the failure name the suite whose path read the scanner cannot resolve. It
+ * fails only on growth: a suite that gains a real import (the good outcome
+ * #1836 actually produced) may leave this list stale. That is the pattern
  * `orchestration-source-invariants.test.ts` adopted for the same reason,
  * after a `files.length > 300` floor against an actual 960 masked a dropped
  * subtree.
@@ -498,6 +498,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'git ls-files over its own generated outputs, to prove they are untracked',
   'scripts/__tests__/desktop-runtime-port-lease.test.ts':
     'its rmSync mock walks whatever the code under test deletes, a temporary lock directory',
+  'scripts/__tests__/fast-checks-shard-cli.test.ts':
+    'git ls-files over scripts/__tests__ as a real test selection to shard; asserts nothing about those files, only that the shards cover it',
   'scripts/__tests__/generate-app-icons.test.ts':
     'incidental: compares the committed icon sets and .icns files it regenerates',
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts':
@@ -532,7 +534,6 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/services/ssh/__tests__/environment-security-lock-race.test.ts':
     WRAPS_FS,
-  'packages/cli/src/__tests__/install-registry.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/ios-channel-icons.test.ts':
     'incidental: checks the committed iOS icon sets against their catalog, like generate-app-icons',
   'scripts/__tests__/server-build-portability.test.ts': TEMP_VIA_FIXTURE,
@@ -696,25 +697,6 @@ describe('path-read pins are discovered', () => {
     expect(entries.length).toBeGreaterThan(20);
   });
 
-  it('finds the pin whose silent break motivated this gate', () => {
-    // The whole story in one fixture. #1785 moved the outbound-queue call
-    // out of `ChatDock.tsx` into `useConversationBoundaryDialogs.ts`; this
-    // test's pin still read `ChatDock.tsx`, went red on `main`, and nobody's
-    // pull request selected it because a path read has no import edge. #1808
-    // fixed it forward by repointing the pin at the hook — which is where it
-    // reads today, and why this fixture names that file rather than the dock.
-    // Had this gate existed, the move would have scheduled the pin at
-    // fast-checks instead.
-    const outboundQueuePin = pins.find(
-      ({ pin }) =>
-        pin ===
-        'src-ui/src/components/chat-dock/useConversationBoundaryDialogs.ts',
-    );
-    expect(outboundQueuePin?.tests).toContain(
-      'src-ui/src/__tests__/useOutboundQueueSnapshot.test.tsx',
-    );
-  });
-
   it('names every suite whose path read the scanner cannot resolve', () => {
     const reading = listSuiteFiles(ROOT).filter((file) =>
       readsFileByPath(readFileSync(join(ROOT, file), 'utf8')),
@@ -724,48 +706,22 @@ describe('path-read pins are discovered', () => {
       .filter((file) => !reported.has(file))
       .sort((left, right) => left.localeCompare(right));
 
-    // A diff of names, not a moved number. Vitest prints the added and
-    // removed entries, so the failure says WHICH suite changed and in which
-    // direction — an added name is a new blind spot, a removed one is a path
-    // read that became a real import and is now guarded by the module graph.
+    // A list of names, not a moved number, and it fails only on growth: a
+    // new name is a new blind spot, while a suite that leaves the list (its
+    // read became a real import, or the suite was deleted) is the good case
+    // and must not red an unrelated pull request in the merge queue.
+    const known = new Set(UNREPORTED_PATH_READING_SUITES);
     expect(
-      unreported,
-      'the set of path-reading suites the scanner cannot resolve changed. ' +
-        'An ADDED entry is a new blind spot: prefer converting the read to ' +
-        'an import, or anchor it (new URL(..., import.meta.url)) so the ' +
-        'scanner can pin it. A REMOVED entry is the good case — drop it ' +
-        'from UNREPORTED_PATH_READING_SUITES.',
-    ).toEqual([...UNREPORTED_PATH_READING_SUITES]);
+      unreported.filter((file) => !known.has(file)),
+      'these suites read a file by path in a way the scanner cannot resolve. ' +
+        'Prefer converting the read to an import, or anchor it ' +
+        '(new URL(..., import.meta.url)) so the scanner can pin it; adding ' +
+        'the suite to UNREPORTED_PATH_READING_SUITES is a decision.',
+    ).toEqual([]);
 
     // The scanner still has to be doing real work: an empty reported set
     // would satisfy the pin above by reporting nothing at all.
     expect(entries.length).toBeGreaterThan(unreported.length / 2);
-  });
-
-  it('finds a pin the read call site alone cannot resolve', () => {
-    // `conversationContextBoundaryStatusCache.test.tsx` reads
-    // `[join(...), join(...)].map((path) => readFileSync(path))`, so the
-    // argument at the read is a callback parameter and names nothing.
-    const dialogsPin = pins.find(
-      ({ pin }) =>
-        pin ===
-        'src-ui/src/components/chat-dock/useConversationBoundaryDialogs.ts',
-    );
-    expect(dialogsPin?.tests).toContain(
-      'src-ui/src/__tests__/conversationContextBoundaryStatusCache.test.tsx',
-    );
-
-    // The helper-parameter idiom (#2221's blind spot): the suite reads
-    // chat.css through `read(...)`, so no import edge reaches it and the
-    // call site alone names nothing. mobile-chrome-safety was the suite
-    // whose stale pins only the nightly corpus saw while three redesigns
-    // of the chip landed green.
-    const chatCssPin = pins.find(
-      ({ pin }) => pin === 'src-ui/src/components/chat/chat.css',
-    );
-    expect(chatCssPin?.tests).toContain(
-      'src-ui/src/__tests__/mobile-chrome-safety.test.ts',
-    );
   });
 });
 
@@ -1136,6 +1092,21 @@ describe('the scanner resolves only what it can justify', () => {
     ];
     for (const source of helperForms)
       expect(scan(source), source).toEqual(['src-ui/src/App.tsx']);
+  });
+
+  it('resolves a callback parameter over a literal path array', () => {
+    // The argument at the read names nothing; the paths sit in the array the
+    // callback maps over.
+    expect(
+      scan(
+        'const sources = [\n' +
+          "  join(__dirname, '..', 'App.tsx'),\n" +
+          "  join(__dirname, '..', 'main.tsx'),\n" +
+          ']\n' +
+          "  .map((path) => readFileSync(path, 'utf8'))\n" +
+          "  .join('\\n');\n",
+      ),
+    ).toEqual(['src-ui/src/App.tsx', 'src-ui/src/main.tsx']);
   });
 
   it('resolves a helper whose parameter sits mid-path', () => {

@@ -5,8 +5,6 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  addEndpoint,
-  attachEnvironmentDescriptor,
   createKnownEnvironment,
   KnownEnvironmentRegistry,
   mergeKnownEnvironments,
@@ -224,48 +222,28 @@ describe('KnownEnvironmentRegistry — identity merge (AC1)', () => {
     ).toBe(false);
   });
 
-  it('endpoint dedup: the same httpBaseUrl is never added twice', () => {
-    const environment = createKnownEnvironment({
+  it('endpoint dedup: merging two entries for the same httpBaseUrl keeps one endpoint', () => {
+    const registry = makeRegistry();
+    const first = registry.add({
       label: 'Box B',
       httpBaseUrl: 'https://box-b.tailnet.ts.net',
       source: 'manual',
-      now: 1000,
     });
-    const withDuplicate = addEndpoint(
-      environment,
-      environment.endpoints[0],
-      2000,
-    );
-    expect(withDuplicate.endpoints).toHaveLength(1);
-    // No-op dedup leaves updatedAt untouched.
-    expect(withDuplicate.updatedAt).toBe(1000);
-  });
-});
-
-describe('attachEnvironmentDescriptor (pure function)', () => {
-  it('merges endpoints across two entries sharing a new environmentId', () => {
-    const stable = createKnownEnvironment({
-      label: 'Stable',
-      httpBaseUrl: 'http://192.168.1.20:3141',
-      source: 'manual',
-      environmentId: 'environment-box-b',
-      now: 1000,
-    });
-    const candidate = createKnownEnvironment({
-      label: 'Candidate',
+    const second = registry.add({
+      label: 'Box B again',
       httpBaseUrl: 'https://box-b.tailnet.ts.net',
       source: 'manual',
-      now: 2000,
     });
-    const merged = attachEnvironmentDescriptor(
-      [stable, candidate],
-      'environment-box-b',
-      candidate.id,
-      3000,
-    );
-    expect(merged).toHaveLength(1);
-    expect(merged[0].id).toBe(stable.id);
-    expect(merged[0].endpoints).toHaveLength(2);
+
+    registry.attachEnvironmentDescriptor(first.id, 'environment-box-b');
+    registry.attachEnvironmentDescriptor(second.id, 'environment-box-b');
+
+    const all = registry.getAll();
+    expect(all).toHaveLength(1);
+    expect(all[0].id).toBe(first.id);
+    expect(all[0].endpoints.map((endpoint) => endpoint.httpBaseUrl)).toEqual([
+      'https://box-b.tailnet.ts.net',
+    ]);
   });
 });
 

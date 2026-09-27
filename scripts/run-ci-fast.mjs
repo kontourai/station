@@ -14,6 +14,15 @@ export const FAST_FEEDBACK_TIMEOUT_MS = CI_FAST_TIMEOUT_MS;
  */
 export const CI_FAST_BUDGET_EXCEEDED_CAUSE = `ci:fast exceeded its ${FAST_FEEDBACK_TIMEOUT_MS / 60_000}-minute feedback budget`;
 export const FAST_BASE_ENV = 'STATION_CI_FAST_BASE';
+/**
+ * #2709: the required `fast-checks` check is an aggregator over a sharded
+ * affected-test selection (scripts/fast-checks-shard.mjs) and a statics job.
+ * The statics job runs this lane with the scope set to `statics`, which drops
+ * the selector because the shards own it. Unset keeps the whole lane: local
+ * `npm run ci:fast` and fork-smoke still run the selection here.
+ */
+export const FAST_SCOPE_ENV = 'STATION_CI_FAST_SCOPE';
+export const FAST_SCOPE_STATICS = 'statics';
 export const SELECTOR_DEFERRED_EXIT_CODE = 3;
 export const CI_FAST_INFRASTRUCTURE_EXIT_CODE = PRODUCT_LAW_TIMEOUT_EXIT_CODE;
 /** Emitted only by this owner after its nested command has settled. */
@@ -181,6 +190,19 @@ export function fastBase(env = process.env) {
   return base;
 }
 
+/**
+ * `all` unless the scope names exactly `statics`. Any other value is refused:
+ * a misspelled scope must not quietly run a different set of checks.
+ */
+export function fastScope(env = process.env) {
+  const scope = env[FAST_SCOPE_ENV];
+  if (scope === undefined || scope === '') return 'all';
+  if (scope === FAST_SCOPE_STATICS) return FAST_SCOPE_STATICS;
+  throw new Error(
+    `${FAST_SCOPE_ENV} must be unset or '${FAST_SCOPE_STATICS}', not '${String(scope).slice(0, 64)}'`,
+  );
+}
+
 /** A bounded execution fault, distinct from an invalid policy/configuration. */
 export class CiFastInfrastructureError extends Error {
   constructor(message, options) {
@@ -252,13 +274,21 @@ export function runCiFast({
 } = {}) {
   const startedAt = now();
   const base = fastBase(env);
-  for (const [index, [command, args]] of [
-    [
-      process.execPath,
-      ['scripts/run-changed-verification.mjs', `--base=${base}`],
-    ],
+  const selector = fastScope(env) === 'all';
+  const commands = [
+    ...(selector
+      ? [
+          [
+            process.execPath,
+            ['scripts/run-changed-verification.mjs', `--base=${base}`],
+          ],
+        ]
+      : []),
     ...FAST_STATIC_COMMANDS,
-  ].entries()) {
+  ];
+  for (const [position, [command, args]] of commands.entries()) {
+    // `index === 0` names the selector; a statics-only lane has none.
+    const index = selector ? position : position + 1;
     const iterationStartedAt = now();
     const timeout =
       remaining(startedAt, now) - (index === 0 ? FAST_STATIC_RESERVE_MS : 0);

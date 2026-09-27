@@ -41,6 +41,7 @@ import type {
   PolicyHookProfile,
 } from '@kontourai/station-contracts/runtime-events';
 import { createStationTempDir } from '@kontourai/station-shared/temp-dir';
+import { readControlToolFailure } from '../../runtime/tools/control-tool-failure.js';
 import {
   bareControlToolName,
   classifyControlTool,
@@ -219,7 +220,16 @@ export class PlatformMutationGate {
    */
   async afterMutation(
     ticket: MutationTicket,
-    result: { outcome: 'success' | 'error'; errorMessage?: string },
+    result: {
+      outcome: 'success' | 'error';
+      errorMessage?: string;
+      /**
+       * #2795: the refusal's bounded machine code, when the tool answered an
+       * `isError` envelope carrying one — so the run evidence tells "refused"
+       * (a code) from "attempted and failed" (none).
+       */
+      code?: string;
+    },
   ): Promise<void> {
     if (!ticket.active) return;
     const outcome: PlatformMutationOutcome =
@@ -228,7 +238,7 @@ export class PlatformMutationGate {
         : ticket.decision === 'warn'
           ? 'warned'
           : 'allowed';
-    await this.audit(ticket, outcome, result.errorMessage);
+    await this.audit(ticket, outcome, result.errorMessage, result.code);
   }
 
   // ── internals ────────────────────────────────────────
@@ -270,6 +280,7 @@ export class PlatformMutationGate {
     ticket: MutationTicket,
     outcome: PlatformMutationOutcome,
     errorMessage?: string,
+    code?: string,
   ): Promise<void> {
     platformMutations.add(1, {
       tool: ticket.tool,
@@ -285,7 +296,7 @@ export class PlatformMutationGate {
       });
     }
     if (ticket.binding && outcome !== 'blocked') {
-      await this.attachRunEvidence(ticket, outcome, errorMessage);
+      await this.attachRunEvidence(ticket, outcome, errorMessage, code);
     }
   }
 
@@ -301,6 +312,7 @@ export class PlatformMutationGate {
     ticket: MutationTicket,
     outcome: PlatformMutationOutcome,
     errorMessage?: string,
+    code?: string,
   ): Promise<void> {
     const flowRunService = this.options.flowRunService;
     const binding = ticket.binding;
@@ -323,9 +335,12 @@ export class PlatformMutationGate {
             claimType: 'station.platform-mutation',
             subjectId: binding.runId,
             value: outcome,
-            fieldOrBehavior: errorMessage
-              ? `${ticket.tool}: ${errorMessage}`
-              : ticket.tool,
+            // A refusal's code rides beside the tool: `update_skill
+            // [station_control_person_only]: …` is refused, `update_skill: …`
+            // attempted and failed.
+            fieldOrBehavior: `${ticket.tool}${code ? ` [${code}]` : ''}${
+              errorMessage ? `: ${errorMessage}` : ''
+            }`,
           }),
           null,
           2,
@@ -432,7 +447,20 @@ export function wrapPlatformMutationGatedTools<T extends GatedToolShape>(
         }
         try {
           const result = await execute.call(tool, args, execOptions);
-          await gate.afterMutation(ticket, { outcome: 'success' });
+          // #2795: a station-control tool answers a refusal or failure as an
+          // `isError` result rather than a throw; that is not an allowed
+          // mutation, so it is audited as the failure it is.
+          const failure = readControlToolFailure(result);
+          await gate.afterMutation(
+            ticket,
+            failure
+              ? {
+                  outcome: 'error',
+                  errorMessage: failure.sentence,
+                  ...(failure.code ? { code: failure.code } : {}),
+                }
+              : { outcome: 'success' },
+          );
           return result;
         } catch (error) {
           await gate.afterMutation(ticket, {
