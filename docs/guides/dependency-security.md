@@ -52,7 +52,8 @@ npm run audit:policy
 ```
 
 The command obtains one `pnpm audit --json` registry response and derives full
-and production reachability separately from each selected importer in the lock.
+and production reachability from the lock. The root view combines all managed
+workspace importers; SDK and Shared each use their own importer closure.
 It preserves critical/high blocking and exact production residual policy.
 Run locally it covers all three scopes. In CI, pull-request, push and
 merge-queue runs cover the scopes whose dependency inputs the change touched
@@ -109,7 +110,7 @@ using it in a review:
 npm run codeql:sarif:check -- --input=/absolute/path/to/codeql.sarif
 ```
 
-The local policy rejects empty, malformed, truncated, synthetic, or failed
+The local policy rejects empty, malformed, truncated, rule-free, or failed
 analysis evidence; it requires an identified CodeQL run, rule inventory,
 valid rule references, result messages, and severity resolved from the result
 or its referenced rule. Structural evidence failures and unbaselined error-level
@@ -119,6 +120,10 @@ therefore need not fail. Stale baseline entries fail on main pushes but warn on
 PR/merge-group checks, which read the protected base baseline. The owner is
 [`codeql-sarif-policy.mjs`](../../scripts/codeql-sarif-policy.mjs). A clean
 completed scan may legitimately have an empty result list.
+
+These checks validate the supplied evidence's structure and findings. A valid
+local file is not proof that a trusted CodeQL execution produced it; the hosted
+workflow separately owns capture and protected-base enforcement.
 
 GitHub ingestion is **NOT_VERIFIED**. Rust analysis is also **NOT_VERIFIED**:
 this foundation initializes only `javascript-typescript` and does not build or
@@ -150,7 +155,7 @@ Capture both the complete development graph and production reachability:
 npm run audit:policy
 ```
 
-This reports each selected importer's full graph and production closure from
+This reports each selected view's full graph and production closure from
 one registry snapshot. Registry advisory data changes over time; use the
 executable report rather than copying historical totals into automation.
 

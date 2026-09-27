@@ -202,7 +202,7 @@ resource list in the AWS calculator before provisioning. Sources:
 [VPC pricing](https://aws.amazon.com/vpc/pricing/), and
 [S3 pricing](https://aws.amazon.com/s3/pricing/).
 
-Execution is a separate usage budget. At the published Linux/x86 Fargate
+Execution is a separate usage budget. At the historical Linux/x86 Fargate
 N. Virginia example rates, a 2-vCPU/4-GiB task is approximately $0.099 per
 running hour: about $2 for 20 hours or $72 for 730 hours, before persistent
 workspace storage, network, logs, and model calls. Startup and idle time count.

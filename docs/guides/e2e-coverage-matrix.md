@@ -12,8 +12,8 @@ cross-surface suite through `scripts/run-e2e-suite.mjs` against a temporary
 top-level and Android Playwright spec must be assigned to exactly one bucket:
 `product`, `first-run`, `starter-clean-install`, `smoke-live`, `extended`,
 `screenshot`, `quarantine`, or `android`. Product, first-run, Starter
-clean-install, smoke-live, extended, and screenshot buckets are run through
-`scripts/run-e2e-suite.mjs`; Android remains a separate Playwright project.
+clean-install, smoke-live, extended, screenshot, and Android buckets are run
+through `scripts/run-e2e-suite.mjs`; Android selects a separate Playwright project.
 [Extended CI](../../.github/workflows/ci-extended.yml)'s Full Playwright Coverage job and the local `npm run verify` gate both use
 the full contract, so new specs must update this manifest before they can stay
 green.

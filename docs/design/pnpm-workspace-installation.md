@@ -57,7 +57,9 @@ Native frozen installation supplements these checks. Frozen installation alone
 did not reject an imported unsatisfied peer in a local probe.
 
 Advisory policy uses one registry response with separate full and production
-closures for root, SDK, and Shared. It retains severity and residual policy.
+closures for root, SDK, and Shared. Root includes all managed workspace
+importers; SDK and Shared each select their own importer. The policy retains
+its severity and residual requirements.
 Release inventories follow the locked production graph, including workspace
 links, aliases, peer contexts, and platform-optional packages; npm PURLs still
 identify the registry ecosystem. A tarball integrity hash is not a hash of
