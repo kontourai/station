@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   assertNotRegressing,
+  assertPayloadIdentity,
   checkArchives,
   compareNightlyVersions,
   createDryRunKeys,
@@ -100,6 +101,7 @@ type Context = {
   repository: string;
   reserved: string;
   assemble: string;
+  verified: string;
 };
 
 /**
@@ -120,6 +122,7 @@ function gateAllows(expression: string, context: Context): boolean {
       'github.workflow_ref': context.workflowRef,
       'needs.plan.outputs.reserved': context.reserved,
       'needs.assemble.result': context.assemble,
+      'needs.assemble.outputs.verified': context.verified,
     };
     if (operand in known) return known[operand];
     throw new Error(`unrecognised gate operand: ${operand}`);
@@ -144,6 +147,7 @@ const enabledNightly: Context = {
   repository: REPOSITORY,
   reserved: 'true',
   assemble: 'success',
+  verified: 'true',
 };
 
 /** Every step that changes what is published or signs with the real key. */
@@ -204,6 +208,9 @@ describe('portable Nightly publication workflow: the owner gate', () => {
       // A synthetic (unreserved) version or a failed dry run never publishes.
       { ...enabledNightly, reserved: 'false' },
       { ...enabledNightly, assemble: 'failure' },
+      // continue-on-error can report a failed dry run as a success; only
+      // assemble's last step sets `verified`.
+      { ...enabledNightly, verified: '' },
     ])
       expect(gateAllows(gate, context), JSON.stringify(context)).toBe(false);
   });
@@ -325,6 +332,66 @@ describe('portable Nightly publication workflow: token, secret and effect scope'
     );
   });
 
+  it("refuses a payload that is not this run's Nightly before signing or any release exists", () => {
+    const steps = publication.jobs.publish.steps ?? [];
+    const check = steps.findIndex(
+      (step) => step.name === "Confirm the payload is this run's Nightly",
+    );
+    const firstSecretOrEffect = steps.findIndex(
+      (step) =>
+        /\bsecrets\./.test(JSON.stringify(step)) || isPublicationEffect(step),
+    );
+    expect(check).toBeGreaterThanOrEqual(0);
+    expect(check).toBeLessThan(firstSecretOrEffect);
+    expect(steps[check].run).toContain(
+      'check-payload --payload "$RUNNER_TEMP/publication/payload.json" --version "$VERSION" --source-sha "$SOURCE_SHA"',
+    );
+    const payload = platformPayload();
+    const expected = {
+      version: '0.7.0-nightly.12',
+      sourceSha: '0123456789abcdef0123456789abcdef01234567',
+    };
+    expect(assertPayloadIdentity(payload, expected)).toBe(payload);
+    for (const [override, reason] of [
+      [{ version: '0.7.0-nightly.13' }, /version 0.7.0-nightly.13/],
+      [{ releaseTag: 'v0.7.0-nightly.13' }, /releaseTag/],
+      [{ sourceSha: 'f'.repeat(40) }, /sourceSha/],
+      [{ channel: 'stable' }, /channel stable \(expected nightly\)/],
+    ] as const)
+      expect(() =>
+        assertPayloadIdentity(platformPayload(override), expected),
+      ).toThrow(reason);
+    const cli = runNode('scripts/portable-nightly-publication.mjs', [
+      'check-payload',
+      '--payload',
+      writeJson('identity-payload.json', payload),
+      '--version',
+      '0.7.0-nightly.11',
+      '--source-sha',
+      expected.sourceSha,
+    ]);
+    expect(cli.status).toBe(1);
+    expect(cli.stderr).toContain("payload is not this run's Nightly");
+  });
+
+  it('finds a draft left by a failed run and names its cleanup instead of retrying over it', () => {
+    const step = (publication.jobs.publish.steps ?? []).find(
+      (candidate) =>
+        candidate.name ===
+        "Require the owner's rolling pointer release and a fresh version",
+    );
+    // Drafts have no tag, so a view by tag is not the check.
+    expect(step?.run).not.toContain('gh release view "$RELEASE_TAG"');
+    expect(step?.run).toContain(
+      'gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100"',
+    );
+    expect(step?.run).toContain('select(.tag_name == env.RELEASE_TAG)');
+    expect(step?.run).toContain('if [ "$release_draft" = true ]; then');
+    expect(step?.run).toContain(
+      'gh api --method DELETE repos/$GITHUB_REPOSITORY/releases/$release_id',
+    );
+  });
+
   it('dry-runs the whole signing path with a throwaway key the pinned table refuses', () => {
     const assemble = publication.jobs.assemble.steps ?? [];
     const sign = assemble.find(
@@ -351,7 +418,68 @@ describe('portable Nightly publication workflow: token, secret and effect scope'
       ref: expr('needs.plan.outputs.source_sha'),
       version: expr('needs.plan.outputs.version'),
       ring: 'nightly',
+      non_blocking: expr(`vars.${GATE_VARIABLE} != 'enabled'`),
     });
+  });
+});
+
+describe('the dry run cannot turn Nightly red until publication is enabled', () => {
+  const NON_BLOCKING = expr(`vars.${GATE_VARIABLE} != 'enabled'`);
+  const archivesWorkflow = readWorkflow('portable-server-archives.yml');
+
+  it('marks every dry-run job continue-on-error while the gate is off, and never publish', () => {
+    expect(publication.jobs.plan).toMatchObject({
+      'continue-on-error': NON_BLOCKING,
+    });
+    expect(publication.jobs.assemble).toMatchObject({
+      'continue-on-error': NON_BLOCKING,
+    });
+    // A reusable-workflow call cannot take continue-on-error; the callee's
+    // matrix does, from this input.
+    expect(publication.jobs.archives.with?.non_blocking).toBe(NON_BLOCKING);
+    expect(
+      (archivesWorkflow.jobs.archive as Record<string, unknown>)[
+        'continue-on-error'
+      ],
+    ).toBe(expr('inputs.non_blocking == true'));
+    expect(
+      (
+        archivesWorkflow.on?.workflow_call as {
+          inputs: Record<string, unknown>;
+        }
+      ).inputs.non_blocking,
+    ).toMatchObject({ required: false, default: false, type: 'boolean' });
+    expect(Object.hasOwn(publication.jobs.publish, 'continue-on-error')).toBe(
+      false,
+    );
+    expect(
+      Object.hasOwn(nightly.jobs['portable-nightly'], 'continue-on-error'),
+    ).toBe(false);
+  });
+
+  it('gates publication on the output only a finished dry run sets', () => {
+    const steps = publication.jobs.assemble.steps ?? [];
+    expect(steps.at(-1)).toMatchObject({
+      id: 'verified',
+      run: `echo 'verified=true' >> "$GITHUB_OUTPUT"`,
+    });
+    expect(steps.at(-1)?.if).toBeUndefined();
+    expect(
+      (publication.jobs.assemble as { outputs?: Record<string, string> })
+        .outputs,
+    ).toEqual({ verified: expr('steps.verified.outputs.verified') });
+    expect(conjuncts(publication.jobs.publish.if ?? '')).toContain(
+      "needs.assemble.outputs.verified == 'true'",
+    );
+  });
+
+  it('leaves main-health keyed on the run conclusion, with no portable job it waits for', () => {
+    const mainHealth = readWorkflow('main-health.yml');
+    expect(mainHealth.jobs['report-failure'].if).toContain(
+      "github.event.workflow_run.conclusion == 'failure'",
+    );
+    const text = readFileSync(join(workflowsDir, 'main-health.yml'), 'utf8');
+    expect(text).not.toMatch(/[Pp]ortable server Nightly/);
   });
 });
 

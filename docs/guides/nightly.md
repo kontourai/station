@@ -113,9 +113,31 @@ immutable prerelease `v<version>` (never marked latest), re-downloads them and
 compares digests, replaces `station-portable-nightly-manifest.json` on the
 rolling `portable-nightly` release last, and re-fetches and re-verifies it.
 
-To enable it (owner only): create the `portable-nightly` prerelease pointer,
-then set the variable, for example
-`gh variable set STATION_PORTABLE_NIGHTLY_PUBLISH --repo kontourai/station --body enabled`.
+While the gate is off, the dry run cannot turn Nightly red: its jobs are
+`continue-on-error`, so a failed dry-run job shows red in the run but the run
+(and main-health, which reads the run's conclusion) stays green. Publication
+never relies on that: it requires the `verified` output that only the dry
+run's last step sets. Once the gate is enabled, a failure fails Nightly.
+
+Before publishing, the job refuses a payload whose ring, version, tag or
+source SHA is not this run's, and refuses to reuse `v<version>`, including a
+draft a failed run left behind (the error names the release id to delete).
+
+To enable it (owner only):
+
+- Plan retention first. Each publish adds a permanent prerelease and tag
+  `vX.Y.Z-nightly.<code>` (the versioned assets pinned and rollback manifests
+  point at): one for each Nightly that builds, and up to four
+  scheduled runs a day.
+- Create the `portable-nightly` prerelease pointer, then set the variable, for
+  example
+  `gh variable set STATION_PORTABLE_NIGHTLY_PUBLISH --repo kontourai/station --body enabled`.
+- Read the first enabled Nightly's step summary for "Assemble, dry-run sign and
+  verify". It says whether the gate evaluated as enabled for that run. The gate
+  relies on `github.workflow_ref` in a called workflow naming the caller
+  (`nightly.yml`), as GitHub documents, and that is unverified until then. If
+  the summary says dry run, the publish job was skipped, which fails safe.
+
 Deleting the variable returns every run to a dry run.
 
 ## macOS nightly (local install)

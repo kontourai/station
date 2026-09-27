@@ -293,6 +293,11 @@ describe('portable server archive workflow', () => {
         ref: expect.objectContaining({ required: true, type: 'string' }),
         version: expect.objectContaining({ required: true, type: 'string' }),
         ring: expect.objectContaining({ required: true, type: 'string' }),
+        non_blocking: expect.objectContaining({
+          required: false,
+          default: false,
+          type: 'boolean',
+        }),
       },
     });
     expect(workflow.on.push).toMatchObject({ branches: ['main'] });

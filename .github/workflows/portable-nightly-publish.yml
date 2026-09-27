@@ -23,6 +23,13 @@ name: Portable server Nightly publication
 #
 # Policy (these scripts) runs from the caller's event SHA on main, which the
 # plan job binds to the source SHA the archives are built from.
+#
+# Until the owner enables publication, the dry run must not turn Nightly red:
+# plan, the archive matrix and assemble carry continue-on-error while the gate
+# variable is not `enabled`, so a failed dry-run job stays red in the run but
+# the run (and main-health, which keys on the run conclusion) stays green.
+# The publish gate does not rely on job results for that reason: it requires
+# assemble's `verified` output, which only its last step sets.
 
 on:
   workflow_call:
@@ -48,6 +55,7 @@ permissions:
 jobs:
   plan:
     name: Plan the Nightly version
+    continue-on-error: ${{ vars.STATION_PORTABLE_NIGHTLY_PUBLISH != 'enabled' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
@@ -106,6 +114,7 @@ jobs:
   archives:
     name: Build
     needs: [plan]
+    if: ${{ needs.plan.outputs.version != '' }}
     permissions:
       contents: read
     uses: ./.github/workflows/portable-server-archives.yml
@@ -113,14 +122,18 @@ jobs:
       ref: ${{ needs.plan.outputs.source_sha }}
       version: ${{ needs.plan.outputs.version }}
       ring: nightly
+      non_blocking: ${{ vars.STATION_PORTABLE_NIGHTLY_PUBLISH != 'enabled' }}
 
   assemble:
     name: Assemble, dry-run sign and verify
     needs: [plan, archives]
+    continue-on-error: ${{ vars.STATION_PORTABLE_NIGHTLY_PUBLISH != 'enabled' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions:
       contents: read
+    outputs:
+      verified: ${{ steps.verified.outputs.verified }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -181,6 +194,11 @@ jobs:
           path: publication/
           if-no-files-found: error
           retention-days: 7
+      # Last step: publish requires this output, so a job whose failure
+      # continue-on-error hid can never satisfy the gate.
+      - id: verified
+        name: Mark the dry run verified
+        run: echo 'verified=true' >> "$GITHUB_OUTPUT"
 
   # The ONLY job that can publish. Keep the gate a literal conjunction on the
   # job itself; scripts/__tests__/portable-nightly-publish-workflow.test.ts
@@ -188,7 +206,7 @@ jobs:
   publish:
     name: Sign and publish (owner-gated)
     needs: [plan, assemble]
-    if: ${{ vars.STATION_PORTABLE_NIGHTLY_PUBLISH == 'enabled' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/nightly.yml@refs/heads/main', github.repository) && needs.plan.outputs.reserved == 'true' && needs.assemble.result == 'success' }}
+    if: ${{ vars.STATION_PORTABLE_NIGHTLY_PUBLISH == 'enabled' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/nightly.yml@refs/heads/main', github.repository) && needs.plan.outputs.reserved == 'true' && needs.assemble.result == 'success' && needs.assemble.outputs.verified == 'true' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     environment: portable-nightly-signing
@@ -222,6 +240,8 @@ jobs:
         with:
           name: portable-nightly-publication
           path: ${{ runner.temp }}/publication
+      - name: Confirm the payload is this run's Nightly
+        run: node scripts/portable-nightly-publication.mjs check-payload --payload "$RUNNER_TEMP/publication/payload.json" --version "$VERSION" --source-sha "$SOURCE_SHA"
       - name: Confirm the archives are the bytes the payload signs
         run: node scripts/portable-nightly-publication.mjs check-archives --payload "$RUNNER_TEMP/publication/payload.json" --archives "$RUNNER_TEMP/archives" > "$RUNNER_TEMP/archive-paths.txt"
       - name: Sign with the pinned Nightly key
@@ -243,8 +263,16 @@ jobs:
         run: |
           set -euo pipefail
           gh release view "$ROLLING_TAG" --repo "$GITHUB_REPOSITORY" --json tagName > /dev/null || { echo "::error::the rolling pointer release $ROLLING_TAG does not exist; the owner creates it before the first publish" >&2; exit 1; }
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json tagName > /dev/null 2>&1; then
-            echo "::error::release $RELEASE_TAG already exists; versioned Nightly assets are immutable" >&2
+          # Listed rather than viewed by tag: a draft left by a failed run
+          # has no tag yet, and the listing (with this write token) shows it.
+          existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.tag_name == env.RELEASE_TAG) | "\(.id) \(.draft)"')
+          if [ -n "$existing" ]; then
+            read -r release_id release_draft <<< "$existing"
+            if [ "$release_draft" = true ]; then
+              echo "::error::a draft release $RELEASE_TAG (id $release_id) is left from an earlier failed publish; after checking it, delete it with: gh api --method DELETE repos/$GITHUB_REPOSITORY/releases/$release_id, then re-run" >&2
+            else
+              echo "::error::release $RELEASE_TAG already exists (id $release_id); versioned Nightly assets are immutable" >&2
+            fi
             exit 1
           fi
       - name: Upload the versioned release assets

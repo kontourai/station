@@ -47,6 +47,11 @@ on:
         description: Release ring the version must belong to (config/channel-ports.json releaseRings).
         required: true
         type: string
+      non_blocking:
+        description: Let a failed target fail only its own job, not the caller's run (a dry run).
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
   push:
     branches:
@@ -152,6 +157,9 @@ jobs:
             target: win32-x64
             format: zip
     runs-on: ${{ matrix.runner }}
+    # Only a caller's dry run sets non_blocking; every other trigger (and a
+    # pull request, where inputs is empty) keeps a failed target fatal.
+    continue-on-error: ${{ inputs.non_blocking == true }}
     timeout-minutes: 45
     defaults:
       run:

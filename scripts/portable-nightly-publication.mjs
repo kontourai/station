@@ -7,6 +7,7 @@
 //   version        --marketing-version X.Y.Z --version-code N
 //   locations      --repository owner/name --version V   (GITHUB_OUTPUT lines)
 //   dry-run-keys   --out-dir D                  (ephemeral key + key table)
+//   check-payload  --payload P --version V --source-sha S  (this run's Nightly)
 //   check-archives --payload P --archives D     (local bytes are the signed ones)
 //   verify         --manifest <file|https URL> --expected-payload P [--keys T]
 //   verify-assets  --payload P                  (published bytes are the signed ones)
@@ -208,6 +209,33 @@ function filesNamed(root, names) {
 }
 
 /**
+ * The payload handed from the dry-run job is this run's Nightly: the nightly
+ * ring, the planned version and tag, and the planned source SHA. Checked
+ * before signing, so a substituted payload is refused before any release or
+ * tag exists.
+ */
+export function assertPayloadIdentity(payload, { version, sourceSha }) {
+  const mismatches = [
+    ['channel', payload?.channel, RING],
+    ['version', payload?.version, version],
+    ['releaseTag', payload?.releaseTag, `v${version}`],
+    ['sourceSha', payload?.sourceSha, sourceSha],
+  ].filter(([, actual, expected]) => actual !== expected);
+  if (typeof version !== 'string' || typeof sourceSha !== 'string')
+    throw new Error('the expected version and source SHA are required');
+  if (mismatches.length > 0)
+    throw new Error(
+      `payload is not this run's Nightly: ${mismatches
+        .map(
+          ([key, actual, expected]) =>
+            `${key} ${String(actual)} (expected ${String(expected)})`,
+        )
+        .join(', ')}`,
+    );
+  return payload;
+}
+
+/**
  * Every artifact the payload signs is present under `archivesDir` with the
  * signed size and sha256: the bytes about to be uploaded are the signed ones.
  * Returns the paths in payload order.
@@ -290,6 +318,7 @@ async function main(argv) {
       'expected-payload': { type: 'string' },
       keys: { type: 'string' },
       'candidate-version': { type: 'string' },
+      'source-sha': { type: 'string' },
       current: { type: 'string' },
     },
     strict: true,
@@ -330,6 +359,15 @@ async function main(argv) {
       process.stdout.write(`key_id=${DRY_RUN_SIGNING_KEY_ID}\n`);
       return;
     }
+    case 'check-payload':
+      assertPayloadIdentity(readJson(values.payload), {
+        version: values.version,
+        sourceSha: values['source-sha'],
+      });
+      process.stdout.write(
+        `payload is ${values.version} at ${values['source-sha']}\n`,
+      );
+      return;
     case 'check-archives':
       for (const path of checkArchives(
         readJson(values.payload),
@@ -376,7 +414,7 @@ async function main(argv) {
     }
     default:
       throw new Error(
-        'Usage: portable-nightly-publication.mjs <version|locations|dry-run-keys|check-archives|verify|verify-assets|not-regressing> ...',
+        'Usage: portable-nightly-publication.mjs <version|locations|dry-run-keys|check-payload|check-archives|verify|verify-assets|not-regressing> ...',
       );
   }
 }
