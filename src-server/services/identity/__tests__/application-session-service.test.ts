@@ -15,6 +15,7 @@ import {
 } from '@kontourai/station-contracts/application-session';
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import {
+  DEFAULT_GRANT_PAIRING_SCOPE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
@@ -31,12 +32,17 @@ import {
 } from 'jose';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createApplicationSessionRoutes } from '../../../routes/system/application-session-routes.js';
-import { parseSecureDeviceSessionCookie } from '../../../runtime/bootstrap/runtime-http.js';
+import {
+  configureRuntimeHttp,
+  parseSecureDeviceSessionCookie,
+} from '../../../runtime/bootstrap/runtime-http.js';
+import { createLogger } from '../../../utils/logger.js';
 import { openPrivateSqlite } from '../../../utils/private-sqlite.js';
 import {
   readVerifiedNativeVirtualApplicationRequest,
   VirtualApplicationIngress,
 } from '../../connections/virtual-application.js';
+import { EventBus } from '../../orchestration/event-bus.js';
 import { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { createApplicationSessionRuntime } from '../application-session-runtime.js';
 import type {
@@ -503,7 +509,30 @@ describe('native application-session continuation service seam', () => {
       signal: peer.signal,
       isCurrent: () => !peer.signal.aborted,
     }));
-    ingress.bind({ fetch: (request) => h.application().fetch(request) });
+    const secured = new Hono();
+    configureRuntimeHttp({
+      app: secured as never,
+      logger: createLogger({ name: 'native-ingress-test', level: 'error' }),
+      eventBus: new EventBus(),
+      security: {
+        deploymentAuthentication: h.accounts().service,
+        allowedOrigins: [origin],
+        verifyCredential: (credential) =>
+          h.pairing.identifyDevice(credential) !== null,
+        resolveGrantedScope: () => DEFAULT_GRANT_PAIRING_SCOPE,
+      },
+    });
+    secured.route(
+      '/api/account-auth/continuations',
+      createApplicationSessionRoutes(h.sessions()),
+    );
+    secured.get('/api/projects', (c) => {
+      const account = h.accounts().service.current(c.req.raw);
+      return c.json({
+        principal: account?.kind === 'authenticated' ? account.principal : null,
+      });
+    });
+    ingress.bind({ fetch: (request) => secured.fetch(request) });
     const virtual = ingress.activate();
     try {
       const challengeResponse = await virtual.fetch(
@@ -568,13 +597,13 @@ describe('native application-session continuation service seam', () => {
         deviceId: continuation.deviceId,
         nonce: continuation.nonce,
         method: 'GET',
-        path: '/resource',
+        path: '/api/projects',
         credentialHash: nativeHash(continuation.credential),
         jti: randomUUID(),
         iat: Math.floor(Date.now() / 1000),
       });
       const protectedRead = await virtual.fetch(
-        new Request(`${origin}/resource`, {
+        new Request(`${origin}/api/projects`, {
           headers: {
             Authorization: `Bearer ${h.device.credential}`,
             [APPLICATION_SESSION_NATIVE_HEADER]: continuation.credential,
@@ -589,7 +618,7 @@ describe('native application-session continuation service seam', () => {
       ).toMatch(/^human:deployment:/);
       peer.abort();
       expect(
-        (await virtual.fetch(new Request(`${origin}/resource`))).status,
+        (await virtual.fetch(new Request(`${origin}/api/projects`))).status,
       ).toBe(403);
     } finally {
       ingress.stop();
