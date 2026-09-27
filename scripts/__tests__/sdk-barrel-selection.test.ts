@@ -792,6 +792,11 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
         'whole-barrel',
       ],
       [
+        'constructed in a load-time callback: its constructor runs',
+        'class Registry { constructor() { listJobs(); } }\nexport const all = Array.from([1], () => new Registry());',
+        'whole-barrel',
+      ],
+      [
         'a class expression constructed in a load-time callback',
         'const Registry = class { jobs = listJobs(); };\nexport const all = Array.from([1], () => new Registry());',
         'whole-barrel',
