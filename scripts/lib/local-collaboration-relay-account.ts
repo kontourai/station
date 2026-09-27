@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import { createServer, type Server } from 'node:http';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createApplicationChannelFetch } from '@kontourai/station-connect/application-channel';
 import {
   type DevicePairingBearerExchangeResponse,
@@ -67,6 +67,69 @@ type RelayAccountProvisionInput<S extends RelayAccountStationController> = {
   /** Owner that stops everything provisioned alongside the station. Returned as-is. */
   stop: () => Promise<void>;
 };
+
+type StoppableRelayAccountFixture = { stop: () => Promise<void> };
+
+/** Owns a set of provisioned fixtures and the one account-lab lease they share. */
+export function createRelayAccountStationGroupOwner(
+  releaseLease: () => Promise<void>,
+) {
+  const children: StoppableRelayAccountFixture[] = [];
+  let closing = false;
+  let stopped: Promise<void> | undefined;
+  const own = <T extends StoppableRelayAccountFixture>(child: T): T => {
+    if (closing) throw new Error('Relay account fixture group is stopping');
+    children.push(child);
+    return child;
+  };
+  const stop = (): Promise<void> => {
+    closing = true;
+    if (stopped) return stopped;
+    stopped = (async () => {
+      const errors: unknown[] = [];
+      for (const child of children.reverse()) {
+        try {
+          await child.stop();
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      try {
+        await releaseLease();
+      } catch (error) {
+        errors.push(error);
+      }
+      if (errors.length)
+        throw new AggregateError(
+          errors,
+          'Relay account fixture group cleanup failed',
+        );
+    })();
+    return stopped;
+  };
+  return {
+    own,
+    async start<T extends StoppableRelayAccountFixture>(
+      startChild: () => Promise<T>,
+    ): Promise<T> {
+      try {
+        return own(await startChild());
+      } catch (error) {
+        try {
+          await stop();
+        } catch (cleanupError) {
+          throw new AggregateError(
+            [error, cleanupError],
+            'Relay account fixture startup and group cleanup failed',
+            { cause: error },
+          );
+        }
+        throw error;
+      }
+    },
+    stop,
+  };
+}
 
 /** Shared account/Project/Device provisioning against an already-running Station. */
 export async function provisionRelayAccountStation<
@@ -647,28 +710,38 @@ export async function provisionRelayAccountStation<
       },
     };
   } catch (error) {
-    await stop();
+    try {
+      await stop();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        'Relay account provisioning and cleanup failed',
+        { cause: error },
+      );
+    }
     throw error;
   }
 }
 
-/** Real account/Project setup in an isolated source Station, with an approved Device. */
-export async function startRelayAccountStation(
+type RelayAccountStationOptions = {
+  port?: number;
+  name?: string;
+  prepareSelfHostedBrokerConfig?: (stationOrigin: string) => string;
+  ownedBrokerTcpPort?: number;
+  publicOrigin?: string;
+  additionalBrowserOrigins?: readonly string[];
+  onStationReady?: (
+    station: Awaited<ReturnType<typeof startAccountLabStation>>,
+  ) => void;
+};
+
+/** Starts one isolated source Station and provisions it through its real auth routes. */
+async function startRelayAccountStationCore(
   directory: string,
   browserOrigin: string,
   signal: AbortSignal,
-  options: {
-    port?: number;
-    prepareSelfHostedBrokerConfig?: (stationOrigin: string) => string;
-    ownedBrokerTcpPort?: number;
-    publicOrigin?: string;
-    additionalBrowserOrigins?: readonly string[];
-    onStationReady?: (
-      station: Awaited<ReturnType<typeof startAccountLabStation>>,
-    ) => void;
-  } = {},
+  options: RelayAccountStationOptions,
 ) {
-  const release = await acquireAccountLabPorts();
   const nonce = randomBytes(32).toString('hex');
   let allowedHits = 0;
   let blockedHits = 0;
@@ -691,15 +764,20 @@ export async function startRelayAccountStation(
         close(blocked),
       ]);
       restoreFetch?.();
-      await release();
-      for (const result of results)
-        if (result.status === 'rejected') throw result.reason;
+      const errors = results.flatMap((result) =>
+        result.status === 'rejected' ? [result.reason] : [],
+      );
+      if (errors.length)
+        throw new AggregateError(
+          errors,
+          'Relay account Station cleanup failed',
+        );
     })());
   try {
     station = await startAccountLabStation(
       {
         directory: join(directory, 'application-station'),
-        name: 'relay-account-lab',
+        name: options.name ?? 'relay-account-lab',
         hostname: '127.0.0.1',
         allowedProbePort: await listen(allowed),
         blockedProbePort: await listen(blocked),
@@ -775,7 +853,102 @@ export async function startRelayAccountStation(
       stop,
     });
   } catch (error) {
-    await stop();
+    try {
+      await stop();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        'Relay account Station startup and cleanup failed',
+        { cause: error },
+      );
+    }
     throw error;
   }
+}
+
+/** One lease owner for multiple independent local Station account fixtures. */
+export async function startRelayAccountStationGroup() {
+  const releaseLease = await acquireAccountLabPorts();
+  const owner = createRelayAccountStationGroupOwner(releaseLease);
+  const directories = new Set<string>();
+  const names = new Set<string>();
+  let admissionClosed = false;
+  let startTail: Promise<void> = Promise.resolve();
+  let stopped: Promise<void> | undefined;
+
+  const stop = () => {
+    admissionClosed = true;
+    if (stopped) return stopped;
+    stopped = (async () => {
+      await startTail;
+      await owner.stop();
+    })();
+    return stopped;
+  };
+
+  return {
+    async startStation(
+      directory: string,
+      browserOrigin: string,
+      signal: AbortSignal,
+      options: RelayAccountStationOptions = {},
+    ) {
+      if (admissionClosed)
+        throw new Error('Relay account fixture group is stopping');
+      const operation = startTail.then(async () => {
+        if (admissionClosed)
+          throw new Error('Relay account fixture group is stopping');
+        const isolatedDirectory = resolve(directory);
+        assert(
+          !directories.has(isolatedDirectory),
+          'Relay account Stations must use distinct directories',
+        );
+        const name =
+          options.name ?? `relay-account-lab-${randomBytes(8).toString('hex')}`;
+        assert(
+          !names.has(name),
+          'Relay account Stations must have distinct names',
+        );
+        directories.add(isolatedDirectory);
+        names.add(name);
+        try {
+          const fixture = await owner.start(() =>
+            startRelayAccountStationCore(
+              isolatedDirectory,
+              browserOrigin,
+              signal,
+              {
+                ...options,
+                name,
+              },
+            ),
+          );
+          return { ...fixture, stop };
+        } catch (error) {
+          admissionClosed = true;
+          throw error;
+        }
+      });
+      startTail = operation.then(
+        () => undefined,
+        () => undefined,
+      );
+      return operation;
+    },
+    stop,
+  };
+}
+
+/** Backwards-compatible one-Station owner for existing relay account callers. */
+export async function startRelayAccountStation(
+  directory: string,
+  browserOrigin: string,
+  signal: AbortSignal,
+  options: RelayAccountStationOptions = {},
+) {
+  const group = await startRelayAccountStationGroup();
+  return group.startStation(directory, browserOrigin, signal, {
+    ...options,
+    name: options.name ?? 'relay-account-lab',
+  });
 }
