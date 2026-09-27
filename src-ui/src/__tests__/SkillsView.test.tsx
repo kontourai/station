@@ -251,6 +251,41 @@ describe('SkillsView', () => {
     );
   });
 
+  // #2708: the import fetcher's refusal carries `details`; the dialog shows
+  // the server's reason, not "Validation failed: files …".
+  test('an import validation refusal shows the reason, not the field key', async () => {
+    const { importSkills } = await import('@kontourai/station-sdk/client');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Validation failed',
+            details: {
+              formErrors: [],
+              fieldErrors: { files: ['Add at least one markdown file.'] },
+            },
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    importSkillsMock.mockImplementationOnce((files: never) =>
+      importSkills('http://localhost', files),
+    );
+    render(<SkillsView />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Import .md' }));
+    chooseImportFile('release-check.md', '# Release check');
+    await screen.findByText('1 file to import');
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Add at least one markdown file.');
+    expect(alert.textContent).not.toContain('Validation failed');
+  });
+
   test('renders the create form when the URL selection is /skills/new', () => {
     selectionState.selectedId = 'new';
 

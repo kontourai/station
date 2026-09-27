@@ -145,6 +145,45 @@ describe('KnowledgeStoreSection', () => {
     expect(refetch).toHaveBeenCalled();
   });
 
+  // #2708: a refused create shows the server's reason from the error the
+  // REAL knowledge fetcher throws, not "Validation failed: storeRoot …".
+  test('a refused store create shows the server reason, not the field key', async () => {
+    const { createKnowledgeRoot } = await import(
+      '@kontourai/station-sdk/client'
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Validation failed',
+            details: {
+              formErrors: [],
+              fieldErrors: {
+                storeRoot: ['Choose a folder inside your home directory.'],
+              },
+            },
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    createRootError = await createKnowledgeRoot('http://localhost', {
+      scope: { kind: 'personal' },
+      adapterId: 'kit-default-store',
+    }).catch((caught: unknown) => caught);
+    createRootIsError = true;
+    vi.unstubAllGlobals();
+
+    render(<KnowledgeStoreSection />);
+
+    expect(
+      screen.getAllByText('Choose a folder inside your home directory.').length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/Validation failed/)).toBeNull();
+  });
+
   test('empty state: creates the default personal knowledge store on click', () => {
     render(<KnowledgeStoreSection />);
 
