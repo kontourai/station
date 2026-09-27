@@ -2,7 +2,7 @@ import { posix, win32 } from 'node:path';
 import {
   type InstallerOwnedArchiveFs,
   type LifecycleCodeRoot,
-  resolveInstallerOwnedArchiveInstallRoot,
+  resolveInstallerOwnedArchiveVersion,
 } from './lifecycle-code-root.js';
 import type { ServiceLifecycleArgs } from './service.js';
 
@@ -18,8 +18,9 @@ import type { ServiceLifecycleArgs } from './service.js';
  *   bundles. A version install.sh made active is run through
  *   `<installRoot>/current`, never the version directory, so an upgrade
  *   flips `current` and restarts the unit without rewriting it, and the
- *   installer can prune old versions. Any other archive copy runs from its
- *   own physical path, which its owner manages.
+ *   installer can prune old versions. Installing from one of its inactive
+ *   versions is refused, since the installer may prune it. Any other archive
+ *   copy runs from its own physical path, which its owner manages.
  */
 export type ServiceCodeKind = 'archive' | 'source';
 
@@ -125,7 +126,16 @@ export function resolveServiceCodeLocation(input: {
     };
   }
   const path = input.platform === 'win32' ? win32 : posix;
-  const installRoot = resolveInstallerOwnedArchiveInstallRoot(repoPath, fs);
+  const owned = resolveInstallerOwnedArchiveVersion(repoPath, fs);
+  // An inactive version of an install.sh install is one its next upgrade
+  // prunes, and install.sh restarts only services that run `current`: a unit
+  // running it directly would be deleted from under itself.
+  if (owned !== null && !owned.active) {
+    throw new Error(
+      `Cannot install a Station service from ${repoPath}: it is not the version ${path.join(owned.installRoot, 'current')} names, and the installer may remove it. Run \`station service install\` with the installed launcher (the active version) instead.`,
+    );
+  }
+  const installRoot = owned?.installRoot ?? null;
   const root =
     installRoot === null ? repoPath : path.join(installRoot, 'current');
   return {
