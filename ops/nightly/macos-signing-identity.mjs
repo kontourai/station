@@ -152,7 +152,7 @@ export function designatedRequirementFromCodesignOutput(output) {
  * --candidate-designated-requirement and pipes the existing app's codesign
  * output; a thrown refusal exits non-zero and stops the swap.
  */
-export function designatedRequirementTransition(
+function designatedRequirementTransition(
   existingCodesignOutput,
   candidateRequirement,
 ) {
