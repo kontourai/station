@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
   closeSync,
@@ -15,16 +14,8 @@ import { dirname } from 'node:path';
 import {
   ensureWindowsDirectoriesTrusted,
   hardenWindowsPathsTrusted,
+  runWindowsTrustCommand,
 } from '@kontourai/station-shared/windows-path-trust';
-
-function runWindowsTrust(command: string, args: string[]) {
-  return spawnSync(command, args, {
-    encoding: 'utf8',
-    windowsHide: true,
-    timeout: 30_000,
-    maxBuffer: 64 * 1024,
-  });
-}
 
 const LOCAL_GRANT_DIRECTORY_MODE = 0o700;
 const LOCAL_GRANT_FILE_MODE = 0o600;
@@ -46,7 +37,9 @@ export function writeLocalGrantSecretFile(secretPath: string): string {
     recursive: true,
     mode: LOCAL_GRANT_DIRECTORY_MODE,
   });
-  ensureWindowsDirectoriesTrusted(runWindowsTrust, [dirname(secretPath)]);
+  ensureWindowsDirectoriesTrusted(runWindowsTrustCommand, [
+    dirname(secretPath),
+  ]);
   const temporaryPath = `${secretPath}.${process.pid}.${randomUUID()}.tmp`;
   let descriptor: number | undefined;
   try {
@@ -60,7 +53,7 @@ export function writeLocalGrantSecretFile(secretPath: string): string {
     }
     // Harden the empty temporary file before writing any secret bytes. Atomic
     // rename preserves this explicit DACL; the native reader can verify it.
-    hardenWindowsPathsTrusted(runWindowsTrust, [
+    hardenWindowsPathsTrusted(runWindowsTrustCommand, [
       { kind: 'file', path: temporaryPath },
     ]);
     writeFileSync(descriptor, secret, 'utf8');

@@ -1,8 +1,11 @@
-import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { lstatSync, readFileSync, realpathSync, type Stats } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
-import { assertWindowsPathsTrusted } from './windows-path-trust.js';
+import {
+  assertWindowsPathsTrusted,
+  runWindowsTrustCommand,
+} from './windows-path-trust.js';
 
 interface Registration {
   version: 1;
@@ -28,18 +31,10 @@ export function readDesktopCompanion(home: string): Registration | null {
     throw new Error('Invalid desktop companion registration');
   }
   if (process.platform === 'win32') {
-    assertWindowsPathsTrusted(
-      (command, args) =>
-        spawnSync(command, args, {
-          encoding: 'utf8',
-          windowsHide: true,
-          timeout: 10_000,
-        }),
-      [
-        { kind: 'directory', path: directory },
-        { kind: 'file', path },
-      ],
-    );
+    assertWindowsPathsTrusted(runWindowsTrustCommand, [
+      { kind: 'directory', path: directory },
+      { kind: 'file', path },
+    ]);
   } else if (
     [parent, file].some(
       (stat) => stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0,
@@ -74,15 +69,9 @@ export function readDesktopCompanion(home: string): Registration | null {
     );
   }
   if (process.platform === 'win32') {
-    assertWindowsPathsTrusted(
-      (command, args) =>
-        spawnSync(command, args, {
-          encoding: 'utf8',
-          windowsHide: true,
-          timeout: 10_000,
-        }),
-      [{ kind: 'file', path: value.executable, policy: 'execution-safe' }],
-    );
+    assertWindowsPathsTrusted(runWindowsTrustCommand, [
+      { kind: 'file', path: value.executable, policy: 'execution-safe' },
+    ]);
   } else if (
     (executable.mode & 0o022) !== 0 ||
     (executable.mode & 0o111) === 0
