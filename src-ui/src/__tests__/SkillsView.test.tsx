@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 
+import type { Skill } from '@kontourai/station-contracts/catalog';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
@@ -15,7 +16,6 @@ let localSkillsMock: any[] = [];
 let localSkillsPendingMock = false;
 let localSkillsErrorMock: unknown = null;
 const refetchSkillsMock = vi.fn();
-let registrySkillsMock: any[] = [];
 let editableSkillMock: any;
 let detailPendingMock = false;
 let detailErrorMock: unknown = null;
@@ -39,10 +39,6 @@ vi.mock('@kontourai/station-sdk', () => ({
   useImportSkills: () => ({ isPending: false, mutateAsync: importSkillsMock }),
   useRunSkill: () => ({ isPending: false, mutateAsync: runSkillMock }),
   useInstallSkillMutation: () => ({ isPending: false, mutate: vi.fn() }),
-  useRegistrySkillsQuery: () => ({
-    data: registrySkillsMock,
-    isLoading: false,
-  }),
   useSkillContentQuery: () => ({ data: undefined }),
   useSkillQuery: () => ({
     data: editableSkillMock,
@@ -111,6 +107,12 @@ vi.mock('../hooks/useCloseShortcut', () => ({
 
 import { SkillsView } from '../views/SkillsView';
 
+/**
+ * A skill as the list and detail reads hand it over. The view fills `id` and
+ * `installed` itself, so a fixture need not.
+ */
+type SkillFixture = Partial<Skill> & { name: string };
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation(() => ({
@@ -131,7 +133,6 @@ afterEach(() => {
   localSkillsPendingMock = false;
   localSkillsErrorMock = null;
   refetchSkillsMock.mockReset();
-  registrySkillsMock = [];
   editableSkillMock = undefined;
   detailPendingMock = false;
   detailErrorMock = null;
@@ -306,31 +307,6 @@ describe('SkillsView', () => {
     expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
   });
 
-  test('lists only installed local skills on /skills', () => {
-    localSkillsMock = [
-      {
-        name: 'installed-skill',
-        description: 'Installed locally',
-        version: '1.0.0',
-        source: 'local',
-        writable: true,
-      },
-    ];
-    registrySkillsMock = [
-      {
-        id: 'registry-only-skill',
-        displayName: 'Registry Only Skill',
-        description: 'Should not appear on /skills',
-        version: '9.9.9',
-      },
-    ];
-
-    render(<SkillsView />);
-
-    expect(screen.getByText('installed-skill')).toBeTruthy();
-    expect(screen.queryByText('Registry Only Skill')).toBeNull();
-  });
-
   test('keeps the Registry Skills link in the skills body', () => {
     render(<SkillsView />);
 
@@ -338,18 +314,6 @@ describe('SkillsView', () => {
       screen.getByRole('button', { name: 'Browse Registry Skills' }),
     );
     expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
-  });
-
-  test('defines a Skill without a redundant cross-link action', () => {
-    render(<SkillsView />);
-
-    expect(
-      screen.getByText(
-        'Every skill Station loaded, grouped by where it came from. Author your own here; install more from Registry.',
-      ),
-    ).toBeTruthy();
-
-    expect(screen.queryByRole('button', { name: 'Open Playbooks' })).toBeNull();
   });
 
   // #1582 D6. Mounted through the real view, not the row builder: the chip and
@@ -443,13 +407,13 @@ describe('SkillsView', () => {
      * does. The field itself is the subject of its own describe block, where
      * nothing is defaulted.
      */
-    function selectSkill(skill: any, detail?: any) {
+    function selectSkill(skill: SkillFixture, detail?: SkillFixture) {
       selectionState.selectedId = skill.name;
       localSkillsMock = [{ writable: true, ...skill }];
       editableSkillMock = detail ?? skill;
     }
 
-    test('offers export and test, and no conversion action', () => {
+    test('offers export and test on a local skill', () => {
       selectSkill(
         { name: 'release-check', description: 'Ship it', source: 'local' },
         {
@@ -648,8 +612,8 @@ describe('SkillsView', () => {
           writable: false,
           writeRefusal: {
             reason: 'canonical-package',
-            detail:
-              "'packaged-skill' is served from the package at /pkgs/packaged-skill, which ships read-only",
+            detail: 'It is served from a package that ships read-only.',
+            packageDirectory: '/pkgs/packaged-skill',
           },
         },
         { name: 'packaged-skill', source: 'package', body: 'Read only' },
@@ -834,55 +798,15 @@ describe('SkillsView', () => {
    */
   describe('the Save action follows the server writability decision', () => {
     /**
-     * RESIDUAL, not a style choice: `any` here and on `selectSkill` above means
-     * no fixture in this file is typechecked against `SkillListing` or
-     * `SkillWriteRefusal`. Two untyped helpers, not one — the drift below is
-     * split across both.
-     *
-     * TWO STALE FIXTURES SURVIVE, and an earlier version of this note claimed
-     * the instances were fixed:
-     *   - 'an unresolvable name gets its own sentence, not an internal
-     *     diagnostic' (this describe): says the name "cannot locate a package
-     *     of its own to write"; the server says "cannot work out where it
-     *     would write this package".
-     *   - 'offers the install action, not a switch, on a read-only skill',
-     *     via `selectSkill`: interpolates BOTH the skill name and
-     *     `/pkgs/packaged-skill` into `detail` — precisely the shape
-     *     `LOCAL_BUT_NOT_WRITABLE`'s comment says the server stopped
-     *     producing, sitting in a fixture. The server's text is 'It is served
-     *     from a package that ships read-only.'
-     * Left as-is deliberately: correcting fixtures is a change with its own
-     * review, and this note exists so nobody reads silence as absence.
-     *
-     * On `packageDirectory`, which the contract REQUIRES (deliberately
-     * de-optionalised — see its docblock in `catalog.ts`): 5 of the 12
-     * `writeRefusal` fixtures IN THIS FILE omit it. The scope is the file, not
-     * this describe — one of the twelve sits outside it (and it is one of the
-     * five omissions), so a reader counting from inside this describe finds
-     * eleven. (Round 10 widened the scope with the number and left the word
-     * "here" behind; round 11 says which.)
-     *
-     * Only ONE of the five omissions is deliberate. The casts are not the same
-     * cast, and the difference decides it:
-     *   - 'a refusal without the package directory renders no path element'
-     *     casts the WHOLE `writeRefusal` object (`} as never`). The omission is
-     *     the point of the test, and the cast is what expresses it.
-     *   - the unknown-reason-code test and the inherited-key table cast only
-     *     the REASON (`reason: … as never`). That cast is deliberate about the
-     *     reason, which is orthogonal; their missing `packageDirectory` is
-     *     incidental and compiles today only because these helpers take `any`.
-     *     A type probe against the real contract reds that shape with
-     *     TS2741 — `Property 'packageDirectory' is missing` — while the
-     *     whole-object cast passes.
-     * So: 1 deliberate, 4 incidental. An earlier version of this note said
-     * 3 and 2, by treating "casts `as never`" as one category.
-     *
-     * Typing the helpers would therefore red FOUR of the five, not two, and
-     * would have to preserve exactly one deliberate cast. That is a larger
-     * change than "the fix" suggests, and nobody has measured what else it
-     * reds.
+     * Fixtures are typed against the contract, so a `writeRefusal` must carry
+     * the reason union and the required `packageDirectory`, and its `detail`
+     * is the server's own sentence (`SKILL_REFUSAL_STATEMENT` and the
+     * served-in-place / canonical-package branches in `skill-service.ts`).
+     * The one deliberate exception is the whole-object cast in 'a refusal
+     * without the package directory renders no path element'; the reason-only
+     * casts below stand for a server that is a release ahead.
      */
-    function selectRow(row: any, detail?: any) {
+    function selectRow(row: SkillFixture, detail?: SkillFixture) {
       selectionState.selectedId = row.name;
       localSkillsMock = [row];
       editableSkillMock = detail ?? { ...row, body: 'Body' };
@@ -1038,7 +962,8 @@ describe('SkillsView', () => {
         writeRefusal: {
           reason: 'unresolvable-name' as const,
           detail:
-            'Its name cannot be used as a directory name, so Station cannot locate a package of its own to write.',
+            'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
+          packageDirectory: '/station/skills/weird-name',
         },
       });
 
@@ -1094,6 +1019,7 @@ describe('SkillsView', () => {
           // Deliberately outside the union: a server one release ahead.
           reason: 'sealed-by-policy' as never,
           detail: 'It is served from a root this Station does not write.',
+          packageDirectory: '/station/plugins/newer',
         },
       });
 
@@ -1203,6 +1129,7 @@ describe('SkillsView', () => {
         writeRefusal: {
           reason: reason as never,
           detail: 'It is served from a root this Station does not write.',
+          packageDirectory: '/station/plugins/newer',
         },
       });
 

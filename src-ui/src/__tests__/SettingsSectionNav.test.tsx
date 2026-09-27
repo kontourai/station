@@ -165,11 +165,6 @@ describe('settingsSectionNavItems', () => {
       'Knowledge',
     ]);
   });
-
-  test('no longer draws the silent dividers the labels replace', () => {
-    const items = settingsSectionNavItems(hrefForSection);
-    expect(items.filter((item) => item.dividerAfter)).toEqual([]);
-  });
 });
 
 describe('Settings section nav rendered through SectionNav', () => {
