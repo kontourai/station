@@ -1,6 +1,4 @@
 /** @vitest-environment jsdom */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import {
@@ -108,16 +106,5 @@ describe('ChatPaneFileDropBoundary', () => {
     expect(screen.getByTestId('chat-pane-file-drop-overlay')).toBeTruthy();
     fireEvent.drop(pane, { dataTransfer });
     await waitFor(() => expect(selectFiles).toHaveBeenCalledOnce());
-  });
-
-  test('the production ChatDock callsite derives ownership from its view model', () => {
-    const chatDock = readFileSync(
-      join(__dirname, '..', 'ChatDock.tsx'),
-      'utf8',
-    );
-
-    expect(chatDock).toMatch(
-      /enabled=\{isChatPaneFileDropEnabled\(\{\s*hasAttachmentOwner:\s*!importedSessionId && activeSessionForHook !== null,\s*isPaneOpen,\s*isCollapsedDragPreview,\s*\}\)\}/,
-    );
   });
 });

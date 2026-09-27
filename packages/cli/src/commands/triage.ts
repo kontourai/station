@@ -42,6 +42,7 @@ import { readCliVersion } from './version.js';
 import {
   assertWindowsPathsTrusted,
   ensureWindowsDirectoriesTrusted,
+  runWindowsTrustCommand as windowsTrustRun,
 } from './windows-path-trust.js';
 
 export const TRIAGE_CONTEXT_SCHEMA_VERSION = 1;
@@ -175,20 +176,6 @@ interface TriageIssueSearch {
   status: 'available' | 'unavailable' | 'not-requested';
   issues: TriageIssueResult[];
   reason?: string;
-}
-
-function windowsTrustRun(command: string, args: string[]) {
-  const result = spawnSync(command, args, {
-    encoding: 'utf8',
-    shell: false,
-    windowsHide: true,
-  });
-  return {
-    error: result.error,
-    status: result.status,
-    stderr: typeof result.stderr === 'string' ? result.stderr : undefined,
-    stdout: typeof result.stdout === 'string' ? result.stdout : undefined,
-  };
 }
 
 function assertOwnerDirectory(path: string, ownerOnly: boolean): void {

@@ -300,17 +300,6 @@ export function firstRunEngineRowLabel(option: FirstRunEngineOption): string {
 }
 
 /**
- * Whether the chapter has anything to say at all. A machine where Station
- * found nothing gets no card: a list of engines the user does not have is a
- * nag, and Connect has already handled "you have nothing configured".
- */
-export function firstRunEngineChapterHasWork(
-  options: readonly FirstRunEngineOption[],
-): boolean {
-  return options.some((option) => option.state !== 'undetected');
-}
-
-/**
  * The creates a confirm would perform. `selectable` — not the selection set —
  * is what gates an item: an already-enabled row renders CHECKED, so a
  * selection set alone cannot tell "the user asked for this" from "this

@@ -57,7 +57,7 @@ describe('ComposerAttachmentStrip', () => {
   });
 
   test('names a local HEIF conversion without exposing its source bytes', () => {
-    render(
+    const { container } = render(
       <ComposerAttachmentStrip
         attachments={[
           attachment({
@@ -83,10 +83,12 @@ describe('ComposerAttachmentStrip', () => {
       />,
     );
     expect(screen.getByText('Converted HEIF to JPEG locally')).toBeTruthy();
-    expect(screen.queryByText('aaaaaaaa')).toBeNull();
+    // Neither digest reaches the DOM, as text or in any attribute.
+    expect(container.innerHTML).not.toContain('a'.repeat(64));
+    expect(container.innerHTML).not.toContain('b'.repeat(64));
   });
 
-  test('exposes supervised progress plus retry and cancel controls', () => {
+  test('exposes supervised progress and cancel, with no retry while uploading', () => {
     const retry = vi.fn();
     const cancel = vi.fn();
     render(
@@ -115,8 +117,12 @@ describe('ComposerAttachmentStrip', () => {
         })
         .getAttribute('value'),
     ).toBe('0.5');
+    expect(
+      screen.queryByRole('button', { name: 'Retry screenshot.webp' }),
+    ).toBeNull();
     screen.getByRole('button', { name: 'Cancel screenshot.webp' }).click();
     expect(cancel).toHaveBeenCalledWith('a1');
+    expect(retry).not.toHaveBeenCalled();
   });
 
   test('hydrates an expired stage as a visible choose-file-again chip', () => {

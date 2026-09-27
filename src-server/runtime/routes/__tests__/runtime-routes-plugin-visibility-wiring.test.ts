@@ -23,16 +23,19 @@
  * SYNTAX TREE, not its text, so a `canSeePlugin` that is commented out,
  * inside a string, in a decoy call, or in an unrelated object cannot satisfy
  * it. Three earlier versions of this file were text scans and all three
- * claimed that property without having it; `mountedVisibilityKey` records
+ * claimed that property without having it; `assertMountSuppliesVisibility` records
  * what each one let through.
  *
- * A source assertion alone is satisfied by a string, so the second half
- * takes the property name the scan just found in the source and BUILDS each
- * real route factory with a dependency under that exact key, then asserts the
- * projection takes effect. That couples the two ends: delete the line in
- * `runtime-routes.ts` and the scan reds; rename the dependency in
- * `projects.ts` or `personal-layouts.ts` and the behavioural half reds,
- * because the key the mount passes no longer wires to anything.
+ * The scan requires every call to pass `canSeePlugin: canSeePluginForRequest`
+ * — the request-scoped projection itself, not merely a property of that name,
+ * so `canSeePlugin: () => true` or `canSeePlugin: undefined` fails it. The
+ * second half then BUILDS each real route factory with a dependency under
+ * that same `canSeePlugin` key and asserts the projection takes effect. That
+ * couples the two ends: delete or weaken the line in `runtime-routes.ts` and
+ * the scan reds; rename the dependency in `projects.ts` or
+ * `personal-layouts.ts` and the behavioural half reds, because the key the
+ * mount passes no longer wires to anything. What `canSeePluginForRequest`
+ * itself answers is not this file's to prove.
  *
  * Reading this file as text is the same mechanism
  * `scripts/__tests__/path-read-pin-boundary.test.ts` already uses for it.
@@ -86,9 +89,13 @@ afterEach(() => {
   }
 });
 
+const VISIBILITY_KEY = 'canSeePlugin';
+const VISIBILITY_RESOLVER = 'canSeePluginForRequest';
+
 /**
- * The dependency key each real call to `callee` supplies, read from the
- * mount's own syntax tree.
+ * Asserts every real call to `callee` passes
+ * `canSeePlugin: canSeePluginForRequest`, read from the mount's own syntax
+ * tree.
  *
  * ## Why a parser and not a scan
  *
@@ -115,7 +122,7 @@ afterEach(() => {
  * the same factory where only one is projected is exactly the composition
  * this exists to refuse.
  */
-function mountedVisibilityKey(callee: string): string {
+function assertMountSuppliesVisibility(callee: string): void {
   const source = ts.createSourceFile(
     RUNTIME_ROUTES,
     readFileSync(RUNTIME_ROUTES, 'utf8'),
@@ -142,8 +149,8 @@ function mountedVisibilityKey(callee: string): string {
   }
 
   for (const call of calls) {
-    const declared = new Set<string>();
     let spread = false;
+    let supplied: ts.ObjectLiteralElementLike | undefined;
     for (const argument of call.arguments) {
       if (!ts.isObjectLiteralExpression(argument)) continue;
       for (const property of argument.properties) {
@@ -152,27 +159,38 @@ function mountedVisibilityKey(callee: string): string {
           continue;
         }
         const name = property.name;
-        if (name && (ts.isIdentifier(name) || ts.isStringLiteral(name))) {
-          declared.add(name.text);
+        if (
+          name &&
+          (ts.isIdentifier(name) || ts.isStringLiteral(name)) &&
+          name.text === VISIBILITY_KEY
+        ) {
+          supplied = property;
         }
       }
     }
-    if (declared.has('canSeePlugin')) continue;
+    if (
+      supplied &&
+      ts.isPropertyAssignment(supplied) &&
+      ts.isIdentifier(supplied.initializer) &&
+      supplied.initializer.text === VISIBILITY_RESOLVER
+    ) {
+      continue;
+    }
     // Fails in the SAFE direction and says so rather than tolerating it: a
     // dependency object assembled elsewhere and spread in is invisible to
     // this check, so it refuses instead of guessing.
     throw new Error(
-      `${callee} is mounted WITHOUT a plugin-visibility dependency` +
+      `${callee} is mounted WITHOUT \`${VISIBILITY_KEY}: ${VISIBILITY_RESOLVER}\`` +
+        (supplied ? ` (it passes \`${supplied.getText()}\`)` : '') +
         (spread ? ' that this check can see (it arrives by spread)' : '') +
         '. Every layout answer this composition gives is then unprojected.',
     );
   }
-  return 'canSeePlugin';
 }
 
 describe('the runtime mount supplies plugin visibility to both layout families', () => {
   test('the project routes are mounted with it, and the key it passes wires', async () => {
-    const key = mountedVisibilityKey('createProjectRoutes');
+    assertMountSuppliesVisibility('createProjectRoutes');
 
     const home = mkdtempSync(join(tmpdir(), 'station-visibility-wiring-'));
     tempDirs.push(home);
@@ -184,10 +202,9 @@ describe('the runtime mount supplies plugin visibility to both layout families',
       createdAt: NOW,
       updatedAt: NOW,
     });
-    // Built under the key the MOUNT passes, not under a key this file spells.
     const deps: Record<string, unknown> = {
       listAgents: async () => [],
-      [key]: () => false,
+      [VISIBILITY_KEY]: () => false,
     };
     const app = createProjectRoutes(
       new ProjectService(storage) as never,
@@ -212,7 +229,7 @@ describe('the runtime mount supplies plugin visibility to both layout families',
   });
 
   test('the Board routes are mounted with it, and the key it passes wires', async () => {
-    const key = mountedVisibilityKey('createPersonalLayoutRoutes');
+    assertMountSuppliesVisibility('createPersonalLayoutRoutes');
 
     const home = mkdtempSync(join(tmpdir(), 'station-visibility-wiring-me-'));
     tempDirs.push(home);
@@ -222,7 +239,7 @@ describe('the runtime mount supplies plugin visibility to both layout families',
       listAgents: async () => [],
       now: () => NOW,
       newId: () => 'board-1',
-      [key]: () => false,
+      [VISIBILITY_KEY]: () => false,
     };
     const app = createPersonalLayoutRoutes(
       ownedLayoutStore(storage),

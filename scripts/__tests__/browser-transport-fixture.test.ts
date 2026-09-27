@@ -1,6 +1,12 @@
 import { createSocket, type Socket } from 'node:dgram';
 import { once } from 'node:events';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -115,6 +121,29 @@ it('refuses an unsupported relay transport before spawning a child', async () =>
     startLabRelay(49152, temporaryRoot(), 'forward', 'unknown'),
   ).rejects.toThrow('Unsupported lab relay transport');
 });
+
+it.each(['tcp', 'udp'])(
+  'enforces an explicitly bounded %s recorder lifetime',
+  async (transport) => {
+    const root = temporaryRoot();
+    await expect(
+      startLabRelay(49152, root, 'forward', transport, { lifetimeMs: 600_001 }),
+    ).rejects.toThrow('Invalid lab relay lifetime');
+    const relay = await startLabRelay(49152, root, 'forward', transport, {
+      lifetimeMs: 1_000,
+    });
+    await expect
+      .poll(() => existsSync(join(root, 'failed.json')), { timeout: 5_000 })
+      .toBe(true);
+    expect(JSON.parse(readFileSync(join(root, 'failed.json'), 'utf8'))).toEqual(
+      { reason: 'lifetime_exceeded' },
+    );
+    await expect(relay.close()).rejects.toThrow(
+      'Relay failed its bounded lifecycle/capture contract',
+    );
+  },
+  10_000,
+);
 
 it('refuses a missing Pion binary and an exited child before reporting a ready peer', async () => {
   const root = temporaryRoot();

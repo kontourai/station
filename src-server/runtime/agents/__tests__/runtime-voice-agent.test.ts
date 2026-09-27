@@ -29,43 +29,52 @@ describe('createRuntimeVoiceAgentSpec', () => {
 });
 
 describe('bootstrapRuntimeVoiceAgent', () => {
-  test('creates or updates the voice agent and logs loaded tools', async () => {
-    const configLoader = {
-      agentExists: vi.fn(async () => false),
-      createAgent: vi.fn(async () => {}),
-      updateAgent: vi.fn(async () => {}),
-    };
-    const createVoltAgentInstance = vi.fn(async () => ({}));
-    const logger = {
-      info: vi.fn(),
-      warn: vi.fn(),
-    };
-    const agentTools = new Map([
-      ['station-voice', [{ name: 'tool-1' }] as any],
-    ]);
+  test.each([
+    { exists: false, writes: 'createAgent', skips: 'updateAgent' },
+    { exists: true, writes: 'updateAgent', skips: 'createAgent' },
+  ] as const)(
+    'agentExists=$exists writes through $writes and logs loaded tools',
+    async ({ exists, writes, skips }) => {
+      const configLoader = {
+        agentExists: vi.fn(async () => exists),
+        createAgent: vi.fn(async () => {}),
+        updateAgent: vi.fn(async () => {}),
+      };
+      const createVoltAgentInstance = vi.fn(async () => ({}));
+      const logger = {
+        info: vi.fn(),
+        warn: vi.fn(),
+      };
+      const agentTools = new Map([
+        ['station-voice', [{ name: 'tool-1' }] as any],
+      ]);
 
-    await bootstrapRuntimeVoiceAgent({
-      agentSpecs: [{ tools: { mcpServers: ['github'] } } as any],
-      configLoader,
-      createVoltAgentInstance,
-      agentTools,
-      logger,
-    });
+      await bootstrapRuntimeVoiceAgent({
+        agentSpecs: [{ tools: { mcpServers: ['github'] } } as any],
+        configLoader,
+        createVoltAgentInstance,
+        agentTools,
+        logger,
+      });
 
-    expect(configLoader.createAgent).toHaveBeenCalledWith(
-      expect.objectContaining({
+      const spec = expect.objectContaining({
         name: 'Station Voice',
         tools: expect.objectContaining({
           mcpServers: ['station-control', 'github'],
         }),
-      }),
-    );
-    expect(createVoltAgentInstance).toHaveBeenCalledWith('station-voice');
-    expect(logger.info).toHaveBeenCalledWith(
-      'Bootstrapped station-voice agent',
-      expect.objectContaining({
-        toolCount: 1,
-      }),
-    );
-  });
+      });
+      expect(configLoader.agentExists).toHaveBeenCalledWith('station-voice');
+      expect(configLoader[writes]).toHaveBeenCalledWith(
+        ...(writes === 'updateAgent' ? ['station-voice', spec] : [spec]),
+      );
+      expect(configLoader[skips]).not.toHaveBeenCalled();
+      expect(createVoltAgentInstance).toHaveBeenCalledWith('station-voice');
+      expect(logger.info).toHaveBeenCalledWith(
+        'Bootstrapped station-voice agent',
+        expect.objectContaining({
+          toolCount: 1,
+        }),
+      );
+    },
+  );
 });

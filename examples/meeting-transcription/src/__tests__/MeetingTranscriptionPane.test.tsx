@@ -9,16 +9,11 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  SDKProvider,
-  type STTOptions,
-  type STTProvider,
-  type STTState,
-  voiceRegistry,
-} from '@kontourai/station-sdk';
+import { SDKProvider, voiceRegistry } from '@kontourai/station-sdk';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { components } from '../index';
+import { fakeSTT } from './helpers/fake-stt';
 
 const manifest = JSON.parse(
   readFileSync(
@@ -32,34 +27,6 @@ const manifest = JSON.parse(
     };
   };
 };
-
-function fakeSTT() {
-  const listeners = new Set<() => void>();
-  const provider = {
-    id: 'pane-stt',
-    name: 'pane-stt',
-    isSupported: true,
-    state: 'idle' as STTState,
-    transcript: '',
-    startListening: vi.fn((_opts?: STTOptions) => {
-      provider.state = 'listening';
-      for (const fn of listeners) fn();
-    }),
-    stopListening: vi.fn(() => {
-      provider.state = 'idle';
-      for (const fn of listeners) fn();
-    }),
-    subscribe: (fn: () => void) => {
-      listeners.add(fn);
-      return () => listeners.delete(fn);
-    },
-    hear(text: string) {
-      provider.transcript = text;
-      for (const fn of listeners) fn();
-    },
-  };
-  return provider satisfies STTProvider;
-}
 
 const disposers: Array<() => void> = [];
 afterEach(() => {
@@ -77,7 +44,7 @@ describe('meeting-transcription Workspace Pane', () => {
   });
 
   test('opens the modal and sends the transcript to Station’s Agent', () => {
-    const stt = fakeSTT();
+    const stt = fakeSTT('pane-stt');
     disposers.push(voiceRegistry.registerSTT(stt));
     const launchChat = vi.fn();
     const Pane = components['meeting-transcription'];
