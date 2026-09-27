@@ -605,11 +605,54 @@ host-action queries as well as plugin inventory; they do not authorize retries.
 
 ## DesktopStartupReadiness
 
-**Intent and Interface.** `startup_readiness::transition` is the pure native authority for one main-window startup epoch. Its ticket binds `generation`, stable `instanceId`, per-child `bootId`, and `apiBase`; the native host reveals only after its authenticated proof commits the ticket currently published by the desktop-owned sidecar **and** the exact main WebView commits a post-React-layout mount. Tauri's native page-start signal permits identity proof but is not renderer readiness. Activation requests defer while waiting or failed and reveal after ready; readiness never re-hides an already-ready window.
+**Purpose.** The [pure readiness transition](../../src-desktop/src/startup_readiness.rs)
+keeps a packaged desktop window from revealing application content before two
+facts agree: the native host has proved the current sidecar identity, and the
+main WebView has committed its React mount. The ticket binds generation,
+instance ID, child boot ID and API base. A native page-start callback permits
+identity proof but is not proof that the renderer mounted.
 
-**Contract.** Server loss invalidates an uncommitted identity proof without erasing a still-mounted renderer; a new main page start invalidates a pre-ready mount without inventing server loss. A packaged sidecar commit additionally requires the native host to resolve the one configured credential-bearing profile owned by its exact channel home, read that profile's OS-held credential, and authenticate `/api/system/identity` to the exact instance/boot ticket; renderer profile selection and historical `setupSource` are not authority for this boundary. While waiting on macOS, a native cover visibly labels the protected state; the WebView stays alive at alpha zero, while the native content view publishes only the cover as its accessibility child. Tauri's native `PageLoadEvent::Started` callback derives the actual WebView label and records page liveness only for `main`, without waiting for browser timers, the application module graph, or `DOMContentLoaded`. A small eager React sibling outside `PlatformBootstrap` submits the independent mount commit from `useLayoutEffect`; StrictMode and remounts share one module-owned attempt. `NativeStartupBootstrap` retains both page-start and mount facts that arrive before `DesktopServerState`, then replays page-start before mount immediately after state management, so an early successful IPC cannot be lost. After page start and a current sidecar ticket exist, the host runs one single-flight identity proof, but reveal waits for both that proof and the mount commit in either order. Reveal removes the cover, clears that temporary accessibility override so AppKit resumes deriving its live child hierarchy, restores WebView opacity, and focuses that same WebView only after the conjunction. The binding is re-read after network I/O and the supervisor ticket is re-read before reveal. A successful profile write wakes a bounded native retry only while readiness is `Waiting`; automatic application-renderer polling is absent, so first-run provisioning does not depend on application-bundle hydration timing and proofs cannot overlap. Timeout produces one diagnostic effect per epoch. Retry begins a new epoch and asks only the owned sidecar to restart; it never signals an attached service. Development is an explicit bypass. The status bridge publishes generation/instance/boot fields for a sidecar and clears per-child fields at lifecycle loss; it does not weaken the generation-tagged stdout handshake filter. **Do not reintroduce:** automatic renderer polling, a browser timer, a renderer-invented ticket, treating page start as a React mount, putting the mount commit inside `PlatformBootstrap`, dropping pre-state renderer facts, ambient-profile authorization for bundled startup, `setupSource` admission for a native-owned home, alpha-only hiding without accessibility-child isolation, WebsiteData/cache deletion, CSP weakening, guest-visible eval diagnostics, a copied reveal-time accessibility snapshot, native WebView hiding that pauses the document, overlapping or post-ready proofs, generic window-show paths that bypass this authority, a service restart from desktop recovery, or a post-ready hide.
+**Identity and reveal.** [Tauri composition](../../src-desktop/src/lib.rs) owns
+the current ticket, credential-bearing profile selected for the exact channel
+home, OS-held credential and authenticated `/api/system/identity` check.
+It rereads profile binding after network I/O and the supervisor ticket before
+commit. Renderer-selected profiles and historical `setupSource` do not authorize
+this bundled-startup proof. Native page/ticket callbacks request the proof;
+the [eager React liveness sibling](../../src-ui/src/platform/native/rendererLiveness.tsx)
+reports only mount through `useLayoutEffect`, outside `PlatformBootstrap`.
+StrictMode/remounts share one module-owned attempt. The host retains early
+page/mount facts until DesktopServerState exists and replays them in order.
 
-**Seam, Implementation, callers, and tests.** The Tauri composition layer owns effects, native main-WebView page observation, the single-flight claim, and the bundled credential/identity proof; the application renderer can submit only the secret-free ticket observed through `BundledServerStatus`. Pure transition and claim coverage lives beside the Rust module, while composition/static tests pin the native page-start hook, exact home/profile selection, and instance/boot response matching. Physical window sequencing, OS dialog presentation, and packaged channel behavior remain `NOT_VERIFIED` until exercised on a release desktop build.
+While waiting on macOS, the host can show a native startup cover. The WebView
+stays alive at zero opacity, and the temporary accessibility hierarchy exposes
+the cover rather than hidden application content. Reveal removes the cover,
+restores opacity and normal AppKit accessibility children, then focuses that
+same WebView. Merely hiding the WebView or copying a reveal-time accessibility
+snapshot would change those guarantees.
+
+**Recovery.** Server loss invalidates a pending identity proof without erasing
+an already mounted renderer. A new main page invalidates its pre-ready mount
+without inventing server loss. Proof is single-flight; a relevant profile write
+can wake a bounded retry while waiting. Timeout produces one diagnostic per
+epoch. Retry starts a new epoch: with a current owned ticket it first reprobes
+without restarting; a later retry or missing ticket restarts only the owned
+sidecar. A service-owned/unowned backend uses recovery-surface recommit instead
+of signaling a durable service. Dev has an explicit bypass. Activation waits
+for the appropriate state, and startup readiness does not re-hide a window
+already admitted as ready.
+
+The status bridge projects sidecar generation/instance/boot identity and clears
+child fields after loss; the generation-tagged stdout handshake remains a
+separate admission check. No browser timer, automatic renderer polling, cache
+reset or CSP weakening supplies readiness.
+
+Pure Rust state/claim tests and
+[startup wiring tests](../../scripts/__tests__/startup-readiness-static.test.ts)
+cover the decision boundaries. They do not prove AppKit pixels, OS dialogs,
+real IPC or packaged behavior. The [native verification guide](../guides/native-shell-verification.md)
+and [recovery guide](../user/native-recovery.md) keep those platform checks
+separate.
+
 
 ## PendingPairingCompletion
 
@@ -787,19 +830,88 @@ An automatic profile change is a compensation protocol, not a switch followed by
 
 ## ExtensionNotificationBindings
 
-**Intent and Interface.** `extensionNotificationBinding(namespace, type)` returns one immutable evidence-backed consumer binding or absence. The public table carries each exact tuple, its functional consumer, and the handshake/adapter variant against which it was observed; a separate gap inventory names variants whose notification spelling remains unobserved.
+**Purpose.** Vendor extension notifications remain opaque until Station has an
+exact handling rule for their `(namespace, type)` tuple. The immutable
+[shared table](../../src-shared/extension-notification-bindings.ts) records that
+rule, the observed adapter variant and a historical observation tag.
+`extensionNotificationBinding()` returns an exact match or absence. A matching
+namespace prefix, version string or stored capability flag is not a match.
 
-**Contract.** The canonical runtime event remains an opaque vendor extension envelope. Only exact table entries acquire application semantics. Namespace similarity, a declared extension method, a version string, or a stored capability observation cannot authorize a rendering. Unknown namespace and type are deliberate no-ops. The `_kiro` v3 notification spelling remains a recorded gap until runtime evidence exists; it never inherits `_kiro.dev` behavior. Removing or adding an entry changes the exact-set test, so growth requires both evidence and a functional consumer.
+**Current callers.** The [ACP mapper](../../src-server/providers/adapters/acp-adapter-events.ts)
+updates retained commands for `acp.commands.available` and retains bounded
+same-turn error context for `acp.turn-error-cause`. It still publishes the
+opaque event. The [UI handler](../../src-ui/src/hooks/orchestration/extensionHandlers.ts)
+handles Kiro authentication/compaction, Claude activity and retained task
+history, and engine MCP progress. `acp.host-chrome` entries are intentional
+transcript no-ops, not visible UI implementations. Claude task registry/settled
+bindings remain for older replay; current child work uses its canonical event.
+Unknown tuples have no application semantics, though bounded diagnostics and
+the [replay observer](../../src-ui/src/hooks/orchestration/replay/observe.ts)
+can report their absence.
 
-**Seam, Implementation, callers, and tests.** The provider-neutral table lives in `src-shared`; ACP's Adapter consumes only the `acp.commands.available` binding when updating its retained command state, while the UI consumes only `ui.*` bindings for the existing Kiro and Claude renderings. Every opaque event is still published regardless of whether a binding exists. Shared exact-set tests, ACP mapper tests, and UI behavior tests prove current behavior plus unknown/fuzzy rejection. **Do not reintroduce:** scattered vendor string constants, wildcard/fuzzy matching, version-derived support, or a stored `supported` flag.
+The `_kiro` v3 spelling remains an explicit evidence gap; it does not inherit
+`_kiro.dev` behavior. Promotion metadata names desired canonical events and
+still-open work; its presence does not mean the adapter emits that event.
+
+[Exact-set tests](../../src-shared/__tests__/extension-notification-bindings.test.ts),
+ACP mapper tests and UI handler tests check lookup and current handling.
+Historical observation tags are evidence pointers, not a fresh provider run.
+Add or remove a tuple together with its actual handler and evidence; do not
+replace exact matching with wildcard vendor routing.
+
 
 ## JsonFileMutationAuthority
 
-**Intent and Interface.** `writeJsonFile(path, value, options)` publishes one complete bounded JSON value, while `mutateJsonFile(path, fallback, update, options)` performs one serialized read/derive/publish transaction. `publishJsonFileWithOwnedLock(path, value, options)` is the narrow atomic-publication Seam for a composed transaction that already owns a broader integration capability; it never reacquires a second path lock. The update callback is deliberately synchronous and never receives the lock capability. `IStorageAdapter` exposes Promise-returning mutations so every service, route, migration, and startup caller awaits durable completion or a bounded ownership failure.
+**Purpose.** [json-file-storage](../../packages/shared/src/json-file-storage.ts)
+provides whole-document publication and serialized read/modify/write.
+`writeJsonFile()` writes the supplied value, optionally checking an expected
+fingerprint. `mutateJsonFile()` reads under the path lock and passes the current
+value to a synchronous updater. The guarded-read variant lets an owning service
+supply its descriptor-based read inside that same lock.
 
-**Contract.** Every server-side JSON mutation that goes through `writeJsonFile`/`mutateJsonFile` acquires `acquireFileMutationLockAsync`, re-reads authoritative bytes only after ownership, stages a same-directory private file, syncs it, and atomically renames it before releasing ownership. `publishJsonFileWithOwnedLock` acquires nothing by design, and two server callers reach it without a file lock: the memory adapter's conversation documents, whose read-modify-write is serialized by the adapter's own per-conversation in-process queue, and the usage-telemetry disclosure receipt, a whole-value publish that reads nothing — a concurrent writer there can only produce last-rename-wins between two individually complete documents, never a lost update and never a torn file. That is the test a lock-free caller must pass: either it publishes a whole value it did not derive from the file, or it serializes its own read-modify-write. The name says "owned lock" because every other caller holds one, not because the Seam checks. Session-summary sidecars publish through the same Seam under `${path}.mutation`: regeneration is a whole-value publish, but `dismiss`/`show` derive from the file, so all three take the capability and read inside it. Anything that fails the test belongs on `writeJsonFile`; a read-modify-write whose "no change" case must not create a document cannot use `mutateJsonFile` (which publishes whatever the updater returns, so the fallback would create the document) and instead acquires the capability itself and publishes conditionally under it — session-summary composes that with this Seam, while `SshEnvironmentProfileStore` (its own descriptor writer) and `NotificationService` (`JsonFileStore`) are precedents for the shape rather than for this Seam. `delete` takes the same capability as its coordinate's publishers, so an unlink cannot land between a conditional mutation's read and its publish. Optimistic fingerprint writes retain exact conflict behavior; read-modify-write stores use `mutateJsonFile` so two Station processes cannot lose independent updates. Integration configuration and its secret store use fixed integration-then-credential lock ordering, publish secret material before its reference-bearing configuration, and remove retired secrets only after configuration publication. CLI portability import awaits the same credential and integration authorities, so API, CLI, and MCP cannot disagree about durable completion. Constructors may validate or project a missing document as empty, but never busy-wait on a synchronous production lock.
+**Commit and bounds.** Ordinary writes/mutations acquire the asynchronous
+`${path}.mutation` lock and await publication before releasing it. A plain
+whole-value write does not reread the target unless a fingerprint check asks
+for that read. Publication serializes JSON, creates a same-directory exclusive
+mode-0600 temporary file, writes and syncs it, then renames it over the target.
+The rename commits the visible value. Directory sync is attempted afterward;
+its failure does not turn already published bytes into a retryable failed write,
+and the directory-sync helper is a no-op on Windows. This is not a tested
+power-loss guarantee for every filesystem.
 
-**Seam, Implementation, callers, and tests.** `FileStorageAdapter`, project/layout/provider/template/knowledge-root/conversation/document services, integration configuration, OAuth/MCP credential persistence, and CLI portability import are callers. Contention and preservation evidence lives in `src-server/services/__tests__/store-async-lock-cutover.test.ts`, `src-server/domain/__tests__/config-loader-storage.process.test.ts`, and the file-storage/provider/credential/portability suites. The source ratchet rejects synchronous lock acquisition anywhere in production `src-server`. **Do not reintroduce:** synchronous `acquireFileMutationLock` in server production, caller-owned read-modify-write, an async updater while ownership is held, publishing a secret reference before secret material, fire-and-forget storage mutation, or a separate CLI credential mutation protocol.
+A caller-supplied `maxBytes` limits the serialized document; there is no default
+byte cap. Serialization happens before that size check. Schema validation,
+path/root authority and appropriate input limits remain with the owning service.
+Updaters are typed synchronous and must not be asynchronous callbacks.
+`mutateJsonFile` publishes the returned value even when it equals the fallback;
+a no-op that must not create a file needs a conditional transaction instead.
+
+**Composed callers.** `publishJsonFileWithOwnedLock()` deliberately acquires no
+lock and does not verify that the caller owns one. Project, integration,
+review-receipt, summary and operation stores compose their own broader
+capability around it. Summary regenerate/dismiss/show use the same path lock,
+including the read for conditional mutations; deletion must share the publisher's
+lock. Integration configuration takes integration then credential ownership,
+publishes secrets before references and retires old secrets after configuration
+publication. CLI portability import awaits those same owners.
+
+Two important exceptions explain why the function name is not enforcement:
+[memory-adapter conversations](../../src-server/adapters/file/memory-adapter-conversations.ts)
+use their own per-conversation in-process queue, not this cross-process lock;
+the [telemetry disclosure receipt](../../src-server/services/usage-telemetry-service.ts)
+is a complete value with no read-derived update, so concurrent publication is
+last-rename-wins. Atomic publication prevents torn values; it does not by itself
+prevent a read/modify/write race or coordinate other processes' queues.
+
+[FileStorageAdapter](../../src-server/domain/file-storage-adapter.ts) and
+[integration storage](../../src-server/domain/config-loader-storage.ts) are
+concrete callers. [Contention tests](../../src-server/services/__tests__/store-async-lock-cutover.test.ts)
+and [cross-process configuration tests](../../src-server/domain/__tests__/config-loader-storage.process.test.ts)
+exercise their ownership and failure paths. The source ratchet rejects direct
+synchronous file-lock acquisition in production server code; it is not proof
+that every transitive startup operation is asynchronous. Keep the owning
+transaction and await its result instead of adding a second mutation protocol.
+
 
 ## LocalSkillMutationAuthority and SetupImportEffectJournal
 
@@ -811,36 +923,102 @@ An automatic profile change is a compensation protocol, not a switch followed by
 
 ## StationHomeArchive
 
-**Intent and Interface.** `createStationHomeBackup({homeDir, outputDir, assertInactive})` returns one schema-bound manifest and published backup directory. `restoreStationHomeBackup({backupDir, homeDir, confirm, assertInactive})` returns the validated manifest plus the retained prior-home path. Callers receive no raw copy loop, SQLite handle, staging path, or publication capability.
+**Purpose.** [StationHomeArchive](../../packages/shared/src/station-home-archive.ts)
+backs `station home backup|restore`. Backup returns a schema-bound manifest
+and a published directory. Restore validates that archive, replaces the selected
+home under maintenance ownership and returns the retained previous-home path
+when one existed. It copies the selected home, not external Git workspaces,
+the entire Station root or an OS keychain.
 
-**Contract.** `StationHomeLifecycle` admits every runtime before its first home read through an exact PID-birth lease and gives backup/restore exclusive maintenance ownership through the same cross-process mutation lock. Multiple runtimes may coexist, dead owners are reclaimed, an unverifiable owner remains fenced, and a late runtime start waits behind maintenance instead of racing the final inactivity snapshot. Backup and restore additionally re-check caller-supplied lifecycle observations for actionable CLI diagnostics. Traversal is sorted, bounded by file count/per-file/total bytes, rejects symlinks and non-regular entries, represents paths as segment arrays so POSIX backslashes never become separators, excludes only declared volatile roots/files, checkpoints and quick-checks SQLite before copy, re-hashes every copied file, syncs staged bytes, and publishes by same-parent rename. The manifest binds exact observed schema version, creation time, file segments, modes, sizes, hashes, and total bytes; backup is read-only with respect to schema state so it remains the escape hatch before migration. Restore strictly validates the manifest and every archived byte before staging, requires explicit confirmation, swaps the selected home atomically, rolls back a failed swap/schema gate, and retains the replaced home rather than deleting it. EventStore and SchedulerLedger independently use the same `checkSqliteIntegrity` policy before any migration/schema write: only a completed non-OK quick-check or explicit SQLite corruption evidence is `corrupt`; lock, I/O, open, permission, and unknown Adapter faults are `unavailable`. Corrupt bytes remain untouched and the error names the validated restore command.
+**Ownership and backup.** [StationHomeLifecycle](../../packages/shared/src/station-home-lifecycle.ts)
+tracks runtime owners by PID and birth identity and gives maintenance exclusive
+ownership against cooperating runtimes. Dead owners can be reclaimed;
+unverifiable owners remain fenced. The lease can represent multiple runtime
+owners, while individual callers can impose stricter same-home policy.
+[StationRuntime](../../src-server/runtime/bootstrap/station-runtime.ts) retains
+its lease through persistence shutdown. CLI wrappers also check lifecycle
+observations for useful offline diagnostics. These checks do not stop an
+unrelated external writer that ignores Station's ownership protocol.
 
-**Seam, Implementation, callers, and tests.** `@kontourai/station-shared/station-home-lifecycle` owns runtime/maintenance exclusion; `station-home-archive` owns the portable archive format and filesystem/SQLite mechanics. `StationRuntime` retains its opaque lease until clean persistence shutdown. The CLI's `station home backup|restore` wrappers reuse the existing instance observation for user-facing offline diagnostics; reset shares the same DRY refusal helper. Shared real-process tests force a runtime attempt behind held maintenance; runtime composition proves construction-through-shutdown ownership; real-SQLite tests cover round-trip, tampering, corruption, symlinks, bounds, confirmation, publication faults, and startup I/O classification. **Do not reintroduce:** snapshot-only inactivity checks, runtime/home mutations outside the lifecycle authority, raw recursive home copies, live-home backup, SQLite WAL/shm copying, automatic reset on corruption, unchecked archive paths, restore that deletes the prior home, or a second backup format in server code.
+Traversal is sorted and rejects symlinks/non-regular entries. Defaults cap an
+archive at 100,000 files, 20 GiB total and 2 GiB per file. Paths are segment
+arrays, so a POSIX backslash cannot become a directory separator on import.
+Declared volatile files are excluded. SQLite is checkpointed and integrity
+checked before copying; backup does not advance the home schema. Each copied
+file is checked against its size/hash and synced before the staged archive is
+renamed into place. The manifest records schema, creation time, segments,
+modes, sizes, hashes and total bytes. Mode preservation follows platform support.
 
-The service-level `home-reference-recovery.test.ts` composes real Project, Task,
-room history, working-state, evidence, and home lifecycle owners. It restores
-after removing its synthetic source and external workspace, checks exact prior
-references, and treats missing evidence keys as unavailable. Duplicate edit
-replay locates the original publication through the history owner's indexed
-proposal lookup and normal authorized, integrity-checked page reader, then
-validates the evidence against the exact scope and committed working revision.
-It never substitutes the current document or publishes another intent's outbox.
-This is offline recovery evidence, not cross-host execution fencing or tenant
-isolation. See the [operator recovery drill](../guides/deployment.md#offline-home-recovery-drill).
+**Restore and failure.** Explicit confirmation and an inactive home are required.
+The owner validates the manifest and every archived/staged byte before
+publication. It renames an existing home aside, then renames the staged home
+into place. Each rename is atomic; the pair is not one filesystem transaction.
+Publication/schema failure attempts rollback, and rollback failure remains an
+error. Successful restore keeps the replaced home instead of deleting it and
+records that recovery did not transfer execution authority.
+
+EventStore and SchedulerLedger share the SQLite integrity policy before
+schema/migration writes. A completed non-OK quick-check or explicit corruption
+error is corrupt; lock, permission, I/O and unknown faults are unavailable.
+Neither outcome authorizes an automatic reset.
+
+[Archive tests](../../packages/shared/src/__tests__/station-home-archive.test.ts)
+cover real SQLite round-trip, tampering, bounds, confirmation and publication
+faults. Home-lifecycle process tests exercise runtime/maintenance exclusion.
+The [operator drill](../guides/deployment.md#offline-home-recovery-drill) covers
+restored Project/Task/room references and missing evidence. Those are offline
+recovery checks, not cross-host execution fencing, tenant isolation or a live
+workspace backup.
 
 ### Detached recovery candidate (fixture-first)
 
-`StationHomeArchive.stageStationHomeRecoveryCandidate()` accepts already-detached, bounded UTF-8 JSON records and an absent output directory. Its private classifier observes selected v1 fields only; the declared version is not proof of source schema or capture consistency. The archive owner stages exact original records as mode-0600 `.payload` files in a mode-0700 `inert-evidence` directory, verifies the intended file set and hashes, and returns a content-free plan. No Station-home marker, `config`, `agents`, database or active runtime store is emitted. Original ambiguous Agent records remain whole: removing an external Engine binding would otherwise change absence into Station-engine execution. Explicit credential payload records are excluded from copied evidence; credential references and sensitive original records never enter public plans or errors. All candidates remain `publishable:false`, with capture/owner exclusion, destination, identity/account mapping and import review still required. Unknown and malformed records are inert evidence, not validated or executable input.
+`stageStationHomeRecoveryCandidate()` accepts already-detached bounded UTF-8
+JSON records and an absent output directory. It preserves original records as
+mode-0600 `.payload` files beneath mode-0700 `inert-evidence`, verifies the file
+set/hashes and returns a content-free plan. Its selected-field classifier does
+not prove capture consistency or source schema. Credential payload records are
+excluded, and ambiguous Agent records stay whole: dropping an external-engine
+binding could otherwise change absence into Station-engine execution.
 
-This is not a live-home backup, immutable forensic snapshot, migration, restore, owner-exclusion capability, or hostile-filesystem containment proof. It reuses the archive owner's private staging/sync/cleanup mechanics, never invokes SQLite checkpointing, ordinary store constructors, enrollment or runtime startup, and has no CLI/apply caller. Failed staging is cleaned where possible; interrupted or post-rename failures may retain an inert artifact, never a bootable home. Later consumption must revalidate exact staged bytes and acquire its own real authorization; this plan grants none. Disposable directory tests in `station-home-recovery-candidate.test.ts` exercise the actual archive entry point, unchanged payloads, privacy/bounds, non-bootability, destination conflicts, and injected staging faults. #1391/#1388 physical recovery remain open.
+Every candidate remains `publishable:false`. It emits no active home marker,
+configuration, Agent store or database; it has no CLI/apply caller. Unknown or
+malformed records remain inert evidence. Interrupted/post-publication failures
+can leave an inert artifact, so later use must revalidate bytes and acquire real
+capture, destination, identity/account and import authority.
+[Candidate tests](../../packages/shared/src/__tests__/station-home-recovery-candidate.test.ts)
+exercise that archive entry point; they do not prove live-home capture,
+hostile-filesystem containment or physical recovery under #1391/#1388.
+
 
 ## StationHomeRecoveryPreflight
 
-**Intent and Interface.** `inspectStationHomeRecovery({homeDir})` produces a redacted, bounded selected-field inventory through `station home recovery-plan`. The CLI requires an explicit home and bypasses lifecycle argument paths that create temporary homes, as well as keyring setup. Schema and Engine/Agent reference observations are separate from unopened historical, credential, grant, scheduler and plugin payloads.
+**Purpose.** `station home recovery-plan` calls
+[`inspectStationHomeRecovery({ homeDir })`](../../packages/shared/src/station-home-recovery-preflight.ts)
+to inspect selected schema, Engine/Agent reference and owner metadata before a
+possible recovery. The CLI requires an explicit home and avoids the normal
+argument paths that create temporary homes or initialize keyring state.
 
-**Contract.** No bootstrap, lease acquisition, archive, migration, write or process launch. Exact IDs are compared without alias inference. Unclassified stores, malformed selected metadata, observed path changes, unsafe links and bounds failures remain visible. PID-zero observations never prove birth identity or legacy owner exclusion. The report is non-atomic and always carries `applyAllowed: false`; it is not a recovery receipt or future apply token. History preservation is not permission to resume or execute. No original payload is quarantined or rewritten.
+**Observation, not permission.** The reader uses bounded no-follow reads and
+runtime-home admission but never calls schema ensure, acquires a runtime or
+maintenance lease, copies an archive, migrates data or launches a process.
+Exact IDs are compared without guessing aliases. Historical, credential,
+grant, scheduler and plugin payloads remain unopened where the catalog marks
+them outside the selected-field inspection. Malformed metadata, unknown stores,
+unsafe paths, changing files and bounds failures remain visible in the report.
 
-**Seam, callers and tests.** The shared implementation reuses runtime-home admission and bounded no-follow file reads from the schema owner, but never calls schema ensure. The CLI lifecycle wrapper and dispatcher return the same report. Shared fault fixtures exercise links, replacements, unknowns, identity collisions, limits and unopened payloads; the actual CLI test checks no writes, child processes, keyring setup or temp-home creation. Future backup/conversion/publication work stays with the existing archive, schema and lifecycle owners. **Do not reintroduce:** marker-only v1 upgrades, global Engine ID replacement, normal store constructors in inspection, raw errors/credentials in output, or observation-as-authorization.
+The process-existence probe is `kill(pid, 0)`: it cannot establish process birth
+or exclude a legacy owner. The report is explicitly non-atomic and always
+`applyAllowed:false`. It neither rewrites/quarantines original payloads nor
+authorizes a future import, Session resume or scheduled execution. Recovery
+must acquire fresh ownership and validate the actual bytes at its own boundary.
+
+The [CLI lifecycle wrapper](../../packages/cli/src/commands/lifecycle.ts) returns
+the same report. [Preflight tests](../../packages/shared/src/__tests__/station-home-recovery-preflight.test.ts)
+and the actual CLI fixture check selected fields, unsafe paths, privacy and
+absence of writes/child processes/keyring setup. Keep conversion and publication
+with the existing archive/schema/lifecycle owners; do not turn a readable marker
+or a surviving PID into an apply token.
+
 
 ## ProjectFileTransactions
 
@@ -1152,19 +1330,109 @@ Keep those layers distinct when changing planning, retry or browser payloads.
 
 ## RevisionEvidenceModule
 
-**Intent and Interface.** `RevisionEvidenceModule.freeze()` admits one settled #2889 `WorkingStateSnapshot` as an immutable, content-addressed Station receipt only through a required server-owned `RevisionAttributionAuthority`; `revision()` reads a defensive copy; `resolveEvidence()` and `resolveGateInput()` return exactly `AVAILABLE`, `UNAVAILABLE`, or `UNVERIFIED`; `reader().resolve({ scope, revisionId })` supplies a scope-bound, snapshot-free room/SDK link projection; `resolveProposedChange()` reads a canonical proposed-change record through an injected lookup and returns its revision-only view; and `exportPortable()`/`importPortable()` exchange a canonical path-free receipt bundle. The Interface exposes explicit bounds but no filesystem path, raw map, mutable record, transport, or third-party evidence/gate vocabulary.
+**Purpose.** [RevisionEvidenceModule](../../src-server/domain/revision-bound-evidence.ts)
+freezes a settled `SharedWorkingState` snapshot into an immutable,
+content-addressed Station receipt. `revision()` reads a defensive copy;
+`resolveEvidence()` and `resolveGateInput()` report `AVAILABLE`, `UNAVAILABLE`
+or `UNVERIFIED`. Those names describe binding/availability, not a Surface
+assessment, Flow gate verdict, Survey decision or Veritas readiness result.
 
-**Contract.** Freeze restores untrusted input through `SharedWorkingState`, rejects deferred causal work as `pending_state`, then asks the authority for canonical actor/correlation from exact scope/shared revision/request identity. The Module independently derives its canonical identity payload and deterministic revision ID before the authority issues a bounded opaque portable attestation over that exact ID, parents, scope/shared revision, actor/correlation, and canonical payload. Caller attribution is ignored; absent or mismatched authority fails closed. Attestations are exported but cannot perturb identity. A receipt binds exact Project/Task/document scope; every parent and proposed-change before/after pair must have that exact scope. An approved proposed-change diff additionally needs the canonical decision shape (pending has zero decisions; a decided change has exactly one), transitive ancestry, exact authority-derived change/session/run correlation, and exact canonical snapshot content; it returns the bounded decision reason and supplied snapshots/hashes without creating hash semantics. Revisions, returned records, exports, imports, diffs, and resolution results are defensively cloned and bounded by identifier, label, attestation, snapshot, text, record, import-entry, and total-import-byte limits. Import rejects count before exact escaped-JSON byte accounting via a cycle-safe streaming traversal (incremental UTF-8/control-escape/lone-surrogate string accounting where every child receives only its remaining parent budget, sparse arrays, and no unbounded container or serialized-string allocation), then revalidates identity, reconstructed snapshot, text, parent closure, scope, and capacity atomically, including compatible authority verification of every exact identity binding; a missing/invalid authority result is `attribution_unverified`. This module does not decide Surface evidence, Flow gates, Survey review, or Veritas readiness semantics.
+**Identity and attribution.** Freeze restores the untrusted snapshot through
+SharedWorkingState and refuses deferred causal work as `pending_state`.
+A required server-owned authority derives actor and correlation from the exact
+Project/Task/document scope, shared revision and request identity. Caller
+attribution is ignored. The module computes its deterministic identity first;
+the authority then attests that exact identity, parents, scope, actor and
+canonical payload. The attestation cannot change the revision ID. Parents and
+proposed-change before/after pairs must have the same scope.
 
-**Seam, Implementation, callers, and tests.** `src-server/domain/revision-bound-evidence.ts` is the Station-owned deep Module. `EventStore.createRevisionEvidenceModule()` composes its private `sqlite-revision-evidence-persistence.ts` adapter over the existing orchestration SQLite file and `007-revision-evidence-receipts.ts` migration; the adapter exposes only bounded restore and atomic receipt-batch persist. It uses cross-process transactions and exact readback, SQL-preflights every selected text/byte field before paging, restores in 32-row pages, and returns a digest witness only after the Module authority-validates the canonical ledger. Persist recomputes and matches that witness while holding `BEGIN IMMEDIATE`, revalidates all retained rows, enforces resulting count/per-record/aggregate escaped bytes, and returns the exact inserted count. A stale peer witness or response loss gets one bounded retry. EventStore registers a deferred-restore Module before invoking authority callbacks, and Module lifecycle generations fence every verify/attest/lookup/persist return, cache mutation, and successful projection; a reentrant close cannot repopulate or disclose cached evidence even when COMMIT already landed. `ProjectTaskRoomRevisionEvidenceBridge` composes one such Module into the personal room runtime with bounded freeze grants, a domain-separated EnvironmentSecurityService HMAC authority, the canonical Project/Task document ID, and a scope-bound `ProjectTaskRoomLinkAuthority`. After an authorized working-state commit it freezes the exact private snapshot and appends only the revision link; evidence failure is an explicit additive gap and never overturns the edit receipt. Every persisted public read refreshes bounded canonical truth, and room shutdown closes the bridge before EventStore. UI composition belongs to #2890 through the snapshot-free reader, not a storage route. `src-server/domain/__tests__/revision-bound-evidence.test.ts` covers canonical snapshot permutations, deferred rejection, field stripping, exact scope, canonical proposed-change status updates/mismatch, portable recovery, and bounds; `src-server/services/orchestration/__tests__/revision-evidence-persistence.test.ts` proves real SQLite restart, durable atomic/import-count behavior, witness-race retry, incompatible-authority and corruption no-write fences, oversized SQL preflight, live-peer refresh, scope fencing, escaped aggregate capacity, explicit unavailable reads, ordinary and reentrant restore/verify/attest/import/proposed/post-COMMIT close fencing, next-instance recovery, and same-instance post-commit duplicate recovery. Production runtime commit/history/restart/corruption coverage lives in `project-task-room-revision-evidence-bridge.test.ts`. `station.revision_evidence.outcomes` observes bounded freeze/persist/restore/resolution/import/change outcomes. See [revision-bound evidence](../design/revision-bound-evidence.md). **Do not reintroduce:** a proposed-change lifecycle, mutable filesystem/current-buffer diffs, a second text convergence implementation, local paths in portable receipts, unbounded receipt retention, or copied semantics from Kontour primitives.
+`resolveProposedChange()` reads the existing change owner; it does not create a
+second change lifecycle. It checks canonical decision shape, transitive ancestry,
+exact correlation and snapshot content. Its diff preserves the owner's supplied
+snapshots/hashes rather than inventing another hash convention.
+
+**Persistence and limits.** Defaults admit 256 revisions, a 4 MiB portable
+bundle, 512 KiB snapshots, 256 KiB text and 768 KiB records; identifier, label
+and attestation sizes have separate limits. Import checks entry count before a
+cycle-safe escaped-JSON byte traversal, then validates identity, restored state,
+parent closure, scope and every authority binding as one batch. Arrays/objects
+and nested byte budgets are bounded, including sparse arrays and surrogate
+escaping. Missing compatible attribution is `attribution_unverified`; a portable
+file alone grants no trust. Returned records, exports and projections are cloned.
+
+[EventStore](../../src-server/services/orchestration/event-store.ts) composes the
+[SQLite persistence adapter](../../src-server/services/orchestration/sqlite-revision-evidence-persistence.ts).
+It preflights count/text/byte limits before 32-row restore pages. A validated
+ledger digest is rechecked under `BEGIN IMMEDIATE` before batch persistence;
+a stale witness/response-loss path gets one bounded retry. Current persisted
+reads refresh canonical truth. Registration precedes callback-bearing restore,
+and lifecycle generations fence every external callback and successful
+projection so reentrant close cannot refill or disclose a closed module's cache.
+
+**Production connection.** [ProjectTaskRoomRevisionEvidenceBridge](../../src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts)
+uses bounded freeze grants and domain-separated EnvironmentSecurityService HMAC
+attribution in the personal Task room. After an authorized working-state commit,
+it freezes that exact private snapshot and publishes a scope-bound revision
+link. Evidence failure adds an explicit gap without overturning the edit receipt.
+Its reader omits full snapshots and attestations; it is not a general ledger
+CRUD/import endpoint. Room shutdown closes the bridge before EventStore.
+
+[Domain tests](../../src-server/domain/__tests__/revision-bound-evidence.test.ts),
+[SQLite tests](../../src-server/services/orchestration/__tests__/revision-evidence-persistence.test.ts),
+and [room composition tests](../../src-server/services/orchestration/__tests__/project-task-room-revision-evidence-bridge.test.ts)
+cover identity, authority, bounds, restart, witness races, corruption and
+reentrant close. Keep this receipt owner separate from mutable buffers, text
+convergence and downstream verdict semantics.
+
 
 ## ActionOperationModule
 
-**Intent and Interface.** `ActionOperationService` exposes `create`, revision-fenced `update`, authorized `get`/`list`/`watch`, and domain-confirmed `cancel`. The envelope carries execution status, bounded progress, exact account/machine/session scope, a typed domain reference, and a closed re-entry target. It wraps an existing mutation; Tasks, Sessions, runs, approvals, notifications, and receipts remain authoritative for their own semantics.
+**Purpose.** [ActionOperationService](../../src-server/services/operations/action-operation-service.ts)
+adds a small durable Activity record around an existing operation. Tasks,
+Sessions, runs and domain receipts still own the work itself. The service
+provides creation, revision-checked update, authorized get/list/watch and a
+cancellation interface. Records use typed domain references/re-entry targets
+and bounded progress, with account and optional machine/Session scope.
 
-**Contract.** `FileActionOperationStore` takes the existing cross-process file-mutation lock, reads current bytes inside that capability, derives a cloned next ledger, and atomically publishes before returning. Creation order and mutation order are distinct; list cursors page older creations while watch cursors advance only through actor-visible changes. Unknown fields, unsafe public text, URL-shaped re-entry, invalid progress, stale revisions, and terminal regression fail closed. Active rows, terminal history, pages, and serialized bytes are bounded. A stale active row projects `reconciliation-required`, never invented failure. `supported` cancellation requires a domain-kind Adapter and terminalizes only after that owner durably confirms cancellation; a cancel/complete race re-reads under the transaction. Tracking is an observation: storage faults never replace the wrapped mutation's result. Fleet dispatch remains ineligible until its exact Session and routing-receipt identities coexist.
+**Storage and observation.** FileActionOperationStore locks the existing JSON
+path, reads inside that lock, derives a cloned ledger and atomically publishes
+before returning. There is no process-local authoritative ledger cache.
+Defaults allow 25 active rows, 25 retained terminal rows, 50-item pages and a
+512 KiB store. List ordering follows creation; watch ordering follows
+actor-visible changes. This prunable Activity ledger is not an execution or
+evidence archive.
 
-**Seam, Implementation, callers, and tests.** `StationRuntime` owns one file-backed service and passes that exact instance to authenticated operation routes, conversation fork, attached-session handoff, and its fleet-routing observer. `action-operation-authority.ts` and authorized fleet turns use the same tenant-qualified account derivation; `FleetDispatchActionOperationObserver` begins from exact account/session/correlation and settles only after the sealed routing receipt adds its id. `action-operation-tracker.ts` owns stable handoff idempotency and observation isolation. The SDK's lazy action-operations subpath and Activity projection consume only browser-safe contracts. Contract, two-service concurrency, publication-fault, cancellation-race, authorization, route, tracker, fleet-observer, SDK, and UI proofs live in the adjacent action-operation suites. **Do not reintroduce:** a process-local ledger cache, route-local duplicate service, caller-declared machine identity, global watch heads, free-form progress/routes, tracker failures that overturn domain outcomes, client-created rows, or fleet attribution without exact session/correlation while active and a sealed receipt id when terminal.
+Authorized reads can persist a stale-operation progress change: after 30 minutes
+without an update, an active visible row receives `reconciliation-required`
+and a new revision/change sequence. It does not become failed merely because
+it is old. This is durable observation maintenance, not a purely in-memory
+projection. Store/schema failures do not become an empty trusted history.
+
+**Cancellation and active callers.** A supported cancellation needs an adapter
+for the exact domain kind and only becomes cancelled after that domain reports
+its durable result. A concurrent completion is reread inside the transaction.
+The current [StationRuntime composition](../../src-server/runtime/bootstrap/station-runtime.ts)
+supplies no cancellation adapters, so its tracked operations declare cancellation
+unsupported; the generic interface is not a working universal stop button.
+Runtime passes one service to authenticated routes, conversation fork, attached
+Session handoff and fleet observation. [Request authority](../../src-server/services/operations/action-operation-authority.ts)
+derives the account/machine scope and current Session-read check.
+
+[FleetDispatchActionOperationObserver](../../src-server/services/operations/fleet-dispatch-action-operation-observer.ts)
+starts from exact authorized account/Session/correlation identity. The active
+row does not yet have a routing receipt; settlement adds the sealed receipt ID
+before terminal publication. [Tracking helpers](../../src-server/services/operations/action-operation-tracker.ts)
+use stable handoff identities and catch observation-storage failures so those
+failures do not replace the wrapped domain result. The SDK/Activity UI consume
+these browser-safe records, not the private file store.
+
+[Service tests](../../src-server/services/operations/__tests__/action-operation-service.test.ts),
+[tracker tests](../../src-server/services/operations/__tests__/action-operation-tracker.test.ts)
+and [fleet-observer tests](../../src-server/services/operations/__tests__/fleet-dispatch-action-operation-observer.test.ts)
+cover concurrency, authorization, publication faults and cancellation races with
+fixtures. Do not add caller-created rows, arbitrary URLs, global watch cursors
+or claims that an Activity status independently proves the underlying work.
+
 
 ## PluginForegroundRuns
 
@@ -1176,27 +1444,148 @@ Keep those layers distinct when changing planning, retry or browser payloads.
 
 ## OperationalEventOutbox
 
-**Intent and Interface.** `append(envelope)` admits one validated durable operational fact and returns `appended`, `duplicate`, `rejected`, or `unavailable`. `readAfter({ afterJournalSequence, limit })` returns an ordered bounded page, explicit retention-gap truth, invalid-input rejection, or storage unavailability. Producers and future dispatchers receive those intent-shaped Interfaces; they never receive SQLite, table names, or a generic cursor mutation API.
+**Purpose.** This is a durable journal for operational facts, separate from
+chat's orchestration-event stream. `append(envelope)` returns `appended`,
+`duplicate`, `rejected`, or `unavailable`. The separate reader's
+`readAfter({ afterJournalSequence, limit })` returns an ordered page, its
+retention gap when applicable, or a typed rejection/unavailability.
 
-**Contract.** The shared operational-event registry validates and clones every envelope before persistence. Ephemeral envelopes are rejected from the durable outbox. SQLite assigns one monotonic `journalSequence`, distinct from any producer-local envelope `sequence`, and retains event-ID identity tombstones so payload pruning and restart cannot turn a retry into a second fact. The newest 1,000 payloads are retained; a reader asking before the retention floor receives the earliest available journal sequence rather than invented continuity. Replay bounds and rows come from one SQLite snapshot. Append uses exact durable readback after a commit-boundary fault. Stored column identity, payload size, JSON, and the complete envelope schema are revalidated on read, so corrupt state is unavailable rather than an empty or trusted partial journal. Only a proved append notifies the low-latency `EventBus`; a throwing listener cannot change the append receipt. Private operational notifications never cross the identity-free `/events` broadcast route.
+**State and boundaries.** The [outbox](../../src-server/services/operational-events/operational-event-outbox.ts)
+validates and clones the registered envelope and rejects ephemeral delivery.
+Its [SQLite adapter](../../src-server/services/operational-events/sqlite-operational-event-outbox.ts)
+uses the existing EventStore database. SQLite assigns `journalSequence`;
+a producer's own `sequence` is not this cursor. Event-ID tombstones survive
+payload pruning and restart, so reuse of an ID is a duplicate rather than a
+second append. This is identity deduplication, not a promise that two payloads
+with the same ID are compared as equal.
 
-**Seam, Implementation, callers, and tests.** `EventStore.createOperationalEventPublisher(notification)` and `operationalEventReader()` compose separate producer/replay capabilities over one private coordinator and the existing hardened orchestration SQLite file. `StationRuntime` receives only the producer, supplies the internal EventBus notification Adapter, and records durable `ready`/`stopping` lifecycle facts. Private dispatchers open the separate delivery capability described below; #1525 supplies capability-scoped registration and projection policy without creating a second store. Real SQLite validation, duplicate, readback, retention-gap, corruption, and observer proofs live in `src-server/services/operational-events/__tests__/operational-event-outbox.test.ts`; runtime composition and broadcast privacy are covered by the cold-start and Event routes suites. **Do not reintroduce:** an in-memory canonical event list, direct EventBus-before-persist fanout, caller-owned journal sequence, a combined producer/reader capability at runtime, silent retention gaps, route-visible private notifications, or a second store for subscription delivery.
+The default window retains the newest 1,000 payloads; identity tombstones are
+not pruned with that window. Reads default to 100 and admit at most 1,000 rows.
+Bounds and rows come from one SQLite snapshot. Reads recheck stored identity,
+payload size, JSON and the full envelope schema. Corruption produces
+`unavailable`, not a trusted partial page. An old cursor receives the earliest
+available sequence as an explicit gap. Append and consumer-specific gap facts
+commit together before old payloads are removed; post-commit ambiguity uses
+exact readback rather than blindly appending again.
+
+**Current callers and evidence.** [EventStore](../../src-server/services/orchestration/event-store.ts)
+exposes separate publisher and reader capabilities. The production publisher
+in [StationRuntime](../../src-server/runtime/bootstrap/station-runtime.ts)
+currently records `ready` and `stopping` lifecycle facts. The registry also
+admits a Workspace Pane lifecycle type, but a declared type does not establish
+a production producer. A successful append wakes the internal EventBus;
+listener failure cannot change its durable result. The
+[general event route](../../src-server/routes/orchestration/events.ts) does not
+broadcast the scoped operational-event channel.
+
+[Outbox tests](../../src-server/services/operational-events/__tests__/operational-event-outbox.test.ts)
+exercise real SQLite validation, deduplication, retained identities, readback,
+corruption and replay bounds. Keep persistence before notification and keep
+the reader's gaps visible. The journal is not an in-memory EventBus history or
+a guarantee that a subscriber processed a fact.
+
 
 ## OperationalEventDelivery
 
-**Intent and Interface.** `EventStore.openOperationalEventConsumer(config)` returns one private, config-bound consumer capability. `claim()` returns exactly one opaque delivery claim, an explicit retention gap, bounded waiting/dead-letter truth, or unavailability. Only the claim may acknowledge, schedule a retry, or dead-letter its exact attempt. A consumer never receives SQLite, owner identity, cursor setters, or a generic event reader.
+**Purpose.** Delivery turns the operational journal into a durable cursor and
+retry stream for one declared consumer. `EventStore.openOperationalEventConsumer(config)`
+returns a private capability with `claim()`, `deadLetters()` and `close()`.
+A claimed event carries a stable idempotency key and attempt; only that claim
+can acknowledge it, request a retry or dead-letter it. Gap acknowledgement is
+a separate opaque capability, not an arbitrary cursor setter.
 
-**Contract.** Consumer ID, event types, and required scopes are validated and fingerprinted once; reopening the ID with a different policy is a conflict, and the persisted normalized policy rows must exactly match that fingerprinted config. Retained envelopes remain the scope-selection authority. Immediately before payload pruning, the outbox verifies envelope type/scope facts against their normalized rows and records at most one `latest_missing_matching_sequence` fact per affected consumer in the same transaction. Nonmatching history therefore never manufactures a global gap, while divergent filter authority makes append unavailable before deletion. Every claimed envelope is revalidated against the capability's canonical types and scopes before exposure. Claiming, cursor advancement, filtered retention-gap detection, and one-active-delivery admission share one `BEGIN IMMEDIATE` transaction. The stable idempotency key is derived from consumer ID plus immutable event ID. Each opened capability owns a distinct process identity and releases it on close; a live owner cannot be stolen, while a dead or explicitly closed owner advances the same claim to the next bounded attempt. One latched settlement intent survives transient or post-commit unavailability without changing its retry time or terminal action. Every settlement writes one capability-unique exact receipt in its transaction. That receipt temporarily fences later claims, so genuine COMMIT ambiguity cannot lose evidence to a later cursor or terminal transition; the returning capability consumes it, while a later opener removes a dead owner's orphaned fence. Retry is exponential and durable, the fifth exhausted attempt terminalizes, and only an explicit gap acknowledgement crosses a relevant pruned range. Admission is capped at 64 consumers; gap and live settlement facts are each limited to one row per consumer, and diagnostic dead letters retain the newest 100 per consumer. Payload retention never erases the outbox's identity tombstone authority.
+**State and boundaries.** The [consumer owner](../../src-server/services/operational-events/operational-event-delivery.ts)
+validates the consumer ID, up to 32 event types and up to eight required scopes.
+Reopening an ID with different normalized policy conflicts. The
+[SQLite adapter](../../src-server/services/operational-events/sqlite-operational-event-delivery.ts)
+checks those policy rows and claims/advances under `BEGIN IMMEDIATE`. A gap is
+recorded only for pruned events matching that consumer's type and scope filter;
+nonmatching history does not manufacture a gap. Claimed envelopes are checked
+again before exposure.
 
-**Seam, Implementation, callers, and tests.** `EventStore` composes the Module over its existing operational-event SQLite schema and process-birth identity, then releases its owner during close. No route, SDK, CLI, MCP, or plugin registration surface exists in this slice; #1525 owns that later policy boundary, and must compose this capability rather than exposing its coordinator. Real SQLite scope filtering, skipped-event cursor locality, cross-view contention, real-process death/reclaim, post-commit truth, legacy scope migration, retry exhaustion, retention gaps, consumer capacity, and dead-letter bounds live in `src-server/services/operational-events/__tests__/operational-event-delivery.test.ts`. **Do not reintroduce:** caller-owned cursor mutation, broad unscoped cleanup, in-memory retry identity, a second delivery database, best-effort gap skipping, unbounded consumers/dead letters, or public access to claim owner and attempt keys.
+Each capability has a process/birth owner. A live or unprobeable owner remains
+fenced; a dead or explicitly closed owner can be reclaimed. Retry starts at
+one second and doubles, capped at 60 seconds. At most five delivery attempts
+are admitted; the next eligible reclaim after exhaustion dead-letters instead
+of invoking a sixth attempt. The first settlement intent fixes its action,
+receipt identity and retry time, so retrying a storage failure does not change
+the intended result. A transaction receipt preserves exact readback across
+commit ambiguity and temporarily fences another claim until resolved.
+
+The store admits at most 64 consumer identities and retains the newest 100
+dead letters per consumer. Closing releases process ownership; it does not
+delete the persisted consumer policy. Neither payload pruning nor delivery
+cleanup discards the outbox's event-ID tombstones.
+
+**Current callers and evidence.** [EventStore](../../src-server/services/orchestration/event-store.ts)
+composes and tracks these capabilities over its existing database. The active
+[subscription registry](#operationaleventsubscriptions) wraps them for installed
+plugin observers; registration is no longer merely future work. HTTP, SDK,
+CLI and plugin callbacks do not receive a raw consumer or settlement methods.
+
+[Delivery tests](../../src-server/services/operational-events/__tests__/operational-event-delivery.test.ts)
+cover real SQLite filtering, contention, process death, post-commit readback,
+retry exhaustion, gaps and capacity. Subscriber effects are at-least-once:
+a crash after invocation but before settlement can repeat the same event.
+Consumers must deduplicate its stable key. Do not replace this journal with an
+in-memory retry queue or silently skip a relevant retention gap.
+
 
 ## OperationalEventSubscriptions
 
-**Intent and Interface.** A subscriber supplies a declarative identity, version, class, purpose, event types, and required scopes. The host-owned `OperationalEventSubscriptionAuthorizer` returns either denial or an exact consumer identity plus bounded projection class. `OperationalEventSubscriptionRegistry.open()` returns only `dispatchOne()` and `close()`; the subscriber Adapter receives a redacted, metadata-only, or full-envelope projection, stable idempotency key, and attempt. It never receives a delivery consumer, claim, cursor, gap acknowledgement, SQLite identity, or authority to widen policy.
+**Purpose.** A subscription combines a declaration, host policy and an observer
+without giving the observer delivery authority. The
+[registry](../../src-server/services/operational-events/operational-event-subscriptions.ts)
+returns `dispatchOne()` and `close()`. Observer input contains a selected
+projection, stable idempotency key, attempt and AbortSignal—not a claim,
+cursor, gap acknowledgement or database handle.
 
-**Contract.** One immutable declaration snapshot is validated and supplies every later policy decision; the authorizer receives a separate clone. The exact host authorization is re-evaluated before every claim and immediately before Adapter invocation; denial or a changed consumer/projection revokes the subscription, while policy-store unavailability claims and invokes nothing. Analytics receive only redacted identity/type/time facts with no payload, scopes, or correlations; sandboxed plugins are limited to metadata without payload even if a faulty authorizer requests an envelope. EventStore then opens the already durable, fingerprinted delivery consumer from the authorized policy. Dispatch is single-flight per subscription. The Adapter receives an AbortSignal and a maximum 30-second deadline. Close before invocation records a definitely-not-invoked retry without calling the Adapter. Timeout or close after invocation latches one exact dead-letter settlement; transient settlement unavailability retries only that capability, never the Adapter. An abort-ignoring observer remains a live execution fence even after that terminal settlement: no second Adapter call, owner release, module replacement, or shutdown completion occurs until its actual Promise settles. Accepted observation acknowledges; explicit retry schedules bounded durable retry; explicit rejection dead-letters; a thrown Adapter becomes the stable `subscriber_unavailable` retry under the subscriber's idempotency key. Malformed outcomes fail closed into `subscriber_invalid_outcome` rather than replaying an un-settleable Adapter result. Subscriber delivery remains idempotent at-least-once: a process crash after Adapter invocation but before terminal persistence can redeliver, so Adapters must deduplicate the stable idempotency key. Retention gaps remain visible and cannot be silently acknowledged by subscriber code. `close()` reports `closed`, `pending`, or `unavailable`; the registry retains every unresolved owner and releases each settled consumer exactly once.
+**Authorization and projections.** Admission snapshots the declaration and
+host authorization. Policy is checked again before claiming and immediately
+before invoking. A changed consumer/projection or denial retires the
+subscription. Unavailable policy before claiming performs no claim; if the
+second check becomes unavailable after claiming, that claim schedules a retry
+without invoking the observer. Analytics declarations require redacted
+identity/type/time metadata without payload, scopes or correlations.
+Sandboxed-plugin declarations require metadata without payload; an authorizer
+cannot widen either class to a full envelope. These are API projection rules,
+not a process sandbox.
 
-**Seam, Implementation, callers, and tests.** `EventStore.createOperationalEventSubscriptionRegistry(authorizer)` privately composes the consumer factory and one host policy. EventStore retains each registry as a shutdown capability: database and delivery-owner closure are deferred while any registry reports pending or unavailable settlement, and tracked consumer wrappers remove themselves on exact close. `PluginOperationalEventSubscriptionService` is the first production registrar: it strictly reads versioned installed-manifest declarations, derives stable consumer identity from plugin/subscription identity, requires current `plugin.server` plus `events.subscribe` grants (and `events.read-payload` for an envelope), acquires the existing quiescence-aware server module, and gives every subscription its own bounded dispatch queue. Plugin install/update/remove/grant events reconcile that set; observer code never receives registration or settlement authority. Plugin replacement composes an intent-shaped subscription quiescence before server-module quiescence, then releases them in reverse order after publication or rollback, so an old observer cannot overlap replacement code. The public contract types are exported by Station contracts and the plugin SDK, but no HTTP, CLI, or MCP mutation surface is added. Unit and real SQLite/EventStore composition proofs, including cross-EventStore shutdown fencing, grant revocation/recovery, manifest replacement, independent queues, and consumer-tracking cleanup, live in `operational-event-subscriptions.test.ts` and `plugin-operational-event-subscriptions.test.ts`. **Do not reintroduce:** subscriber-supplied grants or consumer IDs, raw delivery claims, raw-consumer shutdown that bypasses a registry, automatic gap skipping, payload access without the exact grant, post-construction policy setters, or a second event store.
+**Delivery and recovery.** One subscription dispatches at a time, with a
+maximum 30-second observer deadline. Accepted results acknowledge; explicit
+retry or thrown observers schedule a durable retry; rejection or malformed
+outcomes dead-letter. Close before invocation records a pre-invocation retry.
+Timeout or close after invocation fixes a dead-letter settlement. Storage
+uncertainty retries that settlement, not the observer. An abort-ignoring Promise
+keeps this subscription busy and its owning registry/EventStore close pending
+until it settles. This fence is local to that owner: after the terminal
+settlement, a separately opened registry for the same consumer can claim the
+next event while the first observer is still running. It is not a global
+execution lock across registries. A process crash can also redeliver an
+unsettled event, so observer effects must use the stable idempotency key.
+
+Retention gaps remain visible, and subscriber code cannot acknowledge them.
+`close()` reports `closed`, `pending` or `unavailable`; callers must honor that
+result before treating replacement or shutdown as complete.
+
+**Active composition.** [StationRuntime](../../src-server/runtime/bootstrap/station-runtime.ts)
+starts [PluginOperationalEventSubscriptionService](../../src-server/runtime/plugins/plugin-operational-event-subscriptions.ts).
+It reads installed manifest declarations, checks the current artifact and
+`plugin.server`/`events.subscribe` grants, and additionally requires
+`events.read-payload` for an envelope. It derives the consumer identity from
+the plugin/subscription identity and gives each subscription its own dispatch
+queue. Install/update/removal/grant events reconcile that set. Replacement
+quiesces subscriptions before server modules and releases those barriers in
+reverse order after publication or rollback. Other declaration classes are
+supported by the registry contract; this is the current production registrar.
+
+[Registry tests](../../src-server/services/operational-events/__tests__/operational-event-subscriptions.test.ts)
+and [plugin composition tests](../../src-server/runtime/plugins/__tests__/plugin-operational-event-subscriptions.test.ts)
+cover authorization, projection, revocation, settlement, observer fences and
+replacement. They do not establish arbitrary plugin cooperation or exactly-once
+external effects. Keep grants with the host and keep unresolved close results
+visible.
+
 
 ## KnowledgeSourceObservation
 
@@ -1259,27 +1648,154 @@ Response-independent reconciliation starts without inherited re-entrant content-
 
 ## ReviewEvidenceModule
 
-**Intent and Interface.** `ReviewEvidenceModule.run(request, context)` admits one caller-generated request ID, resolves one exact Git base/head pair, provisions a detached review workspace, executes one to eight selected reviewer Agents through a structurally read-only Adapter, validates their fixed finding records against the reviewed head, and returns a durable request status whose completed form contains the content-addressed receipt. Repo Map mode is server-owned: trusted policy selects lenses and resolves caller refs such as `HEAD` or `origin/main` to immutable base/head SHAs before workspace opening; a later binding mismatch rejects without executor use. `status`, `read`, `list`, and `listAll` expose only validated durable projections. Findings contain an exact file and line, concrete trigger and wrong outcome, severity, confidence, and reproduced-versus-reasoned basis. Delta mode joins bounded receipt ancestry and requires every claimed finding to be assessed exactly once.
+**Purpose.** [ReviewEvidenceModule](../../src-server/services/evidence/review-evidence-module.ts)
+runs a review of one immutable Git base/head range and records attributable
+findings. A caller supplies a request ID and one to eight reviewer declarations,
+or requests server-owned Repo Map selection. Status/read/list are durable
+projections. A completed request means the review workflow produced its receipt;
+the receipt can contain failed reviewers and is never itself a gate verdict.
 
-**Contract.** Callers select implementer and reviewer Agent slugs; the host resolves every attributable actor identity and refuses self-review or duplicate reviewer Agents. Repo Map selection and its unavailable reason are server-owned policy: an unavailable selection becomes durable `not-verified` before any workspace or model/executor allocation, never a fabricated clean receipt. The server owns Codex `sandbox: read-only` and `approvalPolicy: never` at both session and turn boundaries; caller input cannot widen those settings. A durable prepared/invoking fence is written before reviewer execution. The same request ID joins in-flight work, survives response loss, and never re-invokes a possible-effect review; dead-owner or lost same-owner invocation truth becomes explicitly indeterminate. Reviewer failures, timeouts, and malformed output become attributable execution records rather than invented findings, and abort-ignoring executors cannot hold the request forever. Receipt and request-state publication use the shared atomic JSON authority while holding one Station-owned project capability; release/observer faults cannot reverse committed truth. Evidence is protected and never silently pruned: admission fails at the bounded per-Project receipt/request capacity. Aggregate reads use a bounded reference index and materialize only the newest 512 receipts. Detached Git workspaces are serialized and capped at eight; a workspace whose provider shutdown is not confirmed is retained rather than unsafely deleted. Git file validation reads exact commit blobs and refuses symlink entries. Flow attachment uses `status: unknown` and a custom requested kind, so the receipt cannot imply pass, fail, approval, rejection, or gate satisfaction. SDK submission calls retain the ordinary 30-second transport bound, recover by request ID, and poll durable status; explicit caller cancellation/deadlines remain authoritative.
+**Selection and execution.** The host resolves Agent identities, rejects
+self-review/duplicate reviewer Agents, and pins refs such as `HEAD` before opening
+the workspace. Unavailable Repo Map selection records `not-verified` before
+allocating a workspace/executor. The current
+[runtime composition](../../src-server/runtime/routes/runtime-routes.ts)
+uses [OrchestrationReviewExecutor](../../src-server/services/evidence/orchestration-review-executor.ts)
+with Codex. It checks the engine's native read-only declaration and injects
+server-only review isolation at Session start and turn dispatch; orchestration
+maps that to read-only sandbox/never-approve settings. Caller input cannot
+supply that internal isolation field. Distinct Agent identities and these
+settings do not prove independent reasoning or a correct finding.
 
-**Seam, Implementation, callers, and tests.** Runtime composition supplies `GitReviewWorkspaceSource`, `OrchestrationReviewExecutor`, one `FileReviewReceiptStore` implementing receipt and submission authority, host `ReviewPrincipalAuthority`, isolated OpenTelemetry/private-diagnostic observers, and optional `FlowReviewEvidenceAttachment`. The shared `REVIEW_EVIDENCE_OPERATOR_SURFACE` names run/status/list/read across API, CLI, and station-control MCP; the SDK client is the sole HTTP implementation, and Review Queue consumes the same query and mutation. Current target identity is deliberately Git-range-specific; a future portable revision Adapter must enter through `ReviewWorkspaceSource` rather than weakening Git identity. Contract, real Git, receipt, orchestration, Flow, route, SDK, CLI, MCP, and UI tests live beside their owning seams. **Do not reintroduce:** caller-declared actor identities, prompt-only write restrictions, self-review, chat prose as evidence, caller-owned sandbox policy, unbounded receipt/request/workspace retention, route-local HTTP clients, raw diagnostic projection, or any projection that treats reviewer findings as a verdict or completion gate.
+A durable prepared/invoking record precedes execution. The same request ID joins
+in-flight work or returns its existing status; possible invocation is not
+replayed after response loss or dead-owner recovery. Reviewer timeout, malformed
+output and failure are recorded explicitly, not converted to a clean review.
+Finding validation checks schema and the exact file/line in the reviewed Git
+head. Confidence and `reproduced`/`reasoned-from-code` are reviewer declarations;
+this parser does not independently verify a reproduction command receipt.
+Delta mode follows bounded receipt ancestry and checks that each claimed finding
+is assessed exactly once.
+
+**Storage and cleanup.** [GitReviewWorkspaceSource](../../src-server/services/evidence/git-review-workspace-source.ts)
+serializes detached workspaces and defaults to eight retained workspaces. Git
+location checks read exact blobs and reject symlink entries.
+[FileReviewReceiptStore](../../src-server/services/evidence/review-receipt-store.ts)
+owns request and content-addressed receipt publication under Project filesystem
+authority. Default per-Project receipt capacity is 256; protected evidence is
+not silently pruned to admit another request. Aggregate reads cap the Project
+inventory at 256 and materialize the newest 512 receipts. They may repair the
+reference index under its lock. Unreadable/contended Projects are reported;
+a missing workspace contributes no receipts rather than proving it has none.
+
+Confirmed-start shutdown failure and executor timeout retain the workspace.
+There is a current exception: if Session start returns an indeterminate outcome
+by throwing, the executor has not set its `started` flag, reports the workspace
+safe and skips stop. The module can then close that workspace despite possible
+live reviewer work. This path needs uncertainty propagation and confirmed
+cleanup before the general retention guarantee can be claimed.
+
+**Consumers and evidence.** API, SDK client, CLI and station-control MCP share
+`REVIEW_EVIDENCE_OPERATOR_SURFACE`. Project Review UI uses that client; the old
+global Review Queue is not its current route. SDK submission has a 30-second
+transport bound and recovers/polls by request ID, respecting caller cancellation.
+[Flow attachment](../../src-server/services/evidence/flow-review-evidence-attachment.ts)
+uses `station.review-findings` with status `unknown`, never pass/fail/approval.
+
+[Module tests](../../src-server/services/evidence/__tests__/review-evidence-module.test.ts),
+[executor tests](../../src-server/services/evidence/__tests__/orchestration-review-executor.test.ts),
+Git/store/route/SDK tests and the caller uncertainty probe establish specific
+contracts. No live reviewer or native sandbox was exercised by this documentation
+review. Keep model assertions, validated locations, execution evidence and gate
+decisions distinct.
+
 
 ## VerificationCoordinator
 
-**Intent and Interface.** `coordinateVerification()` accepts one lane plus an optional provenance-bound request and returns only an executed, joined, reused, rejected, canceled, or timed-out receipt result. `verificationStatus()` projects bounded host scheduling state, while `explainVerification()` projects the canonical request, lane, receipt destination, and current status. Public callers do not receive lease mutation, output-fence, phase-checkpoint, or terminal-publication capabilities.
+**Purpose.** [coordinateVerification](../../scripts/lib/verification-coordinator.mjs)
+coordinates a named verification lane across worktrees on one host. It can
+execute, join or reuse matching work and return rejected/cancelled/timed-out
+outcomes. `verificationStatus()` projects host scheduling state;
+`explainVerification()` shows the request, lane, receipt destination and status.
+Callers use these operations rather than mutating leases or output ownership.
 
-**Contract.** The coordinator owns the request lease and retained output fence until exact terminal publication. `verification-request-identity.mjs` is the pure authority for coordinator roots, request/output paths, receipt destinations, and execution-equivalence identity. `verification-request-context.mjs` validates lane/time/capacity inputs, binds the exact Node/npm toolchain into provenance, derives the request, checks a submitted request at admission, and prepares bounded storage through the lease capability. `verification-lease-ownership.mjs` owns atomic lease mutation, exact process liveness, output fencing, cleanup/recovery, bounded finished leases, and status projections behind one frozen internal capability. Request provenance is revalidated before execution and before each non-reused completion phase. `verification-admission.mjs` owns the weighted/FIFO/host-pressure admission state machine through injected lease and output primitives; it cannot publish receipts or execute commands. `verification-completion-phases.mjs` owns ordered full-regression checkpoint validation and phase execution through explicit coordinator seams; it cannot acquire the parent request lease. `verification-ci-fast-diagnostics.mjs` binds changed-test evidence by digest and exact provenance without scheduling work, and shares its completion-consistency policy with the producer through the pure `changed-verification-diagnostics.mjs` leaf. Terminal receipt construction/publication, execution lifecycle, host pressure sampling, artifact projection, submission, and retention remain separate existing Modules. These dependencies point toward leaf Modules and never import the coordinator.
+**Identity and admission.** [Request identity](../../scripts/lib/verification-request-identity.mjs)
+owns coordinator roots, request/output/receipt paths and execution-equivalence
+keys. [Request context](../../scripts/lib/verification-request-context.mjs)
+validates lane/time/capacity, binds revision/worktree and exact Node/npm toolchain
+provenance, and checks a submitted request at admission. Provenance is checked
+again before execution and each non-reused completion phase. A same-name lane
+or green sentinel alone is not reusable evidence.
 
-**Seam, Implementation, callers, and tests.** `scripts/run-verification.mjs`, the submission worker, stress runner, and verification status CLI call only the coordinator Interface. The coordinator composes the frozen lease capability and injects only its required operations into admission and completion rather than exporting a second scheduler authority. Behavioral evidence—including same-worktree ci-fast/prepush coexistence, full-regression phase reuse and recovery, output-fence cleanup after publication faults, deadlines, cancellation, pressure FIFO, receipt compatibility, and the acyclic size/ownership boundary—lives in `scripts/__tests__/verification-coordinator.test.ts` and `verification-terminal-receipt.test.ts`. The root stays below 1,900 lines, admission and completion stay below 500 each, and lease ownership stays below 1,000. **Do not reintroduce:** raw lane recursion, a second request or receipt identity, lease mutation, request identity, or provenance composition in the coordinator root, phase execution inside the root, a command-entrypoint dependency from a leaf, diagnostic parsing inside publication, a Module-to-coordinator import cycle, or direct output mutation without the owned fence.
+[Lease ownership](../../scripts/lib/verification-lease-ownership.mjs) owns atomic
+lease changes, exact process liveness, output fences, cleanup/recovery and
+finished-lease retention. [Admission](../../scripts/lib/verification-admission.mjs)
+applies weighted/FIFO/host-pressure rules through that capability; it cannot
+execute commands or publish receipts. Host verification pressure is separate
+from the product's diagnostic CPU posture and cold-start lease.
+
+**Execution, reuse and publication.** [Completion phases](../../scripts/lib/verification-completion-phases.mjs)
+validate checkpoints and run ordered full-regression phases without taking a
+second parent lease. Execution lifecycle, terminal-receipt publication, artifact
+projection and submission have their own owners. Output remains fenced until
+terminal publication and cleanup establish their required facts. Local receipt
+reuse normally reads; an invalid reusable-output receipt can instead be quarantined
+and replaced with a tombstone under a narrow artifact-mutation fence.
+[Fast diagnostics](../../scripts/lib/verification-ci-fast-diagnostics.mjs)
+attach changed-test evidence by digest/provenance without scheduling another run.
+
+The [command entry point](../../scripts/run-verification.mjs), submission worker,
+stress runner and status CLI compose this interface. The local coordinator
+supports diagnostic and explicitly requested completion work; canonical release
+promotion evidence comes from the exact-SHA hosted workflow described in
+[Testing](../guides/testing.md). Neither a joined run nor a structural gate says
+more than its actual selected checks establish.
+
+[Coordinator tests](../../scripts/__tests__/verification-coordinator.test.ts)
+and [terminal-receipt tests](../../scripts/__tests__/verification-terminal-receipt.test.ts)
+exercise leases, same-worktree coexistence, phase reuse, cancellation, deadlines,
+FIFO and publication failures. Size/import ratchets protect the decomposition;
+they are structural checks, not proof of semantic completeness. Keep identity,
+lease mutation and receipt construction with their single owners, and do not
+bypass an output fence or add recursive command-entrypoint imports.
+
 
 ## RuntimeResourcePostureController
 
-**Intent and Interface.** `observe()` returns one shared, developer-facing snapshot containing the latest raw CPU percentage, age, logical CPU count, sample duration, and descriptive classification. `reserveEngineStart()` is a separate one-at-a-time engine-start invariant; `admitEngineStartForIntent` retains the server-derived intent taxonomy but never samples or consults CPU load.
+**Purpose.** [Resource posture](../../src-server/services/infra/resource-posture.ts)
+separates diagnostic CPU observations from engine-start admission. `observe()`
+returns raw busy percentage, sample time/age, logical CPU count and descriptive
+healthy/degraded/critical/unavailable classification. Concurrent readers join a
+sample; recent readers reuse it. The sampler computes busy time from two
+`os.cpus()` snapshots separated by its configured interval.
 
-**Contract.** Concurrent readers join one sample and fresh readers reuse it. The product-owned sampler computes busy percent from two `os.cpus()` snapshots separated by a bounded gap. Its classification is diagnostic vocabulary only: no engine, scheduler, delegation, webhook, recovery, queue, or UI action may refuse, defer, prioritize, or require an override based on it. One global cold-start lease remains held from admission through provider settlement. Automatic scheduler fan-out is instead governed by the published `SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs`: excess first attempts release their occurrence with the stable `scheduler_concurrency_limit` reason, while durable retries wait FIFO for a permit. Explicit manual runs remain exempt but count as active invocations, so automatic retries cannot add load until total activity falls below the ceiling.
+`reserveEngineStart()` is a different capability: one in-memory lease per
+controller instance. It does not sample CPU. `admitEngineStartForIntent` retains
+server-derived intent labels but does not use them or CPU posture to prioritize
+work. Other Station runtimes have their own controllers; this is not the
+verification coordinator's host-wide scheduler. A competing cold start can
+receive `resource_engine_start_capacity` until the existing lease settles.
 
-**Seam, Implementation, callers, and tests.** Runtime initialization constructs one controller and passes it to orchestration for the independent cold-start lease and to the system route for diagnostics. `SessionCommandInternalOptions.resourceAdmissionIntent` remains server-only and derived at foreground, delegation, webhook, and recovery composition. The developer System tab renders the route output. Focused tests pin 99-percent engine and scheduled-job progress and structurally forbid production `src-server` imports from `scripts`. **Do not reintroduce:** verification-module imports in product code, CPU- or memory-derived product gates, caller-supplied posture, UI-side admission thresholds, load override tokens, or scheduler fan-out without a published deterministic ceiling.
+**Composition and limits.** [Runtime initialization](../../src-server/runtime/bootstrap/runtime-initialize.ts)
+creates the controller and supplies it to orchestration and the diagnostic route.
+[OrchestrationService](../../src-server/services/orchestration/orchestration-service.ts)
+holds start leases around the provider boundary. Foreground/delegation/webhook/
+recovery composition derives intent; clients do not mint a posture override.
+The developer System view reads the diagnostic projection.
+
+Automatic Scheduler fan-out has its own deterministic published ceiling.
+Excess initial occurrences are released; retries wait FIFO for invocation
+capacity. Manual runs bypass admission but count while active. Neither this
+ceiling nor the cold-start lease is a claim that the machine has enough memory
+or that a provider will start successfully.
+
+[Posture tests](../../src-server/services/infra/__tests__/resource-posture.test.ts)
+and runtime/scheduler composition tests exercise progress at a synthetic
+99-percent CPU reading and preserve the product/verification import boundary.
+Keep CPU classification observational; do not make high load a hidden product
+refusal, require an override token or import verification scheduling into the
+application.
+
 
 ## OutboundDispatchModule
 
@@ -1326,36 +1842,155 @@ store, caller-authored href/evidence, or automatic action on inspection.
 
 ## NativeInvocationRuns
 
-**Intent and Interface.** `NativeInvocationRuns` is the narrow, EventStore-composed authority for direct `/agents/:slug/invoke`, legacy-named `/agents/:slug/invoke/stream`, and `/invoke` provider calls that deliberately do not create orchestration sessions. Startup creates and reconciles one private Module, then publishes separate `NativeInvocationStarter` and required `NativeInvocationRunReader` capabilities. `begin` returns only an opaque claim and public `runId`; the claim may persist `beginInvocation` immediately before the provider Promise, then exactly one completed, definitely pre-invocation failed, or indeterminate terminal fact. Routes never receive SQLite access, ownership identity, a global reconcile operation, or a retry capability.
+**Purpose.** Direct Agent invocation can return a result without creating an
+orchestration Session. `NativeInvocationRuns` records that separate operation.
+[EventStore](../../src-server/services/orchestration/event-store.ts) initializes
+and reconciles the private owner before publishing `NativeInvocationStarter`
+and `NativeInvocationRunReader`. `begin()` returns a canonical `invoke:*` ID and
+an opaque claim, not SQLite or a global reconciliation API.
 
-**Contract.** The durable `starting → running` boundary precedes `generateText`/`generateObject`. A returned provider result is not a public success until completed persists or exact readback proves it; a throw, configuration check, or terminal persistence uncertainty after that boundary is `indeterminate` and has no automatic retry. Startup/replacement retries a bounded private reconciliation gate before routes publish; persistent storage uncertainty closes construction with a stable typed startup failure rather than publishing permanently unavailable adapters. A dead running owner becomes indeterminate and a dead starting owner becomes a definite failed record; a live or unprobeable owner is never stolen. Active claims are never retry-eligible in projection. Terminal history is capped at 1,000 rows while every active boundary is retained, and the active-state index bounds reconciliation lookup. `RunService` projects the same canonical `invoke:*` id with `source: 'invoke'`; indeterminate remains a failed RunSummary with `failureKind: 'unknown'` and explicit `nativeInvocationState` metadata. The existing raw endpoint success payloads retain their fields and add `runId` (structured `/invoke` also adds `relatedRunIds`); if primary text completed but structured setup never started or structured provider work is indeterminate, a stable non-retryable partial receipt retains the primary `runId`, exact second-run IDs when present, and its structure outcome. The SDK preserves old raw `invoke()` results and offers `invokeWithRunReceipt()` for additive observation. A submitted request whose response is lost is a typed SDK possible-effect with no invented run id.
+**Provider boundary and recovery.** The [run owner](../../src-server/services/orchestration/native-invocation-runs.ts)
+persists `starting`, then `running` immediately before a possible provider call.
+Only confirmed terminal persistence/readback permits a completed response.
+A throw or configuration/settlement failure after that boundary is indeterminate,
+including a local check after the provider returned. It has no automatic retry.
+On startup, a dead starting owner becomes failed; a dead running owner becomes
+indeterminate. Live or unprobeable owners remain fenced. Startup reconciliation
+has a bounded retry gate and refuses construction if storage remains unavailable.
+Terminal history retains 1,000 rows; active rows are kept independently.
 
-**Seam, Implementation, callers, and tests.** `EventStore.nativeInvocationStarter()` and `nativeInvocationRunReader()` keep SQLite, startup reconciliation, and process-owner fencing private. Agent invoke helpers and global invoke use the starter at the actual provider-call seam; `RunService` requires the reader rather than silently omitting these runs. Real temporary SQLite/restart/readback and process-owner proof is `src-server/services/orchestration/__tests__/native-invocation-runs.test.ts`; route and SDK compatibility proof is in the invoke route and `api-agent-runtime` suites. **Do not reintroduce:** direct EventStore rows in routes, a per-request global reconciliation scan, raw error serialization, session-shaped fake run identities, or auto-retry after a provider boundary.
+**Actual callers.** The [invoke helper](../../src-server/routes/agents/native-invocation.ts)
+wraps `generateText`/`generateObject` at the provider boundary. The
+[Agent routes](../../src-server/routes/agents/invoke.ts) use it for
+`/agents/:slug/invoke` and legacy-named `/agents/:slug/invoke/stream`; the latter
+name does not turn its generated response into an SSE stream. [Global invoke](../../src-server/routes/agents/invoke-global.ts)
+can have a completed primary text run and a separate structured-output run.
+Its partial error keeps the primary ID and any real secondary IDs, with an
+explicit `not_started` or `indeterminate` structure result.
+
+The SDK's ordinary `invoke()` keeps its raw-result contract;
+`invokeWithRunReceipt()` adds observation. A lost response is a possible effect
+without an invented run ID. [RunService](../../src-server/services/orchestration/run-service.ts)
+requires the reader and projects indeterminate as failed with unknown failure
+kind plus `nativeInvocationState`. It deliberately omits invoke and voice
+records for hosted tenant authority because those records lack tenant binding.
+Recording a run does not grant invocation or read authority.
+
+[SQLite/restart tests](../../src-server/services/orchestration/__tests__/native-invocation-runs.test.ts)
+and [invoke route tests](../../src-server/routes/agents/__tests__/invoke.routes.test.ts)
+cover boundary failures and response compatibility. Keep the durable boundary
+beside the actual provider call and preserve uncertainty instead of retrying it.
 
 ### VoiceTurnRuns and correlated S2S v1
 
-**Intent and Interface.** `VoiceTurnRuns` is the private EventStore-composed authority for voice completions that a provider can correlate exactly. The base `IS2SProvider` remains source-compatible: its argument-less lifecycle and `toolUseId` events continue to operate without run attribution. An additive capability marker, `S2SCorrelatedTurnsV1`, permits a provider to emit opaque `correlatedTurnStart`, `correlatedTurnEnd`, and `correlatedToolUse` facts. Only the server-side `VoiceSessionService` receives `VoiceTurnRuns`; clients, the SDK `voiceRegistry`, and plugins do not receive raw completion identities, owners, or a ledger.
+**Purpose and current path.** [VoiceTurnRuns](../../src-server/services/orchestration/voice-turn-runs.ts)
+records provider-observed voice completions. This is post-effect observation:
+`completionStart` means the provider has already begun. The base `IS2SProvider`
+remains compatible with uncorrelated lifecycle and `toolUseId` events. A provider
+opting into `S2SCorrelatedTurnsV1` supplies exact correlated start/end/tool facts.
+The server [VoiceSessionService](../../src-server/voice/voice-session.ts), composed
+in [runtime service bootstrap](../../src-server/runtime/bootstrap/runtime-service-bootstrap.ts),
+receives the ledger. The browser voice registry and plugin clients do not.
 
-**Contract.** A provider-issued `(voice session id, provider session id, promptName, completionId)` is unique durably. `completionStart` is an observed possible effect and immediately projects a running `voice:*` run; it is not a Station-created pre-effect claim. Duplicate starts are idempotent. An exact matching `completionEnd` with AWS's documented `END_TURN` records the provider end, then settles completed only after every already-attached exact tool operation settles. Tool content is correlated only when `contentStart`, `toolUse`, and `contentEnd` carry the same complete provider tuple and `contentId`. A tool invocation or provider acknowledgement that throws is possible effect and settles indeterminate; only a pre-effect denial or missing tool is known to have done nothing. An unrecognized terminal reason, provider/session loss, or dead owner also settles indeterminate with no automatic retry. A late, mismatched, end-before-start, or post-end tool event settles nothing and executes no tool. Tool code executes only while the exact provider session and completion are live; an unmatched tool receives a safe response and causes no tool effect. Service-owned cleanup retains each exact terminal obligation across session teardown and storage unavailability; shutdown aborts those retry loops only after every session hands off its obligations, leaving startup reconciliation as the durable fallback. All active effects remain queryable, while terminal history is bounded to the newest 1,000 SQLite-sequenced facts. Invoke and voice projections use separate required readers so a source-specific query cannot be hidden by failure in the other store. The projection uses additive `RunSource: 'voice'` and contains no provider correlation identity.
+The durable identity is the voice session, provider session, prompt and completion
+tuple. Duplicate starts do not create another `voice:*` run. In correlated mode,
+tool content must join that exact tuple and content ID before execution. Missing,
+late, end-before-start or post-end correlation executes no correlated tool and
+settles no unrelated run. Legacy tool events remain a separate unattributed path;
+they are not evidence of a correlated turn.
 
-**Nova evidence, implementation, callers, and tests.** AWS documents that `completionStart`, every content event, `toolUse`, `usageEvent`, and `completionEnd` carry the same `sessionId`, `promptName`, and `completionId`: [Nova Sonic output events v1](https://docs.aws.amazon.com/nova/latest/userguide/output-events.html) and [Nova 2 Sonic output events](https://docs.aws.amazon.com/nova/latest/nova2-userguide/sonic-output-events.html). `NovaSonicProvider` normalizes those raw stream fields; `S2SSessionAdapter` forwards the optional facts and `VoiceSessionService` binds exact tool/terminal handling to a private run handle. Real parser/session/SQLite/RunService composition proof is `src-server/voice/__tests__/voice-run-attribution.integration.test.ts`; focused parser, tool-ordering, restart, and process-owner proofs are in `nova-sonic-events.test.ts`, `voice-session.test.ts`, and `src-server/services/orchestration/__tests__/voice-turn-runs.test.ts`. **Do not reintroduce:** session/timestamp inference, client-generated turn IDs, using `toolUseId` as a turn key, a public voice-run ledger, or a server-side extension registration API inferred from the browser `voiceRegistry`.
+The Nova parser emits provider identities; the Session service joins them to
+private handles. A matching `END_TURN` becomes completed only after already
+attached tool operations settle. A tool effect or acknowledgement that throws,
+an unrecognized terminal reason, provider loss or dead owner leaves the result
+indeterminate. A pre-effect denial/missing tool can be identified separately.
+Teardown retains exact terminal obligations across storage unavailability; it
+does not infer a turn from timestamps or substitute `toolUseId` as its identity.
+These records describe observed provider boundaries, not audio quality or a
+listener hearing the reply.
+
+[Parser/Session/SQLite integration tests](../../src-server/voice/__tests__/voice-run-attribution.integration.test.ts),
+[Session tests](../../src-server/voice/__tests__/voice-session.test.ts), and
+[voice ledger tests](../../src-server/services/orchestration/__tests__/voice-turn-runs.test.ts)
+cover correlation, ordering and recovery with fixtures. They are not a live
+provider, microphone, WebSocket deployment or physical-device qualification.
+
 
 ## SchedulerLedger and BuiltinScheduler
 
-**Intent and Interface.** `SchedulerLedger` is the sole Module that creates, edits, removes, lists, claims, and settles built-in scheduled jobs. `claimDue` and `claimManual` return an immutable `SchedulerDispatchReceipt`; only that capability may record `beginInvocation`, settle its exact attempt, or advance a definitely-not-invoked attempt. `BuiltinScheduler` supplies one required `ScheduledTurnAdapter`, whose total outcome is `completed`, `definitely-not-invoked`, or `indeterminate` and which receives the receipt, a server-controlled scheduled-job principal, and an abort signal.
+**Purpose.** The scheduler owns jobs and durable attempts independently of an
+open chat window. [SchedulerLedger](../../src-server/services/scheduling/scheduler-ledger.ts)
+creates/edits/removes built-in jobs and issues `claimDue`/`claimManual` receipts.
+Only the exact receipt can begin invocation, settle an attempt or advance a
+proved pre-invocation failure. [BuiltinScheduler](../../src-server/services/scheduling/builtin-scheduler.ts)
+executes those claims through a required `ScheduledTurnAdapter` whose result
+is `completed`, `definitely-not-invoked` or `indeterminate`.
 
-An internal `prepareStarterManualIntent` Interface adds no operator surface. Its
-bounded SQLite index maps one Starter operation to the existing claim/log run,
-returns opaque activate/release capabilities only to the owning process, and
-checks replay before its 100-row no-eviction capacity. Starter binding happens
-before activation. Dead pre-invocation owners reclaim the same run; dead invoked
-owners become indeterminate and never replay. Bound UI recovery reads the
-stored operation identity from Starter correlation rather than reconstructing
-one from the current client definition.
+**State, retry and authority.** SQLite serializes claims and mutations across
+processes. A stable `jobId` is distinct from the editable name; deleting and
+recreating a job gives it a new scheduled-job principal. The due claim records
+its occurrence and firing time. Terminal outcomes consume that occurrence;
+manual runs do not advance the recurring cursor. Claim and `beginInvocation`
+persist before their respective effects. A dead initial pre-invocation owner
+can release its claim, while an advanced safe retry retains its run/attempt and
+budget. A dead invoked owner becomes indeterminate and is never automatically
+replayed. Exact revision checks let a concurrent job edit/delete win over old
+completion. Post-commit uncertainty requires exact readback; unavailable storage
+is a typed error, not an empty schedule or invented successful run.
 
-**Contract.** SQLite transactions serialize state across Station processes. A job has a stable opaque `jobId`, distinct from its editable display name. Delete/recreate receives a new principal, so a prior standing grant cannot authorize the replacement. A due receipt persists its exact `scheduledFor` occurrence and `firedAt`; every terminal outcome consumes that occurrence, while manual runs never advance the recurring cursor. A claim persists before work and `beginInvocation` persists immediately before the Adapter call. A dead initial pre-invocation claim may be released; an advanced definitely-not-invoked retry is instead reclaimed by a new owner as the exact same run and attempt, so a crash cannot reset its budget. An invoked dead claim becomes durable `indeterminate` and is never replayed. A proved pre-effect failure records and advances its retry attempt in one transaction, with exact readback after a post-commit storage error. Completion only updates the exact claimed revision, so an edit/delete during a run wins. Mutations and claims return typed `unavailable` rather than leaking SQLite ambiguity; BuiltinScheduler maps an unavailable storage authority to one stable 503 error for scheduler and run reads. Running claims and terminal logs project through the existing `RunService`/`RunSummary` substrate; `schedulerState: indeterminate` distinguishes possible provider effect from a confirmed agent failure. A bounded last-N log read returns the newest N in execution order. The ledger, owners, claims, and occurrence keys are private. `ISchedulerProvider` is the core server's internal composition Interface, not a plugin registration SDK. The supported extension/UI surface is the authenticated, versioned scheduler projection. `SCHEDULER_OPERATOR_SURFACE` is its shared contract: list, providers, stats, status, preview, logs, create, update, run, enable, disable, and delete are available through HTTP, the React-free SDK client, CLI, and station-control MCP. SSE events and the inbound webhook remain explicitly API-only transport plumbing. Jobs accept a provider-neutral `cron | every | at` schedule union while retaining the bare `cron` field for version compatibility. Builtin automatic first attempts release excess occurrences, while durable retries wait through a synchronous FIFO permit handoff; explicit manual runs bypass admission but count against later automatic admission. Observable manual results, including `scheduler_run_indeterminate`, carry the canonical non-authorizing `RunSummary.runId`; a third-party provider may defer before creating one. Indeterminate is explicitly non-retryable. There is deliberately no extension job-registration or claim Interface today. Legacy JSON imports once atomically and corruption fails closed; the database, logs root, and output targets reject symlinks.
+Automatic invocations use the published
+[`SCHEDULER_EXECUTION_LIMITS`](../../packages/contracts/src/scheduler.ts)
+ceiling. Excess first attempts release their occurrence; durable retries wait
+FIFO for an invocation permit. Explicit manual runs bypass this admission but
+count while active. CPU diagnostics do not decide admission. This concurrency
+accounting belongs to one scheduler process, while the ledger protects each
+persisted job attempt across processes.
 
-**Seam, Implementation, callers, and tests.** Runtime route composition constructs `SchedulerService` with the concrete `ScheduledTurnAdapter` and notification Adapter after agents exist. The legacy omitted/`default` agent spelling resolves to the public `station` Agent ID; only the runtime Adapter maps that public identity to its private `default` engine key, so plugins and scheduler records never depend on an engine-private name. A private `AsyncLocalStorage` context carries the server-composed `{ kind: 'scheduled-job', jobId }` to framework tool hooks and keeps the receipt run id as trace correlation; a caller-supplied agent option cannot mint it. The authenticated scheduler projection exposes that read-only principal for exact standing-grant administration, never accepts it on creation/update. Scheduler routes, `RunService`, and the scheduler CLI/projectors are callers; no chat HTTP route is involved. Real SQLite and execution coverage is `src-server/services/scheduling/__tests__/scheduler-ledger.test.ts`, `builtin-scheduler-execution.test.ts`, `src-server/services/__tests__/scheduler.test.ts`, and run-projection/runtime hook suites. **Do not reintroduce:** JSON read-modify-write job arrays, name-based claim identity, timer-local completion writes, setters for chat/notifications, automatic replay after invocation, or a parallel scheduler run ledger.
+**Operator and internal interfaces.** Jobs accept `cron`, `every` or `at`
+schedules; the legacy `cron` field remains for compatibility. The authenticated
+scheduler routes, React-free SDK client, CLI and station-control MCP expose the
+verbs in `SCHEDULER_OPERATOR_SURFACE`; scheduler SSE and the inbound webhook are
+API transport surfaces. `SchedulerService` starts and registers the built-in
+provider. `addProvider` and `ISchedulerProvider` are internal composition APIs,
+not a public plugin scheduler-registration SDK. Manual outcomes carry a
+canonical RunSummary ID when the owner actually created one; legacy or deferred
+provider output cannot invent a receipt. In hosted mode, the
+[scheduler route boundary](../../src-server/routes/operations/scheduler.ts)
+refuses every read, mutation, SSE stream and webhook because scheduler storage
+has no tenant binding. Hosted RunService reads also omit schedule records.
+
+Starter Work uses `prepareStarterManualIntent` to bind one operation to an exact
+run before activation. Its durable index admits 100 identities without eviction,
+checks replay before capacity, and exposes activate/release only to the owner.
+Pre-invocation restart reclaims that run; possible invocation stays indeterminate.
+Recovery reads the stored Starter operation identity rather than reconstructing
+one from a newer UI definition.
+
+**Active composition and evidence.** [Runtime route support](../../src-server/runtime/routes/runtime-route-support.ts)
+constructs SchedulerService after Agents exist, supplies notifications and the
+scheduled-turn adapter, and derives the `{ kind: 'scheduled-job', jobId }`
+principal through private async context. Omitted/legacy `default` selects the
+public `station` Agent; the adapter alone maps it to the private runtime key.
+The operator projection exposes the principal for standing-grant management,
+but creation/update does not accept caller-declared execution authority.
+
+External monitor jobs follow a separate path in the same owner: the
+[monitor evaluator](../../src-server/services/scheduling/external-monitor.ts)
+observes its configured source, and runtime support can create an idempotent
+Task and dispatch it with explicit Project/Agent identity and monitor limits.
+Missing authority or exhausted budget does not fall through to the ordinary
+model-turn adapter. This path is not proof that an arbitrary external source
+or provider is available.
+
+[Ledger tests](../../src-server/services/scheduling/__tests__/scheduler-ledger.test.ts),
+[execution tests](../../src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts),
+[monitor tests](../../src-server/services/scheduling/__tests__/external-monitor.test.ts)
+and [service tests](../../src-server/services/__tests__/scheduler.test.ts)
+exercise these boundaries. Legacy JSON import is one-time/atomic; corruption,
+unsafe database/log paths and output symlinks are refused. Keep occurrence,
+principal and retry identity in the ledger, and never replay an indeterminate
+provider effect just to obtain a clean log.
+
 
 ## Whole Task Basis collection
 
@@ -1449,11 +2084,42 @@ move command or external ownership lease. See the
 
 ## StationInstanceReconciler
 
-**Intent and Interface.** `inspect(instance)` returns one coherent `InstanceState` but may reject when its direct platform observation fails; `reconcile({ instance, desired, deadlineMs? })` is the total operation and returns `converged`, `already-converged`, `not-installed`, `timed-out`, `contended`, `partial`, or `failed` results.
+**Purpose.** [StationInstanceReconciler](../../packages/cli/src/commands/station-instance-reconciler.ts)
+coordinates an installed service toward `running` or `stopped`. `inspect(ref)`
+is a direct platform observation and can reject. `reconcile()` classifies its
+normal operation as converged, already-converged, not-installed, timed-out,
+contended, partial or failed. Its observations include manifest, supervisor,
+identity, readiness, ports and registry facts together.
 
-**Contract.** The platform Adapter owns manifest presence, platform status, supervisor state, exact identity, readiness, ports, and registry facts in a single observation. `inspect` is intentionally a direct read and can reject; `reconcile` classifies observation/action failure into its total outcome. Reconcile checks an absolute deadline before and after every blocking phase. `deadlineMs` is the public cancellation control; public callers do not receive the Adapter signal or issue platform actions/inspection directly. It serializes same desired work while each joining caller keeps its own deadline result. Once an action may still settle, the cross-process lock remains held until it does; lock-release failure changes the outcome. Only a coherent absent install is `not-installed`.
+**Coordination and deadlines.** In-process work is joined by `instanceId` and
+desired state; an opposing request is contended. Each joiner can have its own
+deadline. The platform adapter supplies the cross-process lock and OS actions.
+`deadlineMs` is a duration converted to an absolute monotonic deadline, checked
+around blocking phases. Omitting it creates no overall reconciler deadline.
+The normal service command forwards its optional `installReadinessTimeoutMs`;
+without an injected value it relies on individual platform/readiness bounds,
+not this aggregate timer.
 
-**Seam, Implementation, callers, and tests.** The CLI service command composes launchd, systemd, and Windows platform Adapters into the reconciler. It may render the returned read-only `InstanceState`, but it must reject a direct platform inspection/action path. The focused Interface contract is `packages/cli/src/__tests__/station-instance-reconciler.test.ts`; platform and CLI projections are covered by corresponding CLI suites. See [Station instance reconciler](../design/station-instance-reconciler.md). **Do not reintroduce:** caller manifest pre-branches, separate status collection, public Adapter abort signals, direct platform inspect/action calls, unscoped locks, or unbounded timeout races.
+When an action may still finish after a deadline, the module keeps its shared
+operation and filesystem lock until that action settles. It returns partial
+uncertainty rather than issuing an opposing action. Immediate lock-release
+failure changes the returned outcome; delayed release failure after a partial
+result is logged because that result has already been returned. Only a coherent
+absent installation is `not-installed`.
+
+**Caller and evidence.** [CLI service commands](../../packages/cli/src/commands/service.ts)
+compose launchd/systemd/Windows adapters and use this path for start/stop.
+Status can call the direct read, while installation/uninstallation have their
+own existing lifecycle—not every service operation is a reconcile call.
+The public reconciler exposes no adapter AbortSignal or raw platform mutation.
+
+[Reconciler tests](../../packages/cli/src/__tests__/station-instance-reconciler.test.ts)
+exercise joining, opposing work, deadlines, delayed settlement and failures
+with injected platform owners. Platform suites test their concrete projections;
+neither establishes a live supervisor on this machine. Keep the exact instance
+scope and uncertain settlement visible instead of pre-branching on a stale
+manifest or adding an unrelated stop/restart path.
+
 
 ## Evidence-gated and retained internal work
 
@@ -1572,50 +2238,119 @@ validation do not establish AWS provisioning or application readiness.
 
 ## Browser test evidence
 
-**Interface.** `test:fixtures:check`, `test:journeys:profile`, and `test:mutation:smoke` own syntax admission, diagnostic profiling, and targeted fault injection. `gate:for` consumes `fixturePolicyCommands` from the policy owner so contributors get the same route the gate enforces. Usage, scope, and limitations belong to [the testing guide](../guides/testing.md#fixture-fidelity-and-test-effectiveness).
+**Purpose.** `test:fixtures:check`, `test:journeys:profile` and
+`test:mutation:smoke` provide different evidence: syntax-policy admission,
+measured browser journeys and targeted known-bad changes. `gate:for` calls the
+same `fixturePolicyCommands` owner. [The testing guide](../guides/testing.md#fixture-fidelity-and-test-effectiveness)
+defines their intended use; none certifies every browser test by itself.
 
-**Seams and adapters.** Typed engine and runtime-conversation factories in `tests/helpers` describe the backend fixture. `fixture-audit.ts` owns unknown-request failure at test teardown. `journey-profile.ts` instruments the real browser through CDP and the React commit hook; it adds no production endpoint. `run-test-mutations.mjs` reuses `lib/owned-process.mjs`, records exact replacement bytes, and restores only its own changes. The existing E2E runner owns app lifecycle and ports.
+**Fixture boundary.** [Fixture policy](../../scripts/test-fixture-policy.mjs)
+scans specified syntax and keeps an explicit baseline/strict-file set. It cannot
+judge whether assertions reach the claimed behavior. Typed engine/conversation
+factories describe backend responses; types do not make a fake backend real.
+[fixture-audit.ts](../../tests/helpers/fixture-audit.ts) fails teardown for requests
+sent through `rejectUnexpectedFixtureRequest` when a spec uses its extended
+`test` fixture. It is not a global interceptor for every Playwright spec. Its
+explicit focus-presence POST exception returns the real route's empty 204;
+journeys about focus must model that route themselves.
 
-**Evidence.** Policy known-bad/control tests, factory-to-execution binding tests, mutation restoration/verdict tests, profile schema tests, and the measured browser journeys exercise these interfaces. Do not copy the fixture defaults into a new catch-all router, replace the process owner, or treat a static PASS as behavioral coverage.
+**Profiling.** [Journey instrumentation](../../tests/helpers/journey-profile.ts)
+uses Chromium CDP, React commit observation, storage and DOM counters without a
+production endpoint. [The runner](../../scripts/run-journey-profiles.mjs)
+selects declared journeys and binds results/raw profiles to the revision and
+dirty state. Missing instrumentation fails instead of becoming zero-cost proof.
+These are measurements of the named fixture journey and environment, not a
+provider, native/device or general performance guarantee.
+
+**Mutation.** [run-test-mutations.mjs](../../scripts/run-test-mutations.mjs)
+requires a clean committed baseline, owns child processes through the shared
+process helper, records exact replacement bytes, and verifies baseline,
+intended caught failure and restored pass. Restoration refuses to overwrite
+intervening edits. A nonzero exit from missing prerequisites or empty selection
+is not a caught behavioral defect. The existing E2E runner still owns the app,
+home and ports; these tools do not create a second app-lifecycle authority.
+
+Policy known-bad/control tests, factory-to-caller checks, profile-schema tests
+and mutation verdict/restoration tests exercise the named contracts. Preserve
+the real user action and observable failure when changing a fixture; a static
+PASS is not evidence that the UI worked.
+
 
 ## Monitoring history and Agent catalog reads
 
-`RuntimeEventLog.queryEvents` owns a bounded metadata index of actual per-file
-timestamp ranges. The first observation reads a file; later disjoint queries
-skip unchanged files. Each request checks inode, size, and nanosecond change
-metadata. Appends/replacements invalidate bounds, and backfill is never pruned
-by filename date. This is not a persistent payload cache. Missing history is
-empty; other filesystem failures propagate to the request boundary.
+**Purpose.** These read paths avoid repeating work within a request while
+preserving the distinction between diagnostic history, a current catalog and
+execution authority.
 
-`AgentService.getAgentCatalog` owns the registered/store-only catalog assembly
-used by both the Agent route and boot aggregation. `ConfigLoader.readAgentCatalog`
-reads each definition once for that request, retaining its metadata and spec
-through projection. Subsequent requests read afresh; no process-wide spec cache
-supplies authorization or availability.
+[RuntimeEventLog.queryEvents](../../src-server/runtime/conversation/runtime-event-log.ts)
+keeps timestamp bounds observed from each file's content, not its filename.
+Unchanged files whose ranges cannot overlap a query are skipped. Device/inode,
+size and nanosecond modification/change times invalidate that metadata after
+an append or replacement; a file changed during a read is not memoized. Entries
+for disappeared files are removed. There is no separate fixed entry-count cap
+on this map, and it is not a persistent payload cache or a multi-file snapshot.
+Missing files/history can yield no events; other filesystem failures propagate.
+Malformed JSON or invalid timestamps are skipped, so a successful read does not
+prove every stored line was included. The current query returns no skipped-line
+completeness receipt.
 
-Monitoring's store owns chronological ordering and the retained window. The
-view preserves that order when filtering; native disclosures defer tool payload
-construction until expansion. The SDK window response retains truncation so the
-view discloses that local search covers loaded events only.
+The [Monitoring context](../../src-ui/src/contexts/MonitoringContext.tsx) owns
+chronological reconciliation and the newest retained window. View filtering
+preserves that order. Tool disclosures build details on expansion, and the
+window's truncation flag lets the view explain that local search covers loaded
+events. None of this proves that every telemetry instrument has a producer or
+that an exporter delivered it; see [Monitoring](../guides/monitoring.md).
+
+[AgentService.getAgentCatalog](../../src-server/services/agents/agent-service.ts)
+combines registered and store-only Agents for both the Agent route and boot
+aggregation. [ConfigLoader's catalog reader](../../src-server/domain/config-loader-agents.ts)
+loads each definition once per request and carries its spec and metadata through
+projection. Later requests read afresh; this catalog is not a process-wide
+permission or availability cache. Invalid/unreadable per-Agent definitions are
+logged and omitted, so absence from the returned list is not proof no definition
+exists on disk. Runtime availability still has its own current-state owner.
+
+Relevant history, catalog and Monitoring tests live beside these owners. Preserve
+mtime/inode invalidation and per-request reads when optimizing; do not replace
+storage failures with an authoritative empty catalog or treat loaded diagnostic
+rows as a complete execution ledger.
+
 
 ## Transport and diagnostic leaf modules
 
-`packages/shared/src/mcp-connection.ts` owns transport construction and MCP
-negotiation. Local custody imports that leaf; `mcp.ts` keeps the published
-factory exports and connection collection manager. The factory no longer imports
-its own custody owner through a facade.
+These small owners keep transport and diagnostic dependencies from forming
+cycles or growing a second lifecycle authority.
 
-Foreground and queued chat messages share `dispatchForeground` for target/model
-and attachment mapping. It calls the SDK client directly. Queue completion no
-longer imports a React hook that initializes the same SSE event graph.
+- **MCP transport.** [mcp-connection.ts](../../packages/shared/src/mcp-connection.ts)
+  constructs transports and negotiates the MCP connection. The published
+  [mcp.ts facade](../../packages/shared/src/mcp.ts) reexports that interface and
+  supplies `MCPManager`. Local process custody imports the transport leaf,
+  keeping the factory from importing its owner back through the facade. This
+  dependency shape does not make an arbitrary MCP server trusted; connection
+  admission and process custody remain separate responsibilities.
+- **Foreground message dispatch.** [dispatchForeground](../../src-ui/src/lib/foregroundMessageDispatch.ts)
+  maps target/model, staged attachments and the approval pick's compare-and-set
+  basis into the SDK `sendExecutionMessage` call. Both direct chat and
+  [queue drain](../../src-ui/src/hooks/orchestration/queueDrain.ts) load it.
+  Queue completion does not import the React send hook and initialize the SSE
+  graph again. A queued item does not bypass attachment readiness or approval
+  basis checks.
+- **Release variants.** [release-variants.mjs](../../scripts/lib/release-variants.mjs)
+  supplies the shared variant definitions used by inventory and SBOM validation.
+  Inventory and SBOM owners consume the leaf instead of importing each other.
+  Declaring a variant is not evidence that its artifact was built or published.
+- **Native diagnostics.** [Login-shell PATH observation](../../src-desktop/src/login_shell.rs)
+  uses its own process group, nonblocking output, a five-second observation
+  deadline and a 64 KiB output budget. Framing removes startup banners; missing,
+  invalid or over-budget output yields no recovered PATH. Sidecar stderr handling
+  in [lib.rs](../../src-desktop/src/lib.rs) retains at most 64 KiB and 16 lines,
+  including the final decoded text, and stops reading on I/O error. These bounds
+  are diagnostic behavior, not proof that a native launch succeeded.
 
-Release variant definitions live in `scripts/lib/release-variants.mjs`, shared
-by inventory and SBOM validation without an inventory/SBOM import cycle.
+Adjacent transport, dispatch and native unit tests cover these seams. Keep
+public exports at the facade and implementation dependencies pointed toward
+leaves; preserve owned-process cleanup and output bounds when moving code.
 
-The native login-shell PATH observation owns a process group, nonblocking output,
-a five-second deadline, and a 64 KiB output budget. Its framed PATH value excludes
-startup banners. Native sidecar error details retain at most 64 KiB and 16 lines,
-including after lossy UTF-8 decoding; an I/O error stops the reader.
 
 ## BrowserSessionService
 

@@ -6,7 +6,7 @@ repository readiness. Ordinary chat is not automatically a gated Flow run.
 ## Language
 
 **Receipt**:
-The durable connection between a claim, evidence, and a verdict. Receipts are Station's answer to "why was this allowed?"
+A record binding an operation or evidence to its identity and observed outcome. Some receipts support an authorization or gate decision; invocation, revision and independent-review receipts need not contain a verdict. Read the receipt's type and scope before interpreting completion.
 _Avoid_: summary
 
 **Evidence**:
@@ -30,7 +30,7 @@ A verdict that sends work back to a recovery step while preserving the process p
 _Avoid_: failure when retry is expected
 
 **Exception**:
-A human-accepted override of missing or failing evidence. Exceptions are explicit receipt debt.
+An explicitly accepted deviation recorded for a gate, with a reason and declared authority. It preserves the missing/failing evidence instead of converting it into a passing test. Station's exception API accepts an authority label; that string alone is not proof a human approved it.
 _Avoid_: skip
 
 **Readiness evidence**:
@@ -87,6 +87,13 @@ _Avoid_: compliance folder
   attaches the Veritas record using the claim semantics above.
 - [Readiness service](../../../src-server/services/evidence/veritas-readiness-service.ts)
   runs or reads the configured CLI evidence.
+- [Independent review](../../../src-server/services/evidence/review-evidence-module.ts)
+  validates finding structure and exact Git locations. Reviewer confidence and
+  reproduction labels remain declarations unless separate execution evidence
+  supports them; a readable receipt is not an independent proof of the defect.
+- [Exception recording](../../../src-server/services/flow/flow-run-service.ts)
+  forwards the gate, reason and authority to Flow. Its route and configured
+  policy own access; the displayed authority label is not an identity attestation.
 - [Command evidence](../../../src-server/services/flow/flow-command-evidence-bridge.ts)
   and [review attachment](../../../src-server/services/evidence/flow-review-evidence-attachment.ts)
   have separate input and attribution rules.
@@ -97,7 +104,7 @@ the actual receipt and its source revision before interpreting a summary badge.
 ## Flagged Ambiguities
 
 **Approval / review / gate**:
-Approval allows an action. Review decides on output. A gate evaluates evidence.
+Approval authorizes an action. Independent review supplies attributable findings or assessments. A gate evaluates evidence under its policy; the review receipt itself has no gate verdict.
 
 **Done**:
-Use pass verdict, explicit exception, or NOT_VERIFIED. Do not use done as a substitute for receipts.
+For a gated completion claim, name the pass verdict, explicit exception or NOT_VERIFIED state and its receipt. A completed review request can contain failed reviewers, and a completed invocation is not proof a work gate passed.
