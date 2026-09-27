@@ -144,6 +144,7 @@ describe.skipIf(!chromiumAvailable)(
               handle: handleBox,
               name: box(name),
               opacity: getComputedStyle(handle).opacity,
+              touchAction: getComputedStyle(handle).touchAction,
               centerHitsHandle:
                 document
                   .elementFromPoint(
@@ -168,8 +169,18 @@ describe.skipIf(!chromiumAvailable)(
       expect(coarse).toBe(true);
       expect(rows).toHaveLength(2);
 
-      for (const { row, handle, name, opacity, centerHitsHandle } of rows) {
+      for (const {
+        row,
+        handle,
+        name,
+        opacity,
+        touchAction,
+        centerHitsHandle,
+      } of rows) {
         expect(opacity).toBe('1');
+        // The handle owns its gesture: without this a finger drag scrolls the
+        // sidebar and the browser cancels the pointer, so touch reorder breaks.
+        expect(touchAction).toBe('none');
         expect(handle.height).toBeGreaterThanOrEqual(44);
         // The row grew to hold the target, so it does not overhang.
         expect(handle.top).toBeGreaterThanOrEqual(row.top - 0.5);
