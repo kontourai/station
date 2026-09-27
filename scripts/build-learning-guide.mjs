@@ -271,7 +271,7 @@ export async function buildLearningGuide({
       );
     for (const capture of media.values())
       await publishImmutableSnapshot(
-        path.join(output, capture.url),
+        path.join(output, decodeURIComponent(capture.url)),
         await captureSource(capture.path),
       );
     for (const asset of ['index.html', 'atlas.css', 'atlas.js'])

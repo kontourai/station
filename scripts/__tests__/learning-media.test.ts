@@ -67,7 +67,7 @@ it('renders only admitted local captures inline, with provenance and no external
     'docs/learn/media/task.png',
   );
 });
-it('renders a controlled video without autoplay and preserves its explanatory text', async () => {
+it('emits local video controls without autoplay and preserves explanatory text', async () => {
   const video = {
     ...capture,
     path: 'docs/learn/media/task.webm',
@@ -143,6 +143,13 @@ it('rejects untracked assets, invalid bytes and missing evidence instead of sile
   ).rejects.toThrow('Invalid or oversized');
   await expect(
     compileLearningMedia(
+      { version: 1, captures: [{ ...capture, digest: '0'.repeat(64) }] },
+      tracked,
+      read,
+    ),
+  ).rejects.toThrow('bytes differ from the recorded digest');
+  await expect(
+    compileLearningMedia(
       { version: 1, captures: [{ ...capture, evidence: '' }] },
       tracked,
       read,
@@ -156,9 +163,13 @@ it('the real builder publishes immutable media bytes and its strict entry detect
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), bytes);
   };
-  write('guide.md', `# Guide\n\n![Task](${capture.path})\n`);
+  const localCapture = {
+    ...capture,
+    path: 'docs/learn/media/task capture.png',
+  };
+  write('guide.md', `# Guide\n\n![Task](<${localCapture.path}>)\n`);
   write('code.ts', source);
-  write(capture.path, image);
+  write(localCapture.path, image);
   write(
     'docs/architecture/module-map.md',
     '# Modules\n\n## Owner\nA module.\n',
@@ -185,7 +196,7 @@ it('the real builder publishes immutable media bytes and its strict entry detect
   );
   write(
     'docs/learn/media.json',
-    JSON.stringify({ version: 1, captures: [capture] }),
+    JSON.stringify({ version: 1, captures: [localCapture] }),
   );
   for (const asset of ['index.html', 'atlas.css', 'atlas.js'])
     write(`docs/learn/${asset}`, readFileSync(`docs/learn/${asset}`));
@@ -214,9 +225,11 @@ it('the real builder publishes immutable media bytes and its strict entry detect
   ]);
   const result = await buildLearningGuide({ root });
   const url = result.captures[0].url;
-  expect(readFileSync(join(root, '.kontourai/docs-learning', url))).toEqual(
-    image,
-  );
+  expect(
+    readFileSync(
+      join(root, '.kontourai/docs-learning', decodeURIComponent(url)),
+    ),
+  ).toEqual(image);
   expect(
     result.documents.find((doc) => doc.path === 'guide.md').html,
   ).toContain(url);
@@ -224,7 +237,9 @@ it('the real builder publishes immutable media bytes and its strict entry detect
   await expect(buildLearningGuide({ root, check: true })).rejects.toThrow(
     'Learning capture needs review',
   );
-  expect(readFileSync(join(root, '.kontourai/docs-learning', url))).toEqual(
-    image,
-  );
+  expect(
+    readFileSync(
+      join(root, '.kontourai/docs-learning', decodeURIComponent(url)),
+    ),
+  ).toEqual(image);
 });
