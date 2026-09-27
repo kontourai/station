@@ -191,15 +191,16 @@ bound to the plan and source revision. Local `ci:fast` still runs its whole
 bounded lane; `STATION_CI_FAST_SCOPE=statics` is the hosted split's explicit
 scope, not a substitute for local affected-test evidence.
 
-Documentation coverage is split across those paths. `ci:fast` includes CLI-doc
-parity and content checks, but not the whole `docs:truth:gate`. The separate
-**Repository source scans** job runs on same-repository pull requests and
-includes strict review-ledger freshness; it is currently non-required. The
-required merge-queue regression runs static verification, whose bootstrap
-includes the full documentation truth gate. A source-only edit can therefore
-leave `fast-checks` green while its recorded documentation review needs refresh.
-Use the existing documentation gate when the change affects those claims;
-do not infer semantic review from CI status alone.
+Documentation checks run on every fast-checks path. The fixed checks include
+CLI parity, source references, links, public-content hygiene, generated issue
+lifecycle content and contract examples. Veritas readiness also selects the
+full `docs:truth:gate` as required evidence, including strict recorded review
+freshness for source-only changes. The separate **Repository source scans** job
+remains non-required; freshness no longer depends on that job. Merge-queue
+static verification also includes the documentation truth gate. These checks
+catch stale recorded inputs and structural defects; they cannot establish prose
+accuracy or discover every missing dependency. Follow the
+[maintenance guide](documentation.md) to review the affected claims.
 
 ## Biome Lint
 

@@ -135,56 +135,21 @@ describe('VoiceFeaturesSection / NotificationsSection — one native switch per 
   });
 
   for (const { label, name, spy } of ROWS) {
-    describe(label, () => {
-      test('the row itself is the only focusable switch', () => {
-        renderRows();
-        const row = getRow(name);
-        const toggle = getSwitch(name);
+    test(`${label}: the row itself is the one native switch, and a click toggles it once`, () => {
+      renderRows();
+      const toggle = getSwitch(name);
 
-        expect(toggle).toBe(row);
-        expect(toggle.tagName).toBe('BUTTON');
-        expect(toggle.getAttribute('tabindex')).toBeNull();
-      });
+      // The switch IS the row container: no activatable wrapper around it.
+      expect(getRow(name)).toBe(toggle);
+      expect(toggle.tagName).toBe('BUTTON');
+      expect(toggle.getAttribute('type')).toBe('button');
+      expect(toggle.getAttribute('role')).toBe('switch');
+      expect(toggle.getAttribute('tabindex')).toBeNull();
+      expect(toggle.getAttribute('aria-label')).toMatch(name);
 
-      test('the sole AT stop carries its concise accessible name', () => {
-        renderRows();
-        const row = getRow(name);
+      fireEvent.click(toggle);
 
-        expect(row.getAttribute('aria-label')).toMatch(name);
-        expect(screen.getByRole('switch', { name })).toBe(row);
-      });
-
-      test('clicking the row fires its handler exactly once', () => {
-        renderRows();
-        const row = getRow(name);
-
-        fireEvent.click(row);
-
-        expect(spy()).toHaveBeenCalledTimes(1);
-      });
-
-      test('clicking the native switch fires the handler exactly once', () => {
-        renderRows();
-        const toggle = getSwitch(name);
-
-        fireEvent.click(toggle);
-
-        expect(spy()).toHaveBeenCalledTimes(1);
-      });
-
-      test('the row uses native button semantics', () => {
-        renderRows();
-        const row = getRow(name);
-
-        expect(row.tagName).toBe('BUTTON');
-        expect(row.getAttribute('type')).toBe('button');
-        expect(row.getAttribute('role')).toBe('switch');
-      });
-
-      test('the switch retains its accessible name', () => {
-        renderRows();
-        expect(getSwitch(name)).toBeTruthy();
-      });
+      expect(spy()).toHaveBeenCalledTimes(1);
     });
   }
 

@@ -35,6 +35,30 @@ Serving points at the same database and provisions nothing:
 
 `init` publishes the private credential bundle before committing its hashes to SQLite. A retry reuses only an exact existing bundle for the same scope and routing generation. A conflicting or older routing generation refuses. `serve` never provisions or rotates credentials.
 
+One broker database can hold multiple independently scoped Stations. Run `init`
+once for each Station, using a separate owner-only init file and a separate
+owner-only credentials file for each one; keep the `databasePath` identical
+and give each provision record its own Station ID, enrollment ID, routing
+generation, and approved browser Origin. Each init file still contains exactly
+one provision record. For example, make private `station-a/init.json` and
+`station-b/init.json` files with the same database path and different
+`credentialsPath` and `provision` values, then run:
+
+```sh
+npm run broker:self-hosted -- init /srv/station-broker/station-a/init.json
+npm run broker:self-hosted -- init /srv/station-broker/station-b/init.json
+npm run broker:self-hosted -- serve /srv/station-broker/serve.json
+```
+
+The two credential bundles remain separate and each operator command is bound
+to the exact scope named in its own config. A credential for Station A cannot
+read or mutate Station B's lease. `serve` uses the shared database and does
+not need either Station's credentials. Keep all config and credential
+directories owner-only; do not put both Stations' secrets in a shared bundle.
+This local CLI flow proves database and credential scoping, not public
+deployment, multi-operator administration, remote reachability, or backup and
+restore.
+
 Connector and operator routing credentials are separate 256-bit secrets. Their
 requests must match the credential direction, Station, enrollment, routing
 generation, and configured Origin. Browser preflight admits an active configured
@@ -46,7 +70,7 @@ recent connector registration, not application readiness or permission.
 Registration is the presence heartbeat; lease renewal is separate. A composed
 supervisor must refresh both.
 
-This tranche provisions one operator-owned routing credential for one Station and browser Origin. It is not per-Device enrollment or revocation, does not bootstrap an account, and does not complete routine fresh-client onboarding. The connector and optional Pion runtime below consume this routing scope. The broker cannot mint or replace independently approved connection-signing trust.
+Each `init` invocation provisions one operator-owned routing credential for one Station and browser Origin. Multiple invocations may use the same broker database as described above. This is not per-Device enrollment or revocation, does not bootstrap an account, and does not complete routine fresh-client onboarding. The connector and optional Pion runtime below consume each routing scope. The broker cannot mint or replace independently approved connection-signing trust.
 
 ## Native routing grant foundation (v2)
 

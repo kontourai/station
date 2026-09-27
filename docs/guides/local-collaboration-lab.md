@@ -495,6 +495,34 @@ npm run lab:browser-transport -- --peer=pion --browser-turn=tcp --application-ac
 npm run lab:browser-transport -- --peer=pion --browser-turn=udp --application-accounts --self-hosted-broker --keep
 ```
 
+For the additional two-Station isolation matrix, use TCP and omit `--station-ui`:
+
+```sh
+npm run lab:browser-transport -- --peer=pion --browser-turn=tcp --application-accounts --self-hosted-broker --two-station-isolation --keep
+```
+
+This mode keeps two real source Station processes alive under one owned
+listener lease. Each has a separate home, signing identity, local account,
+approved Device, Project, and broker process. Isolated Chromium contexts read
+their own published Task documents and history through Pion/TURN, refuse
+foreign Station invitations and document IDs, and keep the first Station
+usable after the second Device and routing grant are revoked. A foreign
+broker invitation must fail at trust validation before any broker request.
+Direct browser application HTTP is blocked and counted, and the nonempty TURN
+capture is checked for the account/content markers actually used by the journey.
+
+The second broker is provisioned immediately before its Station starts, so its
+short bootstrap lease does not expire during the first Station's account
+matrix. Cleanup stops the grouped Stations before releasing their shared
+listener lease, then stops both brokers and the owned TURN fixture.
+The two-Station mode bounds TURN and blind recorder lifetime at five minutes;
+the existing single-Station modes retain their two-minute fixture defaults.
+
+These are synthetic local actors with fixture-approved Devices. This mode does
+not prove real two-human or remote-machine use, native account continuation,
+shared-broker tenant isolation, compute/plugin isolation, or a hosted service.
+It does not change the incomplete result of `lab:collaboration --check=all`.
+
 The additional `--station-ui` mode drives the actual Station SPA through
 operator key-report approval, invitation acceptance, TURN setup, Connect,
 fresh account login, operator Device approval, invitation redemption, and

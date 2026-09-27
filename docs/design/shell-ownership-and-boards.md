@@ -176,7 +176,9 @@ count scoped to that project.
 
 Independent-review receipts and the "run independent review" action move
 into the project's Coding layout, next to the Git range they judge. Diff
-comments resolve inside the diff.
+comments resolve inside the diff. (As built, the Coding inspector tab was
+never mounted and has been removed; the project's Review layout is the live
+surface for receipts, receipt detail, and the run action.)
 
 The Review page's role as the host for sibling Kontour products is preserved
 by making **Review a layout kind** backed by the Survey review workbench

@@ -28,6 +28,8 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-27T18:18:23Z | nightly-desktop | 0.1.11-nightly.2461.2 | `73e3cda` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36334655311) |
+| 2026-09-27T18:18:20Z | nightly-android | 0.1.11-nightly.2461.2 | `73e3cda` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36334655311) |
 | 2026-09-27T17:55:24Z | nightly-npm | 0.6.0-nightly.2461.36334655311 | `73e3cda` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36334655311) |
 | 2026-09-27T12:43:28Z | nightly-desktop | 0.1.11-nightly.2461.1 | `b61a6d5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36317054434) |
 | 2026-09-27T12:43:25Z | nightly-android | 0.1.11-nightly.2461.1 | `b61a6d5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36317054434) |
@@ -171,6 +173,72 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-27T18:18:23Z · nightly-desktop · 0.1.11-nightly.2461.2
+
+- Ship SHA: `73e3cdac817704360eded65049732a26e9658962`
+- Artifact built at: `2026-09-27T17:04:20.663Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36334655311)
+
+### Changelog
+
+Commits since `b61a6d5` ([full sha](https://github.com/kontourai/station/commit/b61a6d5e75c0482ed61bd62e9f73045843968832)):
+
+**Features**
+
+- [#2828](https://github.com/kontourai/station/pull/2828) feat(relay): supervise approved native grants on desktop
+- [#2811](https://github.com/kontourai/station/pull/2811) feat(relay): renew native routing grants with durable host proof
+- [#2801](https://github.com/kontourai/station/pull/2801) feat(sdk,ui): Project and plugin refusals keep status, code, details and Retry-After (#2708 A-2)
+- [#2804](https://github.com/kontourai/station/pull/2804) feat(ci): re-land sharded fast-checks, with shards gated on the plan's result (#2709)
+
+**Fixes**
+
+- [#2830](https://github.com/kontourai/station/pull/2830) fix(windows): survive a cold host at archive start: pwsh path, one trust runner, fail fast, platform stop hint
+- [#2814](https://github.com/kontourai/station/pull/2814) fix(test-changed): classify changesets and fallow baselines as known paths (#2781)
+- [#2816](https://github.com/kontourai/station/pull/2816) fix(station-control,approvals): steer and adopt stay in scope; Default picks and Agent defaults can't reach unconfined full access without the grant (#2377 C1)
+- [#2746](https://github.com/kontourai/station/pull/2746) fix(shared): resolve Windows PowerShell by its System32 path for process-birth probes
+- [#2747](https://github.com/kontourai/station/pull/2747) fix(install): build the release where it runs so start reuses the install-time build
+
+**Other**
+
+- [#2821](https://github.com/kontourai/station/pull/2821) perf(packaging): prune unused runtime subtrees from the shared server stager
+- [#2789](https://github.com/kontourai/station/pull/2789) test: retire duplicate and unfalsifiable tests in audit batch 06
+- [#2772](https://github.com/kontourai/station/pull/2772) test(ui): test-audit batch 13 — app-shell and component tests at rendered and Chromium boundaries
+- [#2790](https://github.com/kontourai/station/pull/2790) test(shared): test-audit batch 04 — drop duplicate station-shared tests and pin tier and refusal reasons
+
+## 2026-09-27T18:18:20Z · nightly-android · 0.1.11-nightly.2461.2
+
+- Ship SHA: `73e3cdac817704360eded65049732a26e9658962`
+- Artifact built at: `2026-09-27T17:13:10.385Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36334655311)
+
+### Changelog
+
+Commits since `b61a6d5` ([full sha](https://github.com/kontourai/station/commit/b61a6d5e75c0482ed61bd62e9f73045843968832)):
+
+**Features**
+
+- [#2828](https://github.com/kontourai/station/pull/2828) feat(relay): supervise approved native grants on desktop
+- [#2811](https://github.com/kontourai/station/pull/2811) feat(relay): renew native routing grants with durable host proof
+- [#2801](https://github.com/kontourai/station/pull/2801) feat(sdk,ui): Project and plugin refusals keep status, code, details and Retry-After (#2708 A-2)
+- [#2804](https://github.com/kontourai/station/pull/2804) feat(ci): re-land sharded fast-checks, with shards gated on the plan's result (#2709)
+
+**Fixes**
+
+- [#2830](https://github.com/kontourai/station/pull/2830) fix(windows): survive a cold host at archive start: pwsh path, one trust runner, fail fast, platform stop hint
+- [#2814](https://github.com/kontourai/station/pull/2814) fix(test-changed): classify changesets and fallow baselines as known paths (#2781)
+- [#2816](https://github.com/kontourai/station/pull/2816) fix(station-control,approvals): steer and adopt stay in scope; Default picks and Agent defaults can't reach unconfined full access without the grant (#2377 C1)
+- [#2746](https://github.com/kontourai/station/pull/2746) fix(shared): resolve Windows PowerShell by its System32 path for process-birth probes
+- [#2747](https://github.com/kontourai/station/pull/2747) fix(install): build the release where it runs so start reuses the install-time build
+
+**Other**
+
+- [#2821](https://github.com/kontourai/station/pull/2821) perf(packaging): prune unused runtime subtrees from the shared server stager
+- [#2789](https://github.com/kontourai/station/pull/2789) test: retire duplicate and unfalsifiable tests in audit batch 06
+- [#2772](https://github.com/kontourai/station/pull/2772) test(ui): test-audit batch 13 — app-shell and component tests at rendered and Chromium boundaries
+- [#2790](https://github.com/kontourai/station/pull/2790) test(shared): test-audit batch 04 — drop duplicate station-shared tests and pin tier and refusal reasons
 
 ## 2026-09-27T17:55:24Z · nightly-npm · 0.6.0-nightly.2461.36334655311
 

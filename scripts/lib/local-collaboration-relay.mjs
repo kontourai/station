@@ -7,13 +7,17 @@ import { join } from 'node:path';
 const targetPort = Number(process.argv[2]);
 const directory = process.argv[3];
 const mode = process.argv[4];
+const lifetimeMs = Number(process.argv[5] ?? 120_000);
 if (
   !Number.isInteger(targetPort) ||
   targetPort < 1 ||
   targetPort > 65535 ||
   [3000, 3141].includes(targetPort) ||
   !directory ||
-  !['forward', 'tamper'].includes(mode)
+  !['forward', 'tamper'].includes(mode) ||
+  !Number.isSafeInteger(lifetimeMs) ||
+  lifetimeMs < 1_000 ||
+  lifetimeMs > 600_000
 )
   throw new Error('Invalid local relay configuration');
 
@@ -67,7 +71,7 @@ function shutdown() {
 }
 const lifetime = setTimeout(() => {
   fail('lifetime_exceeded');
-}, 120000);
+}, lifetimeMs);
 function fail(reason) {
   writeFileSync(join(directory, 'failed.json'), JSON.stringify({ reason }), {
     mode: 0o600,
