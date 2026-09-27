@@ -11,6 +11,7 @@ import {
   PAIRING_SCOPE_CODING_EXEC,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
+import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import { isAgentOriginatedRequest } from '../runtime/mcp/station-control-caller.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
@@ -143,6 +144,20 @@ export function fullAccessGrantFor(
 /** Whether `value` is a grant this module minted (never a look-alike). */
 export function isFullAccessGrant(value: unknown): value is FullAccessGrant {
   return value instanceof FullAccessGrantProof;
+}
+
+/**
+ * #2377 slice C1: a seam that records an approval pick itself (the
+ * foreground executor, which alone knows the pick's thread) refuses one that
+ * resolves to full access without the request's grant. The routes answer it
+ * with the same 403 as `refuseUngrantedFullAccess`.
+ */
+export class FullAccessNotGrantedError extends Error {
+  readonly code = APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE;
+  constructor() {
+    super('This request may not give an agent full access.');
+    this.name = 'FullAccessNotGrantedError';
+  }
 }
 
 /**

@@ -180,11 +180,13 @@ export class ApprovalPosture {
    * `workspace`. Never derived from an approval mode a turn or replay
    * carries: that is exactly the value a confined caller controls.
    *
-   * Accepted residual (#2493 review F2): a Default pick needs no authority
-   * (the #2436 rule), and resolves to the Agent's and Station's defaults the
-   * operator configured, even when that is `never`. On a `host`-stamped
-   * session that `never` runs unconfined, including one the operator started
-   * with an explicit Ask.
+   * #2493 review F2, closed for new picks by #2377 slice C1: a Default pick
+   * resolves to the Agent's and Station's defaults, even when that is
+   * `never`, and on a `host`-stamped session that `never` runs unconfined.
+   * Recording such a Default now needs the full-access grant
+   * (`pickReachesFullAccess`). Still accepted: a default edited to `never`
+   * AFTER a Default pick was recorded reaches that session without a new
+   * pick.
    */
   standingConfinement(threadId: string, stamp: unknown): StationConfinement {
     return stamp === 'host' || this.recordedFullAccess(threadId)
@@ -314,6 +316,32 @@ export class ApprovalPosture {
    *    then names it, so the chip does not claim more than happened.
    * 3. Else nothing: the engine's own configuration IS the default.
    */
+  /**
+   * #2377 slice C1: whether recording `pick` on `threadId` would run its
+   * engine at `never` unconfined, which is what full access means here.
+   *
+   * - `never` itself: recording it makes the conversation `host`
+   *   (`recordedFullAccess`).
+   * - A Default: once recorded, the conversation's confinement is its start
+   *   `stamp` again, and the Default resolves as `resolve` applies it
+   *   (`resolveDefaultPick`). Full access only when the stamp is `host` and
+   *   the resolution is `never`. On a `workspace` session the same Default
+   *   runs confined, which the owner decided a member may pick without a
+   *   grant (2026-09-23, fork 1).
+   * - Ask and Auto: never.
+   */
+  async pickReachesFullAccess(input: {
+    threadId: string;
+    pick: ApprovalMode;
+    agentSlug?: string;
+    stamp: unknown;
+  }): Promise<boolean> {
+    if (input.pick === 'never') return true;
+    if (input.pick !== 'connection-default' || input.stamp !== 'host')
+      return false;
+    return (await this.resolveDefaultPick(input)) === 'never';
+  }
+
   private async resolveDefaultPick(input: {
     threadId: string;
     agentSlug?: string;

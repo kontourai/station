@@ -952,3 +952,186 @@ describe('#2493: who may start a session unconfined', () => {
     },
   );
 });
+
+/**
+ * #2377 slice C1: a Default pick (`connection-default`) is checked by what it
+ * would run, resolved as a turn resolves it (the Agent's default, then the
+ * Station's). On a `host`-stamped session a Default that resolves to `never`
+ * runs the engine unconfined, so recording it needs the same grant as
+ * `never`, on every path that records a pick. On a session a member started
+ * confined, the owner's 2026-09-23 decision (fork 1) stands: no grant needed.
+ */
+describe('#2377 slice C1: a Default pick is checked by what it would run', () => {
+  const approvalEvents = (f: Fixture, threadId: string) =>
+    f.store
+      .listEvents(threadId)
+      .filter((row) => row.payload.method === 'session.approval-mode-set')
+      .map((row) => (row.payload as { approvalMode: string }).approvalMode);
+
+  /** A session the operator started unconfined, idle, standing at Ask. */
+  async function hostSessionAtAsk(f: Fixture) {
+    f.claude.completeTurns = true;
+    const { conversationId } = await f.chat(
+      f.bearer(f.operator.credential),
+      'claude-agent',
+    );
+    const threadId = f.claude.starts.at(-1)!.threadId;
+    expect(lastStart(f, 'claude-agent').confinement).toBe('host');
+    const asked = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/commands',
+      {
+        type: 'setApprovalMode',
+        threadId,
+        approvalMode: 'ask',
+        basedOnSequence: null,
+      },
+    );
+    expect(asked.status, asked.text).toBe(200);
+    await vi.waitFor(async () => {
+      expect(
+        (
+          await f.service.readCurrentConversationSession(
+            conversationId,
+            f.readAuthority('operator'),
+          )
+        )?.session.lifecycleState,
+      ).toBe('idle');
+    });
+    return {
+      conversationId,
+      threadId,
+      sequence: asked.body.data.sequence as number,
+    };
+  }
+
+  const pickDefault = (
+    f: Fixture,
+    credential: string,
+    via: 'commands' | 'chat' | 'continue',
+    session: { threadId: string; conversationId: string; sequence: number },
+  ) => {
+    const carried = {
+      setApprovalMode: 'connection-default',
+      setApprovalModeBasedOn: session.sequence,
+    };
+    return via === 'commands'
+      ? f.request(f.bearer(credential), '/api/orchestration/commands', {
+          type: 'setApprovalMode',
+          threadId: session.threadId,
+          approvalMode: 'connection-default',
+          basedOnSequence: session.sequence,
+        })
+      : via === 'chat'
+        ? f.request(f.bearer(credential), '/api/orchestration/chat', {
+            message: 'again',
+            conversationId: session.conversationId,
+            target: { environment: { kind: 'current' }, agent: 'claude-agent' },
+            ...carried,
+          })
+        : f.request(
+            f.bearer(credential),
+            `/api/orchestration/chat/${encodeURIComponent(session.conversationId)}/continue`,
+            { message: 'again', ...carried },
+          );
+  };
+
+  test.each(['commands', 'chat', 'continue'] as const)(
+    'on a host session, a device without the grant cannot pick a Default that resolves to the Station default never (via %s)',
+    async (via) => {
+      const f = await fixture({ station: 'never' });
+      const session = await hostSessionAtAsk(f);
+      const turns = f.claude.turns.length;
+      const phone = f.pair('Phone');
+
+      const refused = await pickDefault(f, phone.credential, via, session);
+
+      expect(refused.status, refused.text).toBe(403);
+      expect(refused.body.code).toBe('approval-full-access-not-granted');
+      expect(approvalEvents(f, session.threadId)).toEqual(['ask']);
+      // Refused before the send's turn: the session never ran unconfined.
+      expect(f.claude.turns).toHaveLength(turns);
+      await f.service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: session.threadId, input: 'after the phone' },
+      });
+      expect(f.claude.turns.at(-1)).toMatchObject({
+        confinement: 'host',
+        modelOptions: { approvalMode: 'ask' },
+      });
+    },
+  );
+
+  test.each(['commands', 'chat', 'continue'] as const)(
+    'on a host session, a device holding the grant may pick it (via %s)',
+    async (via) => {
+      const f = await fixture({ station: 'never' });
+      const session = await hostSessionAtAsk(f);
+      const phone = f.pair('Phone', true);
+
+      const picked = await pickDefault(f, phone.credential, via, session);
+
+      expect(picked.status, picked.text).toBe(200);
+      expect(approvalEvents(f, session.threadId)).toEqual([
+        'ask',
+        'connection-default',
+      ]);
+    },
+  );
+
+  test("an Agent's own default never counts the same; a Default that resolves to Ask needs nothing", async () => {
+    const agentNever = await fixture({
+      station: 'ask',
+      agents: { 'claude-agent': 'never' },
+    });
+    const refused = await pickDefault(
+      agentNever,
+      agentNever.pair('Phone').credential,
+      'commands',
+      await hostSessionAtAsk(agentNever),
+    );
+    expect(refused.status, refused.text).toBe(403);
+
+    const stationAsk = await fixture({ station: 'ask' });
+    const session = await hostSessionAtAsk(stationAsk);
+    const allowed = await pickDefault(
+      stationAsk,
+      stationAsk.pair('Phone').credential,
+      'commands',
+      session,
+    );
+    expect(allowed.status, allowed.text).toBe(200);
+    expect(approvalEvents(stationAsk, session.threadId)).toEqual([
+      'ask',
+      'connection-default',
+    ]);
+  });
+
+  test('on a session a device started confined, its Default needs no grant and still runs confined (fork 1)', async () => {
+    const f = await fixture({ station: 'never' });
+    const phone = f.pair('Phone');
+    await f.chat(f.bearer(phone.credential), 'claude-agent');
+    const threadId = f.claude.starts.at(-1)!.threadId;
+    expect(lastStart(f, 'claude-agent').confinement).toBe('workspace');
+
+    const picked = await f.request(
+      f.bearer(phone.credential),
+      '/api/orchestration/commands',
+      {
+        type: 'setApprovalMode',
+        threadId,
+        approvalMode: 'connection-default',
+        basedOnSequence: null,
+      },
+    );
+    expect(picked.status, picked.text).toBe(200);
+    await f.service.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'after default' },
+    });
+    expect(f.claude.turns.at(-1)).toMatchObject({
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'auto' },
+    });
+  });
+});

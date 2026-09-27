@@ -460,6 +460,16 @@ A session spawned before this change has nothing recorded.
   wants members to get an Agent's full-access default. The authority was
   exercised once, where the default was set (§4.8 on the Agent write, the
   settings route for the Station default), not at each pick.
+  - Since #2493, a session a member starts without the grant is confined,
+    so that `never` runs inside the workspace (Codex's sandbox, or `auto` on
+    Claude).
+  - #2377 slice C1 gates the one case where it would not. A Default pick
+    on a `host`-stamped session, whose Agent or Station default is `never`,
+    would run the engine at `never` unconfined. Recording it needs the
+    §4.8 grant, on every path that records a pick (`/commands`, and a pick
+    carried on `/chat`, `/chat/:id/continue` or a handoff).
+  - Such a session is one started by the operator or by a device holding
+    the grant. The decision is `ApprovalPosture.pickReachesFullAccess`.
 - **Write authority.** Saving `never` needs the same authority as §4.8.
   - Every Agent write from outside the server goes through `POST /agents` or
     `PUT /agents/:slug`: the editor, the SDK and CLI, and the Station-control

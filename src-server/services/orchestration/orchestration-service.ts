@@ -8515,6 +8515,29 @@ export class OrchestrationService {
   }
 
   /**
+   * #2377 slice C1: whether recording `pick` on `threadId` would run its
+   * engine at full access (`ApprovalPosture.pickReachesFullAccess`), read
+   * from what a turn reads: the session's start stamp and the Agent it
+   * started with (else `agentSlug`, for a thread with no session yet).
+   */
+  async approvalPickReachesFullAccess(input: {
+    threadId: string;
+    pick: ApprovalMode;
+    agentSlug?: string;
+  }): Promise<boolean> {
+    const started = this.readLatestSessionStartMetadata(
+      input.threadId,
+    )?.agentSlug;
+    const agentSlug = typeof started === 'string' ? started : input.agentSlug;
+    return this.approvalPosture.pickReachesFullAccess({
+      threadId: input.threadId,
+      pick: input.pick,
+      stamp: this.readStartConfinementStamp(input.threadId),
+      ...(agentSlug ? { agentSlug } : {}),
+    });
+  }
+
+  /**
    * #2436: a (re)spawn's start input in the conversation's posture, for the
    * paths that start an engine without `prepareStart`: a dormant session's
    * respawn and a credential-profile restart.
