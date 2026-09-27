@@ -132,13 +132,13 @@ describe('toolNameForDenialMessage (station#3210 part 1)', () => {
 });
 
 const UNQUOTED = "Tool 'write_file' was denied.";
-const ATTRIBUTION = `${UNQUOTED} Quoted from the hook (not Station's wording): “`;
+const ATTRIBUTION = `${UNQUOTED} Quoted from the config-protection hook (not Station's wording): “`;
 /** The fragment denialReason actually quoted, or '' when it quoted none. */
 function quotedFragment(text: string): string {
   const reason = denialReason({
     toolName: 'write_file',
     predicate: 'was denied.',
-    quoted: { source: 'hook', text },
+    quoted: { source: 'config-protection hook', text },
   });
   if (reason === UNQUOTED) return '';
   expect(reason.startsWith(ATTRIBUTION)).toBe(true);

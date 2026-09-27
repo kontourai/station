@@ -9,20 +9,23 @@ function createRevisionSource() {
   let agentRevision = 2;
   let providerRevision = 3;
   let appRevision = 4;
-  const commitAgentConfigurationRead = vi.fn(
-    async <T>(expectedRevision: number, operation: () => Promise<T>) => {
-      // Distinct from the lease's own conflict error, so a rejection that
-      // reaches the commit cannot pass for one the lease raised itself.
-      if (agentRevision !== expectedRevision) {
-        throw new Error('fixture commit refused a stale revision');
-      }
-      return operation();
-    },
-  );
+  const commits: number[] = [];
   return {
+    commits,
     source: {
       getAgentConfigurationRevision: () => agentRevision,
-      commitAgentConfigurationRead,
+      commitAgentConfigurationRead: async <T>(
+        expectedRevision: number,
+        operation: () => Promise<T>,
+      ) => {
+        commits.push(expectedRevision);
+        // Distinct from the lease's own conflict error, so a rejection that
+        // reaches the commit cannot pass for one the lease raised itself.
+        if (agentRevision !== expectedRevision) {
+          throw new Error('fixture commit refused a stale revision');
+        }
+        return operation();
+      },
       providerService: { getLaunchabilityRevision: () => providerRevision },
       configLoader: { getLaunchabilityRevision: () => appRevision },
     },
@@ -49,7 +52,7 @@ describe('runtime configuration lease', () => {
   });
 
   test('rejects completion before the terminal operation when configuration changed', async () => {
-    const { source, setAgentRevision } = createRevisionSource();
+    const { source, commits, setAgentRevision } = createRevisionSource();
     const lease = captureRuntimeConfigurationLease(source);
     setAgentRevision(6);
     const operation = vi.fn(async () => {});
@@ -57,7 +60,7 @@ describe('runtime configuration lease', () => {
     await expect(
       requireStableRuntimeConfigurationAcross(source, lease, operation),
     ).rejects.toBeInstanceOf(RuntimeConfigurationConflictError);
-    expect(source.commitAgentConfigurationRead).not.toHaveBeenCalled();
+    expect(commits).toEqual([]);
     expect(operation).not.toHaveBeenCalled();
   });
 

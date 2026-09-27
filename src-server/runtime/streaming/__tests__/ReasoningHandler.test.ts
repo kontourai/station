@@ -21,7 +21,7 @@ async function runTextBlock(deltas: string[]) {
   const joined = (type: string) =>
     result
       .filter((chunk) => chunk.type === type)
-      .map((chunk) => (chunk as { text: string }).text)
+      .map((chunk) => (chunk as unknown as { text: string }).text)
       .join('');
   return {
     result,
