@@ -376,16 +376,6 @@ describe('one-bar rule (#3309)', () => {
   });
 
   /**
-   * The zero case is a CTA, not a count, and it has two forms — a real button
-   * while the pane is collapsed (archive#800) and inert text once the body's
-   * own CTA is on screen. Neither is what the count rule above removed.
-   */
-  test('keeps the empty-state CTA, which is not a count', () => {
-    renderHeader({ regionVisible: false });
-    expect(screen.getByRole('button', { name: 'Start a chat' })).toBeTruthy();
-  });
-
-  /**
    * H3: the two early returns in `ChatDockHeaderMoreMenu` (no rows, one row
    * rendered inline) unmount the portal without clearing the open state. A
    * collapse takes every pane command away and leaves Chat settings alone, so

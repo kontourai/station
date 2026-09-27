@@ -56,7 +56,7 @@ type CatalogScope = NonNullable<SettingsCatalogEntry['scope']>;
  * value does not outlive the session, and one that is a report rather than a
  * setting would each be lied about by any of the three labels.
  */
-export function scopeBadgeLabel(
+function scopeBadgeLabel(
   catalogScope: CatalogScope | undefined,
   provenance: SettingProvenanceEntry | undefined,
   containerScope?: 'station' | 'device',
