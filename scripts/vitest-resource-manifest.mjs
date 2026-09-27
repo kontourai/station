@@ -958,6 +958,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/chatFeedback.geometry.test.tsx',
   // #2260: owns Chromium for actual mobile close-target geometry and hit testing.
   'src-ui/src/__tests__/ProjectSidebarHeader.mobileCloseGeometry.test.tsx',
+  // archive#3331: owns Chromium touch emulation for the sidebar reorder
+  // handle's coarse-pointer visibility, size and hit testing.
+  'src-ui/src/__tests__/ProjectSidebarReorder.coarseGeometry.test.tsx',
   // Owns Chromium to measure the legacy action-row wrap and touch-target
   // floor against the real index.css cascade at a phone viewport.
   'src-ui/src/__tests__/legacy-action-row.touch-target.test.ts',
