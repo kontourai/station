@@ -16,8 +16,10 @@ home reset is not a desired state.
 The platform Adapter owns the implementation facts behind that Interface:
 manifest presence, orphaned registration, supervisor state, the exact
 authenticated Station identity, readiness, and configured ports. `station
-service status` only renders the returned `InstanceState`; it does not issue a
-second process probe or reinterpret a platform status record. A stopped state
+service status` takes supervisor and authenticated identity state from that
+single `InstanceState`. It also reports separate scheduling-policy and installed
+PATH-drift observations; these do not replace the reconciler's lifecycle state.
+A stopped state
 requires both an inactive supervisor and an absent exact identity, so a
 stranded live process is never called stopped merely because its supervisor
 has gone inactive.

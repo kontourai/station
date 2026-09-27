@@ -21,11 +21,11 @@ is not enough: the moment you are looking at something else, the toast has
 nobody to show itself to, and the thing you are being asked to approve expires
 in five minutes.
 
-## Four implementations that do not work
+## Five historical approaches and their observed limits
 
-Each looks correct and fails in practice. They are recorded because each was
-actually built before something — usually a device, once the upstream issue
-tracker — disproved it.
+The following observations describe the builds and probes that motivated push.
+They do not establish the present status of an upstream issue, every platform
+configuration or the current SSE replay contract.
 
 ### 1. Web push
 
@@ -137,8 +137,8 @@ platform's answer. The cost is real and is a product decision, not a technical
 one: every notification leaves the machine and transits Google or Apple, which
 matters for a self-hosted product.
 
-**iOS** has no foreground-service equivalent either, and is foreground-only
-until push lands.
+The original iOS foreground-only conclusion predates the implemented Live
+Activity path below; physical delivery retains the later receipt's limits.
 
 ## Decision: push through a Kontour-operated push gateway
 
@@ -155,14 +155,15 @@ self-hosted product already ships today, adapted where Station differs.
   Google or Apple, and only the app's publisher can run it. The broker design
   already kept notifications apart ("a separate payload policy and delivery
   grant").
-- **Stateless, Station-signed.** The gateway does not link Stations to hosted
-  user accounts, store device tokens, or build cards. Station has no hosted
-  accounts, and a Station already knows its paired phones, so the
-  gateway (`deploy/push-gateway`) keeps nothing: every request is signed by the
+- **Station-signed, without gateway account enrollment.** The gateway does not
+  link Stations to hosted user accounts, persist device tokens or build cards.
+  Station owns its paired-phone registrations. The gateway (`deploy/push-gateway`)
+  retains rate-limit state and, for APNs, the channel ledger described below;
+  it is not wholly stateless. Every request is signed by the
   Station's own P-256 push key (ES256, body hash bound into the token, at most
   120 s lifetime). The gateway verifies it, rate limits per key and globally,
-  accepts only a data-only agent-activity message for a Station package, and
-  forwards it to FCM at high priority. The Station owns device tokens, builds
+  accepts the reviewed data-only activity/notification kinds for Station packages,
+  and forwards them to FCM with the kind's priority policy. The Station owns device tokens, builds
   the card, and drops a token when the gateway answers 410.
 - **What stops a stranger.** Anyone can mint a key, so passing the gateway
   proves only possession of *some* key. The gateway therefore stamps the
@@ -177,8 +178,8 @@ self-hosted product already ships today, adapted where Station differs.
   (`setRequestPromotedOngoing`, `setShortCriticalText`), which Android 16 shows
   as a status-bar Live Update chip.
 - **iOS.** A Live Activity from a widget extension, updated by APNs
-  `liveactivity` pushes, with push-to-start tokens (iOS 17.2+) so a card can
-  appear while the app is closed.
+  `liveactivity` pushes, with push-to-start tokens so a card can appear while
+  the app is closed. Station's implemented broadcast-channel path requires iOS 18.
 
 The card carries status, session titles and project names, never
 transcripts, code or tool output (the same rule as the
@@ -195,8 +196,10 @@ cross-Station inbox is wanted.
 
 Push avoids the failures above for a backgrounded or swiped-away app: the
 platform wakes the process to deliver, so nothing has to stay alive, and
-neither the freezer nor tauri#11609/#15671 is involved. Rust does no
-networking, so the DNS failure does not apply either. Two limits remain. FCM
+neither the freezer nor tauri#11609/#15671 is involved in that delivery path.
+The Android platform service receives and renders the card without the old
+Rust poller's HTTP path; native registration and other requests have separate
+transport owners. Two limits remain. FCM
 does not deliver to an app the user force-stopped (Settings → Force stop)
 until it is opened again. And normal-priority data messages wait out Doze,
 while the client drops activity older than ten minutes, so the gateway sends
@@ -331,10 +334,11 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   reference) is fixed when it is queued; the push key and registration are
   read, `created_at` and `expires_at` stamped and the message sealed only
   when its slot comes, and a slot is taken only for a phone that can be sent
-  to. A newer send for the same id replaces the waiting one in place. At
-  most eight sends wait per phone: past that the oldest waiting `info` alert
+  to. A newer send for the same id replaces the waiting one in place. Eight
+  waiting sends per phone is the `info`-eviction threshold: past that the oldest waiting `info` alert
   is dropped and logged, and attention, failed and done alerts and retracts
-  are never dropped. The router records a delivery when it plans it, so the
+  are never dropped by this cap. A queue containing only those retained kinds
+  can exceed eight; this is not a hard total queue bound. The router records a delivery when it plans it, so the
   channel keeps, per phone, the ids it dropped without ever taking a version
   of them for sending in this process (an `info` alert dropped at the cap,
   or a waiting alert a retract removed), and sends no retract for those. Any
@@ -552,7 +556,11 @@ status).
   end or delete a channel. The Station deletes each activity's channel after
   it ends. A channel whose registration was cleared (unregistered, revoked,
   or moved to Android) while the Station was stopped is not deleted: the
-  Station no longer knows it.
+  Station no longer knows it. A retained tombstone is the exception described
+  above: it gives the publisher enough state to end and delete after restart.
+  The gateway sweep is another recovery path, only for configured sweep scopes.
+  Its 12-hour ledger expiry plus ten-minute unrecorded grace and bounded sweeps
+  are not a guaranteed deletion deadline during outages or sustained backlog.
 
 ### iOS: notification alerts (fixed text, interim)
 
@@ -785,20 +793,24 @@ build time (public values, but bound to one project); without them
 `pushToken` reports `unconfigured`. With them, Firebase auto-init stays off
 until `pushToken` is called, so installing the app does not contact Google
 before the user asks for push; the `clear` command turns it off again and
-deletes the token. The plugin's Kotlin unit tests run only
-locally (`./gradlew :tauri-plugin-station-agent-activity:testDebugUnitTest` in
-a generated `gen/android`); no workflow runs them yet. Debug builds include a broadcast receiver,
+deletes the token. The plugin's Kotlin unit tests also have a hosted job in
+`desktop-rust.yml`, using `scripts/run-agent-activity-android-unit-tests.mjs`.
+The runner builds a temporary Gradle root, uses the locked Tauri Android library,
+and refuses missing test classes or required cases. That workflow contract is
+not a receipt for a particular hosted run or physical FCM delivery. Debug builds include a broadcast receiver,
 restricted to the `adb` shell, that stands in for FCM so rendering and
 wake-from-cold can be verified without a sender — see
 `DebugAgentActivityReceiver.kt`.
 
 ## Rules this area has earned
 
-- **Never assemble Station API knowledge in the host.** Route paths and status
+- **The generic watch receives an SDK-built URL.** Its route paths and status
   vocabulary live in the SDK (`notificationsUrl`, `LIVE_NOTIFICATION_STATUSES`)
   and are handed to the host as a finished URL. The first cut of the poller
   kept its own copy of both, and the copy was already wrong — it polled
-  `/api/notifications` when the route is `/notifications`.
+  `/api/notifications` when the route is `/notifications`. The later host-owned
+  desktop delivery consumer has its own fixed typed endpoint contract below;
+  this watch rule is not a claim that no Rust module knows a Station route.
 - **A poll loop must not swallow its first error.** The watch failed 100% of
   its polls for three build cycles (no TLS backend compiled in) and looked
   exactly like a working one. The first poll is synchronous and reports
@@ -833,7 +845,8 @@ surface's `hideContent`. A reader shows what it reads and filters nothing.
 **The desktop host is the only reader (#2608).** The webview used to read the
 feed, and a window hidden in the tray suspends its page, so nothing alerted
 while hidden. `src-desktop/src/notification_feed.rs` now reads it on a host
-thread every 20 seconds (inside the server's 90-second lease), whatever the
+thread with a 20-second sleep between polls (normally inside the server's
+90-second lease), whatever the
 window is doing. The webview asks `notification_feed_native_consumer` before
 its first read; this host answers `true`, and the webview then never reads the
 feed and never posts from it (`src-ui/src/platform/native/deliveryFeed.ts`).

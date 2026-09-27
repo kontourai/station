@@ -86,9 +86,11 @@ The permalink is `<origin>/share#t=<token>`. The token is in the URL
 **fragment**, which browsers never send to a server, so it stays out of access
 logs, proxy logs, and `Referer` headers on any outbound click. The standalone
 page reads it client-side, immediately `history.replaceState`s it out of the
-address bar (so it is not left in session history, session restore, or a screen
-share), and presents it in the body of
+address bar, retains it in page-lifetime memory, and presents it in the body of
 `POST /.well-known/station/v1/share/view`.
+The page's explicit Reload action restores the fragment before reloading;
+ordinary browser refresh after scrubbing loses the token. Scrubbing reduces
+exposure; it is not a guarantee about browser history, caches or earlier captures.
 
 **The origin is composed by the CLIENT, never the server** (security review
 H-2). The first cut had the mint route build the permalink from
@@ -102,7 +104,9 @@ server-side: behind a rewriting proxy the server cannot know the origin the
 user's browser is on. `AnswerShareMintResult` carries `{ share, token }` and
 nothing else; `ShareAnswerButton` composes the link with
 `answerSharePermalink(window.location.origin, token)`, the one origin known to
-be true.
+be true. The current button first admits only an HTTP(S) network origin through
+`deriveShareUiOrigin`; native-shell and opaque origins cannot mint from this UI.
+That check does not prove the chosen origin is reachable by a recipient.
 
 That route is `public` in the runtime's routing sense — registered before
 `configureRuntimeHttp`, listed by exact method+path in `PUBLIC_ROUTES` — and
@@ -204,8 +208,11 @@ Two further re-authorizations happen on the same read:
 - **The answer itself** is re-read as the *sharer* (`ownerUserId` threaded into
   `readSessionMessages`), so a share can never outlive the sharer's own standing
   on the session.
-- **Observed value slots pass through untouched.** They are secret-free by
-  #1410's construction and they are what a shared receipt is *for*.
+- **Most observed value slots pass through unchanged.** Engine, model, tool
+  summary and usage facts form the shared receipt. `contextInjection` is an
+  exception: an observed record names internal source filenames, so the share
+  projection replaces it with `restricted-for-this-viewer`. An absent field
+  stays absent and an already-unavailable field keeps its reason.
 
 An already-`unavailable` slot keeps its own reason: "this engine never reported
 it" is a more specific truth than "you may not see it", and it discloses
@@ -221,9 +228,10 @@ the payload depends on the sharer's local paths.
 and attachment URLs are exactly the material the envelope's secret-free rule
 keeps out of a card, and a share is a *wider* audience than a card. What the
 turn did with tools is still reported — by the envelope's tool summary, which
-names tools without their payloads. Block count and length are bounded, and the
-truncation is disclosed (`omittedBlocks`) rather than silently applied: an
-answer that simply stops reads as an answer that ended there.
+names tools without their payloads. The projection keeps at most 40 text blocks,
+each clipped to 20,000 JavaScript string units. `omittedBlocks` reports blocks
+beyond that count; it does not disclose clipping within a long block. That
+remaining display limitation can make a clipped paragraph look complete.
 
 An envelope the server cannot validate is **omitted** rather than forwarded
 raw: the card would render its own unreadable state either way, and shipping
@@ -239,8 +247,9 @@ view inside the app shell. Two concrete reasons:
   need.
 - `PersistQueryClientProvider` writes fetched data into the browser's
   IndexedDB. Mounting the share page inside it would leave a persisted slice of
-  someone else's Station in a stranger's browser. The page fetches once, holds
-  nothing, stores nothing.
+  someone else's Station in a stranger's browser. The page fetches into React
+  memory without the persisted query cache or Web Storage. This does not
+  control the browser's own caching or prevent a recipient saving the answer.
 
 It is `lazy()`-loaded, so neither it nor its CSS is in the entry chunk every
 operator downloads; the entry pays only the pathname predicate, the lazy
@@ -401,14 +410,16 @@ slice adds or touches:
   harmless. The checkpoint digest is NOT disclosed to the viewer.
 - **The allow-by-spread hazard above is CLOSED.**
   `projectEnvelopeForShareViewer` no longer spreads: it enumerates the
-  thirteen fields of `TurnProvenanceEnvelope` it forwards, and
+  fourteen declared fields of `TurnProvenanceEnvelope` it projects, and
   `ANSWER_SHARE_ENVELOPE_FIELDS` declares that list as data so a test can
   assert it is the whole of it. The seam now fails closed in both directions
   — a required field added to the envelope stops compiling here, and an
   optional field or an undeclared runtime key is dropped rather than
   forwarded to a token holder. This matches the rest of the slice, which was
-  deny-by-default already: the binding validator refuses any key outside its
-  allowlist (including a `coordinate` smuggled into a `none` binding), the
+  deny-by-default already: the strict binding validator refuses unknown keys.
+  The store first drops unknown binding/coordinate keys for downgrade
+  compatibility, then validates known fields; prototype-affecting keys,
+  positional refs and a `coordinate` in a `none` binding still refuse. The
   store re-maps the binding field by field, and the channel status rebuilds
   the coordinate from the three declared fields rather than forwarding the
   port's object.

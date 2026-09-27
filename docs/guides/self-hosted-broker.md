@@ -100,12 +100,29 @@ receipt unusable. Grants not renewed within seven days need operator
 re-issuance.
 Rust has private-key signing and fixed-path HTTP helpers for these request
 proofs, including retained cleanup and renewal state. The desktop Tauri command
-table now wires native grant redemption, status, revocation, pending-cleanup
+table now wires native grant redemption, status, renewal, revocation, pending-cleanup
 read/retry, and diagnostic signaling binding/open/read. Those main-window
 commands reload the saved profile and approved Station trust in the host;
 the renderer does not supply trusted keyring identity. Profile removal and
 startup also have pending-cleanup hooks. These capabilities still do not select
 a native application route or carry protected application traffic.
+
+Host renewal records its renewal ID, expected expiry and exact body in private
+grant custody before sending the request. A lost reply reuses that intent with
+a fresh request proof. Profile/trust/grant identity is checked again before
+the host accepts a receipt, and renewal is serialized with route retirement.
+A retained valid intent can recover an already-committed broker receipt after
+the original local expiry/grace window; this does not authorize a new renewal
+outside the broker's window or allow expired open/read operations.
+
+The Desktop `NativeRelayGrantRenewalSupervisor` is composed by `ApiBaseProvider`.
+It observes all saved routes while the renderer is visible, validates the host
+DTO and saved-profile revision, and renews only an existing single grant with no
+pending cleanup. Timers and wake/online refreshes recheck status before renewal;
+failures receive bounded backoff. Removing or replacing a profile fences its
+pending renderer result. The 64-route ceiling pauses all automatic maintenance
+until the saved set is within the limit. This supervisor does not approve a key,
+redeem an invitation, or make native application transport available.
 Native invitations and grants are retired with their Station
 routing generation. V1 redemption rejects v2
 invitations, and native-v2 redemption rejects v1 invitations. This foundation

@@ -67,6 +67,17 @@ wired into the ordinary client, these records remain unconnected and cannot be
 selected as direct Station connections or CLI defaults. The CLI also refuses
 `--station` and `STATION_TARGET` when they name one of these inert routes.
 
+Already redeemed native routing grants have a separate Desktop maintenance
+path. While the Desktop renderer is visible, it observes every saved broker
+route and renews an existing unambiguous grant when at most 12 hours remain.
+It rechecks host status before renewal and after wake/online events, with
+bounded retries. More than 64 saved routes pauses maintenance for all routes
+and displays a limit notice. Saving a route or approving a Station key does
+not redeem a grant. This maintenance does not select an application route,
+sign in, pair a Device, or grant Project access; mobile shells do not run it.
+The [host renewal and supervisor](self-hosted-broker.md#native-routing-grant-foundation-v2)
+keep credentials and durable retry identity out of the renderer.
+
 For a native signing-key approval, select the saved broker route and choose
 **Prepare native Station identity**. Station creates or reopens this install's
 proof key in the OS keyring and shows only its public key, thumbprint, client

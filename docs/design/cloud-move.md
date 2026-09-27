@@ -77,7 +77,7 @@ The template uses Amazon Linux 2023 from the regional SSM AMI parameter, one EC2
 instance, and an encrypted gp3 root/data volume. It gives the instance only the
 AWS-managed SSM instance role and permits no inbound security-group traffic.
 The host downloads Docker and the selected image over outbound networking.
-IMDSv2 is required with hop limit one; the container receives no AWS credentials,
+IMDSv2 is required with hop limit one; the template passes the container no AWS credentials,
 Docker socket, or host home directory. Access uses authenticated SSM forwarding
 to host-loopback port 3000. Set `LocalUiPort` to an available client port and
 open `http://127.0.0.1` on that port; the template configures this exact allowed
@@ -96,7 +96,9 @@ the environment; template validation does not prove boot or runtime readiness.
 The first cloud release uses the existing owner-approved Station pairing flow.
 The operator approves a browser through Station; cloud IAM membership, matching
 email addresses, or a shared signing key do not create application membership.
-Company SSO is deferred to an explicit identity-provider integration. This choice
+The target may use the existing [deployment authentication contract](../guides/deployment-authentication.md),
+including configured local accounts or OIDC. Package commands do not configure
+that provider or translate Cloud IAM into Station identity. This choice
 does not authorize automatic operator-token injection into browsers or settle
 multi-human membership. The existing pairing lifecycle owns credential custody,
 expiry, replay refusal and revocation. Automatic bootstrap remains outside this

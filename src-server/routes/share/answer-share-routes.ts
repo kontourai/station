@@ -29,10 +29,9 @@ import {
  * in `src-server/security/pairing-route-scopes.ts` — the same tier
  * `/api/pairing/**` uses, and for the same reason: minting a share hands a
  * third party durable read access to an answer, which is an access-granting
- * act, not an operational one. `access:manage` is the one scope
- * `PAIRING_SCOPE_PRESETS` never grants to any paired device, so no paired
- * device — however broadly scoped — can mint or revoke shares of the
- * operator's answers.
+ * act, not an operational one. Named pairing presets omit `access:manage`,
+ * but historical/default grants can include it. Management also applies
+ * the caller's session-read authority.
  *
  * **The share view** ({@link configureAnswerSharePublicRoutes}) is public in
  * the runtime's routing sense (registered before `configureRuntimeHttp` and
@@ -219,13 +218,13 @@ type AnswerShareViewResponse =
  * to saturate the runtime, unauthenticated and remote-reachable through the
  * UI proxy: a rate limiter that bounds only *responses* is not a rate limiter.
  *
- * Reserve-then-refund keeps both properties, and they are independent:
+ * Reserve-then-refund bounds lookup work:
  *
  *  - **Work bound** — a caller past the global budget is refused BEFORE the
  *    store is touched, so guessing costs a map lookup, not a file read.
- *  - **Starvation immunity** — a request whose token resolves has its
- *    reservation refunded, so legitimate holders never consume the budget an
- *    attacker is spending, and exhausting it can never lock them out.
+ *  - A recognized token refunds its reservation while capacity remains.
+ *    Once the global budget is exhausted, holders are refused before lookup
+ *    too; refunds do not provide starvation immunity.
  */
 interface AnswerShareViewBudget {
   /** Charged for a request whose token resolves to a stored share. */
