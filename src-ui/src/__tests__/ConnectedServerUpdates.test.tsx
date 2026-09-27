@@ -324,6 +324,26 @@ async function waitIdentitySettled() {
   await waitFor(() => expect(context?.identitySettled).toBe(true));
 }
 
+/**
+ * Automatic source-check attempts, counted at the query rather than the
+ * transport: on a managed-loopback sidecar with no saved profile the request
+ * leaves through a native path this harness does not record, so an empty
+ * `transportCalls` there cannot tell a held check from a fired one.
+ */
+function coreUpdateAttempts(queryClient: QueryClient): number {
+  return queryClient
+    .getQueryCache()
+    .findAll({ queryKey: ['core-update-check'] })
+    .reduce(
+      (attempts, query) =>
+        attempts +
+        query.state.dataUpdateCount +
+        query.state.errorUpdateCount +
+        (query.state.fetchStatus === 'fetching' ? 1 : 0),
+      0,
+    );
+}
+
 /** Release queued identity responses one at a time until health connects. */
 async function drainProbeUntilConnected(body: () => unknown) {
   identityBody = body;
@@ -570,7 +590,7 @@ describe('ConnectedServerUpdates', () => {
   });
 
   it('resolves unresolved and keeps the card silent about method when identity is incomplete', async () => {
-    await renderHarness({
+    const { queryClient } = await renderHarness({
       bundledStatus: sidecarStatus(),
       identity: () => ({ instanceId: 'desktop-sidecar-stable' }),
     });
@@ -584,13 +604,11 @@ describe('ConnectedServerUpdates', () => {
     ).toBeNull();
     // Incomplete identity is not ready: wait out a late automatic check.
     await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(
-      transportCalls.filter((url) => url.includes('/api/system/core-update')),
-    ).toHaveLength(0);
+    expect(coreUpdateAttempts(queryClient)).toBe(0);
   });
 
   it('keeps the source check off when the identity request fails for an established-shaped sidecar', async () => {
-    await renderHarness({
+    const { queryClient } = await renderHarness({
       bundledStatus: sidecarStatus(),
       identityFailure: 503,
     });
@@ -605,9 +623,7 @@ describe('ConnectedServerUpdates', () => {
     // An identity error is settled but not ready: the automatic source check
     // must stay off against a server the correlation could not name.
     await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(
-      transportCalls.filter((url) => url.includes('/api/system/core-update')),
-    ).toHaveLength(0);
+    expect(coreUpdateAttempts(queryClient)).toBe(0);
   });
 
   it('holds the source check until the native observation arrives, then renders the built-in copy', async () => {
