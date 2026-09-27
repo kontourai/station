@@ -105,6 +105,7 @@ export interface KitRecord {
 // ── Mutation input/evidence types (store-contract.md §6, A.5, B.4) ─────────
 
 export interface CreateInput {
+  /** Optional new identity. Create refuses an existing record, including a retired one; it is not an upsert. */
   id?: string; // adapter generates when omitted
   type: KitRecordType;
   title: string;

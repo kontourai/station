@@ -14,6 +14,14 @@ The default adapter writes Markdown records and indexes; the Obsidian adapter
 uses a vault layout. A derived conversation root is different: it reads
 Session history rather than owning another set of Markdown records.
 
+Creation assigns a new identity. Station's optional caller-supplied `id` must
+also be new: the default and Obsidian adapters refuse an existing ID, including
+a retired record, instead of replacing its body, creation provenance, mutation
+history, aliases or links. A duplicate create is an invalid input (HTTP 400).
+After an uncertain create response, read that exact ID and compare the intended
+record before deciding what remains to do. Use the adapter's evidence-bearing
+update/link operations for an intentional change, not another create request.
+
 **The retrieval index is derived.** The store/index routes use the built-in
 `sqlite-vec` provider at `<STATION_HOME>/knowledge-index/index.db`. It stores
 vectors, chunk text, metadata, and references to source records. It is a copy

@@ -332,6 +332,9 @@ export class KitDefaultStoreAdapter implements KnowledgeStoreAdapter {
     }
 
     const id = input.id || randomUUID();
+    if (this.readRecord(id)) {
+      throw new MissingEvidenceError('create: record id already exists');
+    }
     const now = new Date().toISOString();
 
     // Reserve slug aliases BEFORE any write, so a SLUG_CONFLICT aborts create

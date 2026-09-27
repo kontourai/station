@@ -986,6 +986,10 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
     }
 
     const id = input.id || randomUUID();
+    const pathIndex = this.loadPathIndex();
+    if (this.readRecord(id, pathIndex)) {
+      throw new MissingEvidenceError('create: record id already exists');
+    }
     const now = new Date().toISOString();
 
     const aliases = normalizeAliases(input.aliases);
@@ -1027,7 +1031,6 @@ export class KitObsidianStoreAdapter implements KnowledgeStoreAdapter {
       body: input.body,
     };
 
-    const pathIndex = this.loadPathIndex();
     this.writeRecord(record, pathIndex);
     this.savePathIndex(pathIndex);
 
