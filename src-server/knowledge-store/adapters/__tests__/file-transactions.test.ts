@@ -12,6 +12,7 @@ import {
 } from 'node:fs';
 import {
   mkdtemp,
+  readdir,
   readFile,
   rename,
   symlink,
@@ -45,6 +46,52 @@ async function temporaryRoot(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'knowledge-transactions-'));
   roots.push(root);
   return root;
+}
+
+const FS_MUTATIONS = new Set(
+  [
+    'appendFile',
+    'copyFile',
+    'cp',
+    'rename',
+    'rm',
+    'rmdir',
+    'truncate',
+    'unlink',
+    'writeFile',
+  ].flatMap((name) => [name, `${name}Sync`]),
+);
+
+/** File mutations a module pulls from `fs`, `fs/promises`, or a namespace. */
+function rawFsMutations(source: string): string[] {
+  const found: string[] = [];
+  const fsImport =
+    /import\s+(type\s+)?([^;]*?)\s+from\s+['"](?:node:)?fs(?:\/promises)?['"]/g;
+  for (const [, typeOnly, clause] of source.matchAll(fsImport)) {
+    if (typeOnly) continue;
+    const named = /\{([^}]*)\}/.exec(clause)?.[1] ?? '';
+    for (const specifier of named.split(',')) {
+      const name = specifier
+        .trim()
+        .replace(/^type\s+/, '')
+        .split(/\s+as\s+/)[0];
+      if (FS_MUTATIONS.has(name)) found.push(name);
+    }
+    const namespace = clause
+      .replace(/\{[^}]*\}/, '')
+      .replace(/[*,]|\bas\b/g, ' ')
+      .trim();
+    for (const binding of namespace.split(/\s+/).filter(Boolean)) {
+      const member = new RegExp(
+        `\\b${binding}(?:\\.promises)?\\.(\\w+)\\s*\\(`,
+        'g',
+      );
+      for (const [, name] of source.matchAll(member)) {
+        if (FS_MUTATIONS.has(name)) found.push(`${binding}.${name}`);
+      }
+    }
+  }
+  return found;
 }
 
 function coordinationLockPath(
@@ -123,10 +170,32 @@ describe('KnowledgeFileTransactions', () => {
       expect(source).toMatch(
         /new KnowledgeFileTransactions\((?:this\.root|input\.storageDir|storageDir)\)|mutateKnowledgeDocuments/,
       );
-      expect(source).not.toMatch(
-        /\b(?:writeFileSync|renameSync|unlinkSync|rmSync)\s*\(/,
-      );
     }
+
+    // Derived, not listed: any knowledge module that imports a file mutation
+    // from `fs` (sync or promise form) bypasses the seam, whether or not it
+    // existed when this guard was written. The seam itself is the one owner.
+    const seam =
+      'src-server/knowledge-store/adapters/shared/file-transactions.ts';
+    const bypasses: string[] = [];
+    for (const directory of [
+      'src-server/knowledge-store',
+      'src-server/services/knowledge',
+    ]) {
+      const entries = await readdir(join(process.cwd(), directory), {
+        recursive: true,
+      });
+      for (const entry of entries) {
+        const file = join(directory, entry).split(sep).join('/');
+        if (!file.endsWith('.ts') || file.includes('/__tests__/')) continue;
+        if (file === seam) continue;
+        const source = await readFile(join(process.cwd(), file), 'utf8');
+        for (const mutation of rawFsMutations(source)) {
+          bypasses.push(`${file}: ${mutation}`);
+        }
+      }
+    }
+    expect(bypasses).toEqual([]);
   });
 
   test('rolls every published file back when the operation rejects', async () => {
