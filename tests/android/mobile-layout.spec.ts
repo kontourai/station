@@ -420,7 +420,7 @@ test.describe('Android — Mobile Layout', () => {
           )
             return false;
           const parent = el.closest(
-            '.sidebar--collapsed, .header-nav, [style*="display: none"]',
+            '.sidebar--collapsed, [style*="display: none"]',
           );
           if (parent) return false;
           if (rect.bottom < 0 || rect.top > window.innerHeight) return false;

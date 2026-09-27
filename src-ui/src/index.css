@@ -1067,15 +1067,6 @@ button:hover {
    global reset in tokens.css (animation-duration 0.01ms, iteration-count 1)
    fully collapses it — see mobile-css-ratchet on page-local at-rules. */
 
-/* Horizontal tab strips that must scroll (not clip) on narrow viewports.
-   Only takes effect under the mobile breakpoint; desktop keeps wrapping/static
-   layout untouched. */
-.header-nav {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
 /* Mobile: hamburger + logo in toolbar */
 .app-toolbar__sidebar-toggle {
   display: none;
@@ -6542,10 +6533,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     color: var(--text-primary);
     cursor: pointer;
     margin-right: auto;
-  }
-
-  .header-nav {
-    display: none;
   }
 
   .header-divider {
