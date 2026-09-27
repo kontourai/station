@@ -12,7 +12,10 @@ node scripts/ecosystem-manifest.mjs cask \
 
 Verification normally uses [pinned signing keys](../../config/release-manifest-keys.json).
 An explicit `--public-key` is a fixture/dry-run override, not the normal release
-trust policy. Schema-v2 portable-only manifests cannot produce a cask.
+trust policy. The current CLI's schema-v2 platform manifest cannot produce a
+cask. Its `artifacts` array describes server archives, not a macOS application
+artifact. The older installer also has a different payload labelled v2; see
+the [format/consumer table](../manifest/README.md#formats-and-consumers).
 
 This directory also keeps a [template](./Casks/station.rb.template) for review;
 the CLI renders from its own implementation. The
