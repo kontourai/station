@@ -1,5 +1,18 @@
 # Design: the inference fleet — receipted model routing across your Stations
 
+> **Reading status: fleet design and chronological implementation record.**
+> The August baseline, package-version table, and numbered slices describe
+> different revisions; later amendments supersede earlier absence claims.
+> Current [serving routes](../../src-server/routes/inference/fleet-inference.ts),
+> [candidate admission](../../src-server/services/inference/fleet-candidate-service.ts),
+> [Dispatch composition](../../src-server/runtime/conversation/dispatch-model-policy.ts),
+> and [receipt log](../../src-server/runtime/conversation/fleet-routing-receipt-log.ts)
+> own the implemented path. The serving response and Dispatch model are buffered;
+> the consumer excludes non-local contributions as `reference-unresolvable`.
+> The full history below is not a fresh provider, remote-host, privacy, cost,
+> or conformance qualification. Use [machine relationships](../guides/machine-relationships.md)
+> for the current distinction between inference and task delegation.
+
 > Status: **direction recorded (owner decisions, 2026-08-01); tracking issue
 > [#1398](https://github.com/kontourai/station/issues/1398).** All nine open
 > questions are resolved — see §10 and the
@@ -133,12 +146,10 @@ landed:
   per-boot internal-token attestation is a separate process credential;
   ordinary UI-proxy browser traffic remains remote.
 
-**The documented SSH loopback auth gap in `docs/design/station-peer-pairing.md`
-§4 is therefore narrowed but not closed, and this design must not build on it.**
-The residual gap is stated precisely in the shipped comment
-(`runtime-http.ts:175-187`): an adversary holding an SSH tunnel but no minted
-credential simply *omits* the header and lands in the unconditional-pass
-branch. **Consequence for this design: fleet inference must never be reachable
+**The old SSH loopback floor is historical, not a remaining bypass.**
+The current protected-route boundary requires credentials for ordinary direct
+loopback and SSH-forwarded callers. The earlier pre-#2051 residual described
+below in the slice history does not describe today's authentication path. **Consequence for this design: fleet inference must never be reachable
 on a route whose only authorization is "the request arrived on loopback."** Every
 inference route defined in §3 requires a presented credential and fails closed
 without one — which means it also cannot be exposed over a bare SSH forward to a
@@ -313,7 +324,14 @@ plan. The authority boundary in #1398's first comment describes six owners;
 older host-hook contract; Dispatch and Relay are pinned at the versions used by
 the implemented fleet path.**
 
-**Declared vs. resolved vs. installed:**
+**Historical declared/resolved/installed snapshot:** the table below records
+this design's earlier dependency assessment. Current pins come from
+[package.json](../../package.json) and [pnpm-lock.yaml](../../pnpm-lock.yaml).
+Conduit is now used at its current pinned hook contract; Bearing also has a
+[pricing consumer](../../src-server/services/pricing/openrouter-route-pricing.ts),
+and contracts expose [Datum secret references](../../packages/contracts/src/datum-secret-reference.ts).
+Those uses do not establish the proposed fleet Datum/Bearing composition.
+
 
 | Package | `package.json` | lockfile (root) | installed in this tree | published latest |
 |---|---|---|---|---|
@@ -904,10 +922,11 @@ owner's.
 
 Stated as the contract:
 
-- **No third party sees prompt or completion content, because there is no third
-  party in the request path.** This holds by construction in v1 and must be
-  re-argued, not assumed, the moment any coordinator, relay, or directory is
-  introduced (#615, #1392).
+- **The intended personal-fleet path has no application-content coordinator.**
+  Content disclosure still depends on the selected transport, serving Station,
+  and model provider. A hosted provider or a TLS-terminating intermediary can
+  add another party; absence of a fleet coordinator is not a blanket promise
+  that only two machines see content.
 - **Station B — the serving machine — sees everything it is asked to
   generate.** It must, to generate it. This is the same bound the reference mesh
   concedes in its own vision doc: prompts go to people rather than a vendor,
