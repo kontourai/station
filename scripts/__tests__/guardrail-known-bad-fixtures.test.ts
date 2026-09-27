@@ -1258,7 +1258,10 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
       // uses, so the scratch tree carries it and its dependencies verbatim.
       extraScripts: ['tsc-slot.mjs'],
       libs: ['module-entry.mjs', 'typecheck-host-slots.mjs'],
-      productionFiles: ['packages/shared/src/process-identity.mjs'],
+      productionFiles: [
+        'packages/shared/src/process-identity.mjs',
+        'packages/shared/src/windows-system-utility.mjs',
+      ],
       files: {
         'package.json': `${JSON.stringify({ name: 'scratch', private: true }, null, 2)}\n`,
         'tsconfig.scripts.json': `${JSON.stringify(
