@@ -532,6 +532,12 @@ describe('native application-session continuation service seam', () => {
         principal: account?.kind === 'authenticated' ? account.principal : null,
       });
     });
+    let mutations = 0;
+    secured.post('/api/projects', async (c) => {
+      const body = await c.req.json();
+      mutations++;
+      return c.json({ body, mutations });
+    });
     ingress.bind({ fetch: (request) => secured.fetch(request) });
     const virtual = ingress.activate();
     try {
@@ -616,6 +622,38 @@ describe('native application-session continuation service seam', () => {
         ((await protectedRead.json()) as { principal: { id: string } })
           .principal.id,
       ).toMatch(/^human:deployment:/);
+      const mutationProof = await signNativeProof(key.privateKey, {
+        version: APPLICATION_SESSION_NATIVE_VERSION,
+        purpose: 'request',
+        aud: continuation.target.audience,
+        stationId,
+        surface: continuation.target.surface,
+        deviceId: continuation.deviceId,
+        nonce: continuation.nonce,
+        method: 'POST',
+        path: '/api/projects',
+        credentialHash: nativeHash(continuation.credential),
+        jti: randomUUID(),
+        iat: Math.floor(Date.now() / 1000),
+      });
+      const mutation = await virtual.fetch(
+        new Request(`${origin}/api/projects`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${h.device.credential}`,
+            'Content-Type': 'application/json',
+            [APPLICATION_SESSION_NATIVE_HEADER]: continuation.credential,
+            [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: mutationProof,
+          },
+          body: JSON.stringify({ value: 'once' }),
+        }),
+      );
+      expect(mutation.status).toBe(200);
+      expect(await mutation.json()).toEqual({
+        body: { value: 'once' },
+        mutations: 1,
+      });
+      expect(mutations).toBe(1);
       peer.abort();
       expect(
         (await virtual.fetch(new Request(`${origin}/api/projects`))).status,

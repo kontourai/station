@@ -70,6 +70,40 @@ export function readVerifiedNativeVirtualApplicationRequest(
   return facts;
 }
 
+/**
+ * Carry one already admitted native peer across the runtime's bounded-body
+ * Request replacement. This is only called by that trusted middleware after
+ * it copies the exact request body; a changed target or header never inherits
+ * the private provenance marker.
+ */
+export function transferVerifiedNativeVirtualApplicationRequest(
+  source: Request,
+  replacement: Request,
+): boolean {
+  const facts = readVerifiedNativeVirtualApplicationRequest(source);
+  if (
+    !facts ||
+    source === replacement ||
+    source.url !== replacement.url ||
+    source.method !== replacement.method ||
+    JSON.stringify([...source.headers]) !==
+      JSON.stringify([...replacement.headers]) ||
+    replacement.signal.aborted
+  )
+    return false;
+  verifiedNativeVirtualRequests.set(
+    replacement,
+    Object.freeze({
+      ...facts,
+      isCurrent: () =>
+        !replacement.signal.aborted &&
+        facts.isCurrent() &&
+        new URL(replacement.url).origin === facts.requestOrigin,
+    }),
+  );
+  return readVerifiedNativeVirtualApplicationRequest(replacement) !== undefined;
+}
+
 export interface VerifiedVirtualApplicationRequestFacts
   extends VerifiedPionApplicationRequestFacts {
   readonly requestOrigin: string;

@@ -54,6 +54,10 @@ import {
   setBudgetPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../security/runtime-request-security.js';
+import {
+  readVerifiedNativeVirtualApplicationRequest,
+  transferVerifiedNativeVirtualApplicationRequest,
+} from '../../services/connections/virtual-application.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import {
@@ -910,6 +914,7 @@ function configureRuntimeSecurity(
     // adapter and the middleware resolve to different module copies.
     if (bodyResult !== 'no-stream') {
       const raw = c.req.raw;
+      const nativePeer = readVerifiedNativeVirtualApplicationRequest(raw);
       const authenticated = getRuntimeAuthenticatedRequestPrincipal(raw);
       c.req.raw = new Request(raw.url, {
         method: raw.method,
@@ -918,6 +923,14 @@ function configureRuntimeSecurity(
         body: bodyResult,
         duplex: 'half',
       });
+      if (
+        nativePeer &&
+        !transferVerifiedNativeVirtualApplicationRequest(raw, c.req.raw)
+      )
+        return c.json(
+          { error: { code: 'virtual_pion_provenance_invalid' } },
+          403,
+        );
       security.deploymentAuthentication?.transferRequest(raw, c.req.raw);
       // The request was deliberately rewrapped after bounded body buffering.
       // Carry the already middleware-verified principal to that replacement;

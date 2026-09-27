@@ -1202,6 +1202,20 @@ export class ApplicationSessionService {
       source.headers.get('Origin') === replacement.headers.get('Origin')
     )
       this.admitted.set(replacement, fingerprint);
+    const nativeFingerprint = this.nativeAdmitted.get(source);
+    if (
+      nativeFingerprint &&
+      source.url === replacement.url &&
+      source.method === replacement.method &&
+      source.headers.get(APPLICATION_SESSION_NATIVE_HEADER) ===
+        replacement.headers.get(APPLICATION_SESSION_NATIVE_HEADER) &&
+      source.headers.get(APPLICATION_SESSION_NATIVE_PROOF_HEADER) ===
+        replacement.headers.get(APPLICATION_SESSION_NATIVE_PROOF_HEADER) &&
+      source.headers.get('Authorization') ===
+        replacement.headers.get('Authorization') &&
+      source.headers.get('Origin') === replacement.headers.get('Origin')
+    )
+      this.nativeAdmitted.set(replacement, nativeFingerprint);
   }
   async renew(request: Request): Promise<ApplicationSessionContinuation> {
     const account = this.account(await this.authenticate(request));

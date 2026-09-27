@@ -16,6 +16,7 @@ import type { EventBus } from '../../orchestration/event-bus.js';
 import {
   readVerifiedNativeVirtualApplicationRequest,
   readVerifiedVirtualApplicationRequest,
+  transferVerifiedNativeVirtualApplicationRequest,
   VirtualApplicationIngress,
 } from '../virtual-application.js';
 
@@ -40,11 +41,31 @@ describe('virtual application ingress', () => {
       clientInstanceId: 'a8dc21a9-5b2b-44cb-a143-f21106cc1b3c',
       keyThumbprint: 'approved-key',
     };
+    let copied: Request | undefined;
     const handler = vi.fn((r: Request) => {
       const native = readVerifiedNativeVirtualApplicationRequest(r);
       expect(native?.surface).toEqual(surface);
       expect(native?.requestOrigin).toBe(origin);
       expect(readVerifiedVirtualApplicationRequest(r)).toBeUndefined();
+      copied = new Request(r.url, {
+        method: r.method,
+        headers: r.headers,
+        signal: r.signal,
+      });
+      expect(transferVerifiedNativeVirtualApplicationRequest(r, copied)).toBe(
+        true,
+      );
+      expect(readVerifiedNativeVirtualApplicationRequest(copied)).toBeDefined();
+      const changed = new Request(r.url, {
+        method: r.method,
+        headers: { Authorization: 'Bearer substituted' },
+      });
+      expect(transferVerifiedNativeVirtualApplicationRequest(r, changed)).toBe(
+        false,
+      );
+      expect(
+        readVerifiedNativeVirtualApplicationRequest(changed),
+      ).toBeUndefined();
       return Response.json({ admitted: !!native });
     });
     const owner = new VirtualApplicationIngress(origin, undefined, () => ({
@@ -69,6 +90,9 @@ describe('virtual application ingress', () => {
       ).status,
     ).toBe(403);
     current = false;
+    expect(
+      readVerifiedNativeVirtualApplicationRequest(copied!),
+    ).toBeUndefined();
     expect((await application.fetch(request())).status).toBe(403);
     expect(handler).toHaveBeenCalledTimes(1);
     owner.stop();
