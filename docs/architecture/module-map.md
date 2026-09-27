@@ -864,11 +864,16 @@ facts, insertion-order IDs, authority inferred from replay, or restored liveness
 
 ## CollaborativeEditorPane
 
+This is a retained pure controller, not the mounted Task editor. The production
+Task workspace uses `ProjectTaskRoomRuntime` and `TaskRoomEditorPane`, described
+below. The controller contracts and their fixture tests do not establish that
+this controller is connected to a current product renderer.
+
 **Intent and Interface.** `CollaborativeEditorPaneController` projects one text/code document for a Workspace Pane occurrence. Composition binds an exact pane, local actor, Project/Task/document scope, and correlation to dynamic server-owned authority plus narrow convergence, editing-capability, transport, room-stream, target-projection, principal, cursor-output, host-navigation, and immutable-revision Adapters. Callers dispatch intent—local input/selection, an accepted remote operation, one versioned room projection, watch/follow/jump/join/share, resync, or immutable evidence restore—and observe one immutable non-secret state. They never receive a convergence atom graph, snapshot, pending operation/transform payload, writer epoch, room log, filesystem path, raw cursor store, transport session, or host placement authority.
 
 **Contract.** Every ingress resolves current exact actor/scope authority. Document operation projection, solo read/write, and restore/resync require only document authority; room grants gate only presence/cursors/watch/follow/share. Revocation masks every document-derived public text/payload/attribution/cursor while retaining possible-effect batches only inside the private recovery ledger. Public pending projection contains non-content intent ID, operation counts, aggregate exact `uninvoked|possible-effect|indeterminate|committed-awaiting-projection|refused` states, timestamp, and bounded safe reason. `createSharedWorkingStateProjectionAdapter` converts #2889 `applied|replayed|duplicate|deferred|rejected` truth including `operationDeferred`; pending settles only when proved non-deferred or named in exact releases. One exact planned batch has a server-owned canonical SHA-256 effect digest over version, intent, scope, and ordered #2889 semantics; it remains `uninvoked` until the immediate `submitBatch` boundary. A pre-effect lifecycle/authority fence definitely refuses it without inventing possible effect. A fully projected submitted batch remains in the bounded private ledger until its exact total result settles; late refusal/not-invoked quarantines it as integrity evidence, accepted finalizes, and indeterminate retains evidence without resubmission. An accepted batch plus member refusal likewise makes the pane stale rather than finalizing an ordinary rejection. The editing capability chunks delete targets by measured serialized bytes under shared operation/batch byte and count ceilings. Navigation mints an opaque revision/actor/scope/view/expiry/nonce capability; the Host Adapter validates and consumes it inside one `joinAndNavigate` effect, so there is no navigation-then-recheck race. Working-state revision and immutable evidence revision remain distinct; one authoritative-transition helper prunes stale cursors/views across remote apply, restore, and resync, while one abort generation fences recovery races.
 
-Ephemeral room input has a closed schema, exact scope, server-owned monotonic generation+bound epoch, sequence, TTL, UTF-8/count bounds, duplicate refusal, and O(1) oversized-array rejection. Missing/malformed current stream authority masks the live projection as stale; an authenticated old packet is merely ignored. Stable principal identity is actor ID+kind; session/run are mutable presence correlations but immutable on each accepted attribution receipt. Resulting room capacity applies transactionally and quiet expiry removes principals safely. Followable views resolve through a separate exact target projection authority. The controller binds the authority revision, re-resolves before/after host join/navigation, and refuses active watch or navigation when authority changes mid-effect. Pane watch remains `off|active|paused` with explicit unwatch and local exit. The editing capability maps authoritative cursor boundaries through the same private pending operation batches into `displayText` coordinates or suppresses them. The React projection uses one synchronized aria-hidden pre overlay, sharing textarea font/line/scroll layout and one document copy for all range marks; coincident carets merge stable actor IDs and screen readers receive a bounded count.
+Ephemeral room input has a closed schema, exact scope, server-owned monotonic generation+bound epoch, sequence, TTL, UTF-8/count bounds, duplicate refusal, and O(1) oversized-array rejection. Missing/malformed current stream authority masks the live projection as stale; an authenticated old packet is merely ignored. Stable principal identity is actor ID+kind; session/run are mutable presence correlations but immutable on each accepted attribution receipt. Resulting room capacity applies transactionally and quiet expiry removes principals safely. Followable views resolve through a separate exact target projection authority. The controller binds the authority revision, re-resolves before/after host join/navigation, and refuses active watch or navigation when authority changes mid-effect. Pane watch remains `off|active|paused` with explicit unwatch and local exit. The editing capability maps authoritative cursor boundaries through the same private pending operation batches into `displayText` coordinates or suppresses them. An earlier, unmounted React prototype used one synchronized aria-hidden overlay for range marks and a bounded screen-reader count. That prototype was deleted; these rendering details are historical, not the current Task editor contract.
 
 **Seam, Implementation, callers, and tests.** `src-shared/collaborative-editor-pane.ts` is the deep pure controller/privacy/validation locality and `src-server/domain/shared-working-state-editing.ts` owns atom-aware edit planning. There is no renderer projection of this controller. A host-neutral projection component existed under `src-ui/src/workspace-panes/`, but no pane host, catalog entry or lazy route ever mounted it, and it has been deleted rather than left as a surface the product does not reach. The shipped Task workspace retains the narrower browser-security Adapter: `ProjectTaskRoomRuntime` owns private operations, per-subscriber authority projection, ephemeral cursor bounds, and SQLite settlement; the route emits only the closed browser DTO and prioritizes exact-order document delivery over queued ephemeral room projections without moving the immediate currentness check; the SDK owns exact opaque edit receipts plus the one SSE connection and synchronously offers parsed accepted documents to the mounted host before normalizing that same object into its query cache; `ProjectTaskRoomProvider`, `TaskRoomEditorPane`, and `ProjectTaskRoomPresence` project that authority without creating a client operation factory or second room. Gaps, duplicates, malformed events, terminal streams, and Task changes retain the authoritative recovery/currentness path. Adversarial tests cover private batch settlement/retry, dynamic revocation secret masking, deferred duplicate and large release, solo editing/recovery, revision fencing, server-owned room generations, symmetric subscriber projection, cursor TTL/rate/capacity and exact revision binding, principal run change/kind equivocation, cross-document target movement, direct #2889 convergence, keyboard/selection, and reduced motion. Real two-browser acceptance is `tests/project-task-room-collaboration.spec.ts`. **Do not reintroduce:** editor-local CRDT/OT/LWW logic, client-owned authority, exported pending payload, opaque-epoch freshness guesses, JSON metadata equivocation, per-cursor document copies, caller-asserted revision verification, local paths, capability conflation, durable chat/history ownership, host placement policy, or renderer-specific transport.
 
@@ -1512,3 +1517,47 @@ controls and recovery. [SDK mutations](../../packages/sdk/src/spatial-board.ts),
 [owner resolution tests](../../src-server/services/spatial-board/__tests__/spatial-board-owner-resolver.test.ts)
 show the request and storage boundaries. Mounted component tests do not prove
 pointer geometry, contrast, or a physical touch-device journey.
+
+## Native notification feed
+
+**Purpose and interface.** `NotificationFeed` in
+[`src-desktop/src/notification_feed.rs`](../../src-desktop/src/notification_feed.rs)
+reads the server's decided notification-delivery feed outside the WebView, so a
+window hidden in the tray does not suspend the desktop reader. It consumes
+`GET /api/notifications/deliveries`; it does not decide quiet hours, mutes,
+urgency or content redaction. A queued server delivery entry is not an OS display
+receipt or evidence that a person saw the notification.
+
+**Caller, state and authority.** Desktop startup in
+[`lib.rs`](../../src-desktop/src/lib.rs) manages the state, registers the native
+consumer/cursor/click commands, and starts its polling thread. Each read uses
+the host-authorized active Station, that profile's credential, and the local
+installation identity. Cursor and epoch persist per Station origin and echoed
+surface. A cursor for another surface is not reused; a changed epoch marks a
+restarted server. The
+[WebView adapter](../../src-ui/src/platform/native/deliveryFeed.ts) asks whether
+the native reader owns the feed before reading, and offers an old cursor once
+for upgrade handoff. The native owner refuses a handoff that would rewind an
+established cursor.
+
+**Delivery and recovery limits.** The nominal poll interval is 20 seconds.
+Focus-suppressed, refused and timed-out OS calls consume their entries; a call
+that could not start leaves the cursor before that entry. The consumer saves
+progress between calls, but a crash or failed save can replay work: this is not
+exactly-once presentation. Bounded pending-call and late-result state keep a
+stuck OS backend from opening unlimited threads. Linux can retract a notification
+this process posted; the current macOS/Windows backends can suppress an unposted
+alert but cannot close an already displayed one. Clicks focus Station and pass
+only a validated in-app path to the main WebView.
+
+**Evidence and change guidance.** Rust tests in the owner cover cursor/epoch and
+surface changes, handoff, focus, malformed feeds, refused/timed-out/unstarted
+calls, staleness, bounded stuck calls, late handles, and retraction. The
+[WebView handoff tests](../../src-ui/src/__tests__/deliveryFeed.nativeConsumer.test.ts)
+and [delivery tests](../../src-ui/src/__tests__/deliveryFeed.test.ts) cover its
+consumer selection and cursor behavior. These are source and fixture owners;
+packaged OS permission, visible delivery, background operation and clicks need
+separate platform evidence. Do not revive `notification_watch.rs` as a second
+reader: it would bypass the delivery router's envelope and privacy decisions.
+See [desktop alerts](../guides/desktop-tray.md#desktop-alerts-while-the-window-is-hidden)
+for the user-facing lifecycle.

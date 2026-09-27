@@ -203,7 +203,8 @@
         "ExtensionNotificationBindings",
         "SchedulerLedger and BuiltinScheduler",
         "NativeInvocationRuns",
-        "Monitoring history and Agent catalog reads"
+        "Monitoring history and Agent catalog reads",
+        "Native notification feed"
       ],
       "questions": [
         "Who owns retry, deduplication, and retention?",
