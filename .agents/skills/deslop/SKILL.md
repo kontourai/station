@@ -18,7 +18,7 @@ Inspect every changed hunk for:
 
 - comments a maintainer would not write: narration, syntax restatement, prose that repeats the code, or a claim about behavior the code does not have;
 - defensive checks or try/catch blocks that are abnormal for the surrounding module or protect only imagined states;
-- type laundering: `as any`, `as unknown as T`, and widen-then-assert flows. Lint does not reject this class today, so this pass is the backstop;
+- type laundering: `as any`, `as unknown as T`, and widen-then-assert flows. `scripts/type-laundering-gate.mjs` blocks new textual `as any` and `as unknown as T` casts in production surfaces; this pass catches the rest, including tests and widen-then-assert flows;
 - redundant intermediate variables or one-use helpers that add no domain meaning;
 - compatibility shims, aliases, retries, or fallback branches without a named shipped contract and removal plan;
 - naming, control flow, imports, or formatting that conflicts with the surrounding file.
