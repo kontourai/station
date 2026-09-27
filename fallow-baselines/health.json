@@ -7158,11 +7158,6 @@
         "count": 1
       }
     },
-    "src-ui/src/platform/native/startupReadiness.ts": {
-      "complexity_moderate": {
-        "count": 1
-      }
-    },
     "src-ui/src/platform/native/stationProfileStorage.ts": {
       "complexity_critical": {
         "count": 1

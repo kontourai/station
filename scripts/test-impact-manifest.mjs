@@ -1226,19 +1226,9 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'Nightly hidden-window documentation source seam',
   },
   {
-    pattern: 'src-ui/src/platform/native/startupReadiness.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'renderer readiness documentation source seam',
-  },
-  {
     pattern: 'scripts/__tests__/startup-readiness-static.test.ts',
     tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
     reason: 'native startup static verification command contract',
-  },
-  {
-    pattern: 'src-ui/src/platform/native/__tests__/startupReadiness.test.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'renderer startup verification command contract',
   },
   {
     pattern: 'tests/plugin-host-security.spec.ts',
