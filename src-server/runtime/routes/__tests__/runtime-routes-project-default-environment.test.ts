@@ -11,8 +11,9 @@
  * - composition: POST /chat through the REAL production callback built by
  *   `createProjectDefaultEnvironmentCallback` (the exact factory the route
  *   wiring uses) — a saved peer/dangling default must reach the executor
- *   unchanged, never as `current`; a missing or non-saved default maps to
- *   `current`;
+ *   unchanged, never as `current`;
+ * - factory: the same callback, called directly, maps a missing or
+ *   non-saved default to `current`;
  * - canonical resolver: the REAL `executeExecutionTargetMessage` with a
  *   dangling saved default rejects with the named unavailable outcome and
  *   the local provider surface sees ZERO invocations.

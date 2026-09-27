@@ -33,7 +33,7 @@ describe('bootstrapRuntimeVoiceAgent', () => {
     { exists: false, writes: 'createAgent', skips: 'updateAgent' },
     { exists: true, writes: 'updateAgent', skips: 'createAgent' },
   ] as const)(
-    'an existing voice agent: $exists writes through $writes and logs loaded tools',
+    'agentExists=$exists writes through $writes and logs loaded tools',
     async ({ exists, writes, skips }) => {
       const configLoader = {
         agentExists: vi.fn(async () => exists),
