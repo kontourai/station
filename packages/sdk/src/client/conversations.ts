@@ -12,13 +12,8 @@
  * this `/agents/:slug/conversations[...]` family).
  */
 
-import { apiErrorMessage } from './api-error-message';
-import {
-  type ClientRequestOptions,
-  getJson,
-  mutateJson,
-  StationHttpError,
-} from './http';
+import { envelopeError } from './api-error-message';
+import { type ClientRequestOptions, getJson, mutateJson } from './http';
 
 interface ConversationEnvelope<T> {
   success: boolean;
@@ -51,6 +46,7 @@ export async function searchConversationMessages(
     `${apiBase}/api/conversations/search?query=${encodeURIComponent(query)}`,
     opts,
   );
+  const unreadable = `Conversation search API error: ${response.status}`;
   let result: ConversationEnvelope<ConversationMessageSearchResult[]> | null =
     null;
   try {
@@ -58,12 +54,15 @@ export async function searchConversationMessages(
       ConversationMessageSearchResult[]
     >;
   } catch {
-    throw new Error(`Conversation search API error: ${response.status}`);
+    // A non-2xx keeps its status; an unreadable 2xx is a protocol failure
+    // with no failure status to carry (#2708, as `readEnvelopeOrThrow`).
+    if (!response.ok) throw envelopeError(response, undefined, unreadable);
+    throw new Error(unreadable);
   }
   if (!response.ok || !result.success) {
-    const message = apiErrorMessage(result, 'Failed to search messages');
-    if (!response.ok) throw new StationHttpError(response.status, message);
-    throw new Error(message);
+    // #2708: a 2xx `success:false` is a refusal too, and keeps its observed
+    // status (200), `code` and `details` — callers branch on the status.
+    throw envelopeError(response, result, 'Failed to search messages');
   }
   return result.data ?? [];
 }
@@ -120,7 +119,7 @@ export async function forkConversation(
   const result =
     (await response.json()) as ConversationEnvelope<ForkConversationResult>;
   if (!result.success || !result.data)
-    throw new Error(apiErrorMessage(result, 'Failed to fork conversation'));
+    throw envelopeError(response, result, 'Failed to fork conversation');
   return result.data;
 }
 
@@ -154,7 +153,7 @@ export async function listAgentConversationPage(
     ConversationInventoryPage | unknown[]
   >;
   if (!result.success) {
-    throw new Error(apiErrorMessage(result, 'Failed to fetch conversations'));
+    throw envelopeError(response, result, 'Failed to fetch conversations');
   }
   if (Array.isArray(result.data)) {
     return { items: result.data, hasMore: false };
@@ -181,8 +180,10 @@ export async function getConversationMessages(
   );
   const result = (await response.json()) as ConversationEnvelope<unknown[]>;
   if (!result.success) {
-    throw new Error(
-      apiErrorMessage(result, 'Failed to fetch conversation messages'),
+    throw envelopeError(
+      response,
+      result,
+      'Failed to fetch conversation messages',
     );
   }
   return result.data ?? [];
@@ -206,7 +207,7 @@ export async function deleteConversation(
   );
   const result = (await response.json()) as ConversationEnvelope<never>;
   if (!result.success) {
-    throw new Error(apiErrorMessage(result, 'Failed to delete conversation'));
+    throw envelopeError(response, result, 'Failed to delete conversation');
   }
 }
 
@@ -234,8 +235,10 @@ export async function listConversationInventory(
   const result =
     (await response.json()) as ConversationEnvelope<ConversationInventoryPage>;
   if (!result.success) {
-    throw new Error(
-      apiErrorMessage(result, 'Failed to fetch conversation inventory'),
+    throw envelopeError(
+      response,
+      result,
+      'Failed to fetch conversation inventory',
     );
   }
   return result.data ?? { items: [], hasMore: false };
@@ -260,8 +263,6 @@ export async function acknowledgeConversation(
   );
   const result = (await response.json()) as ConversationEnvelope<never>;
   if (!result.success) {
-    throw new Error(
-      apiErrorMessage(result, 'Failed to acknowledge conversation'),
-    );
+    throw envelopeError(response, result, 'Failed to acknowledge conversation');
   }
 }
