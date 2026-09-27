@@ -207,6 +207,19 @@ test('a reader follows a concept into its exact module, searches, and returns th
     page.getByRole('article').getByRole('heading', { level: 1 }),
   ).toHaveText('How Starter Work connects first steps to real work');
   expect(page.url()).toContain('#doc=docs%2Fguides%2Fstarter-work.md');
+  await page.getByRole('link', { name: 'The big picture' }).click();
+  await browserExpect(
+    page.getByRole('heading', { name: 'How Station fits together.' }),
+  ).toBeVisible();
+  await page
+    .getByRole('link', { name: 'System overview', exact: true })
+    .click();
+  await page
+    .getByRole('link', { name: 'Station Field guide', exact: true })
+    .click();
+  await browserExpect(
+    page.getByRole('heading', { name: 'How Station fits together.' }),
+  ).toBeVisible();
   expect(errors).toEqual([]);
 }, 30_000);
 

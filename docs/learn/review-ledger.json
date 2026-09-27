@@ -19359,7 +19359,7 @@
         },
         {
           "path": "scripts/__tests__/learning-atlas.browser.test.ts",
-          "digest": "b4337eb18fa704719267c843a0f457fd8aa6bbe10756d0f41e35dd730c26bc23"
+          "digest": "73271d6d39a8b61e51e1dae8be0bf2b1468ddea526aed6123a9526b87b3c5e73"
         },
         {
           "path": "scripts/build-learning-guide.mjs",
@@ -19390,7 +19390,9 @@
         "Earlier independent browser checks exercised navigation, snapshots and all diagrams; impact CLI probes exercised actual collection, failure and dependency-removal paths.",
         "Added canonical graph guide and captured Library route to the Knowledge reading branch; module membership and explanation authority unchanged.",
         "Reviewed integration deltas: Reviewed navigation wording and explicit source/evidence limits; graph and capture routes use canonical owners. docs/learn/atlas.json: Added the reviewed native renewal module and Knowledge graph/walkthrough links to their existing branches; canonical module membership checked by generator.",
-        "Integrated browser/MCP selection passed; strict atlas validates 415 Markdown documents and 74 modules, with 100 generated MCP topics. All 13 documentation gates passed, including 163 foundation tests."
+        "Integrated browser/MCP selection passed; strict atlas validates 415 Markdown documents and 74 modules, with 100 generated MCP topics. All 13 documentation gates passed, including 163 foundation tests.",
+        "Browser review caught an invalid #overview route. Both static home links now navigate to ./; the real-reader test exercises each link after opening a document.",
+        "After the manual browser caught the invalid overview hash, all seven real-reader tests passed with explicit sidebar and brand return-to-overview actions."
       ]
     },
     {
