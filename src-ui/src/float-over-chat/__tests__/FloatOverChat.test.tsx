@@ -26,7 +26,6 @@ import {
 } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ruleBodiesFor } from '../../__tests__/helpers/css-rules';
 
 const h = vi.hoisted(() => ({
   autoFloat: undefined as boolean | undefined,
@@ -1002,7 +1001,7 @@ describe('placement, keyboard and narrow widths', () => {
     expect(frameOf()).toMatchObject({ x: start.x - 16, width: 304 });
   });
 
-  test('the pill’s controls carry the 44px target rule (structural: jsdom lays nothing out)', async () => {
+  test('no state, media or descendant rule restates the pill controls’ size (structural: jsdom lays nothing out)', async () => {
     const { area } = chatArea();
     renderFloat(area);
     await screen.findByTestId('float-canvas');
@@ -1022,29 +1021,10 @@ describe('placement, keyboard and narrow widths', () => {
       join(dirname(fileURLToPath(import.meta.url)), '../FloatOverChat.css'),
       'utf8',
     );
-    // Every rule for the class, later declarations winning, in any order.
-    const declared = (selector: string) => {
-      const result: Record<string, string> = {};
-      for (const body of ruleBodiesFor(css, selector)) {
-        for (const declaration of body.split(';')) {
-          const [property, ...value] = declaration.split(':');
-          if (value.length > 0)
-            result[property.trim()] = value.join(':').trim();
-        }
-      }
-      return result;
-    };
-    expect(declared('.float-over-chat__handle')).toMatchObject({
-      height: '44px',
-      'min-width': '44px',
-    });
-    expect(declared('.float-over-chat__action')).toMatchObject({
-      'min-height': '44px',
-      'min-width': '44px',
-    });
-    // A more specific rule in this sheet (state, media, descendant) must not
-    // restate the size and undercut the base rule. Rendered geometry is
-    // still unproven here; jsdom lays nothing out.
+    // The rendered size, base rules included, is measured in Chromium by
+    // `FloatOverChat.touch-target.test.tsx`. What its fixture never enters (a
+    // state class, media or descendant rule in this sheet) must not restate
+    // the size and undercut the base rule.
     const sizing =
       /(^|;)\s*(height|width|min-height|min-width|max-height|max-width|zoom|transform)\s*:/;
     for (const [, selector, body] of css
