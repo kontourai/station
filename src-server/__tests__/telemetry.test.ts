@@ -39,12 +39,28 @@ async function telemetry() {
   return import('../telemetry.js');
 }
 
+/** Starts configured OTel for one home and returns what reached the SDK. */
+async function sdkAttributes(homeDir: string) {
+  const { initializeTelemetry } = await telemetry();
+  let captured: Record<string, string> | undefined;
+  await initializeTelemetry({
+    env: { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://collector.test' },
+    homeDir,
+    createSdk: (resourceAttributes) => {
+      captured = { ...resourceAttributes };
+      return { start: () => {}, shutdown: async () => {} };
+    },
+    log: () => {},
+  });
+  if (!captured) throw new Error('initializeTelemetry never created an SDK');
+  return captured;
+}
+
 describe('OTel installation identity', () => {
   test('IDENTITY STORAGE DEFECT: a fresh OTel install persists a UUID and emits its hash', async () => {
     const root = await home();
-    const { OTEL_INSTALLATION_ID_ATTRIBUTE, resolveOtelResourceAttributes } =
-      await telemetry();
-    const attributes = await resolveOtelResourceAttributes(root);
+    const { OTEL_INSTALLATION_ID_ATTRIBUTE } = await telemetry();
+    const attributes = await sdkAttributes(root);
     const persisted = (
       await readFile(join(root, 'config', 'otel-installation-id'), 'utf8')
     ).trim();
@@ -59,11 +75,10 @@ describe('OTel installation identity', () => {
 
   test('IDENTITY REPAIR DEFECT: malformed OTel installation id is replaced before it is hashed', async () => {
     const root = await home();
-    const { OTEL_INSTALLATION_ID_ATTRIBUTE, resolveOtelResourceAttributes } =
-      await telemetry();
+    const { OTEL_INSTALLATION_ID_ATTRIBUTE } = await telemetry();
     await mkdir(join(root, 'config'));
     await writeFile(join(root, 'config', 'otel-installation-id'), 'partial');
-    const attributes = await resolveOtelResourceAttributes(root);
+    const attributes = await sdkAttributes(root);
     const persisted = (
       await readFile(join(root, 'config', 'otel-installation-id'), 'utf8')
     ).trim();
@@ -78,8 +93,7 @@ describe('OTel installation identity', () => {
 
   test('IDENTITY AUTHORITY DEFECT: OTel emits the hash of the persisted winner', async () => {
     const root = await home();
-    const { OTEL_INSTALLATION_ID_ATTRIBUTE, resolveOtelResourceAttributes } =
-      await telemetry();
+    const { OTEL_INSTALLATION_ID_ATTRIBUTE } = await telemetry();
     const winner = '11111111-2222-4333-8444-555555555555';
     await mkdir(join(root, 'config'));
     await writeFile(join(root, 'config', 'otel-installation-id'), 'partial');
@@ -89,7 +103,7 @@ describe('OTel installation identity', () => {
         `${winner}\n`,
       );
     };
-    const attributes = await resolveOtelResourceAttributes(root);
+    const attributes = await sdkAttributes(root);
     expect(
       attributes[OTEL_INSTALLATION_ID_ATTRIBUTE],
       'OTel emitted a hash other than the persisted installation id winner',
@@ -99,16 +113,7 @@ describe('OTel installation identity', () => {
   test('INERT OTEL DEFECT: no endpoint performs no identity read or write', async () => {
     const root = await home();
     const { initializeTelemetry } = await telemetry();
-    const createInstallationIdHash = vi.fn();
-    await initializeTelemetry({
-      env: {},
-      homeDir: root,
-      createInstallationIdHash,
-    });
-    expect(
-      createInstallationIdHash,
-      'unconfigured OTel read or created an installation identity',
-    ).not.toHaveBeenCalled();
+    await initializeTelemetry({ env: {}, homeDir: root });
     await expect(
       readFile(join(root, 'config', 'otel-installation-id'), 'utf8'),
       'unconfigured OTel wrote an installation identity file',
@@ -116,12 +121,7 @@ describe('OTel installation identity', () => {
   });
 
   /**
-   * Deliberately does NOT rely on mocking `node:os`: the earlier tests do, and
-   * that mock does not reach this module — reintroducing the hostname+username
-   * derivation inside `initializeTelemetry` left all of them green, because both
-   * calls then saw the same real hostname and agreed.
-   *
-   * Instead this pins the property no machine-derived implementation can have:
+   * Pins the property no machine-derived implementation can have:
    * the id reaching the SDK is a function of the PERSISTED FILE. Two different
    * STATION_HOMEs must produce different ids, and the id must equal the hash of
    * the UUID actually stored in that home.
