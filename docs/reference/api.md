@@ -1813,9 +1813,9 @@ cleans the staged directory without installing it. `valid: true` also carries
 observed `installationRevision`, `existingDataScope`, and permission/dependency
 consent information.
 
-A source-fetch refusal can be HTTP200 with `valid: false`; inspect the body.
-Invalid manifests/context or unsupported dependencies return400; a missing
-registry entry returns404; changed registry source or trust refusal returns409.
+A source-fetch refusal can be HTTP 200 with `valid: false`; inspect the body.
+Invalid manifests/context or unsupported dependencies return 400; a missing
+registry entry returns 404; changed registry source or trust refusal returns 409.
 A trust refusal includes a closed reason such as stale review or a missing
 claim. Request data cannot supply trusted signing keys or declare itself
 verified. See [registry trust policy](../design/registry-trust-policy.md).
@@ -1842,12 +1842,12 @@ scope and other admission rules still apply.
 The successful result carries plugin/tools/dependencies and permission state.
 `permissions.dependencies` reports the installed transitive graph's remaining
 approval needs, not merely the preview's requirements. Older responses can omit
-it, which means unknown. A persisted install awaiting activation returns202
+it, which means unknown. A persisted install awaiting activation returns 202
 with `success: false` and `configurationActivation`, or a pending lifecycle
 receipt. It is not complete solely because the HTTP request was accepted.
 
-Missing/mismatched consent returns400, registry trust or diagnosed content-lock
-conflicts return409, and unexpected/compensation failure can return500.
+Missing/mismatched consent returns 400, registry trust or diagnosed content-lock
+conflicts return 409, and unexpected/compensation failure can return 500.
 A dependency refusal is not a promise that no earlier staged/dependency effect
 occurred; the [transaction owner](../../src-server/services/plugins/plugin-install-transaction.ts)
 records compensation and retained-state limits.
@@ -1857,7 +1857,7 @@ records compensation and retained-state limits.
 `GET /api/plugins/check-updates` is operator-only. It reads installed names and
 checks git/registry update sources. Results use the installed manifest name as
 `name`, even when a registry entry ID differs. A caught top-level check failure
-currently returns200 with `{updates: []}`; that legacy result cannot prove
+currently returns 200 with `{updates: []}`; that legacy result cannot prove
 there were no available updates.
 
 ### Update Plugin
@@ -1867,8 +1867,8 @@ the installed identity/current generation. A managed installation selects new
 retained code with `dataPolicy: "preserve"`; this is not an in-place `git pull`
 of its selected bytes. Its update path supplies no new operator consent, so
 changes requiring a preview decision must be completed through preview/install.
-Missing update source or managed update refusal returns409; pending lifecycle
-or activation returns202.
+Missing update source or managed update refusal returns 409; pending lifecycle
+or activation returns 202.
 
 The legacy path can still use git/registry update with a backup and restoration
 on failure. Do not treat either path's response as proof that unmanaged child
@@ -1882,14 +1882,14 @@ contains the current identity, compensation, and activation branches.
 installed manifest identity, withdraws owned contributions/grants, and reconciles
 runtime state while preserving conversation memory. Managed package removal
 retains code/data for its lifecycle owner; it is not immediate disk reclamation.
-A pending activation returns202 with `success: false` and its receipt. Inspect
+A pending activation returns 202 with `success: false` and its receipt. Inspect
 the outcome before retrying or declaring cleanup complete.
 
 ### Serve Plugin Bundle (JS)
 
 `GET /api/plugins/:name/bundle.js` returns JavaScript with `Cache-Control: no-cache`
 when the [bundle reader](../../src-server/routes/plugins/plugin-bundles.ts) can
-capture current, contained bytes. Unavailable/missing bytes return404.
+capture current, contained bytes. Unavailable/missing bytes return 404.
 
 ### Serve Plugin Bundle (CSS)
 
@@ -1901,26 +1901,26 @@ reads. That result is not proof of a complete CSS-free installation.
 
 `GET /api/plugins/:name/permissions` returns `declared`, `granted`,
 `contentBinding`, and `withheld` for the captured installation. Missing runtime
-artifact returns404; unreadable grants return503.
+artifact returns 404; unreadable grants return 503.
 
 ### Grant Plugin Permissions
 
 `POST /api/plugins/:name/grant` accepts `{permissions: [...]}` for declared,
 grantable permissions. Trusted permissions require the isolated host approval
-channel and are refused here with403. An accepted response can include
+channel and are refused here with 403. An accepted response can include
 `granted`, `withdrawn`, and reconciliation: binding a new decision can withdraw
 old permissions, so a grant request is not necessarily an additive-only effect.
-Winding reconciliation returns202.
+Winding reconciliation returns 202.
 
 ### Plugin Fetch Proxy (Scoped)
 
 `POST /api/plugins/:name/fetch` is currently disabled. It checks the named
-`network.fetch` grant, then returns403 because plugin execution identity is not
+`network.fetch` grant, then returns 403 because plugin execution identity is not
 yet verifiable. A grant does not make this endpoint an operational HTTP proxy.
 
 ### Unscoped Plugin Fetch Proxy
 
-`POST /api/plugins/fetch` returns403 requiring a named route. The development CLI
+`POST /api/plugins/fetch` returns 403 requiring a named route. The development CLI
 proxy is a separate implementation; neither production route provides the
 successful proxy response previously shown here.
 
@@ -1929,8 +1929,8 @@ successful proxy response previously shown here.
 `POST /api/plugins/reload` is operator-only. It reconciles installation
 projections, quiesces server modules/subscriptions, prepares and publishes the
 provider generation, and reconciles Agent state. A pending projection or runtime
-activation returns202 with `success: false`. Completed responses include
-`loaded`; a failed quiescence/reload returns500. It is not a raw unconditional
+activation returns 202 with `success: false`. Completed responses include
+`loaded`; a failed quiescence/reload returns 500. It is not a raw unconditional
 "clear and reload everything" action.
 
 ### Get Plugin Providers
@@ -1948,7 +1948,7 @@ record for the current captured package.
 
 `PUT /api/plugins/:name/overrides` accepts `{disabled: [...]}`, preserves other
 stored overrides, and returns `{success: true}` after saving. This handler does
-not itself reload providers. Current-artifact checks can return409, including
+not itself reload providers. Current-artifact checks can return 409, including
 when a change was saved before currentness was lost; reload and inspect before
 retrying. See [config handlers](../../src-server/routes/plugins/plugin-config-routes.ts).
 
@@ -2000,7 +2000,7 @@ integration registry provider's installed catalog.
 
 `POST /api/registry/integrations/install` accepts `{id}`. After successful provider
 installation, an available ToolDef is saved **disabled**. An existing
-credential-binding configuration can refuse replacement with409. Provider
+credential-binding configuration can refuse replacement with 409. Provider
 installation success does not prove connection, enablement, or Agent attachment.
 
 ### Uninstall Integration from Registry
@@ -2060,480 +2060,251 @@ and activation checks still apply. Prefer preview and an explicit decision.
 ### Uninstall Plugin from Registry
 
 `DELETE /api/registry/plugins/:id` resolves installed identity and uses the full
-person-gated removal transaction. Pending runtime activation returns202 with
-`success: false` and `configurationActivation`; normal completion returns200.
+person-gated removal transaction. Pending runtime activation returns 202 with
+`success: false` and `configurationActivation`; normal completion returns 200.
 
 ---
 
 ## Scheduler
 
-> **New section** — routes from `src-server/routes/operations/scheduler.ts`
+The [scheduler routes](../../src-server/routes/operations/scheduler.ts) call
+[SchedulerService](../../src-server/services/scheduling/scheduler-service.ts),
+which aggregates registered providers and routes job operations to their owner.
+This personal scheduler surface returns 404 in hosted mode. Typed invalid
+schedules return 400, conflicts409, unavailable durable storage503, and other
+thrown failures500.
 
 ### List Scheduler Providers
-```http
-GET /scheduler/providers
-```
 
-Returns registered scheduler provider names (used to populate UI dropdowns).
-
-**Response**:
-```json
-{ "success": true, "data": ["cron", "eventbridge"] }
-```
-
----
+`GET /scheduler/providers` returns `{success: true, data}` where each row has
+`id`, `displayName`, `capabilities`, and `formFields`. It is not an array of
+provider-name strings.
 
 ### Subscribe to Scheduler Events (SSE)
-```http
-GET /scheduler/events
-```
 
-Opens a Server-Sent Events stream for real-time scheduler job events. Sends a `ping` keepalive every 30 seconds.
-
-**Response** (SSE stream):
-```
-data: {"type":"job-started","target":"my-job","timestamp":"..."}
-
-event: ping
-data: 
-```
-
----
+`GET /scheduler/events` relays serialized scheduler events and sends named
+`ping` keepalives every 30 seconds. The provider/event owner determines the event
+payload; a live frame is not a durable completed-run receipt.
 
 ### Scheduler Webhook Receiver
-```http
-POST /scheduler/webhook
-```
 
-Receives webhook events from external scheduler providers and broadcasts them to SSE subscribers.
-
-**Request Body**: Any JSON event payload from the scheduler provider.
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`POST /scheduler/webhook` accepts JSON and broadcasts it through SchedulerService,
+returning `{success: true}`. Invalid JSON returns 400. This is an authenticated
+route under the scheduler policy, not a public arbitrary-event ingress or an
+instruction to execute a job.
 
 ### List Scheduled Jobs
-```http
-GET /scheduler/jobs
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    { "target": "my-job", "schedule": "0 9 * * 1-5", "enabled": true, "lastRun": "..." }
-  ]
-}
-```
-
----
+`GET /scheduler/jobs` returns `{success: true, data: jobs}`. Rows use the
+[SchedulerJob contract](../../packages/contracts/src/scheduler.ts), including
+job `name` and provider-neutral schedule information. Provider read failures
+propagate rather than becoming a fabricated empty schedule.
 
 ### Get Scheduler Stats
-```http
-GET /scheduler/stats
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": { "totalJobs": 5, "enabledJobs": 4, "lastRunAt": "..." }
-}
-```
-
----
+`GET /scheduler/stats` returns `{success: true, data: {providers, summary}}`.
+Summary includes total jobs, total recorded runs, and a rounded success-rate
+percentage derived from provider job statistics (zero when no runs exist).
 
 ### Get Scheduler Status
-```http
-GET /scheduler/status
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": { "running": true, "provider": "cron" }
-}
-```
-
----
+`GET /scheduler/status` returns `{success: true, data: {providers}}`. Each entry
+contains the provider's status plus its ID and display name; this is not one
+universal `{running, provider}` object.
 
 ### Preview Cron Schedule
+
 ```http
-GET /scheduler/jobs/preview-schedule?cron=<expr>&count=5&timezone=<iana>
+GET /scheduler/jobs/preview-schedule?cron=0%209%20*%20*%20*&count=5&timezone=America%2FDenver
 ```
 
-Returns the next N scheduled run times for a cron expression.
-
-**Query Parameters**:
-- `cron`: Cron expression (required)
-- `count`: Number of upcoming runs to return (default: `5`)
-- `timezone`: IANA zone the expression is written in (optional). Omitted means
-  UTC, which is how the scheduler evaluates a schedule with no zone — so a
-  preview of a ZONED job must send this or it describes different instants from
-  the ones the job will fire at.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": ["2025-07-15T09:00:00Z", "2025-07-16T09:00:00Z"]
-}
-```
-
----
+`cron` is required, count defaults to 5, and timezone is optional. The shared
+schedule validator rejects invalid expressions/zones; the service uses
+Ephemeris to return ISO timestamps under `{success: true, data}`. An omitted
+zone uses the scheduler's UTC interpretation. Include a zoned job's timezone
+when previewing it.
 
 ### Get Job Logs
-```http
-GET /scheduler/jobs/:target/logs?count=20
-```
 
-Returns recent run logs for a specific job.
-
-**Query Parameters**:
-- `count`: Number of log entries to return (default: `20`)
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    { "runAt": "2025-07-14T09:00:00Z", "status": "success", "outputPath": "/path/to/output.log" }
-  ]
-}
-```
-
----
+`GET /scheduler/jobs/:target/logs?count=20` returns `{success: true, data}` from
+the owning provider. `providerId` can select the provider explicitly; count
+defaults to 20. These are provider run-log records, not arbitrary server log
+files.
 
 ### Read Run Output
+
+The old `/scheduler/runs/output` path is not registered. Use:
+
 ```http
-POST /scheduler/runs/output
+POST /api/runs/output
 ```
 
-Reads the content of a run output file by its log path.
-
-**Request Body**:
-```json
-{ "path": "/path/to/output.log" }
-```
-
-**Response**:
-```json
-{ "success": true, "data": { "content": "Job output text..." } }
-```
-
----
+Send the **RunOutputRef returned by the run**, with `source`, `providerId`,
+`runId`, `artifactId`, and `kind`; do not send a filesystem path.
+[RunService](../../src-server/services/orchestration/run-service.ts) currently
+reads scheduled output on this path. SchedulerService resolves the reference
+back to the recorded run/artifact and asks that provider to read it. Hosted
+scheduled output is unavailable. A readable result is
+`{success: true, data: {content}}`; a missing supported result returns 404,
+while typed storage failure returns 503. Other malformed/unresolvable references
+can reach the handler's500 error path.
 
 ### Create Job
+
 ```http
 POST /scheduler/jobs
 ```
 
-**Request Body**: Job configuration. `prompt` and `name` are required. Schedule
-may use the compatible `cron` string or the provider-neutral union:
-
-```json
-{ "schedule": { "kind": "cron", "expr": "0 9 * * *", "timezone": "America/Denver" } }
-{ "schedule": { "kind": "every", "everyMs": 300000 } }
-{ "schedule": { "kind": "at", "timeMs": 1800000000000, "deleteAfterRun": true } }
-```
-
-**Response**:
-```json
-{ "success": true, "data": { "output": "Job created" } }
-```
-
----
-
-### Update Job
-```http
-PUT /scheduler/jobs/:target
-```
-
-**Request Body**: Updated job options, including the same `schedule` union.
-
-**Response**:
-```json
-{ "success": true, "data": { "output": "Job updated" } }
-```
-
----
-
-### Run Job Now
-```http
-POST /scheduler/jobs/:target/run
-```
-
-Triggers an immediate run of a scheduled job.
-
-**Response**:
 ```json
 {
-  "success": true,
-  "data": {
-    "output": "Scheduler job completed.",
-    "receipt": {
-      "outcome": "completed",
-      "message": "Scheduler job completed.",
-      "runId": "schedule:built-in:daily-report:run-1"
-    }
-  }
+  "name": "daily-summary",
+  "prompt": "Summarize the project status.",
+  "agent": "station",
+  "schedule": { "kind": "cron", "expr": "0 9 * * *", "timezone": "America/Denver" }
 }
 ```
 
-`data.output` is retained for older clients. New clients can use the additive
-receipt to observe the canonical run. A `409` with
-`code: "scheduler_run_indeterminate"` means provider work may have started;
-it is not safe to retry automatically. A receipt is omitted rather than
-guessed if an older server cannot provide a nonempty `runId`.
+`name` and `prompt` are required. Use either legacy `cron` or the `schedule`
+union, not both. Other schedule variants are `{kind: "every", everyMs}` and
+`{kind: "at", timeMs, deleteAfterRun?}`. The
+[request schemas](../../src-server/routes/schemas/schema-definitions/scheduler.ts)
+apply prompt limits and schedule validation. The response is
+`{success: true, data: {output}}`, where output is the provider's result text;
+it is not proof that a future run completed.
 
----
+### Update Job
+
+`PUT /scheduler/jobs/:target` accepts supported partial job options, including
+that schedule union, and returns `{success: true, data: {output}}`.
+
+### Run Job Now
+
+`POST /scheduler/jobs/:target/run` awaits the service's manual-run result.
+Current receipts distinguish `completed`, `failed`, `refused`, `deferred`, and
+`indeterminate`. The response retains `data.output` for older clients and adds
+`data.receipt` only when it has a nonempty canonical run ID.
+
+Completed runs return 200. Deferred and indeterminate runs return 409 with their
+respective codes; failed/refused outcomes return 422. An indeterminate result
+means work may have started: inspect its run rather than automatically replaying
+the request. A legacy provider's plain output result does not manufacture a run
+receipt.
 
 ### Enable Job
-```http
-PUT /scheduler/jobs/:target/enable
-```
 
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`PUT /scheduler/jobs/:target/enable` returns `{success: true}` after provider
+enablement. It does not mean the job has run.
 
 ### Disable Job
-```http
-PUT /scheduler/jobs/:target/disable
-```
 
-**Response**:
-```json
-{ "success": true }
-```
-
----
+`PUT /scheduler/jobs/:target/disable` returns `{success: true}` after disabling
+future scheduling through the provider. It is not an in-flight cancellation
+receipt.
 
 ### Delete Job
-```http
-DELETE /scheduler/jobs/:target
-```
 
-**Response**:
-```json
-{ "success": true }
-```
-
-These twelve operator operations are also available through
-`@kontourai/station-sdk/client`, `station schedule`, and station-control MCP.
-The SSE event stream and inbound webhook are deliberately HTTP-only transport
-surfaces.
-
----
+`DELETE /scheduler/jobs/:target` returns `{success: true}` after provider removal.
+Use the [SDK scheduler client](../../packages/sdk/src/client/scheduler.ts),
+`station schedule`, or corresponding station-control tools for supported
+operator operations. SSE and webhook retain their separate HTTP transport roles.
 
 ### Open File with System Handler
-```http
-POST /scheduler/open
-```
 
-Opens a file using the OS default application (`open` on macOS, `xdg-open` on Linux, `start` on Windows).
-
-**Request Body**:
-```json
-{ "path": "/path/to/file.log" }
-```
-
-**Response**:
-```json
-{ "success": true }
-```
-
----
+The former `POST /scheduler/open` route is not registered. Scheduled output is
+now opened in the [job-detail preview](../../src-ui/src/components/scheduler/JobDetail.tsx)
+using its RunOutputRef and `/api/runs/output`; this does not ask the server to
+open an arbitrary path in an OS application.
 
 ## System
 
-> **New section** — routes from `src-server/routes/system/system.ts`
+The [system factory](../../src-server/routes/system/system.ts) mounts status,
+update, and resource-posture handlers under `/api/system`. These are server
+observations, not physical native-window or device verification.
 
 ### Get System Status
-```http
-GET /system/status
-```
 
-Fast readiness check: resolves AWS credentials, checks ACP connections, detects installed CLIs, and aggregates onboarding prerequisites from all registered providers.
+`GET /api/system/status` returns a plain status object. It includes prerequisites
+and `prerequisitesState`, configured/detected providers, CLI observations,
+external-engine readiness, capability summaries, recommendation, build/server
+identity when available, and device presentation.
 
-**Response**:
-```json
-{
-  "prerequisites": [
-    { "id": "aws-sso", "label": "AWS SSO Login", "met": true, "source": "my-plugin" }
-  ],
-  "bedrock": {
-    "credentialsFound": true,
-    "verified": null,
-    "region": "us-east-1"
-  },
-  "acp": {
-    "connected": true,
-    "connections": [{ "id": "acp-1", "status": "connected" }]
-  },
-  "clis": {
-    "kiro-cli": true,
-    "claude": false
-  },
-  "externalEngines": [
-    {
-      "engineId": "codex",
-      "engineConnectionId": "codex",
-      "name": "Codex",
-      "detected": true,
-      "ready": true,
-      "source": "codex-cli"
-    }
-  ],
-  "ready": true
-}
-```
+Prerequisite discovery is cached for 60 seconds and refreshed asynchronously under
+a 2-second budget. `pending`, `ready`, and `stale` describe that cache. Some
+legacy boolean probes collapse failure/timeout to false, so false alone is not
+always an observed absence. The broad top-level `ready` is an OR of detected or
+configured paths; it is not proof that the user's chosen Agent/model can finish
+a chat turn. Use the more specific readiness and model evidence.
 
-`engineId` selects engine capability truth. `engineConnectionId` is the
-separate public Agent Apps identity used for navigation; clients must not
-derive either value from the other or from the Adapter-private runtime ID.
-
----
+`engineId` selects engine capability semantics; `engineConnectionId` identifies
+a public Agent App connection. Do not derive one from the other. See the
+[status owner](../../src-server/routes/system/system-status-routes.ts).
 
 ### Verify Bedrock Credentials
-```http
-POST /system/verify-bedrock
-```
 
-Heavier check — actually calls `ListFoundationModels` to confirm credentials work.
+`POST /api/system/verify-bedrock` (also `/api/system/verify-managed-runtime`)
+performs `ListFoundationModels` with an AWS SDK Bedrock client. Its optional
+body region wins over app-config region, then `us-east-1`. This legacy probe
+uses the SDK's default credential resolution; it does not reproduce every
+selected Model connection's auth mode.
 
-**Request Body** (optional):
-```json
-{ "region": "us-west-2" }
-```
-
-**Response**:
-```json
-{ "verified": true, "region": "us-east-1" }
-```
-
-**Error**:
-```json
-{ "verified": false, "error": "UnrecognizedClientException: ..." }
-```
-
----
+The response is plain `{verified: true, region}` or `{verified: false, error}`.
+A caught verification failure still returns 200. Successful listing proves that
+request worked, not a completed inference turn or universal account model access.
 
 ### Check for Core App Update
-```http
-GET /system/core-update
-```
 
-Checks the app's git repository for upstream commits.
+`GET /api/system/core-update` branches on
+[install provenance](../../src-server/routes/system/install-provenance.ts):
+source checkout, desktop bundle, or unknown. Read `installKind`, `applyMethod`,
+server identity, provenance issue, and unavailable reason as well as
+`updateAvailable`.
 
-**Response**:
-```json
-{
-  "currentHash": "abc1234",
-  "remoteHash": "def5678",
-  "branch": "main",
-  "behind": 3,
-  "ahead": 0,
-  "updateAvailable": true
-}
-```
-
-When no upstream is configured:
-```json
-{ "currentHash": "abc1234", "branch": "main", "behind": 0, "ahead": 0, "updateAvailable": false, "noUpstream": true }
-```
-
----
+For a source checkout, the handler fetches upstream and compares commits. If no
+upstream is set, it can fetch the current branch from origin and set its tracking
+branch; this GET is not a filesystem-inert observation. No usable upstream
+returns `noUpstream: true`. A failed check can return 200 with `error` and
+`updateAvailable: false`; that is not proof the installation is current.
+Desktop bundles check their recorded channel source; unknown provenance cannot
+check or apply an update reliably.
 
 ### Apply Core App Update
-```http
-POST /system/core-update
-```
 
-On a source checkout, runs `git pull --ff-only`, installs dependencies through
-the repository's owned lifecycle (`npm run dependencies:install`, the same step
-`station upgrade` runs), builds through the checkout's own `station build`, emits
-a `core:updated` event, and restarts the server under a detached health
-watchdog. A pulled tree without the owned dependency lifecycle fails closed
-(`500`) before anything is installed, built, or restarted.
+`POST /api/system/core-update` also branches on provenance. A source checkout
+refuses supervised execution (`service-managed` or `supervised`) and conflicting
+live sibling instances before update work. Otherwise it pulls fast-forward,
+checks the repository-owned dependency lifecycle, installs dependencies, builds,
+and schedules restart with a health watchdog. A missing installer/build failure
+returns 500 **after the pull may already have landed**; it does not roll back the
+checkout or claim all dependency effects were undone.
 
-**Response**:
-```json
-{ "success": true, "restarting": true, "hash": "def5678", "restart": { "expectedHash": "def5678", "expectedInstanceId": "default", "deadlineAt": "..." } }
-```
+A successful source response includes `restarting: true`, hash, and an expected
+instance/build/deadline receipt. It is not restart completion. Read
+`GET /api/system/core-update/restart-status` for the recorded outcome.
 
-A supervised server refuses with `409` before any git or build work, because
-its supervisor would restart it mid-update. The code is `service-managed` under
-the installed launchd/systemd service, and `supervised` when only a supervisor
-PID is present (the Windows service, the desktop, a development harness), whose
-remedy does not presume the service:
-
-```json
-{ "success": false, "selfUpdateUnavailableCode": "service-managed", "error": "... Stop the service with \"station service stop\", run \"station upgrade\", then start it again with \"station service start\" ..." }
-```
-
-`GET /system/core-update` reports the same refusal up front as
-`selfUpdateUnavailableCode` with the remedy in
-`selfUpdateUnavailableReason`, so clients do not offer an apply the server
-will refuse.
-
----
+The retained desktop-bundle apply path is macOS-only and requires the recorded
+source checkout, matching origin, and owned installer. It starts that installer
+detached and returns 202 with `updating: true` and a log path. That is initiation,
+not installation or relaunch proof. Unknown/ineligible provenance returns 409.
+See the [update owner](../../src-server/routes/system/system-update-routes.ts)
+for exact result branches.
 
 ### Get Server Capabilities
-```http
-GET /system/capabilities
-```
 
-Returns the server's runtime and available voice/context provider capabilities.
-
-**Response**:
-```json
-{
-  "runtime": "voltagent",
-  "voice": {
-    "stt": [
-      { "id": "webspeech", "name": "WebSpeech (Browser)", "clientOnly": true, "visibleOn": ["all"], "configured": true }
-    ],
-    "tts": [
-      { "id": "webspeech", "name": "WebSpeech (Browser)", "clientOnly": true, "visibleOn": ["all"], "configured": true }
-    ]
-  },
-  "context": {
-    "providers": [
-      { "id": "geolocation", "name": "Geolocation", "visibleOn": ["mobile"] },
-      { "id": "timezone", "name": "Timezone", "visibleOn": ["all"] }
-    ]
-  },
-  "scheduler": true
-}
-```
-
----
+`GET /api/system/capabilities` returns the runtime label, WebSpeech STT/TTS
+hints, geolocation/timezone context hints, `scheduler: true`, and deployment
+capabilities. The voice/context entries here are fixed declarations in the
+status handler, not live browser permission/API probes or discovery of every
+registered voice provider. Their `configured: true` does not prove a particular
+device can record or play audio.
 
 ### Discovery Beacon
-```http
-GET /system/discover
-```
 
-Open-CORS endpoint that LAN clients can probe to detect a Station server without credentials.
-
-**Response** (CORS: `*`):
-```json
-{
-  "station": true,
-  "name": "Project Station",
-  "port": 3141
-}
-```
+`GET /api/system/discover` is a retained beacon-shaped **authenticated read**
+under the current system route policy. Its handler sets a wildcard CORS header,
+but the runtime's origin and credential gates run first; it is not the public
+Station handshake. The body is `{station: true, name: "Project Station", port}`,
+with port derived from the request URL and a historic 3141 fallback when absent.
+Use the public well-known handshake for credential-free Station discovery.
 
 ---
 
@@ -2595,111 +2366,60 @@ cannot resolve an authorized pending request.
 ---
 
 ### Global Conversation Lookup
-```http
-GET /api/conversations/:id
-```
 
-Looks up a conversation by ID across all agents and projects.
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "id": "conv-123",
-    "agentSlug": "my-agent",
-    "title": "Conversation Title"
-  }
-}
-```
-
----
+`GET /api/conversations/:id` returns `{success: true, data}` or 404 when not found.
+The [lookup handler](../../src-server/routes/chat/conversations.ts) checks personal
+Project storage, then file-memory adapters, then the authorized orchestration
+reader. Hosted mode skips the two personal storage branches. File-memory Agent
+attribution comes from the stored resource ID, with the adapter key as fallback;
+response shape can also include Project and fork-provenance fields.
 
 ## Additional System Routes
 
 ### Get Runtime Info
-```http
-GET /api/system/runtime
-```
 
-Returns the current runtime type.
-
-**Response**:
-```json
-{ "runtime": "voltagent" }
-```
-
----
+`GET /api/system/runtime` returns `{runtime}` for the server's implementation
+framework. It is not an inventory of external engines.
 
 ### List Skills
-```http
-GET /api/system/skills
-```
 
-Returns available skills.
-
----
+`GET /api/system/skills` returns `{success: true, data}` from SkillService, or an
+empty list when that service is not supplied to this handler.
 
 ### Get Terminal Port
-```http
-GET /api/system/terminal-port
-```
 
-Returns the terminal WebSocket port.
-
----
+`GET /api/system/terminal-port` returns `{success: true, port}` with the runtime
+base port plus 1. It reports the configured number, not proof the listener is
+bound or that this caller can open a terminal.
 
 ### Get Voice Port
-```http
-GET /api/system/voice-port
-```
 
-Returns the Voice WebSocket port (mirrors `/api/system/terminal-port`; see
-`docs/reference/cli.md#accessing-station-remotely-198`).
-
----
+`GET /api/system/voice-port` returns the analogous configured base plus 2.
+Provider/device capability and WebSocket admission are separate from this
+number. Both handlers are in the [status owner](../../src-server/routes/system/system-status-routes.ts).
 
 ## UI Commands
 
 ### Dispatch UI Command
+
 ```http
 POST /api/ui
 ```
 
-Dispatches a command to the frontend via the event bus.
-
-**Request Body**:
 ```json
-{
-  "command": "navigate",
-  "payload": { "path": "/settings" }
-}
+{ "command": "navigate", "payload": { "path": "/settings" } }
 ```
 
-**Response** (delivered — personal-mode deployment):
-```json
-{ "success": true }
-```
+The [UI command handler](../../src-server/routes/projects/ui-commands.ts) accepts
+a local absolute navigation path and emits `ui:navigate`. Invalid paths and
+unknown commands return 400. Hosted mode refuses navigation with 403, as does a
+request whose derived audience is explicitly unavailable.
 
-Delivery is best-effort even on success: `{success: true}` means the command
-was accepted and broadcast, not that a connected client received it — with no
-client listening, this is still `true`.
-
-**Response** (refused — hosted multi-tenant deployment, 403): `navigate`
-carries no destination identity to route it to one tenant's connections, so a
-hosted deployment refuses the command outright rather than broadcasting it to
-every tenant.
-```json
-{
-  "success": false,
-  "error": "Navigation commands are not delivered in hosted multi-tenant mode: /events has no destination identity to route ui:navigate to one tenant's connections, so it is denied rather than broadcast to every tenant."
-}
-```
-
-**Response** (invalid path, 400):
-```json
-{ "success": false, "error": "Invalid navigation path" }
-```
+In personal mode, a principal-scoped agent command addresses that principal's
+clients; an unrestricted operator command can address the personal listeners.
+The [event relay](../../src-server/routes/orchestration/events.ts) applies that
+audience. `{success: true}` means the event was accepted, not that a client
+received it or changed its screen. With no listener, acceptance can still succeed.
 
 ---
 
