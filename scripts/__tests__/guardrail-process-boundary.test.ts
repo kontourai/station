@@ -46,6 +46,8 @@
  * (`check-generated-pages-links.mjs` also gets a pair below. It is NOT one of
  * the 54: the Pages workflow runs it, not `verify:static:raw`. It is here
  * because the fixture was free once the harness existed.)
+ * (`test-fixture-policy.mjs` later joined the accept runs, when
+ * `verification:policy:gate` was added to that file's derivation.)
  *
  * ## What this suite deliberately does NOT do
  *
@@ -254,6 +256,11 @@ const PRODUCTION_ACCEPT_GATES: ReadonlyArray<{
     script: 'stored-path-expansion-guard.mjs',
     reason:
       'a ratchet over the real src tree whose baseline entries must each still match a live finding; a fixture cannot carry the production baseline and a synthetic one would test nothing the unit test does not',
+  },
+  {
+    script: 'test-fixture-policy.mjs',
+    reason:
+      'reached through verification:policy:gate; its classification rules are proven in-process by test-fixture-policy.test.ts, and the subject here is the real test corpus and its checked-in baseline',
   },
 ];
 

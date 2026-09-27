@@ -1,0 +1,27 @@
+#!/bin/sh
+# Station portable launcher. It runs the Node.js runtime bundled in this
+# archive and never a Node.js found on PATH, so the host needs no Node install.
+set -eu
+
+self=$0
+# Follow a symlinked launcher (for example ~/.local/bin/station) back to the
+# archive, so a relative link still finds runtime/ and dist-server/.
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *) self=${self%/*}/$link ;;
+  esac
+done
+case $self in
+  */*) bin_dir=${self%/*} ;;
+  *) bin_dir=. ;;
+esac
+root=$(CDPATH='' cd -- "$bin_dir/.." && pwd -P)
+
+# As the checkout's ./station does: remember where the caller was, then run
+# from the archive root, which the CLI treats as its code root and the server
+# reads schemas/ relative to.
+export STATION_INVOKED_CWD="$PWD"
+cd "$root"
+exec "$root/runtime/bin/node" "$root/bin/station.mjs" "$@"
