@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { createLearningSourceReader } from './lib/learning-source-reader.mjs';
+import { publishMetricReference } from './lib/metric-reference-output.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -98,8 +99,53 @@ export function parseMetricDeclarations(source) {
   }
   const meters = new Set();
   const meterBindings = new Set();
+  const apiBindings = new Set();
+  for (const statement of file.statements) {
+    if (
+      ts.isExportDeclaration(statement) &&
+      statement.moduleSpecifier &&
+      !statement.isTypeOnly
+    )
+      fail(
+        statement,
+        'Runtime re-exports are unsupported in the metric owner.',
+      );
+    if (!ts.isImportDeclaration(statement)) continue;
+    const clause = statement.importClause;
+    if (clause?.isTypeOnly) continue;
+    if (
+      statement.moduleSpecifier.text !== '@opentelemetry/api' ||
+      clause?.name ||
+      !clause?.namedBindings ||
+      !ts.isNamedImports(clause.namedBindings)
+    )
+      fail(
+        statement,
+        'Unsupported runtime import; the metric owner requires named metrics/trace imports from @opentelemetry/api.',
+      );
+    for (const specifier of clause.namedBindings.elements) {
+      if (specifier.isTypeOnly) continue;
+      if (
+        specifier.propertyName ||
+        !['metrics', 'trace'].includes(specifier.name.text)
+      )
+        fail(
+          specifier,
+          'Unsupported API import alias or binding; use metrics/trace directly.',
+        );
+      if (specifier.name.text === 'metrics') apiBindings.add(specifier.name);
+    }
+  }
+  if (apiBindings.size !== 1)
+    fail(
+      file,
+      'Exactly one named metrics import from @opentelemetry/api is required.',
+    );
   const isMeterCreation = (node) =>
-    ts.isCallExpression(node) && memberName(node.expression) === 'getMeter';
+    ts.isCallExpression(node) &&
+    memberName(node.expression) === 'getMeter' &&
+    ts.isIdentifier(unwrap(node.expression.expression)) &&
+    unwrap(node.expression.expression).text === 'metrics';
   function findMeters(node) {
     if (
       ts.isVariableDeclaration(node) &&
@@ -108,6 +154,24 @@ export function parseMetricDeclarations(source) {
     ) {
       if (!ts.isIdentifier(node.name))
         fail(node, 'Unsupported meter binding; use a named variable.');
+      const statement = node.parent.parent;
+      if (
+        !ts.isVariableStatement(statement) ||
+        statement.parent !== file ||
+        !(node.parent.flags & ts.NodeFlags.Const) ||
+        exported(statement)
+      )
+        fail(
+          node,
+          'getMeter must initialize a non-exported top-level const binding.',
+        );
+      const call = unwrap(node.initializer);
+      if (
+        call.arguments.length !== 1 ||
+        !ts.isStringLiteralLike(call.arguments[0])
+      )
+        fail(call, 'getMeter requires one literal scope name.');
+      if (meters.has(node.name.text)) fail(node, 'Duplicate meter binding.');
       meters.add(node.name.text);
       meterBindings.add(node.name);
     }
@@ -160,6 +224,54 @@ export function parseMetricDeclarations(source) {
   const names = new Set();
   function visit(node) {
     if (
+      ts.isImportEqualsDeclaration(node) ||
+      (ts.isCallExpression(node) &&
+        node.expression.kind === ts.SyntaxKind.ImportKeyword)
+    )
+      fail(
+        node,
+        'Dynamic imports and import aliases are unsupported in the metric owner.',
+      );
+    if (
+      ts.isIdentifier(node) &&
+      ['eval', 'Function', 'require'].includes(node.text)
+    )
+      fail(node, 'Opaque code evaluation is unsupported in the metric owner.');
+    if (
+      ts.isIdentifier(node) &&
+      node.text === 'metrics' &&
+      !apiBindings.has(node)
+    ) {
+      const access = node.parent;
+      if (
+        (!ts.isPropertyAccessExpression(access) &&
+          !ts.isElementAccessExpression(access)) ||
+        access.expression !== node ||
+        memberName(access) !== 'getMeter' ||
+        !ts.isCallExpression(access.parent) ||
+        access.parent.expression !== access
+      )
+        fail(
+          node,
+          'The metrics API may only be used by a direct getMeter declaration; API aliases and escaping references are unsupported.',
+        );
+    }
+    if (isMeterCreation(node)) {
+      let expression = node;
+      while (expression.parent && unwrap(expression.parent) === node)
+        expression = expression.parent;
+      const declaration = expression.parent;
+      if (
+        !ts.isVariableDeclaration(declaration) ||
+        declaration.initializer !== expression ||
+        !meterBindings.has(declaration.name)
+      )
+        fail(
+          node,
+          'getMeter results must initialize a non-exported top-level const; escaping or inline results are unsupported.',
+        );
+    }
+    if (
       ts.isIdentifier(node) &&
       meters.has(node.text) &&
       !meterBindings.has(node)
@@ -188,11 +300,7 @@ export function parseMetricDeclarations(source) {
       const receiverIsMeter = isMeter(node.expression);
       if (receiverIsMeter && !method)
         fail(node, 'Dynamic meter member access is unsupported.');
-      if (
-        receiverIsMeter &&
-        method?.startsWith('create') &&
-        !factories.has(method)
-      )
+      if (receiverIsMeter && !factories.has(method))
         fail(node, `Unsupported instrument factory '${method}'.`);
       if (factories.has(method)) {
         if (!receiverIsMeter)
@@ -235,8 +343,7 @@ export function parseMetricDeclarations(source) {
 
 function cell(value) {
   if (value === null) return 'not declared';
-  if (value === '') return '(empty string)';
-  return value
+  return JSON.stringify(value)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
@@ -247,7 +354,7 @@ function cell(value) {
     .replaceAll('_', '\\_')
     .replaceAll('[', '\\[')
     .replaceAll(']', '\\]')
-    .replace(/\r\n|\r|\n/g, '<br>');
+    .replaceAll('~', '\\~');
 }
 
 export function renderMetricReference(source) {
@@ -271,9 +378,9 @@ export function renderMetricReference(source) {
     `Source: [\`${sourcePath}\`](../../${sourcePath}).`,
     `Source SHA-256: \`${digest}\`. This identifies the input file, not a running build or collection receipt.`,
     '',
-    `The TypeScript AST contains **${declarations.length} creation calls**, listed in source order. Binding/export labels describe the creation declaration, not later aliases or re-exports. “not declared” does not infer an SDK default.`,
+    `The TypeScript AST contains **${declarations.length} creation calls**, listed in source order. Binding/export labels describe the creation declaration, not later aliases or re-exports. String cells use JSON notation, preserving quotes, backslashes and control characters; “not declared” does not infer an SDK default.`,
     '',
-    'Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm run docs:metrics:check`. The documentation gate runs the check. The parser accepts direct meter factory calls with literal names and literal description/unit options; unsupported factories, aliases, dynamic metadata, duplicate names and an empty inventory fail rather than disappear from this reference.',
+    'Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm run docs:metrics:check`. The documentation gate runs the check. This owner supports named metrics/trace imports from `@opentelemetry/api`, direct `metrics.getMeter` calls initializing non-exported top-level constants, and direct meter factories with literal names and description/unit options. Other runtime imports, API/meter escapes, unsupported factories, dynamic metadata, duplicate names and an empty inventory fail. This is a deliberately restricted declaration grammar, not analysis of arbitrary JavaScript execution.',
     '',
     '| Declared instrument name | Factory kind | Binding at declaration | Declared description | Declared unit | Source |',
     '| --- | --- | --- | --- | --- | --- |',
@@ -286,27 +393,34 @@ async function generateMetricReference({
   check = false,
   root: inputRoot = root,
 } = {}) {
-  const expected = renderMetricReference(
-    await readFile(path.join(inputRoot, sourcePath), 'utf8'),
-  );
-  const output = path.join(inputRoot, outputPath);
+  const reader = createLearningSourceReader(inputRoot);
+  let source;
+  try {
+    source = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+      reader.read(sourcePath),
+    );
+  } catch (error) {
+    if (error.code === 'ERR_ENCODING_INVALID_ENCODED_DATA')
+      throw new Error(`${sourcePath} is not valid UTF-8.`);
+    throw error;
+  }
+  const expected = renderMetricReference(source);
   if (check) {
     let actual;
     try {
-      actual = await readFile(output, 'utf8');
+      actual = reader.read(outputPath);
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
       throw new Error(
         `${outputPath} is missing; run npm run docs:metrics:generate.`,
       );
     }
-    if (actual !== expected)
+    if (!actual.equals(Buffer.from(expected)))
       throw new Error(
         `${outputPath} is stale; run npm run docs:metrics:generate.`,
       );
   } else {
-    await mkdir(path.dirname(output), { recursive: true });
-    await writeFile(output, expected);
+    publishMetricReference(inputRoot, outputPath, expected);
   }
   return Buffer.byteLength(expected);
 }

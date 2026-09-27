@@ -1,7 +1,17 @@
+// @vitest-environment jsdom
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs';
@@ -10,29 +20,67 @@ import {
   parseMetricDeclarations,
   renderMetricReference,
 } from '../generate-metric-reference.mjs';
+import { renderLearningDocument } from '../lib/learning-markdown.mjs';
+import { publishMetricReference } from '../lib/metric-reference-output.mjs';
 
-const root = fileURLToPath(new URL('../../', import.meta.url));
+const root = process.cwd();
 const script = path.join(root, 'scripts/generate-metric-reference.mjs');
 const sourcePath = 'src-server/telemetry/metrics.ts';
 const outputPath = 'docs/reference/metrics.md';
-const prelude = "const meter = metrics.getMeter('station');\n";
+const prelude =
+  "import { metrics } from '@opentelemetry/api';\nconst meter = metrics.getMeter('station');\n";
 const makeTempDir = trackTempDirs();
 
-function cli(fixtureRoot: string, ...args: string[]) {
-  const result = spawnSync(
-    process.execPath,
-    [script, `--root=${fixtureRoot}`, ...args],
-    {
-      cwd: fixtureRoot,
-      encoding: 'utf8',
-      windowsHide: true,
-      timeout: 15_000,
-      maxBuffer: 128 * 1024,
-    },
-  );
+function runCli(entry: string, fixtureRoot: string, args: string[]) {
+  const result = spawnSync(process.execPath, [entry, ...args], {
+    cwd: fixtureRoot,
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 15_000,
+    maxBuffer: 128 * 1024,
+  });
   expect(result.error).toBeUndefined();
   expect(result.signal).toBeNull();
   return result;
+}
+
+function cli(fixtureRoot: string, ...args: string[]) {
+  return runCli(script, fixtureRoot, [`--root=${fixtureRoot}`, ...args]);
+}
+
+function defaultCli(fixtureRoot: string, ...args: string[]) {
+  return runCli(
+    path.join(fixtureRoot, 'scripts/generate-metric-reference.mjs'),
+    fixtureRoot,
+    args,
+  );
+}
+
+function cliFixture() {
+  const fixtureRoot = makeTempDir('station-metric-owner-');
+  for (const directory of [
+    'scripts/lib',
+    'src-server/telemetry',
+    'docs/reference',
+  ])
+    mkdirSync(path.join(fixtureRoot, directory), { recursive: true });
+  for (const file of [
+    'scripts/generate-metric-reference.mjs',
+    'scripts/lib/module-entry.mjs',
+    'scripts/lib/learning-source-reader.mjs',
+    'scripts/lib/metric-reference-output.mjs',
+  ])
+    copyFileSync(path.join(root, file), path.join(fixtureRoot, file));
+  symlinkSync(
+    path.join(root, 'node_modules'),
+    path.join(fixtureRoot, 'node_modules'),
+    'junction',
+  );
+  writeFileSync(
+    path.join(fixtureRoot, sourcePath),
+    `${prelude}meter.createCounter('station.control');\n`,
+  );
+  return fixtureRoot;
 }
 
 describe('metric declaration reference', () => {
@@ -73,7 +121,7 @@ const local = (meter['createCounter']('station.local', {unit: ''}) as Counter);
         description: `Description ${index}`,
         unit: 'ms',
         container: null,
-        line: index + 2,
+        line: index + 3,
       })),
     );
     expect(declarations[7]).toMatchObject({
@@ -82,7 +130,7 @@ const local = (meter['createCounter']('station.local', {unit: ''}) as Counter);
       container: 'register',
       description: null,
       unit: null,
-      line: 10,
+      line: 11,
     });
     expect(declarations[8]).toMatchObject({
       name: 'station.local',
@@ -165,7 +213,7 @@ const local = (meter['createCounter']('station.local', {unit: ''}) as Counter);
   ])('refuses unsupported or ambiguous declarations: %s', (body, error) => {
     expect(() => parseMetricDeclarations(prelude + body)).toThrow(error);
     expect(() => parseMetricDeclarations(prelude + body)).toThrow(
-      `${sourcePath}:2:`,
+      `${sourcePath}:3:`,
     );
   });
 
@@ -174,7 +222,7 @@ const local = (meter['createCounter']('station.local', {unit: ''}) as Counter);
       'no metric instrument declarations found',
     );
     expect(() => parseMetricDeclarations(`${prelude}const = ;`)).toThrow(
-      `${sourcePath}:2:`,
+      `${sourcePath}:3:`,
     );
   });
 
@@ -186,14 +234,197 @@ export const declared = meter.createCounter('station.a', {description: '<tag>|[l
 meter.createGauge('station.b');
 `,
     );
-    expect(output).toContain('&lt;tag&gt;&#124;\\[link\\]<br>next');
-    expect(output).toContain('| (empty string) |');
+    expect(output).toContain('&lt;tag&gt;&#124;\\[link\\]\\\\nnext');
+    expect(output).toContain('| "" |');
     expect(output).toContain('| not declared | not declared |');
-    expect(output).toContain(`../../${sourcePath}#L3`);
+    expect(output).toContain(`../../${sourcePath}#L4`);
     expect(output).toContain(
       'do **not** establish producers, live collection, correct labels, observed units or billing accuracy',
     );
     expect(output).toContain('../guides/monitoring.md');
+  });
+
+  it.each([
+    "function register(m) { m['create' + 'Counter']('station.hidden'); } register(metrics.getMeter('station'));",
+    "const get = metrics.getMeter.bind(metrics); const hidden = get('station'); hidden['create' + 'Counter']('station.hidden');",
+    "const api = metrics; api['get' + 'Meter']('station').createCounter('station.hidden');",
+    "const { getMeter } = metrics; getMeter('station')['create' + 'Counter']('station.hidden');",
+    "metrics.getMeter('station')['create' + 'Counter']('station.hidden');",
+    "const get = metrics['get' + 'Meter'];",
+    "const api = await import('@opentelemetry/api');",
+    'export { metrics };',
+    "export * from './hidden.js';",
+    "export { hidden } from './hidden.js';",
+    "export * as hidden from './hidden.js';",
+  ])('refuses API roots that escape the declaration grammar: %s', (body) => {
+    expect(() =>
+      parseMetricDeclarations(
+        `${prelude}meter.createCounter('station.visible');\n${body}`,
+      ),
+    ).toThrow(/unsupported|must initialize|may only be used/);
+  });
+
+  it.each([
+    "import { metrics as other } from '@opentelemetry/api';",
+    "import * as api from '@opentelemetry/api';",
+    "import { makeMeter } from './hidden.js';",
+  ])(
+    'refuses other runtime imports rather than silently skipping ownership: %s',
+    (statement) => {
+      expect(() =>
+        parseMetricDeclarations(
+          `${statement}\n${prelude}meter.createCounter('station.visible');`,
+        ),
+      ).toThrow(/Unsupported/);
+    },
+  );
+
+  it('preserves literal string contents through the actual learning Markdown renderer', () => {
+    const description =
+      'first\nsecond | <tag> ~~literal~~ \\n "quote" `code` &nbsp;\r\t';
+    const output = renderMetricReference(
+      `${prelude}meter.createCounter('station.render', {description: ${JSON.stringify(description)}, unit: ''});`,
+    );
+    const rendered = renderLearningDocument(
+      output,
+      outputPath,
+      new Set([outputPath, 'docs/guides/monitoring.md']),
+      'fixture',
+      new Set([sourcePath]),
+    );
+    // Vitest supplies jsdom; keep the scripts compiler's Node-only library scope.
+    const browser = globalThis as typeof globalThis & {
+      DOMParser: new () => {
+        parseFromString(
+          html: string,
+          type: 'text/html',
+        ): {
+          querySelectorAll(
+            selector: string,
+          ): ArrayLike<{ textContent: string | null }>;
+          querySelector(selector: string): unknown;
+        };
+      };
+    };
+    expect(typeof browser.DOMParser).toBe('function');
+    const document = new browser.DOMParser().parseFromString(
+      rendered.html,
+      'text/html',
+    );
+    const cells = document.querySelectorAll('tbody tr:first-child td');
+    expect(cells).toHaveLength(6);
+    expect(cells[3].textContent).toBe(JSON.stringify(description));
+    expect(JSON.parse(cells[3].textContent!)).toBe(description);
+    expect(cells[4].textContent).toBe('""');
+    expect(document.querySelector('del')).toBeNull();
+  });
+
+  for (const kind of [
+    'input-leaf',
+    'input-ancestor',
+    'output-leaf',
+    'output-ancestor',
+  ] as const) {
+    // Windows file symlinks need privileges; directory junction cases still run there.
+    it.skipIf(process.platform === 'win32' && kind.endsWith('leaf'))(
+      `refuses ${kind} symlinks through default CLI paths and preserves existing bytes`,
+      () => {
+        const fixtureRoot = cliFixture();
+        const outside = makeTempDir('station-metric-outside-');
+        expect(defaultCli(fixtureRoot).status).toBe(0);
+        const sourceFile = path.join(fixtureRoot, sourcePath);
+        const artifact = path.join(fixtureRoot, outputPath);
+        const sourceBytes = readFileSync(sourceFile);
+        const artifactBytes = readFileSync(artifact);
+        const input = kind.startsWith('input');
+        const leaf = kind.endsWith('leaf');
+        const target = input ? sourceFile : artifact;
+        const linked = leaf ? target : path.dirname(target);
+        const outsideFile = path.join(
+          outside,
+          `metrics.${input ? 'ts' : 'md'}`,
+        );
+        const outsideBytes = Buffer.from(
+          input
+            ? `${prelude}meter.createCounter('station.outside'); // CONTROLLED_OUTSIDE\n`
+            : 'CONTROLLED_OUTSIDE\n',
+        );
+        writeFileSync(outsideFile, outsideBytes);
+        renameSync(linked, `${linked}.saved`);
+        try {
+          symlinkSync(
+            leaf ? outsideFile : outside,
+            linked,
+            leaf ? 'file' : 'junction',
+          );
+          for (const args of [[], ['--check']]) {
+            const result = defaultCli(fixtureRoot, ...args);
+            expect(result.status).toBe(1);
+            expect(result.stderr).toMatch(
+              /symlink|symbolic link|real directory/i,
+            );
+            expect(readFileSync(outsideFile)).toEqual(outsideBytes);
+          }
+        } finally {
+          unlinkSync(linked);
+          renameSync(`${linked}.saved`, linked);
+        }
+        expect(readFileSync(sourceFile)).toEqual(sourceBytes);
+        expect(readFileSync(artifact)).toEqual(artifactBytes);
+        expect(defaultCli(fixtureRoot, '--check').status).toBe(0);
+      },
+    );
+  }
+
+  it('rejects malformed source UTF-8 without replacing an artifact and preserves BOM bytes in its hash', () => {
+    const fixtureRoot = cliFixture();
+    expect(defaultCli(fixtureRoot).status).toBe(0);
+    const artifact = path.join(fixtureRoot, outputPath);
+    const before = readFileSync(artifact);
+    const sourceFile = path.join(fixtureRoot, sourcePath);
+    const valid = readFileSync(sourceFile);
+    writeFileSync(
+      sourceFile,
+      Buffer.concat([valid, Buffer.from('// malformed '), Buffer.from([0xff])]),
+    );
+    for (const args of [[], ['--check']]) {
+      const result = defaultCli(fixtureRoot, ...args);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('not valid UTF-8');
+      expect(readFileSync(artifact)).toEqual(before);
+    }
+    writeFileSync(
+      sourceFile,
+      Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), valid]),
+    );
+    expect(defaultCli(fixtureRoot).status).toBe(0);
+    expect(defaultCli(fixtureRoot, '--check').status).toBe(0);
+    expect(readFileSync(artifact, 'utf8')).toContain(
+      createHash('sha256').update(readFileSync(sourceFile)).digest('hex'),
+    );
+  });
+
+  it('allows an explicit root alias while refusing nonportable output coordinates', () => {
+    const fixtureRoot = cliFixture();
+    const aliasParent = makeTempDir('station-metric-root-alias-');
+    const alias = path.join(aliasParent, 'checkout');
+    symlinkSync(fixtureRoot, alias, 'junction');
+    expect(cli(alias).status).toBe(0);
+    expect(cli(alias, '--check').status).toBe(0);
+    const before = readFileSync(path.join(fixtureRoot, outputPath));
+    for (const coordinate of [
+      '../outside.md',
+      '/outside.md',
+      'docs\\outside.md',
+      'C:outside.md',
+      'docs/./outside.md',
+      'docs//outside.md',
+    ]) {
+      expect(() =>
+        publishMetricReference(fixtureRoot, coordinate, 'replacement'),
+      ).toThrow('Unsafe metric reference output');
+    }
+    expect(readFileSync(path.join(fixtureRoot, outputPath))).toEqual(before);
   });
 
   it('matches every creation call in the live source and its checked-in reference', () => {
