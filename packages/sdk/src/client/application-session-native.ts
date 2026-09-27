@@ -17,6 +17,7 @@ import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-c
 import type { ApplicationSessionSigner } from './application-session';
 
 const OPAQUE = /^[A-Za-z0-9_-]{43}$/;
+const LOCAL_REPLAY_WINDOW = 4096;
 
 export const NATIVE_APPLICATION_SESSION_CHALLENGE_PATH =
   APPLICATION_SESSION_NATIVE_CHALLENGE_PATH;
@@ -79,14 +80,19 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export async function canonicalCredentialsHash(
+export async function serializedCredentialsHash(
   credentials: Readonly<Record<string, unknown>>,
 ): Promise<string> {
+  // Match the Station owner's JSON.stringify(parsed credentials) exactly.
+  // Sorting keys here would sign different bytes from the provider login body.
+  const serialized = JSON.stringify(credentials);
+  if (typeof serialized !== 'string')
+    throw new Error('Native provider credentials are not JSON serializable.');
   return base64url(
     new Uint8Array(
       await crypto.subtle.digest(
         'SHA-256',
-        new TextEncoder().encode(canonical(credentials)),
+        new TextEncoder().encode(serialized),
       ),
     ),
   );
@@ -102,6 +108,19 @@ function sameSurface(
     left.channel === right.channel &&
     left.clientInstanceId === right.clientInstanceId &&
     left.keyThumbprint === right.keyThumbprint
+  );
+}
+
+function sameTrustSnapshot(
+  left: NativeApplicationSessionTrustSnapshotV1,
+  right: NativeApplicationSessionTrustSnapshotV1,
+): boolean {
+  return (
+    left.kind === right.kind &&
+    left.stationId === right.stationId &&
+    left.audience === right.audience &&
+    left.deviceId === right.deviceId &&
+    sameSurface(left.surface, right.surface)
   );
 }
 
@@ -153,7 +172,11 @@ function canonicalAudience(value: string): string {
   }
   if (
     url.origin !== value ||
-    url.protocol !== 'https:' ||
+    !(
+      url.protocol === 'https:' ||
+      (url.protocol === 'http:' &&
+        ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))
+    ) ||
     url.pathname !== '/' ||
     url.search ||
     url.hash ||
@@ -161,7 +184,7 @@ function canonicalAudience(value: string): string {
     url.password
   )
     throw new Error(
-      'Native application session audience must be a canonical HTTPS Origin.',
+      'Native application session audience must be HTTPS or loopback HTTP.',
     );
   return value;
 }
@@ -171,10 +194,15 @@ function requestPath(value: string): string {
     typeof value !== 'string' ||
     !value.startsWith('/') ||
     value.startsWith('//') ||
-    /[\\?#\r\n\0]/.test(value) ||
+    /[\\#\r\n\0]/.test(value) ||
     value.length > 2048
   )
     throw new Error('Native application session request path is invalid.');
+  const parsed = new URL(value, 'https://station.invalid');
+  if (parsed.pathname + parsed.search !== value)
+    throw new Error(
+      'Native application session request path is not canonical.',
+    );
   return value;
 }
 
@@ -202,6 +230,8 @@ export async function createNativeApplicationSessionProof(
 ): Promise<string> {
   if (trust.kind !== 'station-native')
     throw new Error('Native application session trust must be station-native.');
+  if (claims.deviceId !== trust.deviceId || !OPAQUE.test(claims.nonce))
+    throw new Error('Native application session proof binding changed.');
   const audience = canonicalAudience(trust.audience);
   const surface = trust.surface;
   if (
@@ -330,7 +360,11 @@ function parseContinuation(
 function asCredentials(value: Readonly<Record<string, unknown>>) {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('Native provider credentials must be an object.');
-  if (canonical(value).length > 16 * 1024)
+  const serialized = JSON.stringify(value);
+  if (
+    typeof serialized !== 'string' ||
+    new TextEncoder().encode(serialized).byteLength > 16 * 1024
+  )
     throw new Error('Native provider credentials exceed the canonical bound.');
   return value;
 }
@@ -359,13 +393,28 @@ export class NativeApplicationSessionClient {
     if (snapshot?.kind !== 'station-native')
       throw new Error('Native application session trust is unavailable.');
     canonicalAudience(snapshot.audience);
-    return snapshot;
+    if (!snapshot.stationId || !snapshot.deviceId || !snapshot.surface)
+      throw new Error('Native application session trust is incomplete.');
+    return Object.freeze({
+      kind: 'station-native' as const,
+      stationId: snapshot.stationId,
+      audience: snapshot.audience,
+      deviceId: snapshot.deviceId,
+      surface: Object.freeze({ ...snapshot.surface }),
+    });
   }
 
-  private async assertFreshJti(jti: string) {
-    if (this.issuedJti.has(jti))
-      throw new Error('Native application session proof JTI reuse detected.');
-    this.issuedJti.add(jti);
+  private assertSameTrust(expected: NativeApplicationSessionTrustSnapshotV1) {
+    if (!sameTrustSnapshot(this.current(), expected))
+      throw new Error('Native application session trust changed.');
+  }
+
+  private rememberOnce(values: Set<string>, value: string, label: string) {
+    if (values.has(value))
+      throw new Error(`Native application session ${label} reuse detected.`);
+    values.add(value);
+    if (values.size > LOCAL_REPLAY_WINDOW)
+      values.delete(values.values().next().value!);
   }
 
   /** Request the challenge and validate it against the current trust snapshot. */
@@ -376,6 +425,7 @@ export class NativeApplicationSessionClient {
     const thumbprint = await applicationSessionKeyThumbprint(
       this.key.publicKey,
     );
+    this.assertSameTrust(trust);
     const response = await this.transport.post({
       path: NATIVE_APPLICATION_SESSION_CHALLENGE_PATH,
       headers: {},
@@ -384,6 +434,7 @@ export class NativeApplicationSessionClient {
         publicKey: this.key.publicKey,
       },
     });
+    this.assertSameTrust(trust);
     const challenge = parseChallenge(response, trust, thumbprint);
     if (this.consumedChallenges.has(challenge.challengeId))
       throw new Error('Native application session challenge reuse detected.');
@@ -405,8 +456,13 @@ export class NativeApplicationSessionClient {
     const trust = this.current();
     const checked = asCredentials(credentials);
     const challenge = await this.challenge(nowMs);
-    this.consumedChallenges.add(challenge.challengeId);
-    const credentialsHash = await canonicalCredentialsHash(checked);
+    this.assertSameTrust(trust);
+    this.rememberOnce(
+      this.consumedChallenges,
+      challenge.challengeId,
+      'challenge',
+    );
+    const credentialsHash = await serializedCredentialsHash(checked);
     const credentialProof = await createNativeApplicationSessionProof(
       this.key,
       trust,
@@ -430,7 +486,8 @@ export class NativeApplicationSessionClient {
       nowMs,
     );
     const claims = decodeClaims(credentialProof);
-    await this.assertFreshJti(claims.jti);
+    this.rememberOnce(this.issuedJti, claims.jti, 'proof JTI');
+    this.assertSameTrust(trust);
     const body: NativeApplicationSessionExchangeV1 = {
       version: APPLICATION_SESSION_NATIVE_VERSION,
       challengeId: challenge.challengeId,
@@ -444,6 +501,7 @@ export class NativeApplicationSessionClient {
       },
       body,
     });
+    this.assertSameTrust(trust);
     return parseContinuation(
       response,
       trust,
@@ -501,7 +559,8 @@ export class NativeApplicationSessionClient {
       nowMs,
     );
     const claims = decodeClaims(proof);
-    await this.assertFreshJti(claims.jti);
+    this.rememberOnce(this.issuedJti, claims.jti, 'proof JTI');
+    this.assertSameTrust(trust);
     return {
       [APPLICATION_SESSION_NATIVE_HEADER]: current.credential,
       [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: proof,

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   APPLICATION_SESSION_NATIVE_CHALLENGE_PATH,
   APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
@@ -12,10 +13,10 @@ import { describe, expect, test, vi } from 'vitest';
 import { createApplicationSessionKey } from '../client/application-session';
 import {
   applicationSessionKeyThumbprint,
-  canonicalCredentialsHash,
   createNativeApplicationSessionProof,
   NativeApplicationSessionClient,
   type NativeApplicationSessionTrustSnapshotV1,
+  serializedCredentialsHash,
 } from '../client/application-session-native';
 
 const OPAQUE = (label: string) => label.padEnd(43, 'A').slice(0, 43);
@@ -56,6 +57,7 @@ async function fixture() {
   let continuationOverride: Partial<NativeApplicationSessionContinuationV1> =
     {};
   let dropContinuation = false;
+  let afterChallenge: (() => void) | undefined;
   const posts: {
     path: string;
     headers: Record<string, string>;
@@ -74,7 +76,7 @@ async function fixture() {
         body: input.body as Record<string, unknown>,
       });
       if (input.path === APPLICATION_SESSION_NATIVE_CHALLENGE_PATH) {
-        return {
+        const challenge = {
           version: APPLICATION_SESSION_NATIVE_VERSION,
           challengeId: OPAQUE('C'),
           nonce: OPAQUE('N'),
@@ -89,6 +91,8 @@ async function fixture() {
           keyThumbprint: await applicationSessionKeyThumbprint(key.publicKey),
           ...challengeOverride,
         };
+        afterChallenge?.();
+        return challenge;
       }
       if (input.path === APPLICATION_SESSION_NATIVE_EXCHANGE_PATH) {
         if (dropContinuation) return null;
@@ -141,11 +145,14 @@ async function fixture() {
     dropContinuation() {
       dropContinuation = true;
     },
+    changeTrustAfterChallenge(action: () => void) {
+      afterChallenge = action;
+    },
   };
 }
 
 describe('native application session client', () => {
-  test('challenge and exchange bind the exact Station, audience, surface, device, nonce and canonical credentials hash', async () => {
+  test('challenge and exchange bind the exact Station, audience, surface, device, nonce and serialized credentials hash', async () => {
     const f = await fixture();
     const continuation = await f.client.exchange(credentials);
     expect(continuation.credential).toBe(OPAQUE('E'));
@@ -169,10 +176,15 @@ describe('native application session client', () => {
     });
     expect(claims.surface).toEqual(surface);
     expect(claims.credentialsHash).toBe(
-      await canonicalCredentialsHash(credentials),
+      await serializedCredentialsHash(credentials),
+    );
+    expect(claims.credentialsHash).toBe(
+      createHash('sha256')
+        .update(JSON.stringify(credentials))
+        .digest('base64url'),
     );
     expect(claims.credentialsHash).not.toBe(
-      await canonicalCredentialsHash({ ...credentials, password: 'wrong' }),
+      await serializedCredentialsHash({ ...credentials, password: 'wrong' }),
     );
     expect((exchange.body as { credentials: unknown }).credentials).toEqual(
       credentials,
@@ -206,6 +218,55 @@ describe('native application session client', () => {
       continuation.credential,
     );
     expect(f.fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test('native proof accepts a loopback Station audience and an exact query path', async () => {
+    const f = await fixture();
+    const loopback = 'http://127.0.0.1:4321';
+    const proof = await createNativeApplicationSessionProof(
+      f.key,
+      {
+        kind: 'station-native',
+        stationId: '11111111-1111-4111-8111-111111111111',
+        audience: loopback,
+        deviceId,
+        surface,
+      },
+      {
+        purpose: 'request',
+        deviceId,
+        nonce: OPAQUE('N'),
+        method: 'GET',
+        path: '/api/projects?limit=2',
+        credentialHash: OPAQUE('H'),
+        expiresAtMs: Date.now() + 60_000,
+      },
+    );
+    expect(decodeClaims(proof)).toMatchObject({
+      aud: loopback,
+      path: '/api/projects?limit=2',
+    });
+    await expect(
+      createNativeApplicationSessionProof(
+        f.key,
+        {
+          kind: 'station-native',
+          stationId: '11111111-1111-4111-8111-111111111111',
+          audience: 'http://public.example',
+          deviceId,
+          surface,
+        },
+        {
+          purpose: 'request',
+          deviceId,
+          nonce: OPAQUE('N'),
+          method: 'GET',
+          path: '/api/projects',
+          credentialHash: OPAQUE('H'),
+          expiresAtMs: Date.now() + 60_000,
+        },
+      ),
+    ).rejects.toThrow('HTTPS or loopback HTTP');
   });
 
   test('a challenge for another Station, audience or surface fails closed before exchange', async () => {
@@ -323,13 +384,13 @@ describe('native application session client', () => {
         nonce: OPAQUE('N'),
         method: 'POST',
         path: APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
-        credentialsHash: await canonicalCredentialsHash(credentials),
+        credentialsHash: await serializedCredentialsHash(credentials),
         expiresAtMs: Date.now() + 60_000,
       },
     );
     const claims = decodeClaims(proof);
     expect(claims.credentialsHash).not.toBe(
-      await canonicalCredentialsHash({ ...credentials, username: 'attacker' }),
+      await serializedCredentialsHash({ ...credentials, username: 'attacker' }),
     );
     expect(claims.jti).toMatch(/^[A-Za-z0-9_-]{22}$/);
   });
@@ -376,6 +437,21 @@ describe('native application session client', () => {
         path: '/api/example',
       }),
     ).rejects.toThrow('audience or surface');
+  });
+
+  test('does not send provider credentials after trust changes during challenge', async () => {
+    const f = await fixture();
+    f.changeTrustAfterChallenge(() => {
+      f.setTrust({ stationId: '99999999-9999-4999-8999-999999999999' });
+    });
+    await expect(f.client.exchange(credentials)).rejects.toThrow(
+      'trust changed',
+    );
+    expect(
+      f.posts.some(
+        (post) => post.path === APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
+      ),
+    ).toBe(false);
   });
 
   test('a malformed continuation fails closed', async () => {

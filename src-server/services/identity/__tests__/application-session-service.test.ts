@@ -10,8 +10,6 @@ import {
   APPLICATION_SESSION_NATIVE_PROOF_HEADER,
   APPLICATION_SESSION_NATIVE_PROOF_TYPE,
   APPLICATION_SESSION_NATIVE_VERSION,
-  type NativeApplicationSessionChallengeV1,
-  type NativeApplicationSessionContinuationV1,
 } from '@kontourai/station-contracts/application-session';
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import {
@@ -23,6 +21,7 @@ import {
   ApplicationSessionClient,
   createApplicationSessionKey,
 } from '@kontourai/station-sdk/application-session';
+import { NativeApplicationSessionClient } from '@kontourai/station-sdk/application-session-native';
 import { Hono } from 'hono';
 import {
   calculateJwkThumbprint,
@@ -481,12 +480,12 @@ async function nativeContinuationFixture() {
 }
 
 describe('native application-session continuation service seam', () => {
-  test('uses verified virtual ingress for provider login and protected account read', async () => {
+  test('uses the native SDK through verified virtual ingress for provider login, read and write', async () => {
     const h = await harness({
       nativeReader: readVerifiedNativeVirtualApplicationRequest,
     });
     await nativeAccount(h);
-    const key = await nativeKey();
+    const key = await createApplicationSessionKey();
     const directNative = await h
       .application()
       .request(`${origin}${APPLICATION_SESSION_NATIVE_CHALLENGE_PATH}`, {
@@ -541,79 +540,47 @@ describe('native application-session continuation service seam', () => {
     ingress.bind({ fetch: (request) => secured.fetch(request) });
     const virtual = ingress.activate();
     try {
-      const challengeResponse = await virtual.fetch(
-        new Request(`${origin}${APPLICATION_SESSION_NATIVE_CHALLENGE_PATH}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${h.device.credential}` },
-          body: JSON.stringify({
-            version: APPLICATION_SESSION_NATIVE_VERSION,
-            publicKey: key.publicKey,
-          }),
+      const client = new NativeApplicationSessionClient(
+        {
+          post: async ({ path, headers, body }) => {
+            const response = await virtual.fetch(
+              new Request(`${origin}${path}`, {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${h.device.credential}`,
+                  'Content-Type': 'application/json',
+                  ...headers,
+                },
+                body: JSON.stringify(body),
+              }),
+            );
+            if (!response.ok)
+              throw new Error(`native route ${response.status}`);
+            return ((await response.json()) as { data: unknown }).data;
+          },
+        },
+        () => ({
+          kind: 'station-native',
+          stationId,
+          audience: origin,
+          deviceId: h.device.device.id,
+          surface: nativeSurface,
         }),
+        key,
       );
-      expect(
-        challengeResponse.status,
-        await challengeResponse.clone().text(),
-      ).toBe(200);
-      const challenge = (
-        (await challengeResponse.json()) as {
-          data: NativeApplicationSessionChallengeV1;
-        }
-      ).data;
-      const credentials = { username: 'alice', password: h.password };
-      const proof = await signNativeProof(key.privateKey, {
-        version: APPLICATION_SESSION_NATIVE_VERSION,
-        purpose: 'exchange',
-        aud: challenge.target.audience,
-        stationId,
-        surface: challenge.target.surface,
-        deviceId: challenge.deviceId,
-        nonce: challenge.nonce,
-        method: 'POST',
-        path: APPLICATION_SESSION_NATIVE_EXCHANGE_PATH,
-        challengeIdHash: nativeHash(challenge.challengeId),
-        credentialsHash: nativeHash(JSON.stringify(credentials)),
-        jti: randomUUID(),
-        iat: Math.floor(Date.now() / 1000),
+      const continuation = await client.exchange({
+        username: 'alice',
+        password: h.password,
       });
-      const exchange = await virtual.fetch(
-        new Request(`${origin}${APPLICATION_SESSION_NATIVE_EXCHANGE_PATH}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${h.device.credential}` },
-          body: JSON.stringify({
-            version: APPLICATION_SESSION_NATIVE_VERSION,
-            challengeId: challenge.challengeId,
-            credentials,
-            proof,
-          }),
-        }),
-      );
-      expect(exchange.status).toBe(200);
-      const continuation = (
-        (await exchange.json()) as {
-          data: NativeApplicationSessionContinuationV1;
-        }
-      ).data;
-      const requestProof = await signNativeProof(key.privateKey, {
-        version: APPLICATION_SESSION_NATIVE_VERSION,
-        purpose: 'request',
-        aud: continuation.target.audience,
-        stationId,
-        surface: continuation.target.surface,
-        deviceId: continuation.deviceId,
-        nonce: continuation.nonce,
+      const readHeaders = await client.headers(continuation, {
         method: 'GET',
         path: '/api/projects',
-        credentialHash: nativeHash(continuation.credential),
-        jti: randomUUID(),
-        iat: Math.floor(Date.now() / 1000),
       });
       const protectedRead = await virtual.fetch(
         new Request(`${origin}/api/projects`, {
           headers: {
             Authorization: `Bearer ${h.device.credential}`,
-            [APPLICATION_SESSION_NATIVE_HEADER]: continuation.credential,
-            [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: requestProof,
+            ...readHeaders,
           },
         }),
       );
@@ -622,19 +589,9 @@ describe('native application-session continuation service seam', () => {
         ((await protectedRead.json()) as { principal: { id: string } })
           .principal.id,
       ).toMatch(/^human:deployment:/);
-      const mutationProof = await signNativeProof(key.privateKey, {
-        version: APPLICATION_SESSION_NATIVE_VERSION,
-        purpose: 'request',
-        aud: continuation.target.audience,
-        stationId,
-        surface: continuation.target.surface,
-        deviceId: continuation.deviceId,
-        nonce: continuation.nonce,
+      const mutationHeaders = await client.headers(continuation, {
         method: 'POST',
         path: '/api/projects',
-        credentialHash: nativeHash(continuation.credential),
-        jti: randomUUID(),
-        iat: Math.floor(Date.now() / 1000),
       });
       const mutation = await virtual.fetch(
         new Request(`${origin}/api/projects`, {
@@ -642,8 +599,7 @@ describe('native application-session continuation service seam', () => {
           headers: {
             Authorization: `Bearer ${h.device.credential}`,
             'Content-Type': 'application/json',
-            [APPLICATION_SESSION_NATIVE_HEADER]: continuation.credential,
-            [APPLICATION_SESSION_NATIVE_PROOF_HEADER]: mutationProof,
+            ...mutationHeaders,
           },
           body: JSON.stringify({ value: 'once' }),
         }),

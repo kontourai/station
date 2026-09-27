@@ -1193,10 +1193,13 @@ connection, never touches cookies, and never holds a broker bearer. The account
 proof key must be an **independent** non-extractable P-256 key from
 `createApplicationSessionKey()` — never the native broker route proof key. The
 caller owns the trust snapshot: exact Station ID, canonical HTTPS Station
-audience, full approved native surface, and the approved Device ID; the
+audience (or loopback HTTP for a local fixture), full approved native surface,
+and the approved Device ID; the
 snapshot is re-read before every operation and any mismatch (Station, audience,
 surface, device, key thumbprint, expiry, replayed challenge, reused JTI) fails
-closed. Exchange proofs sign the canonical provider-credentials hash; request
+closed.
+Exchange proofs sign the exact JSON serialization of provider credentials that
+Station forwards to the configured provider; request
 proofs bind method, path, audience, surface, device, continuation nonce and
 credential hash with a one-use JTI. Provider, Device, and Project authority
 remain separate: the continuation is not a bearer or Device grant, and this
