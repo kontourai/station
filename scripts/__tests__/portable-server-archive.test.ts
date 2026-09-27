@@ -140,9 +140,30 @@ describe('buildPortableServerArchive target', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         // Optional at runtime; the JS signature's inferred type lists it.
         nodeDistribution: undefined,
+        expectedRing: undefined,
       }),
     ).rejects.toThrow(
       new RegExp(`cannot build the ${foreign} portable archive on ${host}`),
+    );
+    expect(existsSync(outputDir)).toBe(false);
+  });
+
+  it('refuses a tag from another ring than the caller asked for before writing anything', async () => {
+    const outputDir = join(makeTempDir('station-portable-ring-'), 'out');
+    await expect(
+      buildPortableServerArchive({
+        projectRoot: repoRoot,
+        outputDir,
+        platform: process.platform,
+        arch: process.arch,
+        tag: 'v0.1.11-preview.3',
+        sha: '0'.repeat(40),
+        createdAt: '2026-01-01T00:00:00.000Z',
+        nodeDistribution: undefined,
+        expectedRing: 'nightly',
+      }),
+    ).rejects.toThrow(
+      'v0.1.11-preview.3 is a preview release, not the requested nightly ring',
     );
     expect(existsSync(outputDir)).toBe(false);
   });
@@ -278,6 +299,24 @@ describe('portable server archive workflow', () => {
     expect(source).not.toMatch(
       /secrets\.|id-token|attest-build-provenance|gh release/,
     );
+  });
+
+  it("builds a caller's version only from the ref it checked out", () => {
+    type Step = { name?: string; if?: string; run?: string; env?: object };
+    const steps = (workflow.jobs.archive as unknown as { steps: Step[] }).steps;
+    const confirm = steps.findIndex(
+      (step) =>
+        step.name === "Confirm a caller's ref is the checked-out commit",
+    );
+    const build = steps.findIndex((step) => step.name === 'Build the archive');
+    expect(confirm).toBeGreaterThanOrEqual(0);
+    expect(confirm).toBeLessThan(build);
+    expect(steps[confirm].if).toBe(`\${{ inputs.ref != '' }}`);
+    expect(steps[confirm].run).toContain(
+      'test "$(git rev-parse HEAD)" = "$CALLER_REF"',
+    );
+    expect(steps[build].run).toContain('--ref "$RELEASE_REF"');
+    expect(steps[build].run).toContain('--ring "$RELEASE_RING"');
   });
 });
 
