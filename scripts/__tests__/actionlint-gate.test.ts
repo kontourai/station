@@ -373,16 +373,16 @@ describe('persistent runner policy', () => {
     const document = structuredClone(workflow.document) as {
       jobs: Record<string, Record<string, unknown>>;
     };
-    document.jobs['fast-checks'].if =
+    document.jobs['fast-checks-statics'].if =
       `\${{ always() && github.event_name == 'pull_request' }}`;
 
     expect(
       persistentRunnerPolicyFindings([{ file: workflow.file, document }]),
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
-      jobId: 'fast-checks',
+      jobId: 'fast-checks-statics',
       message:
-        'ci.yml fast-checks must use the exact same-repository pull_request_target guard',
+        'ci.yml fast-checks-statics must use the exact same-repository pull_request_target guard',
     });
   });
 
@@ -395,16 +395,16 @@ describe('persistent runner policy', () => {
     const document = structuredClone(workflow.document) as {
       jobs: Record<string, Record<string, unknown>>;
     };
-    document.jobs['fast-checks'].if =
+    document.jobs['fast-checks-statics'].if =
       `${SAME_REPOSITORY_FAST_CHECKS_CONDITION.slice(0, -3)} || true }}`;
 
     expect(
       persistentRunnerPolicyFindings([{ file: workflow.file, document }]),
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
-      jobId: 'fast-checks',
+      jobId: 'fast-checks-statics',
       message:
-        'ci.yml fast-checks must use the exact same-repository pull_request_target guard',
+        'ci.yml fast-checks-statics must use the exact same-repository pull_request_target guard',
     });
   });
 
@@ -545,7 +545,7 @@ describe('persistent runner policy', () => {
   test.each([
     [
       'fast-checks base checkout ref',
-      'fast-checks',
+      'fast-checks-statics',
       (job: Record<string, unknown>) => {
         const base = (
           job.steps as Array<{
@@ -581,7 +581,7 @@ describe('persistent runner policy', () => {
     ],
     [
       'unquoted title shell interpolation',
-      'fast-checks',
+      'fast-checks-statics',
       (job: Record<string, unknown>) => {
         const titleGate = (job.steps as Array<Record<string, unknown>>).find(
           (step) => step.name === 'Validate base-controlled pull-request title',
@@ -857,7 +857,7 @@ describe('persistent runner policy', () => {
   });
 
   test.each([
-    ['fast-checks', 'Run fast CI lane', 'fast CI execution'],
+    ['fast-checks-statics', 'Run fast CI lane', 'fast CI execution'],
     ['fork-smoke', 'Run isolated fork smoke', 'smoke execution'],
   ])(
     'requires pinned actionlint before %s execution',
@@ -874,8 +874,8 @@ describe('persistent runner policy', () => {
         file: '.github/workflows/ci.yml',
         jobId,
         message:
-          jobId === 'fast-checks'
-            ? 'fast-checks must provision pinned and checksummed actionlint before fast CI execution'
+          jobId === 'fast-checks-statics'
+            ? 'fast-checks-statics must provision pinned and checksummed actionlint before fast CI execution'
             : `fork-smoke must provision pinned and checksummed actionlint before ${execution}`,
       });
     },
@@ -918,7 +918,7 @@ describe('persistent runner policy', () => {
     });
   });
 
-  test.each(['fast-checks', 'fork-smoke'])(
+  test.each(['fast-checks-statics', 'fork-smoke'])(
     'rejects reordered or appended actionlint provisioning in %s',
     (jobId) => {
       for (const mutate of [
@@ -948,15 +948,22 @@ describe('persistent runner policy', () => {
           file: '.github/workflows/ci.yml',
           jobId,
           message:
-            jobId === 'fast-checks'
-              ? 'fast-checks must provision pinned and checksummed actionlint before fast CI execution'
+            jobId === 'fast-checks-statics'
+              ? 'fast-checks-statics must provision pinned and checksummed actionlint before fast CI execution'
               : 'fork-smoke must provision pinned and checksummed actionlint before smoke execution',
         });
       }
     },
   );
 
-  test.each(['fast-checks', 'ui-bundle-delta', 'fork-smoke'])(
+  test.each([
+    'fast-checks',
+    'fast-checks-plan',
+    'fast-checks-shard',
+    'fast-checks-statics',
+    'ui-bundle-delta',
+    'fork-smoke',
+  ])(
     'rejects a credential or whole-github-context reference in %s',
     (jobId) => {
       for (const value of [
@@ -1809,12 +1816,12 @@ describe('persistent runner policy', () => {
   test('admits the reviewed browser evidence commands but still rejects an extra candidate command', () => {
     expect(
       persistentRunnerPolicyFindings(
-        primaryCiJobFixture('fast-checks', () => {}),
+        primaryCiJobFixture('fast-checks-statics', () => {}),
       ),
     ).toEqual([]);
     expect(
       persistentRunnerPolicyFindings(
-        primaryCiJobFixture('fast-checks', (job) => {
+        primaryCiJobFixture('fast-checks-statics', (job) => {
           (job.steps as Array<Record<string, unknown>>).push({
             name: 'Unreviewed extra command',
             run: 'echo unreviewed',
@@ -1823,7 +1830,7 @@ describe('persistent runner policy', () => {
       ),
     ).toContainEqual({
       file: '.github/workflows/ci.yml',
-      jobId: 'fast-checks',
+      jobId: 'fast-checks-statics',
       message:
         'pull_request_target router jobs must not add unreviewed shell execution',
     });
@@ -1831,7 +1838,7 @@ describe('persistent runner policy', () => {
 
   test('the always-on workflow gate rejects removal of required browser smoke', () => {
     const findings = persistentRunnerPolicyFindings(
-      primaryCiJobFixture('fast-checks', (job) => {
+      primaryCiJobFixture('fast-checks-statics', (job) => {
         job.steps = (job.steps as Array<Record<string, unknown>>).filter(
           (step) =>
             step.name !== 'Verify critical browser journeys before merge',
@@ -1842,8 +1849,113 @@ describe('persistent runner policy', () => {
       file: '.github/workflows/ci.yml',
       jobId: 'fast-checks',
       message:
-        'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks.',
+        'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks-statics.',
     });
+  });
+
+  // #2709: the plan, the shards and the aggregator run pull-request head code
+  // under pull_request_target, so each keeps the reviewed isolation.
+  test.each([
+    [
+      'a plan without the same-repository guard',
+      'fast-checks-plan',
+      (job: Record<string, unknown>) => {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        job.if = "${{ github.event_name == 'pull_request_target' }}";
+      },
+      'ci.yml fast-checks-plan must use the exact same-repository pull_request_target guard',
+    ],
+    [
+      'a shard admitted without the plan',
+      'fast-checks-shard',
+      (job: Record<string, unknown>) => {
+        job.if = 'always()';
+      },
+      'ci.yml fast-checks-shard must be admitted only by a successful, non-legacy fast-checks-plan',
+    ],
+    [
+      'a shard that needs a different job',
+      'fast-checks-shard',
+      (job: Record<string, unknown>) => {
+        job.needs = 'classify';
+      },
+      'ci.yml fast-checks-shard must be admitted only by a successful, non-legacy fast-checks-plan',
+    ],
+    [
+      'an aggregator with a fork-admitting guard',
+      'fast-checks',
+      (job: Record<string, unknown>) => {
+        job.if =
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          "${{ always() && github.event_name == 'pull_request_target' }}";
+      },
+      'ci.yml fast-checks must use the exact reviewed aggregate guard',
+    ],
+    [
+      'a shard with write permissions',
+      'fast-checks-shard',
+      (job: Record<string, unknown>) => {
+        job.permissions = { contents: 'write' };
+      },
+      'fast-checks-shard must declare only permissions: { contents: read }',
+    ],
+    [
+      'a self-hosted plan',
+      'fast-checks-plan',
+      (job: Record<string, unknown>) => {
+        job['runs-on'] = 'ubuntu-latest';
+      },
+      'fast-checks-plan must run on a hosted ubuntu-22.04 image',
+    ],
+    [
+      'an aggregator checkout that persists credentials',
+      'fast-checks',
+      (job: Record<string, unknown>) => {
+        const checkout = (job.steps as Array<Record<string, unknown>>).find(
+          (step) => String(step.uses).startsWith('actions/checkout@'),
+        ) as { with: Record<string, unknown> } | undefined;
+        if (!checkout) throw new Error('Expected the aggregator checkout.');
+        checkout.with['persist-credentials'] = true;
+      },
+      'fast-checks must check out exactly the candidate head once with persist-credentials: false',
+    ],
+    [
+      'a shard with an extra command',
+      'fast-checks-shard',
+      (job: Record<string, unknown>) => {
+        (job.steps as Array<Record<string, unknown>>).push({
+          name: 'Unreviewed extra command',
+          run: 'echo unreviewed',
+        });
+      },
+      'pull_request_target router jobs must not add unreviewed shell execution',
+    ],
+    [
+      'an aggregator with a rewritten verification command',
+      'fast-checks',
+      (job: Record<string, unknown>) => {
+        const verify = (job.steps as Array<Record<string, unknown>>).find(
+          (step) => step.name === 'Verify fast-checks shard receipts',
+        );
+        if (!verify) throw new Error('Expected the receipt verification.');
+        verify.run = 'true';
+      },
+      'pull_request_target router jobs must not add unreviewed shell execution',
+    ],
+    [
+      'a plan with an unreviewed action',
+      'fast-checks-plan',
+      (job: Record<string, unknown>) => {
+        (job.steps as Array<Record<string, unknown>>).push({
+          uses: 'example/unreviewed@0123456789abcdef0123456789abcdef01234567',
+        });
+      },
+      'pull_request_target router jobs must not add unreviewed custom actions',
+    ],
+  ])('rejects %s', (_name, jobId, mutate, message) => {
+    expect(
+      persistentRunnerPolicyFindings(primaryCiJobFixture(jobId, mutate)),
+    ).toContainEqual({ file: '.github/workflows/ci.yml', jobId, message });
   });
 
   test('rejects unreviewed fork shell execution', () => {
