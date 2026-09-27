@@ -145,11 +145,12 @@ exit 99
   it('refuses an output directory that already exists instead of publishing into it', () => {
     const source = readFileSync(installer, 'utf8');
     const acquisition = source.match(
-      / {2}if ! mkdir "\$output_dir"; then[\s\S]*?\n {2}fi\n {2}output_owned=1\n/,
+      / {2}if ! mkdir\b[^\n]*"\$output_dir"; then[\s\S]*?\n {2}fi\n {2}output_owned=1\n/,
     )?.[0];
     expect(acquisition).toBeTruthy();
-    // Execute the production acquisition block; only the copier is replaced
-    // so reaching publication is observable.
+    // Execute the production acquisition block (matched loosely so a changed
+    // mkdir flag reaches the behavior assertions); only the copier is
+    // replaced so reaching publication is observable.
     const harness = `
 set -eu
 output_dir="$CASE_DIR/out"
