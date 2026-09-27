@@ -12,6 +12,7 @@ import {
   TYPECHECK_PREPUSH_COMMANDS,
   typecheckInputs,
 } from '../check-prepush-typecheck.mjs';
+import { npmInvocation } from '../lib/npm-cli.mjs';
 import { FAST_STATIC_COMMANDS } from '../run-ci-fast.mjs';
 
 describe('typecheck input detection', () => {
@@ -131,7 +132,10 @@ describe('command chain', () => {
    * the rest of `SpawnSyncReturns` is deliberately absent.
    */
   const stubSpawn = (
-    handler: (command: string) => { status?: number; error?: Error },
+    handler: (
+      command: string,
+      args: string[],
+    ) => { status?: number; error?: Error },
   ): typeof spawnSync => handler as unknown as typeof spawnSync;
 
   /**
@@ -146,6 +150,25 @@ describe('command chain', () => {
         JSON.stringify(entry),
       ),
     ).toContain(JSON.stringify(aggregate));
+  });
+
+  it('uses the shared platform-specific npm invocation', () => {
+    const args = ['run', '--silent', 'build:connect'];
+    const calls: Array<{ command: string; args: string[] }> = [];
+    runTypecheckCommands(
+      [['npm', args]],
+      stubSpawn((command, commandArgs) => {
+        calls.push({ command, args: commandArgs });
+        return { status: 0 };
+      }),
+    );
+
+    expect(calls).toEqual([npmInvocation(args)]);
+    if (process.platform === 'win32') {
+      expect(calls[0].command).toBe(process.execPath);
+      expect(calls[0].args[0]).toMatch(/npm-cli\.js$/);
+      expect(calls[0].args.slice(1)).toEqual(args);
+    }
   });
 
   it('stops at the first failing command', () => {

@@ -36,6 +36,7 @@ import { basename } from 'node:path';
 import { changedPathsSince, describeMatches } from './lib/change-scope.mjs';
 import { resolveRef } from './lib/git-ref.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 
 const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
 
@@ -155,7 +156,9 @@ export function runTypecheckCommands(
   spawn = spawnSync,
 ) {
   for (const [command, args] of commands) {
-    const result = spawn(command, [...args], {
+    const invocation =
+      command === 'npm' ? npmInvocation(args) : { command, args };
+    const result = spawn(invocation.command, [...invocation.args], {
       stdio: 'inherit',
       windowsHide: true,
     });
