@@ -11207,7 +11207,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "93abf4919f4db9305ab7190e3af6c29c32114b788b8722df1fe23b064c32cd40"
+          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -11688,7 +11688,8 @@
         "REASONED: synchronized bootstrap delta changes only KnowledgeStoreProvider comment, correcting the knowledgeStores flag description; connection bootstrap, terminal authentication and runtime statements reviewed here are unchanged.",
         "REASONED: reviewed all changed recorded source dependencies through frozen upstream f3954615e / root6fa523e4d. Exact per-path reasons retained in source-delta-notes.json; no runtime receipt renewed.",
         "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
-        "Formatter-only change; parsed media metadata is identical."
+        "Formatter-only change; parsed media metadata is identical.",
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
       ]
     },
     {
@@ -13863,7 +13864,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "93abf4919f4db9305ab7190e3af6c29c32114b788b8722df1fe23b064c32cd40"
+          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -13998,7 +13999,8 @@
         "Added bounded physical identity admission for Obsidian creates, explicit unrecoverable path-index limit, preserved ordinary empty-frontmatter notes, and linked graph walkthrough. Current store/index ownership remains unchanged.",
         "Reviewed comment-only owner correction; emitted JavaScript is unchanged and the existing behavioral review scope is preserved.",
         "Reviewed integration deltas: Documented actual create-admission repair of an earlier interrupted transaction; duplicate-identity refusal does not publish the new create or repair the index. Existing public boundaries retained. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
-        "Formatter-only change; parsed media metadata is identical."
+        "Formatter-only change; parsed media metadata is identical.",
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
       ]
     },
     {
@@ -17780,7 +17782,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "93abf4919f4db9305ab7190e3af6c29c32114b788b8722df1fe23b064c32cd40"
+          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -18000,7 +18002,8 @@
         "Upstream source review: Upstream deletes only source-string Button primitive assertion and unused fs/path imports. Existing actual rendered Starter Task launch/retry/correlation assertions remain; prior175test result retains old revision, not recast as current execution.",
         "Reviewed navigation link to the captured application walkthrough; underlying feature statements unchanged.",
         "REASONED: full current133-line guide read; remaining adoption, Scheduler restart/replay and Home presentation claims traced through actual callers. EXECUTED: read-only source inspection only; no broad tests/readiness. This proposed document digest matches suggestions.patch, not the unchanged root file until the owner applies it.",
-        "Formatter-only change; parsed media metadata is identical."
+        "Formatter-only change; parsed media metadata is identical.",
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
       ]
     },
     {
@@ -19401,7 +19404,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "93abf4919f4db9305ab7190e3af6c29c32114b788b8722df1fe23b064c32cd40"
+          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -19603,7 +19606,8 @@
         "Actual static preview: all six images decoded and both videos played at 390px and 1440px; no autoplay, horizontal overflow or page errors. UI findings tracked in #2843 and #2844.",
         "After preventing screenshot upscaling, repeated actual wide/narrow decode/playback probe passed. Media and documentation-impact focused suites:15 tests passed.",
         "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures. src-ui/src/views/ProjectPage.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found.",
-        "Formatter-only change; parsed media metadata is identical."
+        "Formatter-only change; parsed media metadata is identical.",
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
       ]
     },
     {
@@ -20220,7 +20224,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "93abf4919f4db9305ab7190e3af6c29c32114b788b8722df1fe23b064c32cd40"
+          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -20298,7 +20302,8 @@
       "checks": [
         "441 focused tests across 28 files passed. Full local Markdown link check passed; Veritas readiness reported zero failures and warnings. Actual external provider, physical-device and hosted deployment outcomes were not exercised.",
         "Reviewed integration deltas: src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
-        "Formatter-only change; parsed media metadata is identical."
+        "Formatter-only change; parsed media metadata is identical.",
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
       ]
     },
     {
@@ -22526,7 +22531,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "93abf4919f4db9305ab7190e3af6c29c32114b788b8722df1fe23b064c32cd40"
+          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -22596,7 +22601,8 @@
       "checks": [
         "441 focused tests across 28 files passed. Full local Markdown link check passed; Veritas readiness reported zero failures and warnings. Actual external provider, physical-device and hosted deployment outcomes were not exercised.",
         "Reviewed integration deltas: src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
-        "Formatter-only change; parsed media metadata is identical."
+        "Formatter-only change; parsed media metadata is identical.",
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
       ]
     },
     {
@@ -24106,7 +24112,8 @@
         "Generated catalog includes the canonical walkthrough navigation and all reviewed modules; no new live-state capability.",
         "Regenerated the same 99 shipped manual/architecture topics after Knowledge branch navigation additions; static read-only docs authority unchanged.",
         "Source-reviewed policy-construction and host callers; synthetic intercepted Chromium probe is not live remote exfiltration or broad containment proof.",
-        "Reviewed integration deltas: Updated canonical topic policy wording without granting mutation, filesystem or network authority to the docs server. packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/tools/station-docs-content.ts: Regenerated 100 shipped topics from reviewed canonical Markdown, including 74 module sections; generated identity does not independently prove prose. packages/shared/src/mcp-ui-csp.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d."
+        "Reviewed integration deltas: Updated canonical topic policy wording without granting mutation, filesystem or network authority to the docs server. packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/tools/station-docs-content.ts: Regenerated 100 shipped topics from reviewed canonical Markdown, including 74 module sections; generated identity does not independently prove prose. packages/shared/src/mcp-ui-csp.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
+        "Regenerated canonical MCP topics after the Concepts link correction; topic count and read-only authority unchanged."
       ]
     },
     {
@@ -25077,7 +25084,7 @@
     },
     {
       "path": "docs/user/concepts.md",
-      "documentDigest": "a09295a28612a29fde3ec1a582c3b969e8802c40bca760769b933761a3dd9ff3",
+      "documentDigest": "9d922716b0ad931258a83c905179d2626aa673eb45a03f875558a2faeb9cb23c",
       "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
       "kind": "current",
       "state": "source-reviewed",
@@ -25128,7 +25135,8 @@
       "checks": [
         "Independent continuation wording review accepted.",
         "Final entry-point review followed the affected canonical module/contract owners; no matching hash or file count was used as semantic proof.",
-        "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained."
+        "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained.",
+        "The public-site check caught a link to a draft outside its allowlist. Link explicitly to the repository working copy; retain the incomplete/unapproved policy qualification."
       ]
     },
     {
@@ -25161,7 +25169,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "93abf4919f4db9305ab7190e3af6c29c32114b788b8722df1fe23b064c32cd40"
+          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -25319,7 +25327,8 @@
         "Veritas 1790525108169: 0 failures/0 warnings, exact one-doc working scope.",
         "Prior starter-work/native/install/module audit receipts reused only for unchanged source-owned claims; no repeated physical journey implied.",
         "Reviewed integration deltas: packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-ui/src/components/first-run/FirstRunHomeChapter.tsx: planFirstRunChapterSteps becomes private to the production owner; implementation and actual component/caller unchanged. No current Markdown advertises the removed export. Test changes move assertions to owner output; no new execution receipt inferred. docs/guides/starter-work.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. Proposed copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures. src-ui/src/views/ProjectPage.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
-        "Formatter-only change; parsed media metadata is identical."
+        "Formatter-only change; parsed media metadata is identical.",
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
       ]
     },
     {
@@ -26162,7 +26171,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "93abf4919f4db9305ab7190e3af6c29c32114b788b8722df1fe23b064c32cd40"
+          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -26258,7 +26267,8 @@
         "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
         "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
         "Reviewed integration deltas: src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
-        "Formatter-only change; parsed media metadata is identical."
+        "Formatter-only change; parsed media metadata is identical.",
+        "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged."
       ]
     },
     {

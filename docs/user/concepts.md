@@ -97,7 +97,7 @@ Station stores its data under `~/.station` by default. Model services, Engines,
 paired devices, remote computers and other configured integrations can exchange
 data outside that directory. Some make startup or background requests; desktop
 builds also contact their release feed. Observability export requires a configured
-endpoint. See [data flows and review limits](../privacy-policy.md) for the
+endpoint. See the repository's [data-flow working copy](https://github.com/kontourai/station/blob/main/docs/privacy-policy.md) for the
 distinction between declared settings and verified behavior.
 
 ## Next
