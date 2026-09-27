@@ -201,8 +201,8 @@ export const RUNTIME_DEFAULT_AGENT_KEY = 'default';
  *    fact — which is the defect class this whole change removes, made worse
  *    by `listAgents` preferring a stored file over the registry projection.
  *
- * So the record stays unbound and every reader consults this projection
- * instead, through `projectStationEngineBinding` below.
+ * So the record stays unbound and readers consult this projection instead
+ * (Station-identity reads through `projectStationEngineBinding` below).
  */
 function runtimeStationEngineExecution(
   agentMetadataMap: ReadonlyMap<string, { execution?: AgentSpec['execution'] }>,
