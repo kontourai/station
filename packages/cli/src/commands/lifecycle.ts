@@ -56,10 +56,7 @@ import {
   OWNED_DEPENDENCY_INSTALL_SCRIPT,
   ownedDependencyInstallerUnavailable,
 } from '@kontourai/station-shared/owned-dependency-installer';
-import {
-  STATION_RELEASE_RINGS,
-  type StationReleaseRing,
-} from '@kontourai/station-shared/ports';
+import { STATION_RELEASE_RINGS } from '@kontourai/station-shared/ports';
 import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
@@ -95,6 +92,7 @@ import {
   DEFAULT_UI_PORT,
   getInstanceStatePath,
   INSTANCE_STATE_DIR,
+  LIFECYCLE_CODE_ROOT,
   type LifecycleHomeSource,
   normalizeHomePath,
   normalizeInstanceName,
@@ -102,6 +100,14 @@ import {
   resolveLifecycleHomeTarget,
   resolveLifecycleInstanceId,
 } from './helpers.js';
+import {
+  isPackagedReleaseChannel,
+  type LifecycleCodeRoot,
+  PACKAGED_RELEASE_MANIFEST_FILENAME,
+  type PackagedReleaseChannel,
+  type PackagedRuntimeChannel,
+  validatePackagedReleaseManifest,
+} from './lifecycle-code-root.js';
 import {
   captureStableProcessFingerprint,
   createAppShortcut,
@@ -124,6 +130,14 @@ import {
   IGNORE_SERVICE_STATE_FLAG,
   renderSupervisingServiceRefusal,
 } from './service-upgrade-guard.js';
+
+// Moved to lifecycle-code-root.ts (#2675 B1); re-exported for existing importers.
+export {
+  isPrebuiltArchiveRoot,
+  PREBUILT_ARCHIVE_MARKER_CONTENT,
+  PREBUILT_ARCHIVE_MARKER_FILENAME,
+  validatePackagedReleaseManifest,
+} from './lifecycle-code-root.js';
 
 const SERVER_ENTRY_FILENAME = 'command-station.js';
 
@@ -1128,42 +1142,6 @@ export interface BuildManifest {
   sha: string;
 }
 
-interface PackagedReleaseManifest {
-  schemaVersion: 2;
-  sha: string;
-  ref: string;
-  createdAt: string;
-  channel: PackagedRuntimeChannel;
-  releaseChannel: PackagedReleaseChannel;
-  prerelease: boolean;
-}
-
-type PackagedReleaseChannel = StationReleaseRing;
-type PackagedRuntimeChannel =
-  (typeof STATION_RELEASE_RINGS)[PackagedReleaseChannel]['runtimeChannel'];
-
-/**
- * The installable packaged rings come from config/channel-ports.json (via the
- * generated STATION_RELEASE_RINGS); a Nightly-staging bundle is evidence-only
- * and deliberately absent. A prerelease ring's tag is `vX.Y.Z-<ring>.N`.
- */
-function packagedReleaseTag(ring: PackagedReleaseChannel): RegExp {
-  const label = STATION_RELEASE_RINGS[ring].prerelease
-    ? `-${ring}\\.(?:[1-9]\\d*)`
-    : '';
-  return new RegExp(
-    `^v(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)${label}$`,
-  );
-}
-
-function isPackagedReleaseChannel(
-  value: unknown,
-): value is PackagedReleaseChannel {
-  return (
-    typeof value === 'string' && Object.hasOwn(STATION_RELEASE_RINGS, value)
-  );
-}
-
 export interface InstanceStateRecord {
   baseDir: string;
   bootId?: string;
@@ -1460,7 +1438,7 @@ function removeStateRecord(record: InstanceStateRecord): void {
 }
 
 function readPriorPidInstanceState(): InstanceStateRecord | null {
-  if (!existsSync(PIDFILE)) return null;
+  if (PIDFILE === null || !existsSync(PIDFILE)) return null;
 
   const [serverPid, uiPid] = parsePidList(readFileSync(PIDFILE, 'utf-8'));
   const record: InstanceStateRecord = {
@@ -2171,7 +2149,7 @@ function writeInstanceState(record: InstanceStateRecord): void {
     rmSync(backup, { force: true });
     release();
   }
-  rmSync(PIDFILE, { force: true });
+  if (PIDFILE !== null) rmSync(PIDFILE, { force: true });
 }
 
 /**
@@ -2279,7 +2257,6 @@ interface BuildPaths {
 }
 
 const BUILD_MANIFEST_FILENAME = 'station-build.json';
-const PACKAGED_RELEASE_MANIFEST_FILENAME = '.station-release.json';
 
 export function normalizeLifecycleHost(host?: string): string {
   if (host === undefined) return '0.0.0.0';
@@ -2743,7 +2720,7 @@ export function resolveBuildPaths(instanceId: string): BuildPaths {
   // A prebuilt archive ships one build and no toolchain to make another.
   // Nothing in a build is instance-specific (buildApplication varies only its
   // output directories), so every instance of an archive serves that build.
-  if (isPrebuiltArchiveRoot(CWD)) {
+  if (LIFECYCLE_CODE_ROOT.kind === 'prebuilt-archive') {
     return { server: 'dist-server', ui: 'dist-ui', shared: true };
   }
   if (instanceId === DEFAULT_INSTANCE_ID) {
@@ -2777,14 +2754,25 @@ function getBuildManifestPath(buildPaths: BuildPaths): string {
   return join(CWD, buildPaths.server, BUILD_MANIFEST_FILENAME);
 }
 
+/** Only a source tree builds, so only a source tree has candidates. */
+function sourceBuildCandidatesDir(): string {
+  if (LIFECYCLE_CODE_ROOT.kind !== 'source') {
+    throw new Error(
+      `A prebuilt Station archive (${CWD}) has no build candidates.`,
+    );
+  }
+  return LIFECYCLE_CODE_ROOT.buildCandidatesDir;
+}
+
 function createCandidateBuildPaths(instanceId: string): {
   buildPaths: BuildPaths;
   root: string;
 } {
-  const parent = join(CWD, '.station', 'build-candidates');
+  const parent = sourceBuildCandidatesDir();
   mkdirSync(parent, { recursive: true });
   const root = mkdtempSync(join(parent, `${instanceId}-`));
-  const relativeRoot = join('.station', 'build-candidates', basename(root));
+  // Build paths are relative to the code root, which contains the candidates.
+  const relativeRoot = relative(CWD, root);
   return {
     root,
     buildPaths: {
@@ -2811,7 +2799,7 @@ function createCandidateBuildPaths(instanceId: string): {
  * (station#1867 review round).
  */
 export function pruneStaleBuildCandidates(instanceId: string): void {
-  const parent = join(CWD, '.station', 'build-candidates');
+  const parent = sourceBuildCandidatesDir();
   let entries: import('node:fs').Dirent[];
   try {
     entries = readdirSync(parent, { withFileTypes: true });
@@ -2952,87 +2940,8 @@ function validateBuildManifest(value: unknown): BuildManifest | null {
   };
 }
 
-export function validatePackagedReleaseManifest(
-  value: unknown,
-): PackagedReleaseManifest | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const candidate = value as Partial<PackagedReleaseManifest>;
-  const keys = Object.keys(value).sort();
-  const expectedKeys = [
-    'channel',
-    'createdAt',
-    'prerelease',
-    'ref',
-    'releaseChannel',
-    'schemaVersion',
-    'sha',
-  ];
-  if (
-    keys.length !== expectedKeys.length ||
-    keys.some((key, index) => key !== expectedKeys[index]) ||
-    candidate.schemaVersion !== 2 ||
-    typeof candidate.sha !== 'string' ||
-    !/^[0-9a-f]{40}$/i.test(candidate.sha) ||
-    typeof candidate.ref !== 'string' ||
-    !/^[A-Za-z0-9._/-]{1,128}$/.test(candidate.ref) ||
-    typeof candidate.createdAt !== 'string' ||
-    !Number.isFinite(Date.parse(candidate.createdAt)) ||
-    new Date(Date.parse(candidate.createdAt)).toISOString() !==
-      candidate.createdAt ||
-    !isPackagedReleaseChannel(candidate.releaseChannel) ||
-    candidate.channel !==
-      STATION_RELEASE_RINGS[candidate.releaseChannel].runtimeChannel ||
-    candidate.prerelease !==
-      STATION_RELEASE_RINGS[candidate.releaseChannel].prerelease ||
-    !packagedReleaseTag(candidate.releaseChannel).test(candidate.ref)
-  ) {
-    return null;
-  }
-  return {
-    schemaVersion: 2,
-    sha: candidate.sha,
-    ref: candidate.ref,
-    createdAt: candidate.createdAt,
-    channel: STATION_RELEASE_RINGS[candidate.releaseChannel].runtimeChannel,
-    releaseChannel: candidate.releaseChannel,
-    prerelease: STATION_RELEASE_RINGS[candidate.releaseChannel].prerelease,
-  };
-}
-
 /** Bound on every checkout HEAD read (stamp writer and checker). */
 const SOURCE_HEAD_READ_TIMEOUT_MS = 5_000;
-
-/**
- * Written only by the portable server archive builder
- * (scripts/lib/portable-server-archive.mjs), whose trees ship dist-server and
- * dist-ui prebuilt and carry no toolchain to rebuild them. install.sh's
- * source release trees also have `.station-release.json` and no `.git`, but
- * they are built on the host and never contain this marker.
- */
-export const PREBUILT_ARCHIVE_MARKER_FILENAME = '.station-prebuilt-archive';
-export const PREBUILT_ARCHIVE_MARKER_CONTENT = 'station-prebuilt-archive-v1\n';
-
-/** A prebuilt archive: marker, valid release provenance, and no checkout. */
-export function isPrebuiltArchiveRoot(root: string): boolean {
-  if (existsSync(join(root, '.git'))) return false;
-  try {
-    if (
-      readFileSync(join(root, PREBUILT_ARCHIVE_MARKER_FILENAME), 'utf-8') !==
-      PREBUILT_ARCHIVE_MARKER_CONTENT
-    ) {
-      return false;
-    }
-    return (
-      validatePackagedReleaseManifest(
-        JSON.parse(
-          readFileSync(join(root, PACKAGED_RELEASE_MANIFEST_FILENAME), 'utf-8'),
-        ),
-      ) !== null
-    );
-  } catch {
-    return false;
-  }
-}
 
 function resolveSourceBuildManifest(): BuildManifest {
   if (existsSync(join(CWD, '.git'))) {
@@ -3202,7 +3111,7 @@ export async function buildApplication(
 ): Promise<BuildManifest> {
   const { instanceId, buildPaths: activeBuildPaths } =
     resolveBuildTarget(options);
-  if (isPrebuiltArchiveRoot(CWD)) {
+  if (LIFECYCLE_CODE_ROOT.kind === 'prebuilt-archive') {
     throw new Error(
       [
         `This is a prebuilt Station archive (${CWD}): nothing to build.`,
@@ -5206,7 +5115,29 @@ export interface UpgradeOptions extends BuildOptions {
   ignoreUnknownServiceState?: boolean;
 }
 
+/**
+ * #2675: a prebuilt archive is neither a git checkout nor an install.sh
+ * release tree, so neither upgrade path below applies to it: there is no
+ * `git pull`, no toolchain to rebuild with, and no installer-owned
+ * `releases/`+`current` layout to delegate to. Installing a newer archive is
+ * the installer's job (slice B2). Until it lands, name the manual route.
+ */
+export function renderPrebuiltArchiveUpgradeRefusal(
+  codeRoot: Extract<LifecycleCodeRoot, { kind: 'prebuilt-archive' }>,
+): string {
+  const { release } = codeRoot;
+  return [
+    `station upgrade cannot update a prebuilt Station archive in place: ${codeRoot.root} is ${release.ref} (${release.sha.slice(0, 12)}, ${release.releaseChannel} ring). Nothing was changed.`,
+    'Upgrading an archive install is the installer’s job, which arrives with the installer slice (#2675, B2).',
+    'To move to a newer version now: download the newer station-server-<os>-<arch> archive for this ring, run `station stop` here, extract the new archive into its own directory, and run `station start` from there.',
+    `Instance state for the ${release.channel} channel lives in ${codeRoot.stateDir}, outside every version directory, so the new version sees and stops what this one started.`,
+  ].join('\n');
+}
+
 export async function upgrade(options: UpgradeOptions = {}): Promise<void> {
+  if (LIFECYCLE_CODE_ROOT.kind === 'prebuilt-archive') {
+    throw new Error(renderPrebuiltArchiveUpgradeRefusal(LIFECYCLE_CODE_ROOT));
+  }
   const { ignoreUnknownServiceState, ...buildOptions } = options;
   // A packaged install proves its provenance first; the service check runs on
   // the home that provenance names, before the installer swaps anything.

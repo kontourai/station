@@ -10,6 +10,10 @@ import {
   runtimeChannelFromEnvironment,
 } from '@kontourai/station-shared/runtime-path-resolver';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
+import {
+  type LifecycleCodeRoot,
+  resolveLifecycleCodeRoot,
+} from './lifecycle-code-root.js';
 
 function defaultRuntimeContext(env: NodeJS.ProcessEnv = process.env) {
   const withoutExplicitHome = { ...env };
@@ -40,8 +44,13 @@ export const PROJECT_HOME = resolve(
 export const PLUGINS_DIR = join(PROJECT_HOME, 'plugins');
 export const AGENTS_DIR = join(PROJECT_HOME, 'agents');
 export const CWD = process.cwd();
-export const PIDFILE = join(CWD, '.station.pids');
-export const INSTANCE_STATE_DIR = join(CWD, '.station', 'instances');
+/** This process's code root and where its lifecycle state lives (#2675). */
+export const LIFECYCLE_CODE_ROOT: LifecycleCodeRoot =
+  resolveLifecycleCodeRoot(CWD);
+/** The legacy pid file; null for a prebuilt archive, which never had one. */
+export const PIDFILE: string | null =
+  LIFECYCLE_CODE_ROOT.kind === 'source' ? LIFECYCLE_CODE_ROOT.pidFile : null;
+export const INSTANCE_STATE_DIR = LIFECYCLE_CODE_ROOT.instanceStateDir;
 
 /**
  * The directory `station` was invoked from, before the launcher `cd`s into
@@ -193,14 +202,27 @@ export function resolveLifecycleInstanceId(
     return DEFAULT_INSTANCE_ID;
   }
 
+  // #2675: a prebuilt archive is one version directory of a channel, and an
+  // upgrade runs the next version from a different directory. Hashing its
+  // path would give every version its own id for the same home and ports, so
+  // the new version could not address the instance the old one started. Its
+  // identity is the channel instead; a source checkout keeps its path, which
+  // is what keeps two checkouts' instances apart.
+  const cwd = options.cwd || CWD;
+  const codeRoot =
+    cwd === CWD ? LIFECYCLE_CODE_ROOT : resolveLifecycleCodeRoot(cwd);
   const hash = createHash('sha1')
     .update(
-      JSON.stringify({
-        cwd: options.cwd || CWD,
-        projectHome,
-        serverPort,
-        uiPort,
-      }),
+      JSON.stringify(
+        codeRoot.kind === 'prebuilt-archive'
+          ? {
+              prebuiltArchiveChannel: codeRoot.release.channel,
+              projectHome,
+              serverPort,
+              uiPort,
+            }
+          : { cwd: codeRoot.root, projectHome, serverPort, uiPort },
+      ),
     )
     .digest('hex')
     .slice(0, 12);
@@ -245,8 +267,11 @@ export function resolveServiceInstanceId(
   return resolveLifecycleInstanceId(options);
 }
 
-export function getInstanceStatePath(instanceId: string, cwd = CWD): string {
-  return join(cwd, '.station', 'instances', `${instanceId}.json`);
+export function getInstanceStatePath(
+  instanceId: string,
+  codeRoot: LifecycleCodeRoot = LIFECYCLE_CODE_ROOT,
+): string {
+  return join(codeRoot.instanceStateDir, `${instanceId}.json`);
 }
 
 export function readManifest(dir = CWD): PluginManifest {
