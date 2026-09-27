@@ -844,10 +844,9 @@ export class CodexAdapter implements ProviderAdapterShape {
         } catch {
           return;
         }
-        const id =
-          typeof message?.id === 'string' || typeof message?.id === 'number'
-            ? String(message.id)
-            : null;
+        // Only string ids are ours (`send` below); a numeric id is a Codex
+        // server request, never a reply, and must not settle `"1"` (#562).
+        const id = typeof message?.id === 'string' ? message.id : null;
         if (!id || !pending.has(id)) return;
         const entry = pending.get(id)!;
         pending.delete(id);
@@ -1208,10 +1207,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       } catch {
         return;
       }
-      const id =
-        typeof payload?.id === 'string' || typeof payload?.id === 'number'
-          ? String(payload.id)
-          : null;
+      // Only string ids are ours; a numeric id is a Codex server request,
+      // never a reply to `model/list` (#562).
+      const id = typeof payload?.id === 'string' ? payload.id : null;
       if (!id) return;
       const pendingRequest = pending.get(id);
       if (!pendingRequest) return;
