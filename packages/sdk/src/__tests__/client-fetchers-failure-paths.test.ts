@@ -907,6 +907,30 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
       'secret bindings: createSecretBinding',
       () => createSecretBinding(API, { id: 'b', name: 'B', authRef: 'env:X' }),
     ],
+    [
+      'conversations: forkConversation',
+      () => forkConversation(API, 'station', 'c1', 'writer'),
+    ],
+    [
+      'conversations: listAgentConversations',
+      () => listAgentConversations(API, 'station'),
+    ],
+    [
+      'conversations: getConversationMessages',
+      () => getConversationMessages(API, 'station', 'c1'),
+    ],
+    [
+      'conversations: deleteConversation',
+      () => deleteConversation(API, 'station', 'c1'),
+    ],
+    [
+      'conversations: listConversationInventory',
+      () => listConversationInventory(API),
+    ],
+    [
+      'conversations: acknowledgeConversation',
+      () => acknowledgeConversation(API, 'c1', '2026-09-01T00:00:00.000Z'),
+    ],
   ] as const)('%s: a non-JSON 502 keeps its status', async (_name, call) => {
     vi.mocked(fetch).mockResolvedValue(nonJson(502));
 

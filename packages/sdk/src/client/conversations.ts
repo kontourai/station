@@ -33,6 +33,29 @@ export interface ConversationMessageSearchResult {
 }
 
 /**
+ * The parsed envelope. A failure whose body is not JSON (a proxy's HTML 502)
+ * throws the envelope helper's `StationHttpError` with the status it arrived
+ * under (#2708); an unreadable 2xx is a protocol failure and rethrows the
+ * parse error.
+ */
+async function readConversationEnvelope<T>(
+  response: Response,
+): Promise<ConversationEnvelope<T>> {
+  try {
+    return (await response.json()) as ConversationEnvelope<T>;
+  } catch (error) {
+    if (!response.ok) {
+      throw envelopeError(
+        response,
+        undefined,
+        `Conversation API error: ${response.status}`,
+      );
+    }
+    throw error;
+  }
+}
+
+/**
  * `GET /api/conversations/search` — bounded, server-authorized transcript
  * search. This client-layer form is also used for protected peer reads over
  * an SSH tunnel; its caller supplies the remote peer bearer in `opts`.
@@ -117,7 +140,7 @@ export async function forkConversation(
     },
   );
   const result =
-    (await response.json()) as ConversationEnvelope<ForkConversationResult>;
+    await readConversationEnvelope<ForkConversationResult>(response);
   if (!result.success || !result.data)
     throw envelopeError(response, result, 'Failed to fork conversation');
   return result.data;
@@ -149,9 +172,9 @@ export async function listAgentConversationPage(
     `${apiBase}/agents/${encodeURIComponent(agentSlug)}/conversations${query}`,
     opts,
   );
-  const result = (await response.json()) as ConversationEnvelope<
+  const result = await readConversationEnvelope<
     ConversationInventoryPage | unknown[]
-  >;
+  >(response);
   if (!result.success) {
     throw envelopeError(response, result, 'Failed to fetch conversations');
   }
@@ -178,7 +201,7 @@ export async function getConversationMessages(
     `${apiBase}/agents/${encodeURIComponent(agentSlug)}/conversations/${encodeURIComponent(conversationId)}/messages`,
     opts,
   );
-  const result = (await response.json()) as ConversationEnvelope<unknown[]>;
+  const result = await readConversationEnvelope<unknown[]>(response);
   if (!result.success) {
     throw envelopeError(
       response,
@@ -205,7 +228,7 @@ export async function deleteConversation(
     'DELETE',
     opts,
   );
-  const result = (await response.json()) as ConversationEnvelope<never>;
+  const result = await readConversationEnvelope<never>(response);
   if (!result.success) {
     throw envelopeError(response, result, 'Failed to delete conversation');
   }
@@ -233,7 +256,7 @@ export async function listConversationInventory(
     options,
   );
   const result =
-    (await response.json()) as ConversationEnvelope<ConversationInventoryPage>;
+    await readConversationEnvelope<ConversationInventoryPage>(response);
   if (!result.success) {
     throw envelopeError(
       response,
@@ -261,7 +284,7 @@ export async function acknowledgeConversation(
     opts,
     { updatedAt },
   );
-  const result = (await response.json()) as ConversationEnvelope<never>;
+  const result = await readConversationEnvelope<never>(response);
   if (!result.success) {
     throw envelopeError(response, result, 'Failed to acknowledge conversation');
   }
