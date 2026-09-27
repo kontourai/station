@@ -134,3 +134,11 @@ deferral. Those commands now overlap members of the aggregate. The required
 Veritas check still supplies the full aggregate, including recorded review
 freshness. The earlier cost figures above describe the earlier command graph;
 final landing verification measures the integrated graph without removing checks.
+
+Landing review also exercised automatic release bookkeeping. The named deploy
+ledger contract validates current data and exact rendering without refreshing
+human review hashes; its generator and validator remain review-bound. Missing
+classified changeset notes retain an explicit absent historical state. Other
+source/doc drift, corrupt projections and malformed records still fail. The
+[maintenance guide](../../docs/guides/documentation.md#generated-release-records-and-removed-notes)
+records these lifecycle distinctions and their limits.

@@ -5,8 +5,10 @@ import { dirname, join } from 'node:path';
 import { expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { buildLearningGuide } from '../build-learning-guide.mjs';
+import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 import { renderLearningDocument } from '../lib/learning-markdown.mjs';
 import { compileLearningMedia } from '../lib/learning-media.mjs';
+import { createLearningSourceReader } from '../lib/learning-source-reader.mjs';
 
 const image = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF9sAAAAASUVORK5CYII=',
@@ -231,4 +233,28 @@ it('the real builder publishes immutable media bytes and its strict entry detect
       join(root, '.kontourai/docs-learning', decodeURIComponent(url)),
     ),
   ).toEqual(image);
+});
+
+it('checks the actual capture manifest and recorded source bytes in the required documentation lane', async () => {
+  const reader = createLearningSourceReader(process.cwd());
+  const files = new Set(
+    execFileSync('git', ['ls-files', '-z'], {
+      encoding: 'utf8',
+      env: sanitizedGitEnvironment(),
+      windowsHide: true,
+    })
+      .split('\0')
+      .filter(Boolean),
+  );
+  const manifest = JSON.parse(
+    reader.read('docs/learn/media.json').toString('utf8'),
+  );
+  const captures = await compileLearningMedia(
+    manifest,
+    files,
+    async (path: string) => reader.read(path),
+    { requireFresh: true },
+  );
+  expect(captures.size).toBeGreaterThan(0);
+  expect(captures.size).toBe(manifest.captures.length);
 });

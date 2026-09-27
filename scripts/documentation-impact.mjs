@@ -6,6 +6,7 @@ import {
   compileStationDocs,
   STATION_DOCS_INPUT_PATHS,
 } from './generate-station-docs.mjs';
+import { evaluateDocumentationReview } from './lib/documentation-review.mjs';
 import {
   createLearningSourceReader,
   isLearningSourcePath,
@@ -206,7 +207,15 @@ export function formatDocumentationImpact(report) {
     'Documentation impact — review leads from recorded source dependencies:',
     ...(report.catchUp
       ? [
-          `  Catch-up since coverage baseline ${report.catchUp.coverageBase}: ${report.catchUp.staleReviews.length} stale reviews; ${report.catchUp.unchangedReviews} unchanged.`,
+          `  Catch-up since coverage baseline ${report.catchUp.coverageBase}: ${report.catchUp.staleReviews.length} stale reviews; ${report.catchUp.unchangedReviews} unchanged ordinary records; ${report.catchUp.generatedValidated.length} generated validations; ${report.catchUp.absentHistorical.length} absent historical notes.`,
+          ...report.catchUp.generatedValidated.map(
+            (entry) =>
+              `  Generated validation: ${entry.path}; ${entry.validation.summary}`,
+          ),
+          ...report.catchUp.absentHistorical.map(
+            (entry) =>
+              `  Historical absence: ${entry.path}; ${entry.validation.summary}`,
+          ),
           ...report.catchUp.staleReviews.map(
             (review) =>
               `  ${review.path}: reviewed source ${review.reviewSourceRevision}${review.reviewRevisionAvailable ? '' : ' (commit unavailable locally; compare recorded hashes)'}; last committed page edit ${review.lastCommittedEdit ?? 'none'}; changed inputs: ${review.changedInputs.join(', ')}`,
@@ -244,7 +253,10 @@ export function formatDocumentationImpact(report) {
 }
 
 /** @param {{ root?: string, base?: string }} [input] */
-export function documentationCatchUp({ root = process.cwd(), base } = {}) {
+export async function documentationCatchUp({
+  root = process.cwd(),
+  base,
+} = {}) {
   const reader = createLearningSourceReader(root);
   const ledger = JSON.parse(reader.read(ledgerPath).toString('utf8'));
   validateLedger(ledger);
@@ -289,33 +301,53 @@ export function documentationCatchUp({ root = process.cwd(), base } = {}) {
       });
   }
 
-  const digests = new Map();
-  const digest = (path) => {
-    if (!digests.has(path))
-      digests.set(
-        path,
-        reader.exists(path)
-          ? createHash('sha256').update(reader.read(path)).digest('hex')
-          : null,
-      );
-    return digests.get(path);
+  const captured = new Map();
+  const readSource = (path) => {
+    if (!captured.has(path)) captured.set(path, reader.read(path));
+    return captured.get(path);
   };
+  const tracked = new Set(
+    git(root, ['ls-files', '--cached', '--others', '--exclude-standard', '-z'])
+      .split('\0')
+      .filter(Boolean),
+  );
+  const documents = new Map(
+    ledger.records
+      .filter((record) => reader.exists(record.path))
+      .map((record) => [
+        record.path,
+        createHash('sha256').update(readSource(record.path)).digest('hex'),
+      ]),
+  );
   const reviews = [];
+  const generatedValidated = [];
+  const absentHistorical = [];
   const stalePaths = [];
   for (const record of ledger.records) {
-    if (
-      !/^[a-f0-9]{40}$/.test(record.sourceRevision) ||
-      !/^[a-f0-9]{64}$/.test(record.documentDigest) ||
-      record.sources.some((source) => !/^[a-f0-9]{64}$/.test(source.digest))
-    )
-      throw new Error(`Invalid review identity: ${record.path}`);
-    const inputs = [
-      { path: record.path, digest: record.documentDigest },
-      ...record.sources,
-    ];
-    const changed = inputs
-      .filter((source) => digest(source.path) !== source.digest)
-      .map((source) => source.path);
+    const evaluated = await evaluateDocumentationReview(
+      record,
+      documents,
+      tracked,
+      readSource,
+      { reportMissing: true },
+    );
+    if (evaluated.state === 'generated-validated') {
+      generatedValidated.push({
+        path: record.path,
+        state: evaluated.state,
+        recordedState: evaluated.recordedState,
+        observedChanges: evaluated.observedChanges,
+        validation: evaluated.validation,
+      });
+    } else if (evaluated.state === 'absent-historical') {
+      absentHistorical.push({
+        path: record.path,
+        state: evaluated.state,
+        recordedState: evaluated.recordedState,
+        validation: evaluated.validation,
+      });
+    }
+    const changed = evaluated.changed;
     if (!changed.length) continue;
     const lastEdit =
       git(root, [
@@ -360,15 +392,21 @@ export function documentationCatchUp({ root = process.cwd(), base } = {}) {
       coverageBase: selection.mergeBase,
       reviewedDocuments: ledger.records.length,
       staleReviews: reviews,
+      generatedValidated,
+      absentHistorical,
       removedDependencies,
-      unchangedReviews: ledger.records.length - reviews.length,
+      unchangedReviews:
+        ledger.records.length -
+        reviews.length -
+        generatedValidated.length -
+        absentHistorical.length,
       limits:
-        'Hashes compare only recorded document/source bytes; this is not a semantic rescan. Last committed edit excludes working-tree edits. The review source revision plus recorded hashes identifies the prior evidence; it is distinct from the page edit commit. Unmapped changes are searched since coverageBase, including staged, unstaged and untracked files. Do not advance that baseline to hide unresolved coverage.',
+        'Ordinary review hashes compare recorded document/source bytes; this is not a semantic rescan. Generated validation and absent historical notes use the shared review compiler rules; generated validation is not human review of new release claims, and note absence is not publication proof. Last committed edit excludes working-tree edits. The review source revision plus recorded hashes identifies prior evidence, separately from the page edit commit. Unmapped changes are searched since coverageBase, including staged, unstaged and untracked files. Do not advance that baseline to hide unresolved coverage.',
     },
   };
 }
 
-export function main(argv = process.argv.slice(2)) {
+export async function main(argv = process.argv.slice(2)) {
   let base;
   let json = false;
   let catchUp = false;
@@ -390,7 +428,7 @@ export function main(argv = process.argv.slice(2)) {
   if (catchUp && explicit.length)
     throw new Error('--catch-up cannot be combined with explicit paths');
   if (catchUp) {
-    const report = documentationCatchUp({ base });
+    const report = await documentationCatchUp({ base });
     process.stdout.write(
       `${json ? JSON.stringify(report, null, 2) : formatDocumentationImpact(report)}\n`,
     );
@@ -410,7 +448,7 @@ export function main(argv = process.argv.slice(2)) {
 
 if (invokedDirectly(import.meta.url)) {
   try {
-    main();
+    await main();
   } catch (error) {
     console.error(
       `documentation-impact: ${error instanceof Error ? error.message : error}`,

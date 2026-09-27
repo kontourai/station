@@ -151,6 +151,8 @@ function showDocument(doc, section, module) {
     partial: 'Partially reviewed',
     'source-reviewed': 'Reviewed against code',
     'needs-review': 'Review out of date',
+    'generated-validated': 'Generated output checked',
+    'absent-historical': 'Historical file absent',
   };
   const reviewTitle = review
     ? `${kindLabels[review.kind]} · ${stateLabels[review.state]}`
@@ -163,12 +165,20 @@ function showDocument(doc, section, module) {
       'Checked within the recorded scope; live outcomes need their own evidence.',
     'needs-review':
       'The document or its supporting code changed after this review.',
+    'generated-validated':
+      'Current data and rendering match the reviewed generator contract. New release claims have not been independently reverified.',
+    'absent-historical':
+      'This classified release note is no longer present. Its absence does not establish publication.',
   };
   const reviewText = review
     ? stateDescriptions[review.state]
     : 'This page has not been verified in full against the code.';
+  const generatedCheck =
+    review?.state === 'generated-validated' && review.validation
+      ? `<p><strong>Current generated check.</strong> ${escapeText(review.validation.summary)} ${escapeText(review.validation.entryCount)} release records checked.</p>`
+      : '';
   const evidence = review
-    ? `<p><strong>Review scope.</strong> ${escapeText(review.summary)}</p><p><strong>Limits.</strong> ${escapeText(review.limits)}</p><p>Recorded against source revision <code>${escapeText(review.sourceRevision)}</code>.</p>${review.sources.length ? `<ul>${review.sources.map((source) => `<li><a href="${atlas.sourceSnapshots[source.path]}">${escapeText(source.path)}</a></li>`).join('')}</ul>` : ''}${review.checks.length ? `<p>Recorded checks:</p><ul>${review.checks.map((check) => `<li>${escapeText(check)}</li>`).join('')}</ul>` : ''}`
+    ? `<p><strong>Review scope.</strong> ${escapeText(review.summary)}</p><p><strong>Limits.</strong> ${escapeText(review.limits)}</p>${generatedCheck}<p>Recorded against source revision <code>${escapeText(review.sourceRevision)}</code>.</p>${review.sources.length ? `<ul>${review.sources.map((source) => `<li><a href="${atlas.sourceSnapshots[source.path]}">${escapeText(source.path)}</a></li>`).join('')}</ul>` : ''}${review.checks.length ? `<p>Recorded checks:</p><ul>${review.checks.map((check) => `<li>${escapeText(check)}</li>`).join('')}</ul>` : ''}`
     : '';
   readingStatus.innerHTML = `<p class="review-status"><strong>${escapeText(reviewTitle)}.</strong> ${escapeText(reviewText)} <a href="${documentHref('docs/plans/documentation-code-audit.md#initial-findings')}">See reviewed claims and corrections</a>.</p><details class="source-details"><summary>Sources & review</summary><div class="doc-actions"><a href="${doc.sourceUrl}">Markdown source</a><a href="${documentHref('docs/plans/documentation-code-audit.md')}">Audit status</a></div>
     <p class="provenance">${escapeText(doc.path)}${atlas.dirty ? ' · Working-tree changes included.' : ''} This panel links to the captured source files.</p>${evidence}</details>`;

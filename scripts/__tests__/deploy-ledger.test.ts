@@ -157,6 +157,34 @@ describe('deploy ledger entry validation', () => {
     expect(validateEntry(entry({ notes: ['honest caveat'] })).ok).toBe(true);
   });
 
+  it('validates rendered changelog data while retaining qualified historical rows', () => {
+    for (const changelog of [
+      null,
+      undefined,
+      { previousSha: null, note: 'Historical entry; slice unavailable.' },
+      entry().changelog,
+    ])
+      expect(validateEntry(entry({ changelog })).ok).toBe(true);
+    for (const changelog of [
+      42,
+      [],
+      { ...entry().changelog, previousSha: 'short' },
+      { ...entry().changelog, note: 42 },
+      { ...entry().changelog, groups: 42 },
+      { ...entry().changelog, groups: { fix: 42 } },
+      { ...entry().changelog, groups: { fix: [''] } },
+      { ...entry().changelog, groups: { unknown: ['claim'] } },
+      { ...entry().changelog, commitCount: 'bogus' },
+      { ...entry().changelog, commitCount: -1 },
+      { ...entry().changelog, commitCount: 0.5 },
+      { previousSha: null },
+    ]) {
+      const result = validateEntry(entry({ changelog }));
+      expect(result.ok, JSON.stringify(changelog)).toBe(false);
+      expect(result.errors.join(' ')).toMatch(/changelog/i);
+    }
+  });
+
   it('throws with every offending field listed', () => {
     expect(() =>
       assertValidEntry(entry({ sha: 'x', channel: 'nope' })),

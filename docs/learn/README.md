@@ -19,6 +19,15 @@ the reader shows **Review out of date** and the documentation checks require the
 record to be revisited. Refresh those hashes only after reviewing the changed
 claim and evidence; changing a hash by itself is not a review.
 
+The deploy ledger has a narrower generated-output contract. Its current data
+must contain valid, unique release identities and render byte-for-byte to the
+Markdown through the reviewed generator. The reader labels this **Generated
+output checked**, preserving the previous review identity; it does not claim
+that the new releases were independently verified. Generator or validator
+changes still require source review. A removed, purpose-classified changeset
+note remains an absent historical classification, without implying it shipped.
+These rules do not exempt other generated files or missing current guides.
+
 ## Interactive atlas
 
 Build the local learning atlas from this checkout:

@@ -10,7 +10,7 @@
       "scenario": "Create durable work",
       "evidence": "Running isolated Station with sample data and a sample display name. No Agent dispatched.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
+      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "sources": [
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -22,7 +22,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/views/ProjectPage.css",
@@ -56,7 +56,7 @@
       "scenario": "Save a shared revision",
       "evidence": "Running isolated Station; the document and revision were persisted. No external Agent or provider. The small editor and clipped heading are the current UI.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
+      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "sources": [
         {
           "path": "src-server/services/orchestration/project-task-room-runtime.ts",
@@ -72,7 +72,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -111,10 +111,10 @@
       "digest": "708bc37f892ae2da8d8129dbc25002c831f08f9026404b1a7debf942b03282c9",
       "alt": "The Models page shows the settings for an example local model connection.",
       "caption": "Inspect a model connection.",
-      "scenario": "Connections → Models",
+      "scenario": "Connections \u2192 Models",
       "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
+      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "sources": [
         {
           "path": "src-ui/src/components/SplitPaneLayout.css",
@@ -134,7 +134,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -177,10 +177,10 @@
       "digest": "389dbc299fc8f8e384fc666d4f6c3672e754181f5b0e794840211746d9c28cc7",
       "alt": "A request inspector shows the tool scope and Approve once and Deny controls.",
       "caption": "Inspect a request before answering it.",
-      "scenario": "Notifications → Inspect request",
+      "scenario": "Notifications \u2192 Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
+      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -208,7 +208,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -239,10 +239,10 @@
       "digest": "68ed6d502d61927620ae4a11318850468067d16adc236e8e7a4e7105c9b97147",
       "alt": "Open the request inspector, expand Request identity and close it without deciding.",
       "caption": "Open Inspect request, expand Request identity, then Close. No decision is made.",
-      "scenario": "Notifications → Inspect request",
+      "scenario": "Notifications \u2192 Inspect request",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
+      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -270,7 +270,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -300,10 +300,10 @@
       "digest": "8630aae682bb9a47e2b2794ecbc44335c24afdef0967d5840d143fec75cf3bb2",
       "alt": "Browse the example model and engine settings.",
       "caption": "Browse Models and Engines without testing or invoking a provider.",
-      "scenario": "Connections → Models and Engines",
+      "scenario": "Connections \u2192 Models and Engines",
       "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
+      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "sources": [
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -315,7 +315,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -346,7 +346,9 @@
           "digest": "b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5"
         }
       ],
-      "documents": ["docs/guides/connections.md"]
+      "documents": [
+        "docs/guides/connections.md"
+      ]
     },
     {
       "path": "docs/learn/media/repository-knowledge.png",
@@ -354,10 +356,10 @@
       "digest": "8e627f67945d05387f19448dabeb593c6e547d7527ade97c9ff6aa618a422b21",
       "alt": "Knowledge Library shows 1149 repository records, 2089 links and the selected KnowledgeStoreProvider canonical record.",
       "caption": "Browse the repository-derived record graph and resolve canonical detail.",
-      "scenario": "Knowledge Library → selected repository record",
-      "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440×1000 and 390×844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
+      "scenario": "Knowledge Library \u2192 selected repository record",
+      "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
+      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -369,7 +371,7 @@
         },
         {
           "path": "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-          "digest": "3235d7af3f044df926eee73abf7b2d088ebc38057e637cabaed6508abb53814a"
+          "digest": "54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca"
         },
         {
           "path": "examples/knowledge-library/src/RootPicker.tsx",
@@ -417,7 +419,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -435,10 +437,10 @@
       "digest": "d3917f3c5e3994bb73d63decf2e7ff0b1913be20e46933f545449d739f55f1c4",
       "alt": "Knowledge Library shows 1149 repository records, 2089 links and the selected KnowledgeStoreProvider canonical record.",
       "caption": "Browse the repository-derived record graph and resolve canonical detail at a narrow browser width.",
-      "scenario": "Knowledge Library → narrow layout",
-      "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440×1000 and 390×844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
+      "scenario": "Knowledge Library \u2192 narrow layout",
+      "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "6fa523e4d5b5a265a9e545edcbba6f5602193bef",
+      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -450,7 +452,7 @@
         },
         {
           "path": "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-          "digest": "3235d7af3f044df926eee73abf7b2d088ebc38057e637cabaed6508abb53814a"
+          "digest": "54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca"
         },
         {
           "path": "examples/knowledge-library/src/RootPicker.tsx",
@@ -498,7 +500,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6f93a44e9f2c1cdc85d6b70a1b41776404a404bbf54f310ab8a099b7e872fde6"
+          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
         },
         {
           "path": "src-ui/src/views/page-layout.css",

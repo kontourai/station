@@ -96,6 +96,26 @@ unmapped dependencies and prose accuracy still require review. The
 [activation record](../../.veritas/init-plans/documentation-maintenance.md)
 retains the owner approval and failure/restoration controls.
 
+## Generated release records and removed notes
+
+Automatic release bookkeeping must not masquerade as a new human review. The
+review compiler recognizes one named generated-output contract: the deploy
+ledger. It validates the current JSON entries, rejects duplicate release
+identities, and requires the exact Markdown projection for this repository.
+The reviewed generator and validator source hashes must still match. Current
+output receives a separate generated-validation status; the prior review
+revision and hashes remain intact. This validates data shape and rendering,
+not publication outcomes, history completeness, artifact availability or platform
+behavior.
+
+A purpose-classified release-note file under `.changeset/` may become absent
+without invalidating the retained classification. It must have no behavioral
+source/check claims; absence does not prove that a release consumed it. The
+README, current guides, malformed records and missing behavioral dependencies
+are still errors. Catch-up reporting keeps these lifecycle states separate from
+claims that need source review. New generated owners need their own reviewed
+contract and refusal tests; `kind: generated` alone never exempts a file.
+
 ## Make the application learnable
 
 The reading path is product purpose → system overview → subsystem or user

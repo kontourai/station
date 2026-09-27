@@ -1074,8 +1074,8 @@
     },
     {
       "path": ".veritas/README.md",
-      "documentDigest": "edd1930dc10255d28023964b4c749edee17275673d3513afa9c3a7973c63a32e",
-      "sourceRevision": "de06d7c32ebf139872f29d7cfaf996aca785f2d0",
+      "documentDigest": "b8ea13f37db44823b6a7e80373fe1e45d3bc8405c33245cfbcf5a5440e9f117f",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current repository Veritas integration and protected-policy/evidence boundaries. Full 87-line baseline read. Actual repository configuration, installed Veritas 1.7.4 public docs/schema, hook wiring and generated-path contracts inspected. Reviewed the approved documentation evidence activation and policy-change attestation; authority settings remain unchanged.",
@@ -1131,7 +1131,7 @@
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
+          "digest": "1fd99e577190f3bffdef3fd55aeef66dd0dab724688757067fc63866e7fbd3eb"
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
@@ -1147,7 +1147,7 @@
         },
         {
           "path": "scripts/__tests__/docs-index-reachability.test.ts",
-          "digest": "bf1876276ac666f387fa0b45dc18d0a9f3f679d3eed353ded9903d4fc4357b40"
+          "digest": "c5d1fc84cbb3bbcb317c48372a5f6efecfceb0440936af88c9c4a609f4dec22e"
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
@@ -1179,7 +1179,7 @@
         },
         {
           "path": "scripts/lib/documentation-review.mjs",
-          "digest": "b66f7dd7abf955b68021aa52a92ae90f6c2694b1950c7297bd8d1c53dddb4963"
+          "digest": "18eefb1d38bd5e9a5ea3999dc45dd77da1e999819bf8f46eeb33d5253f8de1d4"
         },
         {
           "path": "scripts/lib/fast-checks-shards.mjs",
@@ -1259,13 +1259,14 @@
         "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
         "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
-        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution."
+        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
+        "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed."
       ]
     },
     {
       "path": ".veritas/init-plans/documentation-maintenance.md",
-      "documentDigest": "c82f09bff87cfb208eae1fda8a46c7ed6e0996b89e84f327ebf1114bb4625e7c",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "documentDigest": "729f649980c45de18af1b8a508d15adb41b69078f965a5279521e4364e3ebfff",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "design",
       "state": "classified",
       "summary": "Owner-approved additive documentation policy activation, catch/restoration results, required-evidence selection and cost. Historical candidate runs retain their separate protected-hash refusals.",
@@ -1292,7 +1293,8 @@
         "Proposal reviewed against actual override trial receipts: default-only failure warned; required candidate caught recorded drift, exact restoration removed that evidence failure. Protected policy remained unchanged.",
         "Reviewed frozen CI selection and the tested required-check proposal plus impact guidance. It remains explicitly inactive pending protected-policy approval.",
         "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed the linked contributor/governance change; existing scope and evidence limits remain accurate."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed the linked contributor/governance change; existing scope and evidence limits remain accurate.",
+        "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed."
       ]
     },
     {
@@ -2026,7 +2028,7 @@
     {
       "path": "docs/README.md",
       "documentDigest": "376eb72a923e3650381d57db7299752695bb6ec297d6a47fd5077930c06e0382",
-      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Read every audience route and index description against its canonical document and the explicit public Pages allowlist. Current, design, history and generated content are separated.",
@@ -2038,11 +2040,11 @@
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
+          "digest": "1fd99e577190f3bffdef3fd55aeef66dd0dab724688757067fc63866e7fbd3eb"
         },
         {
           "path": "docs/learn/README.md",
-          "digest": "bc2698f4e821d02d196bd258c0584c505baec6bde29c81a3cd058e99a5f9dd1f"
+          "digest": "31be5312cf0de5060ed268efed21ffe575665a0e107f8e328f08b8362888585e"
         },
         {
           "path": "docs/pages/public-docs.json",
@@ -2269,7 +2271,8 @@
         "Reviewed navigation link to the captured application walkthrough; underlying feature statements unchanged.",
         "Final entry-point review followed the affected canonical module/contract owners; no matching hash or file count was used as semantic proof.",
         "Reviewed integration deltas: Reviewed clearer purpose-first navigation and canonical learning path; retained scope and evidence distinctions. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. docs/learn/README.md: Reviewed navigation wording and explicit source/evidence limits; graph and capture routes use canonical owners. docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained.",
-        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+        "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed."
       ]
     },
     {
@@ -3539,7 +3542,7 @@
     {
       "path": "docs/architecture/abstraction-review.md",
       "documentDigest": "30885eb7874a50f0f96011945c475fc7d6e25d8ed074da307a8106f2342ada44",
-      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
@@ -3567,7 +3570,7 @@
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
+          "digest": "1fd99e577190f3bffdef3fd55aeef66dd0dab724688757067fc63866e7fbd3eb"
         },
         {
           "path": "docs/guides/keyboard-shortcuts.md",
@@ -3583,7 +3586,7 @@
         },
         {
           "path": "docs/learn/README.md",
-          "digest": "bc2698f4e821d02d196bd258c0584c505baec6bde29c81a3cd058e99a5f9dd1f"
+          "digest": "31be5312cf0de5060ed268efed21ffe575665a0e107f8e328f08b8362888585e"
         },
         {
           "path": "docs/learn/walkthroughs.md",
@@ -3701,7 +3704,8 @@
         "Added source/actual-caller findings #2843 through #2849 with distinct evidence limits, suggested owner fixes and same-PR documentation acceptance.",
         "Reviewed integration deltas: Reconciled curated findings with source/caller reviews and existing or newly filed GitHub owners; separate measurements, probes and open design decisions remain explicit.",
         "Bound the curated findings to the code and canonical explanations already reviewed and linked by this document; issue status remains external.",
-        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+        "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed."
       ]
     },
     {
@@ -10998,7 +11002,7 @@
     {
       "path": "docs/guides/code-quality.md",
       "documentDigest": "530dbc7372704bb4c2d5d858bf238190bbefb4fddcb4bb1db55492c7ea393beb",
-      "sourceRevision": "de06d7c32ebf139872f29d7cfaf996aca785f2d0",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Contributor quality and publication requirements with current hook composition. Full 316-line baseline read. Hook ordering, readiness selection, lane composition, route-helper adoption and actual raw-parameter route inspected. Requirements distinguished from execution proof; historical cost observations not remeasured. Follow-up: Push & Monitor delta only: separates merge-queue arm/confirm/stop from following task-required CI evidence to its outcome.",
@@ -11058,7 +11062,7 @@
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
+          "digest": "1fd99e577190f3bffdef3fd55aeef66dd0dab724688757067fc63866e7fbd3eb"
         },
         {
           "path": "docs/guides/testing.md",
@@ -11078,7 +11082,7 @@
         },
         {
           "path": "scripts/__tests__/docs-index-reachability.test.ts",
-          "digest": "bf1876276ac666f387fa0b45dc18d0a9f3f679d3eed353ded9903d4fc4357b40"
+          "digest": "c5d1fc84cbb3bbcb317c48372a5f6efecfceb0440936af88c9c4a609f4dec22e"
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
@@ -11110,7 +11114,7 @@
         },
         {
           "path": "scripts/lib/documentation-review.mjs",
-          "digest": "b66f7dd7abf955b68021aa52a92ae90f6c2694b1950c7297bd8d1c53dddb4963"
+          "digest": "18eefb1d38bd5e9a5ea3999dc45dd77da1e999819bf8f46eeb33d5253f8de1d4"
         },
         {
           "path": "scripts/lib/fast-checks-shards.mjs",
@@ -11189,7 +11193,8 @@
         "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
         "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
-        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution."
+        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
+        "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed."
       ]
     },
     {
@@ -11253,7 +11258,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "3a6a4cc4c0d545b102484406bd3a08b53b3bbdbc2e899bf8c927cba8b35ff5bc",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11261,7 +11266,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
+          "digest": "926043d37a0b49413b1c10909ff26f83a834c2402d43e7efd60da3c178730967"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -11744,7 +11749,8 @@
         "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
         "Formatter-only change; parsed media metadata is identical.",
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused clearBudget and documentary SSE list; active GET/non-mutation and mutating-verb classifier unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused clearBudget and documentary SSE list; active GET/non-mutation and mutating-verb classifier unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+        "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged."
       ]
     },
     {
@@ -13008,7 +13014,7 @@
     {
       "path": "docs/guides/development.md",
       "documentDigest": "2a134b5439fab737a3b67358c34f8ab6de1f9aa66a9336805363fcdfc8847d20",
-      "sourceRevision": "de06d7c32ebf139872f29d7cfaf996aca785f2d0",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Checkout setup and contributor workflow, with normative boundaries routed to owners. Full 415-line baseline read. Dependency lifecycle, workspace/package contract, command ownership, verification paths and plugin workflow boundaries checked. No installs outside managed setup, plugin installation, runtime/service control, native build or publication performed.",
@@ -13068,7 +13074,7 @@
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
+          "digest": "1fd99e577190f3bffdef3fd55aeef66dd0dab724688757067fc63866e7fbd3eb"
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
@@ -13092,7 +13098,7 @@
         },
         {
           "path": "scripts/__tests__/docs-index-reachability.test.ts",
-          "digest": "bf1876276ac666f387fa0b45dc18d0a9f3f679d3eed353ded9903d4fc4357b40"
+          "digest": "c5d1fc84cbb3bbcb317c48372a5f6efecfceb0440936af88c9c4a609f4dec22e"
         },
         {
           "path": "scripts/__tests__/release-manifest-vectors.test.ts",
@@ -13136,7 +13142,7 @@
         },
         {
           "path": "scripts/lib/documentation-review.mjs",
-          "digest": "b66f7dd7abf955b68021aa52a92ae90f6c2694b1950c7297bd8d1c53dddb4963"
+          "digest": "18eefb1d38bd5e9a5ea3999dc45dd77da1e999819bf8f46eeb33d5253f8de1d4"
         },
         {
           "path": "scripts/lib/fast-checks-shards.mjs",
@@ -13212,7 +13218,8 @@
         "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
         "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
-        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution."
+        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
+        "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed."
       ]
     },
     {
@@ -13269,8 +13276,8 @@
     },
     {
       "path": "docs/guides/documentation.md",
-      "documentDigest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b",
-      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
+      "documentDigest": "1fd99e577190f3bffdef3fd55aeef66dd0dab724688757067fc63866e7fbd3eb",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "policy",
       "state": "classified",
       "summary": "Reviewed the audit, source-evidence, comment, editorial, and GitHub follow-through workflow.",
@@ -13294,7 +13301,8 @@
         "Reviewed added guidance to inspect pinned dependency defaults; factory mocks do not establish persisted or emitted fields.",
         "Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed.",
         "Final type repair independently reviewed: scripts typecheck passed (367 compiled files; existing 56 deferred), impact/media/browser selection passed 22 tests, and corrected native-element browser callbacks passed all seven reader tests. Earlier type and callback failures remain separate receipts.",
-        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+        "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed."
       ]
     },
     {
@@ -13799,7 +13807,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "8dcfa3b667dfdfb63f6acbede8284468f26219c8",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -13823,7 +13831,7 @@
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
+          "digest": "1fd99e577190f3bffdef3fd55aeef66dd0dab724688757067fc63866e7fbd3eb"
         },
         {
           "path": "docs/guides/plugins.md",
@@ -13875,7 +13883,8 @@
         "EXECUTED: git diff --check passed. No production behavior changed. No new live audit, hosted job, browser suite, dependency installation, cloud deployment or price refresh was run for this tranche.",
         "NOT_EXECUTED: gate:for could not spawn its shell (EAGAIN, host process capacity); retained the failure and avoided process-heavy verification. Parent owns final combined documentation/readiness checks. Existing tests were inspected for their actual assertions and limits, not reported as newly executed.",
         "Reviewed integration deltas: docs/reference/api.md: Integrated frozen upstream Agent effective-default admission and current inheritance/clear-to-never authority condition; source/caller review, not new live execution. docs/reference/sdk.md: Integrated typed Project/plugin HTTP errors, Retry-After and optional grantsUnavailable constructor contract; added accurate MCP policy construction limits.",
-        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt."
+        "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+        "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed."
       ]
     },
     {
@@ -13931,7 +13940,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "1a3b3fd9145e3f4a651809735754abeeac1446c5",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -13939,7 +13948,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
+          "digest": "926043d37a0b49413b1c10909ff26f83a834c2402d43e7efd60da3c178730967"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -14082,7 +14091,8 @@
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
         "Reviewed Flow Agents 6.4.0 package files, catalog, manifest, install/update/status callers and separate Station runtime provider composition. The Kit alias and update passed in an isolated local candidate install; installer/catalog bytes match 6.4.0. Pinned upstream links record the distribution source; this does not claim a new registry release or universal compatibility.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
-        "Clarified the external Kit directory as a pinned upstream link after the live reference gate correctly rejected it as an absent local path; meaning and caller claims unchanged."
+        "Clarified the external Kit directory as a pinned upstream link after the live reference gate correctly rejected it as an absent local path; meaning and caller claims unchanged.",
+        "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged."
       ]
     },
     {
@@ -17882,7 +17892,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -17890,7 +17900,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
+          "digest": "926043d37a0b49413b1c10909ff26f83a834c2402d43e7efd60da3c178730967"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -18112,7 +18122,8 @@
         "REASONED: full current133-line guide read; remaining adoption, Scheduler restart/replay and Home presentation claims traced through actual callers. EXECUTED: read-only source inspection only; no broad tests/readiness. This proposed document digest matches suggestions.patch, not the unchanged root file until the owner applies it.",
         "Formatter-only change; parsed media metadata is identical.",
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused provider preview method; HTTP/MCP preview still belongs to SchedulerService with zone validation. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused provider preview method; HTTP/MCP preview still belongs to SchedulerService with zone validation. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+        "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged."
       ]
     },
     {
@@ -18497,7 +18508,7 @@
     {
       "path": "docs/guides/testing.md",
       "documentDigest": "448b9fe89cc9b69b0359f6a024b196bf4f5a1a45b5387d54e8dba4aae9141849",
-      "sourceRevision": "de06d7c32ebf139872f29d7cfaf996aca785f2d0",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
@@ -18553,7 +18564,7 @@
         },
         {
           "path": "docs/guides/documentation.md",
-          "digest": "ca55e2081cbafadd09a0a4487ad3676ac07c53c968f8919832a7d2f637b4358b"
+          "digest": "1fd99e577190f3bffdef3fd55aeef66dd0dab724688757067fc63866e7fbd3eb"
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
@@ -18569,7 +18580,7 @@
         },
         {
           "path": "scripts/__tests__/docs-index-reachability.test.ts",
-          "digest": "bf1876276ac666f387fa0b45dc18d0a9f3f679d3eed353ded9903d4fc4357b40"
+          "digest": "c5d1fc84cbb3bbcb317c48372a5f6efecfceb0440936af88c9c4a609f4dec22e"
         },
         {
           "path": "scripts/__tests__/run-ci-fast.test.ts",
@@ -18601,7 +18612,7 @@
         },
         {
           "path": "scripts/lib/documentation-review.mjs",
-          "digest": "b66f7dd7abf955b68021aa52a92ae90f6c2694b1950c7297bd8d1c53dddb4963"
+          "digest": "18eefb1d38bd5e9a5ea3999dc45dd77da1e999819bf8f46eeb33d5253f8de1d4"
         },
         {
           "path": "scripts/lib/fast-checks-shards.mjs",
@@ -18681,7 +18692,8 @@
         "Recorded completed macOS ci:fast and Linux verify:static at d2cf36b34 with prerequisite and earlier-failure limits. Generated reader owns current inventory counts. Follow-up designs are deferred to GitHub; protected policy activation remains separate.",
         "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
-        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution."
+        "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
+        "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed."
       ]
     },
     {
@@ -19466,14 +19478,14 @@
       "path": "docs/learn/README.md",
       "kind": "current",
       "state": "source-reviewed",
-      "documentDigest": "bc2698f4e821d02d196bd258c0584c505baec6bde29c81a3cd058e99a5f9dd1f",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "documentDigest": "31be5312cf0de5060ed268efed21ffe575665a0e107f8e328f08b8362888585e",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "summary": "Reviewed navigation, immutable source snapshots, lazy loading, diagram controls, capture admission, review freshness, impact/catch-up and shared MCP inputs against their actual implementation.",
       "limits": "Local contributor reader. No public Pages deployment, remote physical device, or semantic certification follows from a structural check. Media playback has a separate browser check.",
       "sources": [
         {
           "path": "docs/learn/atlas.js",
-          "digest": "372b6924e8e5f485cd72ed59fbb6c2bb11c10f01ae3eb5df0b20006c68882cc2"
+          "digest": "318e167fcc85a847a2dad8b892b994a3ae0eb53c31dd9ee5976a1016939f72a4"
         },
         {
           "path": "docs/learn/atlas.json",
@@ -19481,7 +19493,7 @@
         },
         {
           "path": "scripts/__tests__/learning-atlas.browser.test.ts",
-          "digest": "71480f97f39655c612f23a98691f2494ac59ac22d741967d7bdf5aff823c27fa"
+          "digest": "fc5fde7dcd68bccfa3cff2069f2efca59acfa73040214ec7a22d78188cdbff5b"
         },
         {
           "path": "scripts/build-learning-guide.mjs",
@@ -19489,7 +19501,7 @@
         },
         {
           "path": "scripts/documentation-impact.mjs",
-          "digest": "b3aee36a9d2eddb8cfc092a63c3e13bcda2ed12a60e599084421ff568a503a40"
+          "digest": "7e4cf6479f976a259d7668505bc01e2ab71a70ee63bbd811be08f98b3212d0cd"
         },
         {
           "path": "scripts/lib/documentation-model.mjs",
@@ -19530,13 +19542,14 @@
         "Scripts typecheck repair: declared real input/topic contracts, return catchUp as part of the result shape, type parsed CLI output, execute DOM observations in the browser context without changing the Node type environment, and let a missing media document fail the assertion. No evidence bypass or policy change.",
         "Bound the reviewed reader template, styles and diagram controls as explicit impact dependencies, in addition to renderer and browser tests.",
         "Final type repair independently reviewed: scripts typecheck passed (367 compiled files; existing 56 deferred), impact/media/browser selection passed 22 tests, and corrected native-element browser callbacks passed all seven reader tests. Earlier type and callback failures remain separate receipts.",
-        "Updated preview link label to audit and evidence; target and navigation behavior are unchanged."
+        "Updated preview link label to audit and evidence; target and navigation behavior are unchanged.",
+        "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed."
       ]
     },
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -19544,7 +19557,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
+          "digest": "926043d37a0b49413b1c10909ff26f83a834c2402d43e7efd60da3c178730967"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -19748,7 +19761,8 @@
         "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures. src-ui/src/views/ProjectPage.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found.",
         "Formatter-only change; parsed media metadata is identical.",
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
+        "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged."
       ]
     },
     {
@@ -20363,7 +20377,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -20371,7 +20385,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
+          "digest": "926043d37a0b49413b1c10909ff26f83a834c2402d43e7efd60da3c178730967"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -20451,7 +20465,8 @@
         "Reviewed integration deltas: src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
         "Formatter-only change; parsed media metadata is identical.",
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+        "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged."
       ]
     },
     {
@@ -22295,9 +22310,9 @@
       "kind": "generated",
       "state": "source-reviewed",
       "documentDigest": "9903eb1aa5e5e763e030e4dc5daa1237e9fea032f37db16bb069f431f65b0fbf",
-      "sourceRevision": "18967de8502e8cbfcc328201e1889359358e4380",
-      "summary": "Validated the 142-entry ledger and deterministic Markdown projection, with publication separated from its independently fallible commit-back step.",
-      "limits": "Generated contract or retained release evidence; no new hosted release, live label mutation or platform result is claimed.",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
+      "summary": "Reviewed release-entry validation and deterministic Markdown projection. Routine data updates receive a separate generated-output check; publication and commit-back remain independently fallible.",
+      "limits": "Machine validation establishes entry shape and exact projection, not publication outcomes, complete release history, current artifact availability or platform behavior. Prior review hashes remain historical when generated data changes.",
       "sources": [
         {
           "path": "docs/reference/deploy-ledger.json",
@@ -22305,14 +22320,20 @@
         },
         {
           "path": "scripts/deploy-ledger.mjs",
-          "digest": "beedd0f82a9c986b6cd1438639421e07dbe961f153c05fc31994adb10a3f167b"
+          "digest": "20a24b252e2de00f69435afffb7af55f74e8fe3b8b31e91c5a0ef8cc7cfd6522"
+        },
+        {
+          "path": "scripts/lib/documentation-review.mjs",
+          "digest": "18eefb1d38bd5e9a5ea3999dc45dd77da1e999819bf8f46eeb33d5253f8de1d4"
         }
       ],
       "checks": [
         "Actual entry validation and deterministic rendering passed; public raw JSON returned HTTP 200 without authentication.",
         "Reviewed integration deltas: Reviewed added upstream release record and deterministic projection separately from actual release execution; historical publication claims are not renewed by this audit. docs/reference/deploy-ledger.json: Reviewed added frozen upstream nightly-npm receipt as historical input; no new registry or hosted release execution claimed.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
-        "Reviewed the generated nightly-npm entry from upstream 39dfe2680: dated workflow/registry attribution and explicitly unknown artifactBuiltAt remain historical publication metadata, not new audit execution or qualification. No product/runtime source changed."
+        "Reviewed the generated nightly-npm entry from upstream 39dfe2680: dated workflow/registry attribution and explicitly unknown artifactBuiltAt remain historical publication metadata, not new audit execution or qualification. No product/runtime source changed.",
+        "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
+        "Canonical deployment entry validator now checks rendered changelog fields while retaining qualified note-only historical rows; 32 focused tests passed in 560ms. Generated compiler and CLI tests exercise refusal cases separately."
       ]
     },
     {
@@ -22676,7 +22697,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -22684,7 +22705,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
+          "digest": "926043d37a0b49413b1c10909ff26f83a834c2402d43e7efd60da3c178730967"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -22756,7 +22777,8 @@
         "Reviewed integration deltas: src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
         "Formatter-only change; parsed media metadata is identical.",
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+        "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged."
       ]
     },
     {
@@ -25309,7 +25331,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -25326,7 +25348,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
+          "digest": "926043d37a0b49413b1c10909ff26f83a834c2402d43e7efd60da3c178730967"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -25486,7 +25508,8 @@
         "Reviewed integration deltas: packages/cli/src/commands/lifecycle.ts: Windows stop-hint home quoting becomes double quoted; cmd/PowerShell expansion caveat retained. Startup sibling readiness waits receive abort after first failure and a dead child refuses early with last identity/HTTP observation. Expected instance/boot/build identity and listener authority checks stay intact. src-ui/src/components/first-run/FirstRunHomeChapter.tsx: planFirstRunChapterSteps becomes private to the production owner; implementation and actual component/caller unchanged. No current Markdown advertises the removed export. Test changes move assertions to owner output; no new execution receipt inferred. docs/guides/starter-work.md: Canonical owner completed its recorded claim review against actual callers; dependent reading routes remain accurate. Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. Proposed copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures. src-ui/src/views/ProjectPage.tsx: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
         "Formatter-only change; parsed media metadata is identical.",
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+        "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged."
       ]
     },
     {
@@ -26323,7 +26346,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -26331,7 +26354,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "3de3a13e0d41814be1bb0404d166c7d437fa9422f54f93a46f4acf2499237d6e"
+          "digest": "926043d37a0b49413b1c10909ff26f83a834c2402d43e7efd60da3c178730967"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -26429,7 +26452,8 @@
         "Reviewed integration deltas: src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
         "Formatter-only change; parsed media metadata is identical.",
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
+        "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged."
       ]
     },
     {

@@ -99,6 +99,50 @@ export const DEPLOY_LEDGER_VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+~-]*$/;
  * generous for a `date -u` taken in the same second as the publish. */
 const FUTURE_TIMESTAMP_SKEW_MS = 5 * 60_000;
 
+function validateChangelog(changelog) {
+  if (changelog === undefined || changelog === null) return [];
+  if (typeof changelog !== 'object' || Array.isArray(changelog))
+    return ['changelog must be an object or null'];
+  const errors = [];
+  if (
+    changelog.previousSha !== null &&
+    (typeof changelog.previousSha !== 'string' ||
+      !SHA_PATTERN.test(changelog.previousSha))
+  )
+    errors.push('changelog.previousSha must be a full SHA or null');
+  if (
+    changelog.note !== undefined &&
+    changelog.note !== null &&
+    (typeof changelog.note !== 'string' || !changelog.note.trim())
+  )
+    errors.push('changelog.note must be a non-empty string or null');
+  if (changelog.groups === undefined) {
+    if (typeof changelog.note !== 'string' || !changelog.note.trim())
+      errors.push('A historical changelog without groups needs a note');
+  } else if (
+    !changelog.groups ||
+    typeof changelog.groups !== 'object' ||
+    Array.isArray(changelog.groups)
+  ) {
+    errors.push('changelog.groups must map known groups to string arrays');
+  } else {
+    for (const [group, lines] of Object.entries(changelog.groups)) {
+      if (
+        !Object.hasOwn(GROUP_TITLES, group) ||
+        !Array.isArray(lines) ||
+        lines.some((line) => typeof line !== 'string' || !line.trim())
+      )
+        errors.push(`Invalid changelog group: ${group}`);
+    }
+  }
+  if (
+    (changelog.groups !== undefined || changelog.commitCount !== undefined) &&
+    (!Number.isSafeInteger(changelog.commitCount) || changelog.commitCount < 0)
+  )
+    errors.push('changelog.commitCount must be a non-negative safe integer');
+  return errors;
+}
+
 export function validateEntry(entry) {
   const errors = [];
   if (
@@ -189,6 +233,7 @@ export function validateEntry(entry) {
   ) {
     errors.push('notes must be null or an array of non-empty strings');
   }
+  errors.push(...validateChangelog(entry.changelog));
   return { ok: errors.length === 0, errors };
 }
 

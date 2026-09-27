@@ -15,6 +15,7 @@ import {
   renderLearningDocument,
 } from '../build-learning-guide.mjs';
 import { checkMarkdownLinks } from '../check-markdown-links.mjs';
+import { renderLedgerMarkdown } from '../deploy-ledger.mjs';
 import { INDEXED_DIRECTORIES } from '../docs-index.mjs';
 import {
   compileStationDocs,
@@ -26,10 +27,357 @@ import {
   extractModules,
   validateCatalog,
 } from '../lib/documentation-model.mjs';
-import { compileDocumentationReviews } from '../lib/documentation-review.mjs';
+import {
+  compileDocumentationReviews,
+  evaluateDocumentationReview,
+} from '../lib/documentation-review.mjs';
 import { publishImmutableSnapshot } from '../lib/immutable-snapshot.mjs';
 
 const makeTempDir = trackTempDirs();
+
+describe('machine-maintained documentation review boundaries', () => {
+  const hash = (bytes: string) =>
+    createHash('sha256').update(bytes).digest('hex');
+  const document = 'docs/reference/deploy-ledger.md';
+  const dataPath = 'docs/reference/deploy-ledger.json';
+  const owners = [
+    'scripts/deploy-ledger.mjs',
+    'scripts/lib/documentation-review.mjs',
+  ];
+  const entry = {
+    timestampUtc: '2026-01-01T00:00:00.000Z',
+    channel: 'nightly-npm',
+    version: '0.1.0-nightly.1',
+    sha: 'a'.repeat(40),
+    workflowRunUrl: 'https://github.com/kontourai/station/actions/runs/1',
+    artifacts: ['npm package'],
+    gateResult:
+      'Recorded by the publishing workflow; not independently verified.',
+    notes: null,
+  };
+
+  function fixture() {
+    const sources = new Map(owners.map((path) => [path, `reviewed ${path}`]));
+    const documents = new Map<string, string>();
+    const update = (entries: unknown[]) => {
+      sources.set(dataPath, JSON.stringify(entries));
+      const markdown = renderLedgerMarkdown({
+        entries,
+        githubRepo: 'kontourai/station',
+      });
+      sources.set(document, markdown);
+      documents.set(document, hash(markdown));
+    };
+    update([entry]);
+    const record = {
+      path: document,
+      kind: 'generated',
+      state: 'source-reviewed',
+      documentDigest: documents.get(document)!,
+      sourceRevision: 'b'.repeat(40),
+      summary: 'Reviewed the generation contract and the historical input.',
+      limits: 'Does not independently verify a publication.',
+      sources: [dataPath, ...owners].map((path) => ({
+        path,
+        digest: hash(sources.get(path)!),
+      })),
+      checks: ['Historical generation review.'],
+    };
+    const tracked = new Set(sources.keys());
+    const read = async (path: string) => {
+      const bytes = sources.get(path);
+      if (bytes === undefined)
+        throw new Error(`Missing captured source: ${path}`);
+      return bytes;
+    };
+    const evaluate = (requireFresh = true) =>
+      evaluateDocumentationReview(record, documents, tracked, read, {
+        requireFresh,
+      });
+    return { sources, documents, record, tracked, read, update, evaluate };
+  }
+
+  it('validates new generated data without refreshing historical human evidence', async () => {
+    const f = fixture();
+    const historical = JSON.stringify(f.record);
+    f.update([
+      { ...entry, version: '0.1.0-nightly.2', sha: 'c'.repeat(40) },
+      entry,
+    ]);
+    const result = await f.evaluate();
+    expect(result).toMatchObject({
+      state: 'generated-validated',
+      recordedState: 'source-reviewed',
+      changed: [],
+      documentDigest: f.record.documentDigest,
+      sourceRevision: f.record.sourceRevision,
+      observedChanges: [document, dataPath],
+      validation: {
+        kind: 'deploy-ledger-projection',
+        entryCount: 2,
+        documentDigest: f.documents.get(document),
+        dataDigest: hash(f.sources.get(dataPath)!),
+      },
+    });
+    expect(result.validation?.summary).toContain('not human-reviewed');
+    expect(JSON.stringify(f.record)).toBe(historical);
+    expect(result.sources).toEqual(f.record.sources);
+  });
+
+  it.each(owners)(
+    'keeps the reviewed owner %s hash mandatory',
+    async (owner) => {
+      const f = fixture();
+      f.sources.set(owner, 'changed owner');
+      await expect(f.evaluate()).rejects.toThrow(
+        'Documentation review needs refresh',
+      );
+      expect(await f.evaluate(false)).toMatchObject({
+        state: 'needs-review',
+        changed: [owner],
+      });
+      f.record.sources = f.record.sources.filter(({ path }) => path !== owner);
+      await expect(f.evaluate()).rejects.toThrow(
+        'Missing generated review source',
+      );
+    },
+  );
+
+  it('does not grant the data exception to another generated page or a current guide', async () => {
+    for (const recordOverride of [
+      { path: 'other.md', kind: 'generated' },
+      { path: document, kind: 'current' },
+    ]) {
+      const f = fixture();
+      const record = { ...f.record, ...recordOverride };
+      f.documents.set(record.path, record.documentDigest);
+      f.tracked.add(record.path);
+      f.sources.set(record.path, f.sources.get(document)!);
+      f.update([{ ...entry, version: '0.1.0-nightly.2' }, entry]);
+      await expect(
+        evaluateDocumentationReview(record, f.documents, f.tracked, f.read, {
+          requireFresh: true,
+        }),
+      ).rejects.toThrow('Documentation review needs refresh');
+    }
+  });
+
+  it('refuses invalid entries, duplicate identities and non-array data', async () => {
+    for (const entries of [
+      [{ ...entry, sha: 'invalid' }],
+      [{ ...entry, changelog: 42 }],
+      [
+        {
+          ...entry,
+          changelog: {
+            previousSha: null,
+            groups: { feat: 'not an array' },
+            commitCount: 1,
+          },
+        },
+      ],
+      [
+        {
+          ...entry,
+          changelog: { previousSha: null, groups: {}, commitCount: -1 },
+        },
+      ],
+      [
+        {
+          ...entry,
+          changelog: { previousSha: null, groups: {}, commitCount: 1.5 },
+        },
+      ],
+      [entry, { ...entry, artifacts: ['other artifact'] }],
+    ]) {
+      const f = fixture();
+      f.update(entries);
+      await expect(f.evaluate()).rejects.toThrow(
+        /Invalid generated|Duplicate generated/,
+      );
+    }
+    const f = fixture();
+    f.sources.set(dataPath, '{}');
+    await expect(f.evaluate()).rejects.toThrow('must be an array');
+    f.sources.set(dataPath, '[null]');
+    await expect(f.evaluate()).rejects.toThrow('Invalid generated');
+  });
+
+  it('refuses hand-edited Markdown and inconsistent captured document digests', async () => {
+    const f = fixture();
+    f.sources.set(document, `${f.sources.get(document)}\nUnverified claim.`);
+    f.documents.set(document, hash(f.sources.get(document)!));
+    await expect(f.evaluate()).rejects.toThrow(
+      'does not match its captured data',
+    );
+    f.update([entry]);
+    f.documents.set(document, hash('different captured document'));
+    await expect(f.evaluate()).rejects.toThrow(
+      'does not match its captured data',
+    );
+  });
+
+  it.each([dataPath, document])(
+    'refuses malformed UTF-8 in captured %s bytes',
+    async (path) => {
+      const f = fixture();
+      f.update([{ ...entry, notes: ['\uFFFD'] }]);
+      const original = Buffer.from(f.sources.get(path)!);
+      const marker = Buffer.from('\uFFFD');
+      const offset = original.indexOf(marker);
+      expect(offset).toBeGreaterThanOrEqual(0);
+      const malformed = Buffer.concat([
+        original.subarray(0, offset),
+        Buffer.from([0xff]),
+        original.subarray(offset + marker.length),
+      ]);
+      if (path === document)
+        f.documents.set(
+          document,
+          createHash('sha256').update(malformed).digest('hex'),
+        );
+      // Replacement decoding would turn the bad JSON byte into the same valid
+      // U+FFFD already rendered in Markdown, silently accepting different bytes.
+      await expect(
+        evaluateDocumentationReview(
+          f.record,
+          f.documents,
+          f.tracked,
+          async (source: string) =>
+            source === path ? malformed : f.read(source),
+          { requireFresh: true },
+        ),
+      ).rejects.toThrow(/encoded data/);
+    },
+  );
+
+  it('refuses missing data or its review binding and reports absence honestly for catch-up', async () => {
+    const f = fixture();
+    f.tracked.delete(dataPath);
+    await expect(f.evaluate()).rejects.toThrow('Invalid review source');
+    expect(
+      await evaluateDocumentationReview(
+        f.record,
+        f.documents,
+        f.tracked,
+        f.read,
+        { reportMissing: true },
+      ),
+    ).toMatchObject({ state: 'needs-review', changed: [dataPath] });
+    f.tracked.add(dataPath);
+    f.sources.delete(dataPath);
+    await expect(f.evaluate()).rejects.toThrow('Missing captured source');
+    f.record.sources = f.record.sources.filter(({ path }) => path !== dataPath);
+    await expect(f.evaluate()).rejects.toThrow(
+      'Missing generated review source',
+    );
+  });
+
+  it('reports tracked-but-missing data for catch-up without hiding other read failures', async () => {
+    const f = fixture();
+    const read = async (path: string) => {
+      if (path === dataPath)
+        throw Object.assign(new Error('deleted'), { code: 'ENOENT' });
+      return f.read(path);
+    };
+    expect(
+      await evaluateDocumentationReview(
+        f.record,
+        f.documents,
+        f.tracked,
+        read,
+        { reportMissing: true },
+      ),
+    ).toMatchObject({ state: 'needs-review', changed: [dataPath] });
+    await expect(
+      evaluateDocumentationReview(f.record, f.documents, f.tracked, read),
+    ).rejects.toThrow('deleted');
+    await expect(
+      evaluateDocumentationReview(
+        f.record,
+        f.documents,
+        f.tracked,
+        async () => {
+          throw Object.assign(new Error('denied'), { code: 'EACCES' });
+        },
+        { reportMissing: true },
+      ),
+    ).rejects.toThrow('denied');
+  });
+
+  const note = () => ({
+    path: '.changeset/consumed-note.md',
+    kind: 'release-note',
+    state: 'classified',
+    documentDigest: hash('Historical note'),
+    sourceRevision: 'd'.repeat(40),
+    summary: 'Release intent.',
+    limits: 'Publication is not established.',
+    sources: [],
+    checks: [],
+  });
+  it('retains an absent classified changeset as history without claiming publication', async () => {
+    const record = note();
+    const read = vi.fn();
+    const reviews = await compileDocumentationReviews(
+      { version: 1, records: [record] },
+      new Map(),
+      new Set(),
+      read,
+      { requireFresh: true },
+    );
+    expect(reviews.size).toBe(1);
+    expect(reviews.get(record.path)).toMatchObject({
+      ...record,
+      state: 'absent-historical',
+      recordedState: 'classified',
+      changed: [],
+      validation: { kind: 'historical-absence' },
+    });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('still rejects malformed or duplicate absent records and missing current documents', async () => {
+    for (const record of [
+      { ...note(), path: '.changeset/README.md' },
+      { ...note(), path: '.changeset/readme.md' },
+      { ...note(), path: '.changeset/../note.md' },
+      { ...note(), path: '.changeset/nested\\note.md' },
+      { ...note(), path: 'guide.md' },
+      { ...note(), kind: 'current' },
+      { ...note(), state: 'partial' },
+      { ...note(), checks: ['A behavioral assertion.'] },
+      { ...note(), documentDigest: 'invalid' },
+    ]) {
+      await expect(
+        compileDocumentationReviews(
+          { version: 1, records: [record] },
+          new Map(),
+          new Set(),
+          vi.fn(),
+          { requireFresh: true },
+        ),
+      ).rejects.toThrow();
+    }
+    await expect(
+      compileDocumentationReviews(
+        { version: 1, records: [note(), note()] },
+        new Map(),
+        new Set(),
+        vi.fn(),
+      ),
+    ).rejects.toThrow('duplicate reviewed document');
+    expect(
+      await evaluateDocumentationReview(
+        { ...note(), path: 'guide.md', kind: 'current' },
+        new Map(),
+        new Set(),
+        vi.fn(),
+        { reportMissing: true },
+      ),
+    ).toMatchObject({ state: 'needs-review', changed: ['guide.md'] });
+  });
+});
 
 describe('immutable source publication', () => {
   it('accepts identical existing bytes and refuses truncated or different evidence without replacing it', async () => {

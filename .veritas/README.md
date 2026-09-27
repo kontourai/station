@@ -116,7 +116,12 @@ required merge-queue/full-regression paths. It is also selected as required
 Veritas evidence, including through `ci:fast`'s readiness call. The separate
 same-repository PR source-scan job also checks freshness, but is not a required
 status check. A normal reader build can mark stale reviews `needs-review`;
-the strict check refuses them. None of these mechanisms proves the semantics
+the strict check refuses them. The named deploy-ledger contract separately
+checks current machine data and its exact projection while preserving the
+historical source review; removed classified changeset notes remain explicitly
+absent. These narrow lifecycle rules do not waive current-guide or generator
+source drift. See [documentation maintenance](../docs/guides/documentation.md#generated-release-records-and-removed-notes).
+None of these mechanisms proves the semantics
 of a prose claim or covers source dependencies absent from the ledger.
 
 Hosted `fast-checks` now aggregates an affected-test plan, four shards, and

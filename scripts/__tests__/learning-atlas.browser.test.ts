@@ -215,6 +215,16 @@ test('a reader follows a concept into its exact module, searches, and returns th
   await browserExpect(page.locator('.source-details')).toContainText(
     'not proof that every current feature meets them',
   );
+  await page.goto('http://atlas.test/#doc=docs%2Freference%2Fdeploy-ledger.md');
+  await browserExpect(page.locator('.review-status')).toContainText(
+    'Generated reference · Generated output checked',
+  );
+  await browserExpect(page.locator('.review-status')).toContainText(
+    'New release claims have not been independently reverified.',
+  );
+  await browserExpect(page.locator('.review-status')).not.toContainText(
+    'Reviewed against code',
+  );
   await page.goto('http://atlas.test/#doc=docs%2Fuser%2Fgetting-started.md');
   await page
     .getByRole('article')
