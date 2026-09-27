@@ -337,13 +337,41 @@ jobs:
       - name: Build two archives of this candidate
         # The provenance SHA is the commit actually checked out: under
         # pull_request_target GITHUB_SHA is the base tip, not the candidate.
+        # The second archive is built from an empty local commit on top, so
+        # the two generations carry different SHAs (baked into the server
+        # bundle and its build stamp alike) and the service path's identity
+        # check can tell them apart (#2675 slice C). The commit is never
+        # pushed; the checkout holds no credentials to push it with.
         run: |
           set -euo pipefail
-          for build in 1 2; do
-            npm run build:portable-server -- --ref "v0.0.0-preview.$build" \
-              --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-$build"
+          npm run build:portable-server -- --ref v0.0.0-preview.1 \
+            --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-1"
+          git -c user.name='install smoke' -c user.email='install-smoke@invalid' \
+            commit --quiet --allow-empty -m 'install smoke: second archive generation'
+          npm run build:portable-server -- --ref v0.0.0-preview.2 \
+            --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-2"
+      - name: Start a systemd user manager for the service path
+        # Linger starts user@<uid>.service without a login session, which is
+        # what `station service install` registers with. No secrets, no token.
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo loginctl enable-linger "$(id -un)"
+          runtime_dir="/run/user/$(id -u)"
+          for _ in $(seq 1 60); do
+            [ -S "$runtime_dir/bus" ] && break
+            sleep 1
           done
+          XDG_RUNTIME_DIR="$runtime_dir" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" \
+            systemctl --user show-environment >/dev/null
+          {
+            echo "XDG_RUNTIME_DIR=$runtime_dir"
+            echo "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime_dir/bus"
+          } >>"$GITHUB_ENV"
       - name: Install, start, upgrade and uninstall with no Node.js on PATH
+        env:
+          SMOKE_SYSTEMD_SERVICE: ${{ runner.os == 'Linux' && '1' || '0' }}
+          SMOKE_SERVICE_SKIP_REASON: this leg does not register a LaunchAgent on a hosted macOS runner, so the service path runs on the Linux leg only and the plist is covered by unit tests
         run: |
           scripts/smoke-install-prebuilt-archive.sh \
             "$RUNNER_TEMP/archive-1/station-server-${{ matrix.target }}.tar.gz" \
@@ -358,3 +386,7 @@ jobs:
             echo "===== $log (last 200 lines) ====="
             tail -200 "$log"
           done
+          if [ "$RUNNER_OS" = Linux ] && [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+            echo '===== journalctl --user -u station-smoke-service.service ====='
+            journalctl --user -u station-smoke-service.service --no-pager -n 200 || true
+          fi
