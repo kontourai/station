@@ -1173,9 +1173,26 @@ impl<B: NativeGrantBackend> NativeRelayGrantVault<B> {
                 continue;
             }
             if stored.grant.expires_at <= now {
-                if !allow_expired_for_renewal
-                    || now.saturating_sub(stored.grant.expires_at) > NATIVE_GRANT_RENEWAL_GRACE_MS
-                {
+                if !allow_expired_for_renewal {
+                    continue;
+                }
+                let within_initial_grace =
+                    now.saturating_sub(stored.grant.expires_at) <= NATIVE_GRANT_RENEWAL_GRACE_MS;
+                // A renewal can commit at the end of the original grace and
+                // lose its reply. The broker retains that exact receipt until
+                // the resulting 24-hour grant plus another seven-day grace.
+                // Extend lookup only for a validated durable intent; open/read
+                // still use the non-renewal path and refuse expired grants.
+                let within_pending_receipt_window =
+                    stored.renewal_intent.as_ref().is_some_and(|intent| {
+                        validate_native_renewal_intent(intent, &stored.grant).is_ok()
+                    }) && now
+                        <= stored
+                            .grant
+                            .expires_at
+                            .saturating_add(NATIVE_GRANT_RENEWAL_GRACE_MS.saturating_mul(2))
+                            .saturating_add(MAX_GRANT_AGE_MS);
+                if !within_initial_grace && !within_pending_receipt_window {
                     continue;
                 }
                 validate_native_grant(owner, &stored.grant, stored.grant.expires_at - 1)?;
@@ -3096,7 +3113,7 @@ fn grant_account(binding: &NativeRelayGrantBinding) -> RedemptionResult<String> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::mpsc::{self, Receiver, Sender};
 
     const NOW: u64 = 1_700_000_000_000;
@@ -3295,6 +3312,40 @@ mod tests {
             )
             .unwrap();
         assert!(completed.renewal_intent.is_none());
+        let seen = transport.seen_renewal_ids.lock().unwrap();
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[0], seen[1]);
+    }
+
+    #[test]
+    fn native_renewal_recovers_receipt_after_original_grace_ends() {
+        let prepared = prepared("https://broker.example".to_owned(), 7);
+        let grants = NativeRelayGrantVault::new(MemoryNativeGrantBackend::default());
+        let old_expiry = NOW - NATIVE_GRANT_RENEWAL_GRACE_MS + 3_600_000;
+        let original = sample_grant(&prepared, old_expiry);
+        grants
+            .store(&prepared.owner, &original, old_expiry - 3_600_000)
+            .unwrap();
+        let transport = NativeRenewTransport {
+            drop_first_response: AtomicBool::new(true),
+            seen_renewal_ids: Mutex::new(Vec::new()),
+        };
+        let clock = AtomicU64::new(NOW);
+        let service = NativeRelaySignalService::new(
+            prepared.authority.as_ref(),
+            &prepared.proof_keys,
+            &transport,
+            &grants,
+            || clock.load(Ordering::SeqCst),
+        );
+        assert_eq!(
+            service.renew("Local", 7),
+            Err(NativeRedemptionError::BrokerTransport)
+        );
+        clock.store(NOW + 2 * 3_600_000, Ordering::SeqCst);
+        assert!(clock.load(Ordering::SeqCst) > old_expiry + NATIVE_GRANT_RENEWAL_GRACE_MS);
+        let renewed = service.renew("Local", 7).unwrap();
+        assert_eq!(renewed.expires_at, NOW + MAX_GRANT_AGE_MS);
         let seen = transport.seen_renewal_ids.lock().unwrap();
         assert_eq!(seen.len(), 2);
         assert_eq!(seen[0], seen[1]);
