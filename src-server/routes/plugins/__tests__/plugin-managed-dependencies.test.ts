@@ -233,12 +233,16 @@ describe('managed dependency graph uses canonical lifecycle owners', () => {
   });
 
   test('stages a portable dependency the way its preview did, leaving every .git entry out', async () => {
-    // A sibling that is its own checkout, with nested repository metadata:
-    // the preview approved it staged in dependency mode, so the install must
-    // stage it the same way (not fail closed, not carry the metadata in).
+    // Nested repository metadata in a portable dependency: the preview
+    // approved it staged in dependency mode, so the install must stage it the
+    // same way (not fail closed, not carry the metadata in). Nested only: a
+    // registry source with a top-level `.git` is refused by the registry.
     const f = await fixture(false, (child) => {
-      mkdirSync(join(child, '.Git'), { recursive: true });
-      writeFileSync(join(child, '.Git', 'HEAD'), 'ref: refs/heads/main\n');
+      mkdirSync(join(child, 'tools', '.Git'), { recursive: true });
+      writeFileSync(
+        join(child, 'tools', '.Git', 'HEAD'),
+        'ref: refs/heads/main\n',
+      );
       mkdirSync(join(child, 'vendor', '.git'), { recursive: true });
       writeFileSync(join(child, 'vendor', '.git', 'HEAD'), 'x\n');
       writeFileSync(join(child, 'vendor', 'kept.txt'), 'kept\n');
@@ -255,7 +259,7 @@ describe('managed dependency graph uses canonical lifecycle owners', () => {
     ).toBe('kept\n');
     const gitLike = (dir: string) =>
       readdirSync(dir).filter((entry) => /^\.git[. ]*$/i.test(entry));
-    expect(gitLike(child.packageRoot)).toEqual([]);
+    expect(gitLike(join(child.packageRoot, 'tools'))).toEqual([]);
     expect(gitLike(join(child.packageRoot, 'vendor'))).toEqual([]);
   });
 
