@@ -1662,7 +1662,7 @@ if [ -L "$current_link" ]; then
   previous_release="$(readlink "$current_link")"
 fi
 
-# Unquoted on purpose: two port words, or none.
+# Unquoted on purpose: always two port words, `-` for a port nobody named.
 archive_services="$(list_archive_services $(explicit_port_arguments))" || \
   fail "cannot switch this install around the Station services in $station_home/service (see above); nothing was changed"
 if [ -n "$archive_services" ]; then
