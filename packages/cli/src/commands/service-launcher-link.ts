@@ -1,14 +1,15 @@
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { delimiter, dirname, join } from 'node:path';
+import {
+  parseServiceUpdateRequest,
+  readServiceLauncherContext,
+  type ServiceLauncherContext,
+  type ServiceUpdateRequest,
+  type ServiceUpdateRequestResult,
+  serviceUpdatePaths,
+  writeJsonAtomically,
+} from '@kontourai/station-shared/service-launcher-protocol';
 import type { ServiceFs } from './service.js';
 import { serviceLauncherPath } from './service-command.js';
 
@@ -29,117 +30,18 @@ import { serviceLauncherPath } from './service-command.js';
  *
  * Requests the launcher never sees (nothing newer, staging failed, rejected)
  * are answered in `runtime/update-request-result.json`; the launcher records
- * everything after acceptance in `runtime/service-state.json`.
+ * everything after acceptance in `runtime/service-state.json`. The file and
+ * environment formats both sides share live in
+ * `@kontourai/station-shared/service-launcher-protocol`, which the server,
+ * the request's writer, reads too.
  */
-export const SERVICE_LAUNCHER_ENV = 'STATION_SERVICE_LAUNCHER';
-const SERVICE_LAUNCHER_PROTOCOL = 1;
-
-export interface ServiceLauncherContext {
-  protocol: typeof SERVICE_LAUNCHER_PROTOCOL;
-  installRoot: string;
-  version: string;
-  role: 'active' | 'trial';
-  updateId?: string;
-}
-
-export function readServiceLauncherContext(
-  env: NodeJS.ProcessEnv = process.env,
-): ServiceLauncherContext | null {
-  const raw = env[SERVICE_LAUNCHER_ENV];
-  if (!raw) return null;
-  try {
-    const value = JSON.parse(raw) as Partial<ServiceLauncherContext>;
-    if (
-      value.protocol !== SERVICE_LAUNCHER_PROTOCOL ||
-      typeof value.installRoot !== 'string' ||
-      typeof value.version !== 'string' ||
-      (value.role !== 'active' && value.role !== 'trial') ||
-      (value.updateId !== undefined && typeof value.updateId !== 'string')
-    )
-      return null;
-    return value as ServiceLauncherContext;
-  } catch {
-    return null;
-  }
-}
-
-export function serviceUpdatePaths(installRoot: string) {
-  const runtime = join(installRoot, 'runtime');
-  return {
-    runtime,
-    request: join(runtime, 'update-request.json'),
-    processing: join(runtime, 'update-request.processing.json'),
-    result: join(runtime, 'update-request-result.json'),
-    state: join(runtime, 'service-state.json'),
-  };
-}
-
-export interface ServiceUpdateRequest {
-  id: string;
-  requestedAt: string;
-  /** An exact version, or absent for the newest the install's manifest names. */
-  targetVersion?: string;
-}
-
-export type ServiceUpdateRequestResult =
-  | { requestId: string; status: 'up-to-date'; version: string; at: string }
-  | {
-      requestId: string;
-      status: 'failed' | 'rejected';
-      reason: string;
-      at: string;
-    };
-
-/** Durably publishes one small JSON file by rename. */
-function writeJsonAtomically(path: string, value: unknown): void {
-  const temp = `${path}.${process.pid}.${randomUUID()}.tmp`;
-  writeFileSync(temp, `${JSON.stringify(value)}\n`, {
-    mode: 0o600,
-    flag: 'wx',
-  });
-  renameSync(temp, path);
-}
-
-/**
- * Queues an update for the service's launcher. Refuses while another request
- * is queued or being staged, so a second click cannot start a second one.
- */
-export function writeServiceUpdateRequest(
-  installRoot: string,
-  targetVersion?: string,
-): ServiceUpdateRequest {
-  const paths = serviceUpdatePaths(installRoot);
-  if (existsSync(paths.request) || existsSync(paths.processing)) {
-    throw new Error('A Station update is already requested.');
-  }
-  mkdirSync(paths.runtime, { recursive: true, mode: 0o700 });
-  const request: ServiceUpdateRequest = {
-    id: randomUUID(),
-    requestedAt: new Date().toISOString(),
-    ...(targetVersion ? { targetVersion } : {}),
-  };
-  writeJsonAtomically(paths.request, request);
-  return request;
-}
-
-function parseRequest(text: string): ServiceUpdateRequest | null {
-  try {
-    const value = JSON.parse(text) as Partial<ServiceUpdateRequest>;
-    if (
-      typeof value.id !== 'string' ||
-      !/^[0-9a-f-]{36}$/.test(value.id) ||
-      typeof value.requestedAt !== 'string' ||
-      (value.targetVersion !== undefined &&
-        (typeof value.targetVersion !== 'string' ||
-          !/^[0-9A-Za-z][0-9A-Za-z.+-]*$/.test(value.targetVersion)))
-    )
-      return null;
-    return value as ServiceUpdateRequest;
-  } catch {
-    return null;
-  }
-}
-
+export {
+  readServiceLauncherContext,
+  SERVICE_LAUNCHER_ENV,
+  type ServiceLauncherContext,
+  serviceUpdatePaths,
+  writeServiceUpdateRequest,
+} from '@kontourai/station-shared/service-launcher-protocol';
 /**
  * Stages a version with this version's own install.sh in stage-only mode:
  * the installer downloads, verifies, extracts, self-checks and seals it into
@@ -334,7 +236,9 @@ export function createServiceLauncherLink(
       try {
         // Claimed by rename, so one child stages it once.
         renameSync(paths.request, paths.processing);
-        request = parseRequest(readFileSync(paths.processing, 'utf8'));
+        request = parseServiceUpdateRequest(
+          readFileSync(paths.processing, 'utf8'),
+        );
       } catch (error) {
         log(
           `Station could not claim the update request: ${(error as Error).message}`,
