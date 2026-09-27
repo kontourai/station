@@ -47,6 +47,8 @@ import { ForegroundInvocationUnavailableError } from '../../services/orchestrati
 import { chatErrors } from '../../telemetry/metrics.js';
 import {
   INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_ORCHESTRATION_THREAD_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
   isTrustedInternalApiToken,
 } from '../../utils/internal-api-token.js';
 import {
@@ -143,6 +145,13 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
       c.req.header(INTERNAL_API_TOKEN_HEADER),
     );
     const relayHandoff = c.req.header(INTERNAL_TURN_CORRELATION_HEADER);
+    // #2589: the orchestration thread this turn is a Station-agent relay
+    // for. Only a direct internal caller may name one (the UI proxy carries
+    // the token too, but always marks its caller `remote`).
+    const relayThread =
+      trustedRelay && c.req.header(INTERNAL_PROXY_CALLER_HEADER) === 'local'
+        ? c.req.header(INTERNAL_ORCHESTRATION_THREAD_HEADER)
+        : undefined;
     const turnCorrelation = trustedRelay
       ? readAuthorizedTurnCorrelationHandoff(relayHandoff)
       : undefined;
@@ -341,6 +350,11 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         // is recognized even after a server restart — see chat-turn-dedup.ts.
         dedupStore: getChatTurnDedupStore(ctx.orchestrationEventStore),
         turnCorrelation,
+        // A relay thread that is not this request's own conversation is
+        // ignored, never trusted for another conversation's approvals.
+        ...(relayThread && relayThread === options.conversationId
+          ? { orchestrationThreadId: relayThread }
+          : {}),
         ...(nativeMemory ? { nativeMemory } : {}),
         ...(nativeOutputGrant ? { nativeOutputGrant } : {}),
         ...(nativeWorkspace ? { nativeWorkspace } : {}),

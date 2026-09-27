@@ -2613,6 +2613,18 @@ export class DevicePairingService {
   }
 
   /**
+   * Drops an iOS registration's alert token (APNs answered that it no
+   * longer reaches the app) while it is still `expectedAlertToken`; the
+   * registration and its Live Activity stay.
+   */
+  clearNativePushAlertToken(
+    deviceId: string,
+    expectedAlertToken: string,
+  ): boolean {
+    return this.#nativePushIos.clearAlertToken(deviceId, expectedAlertToken);
+  }
+
+  /**
    * Retired iOS registrations whose live activity must still be ended, or
    * whose channels deleted (see the store). Not joined against the registry:
    * a revoked device's activity is exactly what must be ended.

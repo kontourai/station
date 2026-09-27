@@ -122,6 +122,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Copies the tracked tree and runs the repo-governance lane CLI twice (clean and violating).
+  'scripts/__tests__/proof-family-route-error-egress.test.ts',
   // Real CLI prerequisite probes, a loopback listener, and the SQLite runtime owner.
   'src-server/tools/__tests__/station-control-delegation.provider-quota-connected.test.ts',
   // Creates FIFOs with mkfifo to prove plugin validation refuses them without blocking.
@@ -442,6 +444,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // throwaway git repository to prove its base snapshot lands in the Station
   // temp root rather than the system temp directory.
   'scripts/__tests__/fallow-base-cache.test.ts',
+  // Runs `install-script-generated.mjs --check` as a child against this
+  // checkout and a stale scratch copy, so the gate's exit status is proven.
+  'scripts/__tests__/install-script-generated.test.ts',
   // #90 lane C: launches a REAL installed Chrome/Edge (headless, pipe CDP,
   // its own temporary profile and loopback fixture servers) to prove the
   // server browser host's enforcement end to end: scheme blocking, download

@@ -1,16 +1,27 @@
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   chmodSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { serve } from '@hono/node-server';
+import type { SelfHostedBrokerNativeRouteInvitationV2 } from '@kontourai/station-contracts/self-hosted-broker';
+import { Hono } from 'hono';
+import { calculateJwkThumbprint, exportJWK, generateKeyPair } from 'jose';
 import { afterEach, describe, expect, test } from 'vitest';
-import { createBrokerCredentialBundle } from '../../../services/connections/self-hosted-broker-service.js';
+import { writeNativeRelayInvitation } from '../../../../scripts/native-relay-invite.js';
+import { createSelfHostedBrokerRoutes } from '../../../routes/connections/self-hosted-broker.js';
+import {
+  createBrokerCredentialBundle,
+  SelfHostedBrokerService,
+} from '../../../services/connections/self-hosted-broker-service.js';
 import { ConnectionSigningKeyStore } from '../../../services/ssh/connection-signing-key-store.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { SelfHostedBrokerRuntime } from '../self-hosted-broker-runtime.js';
@@ -157,6 +168,143 @@ function fakeApplication() {
 }
 
 describe.skipIf(skipOnWindows)('self-hosted connector config', () => {
+  test('operator CLI issues only exact native prepare metadata through the authenticated live broker', async () => {
+    const setup = await validSetup();
+    const service = new SelfHostedBrokerService(
+      join(setup.dir, 'operator-broker.sqlite'),
+    );
+    const credentials = service.provision(setup.scope, 600_000);
+    writePrivate(
+      setup.credentialsPath,
+      JSON.stringify({
+        version: 'station-self-hosted-broker-credentials/v1',
+        scope: setup.scope,
+        bundle: {
+          connector: credentials.connector,
+          routing: credentials.routing,
+        },
+      }),
+    );
+    let issued = 0;
+    let tamper = false;
+    let rotateDuringIssue = false;
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      await next();
+      if (c.req.path.endsWith('/invitations/issue')) {
+        issued++;
+        if (rotateDuringIssue)
+          await setup.store.rotate(setup.store.readDescriptor()!);
+        if (tamper) {
+          const value =
+            (await c.res.json()) as SelfHostedBrokerNativeRouteInvitationV2;
+          c.res = Response.json({
+            ...value,
+            surface: { ...value.surface, clientInstanceId: randomUUID() },
+          });
+        }
+      }
+    });
+    app.route('/broker/v1', createSelfHostedBrokerRoutes(service));
+    const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
+    try {
+      await new Promise<void>((resolve) => server.once('listening', resolve));
+      const address = server.address();
+      if (!address || typeof address === 'string')
+        throw new Error('missing listener');
+      const brokerOrigin = `http://127.0.0.1:${address.port}`;
+      const config = JSON.parse(readFileSync(setup.configPath, 'utf8'));
+      writePrivate(
+        setup.configPath,
+        JSON.stringify({ ...config, brokerOrigin }),
+      );
+      const keys = await generateKeyPair('ES256', { extractable: true });
+      const jwk = await exportJWK(keys.publicKey);
+      const publicKey = { kty: 'EC', crv: 'P-256', x: jwk.x!, y: jwk.y! };
+      const prepare = {
+        profileName: 'Operator Station',
+        brokerOrigin,
+        stationId: setup.scope.stationId,
+        enrollmentId: setup.scope.enrollmentId,
+        appIdentifier: 'io.kontourai.station',
+        channel: 'dev',
+        clientInstanceId: randomUUID(),
+        keyThumbprint: await calculateJwkThumbprint(publicKey),
+        publicKey,
+      };
+      const preparePath = join(setup.dir, 'prepare.json');
+      const outputPath = join(setup.dir, 'invitation.json');
+      writePrivate(preparePath, JSON.stringify(prepare));
+      const run = () =>
+        writeNativeRelayInvitation([
+          setup.home,
+          setup.configPath,
+          preparePath,
+          outputPath,
+        ]);
+      await expect(run()).rejects.toThrow('broker_connector_unavailable');
+      expect(issued).toBe(0);
+      service.register(setup.scope, credentials.connector);
+      await run();
+      const invitation = JSON.parse(readFileSync(outputPath, 'utf8'));
+      expect(invitation).toMatchObject({
+        version: 'station-broker-native-route-invitation/v2',
+        brokerOrigin,
+        scope: {
+          stationId: prepare.stationId,
+          enrollmentId: prepare.enrollmentId,
+        },
+        surface: {
+          kind: 'station-native',
+          appIdentifier: prepare.appIdentifier,
+          channel: prepare.channel,
+          clientInstanceId: prepare.clientInstanceId,
+          keyThumbprint: prepare.keyThumbprint,
+        },
+      });
+      expect(statSync(outputPath).mode & 0o777).toBe(0o600);
+      expect(readFileSync(outputPath, 'utf8')).not.toContain(
+        credentials.routing.secret,
+      );
+      expect(readFileSync(outputPath, 'utf8')).not.toContain(
+        credentials.connector.secret,
+      );
+      rmSync(outputPath);
+      for (const invalid of [
+        { ...prepare, stationId: randomUUID() },
+        { ...prepare, enrollmentId: randomUUID() },
+        { ...prepare, brokerOrigin: 'https://wrong.example' },
+        { ...prepare, channel: 'invalid' },
+        { ...prepare, appIdentifier: 'bad app' },
+        { ...prepare, clientInstanceId: 'invalid' },
+        { ...prepare, keyThumbprint: 'A'.repeat(43) },
+        { ...prepare, extra: true },
+        { ...prepare, publicKey: { ...publicKey, d: 'A'.repeat(43) } },
+      ]) {
+        writePrivate(preparePath, JSON.stringify(invalid));
+        await expect(run()).rejects.toThrow('connector_native_prepare_invalid');
+      }
+      expect(issued).toBe(1);
+      writePrivate(preparePath, JSON.stringify(prepare));
+      tamper = true;
+      await expect(run()).rejects.toThrow('broker_response_invalid');
+      tamper = false;
+      rotateDuringIssue = true;
+      await expect(run()).rejects.toThrow(
+        'connector_config_signing_unavailable',
+      );
+      rotateDuringIssue = false;
+      service.withdraw(setup.scope, credentials.connector);
+      await expect(run()).rejects.toThrow();
+      expect(issued).toBe(3);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+      service.close();
+    }
+  });
+
   test('no env means no broker activity and unchanged defaults', () => {
     expect(
       loadSelfHostedBrokerConnectorConfig({ homeDir: '/nonexistent', env: {} }),

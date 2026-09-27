@@ -25,3 +25,21 @@ export const STATION_CHANNEL_PORTS_DATA = {
     instanceDirectory: 'nightly',
   },
 } as const;
+
+export const STATION_RELEASE_RINGS_DATA = {
+  stable: {
+    runtimeChannel: 'stable',
+    prerelease: false,
+    launcher: 'station',
+  },
+  preview: {
+    runtimeChannel: 'beta',
+    prerelease: true,
+    launcher: 'station-beta',
+  },
+  nightly: {
+    runtimeChannel: 'nightly',
+    prerelease: true,
+    launcher: 'station-nightly',
+  },
+} as const;

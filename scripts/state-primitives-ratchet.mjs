@@ -696,10 +696,6 @@ export function scanUnguardedEmpty(files, readFile) {
   return findings;
 }
 
-export function findUnguardedEmptyFiles(files, readFile) {
-  return [...new Set(scanUnguardedEmpty(files, readFile).map((f) => f.file))];
-}
-
 // ---------------------------------------------------------------------------
 // Check 6: bespoke button classes (SHELL-02)
 // ---------------------------------------------------------------------------
