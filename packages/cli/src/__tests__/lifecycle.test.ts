@@ -978,6 +978,9 @@ describe('lifecycle instance state', () => {
     // #2674: the unit's marker, inherited by a terminal inside a
     // service-managed Station, must not make this plain start read as one.
     vi.stubEnv('STATION_SERVICE_MANAGED', '1');
+    // #2675 D: the launcher's context, likewise addressed to the supervised
+    // server only.
+    vi.stubEnv('STATION_SERVICE_LAUNCHER', '{"protocol":1}');
     // #2327: addressed to the desktop's own sidecar only.
     process.env.STATION_STDOUT_LOGS = '0';
     try {
@@ -1000,6 +1003,7 @@ describe('lifecycle instance state', () => {
       );
       for (const call of spawn.mock.calls) {
         expect(call[2].env).not.toHaveProperty('STATION_SERVICE_MANAGED');
+        expect(call[2].env).not.toHaveProperty('STATION_SERVICE_LAUNCHER');
       }
     } finally {
       if (previous === undefined) delete process.env.STATION_SUPERVISOR_PID;
@@ -1031,6 +1035,9 @@ describe('lifecycle instance state', () => {
     vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
     // The unit sets this on service-run; the supervised server keeps it.
     vi.stubEnv('STATION_SERVICE_MANAGED', '1');
+    // So does the launcher's context (#2675 D): the server reads it to queue
+    // an update for the install that launcher runs.
+    vi.stubEnv('STATION_SERVICE_LAUNCHER', '{"protocol":1}');
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
       platformOverrides: { sleepSync: vi.fn() },
@@ -1047,12 +1054,16 @@ describe('lifecycle instance state', () => {
     expect(spawn.mock.calls[0][2].env).toMatchObject({
       STATION_SUPERVISOR_PID: '12345',
       STATION_SERVICE_MANAGED: '1',
+      STATION_SERVICE_LAUNCHER: '{"protocol":1}',
     });
     expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
       'STATION_SUPERVISOR_PID',
     );
     expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
       'STATION_SERVICE_MANAGED',
+    );
+    expect(spawn.mock.calls[1][2].env).not.toHaveProperty(
+      'STATION_SERVICE_LAUNCHER',
     );
   });
 

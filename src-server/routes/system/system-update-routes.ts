@@ -27,12 +27,19 @@ import {
   DEFAULT_UI_PORT,
 } from '@kontourai/station-shared/ports';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+import { readServiceUpdateProgress } from '@kontourai/station-shared/service-launcher-protocol';
 import { type Context, Hono } from 'hono';
 import { systemOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import { isRecord } from '../../utils/is-record.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import { errorMessage } from '../schemas/schemas.js';
+import {
+  type ArchiveUpdateOptions,
+  applyArchiveUpdate,
+  archiveApplyMethod,
+  archiveUpdateStatus,
+} from './archive-update.js';
 import { readSystemRuntimeIdentity } from './build-provenance.js';
 import {
   fetchChannelLatestSha,
@@ -586,12 +593,25 @@ async function runInstallAndBuild(gitRoot: string): Promise<string | null> {
   }
 }
 
+/**
+ * Seams for the archive update path (#2675 D3): where this server's module
+ * lives (the install it belongs to), its environment (the launcher context),
+ * and the release-manifest fetch and keys.
+ */
+export interface SystemUpdateRouteOptions extends ArchiveUpdateOptions {
+  moduleDir?: string;
+}
+
 export function createSystemUpdateRoutes(
   deps: SystemStatusDeps,
   logger: any,
   restartStateWriter: typeof writeSelfUpdateRestartRecord = writeSelfUpdateRestartRecord,
+  options: SystemUpdateRouteOptions = {},
 ) {
   const app = new Hono();
+  const moduleDir =
+    options.moduleDir ?? dirname(fileURLToPath(import.meta.url));
+  const provenanceOfThisServer = () => resolveInstallProvenance(moduleDir);
 
   const verifyManagedRuntime = async (c: any) => {
     try {
@@ -764,9 +784,7 @@ export function createSystemUpdateRoutes(
     // whatever the env says by the time the response is written.
     const serverIdentity: SystemRuntimeIdentity | null =
       readSystemRuntimeIdentity();
-    const provenance = resolveInstallProvenance(
-      dirname(fileURLToPath(import.meta.url)),
-    );
+    const provenance = provenanceOfThisServer();
     const provenanceIssue: UpdateProvenanceIssue | null =
       provenance.installKind === 'unknown' ? provenance.reason : null;
 
@@ -777,6 +795,17 @@ export function createSystemUpdateRoutes(
         serverIdentity,
         provenanceIssue,
       });
+    }
+
+    if (provenance.installKind === 'archive') {
+      const status = await archiveUpdateStatus(provenance, options);
+      if (status.technicalDetail) {
+        logger.warn('Core update check: release manifest check failed', {
+          releaseCheck: status.releaseCheck,
+          error: status.technicalDetail,
+        });
+      }
+      return c.json({ ...status, serverIdentity, provenanceIssue });
     }
 
     if (provenance.installKind === 'unknown') {
@@ -924,9 +953,7 @@ export function createSystemUpdateRoutes(
    * request to that durable verification outcome after the old server exits.
    */
   app.get('/core-update/restart-status', (c) => {
-    const provenance = resolveInstallProvenance(
-      dirname(fileURLToPath(import.meta.url)),
-    );
+    const provenance = provenanceOfThisServer();
     if (provenance.installKind !== 'source-checkout') {
       return c.json({ status: 'unavailable' });
     }
@@ -952,15 +979,31 @@ export function createSystemUpdateRoutes(
     });
   });
 
+  /**
+   * A launcher-run archive's update progress (#2675 D3), read from the
+   * install's runtime files only: cheap enough to poll through the restart
+   * an update causes, and answered the same way by the old version (after a
+   * rollback) and the new one (after a commit).
+   */
+  app.get('/core-update/service-update', (c) => {
+    const provenance = provenanceOfThisServer();
+    if (
+      provenance.installKind !== 'archive' ||
+      !provenance.installRoot ||
+      archiveApplyMethod(provenance, options.env) !== 'service-update'
+    ) {
+      return c.json({ state: 'unavailable' });
+    }
+    return c.json(readServiceUpdateProgress(provenance.installRoot));
+  });
+
   app.post('/core-update', async (c) => {
     // Applying an update is git-pull + rebuild, which only a source checkout
     // can do — except a desktop bundle whose verified source checkout is on
     // this machine, which self-updates by running that checkout's installer
     // (archive#1624). Everything else refuses cleanly instead of letting
     // resolveGitInfo throw "Not a git repository" into a 500.
-    const provenance = resolveInstallProvenance(
-      dirname(fileURLToPath(import.meta.url)),
-    );
+    const provenance = provenanceOfThisServer();
     if (provenance.installKind === 'desktop-bundle') {
       const eligibility = await resolveSelfUpdateEligibility(provenance);
       if (!eligibility.eligible) {
@@ -973,6 +1016,26 @@ export function createSystemUpdateRoutes(
         );
       }
       return applyDesktopSelfUpdate(c, eligibility);
+    }
+    if (provenance.installKind === 'archive') {
+      const result = applyArchiveUpdate(provenance, options.env);
+      if (!result.ok) {
+        return c.json({ success: false, error: result.error }, result.status);
+      }
+      systemOps.add(1, { op: 'apply_service_update' });
+      logger.info('Service update requested', {
+        requestId: result.requestId,
+        version: provenance.version,
+      });
+      return c.json(
+        {
+          success: true,
+          serviceUpdate: { requestId: result.requestId },
+          message:
+            'Update requested. The Station service downloads and verifies the release, then trials it and keeps the current version if the trial fails.',
+        },
+        202,
+      );
     }
     if (provenance.installKind !== 'source-checkout') {
       return c.json(

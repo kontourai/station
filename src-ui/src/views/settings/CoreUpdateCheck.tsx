@@ -2,6 +2,7 @@ import {
   type CoreUpdateRestartExpectation,
   useApplyCoreUpdateMutation,
   useCoreUpdateStatusQuery,
+  useServiceUpdateProgressQuery,
 } from '@kontourai/station-sdk';
 import { requestCoreUpdateRestartStatus } from '@kontourai/station-sdk/core-update-restart-status';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -14,12 +15,29 @@ import {
   ComparisonMessage,
   comparisonMetadata,
   deriveComparisonView,
+  isArchiveInstall,
+  SERVICE_UPDATE_IN_FLIGHT,
   serverIdentityMatchesView,
+  serviceUpdateProgressLine,
   TechnicalDetails,
   UpdateChannelRow,
 } from './coreUpdatePresentation';
 
 export const RESTART_STATUS_POLL_INTERVAL_MS = 1_500;
+export const SERVICE_UPDATE_POLL_INTERVAL_MS = 2_000;
+/**
+ * How long the card follows a service update it requested. Staging downloads
+ * a release and a trial may take two start attempts plus a home backup, so
+ * the bound is generous; past it the card says where to look instead.
+ */
+export const SERVICE_UPDATE_FOLLOW_MS = 45 * 60 * 1000;
+
+interface TrackedServiceUpdate {
+  requestId: string;
+  /** The connection (not the boot) it was requested on. */
+  connectionScope: string;
+  startedAt: number;
+}
 
 type RestartVerificationState =
   | { state: 'idle' }
@@ -50,6 +68,12 @@ export function CoreUpdateCheck({
   context?: ConnectedServerUpdateContext | null;
 }) {
   const scopeKey = coreUpdateScopeFromContext(context);
+  // A service update restarts the server, so it outlives the boot-bound
+  // scope above: it is followed per connection, and the progress it reads is
+  // durable on the server whichever version answers.
+  const connectionScope = `${apiBase}\u0000${context?.scopeKey ?? 'no-scope'}`;
+  const [serviceUpdateRequest, setServiceUpdateRequest] =
+    useState<TrackedServiceUpdate | null>(null);
   const [restartVerification, setRestartVerification] =
     useState<RestartVerificationState>({ state: 'idle' });
   const [selfUpdating, setSelfUpdating] = useState(false);
@@ -271,7 +295,15 @@ export function CoreUpdateCheck({
       // A completion from a superseded scope is ignored: the selection this
       // POST was started from no longer owns the view.
       if (applyScopeRef.current !== scopeRef.current) return;
-      if (data.success && data.updating) {
+      if (data.success && data.serviceUpdate) {
+        // Queued for the service's launcher (#2675 D3): its progress, not
+        // this acceptance, says what happened.
+        setServiceUpdateRequest({
+          requestId: data.serviceUpdate.requestId,
+          connectionScope,
+          startedAt: Date.now(),
+        });
+      } else if (data.success && data.updating) {
         // Git-based self-update accepted: the installer rebuilds from source
         // in the background over minutes and relaunches the app when done.
         // This process keeps serving the OLD build until that relaunch, so
@@ -322,6 +354,65 @@ export function CoreUpdateCheck({
 
   const view = status ? deriveComparisonView(status, checkError) : null;
 
+  const trackedServiceUpdate =
+    serviceUpdateRequest?.connectionScope === connectionScope
+      ? serviceUpdateRequest
+      : null;
+  const reportedServiceUpdate =
+    status?.installKind === 'archive-service'
+      ? status.serviceUpdate
+      : undefined;
+  const serviceProgressQuery = useServiceUpdateProgressQuery(apiBase, {
+    enabled:
+      trackedServiceUpdate !== null ||
+      (!!reportedServiceUpdate &&
+        SERVICE_UPDATE_IN_FLIGHT.has(reportedServiceUpdate.state)),
+    scopeKey: connectionScope,
+    refetchInterval: (progress) => {
+      if (
+        trackedServiceUpdate &&
+        Date.now() - trackedServiceUpdate.startedAt > SERVICE_UPDATE_FOLLOW_MS
+      ) {
+        return false;
+      }
+      if (!progress || SERVICE_UPDATE_IN_FLIGHT.has(progress.state)) {
+        return SERVICE_UPDATE_POLL_INTERVAL_MS;
+      }
+      // A finished record from an earlier update is not this one's outcome.
+      if (
+        trackedServiceUpdate &&
+        (!('requestId' in progress) ||
+          progress.requestId !== trackedServiceUpdate.requestId)
+      ) {
+        return SERVICE_UPDATE_POLL_INTERVAL_MS;
+      }
+      return false;
+    },
+  });
+  const serviceProgress = serviceProgressQuery.data ?? reportedServiceUpdate;
+  const serviceUpdateInFlight =
+    !!serviceProgress && SERVICE_UPDATE_IN_FLIGHT.has(serviceProgress.state);
+  const trackedOutcome =
+    trackedServiceUpdate &&
+    serviceProgressQuery.data &&
+    !SERVICE_UPDATE_IN_FLIGHT.has(serviceProgressQuery.data.state) &&
+    'requestId' in serviceProgressQuery.data &&
+    serviceProgressQuery.data.requestId === trackedServiceUpdate.requestId;
+  // The tracked update finished: stop following it and re-check, so the
+  // versions shown are the ones the service now runs.
+  useEffect(() => {
+    if (!trackedOutcome) return;
+    setServiceUpdateRequest(null);
+    void check();
+  }, [trackedOutcome, check]);
+  const serviceFollowExpired =
+    !!trackedServiceUpdate &&
+    serviceUpdateInFlight &&
+    Date.now() - trackedServiceUpdate.startedAt > SERVICE_UPDATE_FOLLOW_MS;
+  const serviceProgressLine = serviceProgress
+    ? serviceUpdateProgressLine(serviceProgress)
+    : null;
+
   // Apply-offer gating (plan): current scope, successful comparison, explicit
   // supported method, non-diverged checkout, and the answering server's
   // identity matching the identity this view correlated. Unknown methods and
@@ -333,22 +424,37 @@ export function CoreUpdateCheck({
   const ahead = status?.ahead ?? 0;
   // A failed refresh must not keep an actionable old offer alive on top of
   // cached facts: `!checkError` (and the failed-check view) closes the gate.
+  const canApplyCheckout =
+    !!status &&
+    view?.kind === 'checkout' &&
+    status.applyMethod === 'git-pull' &&
+    behind > 0 &&
+    ahead === 0;
+  // A launcher-run archive (#2675 D3): a verified newer release, and no
+  // update already under way.
+  const canApplyServiceUpdate =
+    !!status &&
+    view?.kind === 'release' &&
+    status.installKind === 'archive-service' &&
+    status.applyMethod === 'service-update' &&
+    status.releaseCheck === 'verified' &&
+    !!status.latestVersion &&
+    !serviceUpdateInFlight &&
+    !trackedServiceUpdate;
   const canApply =
     !!status &&
     !comparisonSuperseded &&
     !checkError &&
-    view?.kind === 'checkout' &&
     identityMatches &&
-    status.applyMethod === 'git-pull' &&
     // The server refuses to apply under the installed service (#2674); any
     // stated refusal — including a code this client does not know — closes
     // the offer, and the reason below says what to do instead.
     !status.selfUpdateUnavailableReason &&
     status.updateAvailable &&
-    behind > 0 &&
-    ahead === 0;
+    (canApplyCheckout || canApplyServiceUpdate);
   const applyRefusal =
-    status?.applyMethod === 'git-pull' &&
+    (status?.applyMethod === 'git-pull' ||
+      (status && isArchiveInstall(status))) &&
     status.updateAvailable &&
     !comparisonSuperseded
       ? (status.selfUpdateUnavailableReason ?? null)
@@ -403,7 +509,9 @@ export function CoreUpdateCheck({
           >
             {restarting || updateMutation.isPending
               ? 'Updating…'
-              : 'Update server checkout'}
+              : canApplyServiceUpdate
+                ? `Update server to ${status?.latestVersion}`
+                : 'Update server checkout'}
           </button>
         )}
       </div>
@@ -447,6 +555,32 @@ export function CoreUpdateCheck({
           Server update cannot be applied from here: {applyRefusal}.
         </div>
       )}
+      {serviceProgressLine && (
+        <div
+          className={`settings__update-msg${
+            serviceProgressLine.tone === 'muted'
+              ? ''
+              : ` settings__update-msg--${serviceProgressLine.tone}`
+          }`}
+          role="status"
+        >
+          {serviceProgressLine.text}
+        </div>
+      )}
+      {serviceUpdateInFlight &&
+        !serviceFollowExpired &&
+        serviceProgressQuery.isError && (
+          <div className="settings__update-msg">
+            The server is not answering while it restarts. Still waiting for the
+            update’s outcome…
+          </div>
+        )}
+      {serviceFollowExpired && (
+        <div className="settings__update-msg settings__update-msg--warning">
+          The Station service has not reported this update’s outcome yet. Check
+          it on the host with "station service status".
+        </div>
+      )}
       {restarting && (
         <div className="settings__update-msg settings__update-msg--warning">
           Server restart started. Verifying the expected build…
@@ -485,13 +619,17 @@ export function CoreUpdateCheck({
       {view && !comparisonSuperseded && <ComparisonMessage view={view} />}
       {technicalDisclosure}
       <span className="settings__field-hint">
-        {status?.applyMethod === 'self-update'
-          ? 'Rebuilds from this machine’s source checkout and restarts the app.'
-          : status?.applyMethod === 'reinstall'
-            ? 'Compares this install’s build stamp against its configured source ref.'
-            : status?.installKind === 'source-checkout'
-              ? 'Pull latest changes from the git remote. Server restarts automatically after update.'
-              : 'Checks the connected Station server. Desktop release updates use the app’s signed update channel.'}
+        {status?.applyMethod === 'service-update'
+          ? 'Checks this install’s signed release manifest. Updating downloads and verifies the release, tries it, and keeps the current version if it does not start.'
+          : status && isArchiveInstall(status)
+            ? 'Checks this install’s signed release manifest.'
+            : status?.applyMethod === 'self-update'
+              ? 'Rebuilds from this machine’s source checkout and restarts the app.'
+              : status?.applyMethod === 'reinstall'
+                ? 'Compares this install’s build stamp against its configured source ref.'
+                : status?.installKind === 'source-checkout'
+                  ? 'Pull latest changes from the git remote. Server restarts automatically after update.'
+                  : 'Checks the connected Station server. Desktop release updates use the app’s signed update channel.'}
       </span>
     </div>
   );

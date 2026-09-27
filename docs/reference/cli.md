@@ -1725,6 +1725,22 @@ running launcher service: it stages the version, asks the service to switch,
 and reports the outcome. It refuses to touch an install whose update is
 unfinished until the service has been started to finish it.
 
+A client connected to such a server can start the same update: Settings →
+Connected Station server → **Check for server updates** fetches the signed
+public manifest the install records (`manifestUrl` in
+`.station-release-state.json`) and verifies it against the pinned signing
+keys for the install's ring before it offers a newer version. Applying it
+writes the update request (owner-only, published atomically, refused while
+another update is queued or under way); progress and the outcome, including a
+rollback and its reason, are read back from `runtime/service-state.json` and
+`runtime/update-request-result.json`. Only the server the launcher's own child
+supervises may queue a request: the launcher's context
+(`STATION_SERVICE_LAUNCHER`) reaches that server and no other process, and it
+must name the server's install and version. An archive that no launcher runs
+reports its newest release and says to update with `station upgrade` on the
+host; an install that records no public manifest cannot be checked from a
+client.
+
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse
 proxy such as `tailscale serve`, where the server itself only sees
