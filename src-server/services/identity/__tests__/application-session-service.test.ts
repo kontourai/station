@@ -574,10 +574,10 @@ describe('native application-session continuation service seam', () => {
       });
       const readHeaders = await client.headers(continuation, {
         method: 'GET',
-        path: '/api/projects',
+        path: '/api/projects?limit=2',
       });
       const protectedRead = await virtual.fetch(
-        new Request(`${origin}/api/projects`, {
+        new Request(`${origin}/api/projects?limit=2`, {
           headers: {
             Authorization: `Bearer ${h.device.credential}`,
             ...readHeaders,

@@ -122,7 +122,7 @@ export interface NativeApplicationSessionProofClaimsV1 {
   readonly path: string;
   readonly credentialHash?: string;
   readonly challengeIdHash?: string;
-  /** SHA-256 of the canonical provider login payload, only for exchange proofs. */
+  /** SHA-256 of JSON.stringify of the parsed credentials object, only for exchange proofs. */
   readonly credentialsHash?: string;
   readonly jti: string;
   readonly iat: number;
