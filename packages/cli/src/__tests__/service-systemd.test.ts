@@ -22,6 +22,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { inspectServiceSchedulingPolicy } from '../commands/service-scheduling.js';
 import {
   installSystemd,
@@ -32,6 +33,7 @@ import {
   uninstallSystemd,
 } from '../commands/service-systemd.js';
 
+const makeTempDir = trackTempDirs();
 let originalHome: string | undefined;
 
 beforeEach(() => {
@@ -87,7 +89,7 @@ afterAll(() => {
 
 describe('systemd service backend', () => {
   test('records what the unit runs in the manifest it returns (#2675 slice C)', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-systemd-test-'));
+    const root = makeTempDir('station-systemd-test-');
     process.env.HOME = root;
     const run = vi.fn((command: string, args: string[]) => {
       if (command === 'loginctl') return { status: 0, stdout: 'yes\n' };
