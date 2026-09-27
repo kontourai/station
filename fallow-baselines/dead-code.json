@@ -574,8 +574,6 @@
     "src-server/services/acp/acp-process.ts:ACPProcess.extNotification",
     "src-server/services/agents/agent-service.ts:StationEngineIsAppSettingError.code",
     "src-server/services/agents/agent-service.ts:StationEngineIsAppSettingError.status",
-    "src-server/services/agents/skill-service.ts:SkillService.listGuidanceAssets",
-    "src-server/services/agents/skill-service.ts:SkillService.getSkillCount",
     "src-server/services/checkpoints/checkpoint-index-store.ts:CheckpointIndexStore.listThreadDiscovery",
     "src-server/services/checkpoints/checkpoint-retention.ts:CheckpointRetentionService.listEvents",
     "src-server/services/connections/connection-service.ts:ConnectionService.getCachedLaunchableModelInventory",
