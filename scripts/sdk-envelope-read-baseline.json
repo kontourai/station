@@ -25,8 +25,6 @@
     "packages/sdk/src/client/live-activity.ts": 1,
     "packages/sdk/src/client/orchestration.ts": 8,
     "packages/sdk/src/client/personal-layouts.ts": 2,
-    "packages/sdk/src/client/plugins.ts": 5,
-    "packages/sdk/src/client/project-response.ts": 2,
     "packages/sdk/src/client/project-task-rooms.ts": 1,
     "packages/sdk/src/client/projects.ts": 2,
     "packages/sdk/src/client/pull-request-review.ts": 1,

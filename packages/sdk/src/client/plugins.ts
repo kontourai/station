@@ -6,10 +6,9 @@ import type {
   PluginPermissionPrompt,
   RejectedInstalledPluginRecord,
 } from '@kontourai/station-contracts/plugin';
+import { envelopeError } from './api-error-message';
 import {
   type ClientRequestOptions,
-  envelopeErrorCode,
-  envelopeErrorMessage,
   getJson,
   mutateJson,
   StationHttpError,
@@ -130,23 +129,28 @@ export interface PluginCollectionFailure {
  * The plugin collection read failed. A `StationHttpError` (#2708), so a caller
  * branching on status or `code` treats it like every other refused request;
  * `envelope` is the failure as `list_plugins` relays it.
+ *
+ * Built from the `StationHttpError` the envelope helper made of the response
+ * (#2708 A-2), so it keeps that error's status, message, `code`, `details`
+ * and `Retry-After` — a rate-limited collection read says when to come back.
  */
 export class PluginCollectionHttpError extends StationHttpError {
   readonly envelope: PluginCollectionFailure;
 
   constructor(
-    status: number,
-    envelope: PluginCollectionFailure,
-    options?: { details?: unknown },
+    failure: StationHttpError,
+    options?: { grantsUnavailable?: boolean },
   ) {
-    super(status, envelope.error, {
-      ...(envelope.code === undefined ? {} : { code: envelope.code }),
-      ...(options?.details === undefined || options.details === null
-        ? {}
-        : { details: options.details }),
-    });
+    super(failure.status, failure.message, failure);
     this.name = 'PluginCollectionHttpError';
-    this.envelope = envelope;
+    this.envelope = {
+      success: false,
+      error: failure.message,
+      ...(failure.code === undefined ? {} : { code: failure.code }),
+      ...(options?.grantsUnavailable === true
+        ? { grantsUnavailable: true as const }
+        : {}),
+    };
   }
 }
 
@@ -156,46 +160,34 @@ export async function listPlugins(
   opts?: ClientRequestOptions,
 ): Promise<InstalledPluginRecord[]> {
   const response = await getJson(`${apiBase}/api/plugins`, opts);
-  const result = (await response.json()) as {
+  const failed = `Plugin request failed with HTTP ${response.status}`;
+  let result: {
     success?: unknown;
     plugins?: unknown;
-    error?: unknown;
     grantsUnavailable?: unknown;
-    details?: unknown;
   };
-  const code = envelopeErrorCode(result);
-  // `Retry-After` joins in #2708 A-2, through the shared parser, once this
-  // module can import it (#2782).
-  const failureOptions = { details: result.details };
+  try {
+    result = (await response.json()) as typeof result;
+  } catch (error) {
+    // Unreadable, but answered: a failure keeps its status (#2708). An
+    // unreadable 2xx is a protocol failure and rethrows the parse error.
+    if (!response.ok)
+      throw new PluginCollectionHttpError(
+        envelopeError(response, undefined, failed),
+      );
+    throw error;
+  }
   if (!response.ok) {
     throw new PluginCollectionHttpError(
-      response.status,
+      envelopeError(response, result, failed),
       {
-        success: false,
-        error:
-          typeof result.error === 'string' && result.error.length > 0
-            ? result.error
-            : `Plugin request failed with HTTP ${response.status}`,
-        ...(code === undefined ? {} : { code }),
-        ...(result.grantsUnavailable === true
-          ? { grantsUnavailable: true as const }
-          : {}),
+        grantsUnavailable: result.grantsUnavailable === true,
       },
-      failureOptions,
     );
   }
   if (result.success === false) {
     throw new PluginCollectionHttpError(
-      200,
-      {
-        success: false,
-        error:
-          typeof result.error === 'string' && result.error.length > 0
-            ? result.error
-            : 'Plugin collection request was rejected',
-        ...(code === undefined ? {} : { code }),
-      },
-      failureOptions,
+      envelopeError(response, result, 'Plugin collection request was rejected'),
     );
   }
   if (
@@ -302,17 +294,19 @@ export async function previewPluginRecovery(
     `${apiBase}/api/plugins/${encodeURIComponent(name)}/recovery-preview`,
     opts,
   );
-  const result: unknown = await response.json();
-  if (!response.ok)
-    throw new Error(
-      envelopeErrorMessage(result, 'Could not preview plugin recovery'),
-    );
+  const refused = 'Could not preview plugin recovery';
+  let result: unknown;
+  try {
+    result = await response.json();
+  } catch (error) {
+    if (!response.ok) throw envelopeError(response, undefined, refused);
+    throw error;
+  }
+  if (!response.ok) throw envelopeError(response, result, refused);
   if (!result || typeof result !== 'object' || Array.isArray(result))
     throw new Error('Plugin recovery preview response is malformed');
   if ('success' in result && result.success === false)
-    throw new Error(
-      envelopeErrorMessage(result, 'Could not preview plugin recovery'),
-    );
+    throw envelopeError(response, result, refused);
   return result as PluginRecoveryPreview;
 }
 
@@ -331,7 +325,14 @@ export async function recoverPlugin(
       consent: input.consent,
     },
   );
-  const result = (await response.json()) as PluginRecoveryResult;
+  const refused = 'Could not recover plugin';
+  let result: PluginRecoveryResult;
+  try {
+    result = (await response.json()) as PluginRecoveryResult;
+  } catch (error) {
+    if (!response.ok) throw envelopeError(response, undefined, refused);
+    throw error;
+  }
   // The server uses 202 + success:false for persisted work awaiting activation.
   if (
     !response.ok ||
@@ -341,7 +342,7 @@ export async function recoverPlugin(
         result.configurationActivation?.status === 'pending'
       ))
   ) {
-    throw new Error(envelopeErrorMessage(result, 'Could not recover plugin'));
+    throw envelopeError(response, result, refused);
   }
   return result;
 }

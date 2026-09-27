@@ -19,7 +19,12 @@ import {
   getSessionFlowRun,
   respondToRequest,
 } from '../client/orchestration';
-import { listPlugins, PluginCollectionHttpError } from '../client/plugins';
+import {
+  listPlugins,
+  PluginCollectionHttpError,
+  previewPluginRecovery,
+  recoverPlugin,
+} from '../client/plugins';
 import { createProject, listProjects } from '../client/projects';
 import {
   createJob,
@@ -661,19 +666,73 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
    * `success:false` is still a refusal, and must not be reported as a
    * transport failure with a status.
    */
-  it('projects: an ok body with success:false stays a plain Error carrying the route message', async () => {
+  // #2708 A-2: a 2xx `success:false` is a refusal like any other, and keeps
+  // its observed status — the rule every other client follows. (It used to
+  // be a plain Error with the message only.)
+  it('projects: an ok body with success:false keeps its observed status and code', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ success: false, error: 'Project not found' }),
+      json: async () => ({
+        success: false,
+        code: 'project_not_prepared',
+        error: 'Project not found',
+      }),
     } as Response);
 
     const failure = await listProjects('http://example.test').catch(
       (cause: unknown) => cause,
     );
 
+    expect(failure).toBeInstanceOf(StationHttpError);
+    expect(failure).toMatchObject({
+      status: 200,
+      code: 'project_not_prepared',
+      message: 'Project not found',
+    });
+  });
+
+  it('projects: an unreadable 2xx stays a plain Error — there is no failure status to carry', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response('<html>ok</html>', { status: 200 }),
+    );
+
+    const failure = await listProjects('http://example.test').catch(
+      (cause: unknown) => cause,
+    );
+
+    expect(failure).toBeInstanceOf(Error);
     expect(failure).not.toBeInstanceOf(StationHttpError);
-    expect((failure as Error).message).toBe('Project not found');
+  });
+
+  // #2708 A-2: `station projects create` reads the thrown message, so a
+  // validation refusal names each field, and `details` survive for the UI.
+  it('projects: a validation refusal on create names each field and keeps details', async () => {
+    const details = {
+      formErrors: [],
+      fieldErrors: {
+        slug: ['Slug may contain lowercase letters, digits and dashes.'],
+      },
+    };
+    vi.mocked(fetch).mockResolvedValue(
+      nonOkJsonResponse(
+        { success: false, error: 'Validation failed', details },
+        400,
+      ),
+    );
+
+    const failure = await createProject('http://example.test', {
+      name: 'Demo',
+      slug: 'Not Valid',
+    }).catch((cause: unknown) => cause);
+
+    expect(failure).toBeInstanceOf(StationHttpError);
+    expect(failure).toMatchObject({
+      status: 400,
+      details,
+      message:
+        'Validation failed: slug Slug may contain lowercase letters, digits and dashes.',
+    });
   });
 
   /**
@@ -845,11 +904,75 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
       ),
     );
 
-    await expect(listPlugins(API)).rejects.toMatchObject({
+    const failure = await listPlugins(API).catch((caught: unknown) => caught);
+    expect(failure).toBeInstanceOf(PluginCollectionHttpError);
+    // #2708 A-2: the shared Retry-After parser, through the envelope helper.
+    expect(failure).toMatchObject({
       status: 429,
       details,
+      retryAfterMs: 7000,
     });
   });
+
+  it('plugins: an unreadable failure keeps its status on the collection error', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response('<html>Bad gateway</html>', { status: 502 }),
+    );
+
+    const failure = await listPlugins(API).catch((caught: unknown) => caught);
+
+    expect(failure).toBeInstanceOf(PluginCollectionHttpError);
+    expect(failure).toMatchObject({
+      status: 502,
+      envelope: {
+        success: false,
+        error: 'Plugin request failed with HTTP 502',
+      },
+    });
+  });
+
+  it.each([
+    ['previewPluginRecovery', () => previewPluginRecovery(API, 'demo')],
+    [
+      'recoverPlugin',
+      () =>
+        recoverPlugin(API, 'demo', {
+          recoveryRevision: 'r1',
+          consent: {
+            grantRevision: 'g1',
+            permissions: [],
+            contentDigest: 'sha256:x',
+            dependencies: [],
+          },
+        }),
+    ],
+  ] as const)(
+    'plugins: %s keeps a refusal’s status, code and details',
+    async (_name, call) => {
+      const details = { formErrors: [], fieldErrors: { consent: ['Stale.'] } };
+      vi.mocked(fetch).mockResolvedValue(
+        nonOkJsonResponse(
+          {
+            success: false,
+            code: 'plugin_recovery_stale',
+            error: 'Validation failed',
+            details,
+          },
+          409,
+        ),
+      );
+
+      const failure = await call().catch((caught: unknown) => caught);
+
+      expect(failure).toBeInstanceOf(StationHttpError);
+      expect(failure).toMatchObject({
+        status: 409,
+        code: 'plugin_recovery_stale',
+        details,
+        message: 'Validation failed: consent Stale.',
+      });
+    },
+  );
 
   // `list_plugins` relays `PluginCollectionHttpError.envelope` whole, so the
   // code has to be ON the envelope, not only on the error.
