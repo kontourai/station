@@ -10,7 +10,16 @@ name: Portable server archives
 #
 # Packaging proof only: archives are uploaded as short-lived workflow
 # artifacts. Nothing is released, signed, attested or published, and no
-# secret is read. The ref is the placeholder v0.0.0 that install-smoke uses.
+# secret is read. On its own triggers the ref is the placeholder v0.0.0 that
+# install-smoke uses.
+#
+# It is also a reusable workflow (workflow_call): the portable Nightly
+# publication (portable-nightly-publish.yml) calls it with the release
+# version and ring, and reads the same station-server-<target> run
+# artifacts. A caller still gets only a read-only token and no secret here;
+# signing and upload happen in the caller. The called build checks out the
+# caller's event SHA (the one checkout expression the actionlint gate admits
+# for this workflow) and refuses to run unless that is the `ref` input.
 #
 # Repository policy routes pull requests through pull_request_target (see
 # scripts/actionlint-gate.mjs). Candidate code therefore runs only from an
@@ -24,6 +33,25 @@ name: Portable server archives
 # sources are deliberately not listed: they change on most pull requests,
 # and ordinary CI owns them.
 on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact 40-hex commit to build; must be the caller's event SHA.
+        required: true
+        type: string
+      version:
+        description: Release version without the leading v (for example 0.1.11-nightly.245600).
+        required: true
+        type: string
+      ring:
+        description: Release ring the version must belong to (config/channel-ports.json releaseRings).
+        required: true
+        type: string
+      non_blocking:
+        description: Let a failed target fail only its own job, not the caller's run (a dry run).
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
   push:
     branches:
@@ -38,6 +66,11 @@ on:
       - 'esbuild.config.mjs'
       - 'schemas/**'
       - 'config/portable-server-node-runtime.json'
+      # The release ring table and grammar that stamp .station-release.json.
+      - 'config/channel-ports.json'
+      - 'packages/shared/src/portable-server-targets.mjs'
+      - 'packages/shared/src/release-manifest.mjs'
+      - 'packages/shared/src/release-rings.generated.mjs'
       - 'packaging/portable-server/**'
       - 'packages/cli/**'
       - 'scripts/build-portable-server-archive.mjs'
@@ -67,6 +100,11 @@ on:
       - 'esbuild.config.mjs'
       - 'schemas/**'
       - 'config/portable-server-node-runtime.json'
+      # The release ring table and grammar that stamp .station-release.json.
+      - 'config/channel-ports.json'
+      - 'packages/shared/src/portable-server-targets.mjs'
+      - 'packages/shared/src/release-manifest.mjs'
+      - 'packages/shared/src/release-rings.generated.mjs'
       - 'packaging/portable-server/**'
       - 'packages/cli/**'
       - 'scripts/build-portable-server-archive.mjs'
@@ -89,8 +127,11 @@ on:
 permissions:
   contents: read
 
+# A called run is keyed to its caller's run: under workflow_call github.ref
+# is the caller's ref, so sharing the push group would let a push to main
+# cancel a Nightly publication's build, or the reverse.
 concurrency:
-  group: portable-server-archives-${{ github.event.pull_request.number || github.ref }}
+  group: portable-server-archives-${{ inputs.version != '' && format('call-{0}', github.run_id) || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -116,6 +157,9 @@ jobs:
             target: win32-x64
             format: zip
     runs-on: ${{ matrix.runner }}
+    # Only a caller's dry run sets non_blocking; every other trigger (and a
+    # pull request, where inputs is empty) keeps a failed target fatal.
+    continue-on-error: ${{ inputs.non_blocking == true }}
     timeout-minutes: 45
     defaults:
       run:
@@ -161,12 +205,25 @@ jobs:
       - name: Confirm the runner is the matrix target
         run: test "$(node -p 'process.platform + "-" + process.arch')" = "${{ matrix.target }}"
 
+      - name: Confirm a caller's ref is the checked-out commit
+        if: ${{ inputs.ref != '' }}
+        env:
+          CALLER_REF: ${{ inputs.ref }}
+        run: |
+          [[ "$CALLER_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "ref must be a 40-hex commit SHA, got: $CALLER_REF" >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$CALLER_REF" || { echo "checked out $(git rev-parse HEAD), but the caller asked for $CALLER_REF" >&2; exit 1; }
+
       - run: npm run build
 
       - name: Build the archive
         # The provenance SHA is the commit actually checked out: under
         # pull_request_target GITHUB_SHA is the base tip, not the candidate.
-        run: npm run build:portable-server -- --ref v0.0.0 --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/portable-server"
+        # A caller's version and ring come only from workflow_call inputs;
+        # every other trigger builds the v0.0.0 placeholder.
+        env:
+          RELEASE_REF: ${{ inputs.version != '' && format('v{0}', inputs.version) || 'v0.0.0' }}
+          RELEASE_RING: ${{ inputs.ring }}
+        run: npm run build:portable-server -- --ref "$RELEASE_REF" ${RELEASE_RING:+--ring "$RELEASE_RING"} --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/portable-server"
 
       - name: Smoke the archive with no Node.js on PATH
         # --long-path extracts beneath a directory long enough that the
