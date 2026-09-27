@@ -17,7 +17,7 @@ describe('Station Conduit framework projection', () => {
   );
 
   it.each(['strands', 'voltagent'] as const)(
-    'declares stop as approximated for %s, because Station projects it from after-invocation',
+    'declares the IAgentHooks lifecycle for %s, with stop approximated rather than native',
     (framework) => {
       // An honesty label, not an implementation detail: Conduit's
       // createConformanceReport reads `capabilities()` into the published
