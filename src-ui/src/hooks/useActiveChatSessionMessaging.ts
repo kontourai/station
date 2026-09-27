@@ -686,7 +686,7 @@ export function useSendMessage(
           // refusal itself is carried by the ephemeral notice below, which
           // already suppresses Retry for exactly this case.
           status: foregroundIndeterminate || terminalSession ? 'idle' : 'error',
-          error: err.message,
+          error: userFacingErrorMessage(err),
           abortController: undefined,
           ...(foregroundIndeterminate
             ? {

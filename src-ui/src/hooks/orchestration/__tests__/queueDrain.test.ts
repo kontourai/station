@@ -277,6 +277,45 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
   });
 
+  // #2708 A-3a: a send refused by the validation middleware, as the REAL
+  // execution fetcher throws it, is recorded by its reason, not its field key.
+  test('a validation refusal from the real fetcher is recorded by its reason', async () => {
+    const actual = await vi.importActual<
+      typeof import('@kontourai/station-sdk/client')
+    >('@kontourai/station-sdk/client');
+    vi.stubGlobal(
+      'fetch',
+      async () =>
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Validation failed',
+            details: {
+              formErrors: [],
+              fieldErrors: { message: ['Write a message to send.'] },
+            },
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    const refusal = await actual
+      .sendExecutionMessage('http://api.test', {} as never)
+      .catch((caught: unknown) => caught);
+    expect(refusal).toBeInstanceOf(ChatHttpError);
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['refused message'],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(refusal);
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+
+    expect(activeChatsStore.getSnapshot()[threadId].unsentMessages).toEqual([
+      expect.objectContaining({ reason: 'Write a message to send.' }),
+    ]);
+  });
+
   // The screenshot defect behind station's chat-surface honesty pass: a raw
   // `Session state completed is terminal` sentence rode into the notice, and
   // `status: 'error'` branded the completed conversation "Failed" in the

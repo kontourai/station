@@ -630,6 +630,47 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(activeChatsStore.getSnapshot()[sessionId]?.status).toBe('error');
   });
 
+  // #2708 A-3a: a send refused by the validation middleware, as the REAL
+  // execution fetcher throws it, reads as the server's reason.
+  it('shows a validation refusal from the real fetcher by its reason', async () => {
+    const actual = await vi.importActual<
+      typeof import('@kontourai/station-sdk/client')
+    >('@kontourai/station-sdk/client');
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Validation failed',
+          details: {
+            formErrors: [],
+            fieldErrors: { message: ['Write a message to send.'] },
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+    let refusal: unknown;
+    try {
+      refusal = await actual
+        .sendExecutionMessage('http://api.test', {} as never)
+        .catch((caught: unknown) => caught);
+    } finally {
+      globalThis.fetch = previous;
+    }
+    sendExecutionMessageMock.mockRejectedValueOnce(refusal);
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'hello');
+    });
+
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat?.error).toBe('Write a message to send.');
+    const notice = chat?.ephemeralMessages?.at(-1)?.content ?? '';
+    expect(notice).toContain('Write a message to send.');
+    expect(notice).not.toContain('Validation failed');
+  });
+
   it('restores supervised attachments and stage refs after a definitive rejection', async () => {
     activeChatsStore.updateChat(sessionId, {
       attachments: [stagedAttachment],

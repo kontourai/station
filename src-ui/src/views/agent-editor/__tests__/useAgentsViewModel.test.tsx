@@ -39,6 +39,7 @@ const state = {
 const createAgent = vi.fn();
 const updateAgent = vi.fn();
 const materializeEngineAgent = vi.fn();
+const deleteAgent = vi.fn();
 const select = vi.fn((slug: string) => {
   state.selectedId = slug;
 });
@@ -126,7 +127,7 @@ vi.mock('../../../contexts/AgentsContext', () => ({
   useAgentActions: () => ({
     createAgent,
     updateAgent,
-    deleteAgent: vi.fn(),
+    deleteAgent,
   }),
 }));
 vi.mock('../../../contexts/ConfigContext', () => ({ useConfig: () => ({}) }));
@@ -179,6 +180,7 @@ beforeEach(() => {
   state.catalogReconciling = false;
   createAgent.mockReset().mockResolvedValue({ data: { slug: 'writer' } });
   updateAgent.mockReset().mockResolvedValue({ data: {} });
+  deleteAgent.mockReset().mockResolvedValue(undefined);
   materializeEngineAgent
     .mockReset()
     .mockResolvedValue({ data: { slug: 'claude-code' }, created: true });
@@ -582,6 +584,38 @@ describe('AC7 — engineDefault is not a lock', () => {
     expect(select).toHaveBeenLastCalledWith('claude-code');
     // The picker's Enable posts the same thing — see NewChatModal's suite.
     expect(createAgent).not.toHaveBeenCalled();
+  });
+
+  // #2708 A-3a: an Enable refused by the validation middleware, as the REAL
+  // agent fetcher throws it, reads as the server's reason.
+  test('a refused Enable shows the reason from the real agent fetcher', async () => {
+    const { materializeEngineAgent: realMaterialize } = await import(
+      '@kontourai/station-sdk/client'
+    );
+    const refusal = await realValidationRefusal(
+      () => realMaterialize('http://station.test', 'claude'),
+      'Choose a detected engine.',
+      'engineId',
+    );
+    materializeEngineAgent.mockRejectedValueOnce(refusal);
+    state.agents = [
+      agent({
+        slug: 'claude',
+        name: 'Claude Code',
+        engineDefault: true,
+        execution: { agentConnectionId: 'claude' },
+        available: false,
+        unavailableReason: 'no definition',
+        enable: { engineConnectionId: 'claude' },
+      }),
+    ];
+    state.selectedId = 'claude';
+    const { result } = render();
+    await act(async () => {
+      await result.current.handleEnableSelected();
+    });
+
+    expect(result.current.enableError).toBe('Choose a detected engine.');
   });
 
   test('a read-only ACP agent keeps its lock and gets a Connections action', () => {
@@ -1041,6 +1075,25 @@ describe('the built-in Station Agent saves its fields, not its resolved engine (
     });
 
     expect(result.current.error).toBe('Name must not be empty.');
+  });
+
+  test('a refused delete shows the reason from the real agent fetcher', async () => {
+    const { deleteAgentRaw } = await import('@kontourai/station-sdk/client');
+    const refusal = await realValidationRefusal(
+      () => deleteAgentRaw('http://station.test', 'station'),
+      'The built-in Agent cannot be deleted.',
+      'slug',
+    );
+    state.selectedId = 'station';
+    state.detail = { slug: 'station', name: 'Station' };
+    deleteAgent.mockRejectedValueOnce(refusal);
+    const { result } = render();
+
+    await act(async () => {
+      await result.current.handleDelete();
+    });
+
+    expect(result.current.error).toBe('The built-in Agent cannot be deleted.');
   });
 });
 
