@@ -226,6 +226,9 @@ async function fixture() {
     revokeOnRead() {
       revokeOnRead = true;
     },
+    revokeTrust() {
+      current = null;
+    },
     setUnexpectedChannel(label: string) {
       peer.unexpectedRemoteChannel = new FakeChannel(label);
     },
@@ -350,5 +353,49 @@ describe('native application transport client', () => {
     ).rejects.toThrow();
     expect(f.signaling.open).not.toHaveBeenCalled();
     expect(f.fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test('an adopted channel refuses application bytes after trust rotation', async () => {
+    const f = await fixture();
+    const channel = await f.transport.openChannel(new AbortController().signal);
+    f.revokeTrust();
+    expect(() =>
+      channel.send(
+        writeApplicationFrame({
+          type: 'request',
+          method: 'GET',
+          path: '/api/health',
+          headers: [],
+          body: null,
+        }),
+      ),
+    ).toThrow('native_application_trust_retired');
+    expect(f.peer.closed).toBe(true);
+    expect(f.peer.createdChannels[0]?.closed).toBe(true);
+  });
+
+  test('aborting client lifetime closes an already adopted channel', async () => {
+    const f = await fixture();
+    await f.transport.openChannel(new AbortController().signal);
+    expect(f.peer.closed).toBe(false);
+    f.controller.abort(new Error('test_cancelled'));
+    expect(f.peer.closed).toBe(true);
+    expect(f.peer.createdChannels[0]?.closed).toBe(true);
+  });
+
+  test('a rotated Station cannot deliver another application frame', async () => {
+    const f = await fixture();
+    const channel = await f.transport.openChannel(new AbortController().signal);
+    const received: unknown[] = [];
+    let closed = 0;
+    channel.subscribe(
+      (value) => received.push(value),
+      () => closed++,
+    );
+    f.revokeTrust();
+    f.peer.createdChannels[0]!.emit(writeApplicationFrame({ type: 'end' }));
+    expect(received).toHaveLength(0);
+    expect(closed).toBe(1);
+    expect(f.peer.closed).toBe(true);
   });
 });

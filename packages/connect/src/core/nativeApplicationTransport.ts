@@ -85,18 +85,18 @@ export function createNativeApplicationTransport(
     stage: 'checkpoint' | 'before-remote-description' = 'checkpoint',
     owned?: AbortSignal,
   ) => {
-    owned?.throwIfAborted();
+    const checkSignal = owned ?? input.signal;
+    checkSignal.throwIfAborted();
     if (!trustOwner.isCurrent(expected))
       throw new Error('native_application_trust_retired');
     const current = trustOwner.current();
     if (!current || !sameTrust(current, expected))
       throw new Error('native_application_trust_retired');
-    if (!owned) return;
     const authoritative = await raceOwnedLifetime(
       trustOwner.recheck(expected, stage),
-      owned,
+      checkSignal,
     );
-    owned.throwIfAborted();
+    checkSignal.throwIfAborted();
     const authoritativeCurrent = trustOwner.current();
     if (
       authoritative !== true ||
@@ -122,12 +122,17 @@ export function createNativeApplicationTransport(
     const owned = lifetime.signal;
     let peer: RTCPeerConnection | undefined;
     let channel: RTCDataChannel | undefined;
+    let closed = false;
     const close = () => {
+      if (closed) return;
+      closed = true;
       try {
         channel?.close();
       } catch {
         /* already closed */
       }
+      owned.removeEventListener('abort', close);
+      lifetime.dispose();
       try {
         peer?.close();
       } catch {
@@ -346,18 +351,47 @@ export function createNativeApplicationTransport(
       // The adopted channel is the owned peer's application channel; closing
       // it must also release the peer.
       const adopted = browserApplicationChannel(localChannel);
+      const assertBoundCurrent = () => {
+        const latest = trustOwner.current();
+        if (
+          closed ||
+          owned.aborted ||
+          !latest ||
+          !trustOwner.isCurrent(authority) ||
+          !sameTrust(latest, authority)
+        ) {
+          close();
+          throw new Error('native_application_trust_retired');
+        }
+      };
       completed = true;
       return {
-        send: (message: string) => adopted.send(message),
-        subscribe: (message, closed) => adopted.subscribe(message, closed),
+        send: (message: string) => {
+          assertBoundCurrent();
+          adopted.send(message);
+        },
+        subscribe: (message, onClosed) =>
+          adopted.subscribe(
+            (value) => {
+              try {
+                assertBoundCurrent();
+                message(value);
+              } catch {
+                close();
+                onClosed();
+              }
+            },
+            () => {
+              close();
+              onClosed();
+            },
+          ),
         close: () => {
           adopted.close();
           close();
         },
       };
     } finally {
-      owned.removeEventListener('abort', close);
-      lifetime.dispose();
       if (!completed) close();
     }
   };
