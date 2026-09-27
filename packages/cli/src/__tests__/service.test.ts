@@ -2918,14 +2918,17 @@ describe('service reads archive lifecycle state from the service home', () => {
     // The real lookup rule over the real location resolver: found only in
     // the directory the given (or defaulted) home selects.
     collectInstanceStatus.mockImplementation(
-      async (instanceId: string, options?: { projectHome?: string }) =>
-        nodeFs.existsSync(
-          recordPath(options?.projectHome ?? ambientHome, instanceId),
-        )
+      async (instanceId: string, options?: { projectHome?: string }) => {
+        const path = recordPath(
+          options?.projectHome ?? ambientHome,
+          instanceId,
+        );
+        return nodeFs.existsSync(path)
           ? {
               found: true,
               healthy: true,
               instanceId,
+              bootId: JSON.parse(readFileSync(path, 'utf8')).bootId,
               server: { pid: 10, reachable: true },
               ui: { pid: 11, reachable: true },
             }
@@ -2935,16 +2938,129 @@ describe('service reads archive lifecycle state from the service home', () => {
               instanceId,
               server: { pid: null, reachable: false },
               ui: { pid: null, reachable: false },
-            },
+            };
+      },
     );
     return { recordPath };
   }
 
   /** The record the supervisor writes when the service starts. */
-  function superviseInto(path: string): void {
+  function superviseInto(path: string, bootId = 'boot-1'): void {
     nodeFs.mkdirSync(join(path, '..'), { recursive: true });
-    writeFileSync(path, '{}');
+    writeFileSync(path, JSON.stringify({ bootId }));
   }
+
+  const darwinManifest = (instanceId: string, input: any) => ({
+    host: input.lifecycle.host,
+    installedAt: '',
+    instanceId,
+    label: `io.kontourai.station.${instanceId}`,
+    nodePath: input.nodePath,
+    platform: 'darwin' as const,
+    repoPath: input.repoPath,
+    serverPort: input.lifecycle.serverPort,
+    uiPort: input.lifecycle.uiPort,
+    unitPath: `/tmp/${instanceId}.plist`,
+  });
+
+  test('a Windows reinstall waits for the old generation under a non-default --home to exit', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { recordPath } = await archiveStatusModel();
+    const home = makeTempDir('station-service-raw-home-');
+    const record = recordPath(home, 'service-test');
+    const run = vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' }));
+    // Was the old generation's record still present when the backend
+    // replaced its wrapper?
+    const oldGenerationAliveAtInstall: boolean[] = [];
+    const defaultInstall = installWindowsService.getMockImplementation()!;
+    installWindowsService.mockImplementation((instanceId, input) => {
+      oldGenerationAliveAtInstall.push(nodeFs.existsSync(record));
+      superviseInto(record, `boot-${oldGenerationAliveAtInstall.length}`);
+      return defaultInstall(instanceId, input);
+    });
+    windowsServiceStatus.mockReturnValue({
+      active: false,
+      enabled: true,
+      present: true,
+    });
+    await runServiceCommand(['install'], lifecycle(home), {
+      fs: serviceFs,
+      platform: 'win32',
+      run,
+      sleep: vi.fn(),
+    });
+
+    // `stop` signals the managed processes; they exit a poll later, as
+    // Task Scheduler's child does.
+    let stopped = false;
+    stop.mockImplementation(() => {
+      stopped = true;
+    });
+    const sleep = vi.fn(async () => {
+      if (stopped) nodeFs.rmSync(record, { force: true });
+    });
+    await runServiceCommand(['install'], lifecycle(home), {
+      fs: serviceFs,
+      platform: 'win32',
+      run,
+      sleep,
+    });
+
+    expect(stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: home,
+    });
+    // The stop poll saw the old record, waited, and replaced the wrapper
+    // only once it was gone.
+    expect(oldGenerationAliveAtInstall).toEqual([false, false]);
+    expect(sleep).toHaveBeenCalled();
+  });
+
+  test('a darwin reinstall under a non-default --home stops the old generation and waits for a new boot', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { recordPath } = await archiveStatusModel();
+    const home = makeTempDir('station-service-raw-home-');
+    const record = recordPath(home, 'service-test');
+    installLaunchd.mockImplementation((instanceId, input) => {
+      superviseInto(record, 'boot-old');
+      return darwinManifest(instanceId, input);
+    });
+    await runServiceCommand(['install'], lifecycle(home), {
+      fs: serviceFs,
+      installReadinessAttempts: 2,
+      platform: 'darwin',
+      run: vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' })),
+      sleep: vi.fn(),
+    });
+
+    // The reinstall's launchd swap leaves the old generation answering at
+    // first; the new boot publishes a poll later.
+    let reinstallInput: any;
+    installLaunchd.mockImplementation((instanceId, input) => {
+      reinstallInput = input;
+      return darwinManifest(instanceId, input);
+    });
+    const sleep = vi.fn(async () => superviseInto(record, 'boot-new'));
+    await runServiceCommand(['install'], lifecycle(home), {
+      fs: serviceFs,
+      installReadinessAttempts: 3,
+      platform: 'darwin',
+      run: vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' })),
+      sleep,
+    });
+
+    // The prior instance was found under the home, so launchd was handed
+    // the owned instance to stop ...
+    expect(reinstallInput.stopOwnedInstance).toBeTypeOf('function');
+    reinstallInput.stopOwnedInstance();
+    expect(stop).toHaveBeenLastCalledWith({
+      instanceName: 'service-test',
+      stateHome: home,
+    });
+    // ... and readiness refused the old boot until a new one answered.
+    expect(sleep).toHaveBeenCalledOnce();
+    expect(JSON.parse(readFileSync(record, 'utf8')).bootId).toBe('boot-new');
+  });
 
   test('install readiness observes the service under a non-default --home', async () => {
     const { runServiceCommand } = await import('../commands/service.js');

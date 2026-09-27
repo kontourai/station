@@ -929,7 +929,9 @@ function createServiceInstancePlatformAdapter(input: {
   const target = existing ?? registration;
   // The home the supervised service runs with (`service run --base=<home>`),
   // whose Station root holds a prebuilt archive's lifecycle record (#2675).
-  const stateHome = existing?.baseDir ?? lifecycle.baseDir;
+  // `existing` is read from `<lifecycle.baseDir>/service/`, so an existing
+  // service runs with this same home.
+  const stateHome = lifecycle.baseDir;
   const unitStatus = () =>
     target.platform === 'darwin'
       ? launchdStatus(target, { fs, run })
@@ -1085,6 +1087,9 @@ export async function runServiceCommand(
     dependencies.hardenWindowsPaths ?? hardenWindowsPathsTrusted;
   const instanceId = resolveServiceTarget(lifecycle, fs);
   assertServiceIdentityAvailable(instanceId);
+  // Every service of this home keeps its manifest here, so an existing
+  // generation runs with lifecycle.baseDir too: the one home every status
+  // read and stop below passes for a prebuilt archive's records (#2675).
   const manifestPath = join(lifecycle.baseDir, 'service', `${instanceId}.json`);
   const registration =
     platform === 'darwin'
@@ -1221,7 +1226,7 @@ export async function runServiceCommand(
     // the backend has stopped and replaced it.
     const priorInstance = existing
       ? await collectInstanceStatus(instanceId, {
-          projectHome: existing.baseDir ?? lifecycle.baseDir,
+          projectHome: lifecycle.baseDir,
         })
       : undefined;
     const replacedBootId = priorInstance?.healthy
@@ -1242,7 +1247,7 @@ export async function runServiceCommand(
       // before the backend can replace its wrapper.
       await stopAndWaitForWindowsSupervisorExit(
         instanceId,
-        existing.baseDir ?? lifecycle.baseDir,
+        lifecycle.baseDir,
         existing,
         dependencies,
         fs,
