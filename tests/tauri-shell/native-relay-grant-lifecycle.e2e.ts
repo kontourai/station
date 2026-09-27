@@ -1208,20 +1208,52 @@ async function main() {
     );
     assert.ok(approve);
     await driver.clickElement(approve);
-    await driver.waitUntil(
-      async () =>
-        Boolean(
-          await driver.execute(() =>
-            document
-              .querySelector('.relay-route-key-approval')
-              ?.textContent?.includes('Station key approved'),
+    try {
+      await driver.waitUntil(
+        async () =>
+          Boolean(
+            await driver.execute(() =>
+              document
+                .querySelector('.relay-route-key-approval')
+                ?.textContent?.includes('Station key approved'),
+            ),
           ),
-        ),
-      {
-        timeout: 30_000,
-        timeoutMsg: 'operator-approved trust was not committed',
-      },
-    );
+        {
+          timeout: 30_000,
+          timeoutMsg: 'operator-approved trust was not committed',
+        },
+      );
+    } catch (error) {
+      const state = await driver.execute(() => {
+        const root = document.querySelector('.relay-route-key-approval');
+        const section = document.querySelector(
+          'section[aria-label="Candidate from native verification"]',
+        );
+        const button = section?.querySelector('button');
+        const code =
+          section?.querySelector<HTMLInputElement>('input[id$="-code"]');
+        const key = section?.querySelector<HTMLInputElement>(
+          'input[id$="-key-id"]',
+        );
+        const attestation = document.querySelector<HTMLInputElement>(
+          '.relay-route-key-approval__attestation input',
+        );
+        return {
+          candidatePresent: Boolean(section),
+          buttonText: button?.textContent?.trim() ?? null,
+          buttonDisabled: button?.hasAttribute('disabled') ?? null,
+          codeLength: code?.value.length ?? null,
+          keyLength: key?.value.length ?? null,
+          attested: attestation?.checked ?? null,
+          approvedVisible:
+            root?.textContent?.includes('Station key approved') ?? false,
+        };
+      });
+      throw new Error(
+        `operator-approved trust was not committed: ${JSON.stringify(state)}`,
+        { cause: error },
+      );
+    }
     assert.equal(
       keychainStatus(trust),
       0,
