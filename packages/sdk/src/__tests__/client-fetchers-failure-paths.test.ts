@@ -832,6 +832,33 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
     },
   );
 
+  // #2708 A-1b: both families used to throw a plain Error for a 200 carrying
+  // `success:false`; the envelope helper's rule keeps the observed status.
+  it.each([
+    [
+      'conversations: searchConversationMessages',
+      () => searchConversationMessages(API, 'q'),
+    ],
+    [
+      'orchestration: getOrchestrationSession',
+      () => getOrchestrationSession(API, 't1'),
+    ],
+  ] as const)(
+    '%s: a 200 success:false keeps its status and code',
+    async (_name, call) => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: false, code: 'not_ready', error: 'no' }),
+      } as Response);
+
+      const error = await call().catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(StationHttpError);
+      expect(error).toMatchObject({ status: 200, code: 'not_ready' });
+    },
+  );
+
   it('scheduler: the error stays a SchedulerResponseError whose detail is only a string error', async () => {
     vi.mocked(fetch).mockResolvedValue(
       nonOkJsonResponse({ error: { code: 'insufficient_scope' } }, 403),
