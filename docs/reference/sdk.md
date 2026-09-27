@@ -3246,6 +3246,11 @@ model name. The initial accepted Session launch plan is not presented as proof
 of the connection used by a later turn. Unknown current-provider provenance
 stays unknown rather than being reconstructed from Agent defaults.
 
+Follow the [server resolver](../../src-server/services/orchestration/conversation-open-resolver.ts),
+[wire parser](../../packages/sdk/src/conversation-open.ts),
+[chat-state update](../../src-ui/src/components/chat-dock/conversationOpenController.ts),
+and [revalidation caller](../../src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx).
+
 ## Home recovery disclosure
 
 `SystemStatus.homeRecovery` is an optional, host-scoped disclosure returned by
@@ -3257,6 +3262,11 @@ execution authority or proves a witnessed channel transfer. Do not reuse a
 cached recovery notice across API-base changes; refresh the selected Station
 before projecting it as current. The record exposes no filesystem path or
 backup manifest contents.
+
+The [recovery-record reader](../../packages/shared/src/station-home-archive.ts)
+checks the local record; [runtime composition](../../src-server/runtime/routes/runtime-route-support.ts)
+selects the public disclosure. This is not a fresh verification of every file
+in the recovered home.
 
 ## Update status diagnostics
 
@@ -3274,14 +3284,19 @@ source checkout running under a supervisor — the installed service or another
 supervising process), and
 `selfUpdateUnavailableCode` (the same refusal as a code: `'service-managed'`
 for the installed launchd/systemd service, `'supervised'` when only a
-supervisor PID is present). The parser rejects a non-boolean `updateAvailable`
-and malformed supplied counts, normalizes a malformed identity or an unknown
+supervisor PID is present). The parser requires a boolean `updateAvailable`
+and safe-integer supplied counts, normalizes a malformed identity or an unknown
 provenance or refusal code to unavailable (`null` — an unknown code never
 reads as a specific one; the refusal text still accompanies it), accepts responses from older servers that omit the new fields
 entirely, and never infers `applyMethod` from `updateAvailable`. A non-ok
 HTTP status throws a `StationHttpError` before the body can read as success;
 a genuine `error` field still throws a plain `Error` with the server's
 message.
+
+This is field-specific parsing: `installKind` and `applyMethod` are currently
+passed through without enum validation. See the
+[parser](../../packages/sdk/src/system-update-status-parser.ts) and
+[request boundary](../../packages/sdk/src/query-domains/systemRuntimeRequests.ts).
 
 `requestSystemIdentity(apiBase, signal?)` reads `GET /api/system/identity`
 through the same rules: a complete identity triple is required, optional
@@ -3293,13 +3308,23 @@ the root `@kontourai/station-sdk` entry. `src/queries.ts` is an internal barrel;
 
 `useCoreUpdateStatusQuery(apiBase, config?, scope?)` accepts an optional third
 `CoreUpdateStatusScope` argument: `{ scopeKey?, assertCurrent? }`. When
-`scopeKey` is present it joins the query key, so a cached comparison captured
-for one connection (or one answering boot) can never be served to another.
+`scopeKey` is present it joins the query key. The caller must derive a distinct
+key for each connection/boot it wants to keep separate; the hook does not derive
+that identity.
 `assertCurrent` is checked immediately before the request is issued and again
 after it resolves — throwing rejects the fetch, so an obsolete or superseded
 scope's completion never resolves as current data. Both fields are
 secret-free: credentials and credential-evidence objects must never enter a
 query key or these callbacks. Existing two-argument callers are unaffected.
+
+The current Settings callers pass `context.isCurrent` directly, which returns
+a boolean. The hook ignores that return value, so `false` alone does not reject
+the query through this guard. Other scope keys, transport checks and UI
+availability checks still apply. Callers needing this pre/post refusal must
+supply a callback that throws when stale. See the
+[hook](../../packages/sdk/src/query-domains/systemRuntime.ts),
+[host predicate](../../src-ui/src/hooks/useConnectedServerUpdateContext.ts),
+and [Settings caller](../../src-ui/src/views/settings/CoreUpdateCheck.tsx).
 
 ## Saved answer quotations
 
@@ -3313,7 +3338,7 @@ whole Session. Missing and denied answers are indistinguishable; an oversized
 answer is refused. A text revision detects changes, not evidence standing.
 
 The Station composer retains up to three selected excerpts, each at most 4,096
-characters, with its existing local draft. Sending serializes the user's copied text and source references
+UTF-16 code units, with its existing local draft. Sending serializes the user's copied text and source references
 into the ordinary user message; it creates no capability or trust grant.
 Inspecting a saved reference reads its original answer under current access
 on the selected Station. No network request is made to an origin supplied by
@@ -3345,11 +3370,16 @@ not a safe automatic-retry signal. Unsupported review adapters return an
 explicit unavailable result. Diff bytes and discussion are bounded and may be
 partial; the response says which content could not be supplied.
 
+See the [SDK client](../../packages/sdk/src/client/pull-request-review.ts) and
+[forge review adapter](../../src-server/services/pull-requests/pull-request-review.ts).
+
 ## Conversation pull-request links
 
 `@kontourai/station-sdk/conversation-pull-request-links` reads, links, and
-unlinks exact pull-request identities for one Conversation. Each call requires
-the selected Station API base and captured `requestScope`. A link is persisted
+unlinks exact pull-request identities for one Conversation. Each call takes
+the selected Station API base; pass the captured `requestScope` in its optional
+request options to preserve that authority across awaits. The client permits
+unscoped calls. A link is persisted
 only after the provider resolves the exact provider, host, repository owner,
 repository name, and native ref under current authorization.
 
@@ -3358,6 +3388,11 @@ unsupported, or unavailable state. Clients should mark an old cached
 observation stale and require refresh before review or other actions. Explicit
 unlink changes only the Conversation association; it never changes the pull
 request or deletes Task-kept provenance.
+
+The [client](../../packages/sdk/src/client/conversation-pull-request-links.ts)
+and [route/store boundary](../../src-server/routes/pull-requests/conversation-pull-request-links.ts)
+own explicit links separately from provider-derived or Task-kept references.
+
 ## Files in answers to input requests
 
 `getInputReplyContext(apiBase, reference, options)` from
@@ -3390,6 +3425,13 @@ capture refuses mismatched targets and returns a timestamped PNG, not stream
 readiness or foreground-app provenance. See [Mobile device inspection](../guides/mobile-device-workspace.md)
 for host setup, access scopes, limits, and the web/desktop integration boundary.
 
+Inventory additionally accepts optional `projectSlug` and `hostId` arguments;
+the host defaults to `local`. The one-frame capture client currently accepts
+UUID-shaped iOS IDs and Android `emulator-<number>` IDs. Use
+`isCaptureableMobileDeviceTarget` before offering that action: a listed device
+is not necessarily accepted by this capture API. Capture does not boot a device
+or establish a live session. See the [SDK boundary](../../packages/sdk/src/mobile-device.ts).
+
 ## Experimental encrypted-channel transport consumer
 
 `@kontourai/station-connect/application-channel` supplies a Fetch-shaped adapter
@@ -3417,3 +3459,7 @@ account's request scope, bound channel counts/lifetimes, and close the transport
 when its endpoint trust retires. Transport readiness alone does not partition
 account or Project data. An
 uncertain dispatched mutation must not be retried automatically.
+
+The [channel adapter](../../packages/connect/src/core/applicationChannel.ts)
+and [credential resolver](../../packages/sdk/src/client/http.ts) show where
+framing ends and the application's authority checks begin.
