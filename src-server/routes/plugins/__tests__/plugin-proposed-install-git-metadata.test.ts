@@ -397,12 +397,12 @@ describe('git metadata in a proposed local install (#2719)', () => {
 
     const { preview, install } = await previewAndInstall(REMOTE, proposal.id);
     expect(preview.gitMetadata).toBe('excluded');
-    expect(preview.git).toBeUndefined();
     expect(install.proposal).toEqual({ id: proposal.id, status: 'completed' });
 
     const installed = join(pluginsDir, 'checkout-plugin');
     expect(existsSync(join(installed, 'plugin.json'))).toBe(true);
     expect(gitMetadataEntries(installed)).toEqual([]);
+    expect(preview.git).toBeUndefined();
     expect(preview.contentDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(computePluginContentDigest(pluginsDir, 'checkout-plugin')).toBe(
       preview.contentDigest,
