@@ -4,18 +4,33 @@ These compile-only fixtures are isolated from Station production paths. They
 do not change `src-desktop`, activate a native capability, enable Tauri's
 `unstable` feature in Station, register a command, or expose a plugin bridge.
 
-Run from the repository root with Node 24 and Rust installed:
+For the current product Browser pane, use the
+[Browser workspace guide](../../docs/guides/browser-workspace.md). These
+fixtures investigate host APIs and restoration identity; they do not select the
+product's active transport.
+
+Run from the repository root after `npm run dependencies:ci`, with Node 24 and
+Rust installed:
 
 ```sh
-npx tsx --test experiments/browser-host/scripts/workspace-pane-adapter.node.ts
-cargo check --manifest-path experiments/browser-host/tauri-separate-window/Cargo.toml
-cargo check --manifest-path experiments/browser-host/tauri-child-webview/Cargo.toml
+node --import tsx --test experiments/browser-host/scripts/workspace-pane-adapter.node.ts
+cargo check --locked --manifest-path experiments/browser-host/tauri-separate-window/Cargo.toml
+cargo check --locked --manifest-path experiments/browser-host/tauri-child-webview/Cargo.toml
 ```
 
-The Node experiment follows the current Workspace Pane `1.0` descriptor and
-instance identity boundary. An approved target arrives separately from
-persisted Pane data; native geometry and handles are rejected. If no native
-host is available, the experiment produces an explicit external open action.
+The Node experiment imports the current Workspace Pane parser, but its fixture
+still supplies the removed top-level `contextRequirement`. The current parser
+refuses that field and requires `modes`; all four Node tests fail at descriptor
+admission in the documentation audit. Repair the fixture before treating its
+adapter assertions as evidence.
+
+The adapter is intended to receive an approved target separately from persisted
+Pane data, reject native geometry/handles, and return an explicit external-open
+action when no host is available. The failing fixture does not currently reach
+all of those assertions. See the
+[fixture](scripts/workspace-pane-adapter.node.ts),
+[adapter](scripts/workspace-pane-adapter.ts), and
+[current descriptor contract](../../packages/contracts/src/workspace-pane.ts).
 
 The separate-window crate proves that the stable Tauri API type-checks. The
 child crate proves only that `Window::add_child` remains behind `unstable`; it
