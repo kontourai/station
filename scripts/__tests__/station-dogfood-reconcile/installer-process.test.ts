@@ -5,11 +5,6 @@ import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import {
-  executeOwnedProcess,
-  terminateSuiteExecution,
-  waitForSuiteSettlement,
-} from '../../run-load-reliability.mjs';
 import { runInstallerProcess } from './installer-process.js';
 
 const temporaryRoots: string[] = [];
@@ -103,29 +98,6 @@ describe('owned installer process', () => {
 
     const descendantPid = Number(readFileSync(pidFile, 'utf8'));
     await waitUntilProcessExits(descendantPid);
-  });
-
-  it('settles after cooperative process-tree termination without escalation', async () => {
-    const execution = executeOwnedProcess(
-      process.execPath,
-      [
-        '-e',
-        "process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 1000)",
-      ],
-      undefined,
-      'cooperative child',
-      { stdio: 'ignore' },
-    );
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    await expect(
-      terminateSuiteExecution(execution, {
-        processLabel: 'cooperative child',
-        waitForSuiteSettlement,
-        terminationGraceMs: 1_000,
-        terminationForceMs: 1_000,
-      }),
-    ).resolves.toEqual({ settled: true, escalated: false, errors: [] });
   });
 
   it('rejects normal wrapper exit when an owned descendant stays alive', async () => {

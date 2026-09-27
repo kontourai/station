@@ -56,11 +56,7 @@ import { ChatMarkdownAnchor } from '../../components/chat/ChatMarkdownAnchor';
 import { MarkdownLinkContext } from '../../components/chat/MarkdownLinkContext';
 import { NotificationContainer } from '../../components/notifications/NotificationContainer';
 import { ToastProvider, toastStore } from '../../contexts/ToastContext';
-import {
-  displayedExternalLink,
-  openExternalLink,
-  trackedRefusalNoticeCount,
-} from '../openExternalLink';
+import { displayedExternalLink, openExternalLink } from '../openExternalLink';
 
 const PR_URL = 'https://github.com/kontourai/station/pull/2049';
 const writeText = vi.fn(async (_text: string) => {});
@@ -131,9 +127,21 @@ describe('a refused native open is shown, with the link and a Copy action', () =
     expect(notices[0]?.textContent).toContain('…');
     fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(long));
-    // Round-4 L4: the notice is gone (its action dismissed it), and so is the
-    // module's record of it — the map holds live notices only.
-    await waitFor(() => expect(trackedRefusalNoticeCount()).toBe(0));
+    // Round-4 L4: the notice is gone (its action dismissed it), and the
+    // link's de-dup is released with it: the next click gets a fresh notice.
+    // Whether the module also drops its toast subscription is not observable
+    // here and is not checked.
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/The Station app cannot open this link\./),
+      ).toBeNull(),
+    );
+    await act(async () => {
+      await openExternalLink(long);
+    });
+    expect(
+      await screen.findAllByText(/The Station app cannot open this link\./),
+    ).toHaveLength(1);
   });
 
   // Round-4 L4: a UTF-16 slice through a surrogate pair printed half a

@@ -100,26 +100,28 @@ export function inspectExportedIosEntitlements(
 }
 
 /**
- * The Live Activity widget extension's exported entitlements: its own
- * application identifier (`<app>.AgentActivity`) and ONLY the keychain group
- * the app shares with it — no default group, no push, no app group.
+ * An app extension's exported entitlements: its own application identifier
+ * (`<app>.<suffix>`) and ONLY the keychain group the app shares with its
+ * extensions — no default group, no push, no app group. The Live Activity
+ * widget (#2513) and the Notification Service Extension (#2590) share one
+ * rule; only the identifier suffix and the wording differ.
  *
  * @param {unknown} value
- * @param {{ team: string, appBundleId: string }} options
+ * @param {{ team: string, appBundleId: string, suffix: string, label: string }} options
  */
-export function inspectExportedIosAgentActivityEntitlements(
+function inspectExportedIosExtensionEntitlements(
   value,
-  { team, appBundleId },
+  { team, appBundleId, suffix, label },
 ) {
   assertObject(value);
-  const expectedApplicationIdentifier = `${team}.${appBundleId}.AgentActivity`;
+  const expectedApplicationIdentifier = `${team}.${appBundleId}.${suffix}`;
   const applicationIdentifier = text(
     value['application-identifier'],
     'application-identifier',
   );
   if (applicationIdentifier !== expectedApplicationIdentifier)
     throw new Error(
-      `Exported Live Activity application-identifier mismatch: expected ${expectedApplicationIdentifier}, got ${applicationIdentifier}.`,
+      `Exported ${label} application-identifier mismatch: expected ${expectedApplicationIdentifier}, got ${applicationIdentifier}.`,
     );
   const teamIdentifier = text(
     value['com.apple.developer.team-identifier'],
@@ -127,18 +129,18 @@ export function inspectExportedIosAgentActivityEntitlements(
   );
   if (teamIdentifier !== team)
     throw new Error(
-      `Exported Live Activity team identifier mismatch: expected ${team}, got ${teamIdentifier}.`,
+      `Exported ${label} team identifier mismatch: expected ${team}, got ${teamIdentifier}.`,
     );
   const sharedGroup = `${team}.${appBundleId}.agentactivity`;
   if (!sameList(value['keychain-access-groups'], [sharedGroup]))
     throw new Error(
-      `Exported Live Activity keychain access groups must be exactly [${sharedGroup}].`,
+      `Exported ${label} keychain access groups must be exactly [${sharedGroup}].`,
     );
   if (value['aps-environment'] !== undefined)
-    throw new Error('The Live Activity extension must not carry push.');
+    throw new Error(`The ${label} extension must not carry push.`);
   if (value['com.apple.security.application-groups'] !== undefined)
     throw new Error(
-      'Exported Live Activity entitlements contain an unexpected shared application group.',
+      `Exported ${label} entitlements contain an unexpected shared application group.`,
     );
   return {
     applicationIdentifier,
@@ -147,11 +149,48 @@ export function inspectExportedIosAgentActivityEntitlements(
   };
 }
 
+/**
+ * The Live Activity widget extension's exported entitlements (#2513).
+ *
+ * @param {unknown} value
+ * @param {{ team: string, appBundleId: string }} options
+ */
+export function inspectExportedIosAgentActivityEntitlements(
+  value,
+  { team, appBundleId },
+) {
+  return inspectExportedIosExtensionEntitlements(value, {
+    team,
+    appBundleId,
+    suffix: 'AgentActivity',
+    label: 'Live Activity',
+  });
+}
+
+/**
+ * The Notification Service Extension's exported entitlements (#2590).
+ *
+ * @param {unknown} value
+ * @param {{ team: string, appBundleId: string }} options
+ */
+export function inspectExportedIosNotificationServiceEntitlements(
+  value,
+  { team, appBundleId },
+) {
+  return inspectExportedIosExtensionEntitlements(value, {
+    team,
+    appBundleId,
+    suffix: 'NotificationService',
+    label: 'Notification Service',
+  });
+}
+
 const USAGE =
-  'Usage: ios-exported-entitlements.mjs ENTITLEMENTS_JSON TEAM BUNDLE_ID [--live-activity APS_ENVIRONMENT | --agent-activity-extension]';
+  'Usage: ios-exported-entitlements.mjs ENTITLEMENTS_JSON TEAM BUNDLE_ID [--live-activity APS_ENVIRONMENT | --agent-activity-extension | --notification-service-extension]';
 
 /**
  * The CLI's verdict for argv (after the script path); throws on refusal.
+ * With an extension mode, BUNDLE_ID is the containing app's.
  *
  * @param {string[]} args
  * @param {(path: string, encoding: 'utf8') => string} [read]
@@ -172,11 +211,18 @@ export function exportedEntitlementsCli(
       liveActivity: true,
       apsEnvironment,
     });
-  if (mode === '--agent-activity-extension' && apsEnvironment === undefined)
-    return inspectExportedIosAgentActivityEntitlements(entitlements, {
-      team,
-      appBundleId: bundleId,
-    });
+  if (apsEnvironment === undefined) {
+    if (mode === '--agent-activity-extension')
+      return inspectExportedIosAgentActivityEntitlements(entitlements, {
+        team,
+        appBundleId: bundleId,
+      });
+    if (mode === '--notification-service-extension')
+      return inspectExportedIosNotificationServiceEntitlements(entitlements, {
+        team,
+        appBundleId: bundleId,
+      });
+  }
   throw new Error(USAGE);
 }
 

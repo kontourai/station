@@ -62,7 +62,8 @@ function buildHarness(laneName) {
   const bundleArgs =
     process.platform === 'darwin' ? ['--bundles', 'app'] : ['--no-bundle'];
   const config =
-    laneName === 'native-relay-grant-lifecycle'
+    laneName === 'native-relay-grant-lifecycle' ||
+    laneName === 'native-relay-diagnostic-echo'
       ? 'tauri.webdriver.relay-grant.conf.json'
       : 'tauri.webdriver.conf.json';
   npmRun([
@@ -105,6 +106,15 @@ export const SHELL_E2E_LANES = [
     name: 'native-relay-grant-lifecycle',
     spec: 'tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts',
     manual: true,
+  },
+  {
+    // Explicit macOS proof-before-SDP and diagnosticEcho lane. It reuses the
+    // real grant lifecycle journey, then runs the actual connect client inside
+    // the main WebView against loopback broker, coturn and Pion fixtures.
+    name: 'native-relay-diagnostic-echo',
+    spec: 'tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts',
+    manual: true,
+    env: { STATION_TAURI_E2E_NATIVE_DIAGNOSTIC_ECHO: '1' },
   },
 ];
 
@@ -154,6 +164,7 @@ function main() {
     run(process.execPath, ['--import', 'tsx', lane.spec], {
       env: {
         ...process.env,
+        ...lane.env,
         STATION_TAURI_E2E_BINARY: binary,
         STATION_TAURI_E2E_SOURCE_SHA: revision.stdout.trim(),
       },

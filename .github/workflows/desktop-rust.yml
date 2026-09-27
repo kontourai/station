@@ -153,6 +153,28 @@ jobs:
           fi
           JAVA_HOME="$JAVA_HOME_17_X64" node scripts/run-agent-activity-android-unit-tests.mjs --no-daemon
 
+  # rustfmt's default style for both Rust crates. Formatting drifted while
+  # nothing checked it, so any `cargo fmt` rewrote unrelated files. No build:
+  # rustfmt only parses, so this needs neither system packages nor a frontend.
+  rust-format:
+    name: Rust format
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { components: rustfmt }
+
+      - name: Check formatting
+        run: |
+          cargo fmt --check --manifest-path src-desktop/Cargo.toml
+          cargo fmt --check --manifest-path src-desktop/plugins/agent-activity/Cargo.toml
+
   desktop-rust:
     runs-on: ubuntu-22.04
     steps:

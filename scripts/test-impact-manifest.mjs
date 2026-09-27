@@ -648,6 +648,7 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/proof-family-route-error-egress.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/random-uuid-guard.test.ts',
+  'scripts/__tests__/sdk-barrel-selection.repo.test.ts',
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
   'scripts/__tests__/test-import-existence-gate.scan.test.ts',
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
@@ -884,9 +885,8 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'scripts/__tests__/agent-instructions-gate.test.ts',
       'scripts/__tests__/verification-policy-gate.test.ts',
-      'scripts/__tests__/trust-reconcile-manifest.test.ts',
     ],
-    reason: 'root instruction routing, completion evidence, and wrapper policy',
+    reason: 'root instruction routing and wrapper policy',
   },
   {
     pattern: 'CLAUDE.md',
@@ -1245,19 +1245,9 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'Nightly hidden-window documentation source seam',
   },
   {
-    pattern: 'src-ui/src/platform/native/startupReadiness.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'renderer readiness documentation source seam',
-  },
-  {
     pattern: 'scripts/__tests__/startup-readiness-static.test.ts',
     tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
     reason: 'native startup static verification command contract',
-  },
-  {
-    pattern: 'src-ui/src/platform/native/__tests__/startupReadiness.test.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'renderer startup verification command contract',
   },
   {
     pattern: 'tests/plugin-host-security.spec.ts',

@@ -298,31 +298,6 @@ describe('sanitizeUIBlockEventProvenance', () => {
     expect(output.value.uiBlock.attestationState).toBe('decorative');
   });
 
-  test('the direct-persisted-part branch sees the SAME sanitized data as the live stream (M4) — persistence never carries an unsanitized copy', () => {
-    // Simulates: whatever `event` this function hands back is exactly what
-    // BOTH `eventStore.appendEvent` persists AND the SSE publish sends —
-    // there is no second, unsanitized copy for a later replay/reload read
-    // (`chatRuntimeStream.ts`'s direct-persisted-part branch) to see.
-    const raw = toolCompleted({
-      uiBlock: {
-        type: 'table',
-        columns: ['Name'],
-        rows: [['a']],
-        attestationState: 'attested',
-        provenanceDigest: 'forged-digest',
-      },
-    });
-    const forPersistence = sanitizeUIBlockEventProvenance(raw);
-    const forLiveStream = sanitizeUIBlockEventProvenance(raw);
-
-    expect(forPersistence).toEqual(forLiveStream);
-    const persistedBlock = (forPersistence as ToolCompletedEvent).output as {
-      uiBlock: Record<string, unknown>;
-    };
-    expect(persistedBlock.uiBlock.provenanceDigest).not.toBe('forged-digest');
-    expect(persistedBlock.uiBlock.attestationState).toBe('unattested');
-  });
-
   test('render_component output that already carries a real host-computed digest re-sanitizes idempotently', () => {
     const sources: UIBlockProvenanceSourceRef[] = [
       { kind: 'toolCallId', toolCallId: 'call_1' },

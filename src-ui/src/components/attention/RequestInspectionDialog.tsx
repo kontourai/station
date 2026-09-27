@@ -7,6 +7,7 @@ import { respondToRequest } from '@kontourai/station-sdk/client';
 import { useMutation, useMutationState } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { Button } from '../Button';
 import {
   ResponsiveDialogHeader,
@@ -294,7 +295,7 @@ export function RequestInspectionDialog({
           <ErrorState
             variant="compact"
             title="Couldn't confirm the decision"
-            description={describeReadFailure(response.error)}
+            description={userFacingErrorMessage(response.error)}
             action={
               <Button
                 disabled={checking}

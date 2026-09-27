@@ -15,8 +15,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { resolveNpmCli } from '../../../../scripts/dependency-lifecycle.mjs';
 import { sanitizedGitEnvironment } from '../../../../scripts/lib/git-environment.mjs';
+import { resolveNpmCli } from '../../../../scripts/lib/npm-cli.mjs';
 import {
   assertCommandAvailable,
   CONTRIBUTOR_COMMANDS,

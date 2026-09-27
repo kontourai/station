@@ -5,7 +5,6 @@ import {
   describeDelegationStanding,
   describeDeviceAccountBinding,
   describeDeviceActivity,
-  describeDeviceKind,
   describeDeviceProvenance,
   describeDeviceRevocation,
   describeDeviceScope,
@@ -302,16 +301,6 @@ describe('describeDeviceScope', () => {
 
   it('passes an unrecognized scope through rather than inventing a label', () => {
     expect(describeDeviceScope('station:future')).toBe('station:future');
-  });
-});
-
-describe('describeDeviceKind (station#1123 slice 1)', () => {
-  it('labels an ordinary paired device', () => {
-    expect(describeDeviceKind('device')).toBe('Device');
-  });
-
-  it('labels a delegation grant distinctly', () => {
-    expect(describeDeviceKind('delegation')).toBe('Delegation');
   });
 });
 

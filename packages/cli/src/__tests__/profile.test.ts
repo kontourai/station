@@ -126,6 +126,32 @@ describe('shared saved Station store', () => {
     ).toThrow(/missing from an initialized or in-progress shared root/);
   });
 
+  test('admits a first saved Station beside installs and archive lifecycle state only', () => {
+    // #2675: a prebuilt archive's first start records its instance under
+    // <root>/state/<channel>/instances before anything is saved.
+    mkdirSync(join(home, 'installs', 'stable'), { recursive: true });
+    mkdirSync(join(home, 'state', 'stable', 'instances'), { recursive: true });
+    upsertProfile({
+      name: 'stable-local',
+      endpoint: 'http://127.0.0.1:18141',
+      makeDefault: true,
+    });
+    expect(readProfileStore().profiles.map((profile) => profile.name)).toEqual([
+      'stable-local',
+    ]);
+  });
+
+  test('refuses a first saved Station beside a prior channel runtime', () => {
+    mkdirSync(join(home, 'state', 'stable', 'instances'), { recursive: true });
+    mkdirSync(join(home, 'instances', 'stable'), { recursive: true });
+    expect(() =>
+      upsertProfile({
+        name: 'stable-local',
+        endpoint: 'http://127.0.0.1:18141',
+      }),
+    ).toThrow(/missing from an initialized or in-progress shared root/);
+  });
+
   test('refuses a revision-zero store moved after genesis and before the locked CAS', () => {
     ensureProfileStoreGenesis();
     const revisionZero = readProfileStore();

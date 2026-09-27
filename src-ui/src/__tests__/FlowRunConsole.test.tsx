@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   clipboardAbsent,
@@ -496,11 +502,11 @@ describe('FlowRunConsole', () => {
     expect(attachMutation.mutateAsync).not.toHaveBeenCalled();
   });
 
-  test('hides an A receipt notice and ignores its late completion after authority B takes over', async () => {
+  function startDeferredKeep() {
     runsState.data = RUNS;
     consoleState.data = CONSOLE_PROJECTION;
     taskState.data = [{ id: 'task-a', title: 'Task A', status: 'open' }];
-    let release!: () => void;
+    let release: (() => void) | undefined;
     attachMutation.mutateAsync.mockImplementation(
       () => new Promise<void>((resolve) => (release = resolve)),
     );
@@ -510,19 +516,49 @@ describe('FlowRunConsole', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /Task A/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Add to Task' }));
-    await waitFor(() => expect(release).toBeTypeOf('function'));
-
-    requestScopeState = {
-      apiBase: 'http://station.test',
-      authorityKey: 'authority-b',
+    return {
+      view,
+      release: async () => {
+        await waitFor(() => expect(release).toBeTypeOf('function'));
+        // Inside act so the attach continuation (and any notice it sets)
+        // has landed before the caller asserts.
+        await act(async () => release!());
+      },
     };
+  }
+
+  function switchAuthority(view: ReturnType<typeof render>, key: string) {
+    requestScopeState = { apiBase: 'http://station.test', authorityKey: key };
     view.rerender(<FlowRunConsole />);
-    release();
-    await waitFor(() =>
-      expect(
-        screen.queryByText('Gate evaluation kept in Task “Task A”.'),
-      ).toBeNull(),
-    );
+  }
+
+  test('an A receipt notice shows under A and is hidden once authority B takes over', async () => {
+    const { view, release } = startDeferredKeep();
+    await release();
+    expect(
+      screen.getByText('Gate evaluation kept in Task “Task A”.'),
+    ).toBeTruthy();
+
+    switchAuthority(view, 'authority-b');
+    expect(
+      screen.queryByText('Gate evaluation kept in Task “Task A”.'),
+    ).toBeNull();
+  });
+
+  test('ignores an A completion that lands after authority B took over', async () => {
+    const { view, release } = startDeferredKeep();
+    switchAuthority(view, 'authority-b');
+    await release();
+    expect(
+      screen.queryByText('Gate evaluation kept in Task “Task A”.'),
+    ).toBeNull();
+
+    // Back on A, a receipt recorded from the late completion would match
+    // again; it must never have been recorded.
+    switchAuthority(view, 'authority-a');
+    expect(
+      screen.queryByText('Gate evaluation kept in Task “Task A”.'),
+    ).toBeNull();
   });
 });
 

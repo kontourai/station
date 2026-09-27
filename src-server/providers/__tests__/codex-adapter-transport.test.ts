@@ -1,19 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
 import { describe, expect, test, vi } from 'vitest';
-
-// #2663: the real `resolveAugmentedPathSync` starts the developer's own
-// `$SHELL -ic` PATH capture. A distinct value keeps this file hermetic and
-// makes a spawn env that dropped the augmentation observable.
-const AUGMENTED_PATH = vi.hoisted(() => '/augmented/by-test:/usr/bin');
-vi.mock('../auth/cli-auth.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../auth/cli-auth.js')>()),
-  resolveAugmentedPathSync: () => AUGMENTED_PATH,
-}));
-
 import {
   CodexAdapterTransport,
-  codexSpawnEnv,
   createCodexSessionRecord,
 } from '../adapters/codex-adapter-transport.js';
 
@@ -604,6 +593,64 @@ describe('CodexAdapterTransport', () => {
     });
   });
 
+  // archive#3451 B2: a non-retriable `error` notification is the turn's
+  // terminal, so a later stop must not synthesize a second one. A retriable
+  // error is not: codex may still finish the turn, so a stop in between must
+  // still close it.
+  test.each([
+    { willRetry: false, published: ['runtime.error', 'session.exited'] },
+    {
+      willRetry: true,
+      published: ['runtime.error', 'orphaned-turn-synthesis', 'session.exited'],
+    },
+  ])(
+    'stopSession after an error notification with willRetry=$willRetry publishes $published',
+    async ({ willRetry, published }) => {
+      const transport = new CodexAdapterTransport(
+        () => new Date('2026-04-11T00:00:00Z'),
+      );
+      const record = createCodexSessionRecord({
+        externalThreadId: 'thread-error-terminal',
+        process: new FakeCodexProcess(),
+        provider: 'codex',
+        threadId: 'thread-error-terminal',
+        model: 'gpt-5-codex',
+        nowIso: () => '2026-04-11T00:00:00Z',
+      });
+      record.activeTurnId = 'turn-1';
+      transport.registerSession(record);
+      transport.setCodexThreadId(record, 'codex-thread-1');
+      transport.handleProcess(record);
+      const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+
+      transport.handleStdoutLine(
+        record,
+        JSON.stringify({
+          method: 'error',
+          params: {
+            threadId: 'codex-thread-1',
+            turnId: 'turn-1',
+            error: { message: 'Fatal error' },
+            willRetry,
+          },
+        }),
+      );
+      await transport.stopSession(
+        'thread-error-terminal',
+        () => '2026-04-11T00:00:01Z',
+      );
+
+      const events = await drainEvents(iterator);
+      expect(
+        events.map((event) =>
+          event.code === 'codex-turn-orphaned'
+            ? 'orphaned-turn-synthesis'
+            : event.method,
+        ),
+      ).toEqual(published);
+    },
+  );
+
   /**
    * station#1569 (item 4): `publishOrphanedTurnFailure` closes the orphaned
    * TURN, which says nothing about the individual tool rows of that turn —
@@ -1004,40 +1051,6 @@ describe('CodexAdapterTransport', () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-});
-
-// archive#896 wave 2: CODEX_HOME spawn seam — pure env-layering helper (no
-// spawning), mirrors the claude-adapter's app-home env layering contract.
-describe('codexSpawnEnv', () => {
-  test('layers the override onto a full process.env spread', () => {
-    const result = codexSpawnEnv({ CODEX_HOME: '/tmp/codex-profile' });
-    expect(result).not.toBe(process.env);
-    expect(result.CODEX_HOME).toBe('/tmp/codex-profile');
-    for (const key of Object.keys(process.env)) {
-      if (key === 'CODEX_HOME') continue;
-      if (key === 'STATION_INTERNAL_API_TOKEN') continue;
-      if (key === 'STATION_UI_BOOTSTRAP_TOKEN') continue;
-      // #2663: PATH is the augmented search PATH codex was resolved from.
-      if (key === 'PATH') continue;
-      expect(result[key]).toBe(process.env[key]);
-    }
-    expect(result.PATH).toBe(AUGMENTED_PATH);
-  });
-
-  test('a per-connection PATH still overrides the augmented one', () => {
-    expect(codexSpawnEnv({ PATH: '/connection/bin' }).PATH).toBe(
-      '/connection/bin',
-    );
-  });
-
-  test('returns a scrubbed copy, never the live process.env object', () => {
-    const result = codexSpawnEnv();
-    expect(result).not.toBe(process.env);
-    expect(result).not.toHaveProperty('STATION_INTERNAL_API_TOKEN');
-    expect(codexSpawnEnv(undefined)).not.toHaveProperty(
-      'STATION_INTERNAL_API_TOKEN',
-    );
   });
 });
 

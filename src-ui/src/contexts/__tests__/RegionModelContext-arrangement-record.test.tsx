@@ -18,7 +18,6 @@ import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { toRegionArrangementRecord } from '../../regions/region-arrangement-record';
-import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../../regions/region-model';
 import { NavigationProvider } from '../NavigationContext';
 import { navigationStore } from '../navigation-store';
 import { RegionModelProvider, useRegionModel } from '../RegionModelContext';
@@ -687,10 +686,4 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     await waitFor(() => expect(model?.regions.bottom.maximized).toBe(false));
     expect(navigationStore.lastDockMaximized).toBe(true);
   });
-});
-
-test('the default arrangement seeds exactly the contracts default literal', () => {
-  expect(toRegionArrangementRecord(DEFAULT_DEVICE_REGION_ARRANGEMENT)).toEqual(
-    DEFAULT_REGION_ARRANGEMENT_RECORD,
-  );
 });

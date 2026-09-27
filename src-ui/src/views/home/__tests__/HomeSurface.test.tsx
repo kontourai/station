@@ -13,6 +13,10 @@ vi.mock('../../../contexts/useShowSurface', () => ({
 
 import { HomeSurface } from '../HomeSurface';
 
+// The surface name the Activity rename retired (archive#3280), in the
+// affordance positions it used to occupy.
+const LEGACY_SURFACE_LABEL = /\b(?:view|open|all)\s+sessions\b/i;
+
 const NOW = Date.now();
 const min = (n: number) => NOW - n * 60_000;
 
@@ -291,6 +295,9 @@ describe('HomeSurface composition', () => {
     expect(document.querySelector('.home-pulse__stats')).toBeNull();
     screen.getByRole('button', { name: 'Open Activity' }).click();
     expect(m.retryWork).not.toHaveBeenCalled();
+    expect(
+      screen.queryAllByRole('button', { name: LEGACY_SURFACE_LABEL }),
+    ).toEqual([]);
   });
 
   test('an empty list renders neither counts nor a chart', () => {
@@ -318,6 +325,11 @@ describe('HomeSurface: what is clickable', () => {
     // nothing routes (#928 — there is no Activity route left to route to).
     expect(showSurface).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();
+    // Activity is the surface's only name here: no retired "Sessions"
+    // affordance renders beside the right one.
+    expect(
+      screen.queryAllByRole('button', { name: LEGACY_SURFACE_LABEL }),
+    ).toEqual([]);
   });
 
   test('a chart bar opens the newest item in that bucket', () => {

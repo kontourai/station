@@ -10,6 +10,12 @@ import {
   runtimeChannelFromEnvironment,
 } from '@kontourai/station-shared/runtime-path-resolver';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
+import {
+  type LifecycleCodeRoot,
+  type LifecycleStateLocation,
+  resolveLifecycleCodeRoot,
+  resolveLifecycleStateLocation,
+} from './lifecycle-code-root.js';
 
 function defaultRuntimeContext(env: NodeJS.ProcessEnv = process.env) {
   const withoutExplicitHome = { ...env };
@@ -40,8 +46,9 @@ export const PROJECT_HOME = resolve(
 export const PLUGINS_DIR = join(PROJECT_HOME, 'plugins');
 export const AGENTS_DIR = join(PROJECT_HOME, 'agents');
 export const CWD = process.cwd();
-export const PIDFILE = join(CWD, '.station.pids');
-export const INSTANCE_STATE_DIR = join(CWD, '.station', 'instances');
+/** What this process runs from: a source tree or a prebuilt archive (#2675). */
+export const LIFECYCLE_CODE_ROOT: LifecycleCodeRoot =
+  resolveLifecycleCodeRoot(CWD);
 
 /**
  * The directory `station` was invoked from, before the launcher `cd`s into
@@ -193,14 +200,27 @@ export function resolveLifecycleInstanceId(
     return DEFAULT_INSTANCE_ID;
   }
 
+  // #2675: a prebuilt archive is one version directory of a channel, and an
+  // upgrade runs the next version from a different directory. Hashing its
+  // path would give every version its own id for the same home and ports, so
+  // the new version could not address the instance the old one started. Its
+  // identity is the channel instead; a source checkout keeps its path, which
+  // is what keeps two checkouts' instances apart.
+  const cwd = options.cwd || CWD;
+  const codeRoot =
+    cwd === CWD ? LIFECYCLE_CODE_ROOT : resolveLifecycleCodeRoot(cwd);
   const hash = createHash('sha1')
     .update(
-      JSON.stringify({
-        cwd: options.cwd || CWD,
-        projectHome,
-        serverPort,
-        uiPort,
-      }),
+      JSON.stringify(
+        codeRoot.kind === 'prebuilt-archive'
+          ? {
+              prebuiltArchiveChannel: codeRoot.release.channel,
+              projectHome,
+              serverPort,
+              uiPort,
+            }
+          : { cwd: codeRoot.root, projectHome, serverPort, uiPort },
+      ),
     )
     .digest('hex')
     .slice(0, 12);
@@ -245,8 +265,35 @@ export function resolveServiceInstanceId(
   return resolveLifecycleInstanceId(options);
 }
 
-export function getInstanceStatePath(instanceId: string, cwd = CWD): string {
-  return join(cwd, '.station', 'instances', `${instanceId}.json`);
+/**
+ * Where this CLI keeps lifecycle state for instances of `projectHome` — the
+ * home the command resolved from its flags and environment. Every lifecycle
+ * reader and writer goes through here (#2675). A source checkout ignores the
+ * home; a prebuilt archive keeps state in the root that home's path belongs
+ * to, and
+ * without a home it takes the one a bare command targets (`STATION_HOME` or
+ * the channel default), resolved only then.
+ */
+export function resolveLifecycleState(
+  projectHome?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): LifecycleStateLocation {
+  return resolveLifecycleStateLocation(
+    LIFECYCLE_CODE_ROOT,
+    LIFECYCLE_CODE_ROOT.kind === 'source'
+      ? CWD
+      : (projectHome ?? resolveLifecycleHomeTarget({ env }).projectHome),
+  );
+}
+
+export function getInstanceStatePath(
+  instanceId: string,
+  projectHome?: string,
+): string {
+  return join(
+    resolveLifecycleState(projectHome).instanceStateDir,
+    `${instanceId}.json`,
+  );
 }
 
 export function readManifest(dir = CWD): PluginManifest {

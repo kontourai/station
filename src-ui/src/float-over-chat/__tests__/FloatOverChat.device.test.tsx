@@ -21,6 +21,7 @@ import {
   cleanup,
   fireEvent,
   render,
+  renderHook,
   screen,
   waitFor,
   within,
@@ -51,9 +52,9 @@ import FloatOverChat from '../FloatOverChat';
 import { deviceFloatSourceKey } from '../floatSource';
 import {
   getFloatingSource,
-  isFloatHostAvailable,
   requestFloat,
   resetFloatStoreForTests,
+  useFloatHostAvailable,
 } from '../floatStore';
 import { announceShownSource } from '../shownSources';
 
@@ -265,11 +266,20 @@ function renderChat(projectSlug = 'alpha') {
   );
 }
 
-/** The chat's floater mounts lazily; wait until it can take a request. */
-async function floatDevice(source: typeof SOURCE = SOURCE) {
-  await waitFor(() => expect(isFloatHostAvailable()).toBe(true));
-  await act(async () => {
-    expect(requestFloat(source)).toBe(true);
+/**
+ * The chat's floater mounts lazily; ask until a mounted chat accepts the
+ * request (a refusal queues nothing, so retrying is side-effect free).
+ */
+async function floatDevice(
+  source: typeof SOURCE = SOURCE,
+  onTaken?: () => void,
+) {
+  await waitFor(async () => {
+    let accepted = false;
+    await act(async () => {
+      accepted = requestFloat(source, onTaken);
+    });
+    expect(accepted).toBe(true);
   });
 }
 
@@ -311,9 +321,14 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-test('no chat mounted: a Float over chat request is refused, not queued', () => {
-  expect(isFloatHostAvailable()).toBe(false);
+test('no chat mounted: a Float over chat request is refused, not queued', async () => {
   expect(requestFloat(SOURCE)).toBe(false);
+  // A chat that mounts afterwards finds nothing waiting for it.
+  const host = renderHook(() => useFloatHostAvailable());
+  renderChat();
+  await waitFor(() => expect(host.result.current).toBe(true));
+  await act(async () => {});
+  expect(getFloatingSource('conversation-1')).toBeNull();
 });
 
 test('a requested device floats, read from ITS host with the chat’s Project, and the pill claims through the surface’s lease', async () => {
@@ -579,10 +594,7 @@ test('M2: a device its Project cannot view here is not lost silently: the chat s
 test('M2: the float acknowledges only once a chat has TAKEN the request', async () => {
   const taken = vi.fn();
   renderChat();
-  await waitFor(() => expect(isFloatHostAvailable()).toBe(true));
-  await act(async () => {
-    expect(requestFloat(SOURCE, taken)).toBe(true);
-  });
+  await floatDevice(SOURCE, taken);
   expect(taken).toHaveBeenCalledTimes(1);
   expect(getFloatingSource('conversation-1')).toEqual(SOURCE);
 });

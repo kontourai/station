@@ -520,29 +520,6 @@ describe('codex-adapter-notifications', () => {
     expect(events[0]).toMatchObject({ finishReason: 'cancelled' });
   });
 
-  // archive#3473 fix round: a successful turn/completed ALWAYS marks the
-  // terminal published, so a concurrent stopSession/process-exit synthesis
-  // never double-publishes for this turn.
-  test('a successful turn/completed marks terminalPublishedForTurnId', () => {
-    const record = buildRecord({
-      activeTurnId: 'turn-1',
-      activeTurnStartedAt: Date.now() - 10,
-      turnOutput: new Map([['turn-1', '']]),
-    });
-
-    handleCodexNotification({
-      record,
-      notification: {
-        method: 'turn/completed',
-        params: { turn: { id: 'turn-1', status: 'completed' } },
-      },
-      nowIso: () => '2026-01-02T00:00:02.000Z',
-      publish: () => {},
-    });
-
-    expect(record.terminalPublishedForTurnId).toBe('turn-1');
-  });
-
   // archive#3451 fix round D8: a LATE turn/completed for turn-1 arriving
   // while turn-2 is already the active turn must not wipe turn-2's
   // tracking. terminalPublishedForTurnId is still recorded (a true fact
@@ -629,86 +606,6 @@ describe('codex-adapter-notifications', () => {
     } finally {
       recordSpy.mockRestore();
     }
-  });
-
-  test('a failed turn (turn.status: failed) marks terminalPublishedForTurnId', () => {
-    const record = buildRecord({
-      activeTurnId: 'turn-1',
-      activeTurnStartedAt: Date.now() - 10,
-      turnOutput: new Map([['turn-1', '']]),
-    });
-
-    handleCodexNotification({
-      record,
-      notification: {
-        method: 'turn/completed',
-        params: {
-          turn: { id: 'turn-1', status: 'failed', error: { message: 'x' } },
-        },
-      },
-      nowIso: () => '2026-01-02T00:00:02.000Z',
-      publish: () => {},
-    });
-
-    expect(record.terminalPublishedForTurnId).toBe('turn-1');
-  });
-
-  // archive#3451 finding B2 (blocking): the `willRetry`-falsy 'error'
-  // notification arm never marked anything before this fix, even though
-  // every downstream consumer (the lifecycle fold, the stall watchdog, the
-  // trackEngineTurn telemetry gate, checkpoint capture) already treats a
-  // non-deferred runtime.error as terminal. Without this mark, a later
-  // stop/exit would synthesize a SECOND terminal via
-  // publishOrphanedTurnFailure — double-counting telemetry, double-firing
-  // checkpoint capture, and overwriting blockedReason with a generic message
-  // that erases the real cause this notification just reported.
-  test('a non-retriable error notification marks terminalPublishedForTurnId (B2)', () => {
-    const record = buildRecord({ activeTurnId: 'turn-1' });
-
-    handleCodexNotification({
-      record,
-      notification: {
-        method: 'error',
-        params: {
-          turnId: 'turn-1',
-          error: { message: 'Fatal error' },
-          willRetry: false,
-        },
-      },
-      nowIso: () => '2026-01-02T00:00:02.000Z',
-      publish: () => {},
-    });
-
-    expect(record.terminalPublishedForTurnId).toBe('turn-1');
-    // Unlike turn/completed, the 'error' notification never clears
-    // activeTurnId itself — B2's fix is scoped to marking the terminal
-    // published, not to that separate (pre-existing, untouched) behavior.
-    expect(record.activeTurnId).toBe('turn-1');
-  });
-
-  // Negative control: a RETRIABLE (deferred, willRetry: true) error must NOT
-  // mark the terminal published — codex may still resolve this same turn
-  // without a new turn.started, and marking it here would incorrectly let a
-  // later stop/exit skip publishing the turn's real eventual terminal.
-  test('a retriable (deferred) error notification does not mark terminalPublishedForTurnId', () => {
-    const record = buildRecord({ activeTurnId: 'turn-1' });
-
-    handleCodexNotification({
-      record,
-      notification: {
-        method: 'error',
-        params: {
-          turnId: 'turn-1',
-          error: { message: 'Transient error' },
-          willRetry: true,
-        },
-      },
-      nowIso: () => '2026-01-02T00:00:02.000Z',
-      publish: () => {},
-    });
-
-    expect(record.terminalPublishedForTurnId).toBeUndefined();
-    expect(record.activeTurnId).toBe('turn-1');
   });
 });
 

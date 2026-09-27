@@ -203,7 +203,10 @@ describe('service supervisor', () => {
 
     finishStart?.();
     await supervision;
-    expect(stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: SERVICE_BASE,
+    });
     expect(exit).toHaveBeenCalledWith(0);
   });
 
@@ -264,7 +267,10 @@ describe('service supervisor', () => {
     });
     signals.get('SIGTERM')?.();
     await vi.waitFor(() =>
-      expect(stop).toHaveBeenCalledWith({ instanceName: 'service-test' }),
+      expect(stop).toHaveBeenCalledWith({
+        instanceName: 'service-test',
+        stateHome: SERVICE_BASE,
+      }),
     );
 
     timers.get(60_000)?.();
@@ -364,7 +370,10 @@ describe('service supervisor', () => {
     // lifecycle has none, so the field is explicitly undefined, not dropped.
     expect(start.mock.calls[0][0]).toHaveProperty('allowedOrigins', undefined);
     expect(setTimer).toHaveBeenCalledWith(expect.any(Function), 5_000);
-    expect(stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: SERVICE_BASE,
+    });
     expect(exit).toHaveBeenCalledWith(0);
   });
 
@@ -417,7 +426,10 @@ describe('service supervisor', () => {
     });
 
     expect(setTimer).toHaveBeenCalledWith(expect.any(Function), 5_000);
-    expect(stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: SERVICE_BASE,
+    });
     expect(exit).toHaveBeenCalledWith(1);
   });
 
@@ -486,10 +498,12 @@ describe('service supervisor', () => {
     // Steady-state probes carry the busy-host budget, not the old 3s default.
     expect(collect).toHaveBeenCalledWith('service-test', {
       probeTimeoutMs: 10_000,
+      projectHome: SERVICE_BASE,
     });
     // The escalation path ran a long-budget confirmation instead of a kill.
     expect(collect).toHaveBeenCalledWith('service-test', {
       probeTimeoutMs: 45_000,
+      projectHome: SERVICE_BASE,
     });
     // Supervision continues: the loop keeps scheduling ticks.
     expect(harness.pendingTicks()).toBeGreaterThan(0);
@@ -529,7 +543,10 @@ describe('service supervisor', () => {
     });
     await harness.supervision;
 
-    expect(harness.stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(harness.stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: SERVICE_BASE,
+    });
     expect(harness.exit).toHaveBeenCalledWith(1);
     expect(
       error.mock.calls.some(([, reason]) =>
@@ -554,7 +571,10 @@ describe('service supervisor', () => {
 
     await harness.runTick();
 
-    expect(harness.stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(harness.stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: SERVICE_BASE,
+    });
     expect(harness.exit).toHaveBeenCalledWith(1);
   });
 
@@ -573,7 +593,10 @@ describe('service supervisor', () => {
     expect(harness.exit).not.toHaveBeenCalled();
     await harness.runTick();
 
-    expect(harness.stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(harness.stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: SERVICE_BASE,
+    });
     expect(harness.exit).toHaveBeenCalledWith(1);
     expect(
       error.mock.calls.some(([, reason]) =>
@@ -600,7 +623,10 @@ describe('service supervisor', () => {
     for (let index = 0; index < 5; index += 1) await harness.runTick();
 
     await vi.waitFor(() => expect(harness.exit).toHaveBeenCalledWith(1));
-    expect(harness.stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(harness.stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: SERVICE_BASE,
+    });
     expect(
       error.mock.calls.some(([, reason]) =>
         String((reason as Error)?.message).includes(
@@ -678,7 +704,10 @@ describe('service supervisor', () => {
     expect(harness.exit).not.toHaveBeenCalled();
     await harness.runTick();
 
-    expect(harness.stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(harness.stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: SERVICE_BASE,
+    });
     expect(harness.exit).toHaveBeenCalledWith(1);
     expect(
       error.mock.calls.some(([, reason]) =>
@@ -718,7 +747,10 @@ describe('service supervisor', () => {
     }
 
     await vi.waitFor(() => expect(harness.exit).toHaveBeenCalledWith(1));
-    expect(harness.stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(harness.stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: SERVICE_BASE,
+    });
     expect(
       error.mock.calls.some(([, reason]) =>
         String((reason as Error)?.message).includes('treating it as wedged'),
@@ -746,7 +778,10 @@ describe('service supervisor', () => {
     await harness.runTick();
 
     await vi.waitFor(() => expect(harness.exit).toHaveBeenCalledWith(1));
-    expect(harness.stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(harness.stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: SERVICE_BASE,
+    });
     expect(
       error.mock.calls.some(([, reason]) =>
         String((reason as Error)?.message).includes('treating it as wedged'),
@@ -778,7 +813,10 @@ describe('service supervisor', () => {
     await harness.runTick();
 
     await vi.waitFor(() => expect(harness.exit).toHaveBeenCalledWith(1));
-    expect(harness.stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(harness.stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: SERVICE_BASE,
+    });
   });
 
   test('does not cap four confirmation recoveries spread beyond the recovery window', async () => {
@@ -847,7 +885,10 @@ describe('service supervisor', () => {
     await harness.runTick();
 
     await vi.waitFor(() => expect(harness.exit).toHaveBeenCalledWith(1));
-    expect(harness.stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(harness.stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: SERVICE_BASE,
+    });
   });
 
   test('foreign listening PIDs turn unreachable probes into identity-mismatch teardown evidence', async () => {
@@ -864,7 +905,10 @@ describe('service supervisor', () => {
     await harness.runTick();
     await harness.runTick();
 
-    expect(harness.stop).toHaveBeenCalledWith({ instanceName: 'service-test' });
+    expect(harness.stop).toHaveBeenCalledWith({
+      instanceName: 'service-test',
+      stateHome: SERVICE_BASE,
+    });
     expect(harness.exit).toHaveBeenCalledWith(1);
     expect(
       error.mock.calls.some(([, reason]) =>

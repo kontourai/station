@@ -126,8 +126,10 @@ test('a lapsed status renders the floor with the derived reason — the role com
 
 test('a grant record planted in localStorage — the self-grant attack — mounts nothing', () => {
   // Before the re-scope the grant lived at this key, where same-origin
-  // plugin code could write it. Nothing may read it any more: the ONLY seam
-  // into the role render is the server-derived status.
+  // plugin code could write it. The status hook is mocked here, so this
+  // guards HomeView itself: it must not consult the key beside the
+  // server-derived status. The hook's own refusal is proven in
+  // views/home/__tests__/useWorkspaceHomeRole.test.tsx.
   window.localStorage.setItem(
     'station:workspace-home-role',
     JSON.stringify({

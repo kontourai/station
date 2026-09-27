@@ -105,12 +105,6 @@ function checkedFile(path, description) {
   return path;
 }
 
-// Re-exported so this module's existing importers and tests keep their entry
-// point while the implementation lives in one shared place (#1093). It was
-// the only correct npm resolution in the repo; four other call sites spawned
-// a bare `npm` and broke on Windows.
-export { resolveNpmCli };
-
 // spawnSync owns the documented argv0 contract; keep ordinary execFileSync
 // behavior when no distinct invocation name is needed.
 function execWithInvocationName(command, args, options) {

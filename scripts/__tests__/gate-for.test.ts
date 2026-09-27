@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { gateReport, veritasGuidanceForPaths } from '../gate-for.mjs';
 
@@ -102,13 +102,15 @@ describe('gate-for report', () => {
   });
 
   it('refuses an unrecognized flag instead of treating it as a path', () => {
-    expect(() =>
-      execFileSync('node', ['scripts/gate-for.mjs', '--bogus'], {
-        encoding: 'utf8',
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      }),
-    ).toThrow();
+    const run = spawnSync('node', ['scripts/gate-for.mjs', '--bogus'], {
+      encoding: 'utf8',
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    // The usage refusal, not a crash or any other nonzero exit.
+    expect(run.stderr).toContain('gate-for: unrecognized flag: --bogus');
+    expect(run.status).toBe(2);
+    expect(run.stdout).not.toContain('changed path(s)');
   });
 
   it('the npm entry point exists and prints a report', () => {

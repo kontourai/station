@@ -198,21 +198,6 @@ export function parsePriorValue<K extends keyof DeviceSettings>(
       ) as DeviceSettings[K];
     case 'string':
       return raw as DeviceSettings[K];
-    case 'number': {
-      // archive#settings-revamp note: `Number('')` and
-      // `Number('   ')` both coerce to `0`, not NaN — an empty/whitespace
-      // raw value must fall back to `defaultValue` explicitly rather than
-      // silently landing on 0 for a setting whose real default is
-      // something else. (Currently dead code: no number-kind device
-      // setting has a `priorStorageKey` yet — guarded now rather than
-      // left as a footgun for the first one that does.)
-      const trimmed = raw.trim();
-      if (trimmed === '') return defaultValue;
-      const parsed = Number(trimmed);
-      return (
-        Number.isFinite(parsed) ? parsed : defaultValue
-      ) as DeviceSettings[K];
-    }
     case 'composite': {
       try {
         const parsed: unknown = JSON.parse(raw);
@@ -228,6 +213,10 @@ export function parsePriorValue<K extends keyof DeviceSettings>(
       }
     }
     default:
+      // No number-kind setting declares a prior key (the prior keys are a
+      // closed legacy set), so no prior raw value is ever parsed as a
+      // number. One that did would need its own empty-string guard:
+      // `Number('')` is 0, not NaN.
       return defaultValue;
   }
 }

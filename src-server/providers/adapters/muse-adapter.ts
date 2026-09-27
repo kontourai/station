@@ -655,7 +655,7 @@ function createMuseProcess(args: string[], cwd?: string): MuseSpawnResult {
   const { proc, release } = spawnOwnedChild(binary, args, {
     cwd,
     // #2663: the PATH `muse` was resolved from, so a launcher script found
-    // off the service PATH can find its interpreter (see codexSpawnEnv).
+    // off the service PATH can find its interpreter (see spawnCodexProcess).
     env: childProcessEnvironment({
       PATH: resolveAugmentedPathSync(),
       TMPDIR: ensureEngineSpawnTmpDir(),

@@ -96,15 +96,7 @@ describe('npmInvocation (#1093)', () => {
   });
 });
 
-describe('resolveNpmCli shared entry point (#1093)', () => {
-  it('is the same implementation dependency-lifecycle exports', async () => {
-    // The resolution logic used to live only in dependency-lifecycle.mjs
-    // while four other call sites spawned a bare `npm`. Pin the re-export so
-    // a future edit cannot fork them apart again.
-    const lifecycle = await import('../dependency-lifecycle.mjs');
-    expect(lifecycle.resolveNpmCli).toBe(resolveNpmCli);
-  });
-
+describe('resolveNpmCli (#1093)', () => {
   it('still refuses a Windows command shim', () => {
     expect(() => resolveNpmCli({ npm_execpath: 'C:\\npm.cmd' })).toThrow(
       /npm_execpath/,
