@@ -43,3 +43,15 @@ export function isGitMetadataName(name: string): boolean {
     .toLowerCase();
   return folded === '.git' || folded === 'git~1';
 }
+
+/**
+ * True for a final path component a git-aware tool may read as a repository:
+ * one ending in `.git` under the same folding as {@link isGitMetadataName}
+ * (`repo.git`, `repo.GIT.`, HFS+-ignorable spellings), or one that IS `.git`
+ * (`git~1` included).
+ */
+export function endsAsGitName(name: string): boolean {
+  return (
+    /\.git[. ]*$/i.test(stripHfsIgnorable(name)) || isGitMetadataName(name)
+  );
+}
