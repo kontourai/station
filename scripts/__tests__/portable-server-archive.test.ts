@@ -222,7 +222,10 @@ describe('obtainNodeDistribution', () => {
 
 describe('portable server archive workflow', () => {
   type Workflow = {
-    on: Record<string, { branches?: string[]; paths?: string[] } | null>;
+    on: Record<
+      string,
+      { branches?: string[]; paths?: string[]; inputs?: unknown } | null
+    >;
     permissions: Record<string, string>;
     jobs: {
       archive: {
@@ -259,8 +262,18 @@ describe('portable server archive workflow', () => {
     expect(Object.keys(workflow.on).sort()).toEqual([
       'pull_request_target',
       'push',
+      'workflow_call',
       'workflow_dispatch',
     ]);
+    // A caller passes identity only: no secret, and nothing flows back but
+    // the run artifacts every trigger already uploads.
+    expect(workflow.on.workflow_call).toEqual({
+      inputs: {
+        ref: expect.objectContaining({ required: true, type: 'string' }),
+        version: expect.objectContaining({ required: true, type: 'string' }),
+        ring: expect.objectContaining({ required: true, type: 'string' }),
+      },
+    });
     expect(workflow.on.push).toMatchObject({ branches: ['main'] });
     expect(source).not.toMatch(
       /secrets\.|id-token|attest-build-provenance|gh release/,
@@ -340,6 +353,12 @@ describe('portable archive workflow paths filter', () => {
       '.github/workflows/portable-server-archives.yml',
       '.nvmrc',
       'config/portable-server-node-runtime.json',
+      // The ring table and version grammar behind .station-release.json,
+      // reached through packages/ where the import walk stops.
+      'config/channel-ports.json',
+      'packages/shared/src/release-manifest.mjs',
+      'packages/shared/src/release-rings.generated.mjs',
+      'packages/shared/src/portable-server-targets.mjs',
       'package.json',
       'packages/cli/src/cli.ts',
       'packaging/portable-server/bin/station.mjs',

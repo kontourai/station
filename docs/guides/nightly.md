@@ -83,6 +83,41 @@ Play credential is provisioned per [mobile-release.md](./mobile-release.md)
 with only the release-to-testing-tracks permission, not production release.
 Public distribution remains stable and preview only.
 
+## Portable server nightly (dry run until the owner enables it)
+
+`.github/workflows/portable-nightly-publish.yml`, called by `nightly.yml` as
+`portable-nightly` after full regression, builds the five
+`station-server-<os>-<arch>` archives through the reusable
+`portable-server-archives.yml` under version `X.Y.Z-nightly.<code>`, where
+`<code>` is the native Nightly's reserved version code (re-checked against the
+`nightly-version-code/<code>` tag). It assembles the schema v2 manifest from
+the archive descriptors, signs it with a throwaway key, verifies it, and
+confirms the pinned key table refuses that envelope. That is the whole run
+unless the owner gate is on; nothing is uploaded except short-lived run
+artifacts.
+
+The `publish` job is the only one with `contents: write` or a secret. It runs
+only when the repository variable `STATION_PORTABLE_NIGHTLY_PUBLISH` is exactly
+`enabled`, the run came from `nightly.yml` on `main`, and the version is a
+reservation. A direct dispatch of the publication workflow is always a dry
+run, on any branch:
+
+```bash
+gh workflow run portable-nightly-publish.yml --repo kontourai/station --ref <branch>
+```
+
+When enabled, it signs in the `portable-nightly-signing` environment with the
+pinned `station-portable-nightly-2026-09` key, refuses a version that is not
+newer than the rolling manifest, uploads the archives and the manifest to the
+immutable prerelease `v<version>` (never marked latest), re-downloads them and
+compares digests, replaces `station-portable-nightly-manifest.json` on the
+rolling `portable-nightly` release last, and re-fetches and re-verifies it.
+
+To enable it (owner only): create the `portable-nightly` prerelease pointer,
+then set the variable, for example
+`gh variable set STATION_PORTABLE_NIGHTLY_PUBLISH --repo kontourai/station --body enabled`.
+Deleting the variable returns every run to a dry run.
+
 ## macOS nightly (local install)
 
 The macOS nightly is the local, main-edge macOS lane. It installs alongside
