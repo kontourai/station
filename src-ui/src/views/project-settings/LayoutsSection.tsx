@@ -16,6 +16,7 @@ import {
 import { ProjectLayoutCatalog } from '../../components/registry/ProjectLayoutCatalog';
 import { Empty, ErrorState } from '../../components/state';
 import { trackRecentLayout } from '../../hooks/useRecentLayouts';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 export function LayoutsSection({ slug }: { slug: string }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -38,7 +39,8 @@ export function LayoutsSection({ slug }: { slug: string }) {
     onSuccess: () => setRemoveError(null),
     onError: (error) =>
       setRemoveError(
-        error?.message || 'Station could not remove this layout. Try again.',
+        (error && userFacingErrorMessage(error)) ||
+          'Station could not remove this layout. Try again.',
       ),
   });
   const applyLayoutMutation = useApplyProjectLayoutMutation(slug);

@@ -2404,10 +2404,11 @@ class StationHttpError extends Error {
 
 Today every field is carried by the integration, review and workspace pane
 host action fetchers (built on `readEnvelopeOrThrow`), and by the scheduler,
-skills, knowledge, secret-binding, conversation and orchestration fetchers.
-The conversation and orchestration fetchers used to throw a plain `Error` for
-a `200` carrying `{ success: false }`; that is now a `StationHttpError` with
-status `200` too. `respondToRequest`'s error still carries the failure
+skills, knowledge, secret-binding, conversation, orchestration, plugin and
+Project fetchers (every fetcher built on `unwrapProjectResponse`). The
+conversation, orchestration and Project fetchers used to throw a plain `Error`
+for a `200` carrying `{ success: false }`; that is now a `StationHttpError`
+with status `200` too. `respondToRequest`'s error still carries the failure
 `receipt`. `readEnvelopeOrThrow(response)`
 throws this error for a non-2xx response or for a body that is not
 `success: true`. A body that is not JSON keeps its status on a non-2xx; on a
@@ -2421,8 +2422,9 @@ Family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerRunFailedError`, `SchedulerRunRefusedError`) are built from the
 error the envelope helper made of the response, so they keep its status,
 `details` and `Retry-After`; a run error's `code` stays its own fixed value.
-`PluginCollectionHttpError` keeps the envelope's `code` on the error and on
-its `envelope`, and keeps the refusal's `details`.
+`PluginCollectionHttpError` is built the same way: it keeps the envelope's
+`code` on the error and on its `envelope`, and keeps the refusal's `details`
+and `Retry-After`.
 
 - `status` is the status the response actually carried. A route that answers
   `200` with `{ success: false }` produces a `StationHttpError` whose status
