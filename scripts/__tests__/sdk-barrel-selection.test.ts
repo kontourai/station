@@ -19,6 +19,10 @@ import {
 } from '../lib/sdk-barrel-selection.mjs';
 import { discoverRelatedTestFiles } from '../run-changed-verification.mjs';
 
+// A template-literal span in fixture source, spelled without a literal
+// `${` in this file's own strings.
+const span = (name: string) => `$\{${name}}`;
+
 const SCHEDULER = 'packages/sdk/src/client/scheduler.ts';
 const BOARD = 'packages/sdk/src/client/board.ts';
 const ROOT_BARREL = 'packages/sdk/src/index.ts';
@@ -498,30 +502,422 @@ describe('refineSdkBarrelRelatedPaths decisions', () => {
         readBase: () => baseSource,
       });
 
+    // #2782: an import change is refinable only when it moves an edge
+    // between modules a barrel load evaluates anyway, and moving it cannot
+    // be observed. Extra client modules, all barrel-reachable through the
+    // client barrel unless noted.
+    const IMPORT_FIXTURE = {
+      [CLIENT_BARREL]: `${SDK_SOURCES[CLIENT_BARREL]}\nexport * from './impure';\nexport * from './wrapper';\nexport * from './loops-back';\nexport * from './outside';\nexport * from './ghost-loader';`,
+      'packages/sdk/src/client/impure.ts':
+        'export const registry = new Registry();',
+      'packages/sdk/src/client/wrapper.ts':
+        "import { registry } from './impure';\nexport const wrapped = () => registry;",
+      'packages/sdk/src/client/loops-back.ts':
+        "import { listJobs } from './scheduler';\nexport const again = () => listJobs;",
+      'packages/sdk/src/client/outside.ts':
+        "import { z } from 'zod';\nexport const schema = () => z;",
+      'packages/sdk/src/client/ghost-loader.ts':
+        "import { ghost } from './ghost';\nexport const g = () => ghost;",
+      // Barrel-unreachable: only ever imported dynamically, or by nobody.
+      'packages/sdk/src/client/lazy.ts': 'export const lazy = 1;',
+      'packages/sdk/src/client/fresh.ts': 'export const fresh = 1;',
+      [BOARD]: `${SDK_SOURCES[BOARD]}\nexport const later = () => import('./lazy');`,
+    };
+    const decideImports = (
+      head: string,
+      base: string,
+      { overrides = {}, changed, baseOf = {} } = {} as {
+        overrides?: Record<string, string>;
+        changed?: string[];
+        baseOf?: Record<string, string | null>;
+      },
+    ) => {
+      const sources = new Map(
+        Object.entries({
+          ...SDK_SOURCES,
+          ...OUTSIDE_SOURCES,
+          ...IMPORT_FIXTURE,
+          ...overrides,
+          [SCHEDULER]: head,
+        }),
+      );
+      const graph = buildSdkImportGraph({
+        sources,
+        // ghost.ts exists (so it resolves) but is never read.
+        fileSet: [...sources.keys(), 'packages/sdk/src/client/ghost.ts'].filter(
+          (path) => path.startsWith('packages/sdk/'),
+        ),
+        sdkExports: {
+          '.': './src/index.ts',
+          './client': './src/client/index.ts',
+        },
+      });
+      return refineSdkBarrelRelatedPaths('/repo', [SCHEDULER], {
+        base: 'merge-base',
+        loadGraph: () => graph,
+        changedSdkPaths: changed,
+        readBase: (_root: string, _base: string, path: string) =>
+          path === SCHEDULER
+            ? base
+            : path in baseOf
+              ? baseOf[path]
+              : (sources.get(path) ?? null),
+      }).decisions[0];
+    };
+    const withImport = (line: string) => `${line}\n${SDK_SOURCES[SCHEDULER]}`;
+
     test.each([
       [
-        'adds an import of a side-effecting module',
-        `import { voiceSessionAdapterRegistry } from '../voice/session-registry';\n${SDK_SOURCES[SCHEDULER]}`,
+        'adds an import of a pure, barrel-reachable module',
+        withImport("import { fetchBoard } from './board';"),
         SDK_SOURCES[SCHEDULER],
+        null,
+      ],
+      [
+        'removes an import of a module still barrel-reachable',
+        SDK_SOURCES[SCHEDULER],
+        withImport("import { getBoard } from './board';"),
+        null,
+      ],
+      [
+        'adds a type-only import (erased)',
+        withImport("import type { Unused } from './fresh';"),
+        SDK_SOURCES[SCHEDULER],
+        null,
+      ],
+      [
+        'adds an import of a reachable module with a top-level side effect',
+        withImport("import { registry } from './impure';"),
+        SDK_SOURCES[SCHEDULER],
+        /client\/impure\.ts, loaded by .*impure\.ts, has a top-level side effect/,
+      ],
+      [
+        'adds an import whose closure holds a side effect',
+        withImport("import { wrapped } from './wrapper';"),
+        SDK_SOURCES[SCHEDULER],
+        /client\/impure\.ts, loaded by .*wrapper\.ts, has a top-level side effect/,
+      ],
+      [
+        'adds an import of a module that is not barrel-reachable',
+        withImport("import { fresh } from './fresh';"),
+        SDK_SOURCES[SCHEDULER],
+        /fresh\.ts is not barrel-reachable at the base/,
+      ],
+      [
+        'adds a static import of a module only ever loaded dynamically',
+        withImport("import { lazy } from './lazy';"),
+        SDK_SOURCES[SCHEDULER],
+        /lazy\.ts is not barrel-reachable at the base/,
       ],
       [
         'adds a barrel self-import (a cycle)',
-        `import { fetchBoard } from '../index';\n${SDK_SOURCES[SCHEDULER]}`,
+        withImport("import { fetchBoard } from '../index';"),
         SDK_SOURCES[SCHEDULER],
+        /loads .*scheduler\.ts \(a cycle\)|which loads .*scheduler\.ts/,
       ],
       [
-        'removes an import',
+        'adds an import of a module that loads it back (a cycle)',
+        withImport("import { again } from './loops-back';"),
         SDK_SOURCES[SCHEDULER],
-        `import { getBoard } from './board';\n${SDK_SOURCES[SCHEDULER]}`,
+        /a cycle/,
       ],
-    ])(
-      'a change that %s keeps whole-barrel selection',
-      (_label, head, base) => {
-        const result = decide({ [SCHEDULER]: head }, base);
-        expect(result.paths).toEqual([SCHEDULER]);
-        expect(result.decisions[0].reason).toMatch(/runtime imports differ/);
-      },
-    );
+      [
+        'adds an import whose closure loads a module outside the SDK',
+        withImport("import { schema } from './outside';"),
+        SDK_SOURCES[SCHEDULER],
+        /outside\.ts, loaded by .*, loads a module outside the SDK/,
+      ],
+      [
+        'adds an import of a module outside the SDK',
+        withImport("import { z } from 'zod';"),
+        SDK_SOURCES[SCHEDULER],
+        /zod is outside the SDK/,
+      ],
+      [
+        'adds an import whose closure is unreadable',
+        withImport("import { g } from './ghost-loader';"),
+        SDK_SOURCES[SCHEDULER],
+        /ghost\.ts, loaded by .*ghost-loader\.ts, is unreadable/,
+      ],
+      [
+        'removes the only import of a module (no longer reachable)',
+        SDK_SOURCES[SCHEDULER],
+        withImport("import { fresh } from './fresh';"),
+        /removed import .*fresh\.ts is no longer barrel-reachable/,
+      ],
+      [
+        'adds an unresolvable import',
+        withImport("import { nothing } from './missing';"),
+        SDK_SOURCES[SCHEDULER],
+        /does not resolve/,
+      ],
+    ])('a change that %s', (_label, head, base, blocker) => {
+      const decision = decideImports(head, base);
+      if (blocker === null) expect(decision.disposition).toBe('refined');
+      else {
+        expect(decision.disposition).toBe('whole-barrel');
+        expect(decision.reason).toMatch(
+          /^runtime imports differ from the base: /,
+        );
+        expect(decision.reason).toMatch(blocker);
+      }
+    });
+
+    // #2782 review: an import move between already-evaluated pure modules is
+    // still observable when the moved closure enters an import cycle at a
+    // different module, or snapshots a binding its declarer reassigns while
+    // other modules load. Runtime-verified shapes from the review.
+    describe('order-sensitive closures', () => {
+      const X = 'packages/sdk/src/client/x.ts';
+      const decideMove = (
+        files: Record<string, string>,
+        xBase: string,
+        xHead: string,
+        changed: string[] = [X],
+      ) => {
+        const sources = new Map(Object.entries({ ...files, [X]: xHead }));
+        const graph = buildSdkImportGraph({
+          sources,
+          fileSet: [...sources.keys()],
+          sdkExports: { '.': './src/index.ts' },
+        });
+        return refineSdkBarrelRelatedPaths('/repo', [X], {
+          base: 'merge-base',
+          loadGraph: () => graph,
+          changedSdkPaths: changed,
+          readBase: (_root: string, _base: string, path: string) =>
+            path === X ? xBase : (files[path] ?? null),
+        }).decisions[0];
+      };
+      const liveFiles = (
+        q: string,
+        s = 'export let count = 0;\nexport function inc() { count++; }',
+      ) => ({
+        [ROOT_BARREL]:
+          "export * from './client/index';\nexport * from './r';\nexport * from './q';",
+        [CLIENT_BARREL]: "export * from './x';",
+        'packages/sdk/src/s.ts': s,
+        'packages/sdk/src/r.ts':
+          "import { inc } from './s';\ninc();\nexport const rv = 1;",
+        'packages/sdk/src/q.ts': q,
+      });
+      const qReadsCount =
+        "import { count } from './s';\nexport const snap = count;";
+      const xWithQ =
+        "import { snap } from '../q';\nexport const xv = 1;\nexport function g() { return snap; }";
+      const xAlone = 'export const xv = 1;';
+
+      test('B: an added import moves a snapshot of a reassignable binding', () => {
+        const decision = decideMove(liveFiles(qReadsCount), xAlone, xWithQ);
+        expect(decision.reason).toMatch(
+          /live binding: .*q\.ts, loaded by .*q\.ts, reads count, which .*s\.ts declares reassignable/,
+        );
+      });
+
+      test('C: a removed import moves the same snapshot the other way', () => {
+        const decision = decideMove(liveFiles(qReadsCount), xWithQ, xAlone);
+        expect(decision.reason).toMatch(/live binding: .*reads count/);
+      });
+
+      test.each([
+        [
+          'through a re-export chain',
+          "import { count } from './mid';\nexport const snap = count;",
+          { 'packages/sdk/src/mid.ts': "export { count } from './s';" },
+        ],
+        [
+          'only through a star re-export',
+          "import { count } from './mid';\nexport const snap = count;",
+          { 'packages/sdk/src/mid.ts': "export * from './s';" },
+        ],
+        [
+          'declared by a renamed local export',
+          qReadsCount,
+          {
+            'packages/sdk/src/s.ts':
+              'let total = 0;\nexport function inc() { total++; }\nexport { total as count };',
+          },
+        ],
+        [
+          'of a function the module reassigns',
+          "import { count } from './s';\nexport const snap = count;",
+          {
+            'packages/sdk/src/s.ts':
+              'export function count() { return 0; }\nexport function inc() { count = () => 1; }',
+          },
+        ],
+        [
+          'of a function reassigned by destructuring',
+          qReadsCount,
+          {
+            'packages/sdk/src/s.ts':
+              'export function count() { return 0; }\nexport function inc() { [count] = [() => 1]; }',
+          },
+        ],
+        [
+          'of a function reassigned in a for-of head',
+          qReadsCount,
+          {
+            'packages/sdk/src/s.ts':
+              'export function count() { return 0; }\nexport function inc() { for (count of [() => 1]) {} }',
+          },
+        ],
+        [
+          // The rule counts every `export let`/`var`, even one the module never
+          // visibly reassigns: the declaration says it may change.
+          'of an `export let` with no visible reassignment',
+          qReadsCount,
+          {
+            'packages/sdk/src/s.ts':
+              'export let count = 0;\nexport function inc() { return count; }',
+          },
+        ],
+      ])('B, %s', (_label, q, extra) => {
+        const decision = decideMove(
+          { ...liveFiles(q), ...extra },
+          xAlone,
+          xWithQ,
+        );
+        expect(decision.reason).toMatch(/live binding: .*reads count/);
+      });
+
+      test.each([
+        ['a template span', `export const snap = \`${span('items')}\`;`],
+        ['string concatenation', "export const snap = items + '';"],
+        ['a relational comparison', 'export const snap = items > 0;'],
+      ])(
+        'coercing an imported mutable object in %s is a side effect of its own',
+        (_label, snap) => {
+          const decision = decideMove(
+            liveFiles(
+              `import { items } from './s';\n${snap}`,
+              'export const items = [];\nexport function inc() { items.push(1); }',
+            ),
+            xAlone,
+            xWithQ,
+          );
+          expect(decision.reason).toMatch(
+            /q\.ts, loaded by .*q\.ts, has a top-level side effect/,
+          );
+        },
+      );
+
+      test('control: a snapshot of an imported `export const` still refines', () => {
+        const decision = decideMove(
+          liveFiles(
+            qReadsCount,
+            'export const count = 0;\nexport function inc() { return count; }',
+          ),
+          xAlone,
+          xWithQ,
+        );
+        expect(decision.disposition).toBe('refined');
+      });
+
+      test.each([
+        ['var', 'export var pv = 1;'],
+        ['const', 'export const pv = 1;'],
+      ])(
+        'A: an added import enters a P/Q import cycle at P (%s)',
+        (_kind, pv) => {
+          const decision = decideMove(
+            {
+              [ROOT_BARREL]:
+                "export * from './client/index';\nexport * from './q';\nexport * from './p';",
+              [CLIENT_BARREL]: "export * from './x';",
+              'packages/sdk/src/q.ts':
+                "import { pv } from './p';\nexport const snap = [pv];",
+              'packages/sdk/src/p.ts': `import { snap } from './q';\n${pv}\nexport function useSnap() { return snap; }`,
+            },
+            xAlone,
+            "import { pv } from '../p';\nexport const xv = 1;\nexport function g() { return pv; }",
+          );
+          expect(decision.reason).toMatch(
+            /import cycle: .*p\.ts, loaded by .*p\.ts, is in a cycle with .*q\.ts/,
+          );
+        },
+      );
+
+      test('a changed SDK exports map makes base reachability unknown', () => {
+        const files = liveFiles(
+          "import { fixed } from './s';\nexport const snap = fixed;",
+          'export const fixed = 0;',
+        );
+        const decision = decideMove(files, xAlone, xWithQ, [
+          X,
+          'packages/sdk/package.json',
+        ]);
+        expect(decision.reason).toMatch(
+          /base reachability is unknown \(packages\/sdk\/package\.json changed/,
+        );
+        // Control: the same change with the exports map unchanged refines.
+        expect(decideMove(files, xAlone, xWithQ).disposition).toBe('refined');
+      });
+    });
+
+    test('reachability is judged at the BASE: a target another changed file just exposed is new', () => {
+      // At the head the client barrel re-exports fresh.ts, so it is
+      // reachable there; at the base it was not.
+      const head = withImport("import { fresh } from './fresh';");
+      const barrelHead = `${IMPORT_FIXTURE[CLIENT_BARREL]}\nexport * from './fresh';`;
+      const decision = decideImports(head, SDK_SOURCES[SCHEDULER], {
+        overrides: { [CLIENT_BARREL]: barrelHead },
+        changed: [SCHEDULER, CLIENT_BARREL],
+        baseOf: { [CLIENT_BARREL]: IMPORT_FIXTURE[CLIENT_BARREL] },
+      });
+      expect(decision.reason).toMatch(
+        /fresh\.ts is not barrel-reachable at the base/,
+      );
+      // Control: when the barrel already exported it at the base, it refines.
+      expect(
+        decideImports(head, SDK_SOURCES[SCHEDULER], {
+          overrides: { [CLIENT_BARREL]: barrelHead },
+          changed: [SCHEDULER, CLIENT_BARREL],
+          baseOf: { [CLIENT_BARREL]: barrelHead },
+        }).disposition,
+      ).toBe('refined');
+    });
+
+    test('a target added in the same change (absent at the base) is new', () => {
+      const decision = decideImports(
+        withImport("import { fresh } from './fresh';"),
+        SDK_SOURCES[SCHEDULER],
+        {
+          overrides: {
+            [CLIENT_BARREL]: `${IMPORT_FIXTURE[CLIENT_BARREL]}\nexport * from './fresh';`,
+          },
+          changed: [SCHEDULER, 'packages/sdk/src/client/fresh.ts'],
+          baseOf: { 'packages/sdk/src/client/fresh.ts': null },
+        },
+      );
+      expect(decision.reason).toMatch(
+        /fresh\.ts is not barrel-reachable at the base/,
+      );
+    });
+
+    test('an unreadable changed set keeps whole-barrel for any added import', () => {
+      const head = withImport("import { fetchBoard } from './board';");
+      const graph = fixtureGraph({ [SCHEDULER]: head });
+      const decide = (boardBase: () => string) =>
+        refineSdkBarrelRelatedPaths('/repo', [SCHEDULER], {
+          base: 'merge-base',
+          loadGraph: () => graph,
+          changedSdkPaths: [SCHEDULER, BOARD],
+          readBase: (_root: string, _base: string, path: string) =>
+            path === SCHEDULER ? SDK_SOURCES[SCHEDULER] : boardBase(),
+        }).decisions[0];
+      // The candidate's own base read succeeds; another changed file's does
+      // not, so base reachability is unknown and the added edge stays whole.
+      expect(
+        decide(() => {
+          throw new Error('git cannot read the base');
+        }).reason,
+      ).toMatch(
+        /base reachability is unknown \(a changed SDK file is unreadable at the base: git cannot read the base\)/,
+      );
+      // Control: readable, the same change refines.
+      expect(decide(() => SDK_SOURCES[BOARD]).disposition).toBe('refined');
+    });
 
     test('the same imports, edited body: still refined (control)', () => {
       const result = decide(
@@ -991,6 +1387,12 @@ describe('topLevelSideEffect', () => {
       "const local = { a: 1 };\nconst list = ['a'];\nexport const f = Object.freeze(local);\nexport const all = [...list];\nexport const copy = { ...local };\nexport const m = new Map([[1, 2]]);\nexport const n = local.a;",
     ],
     [
+      'non-coercing operators and local coercion',
+      "import { v } from './v';\nconst n = 1;\nexport const a = v === 1;\nexport const b = v !== n;\nexport const c = v && n;\nexport const d = v || n;\nexport const e = v ?? n;\nexport const f = !v;\nexport const g = `" +
+        span('n') +
+        '` + (n * 2) + -n;',
+    ],
+    [
       'reading an imported binding without touching it',
       "import { Base, value } from './b';\nexport const same = value;\nexport const pair = [value];",
     ],
@@ -1011,6 +1413,80 @@ describe('topLevelSideEffect', () => {
       "import { cfg } from './c';\nexport const { a } = cfg;",
     ],
     ['a top-level await', 'await ready;'],
+    [
+      'coercing an imported value in a template span',
+      `import { items } from './s';\nexport const s = \`${span('items')}\`;`,
+    ],
+    ...[
+      '+',
+      '-',
+      '*',
+      '/',
+      '%',
+      '**',
+      '<',
+      '>=',
+      '==',
+      '!=',
+      '&',
+      '|',
+      '<<',
+      'in',
+      'instanceof',
+    ].map((operator) => [
+      `the ${operator} operator on an imported value`,
+      `import { v } from './v';\nconst o = {};\nexport const r = v ${operator} o;`,
+    ]),
+    ...['+', '-', '~'].map((operator) => [
+      `unary ${operator} on an imported value`,
+      `import { v } from './v';\nexport const r = ${operator}v;`,
+    ]),
+    // Coercion reaches an import nested anywhere in the operand.
+    [
+      'an import nested in an array in a template span',
+      `import { items } from './s';\nexport const s = \`${span('[items]')}\`;`,
+    ],
+    [
+      'an import nested in an array under +',
+      "import { items } from './s';\nexport const s = [items] + '';",
+    ],
+    [
+      'an import in a conditional in a template span',
+      `import { items } from './s';\nconst c = true;\nexport const s = \`${span('c ? items : 0')}\`;`,
+    ],
+    [
+      'an import nested in an object under unary -',
+      "import { items } from './s';\nexport const s = -{ a: items };",
+    ],
+    // Property keys are converted with ToPropertyKey.
+    [
+      'an import as an element-access key on a local',
+      "import { items } from './s';\nconst o = {};\nexport const s = o[items];",
+    ],
+    [
+      'an import as an element-access key on a literal',
+      "import { items } from './s';\nexport const s = [1][items];",
+    ],
+    [
+      'an import nested in an element-access key',
+      "import { items } from './s';\nconst o = {};\nexport const s = o[[items]];",
+    ],
+    [
+      'an import as a computed object-literal key',
+      "import { items } from './s';\nexport const s = { [items]: 1 };",
+    ],
+    [
+      'an import as a computed class method name',
+      "import { items } from './s';\nexport class C { [items]() {} }",
+    ],
+    [
+      'an import as a computed static field name',
+      "import { items } from './s';\nexport class C { static [items] = 1; }",
+    ],
+    [
+      'coercing a local alias of an imported value',
+      `import { v } from './v';\nconst alias = v;\nexport const r = \`${span('alias')}\`;`,
+    ],
     [
       'a property read of an imported value (a getter)',
       "import { cfg } from './c';\nexport const a = cfg.value;",
