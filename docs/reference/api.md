@@ -1240,189 +1240,89 @@ Accepts either a launchable foundation-model selector or an evidence-backed infe
 
 ## Analytics
 
+The [analytics routes](../../src-server/routes/operations/analytics.ts) read
+[UsageAggregator](../../src-server/analytics/usage-aggregator.ts). This retained
+summary is separate from the monitoring event stream and from authoritative
+per-invocation receipts. An unavailable aggregator returns a 500 error.
+
 ### Get Usage Statistics
-```http
-GET /api/analytics/usage
-```
 
-**Response**:
-```json
-{
-  "data": {
-    "totalMessages": 1000,
-    "totalTokens": 50000,
-    "totalCost": 2.50,
-    "byAgent": {
-      "my-agent": {
-        "messages": 500,
-        "tokens": 25000,
-        "cost": 1.25
-      }
-    },
-    "byDay": [
-      {
-        "date": "2025-12-08",
-        "messages": 100,
-        "tokens": 5000,
-        "cost": 0.25
-      }
-    ]
-  }
-}
-```
-
-**Used by**: `AnalyticsContext.tsx`, analytics dashboard
-
----
+`GET /api/analytics/usage` returns `{success: true, data: stats}` with lifetime,
+Agent, model, and date aggregates. The date map is `byDate`, not `byDay`.
+Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
+fields retain their existing aggregate scope. Do not relabel those other fields
+as totals for the selected window.
 
 ### Get Achievements
-```http
-GET /api/analytics/achievements
-```
 
-**Response**:
-```json
-{
-  "data": [
-    {
-      "id": "first-message",
-      "title": "First Message",
-      "description": "Sent your first message",
-      "unlocked": true,
-      "unlockedAt": "2025-12-08T12:00:00Z"
-    }
-  ]
-}
-```
-
-**Used by**: `AnalyticsContext.tsx`, achievements display
-
----
+`GET /api/analytics/achievements` returns
+`{success: true, data: achievements}` from the aggregator. The achievement
+schema and unlock rules belong to that owner, not a fixed list in this page.
 
 ### Rescan Analytics
-```http
-POST /api/analytics/rescan
-```
 
-Triggers a full rescan of all conversation data to rebuild analytics.
-
-**Response**:
-```json
-{
-  "data": { /* updated stats */ },
-  "message": "Full rescan completed"
-}
-```
-
-**Used by**: `AnalyticsContext.tsx`, analytics management
-
----
+`POST /api/analytics/rescan` returns
+`{success: true, data: stats, message: "Full rescan completed"}`. It scans
+Agent file-memory transcripts and folds available orchestration usage, excluding
+Session IDs already counted in file memory. It merges the rescan with retained
+stats rather than resetting every lifetime counter to zero. An unavailable
+orchestration source is not a measured empty source; inspect coverage metadata.
 
 ## Monitoring
 
+These [routes](../../src-server/routes/operations/monitoring.ts) expose different
+inputs: active-Agent maps, an in-memory metrics list, and persisted/live
+monitoring events. They are not interchangeable measures of the whole Station.
+
 ### Get System Stats
-```http
-GET /monitoring/stats
-```
 
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "agents": [
-      {
-        "slug": "my-agent",
-        "name": "Station Agent",
-        "status": "idle",
-        "model": "anthropic.claude-3-5-sonnet-20240620-v1:0",
-        "conversationCount": 10,
-        "messageCount": 100,
-        "cost": 5.00,
-        "healthy": true
-      }
-    ],
-    "summary": {
-      "totalAgents": 1,
-      "activeAgents": 0,
-      "runningAgents": 0,
-      "totalMessages": 100,
-      "totalCost": 5.00
-    }
-  }
-}
-```
-
-**Used by**: `MonitoringContext.tsx`, monitoring dashboard
-
----
+`GET /monitoring/stats` returns `{success: true, data: {agents, summary}}`.
+Rows come from the active managed-Agent map. `healthy` checks for a model and
+memory adapter; it is not a fresh model completion. Personal mode can include
+cached conversation/message counts. The legacy `cost`, `activeAgents`, and
+`runningAgents` values here are currently zero placeholders, so they must not
+be presented as measured spend or activity. Hosted mode omits the personal
+history counts and cost fields.
 
 ### Get Historical Metrics
-```http
-GET /monitoring/metrics?range=today
-```
 
-**Query Parameters**:
-- `range`: `today` | `week` | `month` | `all`
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "range": "today",
-    "metrics": [
-      {
-        "agentSlug": "my-agent",
-        "messageCount": 50,
-        "conversationCount": 5,
-        "totalCost": 2.50
-      }
-    ]
-  }
-}
-```
-
-**Used by**: `MonitoringContext.tsx`, metrics visualization
-
----
+`GET /monitoring/metrics?range=today` groups the runtime's in-memory metrics by
+Agent and returns `{success: true, data: {range, metrics}}`.
+`today`, `week`, and `month` mean trailing 24 hours, 7 days, and 30 days;
+`all` or an unrecognized value applies no start cutoff. This is not a query of
+all durable history. Hosted mode returns an empty metrics list through this
+legacy path.
 
 ### Get/Stream Events (SSE)
+
 ```http
-GET /monitoring/events?start=2025-12-08T00:00:00Z&end=2025-12-08T23:59:59Z&userId=default-user
+GET /monitoring/events?start=2026-09-01T00:00:00Z&end=2026-09-02T00:00:00Z&limit=100
+GET /monitoring/events
 ```
 
-**Query Parameters**:
-- `start`: ISO timestamp (optional, for historical)
-- `end`: ISO timestamp (optional, for historical)
-- `userId`: User ID filter (default: `default-user`)
+A nonempty `start` or `end` selects historical JSON:
+`{success: true, data: events, truncated}`. Without a time bound, the route
+opens SSE. Historical bounds accept epoch milliseconds or parseable date text;
+send ISO 8601 for clarity. Unparseable supplied bounds return 400.
 
-**Response** (historical):
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "type": "message",
-      "timestamp": "2025-12-08T12:00:00Z",
-      "agentSlug": "my-agent",
-      "conversationId": "conv-123",
-      "messageCount": 1
-    }
-  ]
-}
-```
+Historical filters are `agent`, `tool`, `engine`, `conversation`, and
+`tools=true`. `limit` is optional and capped at 5,000; without it there is no
+route-level result-count cap. Results are ordered by event timestamp, and a
+limit selects the most recent matching rows. `truncated` reports actual drops.
+These dimension/limit options are implemented in the historical branch, not
+as live SSE subscription filters.
 
-**Response** (streaming SSE):
-```
-data: {"type":"connected","timestamp":"2025-12-08T12:00:00Z"}
+The user filter defaults to the resolved local user alias, with legacy `userId`
+or `x-user-id` inputs where allowed. A principal-scoped station-control request
+has a fixed owner and cannot replace it. Session/tenant visibility is also
+filtered by the runtime-supplied authority. User-filter text is not a substitute
+for those checks.
 
-data: {"type":"message","agentSlug":"my-agent","conversationId":"conv-123"}
-
-data: {"type":"heartbeat","timestamp":"2025-12-08T12:00:30Z"}
-```
-
-**Used by**: `MonitoringContext.tsx`, real-time monitoring
+SSE sends GenAI monitoring records, including an initial record with
+`station.system.type: "connected"` and a heartbeat every 30 seconds. It does
+not use the old `{type: "message"}` event example. Content is redacted before
+historical or streaming output. See the [monitoring guide](../guides/monitoring.md)
+for event keys and producer limits.
 
 ---
 
@@ -1597,312 +1497,179 @@ entries describe those limits.
 
 ## Auth & Users
 
-> **New section** — routes from `src-server/routes/system/auth.ts`
+These [provider-backed routes](../../src-server/routes/system/auth.ts) are
+mounted under `/api/auth` and `/api/users`. Provider authentication status and
+user-directory identity are separate from the HTTP request's paired/account
+principal and route authority.
 
 ### Get Auth Status
-```http
-GET /auth/status
-```
 
-Returns current authentication status and resolved user identity.
-
-**Response**:
-```json
-{
-  "authenticated": true,
-  "user": {
-    "alias": "jdoe",
-    "name": "Jane Doe",
-    "email": "jdoe@example.com"
-  }
-}
-```
-
----
+`GET /api/auth/status` combines the configured auth provider's status with
+`user` from the user-identity provider. The identity is process-cached and may
+be enriched asynchronously; this is not the request-authority observation API.
+For that distinction see [the SDK authority reader](sdk.md).
 
 ### Renew Credentials
-```http
-POST /auth/renew
-```
 
-Triggers credential renewal via the configured auth provider.
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Credentials renewed"
-}
-```
-
----
+`POST /api/auth/renew` calls the configured provider's `renew()` and returns its
+result. A thrown renewal error returns `{success: false, error}` with 500.
+It is not a generic paired-device credential rotation endpoint.
 
 ### Terminal Auth Renew
-```http
-POST /auth/terminal
-```
 
-Alias for `/auth/renew` — triggers credential renewal (used for terminal-based auth flows).
-
-**Response**: Same as `/auth/renew`
-
----
+`POST /api/auth/terminal` calls the same provider renewal method and returns the
+same provider-defined result shape.
 
 ### Get Badge Photo
-```http
-GET /auth/badge-photo/:id
-```
 
-Returns a JPEG badge/profile photo for the given user ID. Requires the configured auth provider to support `getBadgePhoto`.
-
-**Response**: `image/jpeg` binary  
-**Cache-Control**: `public, max-age=86400`  
-**Error**: `404` if not found or provider does not support photos
-
----
+`GET /api/auth/badge-photo/:id` returns JPEG bytes when the auth provider has a
+photo. The handler sets `Cache-Control: public, max-age=86400`. Missing support
+or bytes returns 404; a provider fetch failure returns 502.
 
 ### Search Users
-```http
-GET /users/search?q=<query>
-```
 
-Search the user directory by name or alias.
-
-**Query Parameters**:
-- `q`: Search string (required; returns `[]` if empty)
-
-**Response**:
-```json
-[
-  { "alias": "jdoe", "name": "Jane Doe", "email": "jdoe@example.com" }
-]
-```
-
----
+`GET /api/users/search?q=<query>` returns the directory provider's result array.
+An empty query returns `[]`. A caught provider failure also returns `[]` with
+200, so this legacy response cannot distinguish a failed search from no matches.
 
 ### Lookup User by Alias
-```http
-GET /users/:alias
-```
 
-Look up a specific user by their alias.
-
-**Response**:
-```json
-{ "alias": "jdoe", "name": "Jane Doe", "email": "jdoe@example.com" }
-```
-
-**Error** (`404`):
-```json
-{ "alias": "jdoe", "name": "jdoe", "error": "User not found" }
-```
-
----
+`GET /api/users/:alias` returns the directory provider's result. A thrown lookup
+failure returns 404 with `{alias, name: alias, error}`; its message is the
+formatted failure, not necessarily the literal `User not found`.
 
 ## Branding
 
-> **New section** — routes from `src-server/routes/system/branding.ts`
-
 ### Get Branding Config
-```http
-GET /branding
-```
 
-Returns resolved branding configuration from the active branding provider.
+`GET /api/branding` reads the active
+[branding provider](../../src-server/routes/system/branding.ts):
 
-**Response**:
 ```json
 {
-  "name": "Station",
-  "logo": null,
-  "theme": null,
-  "welcomeMessage": null
+  "success": true,
+  "data": { "name": "Station", "logo": null, "theme": null, "welcomeMessage": null }
 }
 ```
 
-Fields are `null` when the provider does not implement the optional method.
-
----
+The name is provider-supplied. An absent optional logo/theme/welcome method
+produces `null`; other returned values belong to the provider contract.
 
 ## Events (SSE)
 
-> **New section** — routes from `src-server/routes/orchestration/events.ts`
-
 ### Subscribe to Real-Time Events
+
 ```http
 GET /events
 ```
 
-Opens a Server-Sent Events stream for all real-time server events. On connect, replays the current ACP connection state so clients don't miss events that fired before they subscribed.
+The [event relay](../../src-server/routes/orchestration/events.ts) subscribes to
+the server event bus, sends the current ACP status, then drains events queued
+during that initial read. It sends a named `ping` every 30 seconds.
+This is a live connection-state/cache-invalidation stream, not durable Session
+history replay with a resume cursor.
 
-**Response** (SSE stream):
-```
-event: acp:status
-data: {"connected":true,"connections":[{"id":"acp-1","status":"connected"}]}
-
-event: system:status-changed
-data: {"source":"config"}
-
-event: ping
-data: 
-```
-
-A `ping` keepalive is sent every 30 seconds.
-
----
+Only events admitted by the broadcast-safety policy or the relevant scoped
+notification, approval, plugin, draft, navigation, and answer-evidence gate are
+relayed. A listener does not receive every internal event. Paired-device
+currentness is checked before writes, and disconnect cleanup releases the
+listener's lease and subscription. See [server event keys](../../packages/contracts/src/runtime-events.ts)
+for the payload vocabulary.
 
 ## File System
 
-> **New section** — routes from `src-server/routes/projects/fs.ts`
-
 ### Browse Directories
+
 ```http
-GET /fs/browse?path=<path>
+GET /api/fs/browse?path=~
 ```
 
-Lists directories (not files) at the given path. Used by the UI directory picker.
+The [directory picker handler](../../src-server/routes/projects/fs.ts) lists
+directories, not regular files. `path` defaults to `~` and is resolved on the
+server's platform. On Windows, the server-emitted `\\` navigation level lists
+present drive roots.
 
-**Query Parameters**:
-- `path`: Absolute path or `~` for home directory (default: `~`). On a Windows
-  host, `\\` (the server-emitted parent of every drive root) lists the
-  machine's present drives.
-
-**Response**:
 ```json
 {
-  "path": "/path/to/projects",
-  "parent": "/path/to",
-  "selectable": true,
-  "entries": [
-    { "name": "Documents", "path": "/path/to/projects/Documents", "isDirectory": true },
-    { "name": "Downloads", "path": "/path/to/projects/Downloads", "isDirectory": true }
-  ]
-}
-```
-
-- `entries[].path` is the entry's full path, canonical for the server's
-  platform (backslash-joined on Windows; drive entries carry their root, e.g.
-  `C:\`).
-- `parent` is where the picker's `..` navigates, derived server-side so
-  clients never re-encode path semantics; `null` marks the top of the
-  hierarchy (POSIX `/`, and the Windows drive listing).
-- `label` optionally names the location for display (the Windows drive
-  listing reports `"This PC"`); clients fall back to `path`.
-- `selectable` is `false` only for navigation-only levels (the Windows drive
-  listing), which must not be selected as a folder.
-
-Entries are sorted: non-dotfiles first, then dotfiles, each group alphabetically.
-
-**Errors** — one status and message per cause (station#3158); the response never
-echoes the requested path:
-
-| Status | `error` | Cause |
-|--------|---------|-------|
-| `404` | `Folder not found` | `ENOENT` — nothing at that path |
-| `403` | `Permission denied reading this folder` | `EACCES`/`EPERM` — it exists, Station cannot read it |
-| `400` | `That path is a file, not a directory` | `ENOTDIR` |
-| `500` | `Folder could not be read` | Anything else; the cause is logged server-side |
-
----
-
-## Insights
-
-> **New section** — routes from `src-server/routes/operations/insights.ts`
-
-### Get Usage Insights
-```http
-GET /insights?days=14
-```
-
-Aggregates monitoring event logs to produce tool usage, hourly activity, agent usage, and model usage statistics.
-
-**Query Parameters**:
-- `days`: Number of days to look back (default: `14`)
-- `agent`, `tool`, `engine`: exact-match filters (station#3075). `engine` reads
-  `gen_ai.provider.name`, added in station#3074 — events written before it
-  carry no engine and are excluded by that filter rather than guessed at.
-- `limit`: keep the top N buckets by rank, server-side (cap 500)
-
-Scope notes, because the filters interact with the other dimensions:
-`tool=` filters the whole scan, so `totalChats`/`agentUsage`/`modelUsage` go
-to zero for a tool-filtered request — those are "not asked", not "none".
-`engine=` yields an empty `modelUsage` structurally, because the
-agent-complete event that carries the model does not carry a provider.
-`tool=` also cannot reach the `(unnamed)` bucket, which is a derived absence
-rather than a value on the event.
-
-When any filter or limit is applied, the response echoes it under `applied`,
-so a filtered rollup cannot be mistaken for a whole-corpus one.
-
-**Response**:
-```json
-{
+  "success": true,
   "data": {
-    "toolUsage": {
-      "files_read_file": { "calls": 42, "errors": 1 },
-      "(unnamed)": { "calls": 3, "errors": 0 }
-    },
-    "hourlyActivity": [0, 0, 0, 0, 0, 0, 2, 5, 12, 18, 20, 15, 10, 8, 14, 16, 12, 9, 6, 4, 2, 1, 0, 0],
-    "agentUsage": {
-      "my-agent": { "chats": 30, "tokens": 45000 }
-    },
-    "modelUsage": {
-      "anthropic.claude-3-5-sonnet-20240620-v1:0": 28
-    },
-    "totalChats": 30,
-    "totalToolCalls": 42,
-    "totalErrors": 1,
-    "days": 14
+    "path": "/path/to/projects",
+    "parent": "/path/to",
+    "selectable": true,
+    "entries": [
+      { "name": "Documents", "path": "/path/to/projects/Documents", "isDirectory": true }
+    ]
   }
 }
 ```
-`totalOutcomeUnknown` (and `outcomeUnknown` per tool) counts results whose
-producer reported no terminal status. They are in `totalToolCalls` but are
-neither successes nor failures, so an error rate computed without them
-flatters itself.
+
+`parent` is server-derived; `null` marks the top. `label` can name a navigation
+level (Windows uses `This PC`). `selectable: false` identifies a navigation-only
+level. Entry paths use the server platform's separators. Non-dot directories
+sort before dot directories, alphabetically within each group.
+
+| Status | Error | Cause |
+| --- | --- | --- |
+| 404 | `Folder not found` | Missing path |
+| 403 | `Permission denied reading this folder` | Filesystem access denied |
+| 400 | `That path is a file, not a directory` | Non-directory path |
+| 400 | `Folder path is too long` | Filesystem path-length refusal |
+| 400 | `Folder path is not valid` | Invalid path argument, such as a NUL byte |
+| 500 | `Folder could not be read` | Other read failure; detail remains in server logs |
+
+These error bodies use `{success: false, error}` and do not echo the requested
+path. The API's authentication and operation authority still apply.
+
+## Insights
+
+### Get Usage Insights
+
+```http
+GET /api/insights?days=14
+```
+
+The [insights owner](../../src-server/routes/operations/insights.ts) streams
+monitoring NDJSON files and returns `{success: true, data}`. `data` contains
+`toolUsage`, a 24-bucket `hourlyActivity` array, `agentUsage`, `modelUsage`,
+`totalChats`, `totalToolCalls`, `totalErrors`, `totalOutcomeUnknown`,
+`totalUnresolved`, and `days`.
+
+- `days` defaults to 14. It is currently parsed as an integer rather than
+  validated against a closed set of windows.
+- `agent`, `tool`, and `engine` are exact filters. Engine reads
+  `gen_ai.provider.name`; an event without that field does not match.
+- A positive `limit` retains the top buckets (cap 500); it does not cap the
+  scanned events or recompute totals from just the displayed buckets.
+- Applied filters/limit are echoed in `data.applied`. Hours use the server's
+  local time. Health probes are excluded.
+
+Chat counts deduplicate observed trace IDs, with a separate count for completed
+`no-session` events. Tool calls count start records; errors, unresolved outcomes,
+and unknown outcomes count end records. They are not a guaranteed joined
+population: a retained end record can have no matching retained start.
+`agentUsage.tokens` is currently initialized to zero and never accumulated by
+this route; it is not measured token usage.
+
+Filtering applies before aggregation. A tool filter excludes ordinary chat
+records, so chat/model aggregates normally disappear. The current
+[Agent-complete emitter](../../src-server/monitoring/emitter.ts) carries model
+but no provider, so its model counts disappear under an engine filter; this is
+a producer limitation, not evidence that the engine used no model. The route
+also accepts other persisted event producers, so it cannot promise this absence
+for every possible record.
+
+Malformed lines and unreadable files are logged and skipped; this response has
+no completeness field for those skipped inputs. A result is a rollup of what
+was read, not certification that every event was available. `(unnamed)` is the
+bucket for a missing tool name and remains distinct from a literal `unknown`.
 
 ### The rows behind the rollup
 
-They live on `GET /monitoring/events` (historical branch, i.e. with `start`
-and/or `end`), which now accepts `agent`, `tool`, `engine`, `conversation`,
-`tools=true` and `limit`.
-
-`limit` is **opt-in**: omit it and you get every matching row. It caps at
-5000, and its semantics are a tail — the most recent N **by timestamp**.
-Rows are returned oldest-first, and that ordering is derived from each row's
-own timestamp rather than from the order the daily log files were enumerated
-(`readdir` guarantees no order, and an OTLP backfill persists client-supplied
-timestamps, so write order and timestamp order genuinely disagree). The order
-does not change depending on whether you pass a limit. `truncated: true` says
-rows were actually dropped, not merely that the cap was reached.
-
-The route does not invent a default cap, and that is deliberate: an earlier
-version applied the MCP tool's 500-row default here, at a route the Monitoring
-view and `station monitoring events` also use. Neither passes a limit, neither
-reads `truncated`, so a month-long range silently became its most recent 500
-rows — and the view builds its conversation autocomplete from that array, so
-filtering for an older conversation reported it did not exist. A consumer that
-needs a bound sets one.
-
-A `start` or `end` that does not parse is a `400`, not a wider window. Epoch
-milliseconds and ISO 8601 are both accepted; epoch *seconds* parse as a 1970
-timestamp, which is why an unparseable bound must not silently fall back.
-
-Deliberately NOT a second endpoint under `/api/insights` (station#3076): that
-handler already applies the two authorization layers these rows require — the
-per-user filter inside `queryEventsFromDisk` and the tenant predicate in
-`filterMonitoringEvents` — and an export that re-derives an authorization
-check is one that eventually gets it wrong. A first attempt here did exactly
-that and returned other users' rows.
-
-Also reachable as the `read_monitoring_events` MCP tool, which reads a
-different store from `read_logs`.
-
-The `(unnamed)` bucket counts tool calls whose producer reported no name
-(station#3073). It is deliberately distinct from a tool literally named
-`unknown`, which older events — written when the name was substituted at
-write time — still carry as their own bucket.
-
+Use the historical branch of [GET /monitoring/events](#getstream-events-sse)
+with `start` or `end` and the desired dimensions. It applies the existing user
+and Session/tenant visibility checks and supports bounded tail reads; the
+`read_monitoring_events` MCP tool uses that route too. These are monitoring
+records, not the server log lines returned by `read_logs`.
 
 ---
 
@@ -3478,21 +3245,16 @@ every tenant.
 ## Additional Analytics
 
 ### Clear Usage Data
+
 ```http
 DELETE /api/analytics/usage
 ```
 
-Clears all usage analytics data.
-
-**Response**:
-```json
-{
-  "data": {},
-  "message": "Usage data cleared"
-}
-```
-
-**Used by**: `UsageStatsPanel.tsx`
+Returns `{success: true, message: "Usage stats reset"}` after resetting the
+existing aggregate stats file to `{}`. It does not delete conversations,
+monitoring logs, or invocation receipts; later updates/rescans can rebuild
+statistics from retained sources. See the
+[aggregator reset](../../src-server/analytics/usage-aggregator.ts).
 
 ---
 
