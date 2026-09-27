@@ -242,7 +242,7 @@ test('a run stays within its subrequest and delete caps and leaves the rest', as
   await capped.run();
   assert.equal(new Set(capped.deletes).size, 65);
 
-  // With deletes unbounded, the subrequest ceiling alone stops the run.
+  // With the delete cap lifted, the subrequest ceiling alone stops the run.
   const wide = await backlog();
   await wide.run();
   const subrequestBound = await measured(wide, { maxDeletes: 1000 });

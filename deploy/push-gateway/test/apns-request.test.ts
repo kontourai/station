@@ -281,7 +281,7 @@ test('caps the final APNs body at 4096 bytes', () => {
     'A'.repeat(128),
   );
   assert.ok(payloadBytes(largest), 'the largest valid request fits');
-  // Apple's documented limit, pinned as a literal so moving the constant fails.
+  // Apple's documented limit, pinned as a literal so changing the constant fails.
   const over = { a: 'x'.repeat(4096 - 7) };
   assert.equal(payloadBytes(over), null);
   const exact = { a: 'x'.repeat(4096 - 8) };

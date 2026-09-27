@@ -110,7 +110,7 @@ describe('OTel installation identity', () => {
     ).toBe(createHash('sha256').update(winner).digest('hex'));
   });
 
-  test('INERT OTEL DEFECT: no endpoint performs no identity read or write', async () => {
+  test('INERT OTEL DEFECT: no endpoint writes no installation identity', async () => {
     const root = await home();
     const { initializeTelemetry } = await telemetry();
     await initializeTelemetry({ env: {}, homeDir: root });
