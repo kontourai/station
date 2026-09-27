@@ -67,8 +67,9 @@ station service status --json
 ```
 
 From a checkout, `station doctor` checks local prerequisites and readiness.
-The packaged CLI reads the selected Station's diagnostic report. Neither form
-inspects a Tauri renderer or proves that a packaged window was shown. `station service
+The packaged CLI reports the selected endpoint, its reachability, saved
+credential state and configured local service. Neither form inspects a Tauri
+renderer or proves that a packaged window was shown. `station service
 status --json` checks an installed user service and its identity endpoints. It
 does not diagnose a Desktop-owned sidecar, and its failure does not by itself
 explain a hidden window.
