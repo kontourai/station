@@ -23,8 +23,28 @@ module.exports = () => ({
   },
 
   async getTheme() {
-    // Return CSS custom property overrides, or null to keep defaults
-    return null;
+    // White-label overrides, per mode. Station applies only the brand-slot
+    // properties below, only as #rgb/#rrggbb colours, and only when each
+    // group passes its contrast check against that mode's page and panel;
+    // anything else is dropped and logged in the browser console. Return
+    // null to keep the defaults. A flat { '--k-brand': '#…' } object is
+    // also accepted and applies to both modes. See README.md.
+    return {
+      dark: {
+        '--k-brand': '#60a5fa',
+        '--k-brand-contrast': '#06080b',
+        '--k-action': '#60a5fa',
+        '--k-action-contrast': '#06080b',
+        '--k-focus': '#93c5fd',
+      },
+      light: {
+        '--k-brand': '#1d4ed8',
+        '--k-brand-contrast': '#ffffff',
+        '--k-action': '#1d4ed8',
+        '--k-action-contrast': '#ffffff',
+        '--k-focus': '#1d4ed8',
+      },
+    };
   },
 
   async getWelcomeMessage() {

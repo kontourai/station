@@ -21,14 +21,27 @@
 
 /* A development build installs alongside a real one — same name, same window,
    one letter of difference in the application id. Retinting the brand token is
-   enough to make the whole app unmistakable, because accents, selection,
-   focus rings and active states all derive from it. Scoped to the class the
-   native host sets, so the web app and release builds are untouched. The
-   vendor `.theme-*` classes also set `--k-brand`, but none is applied
-   anywhere in this app; if one ever is, this needs an arm that outranks it. */
+   enough to make the whole app unmistakable, because accents, selection and
+   active states derive from it. Scoped to the class the native host sets, so
+   the web app and release builds are untouched. The vendor `.theme-*` classes
+   also set `--k-brand`, but none is applied anywhere in this app; if one ever
+   is, this needs an arm that outranks it.
+
+   Each channel block also sets the interaction roles (`--k-action`,
+   `--k-action-contrast`, `--k-focus`). Station reads them with a `--k-brand`
+   fallback, and from @kontourai/ui 1.14 the shared primitives read them
+   instead of the brand, so without them buttons and focus rings would drop
+   back to the release accent. Every value is contrast-checked per mode by
+   `channel-accent-contrast.test.ts` with the same rules a white-label theme
+   has to pass (lib/branding-theme.ts): the action pair at 4.5:1, the action
+   fill as accent text at 4.5:1 on page and panel, focus at 3:1. Where the
+   brand itself fails those, the role is a nearby shade that passes. */
 :root.is-dev-build {
   --k-brand: #e08b2f;
   --k-brand-contrast: #1b1205;
+  --k-action: #e08b2f;
+  --k-action-contrast: #1b1205;
+  --k-focus: #e08b2f;
 }
 
 /* The mark is a raster asset, so retinting --k-brand cannot reach it: the dev
@@ -47,16 +60,40 @@
 :root.is-dev-build[data-theme="light"] {
   --k-brand: #a75f0d;
   --k-brand-contrast: #ffffff;
+  /* #a75f0d is 4.45:1 on the light page. */
+  --k-action: #a05b0d;
+  --k-action-contrast: #ffffff;
+  --k-focus: #a05b0d;
 }
 
+/* Dark mode needs a lighter fill with dark text: white text on any fill
+   light enough to read on the dark page cannot reach 4.5:1. */
 :root[data-app-channel="beta"] {
   --k-brand: #5865f2;
   --k-brand-contrast: #ffffff;
+  --k-action: #6d78f3;
+  --k-action-contrast: #06080b;
+  --k-focus: #6d78f3;
+}
+
+:root[data-app-channel="beta"][data-theme="light"] {
+  --k-action: #4f5bd5;
+  --k-action-contrast: #ffffff;
+  --k-focus: #4f5bd5;
 }
 
 :root[data-app-channel="nightly"] {
   --k-brand: #8b5cf6;
   --k-brand-contrast: #ffffff;
+  --k-action: #9d7bf8;
+  --k-action-contrast: #06080b;
+  --k-focus: #9d7bf8;
+}
+
+:root[data-app-channel="nightly"][data-theme="light"] {
+  --k-action: #7c3aed;
+  --k-action-contrast: #ffffff;
+  --k-focus: #7c3aed;
 }
 
 :root[data-app-channel="beta"] img[src="/favicon.png"] {
@@ -81,7 +118,7 @@
   [role="link"],
   [tabindex]:not([tabindex="-1"])
 ):focus-visible {
-  outline: 2px solid var(--accent-primary) !important;
+  outline: 2px solid var(--k-focus, var(--accent-primary)) !important;
   outline-offset: 2px !important;
 }
 
@@ -199,13 +236,16 @@
   --border-primary: var(--k-line);
   --border-secondary: var(--k-line-strong);
 
-  --accent-primary: var(--k-brand);
+  /* The action and focus roles (@kontourai/ui 1.14+) with a brand fallback, so
+     the same rule works before and after that release; see the channel
+     blocks at the top of this file and lib/branding-theme.ts. */
+  --accent-primary: var(--k-action, var(--k-brand));
   /* Contrast partner of --accent-primary. This declaration covers the
      built-in brand only: a device accent override sets BOTH custom
      properties on the root together (src-ui/src/lib/accent-contrast.ts),
      because moving the background without the foreground is what put the
      shipped indigo preset under the 4.5:1 AA floor (station#3305). */
-  --text-on-accent: var(--k-brand-contrast);
+  --text-on-accent: var(--k-action-contrast, var(--k-brand-contrast));
   --accent-hover: color-mix(in srgb, var(--k-brand) 12%, transparent);
   --accent-yellow: #c9a854;
   /* Text on a yellow-tinted chip fill. Dark keeps --accent-yellow (measured
@@ -337,7 +377,7 @@
 
   --warning-primary: #ffb74d;
 
-  --accent-darker: var(--k-brand);
+  --accent-darker: var(--k-action, var(--k-brand));
   /* Fill for the hover state of the accented controls whose foreground is
      --text-on-accent. Defaults to --accent-darker (which both themes define
      as the brand itself, so the built-in hover changes no color); a custom
@@ -448,10 +488,10 @@
   --border-dashed: var(--k-line);
 
   /* Accent / Brand */
-  --accent-primary: var(--k-brand);
-  --text-on-accent: var(--k-brand-contrast);
+  --accent-primary: var(--k-action, var(--k-brand));
+  --text-on-accent: var(--k-action-contrast, var(--k-brand-contrast));
   --accent-hover: color-mix(in srgb, var(--k-brand) 12%, transparent);
-  --accent-darker: var(--k-brand);
+  --accent-darker: var(--k-action, var(--k-brand));
   /* Same derivation as the dark block above. */
   --accent-hover-fill: var(--accent-darker);
   --accent-yellow: #ca8a04;

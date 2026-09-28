@@ -413,7 +413,7 @@ export async function fetchBranding(
     data?: {
       name?: string;
       logo?: { src: string; alt?: string } | null;
-      theme?: Record<string, string> | null;
+      theme?: Record<string, string | Record<string, string>> | null;
       welcomeMessage?: string | null;
     };
   };

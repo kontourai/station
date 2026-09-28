@@ -2185,6 +2185,16 @@ Returns resolved branding configuration from the active branding provider.
 
 Fields are `null` when the provider does not implement the optional method.
 
+`theme` is the white-label override surface: flat `--k-*` keys that apply to
+both modes, and optional `dark` / `light` objects that override per mode. The UI
+applies only `--k-brand`, `--k-brand-contrast`, `--k-action`,
+`--k-action-contrast` and `--k-focus`, only as `#rgb`/`#rrggbb` values that
+pass the contrast rules of the "White-label overrides" section in
+[`@kontourai/ui`'s DESIGN.md](https://github.com/kontourai/ui/blob/main/DESIGN.md#white-label-overrides),
+and drops everything else. The rules and a worked provider are in
+[examples/custom-branding](../../examples/custom-branding/README.md); the
+validation lives in `src-ui/src/lib/branding-theme.ts`.
+
 ---
 
 ## Events (SSE)

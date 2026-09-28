@@ -117,10 +117,18 @@ export interface IUserDirectoryProvider {
   searchPeople(query: string): Promise<UserDetailVM[]>;
 }
 
+/**
+ * White-label theme overrides. Flat `--k-*` keys apply to both modes; a
+ * `dark` or `light` object overrides per mode. The UI accepts only the
+ * brand-slot allowlist with hex values that pass contrast checks and drops
+ * everything else (src-ui/src/lib/branding-theme.ts).
+ */
+export type BrandingTheme = Record<string, string | Record<string, string>>;
+
 export interface IBrandingProvider {
   getAppName(): Promise<string>;
   getLogo?(): Promise<{ src: string; alt?: string } | null>;
-  getTheme?(): Promise<Record<string, string> | null>;
+  getTheme?(): Promise<BrandingTheme | null>;
   getWelcomeMessage?(): Promise<string | null>;
 }
 
