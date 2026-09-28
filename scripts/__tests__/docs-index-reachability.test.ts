@@ -22,6 +22,11 @@ import {
   stationDocsDigest,
 } from '../generate-station-docs.mjs';
 import {
+  assertDocumentationFresh,
+  checkDocumentationFreshness,
+  formatFreshnessAdvisory,
+} from '../lib/documentation-freshness.mjs';
+import {
   documentSections,
   extractModules,
   validateCatalog,
@@ -31,8 +36,15 @@ import {
   evaluateDocumentationReview,
 } from '../lib/documentation-review.mjs';
 import { publishImmutableSnapshot } from '../lib/immutable-snapshot.mjs';
+import {
+  forbidAmbientFreshnessMode,
+  JOB_ENV,
+  pinnedFreshnessEnv,
+} from './helpers/freshness-env.js';
 
 const makeTempDir = trackTempDirs();
+// Freshness reads here must pin a mode or use the job env explicitly (#2934).
+forbidAmbientFreshnessMode();
 
 describe('machine-maintained documentation review boundaries', () => {
   const hash = (bytes: string) =>
@@ -743,7 +755,12 @@ describe('learning atlas', () => {
           '--eval',
           `import { buildLearningGuide } from ${JSON.stringify(generator)}; try { await buildLearningGuide({check:true,root:${JSON.stringify(root)}}); } catch (error) { console.error(error.message); process.exitCode=1; }`,
         ],
-        { encoding: 'utf8', windowsHide: true },
+        {
+          encoding: 'utf8',
+          windowsHide: true,
+          // This fixture checks anchors, not freshness; pin the mode anyway.
+          env: pinnedFreshnessEnv({ STATION_DOCS_FRESHNESS: 'strict' }),
+        },
       );
     const baseline = check();
     expect(baseline.stderr).toBe('');
@@ -772,27 +789,23 @@ describe('learning atlas', () => {
   });
 
   it('keeps recorded document reviews bound to their actual document and source bytes', async () => {
-    const files = new Set(tracked([]));
+    // #2923: the shared freshness policy decides which stale records block —
+    // those this change's own diff touches (scoped), none in the merge queue
+    // or on main (advisory), all when the scope is unknown (strict).
     const ledger = JSON.parse(
       readFileSync('docs/learn/review-ledger.json', 'utf8'),
     );
-    const documents = new Map(
-      [...files]
-        .filter((file) => /\.(md|mdx|markdown)$/i.test(file))
-        .map((file) => [
-          file,
-          createHash('sha256').update(readFileSync(file)).digest('hex'),
-        ]),
-    );
-    const reviews = await compileDocumentationReviews(
-      ledger,
-      documents,
-      files,
-      async (file: string) => readFileSync(file),
-      { requireFresh: true },
-    );
-    expect(reviews.size).toBe(ledger.records.length);
-    expect(reviews.size).toBeGreaterThan(0);
+    // The real ledger runs in the job's own mode: scoped on a pull request,
+    // advisory in the merge queue, on main and in the repo-scans job.
+    const result = await checkDocumentationFreshness({
+      root: process.cwd(),
+      env: JOB_ENV,
+    });
+    const advisory = formatFreshnessAdvisory(result.policy, result.advisory);
+    if (advisory) console.warn(advisory);
+    expect(() => assertDocumentationFresh(result)).not.toThrow();
+    expect(result.reviews.size).toBe(ledger.records.length);
+    expect(result.reviews.size).toBeGreaterThan(0);
   });
 
   it('invalidates review status when either the document or its code changes', async () => {
