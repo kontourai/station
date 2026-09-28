@@ -110,7 +110,7 @@
 
     {"path":"src-server/services/ssh/device-pairing-service.ts","digest":"dcecd8108147d5e7f2b26d132545cf8901b05ce62d14523a2732a10005fb1753","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"src-server/tools/station-control-delegation.ts","digest":"a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"f356f499f15d35ac309ba8c8f84d6ded9dbe80578a3f6be1c54f71aee03971ea","revision":"682308b9964e8297e46ad1be70377c6fcef99876"},
 
     {"path":"src-ui/src/views/HomeView.tsx","digest":"784bb154e907690bbbcfd6908698b4054098571514a437ae5476e35b0b50aa46","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

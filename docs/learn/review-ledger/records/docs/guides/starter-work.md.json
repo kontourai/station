@@ -28,7 +28,7 @@
 
     {"path":"src-server/providers/adapters/claude-adapter.ts","digest":"8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 
-    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"a0e76460c4d7e4c103c225d077d0d55f72fb6addf5c3fcce1d571f72b103179d","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
+    {"path":"src-server/providers/adapters/codex-adapter.ts","digest":"e80d318e420161b139354474e722dbba925cabdc7bb9060b548baed003df179b","revision":"682308b9964e8297e46ad1be70377c6fcef99876"},
 
     {"path":"src-server/routes/__tests__/starter-work.routes.test.ts","digest":"059f5ea4cb14577a65bbf5ad439f90ceb510e63bdbb2423238ef1fdbb1018552","revision":"d9aea82e4b47472834f0aaafaf34579ba122b60a"},
 

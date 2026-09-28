@@ -92,7 +92,7 @@
 
     {"path":"scripts/__tests__/prepush-typecheck.test.ts","digest":"c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/test-impact-manifest.mjs","digest":"f8f251204e7567b245f3797c4fa6e86bbd10bb73219af108fd7bf7ab5ba11e90","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    {"path":"scripts/test-impact-manifest.mjs","digest":"c2861fbc87731ae84bd05a091914740d00813811e3c823f8e66b1ee5ad394b92","revision":"e19e4ed5d2ea3a29c422e16730c404b2254ea156"},
 
     {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"5638911fd695344c0aaf5e24464e8e23c236e383da9d38354b0735410b8999bf","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
 
@@ -102,7 +102,7 @@
 
     {"path":"scripts/run-changed-verification.mjs","digest":"e20b9fda50aefc0e588a73fb3bcd05795b477c5cfce76ac95eba7d5e58a4036c","revision":"3cf61a7b21800fa0a472c99799c9ddbb15167d66"},
 
-    {"path":"scripts/__tests__/changed-verification.test.ts","digest":"3cbddd65d8e3d23de2bc72565ccdf0d5f5226319a2f4d182f20d1c66b5bdf2bd","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
+    {"path":"scripts/__tests__/changed-verification.test.ts","digest":"d37404a409453672e00cbedf27220c5bce083cf8892939f0e5fd78c2293043a4","revision":"50aaef876e1ff12e0f615d1fa6fdae39ee88bdce"},
 
     {"path":"scripts/__tests__/fast-checks-shard-cli.test.ts","digest":"037b1bd06551519a7bbb62f72a829374b4f8de3714492f9689af5341b73ca296","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
