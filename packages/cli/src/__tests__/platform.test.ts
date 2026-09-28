@@ -536,12 +536,13 @@ describe('promptYN', () => {
       const answer = promptYN('Proceed?');
       stdin.end(input);
       await expect(answer).resolves.toBe(expected);
-      expect(write.mock.calls.map(([chunk]) => String(chunk)).join('')).toContain(
-        'Proceed? [y/N] ',
-      );
+      expect(
+        write.mock.calls.map(([chunk]) => String(chunk)).join(''),
+      ).toContain('Proceed? [y/N] ');
     } finally {
       write.mockRestore();
-      if (stdinDescriptor) Object.defineProperty(process, 'stdin', stdinDescriptor);
+      if (stdinDescriptor)
+        Object.defineProperty(process, 'stdin', stdinDescriptor);
     }
   });
 });

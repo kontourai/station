@@ -118,7 +118,10 @@ describe('portability commands', () => {
     expect(document.guidance.workspace.systemPrompt).toBe('Be helpful');
     expect(document.losses).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: 'omitted-field', path: 'defaultModel' }),
+        expect.objectContaining({
+          code: 'omitted-field',
+          path: 'defaultModel',
+        }),
       ]),
     );
   });

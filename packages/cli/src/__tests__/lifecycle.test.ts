@@ -3730,25 +3730,28 @@ describe('collectDoctorReport', () => {
     ['', 'fail', 'Not found'],
     ['\n', 'fail', 'Not found'],
     [null, 'fail', 'Not found'],
-  ] as const)('reports tsx --version output %j as one labeled line', async (output, status, detail) => {
-    const { doctor } = await loadLifecycleModule();
+  ] as const)(
+    'reports tsx --version output %j as one labeled line',
+    async (output, status, detail) => {
+      const { doctor } = await loadLifecycleModule();
 
-    const report = await doctor.collectDoctorReport({
-      probeTerminalPty: () => ({ state: 'available' as const }),
-      checkOllama: async () => false,
-      inspectKontourDependencies: () => ({ exactPins: [], mismatches: [] }),
-      env: {},
-      exec: (command) => (command === 'tsx --version' ? output : null),
-      exists: () => false,
-      readJson: (_path, fallback) => fallback,
-    });
+      const report = await doctor.collectDoctorReport({
+        probeTerminalPty: () => ({ state: 'available' as const }),
+        checkOllama: async () => false,
+        inspectKontourDependencies: () => ({ exactPins: [], mismatches: [] }),
+        env: {},
+        exec: (command) => (command === 'tsx --version' ? output : null),
+        exists: () => false,
+        readJson: (_path, fallback) => fallback,
+      });
 
-    expect(report.checks.find((check) => check.label === 'tsx')).toEqual({
-      label: 'tsx',
-      status,
-      detail,
-    });
-  });
+      expect(report.checks.find((check) => check.label === 'tsx')).toEqual({
+        label: 'tsx',
+        status,
+        detail,
+      });
+    },
+  );
 
   it('reports a named read-only supervisor probe wedge with its kickstart remedy', async () => {
     const { doctor } = await loadLifecycleModule();
