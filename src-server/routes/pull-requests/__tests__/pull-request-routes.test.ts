@@ -234,6 +234,41 @@ describe('pull request operator gate', () => {
     );
   });
 
+  test('session rows of one repository share one gh list, yet every request is still admitted (#2937)', async () => {
+    const transport = vi.fn(async (args: string[]) => ({
+      stdout: args[0] === 'pr' ? '[]' : '',
+    }));
+    const provider = new GitHubPullRequestProvider(transport);
+    const admitted: string[] = [];
+    const routes = createPullRequestRoutes(
+      () => [provider],
+      async (c: any) => {
+        const thread = c.req.query('thread');
+        admitted.push(thread);
+        if (thread === 'refused')
+          return { available: false, reason: 'Conversation unavailable' };
+        return context();
+      },
+      { operatorIdentityForRequest: () => undefined },
+    );
+    const responses = await Promise.all(
+      ['t1', 't2', 't3', 't4', 't5', 'refused'].map((thread) =>
+        routes.request(`/github/github.com/o/r?thread=${thread}&state=OPEN`),
+      ),
+    );
+    expect(responses.map((response) => response.status)).toEqual([
+      200, 200, 200, 200, 200, 404,
+    ]);
+    // The cache sits after admission: every request met the resolver, and
+    // the refused one was refused even though the forge answer was cached.
+    expect(admitted).toEqual(['t1', 't2', 't3', 't4', 't5', 'refused']);
+    const spawned = transport.mock.calls.map(([args]) => args.slice(0, 2));
+    expect(spawned).toEqual([
+      ['auth', 'status'],
+      ['pr', 'list'],
+    ]);
+  });
+
   test('returns the provider result effective capability layer to surfaces', async () => {
     const x = app();
     x.provider.offeredCapabilities = { ...caps, approve: false };

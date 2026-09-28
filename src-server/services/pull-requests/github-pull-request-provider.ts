@@ -1,6 +1,7 @@
 import type {
   IPullRequestProvider,
   PullRequest,
+  PullRequestAvailability,
   PullRequestCapabilities,
   PullRequestMergeInput,
   PullRequestMergeMethod,
@@ -77,6 +78,81 @@ const reason = (error: unknown, fallback: string) => {
       ? error.message
       : fallback;
 };
+/**
+ * How long a successful forge read is reused (#2937). Every visible Sessions
+ * row observes its repository's open pull requests every 30 s, so without
+ * this the cost of the Sessions view scaled with rows, not repositories, and
+ * exhausted the operator's GitHub GraphQL quota.
+ */
+export const GITHUB_READ_CACHE_TTL_MS = 20_000;
+
+export interface GitHubPullRequestProviderOptions {
+  /** 0 keeps single-flight coalescing but retains nothing once settled. */
+  readCacheTtlMs?: number;
+  now?: () => number;
+}
+
+interface ForgeReadEntry {
+  repository: string;
+  promise: Promise<unknown>;
+  settledAt?: number;
+}
+
+/**
+ * Single-flight plus a short TTL for idempotent `gh` reads. It stores only
+ * the forge's answer: callers reach it after the route has already made the
+ * request's own principal and repository decision (#2563), so a hit never
+ * stands in for admission. A rejected or unretainable read is shared only
+ * with callers that joined it while it was in flight, then forgotten.
+ */
+class ForgeReadCache {
+  private readonly entries = new Map<string, ForgeReadEntry>();
+  constructor(
+    private readonly ttlMs: number,
+    private readonly now: () => number,
+  ) {}
+  read<T>(
+    key: string,
+    repository: string,
+    load: () => Promise<T>,
+    retain: (value: T) => boolean = () => true,
+  ): Promise<T> {
+    const now = this.now();
+    for (const [candidateKey, candidate] of this.entries)
+      if (
+        candidate.settledAt !== undefined &&
+        now - candidate.settledAt >= this.ttlMs
+      )
+        this.entries.delete(candidateKey);
+    const hit = this.entries.get(key);
+    if (hit) return hit.promise as Promise<T>;
+    const entry: ForgeReadEntry = { repository, promise: Promise.resolve() };
+    const promise = Promise.resolve()
+      .then(load)
+      .then(
+        (value) => {
+          if (this.entries.get(key) === entry) {
+            if (this.ttlMs > 0 && retain(value)) entry.settledAt = this.now();
+            else this.entries.delete(key);
+          }
+          return value;
+        },
+        (error: unknown) => {
+          if (this.entries.get(key) === entry) this.entries.delete(key);
+          throw error;
+        },
+      );
+    entry.promise = promise;
+    this.entries.set(key, entry);
+    return promise;
+  }
+  /** Forget every read of a repository, including one still in flight. */
+  invalidate(repository: string) {
+    for (const [key, entry] of this.entries)
+      if (entry.repository === repository) this.entries.delete(key);
+  }
+}
+
 const canonicalHost = (host: string) =>
   host.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
 
@@ -148,7 +224,22 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       | undefined = transport === defaultGitHubTransport
       ? defaultGitHubTransport
       : undefined,
-  ) {}
+    options: GitHubPullRequestProviderOptions = {},
+  ) {
+    this.reads = new ForgeReadCache(
+      options.readCacheTtlMs ?? GITHUB_READ_CACHE_TTL_MS,
+      options.now ?? Date.now,
+    );
+  }
+  private readonly reads: ForgeReadCache;
+  /**
+   * The cache key's repository. Sharing an answer across checkouts is sound
+   * because gh never reads the checkout (#2363): every read is fully named
+   * by host, owner and repository.
+   */
+  private repositoryKey(context: PullRequestRepositoryContext) {
+    return `${this.getHost(context)}/${context.repository.owner}/${context.repository.name}`.toLowerCase();
+  }
   private gh(args: string[], context: PullRequestProviderRequestContext) {
     return this.transport(args, context);
   }
@@ -160,7 +251,32 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
     if (!host) throw new Error('GitHub remote URL has no host');
     return host.toLowerCase();
   }
-  async getAvailability(context: PullRequestRepositoryContext) {
+  /** Reads share one probe per repository; see {@link ForgeReadCache}. */
+  async getAvailability(
+    context: PullRequestRepositoryContext,
+  ): Promise<PullRequestAvailability> {
+    const repository = this.repositoryKey(context);
+    const result = await this.reads.read(
+      `availability ${repository}`,
+      repository,
+      () => this.probeAvailability(context),
+      // Neither an unavailable answer nor one whose optional merge-method
+      // narrowing failed is retained: both are shared only in flight.
+      (value) =>
+        value.available &&
+        (!this.repositorySettingsTransport ||
+          value.mergeMethodsSource === 'repository'),
+    );
+    return {
+      ...result,
+      effectiveCapabilities: { ...result.effectiveCapabilities },
+      effectiveMergeMethods: [...result.effectiveMergeMethods],
+    };
+  }
+  /** Writes decide on a fresh probe and never populate the read cache. */
+  private async probeAvailability(
+    context: PullRequestRepositoryContext,
+  ): Promise<PullRequestAvailability> {
     const host = this.getHost(context);
     try {
       await this.gh(['auth', 'status', '--hostname', host], context);
@@ -208,10 +324,11 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
   private async call(
     context: PullRequestRepositoryContext,
     args: string[],
+    { shared = false }: { shared?: boolean } = {},
   ): Promise<PullRequestResult<any>> {
     const a = await this.getAvailability(context);
     if (!a.available) return a;
-    try {
+    const read = async () => {
       const parsed = JSON.parse((await this.gh(args, context)).stdout);
       const normalize = (v: any) => ({
         ...normalizeGitHubPullRequest(v, this.getHost(context)),
@@ -220,12 +337,38 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
           name: context.repository.name,
         },
       });
-      return {
-        ...a,
-        data: Array.isArray(parsed) ? parsed.map(normalize) : normalize(parsed),
-      };
+      return Array.isArray(parsed) ? parsed.map(normalize) : normalize(parsed);
+    };
+    try {
+      // The key is the exact argv, so each query shape (state, limit) is its
+      // own read. Normalizing inside the read keeps malformed output a
+      // rejection, which is never retained.
+      const data = shared
+        ? structuredClone(
+            await this.reads.read(
+              `read ${JSON.stringify(args)}`,
+              this.repositoryKey(context),
+              read,
+            ),
+          )
+        : await read();
+      return { ...a, data };
     } catch {
       return unavailable('GitHub CLI request failed');
+    }
+  }
+  /**
+   * Runs a forge write on a fresh availability decision and then forgets the
+   * repository's cached reads, so the next observation sees the write.
+   */
+  private async write<T>(
+    context: PullRequestRepositoryContext,
+    run: (availability: PullRequestAvailability) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await run(await this.probeAvailability(context));
+    } finally {
+      this.reads.invalidate(this.repositoryKey(context));
     }
   }
   /**
@@ -262,17 +405,23 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
     args: string[],
     ref?: string,
   ): Promise<PullRequestResult<any>> {
-    const a = await this.getAvailability(context);
-    if (!a.available) return a;
-    try {
-      const stdout = (await this.gh(args, context)).stdout;
-      const resolvedRef = ref ?? /\/pull\/(\d+)(?:\b|#)/.exec(stdout)?.[1];
-      if (!resolvedRef) return { ...a };
-      const detail = await this.getPullRequest(context, resolvedRef);
-      return detail.available ? detail : { ...a };
-    } catch {
-      return unavailable('GitHub CLI request failed');
-    }
+    const outcome = await this.write(context, async (a) => {
+      if (!a.available) return { result: a };
+      try {
+        const stdout = (await this.gh(args, context)).stdout;
+        return {
+          result: a,
+          resolvedRef: ref ?? /\/pull\/(\d+)(?:\b|#)/.exec(stdout)?.[1],
+        };
+      } catch {
+        return { result: unavailable('GitHub CLI request failed') };
+      }
+    });
+    // Read back after the write has invalidated the repository's reads.
+    if (!outcome.result.available || !outcome.resolvedRef)
+      return { ...outcome.result };
+    const detail = await this.getPullRequest(context, outcome.resolvedRef);
+    return detail.available ? detail : { ...outcome.result };
   }
   async getReviewSnapshot(c: PullRequestRepositoryContext, ref: string) {
     const availability = await this.getAvailability(c);
@@ -301,41 +450,46 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
     input: PullRequestReviewInput,
     admission?: PullRequestWriteAdmission,
   ) {
-    const availability = await this.getAvailability(c);
-    if (
-      !availability.available ||
-      !availability.effectiveCapabilities[input.action]
-    )
+    return this.write(c, async (availability) => {
+      if (
+        !availability.available ||
+        !availability.effectiveCapabilities[input.action]
+      )
+        return {
+          ...availability,
+          available: false,
+          reason: 'This review capability is unavailable.',
+        };
       return {
         ...availability,
-        available: false,
-        reason: 'This review capability is unavailable.',
+        data: await writePullRequestReview(
+          'github',
+          this.getHost(c),
+          c,
+          ref,
+          input,
+          (args) => this.gh(args, c),
+          admission,
+        ),
       };
-    return {
-      ...availability,
-      data: await writePullRequestReview(
-        'github',
-        this.getHost(c),
-        c,
-        ref,
-        input,
-        (args) => this.gh(args, c),
-        admission,
-      ),
-    };
+    });
   }
   listPullRequests(c: PullRequestRepositoryContext, q: any) {
     const host = this.getHost(c);
-    return this.call(c, [
-      'pr',
-      'list',
-      '--repo',
-      `${host}/${c.repository.owner}/${c.repository.name}`,
-      '--json',
-      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
-      ...(q.state ? ['--state', q.state.toLowerCase()] : []),
-      ...(q.limit ? ['--limit', String(q.limit)] : []),
-    ]);
+    return this.call(
+      c,
+      [
+        'pr',
+        'list',
+        '--repo',
+        `${host}/${c.repository.owner}/${c.repository.name}`,
+        '--json',
+        'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
+        ...(q.state ? ['--state', q.state.toLowerCase()] : []),
+        ...(q.limit ? ['--limit', String(q.limit)] : []),
+      ],
+      { shared: true },
+    );
   }
   getPullRequest(c: PullRequestRepositoryContext, ref: string) {
     const host = this.getHost(c);
@@ -422,13 +576,21 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       ref,
     );
   }
-  async mergePullRequest(
+  mergePullRequest(
     c: PullRequestRepositoryContext,
     ref: string,
     input: PullRequestMergeInput,
     admission?: PullRequestWriteAdmission,
   ): Promise<PullRequestResult<PullRequestMergeResult>> {
-    const a = await this.getAvailability(c);
+    return this.write(c, (a) => this.merge(c, ref, input, a, admission));
+  }
+  private async merge(
+    c: PullRequestRepositoryContext,
+    ref: string,
+    input: PullRequestMergeInput,
+    a: PullRequestAvailability,
+    admission?: PullRequestWriteAdmission,
+  ): Promise<PullRequestResult<PullRequestMergeResult>> {
     if (!a.available) return a;
     if (!a.effectiveMergeMethods.includes(input.method))
       return {
