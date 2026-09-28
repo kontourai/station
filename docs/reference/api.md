@@ -1740,7 +1740,10 @@ cleans the staged directory without installing it. `valid: true` also carries
 observed `installationRevision`, `existingDataScope`, and permission/dependency
 consent information. When an open install proposal names the source, preview
 copies a local folder without its `.git` entries, refuses a local Git repository
-URL, and reports `gitMetadata: "excluded"`.
+URL, and reports `gitMetadata: "excluded"`. A folder once installed that way
+stays stripped: Station records it in `plugin-source-staging.json`, so later
+previews exclude its git metadata after the proposal resolves or the plugin is
+uninstalled. An unreadable record fails closed.
 
 A source-fetch refusal can be HTTP 200 with `valid: false`; inspect the body.
 Invalid manifests/context or unsupported dependencies return 400; a missing
@@ -1776,7 +1779,8 @@ with `success: false` and `configurationActivation`, or a pending lifecycle
 receipt. It is not complete solely because the HTTP request was accepted.
 
 Consent echoes the preview's `gitMetadata`. When an open install proposal names
-the source and the approving preview kept git metadata, install returns 409 with
+the source, or Station previously installed it without its git metadata, and the
+approving preview kept git metadata, install returns 409 with
 `consent.reason: "git-metadata"`; preview again and install from that preview.
 Missing/mismatched consent returns 400, registry trust or diagnosed content-lock
 conflicts return 409, and unexpected/compensation failure can return 500.

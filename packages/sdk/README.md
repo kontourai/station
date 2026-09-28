@@ -312,7 +312,8 @@ selections are refused for directory input even when their URL is localhost.
 Use a Git URL for those selections; the CLI does not upload a local directory. The
 [install command](../cli/src/commands/install.ts) performs preview before install
 and carries the returned content digest, required permissions, registry/grant
-revisions and dependency approvals into the request. Prefer that client over a
+revisions, dependency approvals and any `gitMetadata: "excluded"` into the
+request. Prefer that client over a
 hand-copied consent body. Missing or stale approval is refused; the transaction
 may already have staged a source while checking it.
 

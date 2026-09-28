@@ -154,8 +154,10 @@ enclosing Station checkout is not its update source. Local registry-directory
 sources refuse Git metadata, using the shared metadata-name rule during source
 inspection/copying. A local folder named by an open install proposal is also
 copied without Git metadata, and a local Git repository URL is refused as a
-proposed source; install refuses an approval whose preview staged it
-differently. These source checks do not grant execution or deletion
+proposed source. Station records such a folder in the home's
+`plugin-source-staging.json`, so later previews and reinstalls keep stripping
+it after the proposal resolves. Install refuses an approval whose preview
+staged it differently. These source checks do not grant execution or deletion
 authority. See the current [plugin guide](../guides/plugins.md).
 
 ## Bounded live state and durable retention
