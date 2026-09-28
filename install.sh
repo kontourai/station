@@ -1,4 +1,11 @@
 #!/bin/sh
+# The whole script is one brace group, so a shell reading it from a pipe
+# (`curl ... | sh -s uninstall`) parses all of it before running any of it.
+# Without the group, a path that exits early (uninstall, a refusal) leaves the
+# rest of the script unread in the pipe; once that is more than the pipe
+# buffer (64 KiB on Linux), curl's write fails and it exits 23, which a
+# `set -o pipefail` caller reports as the install failing.
+{
 set -eu
 
 REPOSITORY="kontourai/station"
@@ -2094,3 +2101,4 @@ elif [ -n "$active_services" ]; then
 else
   printf 'Open http://localhost:%s\n' "$resolved_ui_port"
 fi
+}
