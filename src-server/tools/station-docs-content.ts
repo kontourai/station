@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '170dfddaef126aec199ab0e18bf8f28e1824db5712d0bb8412a2d796f1bb1d74';
+  '209ba2df82aa2f887213928d6e23aa5e09a8f979ca4c9cf76115560427b78b31';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -189,7 +189,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
       'one-time',
       'notifications',
     ],
-    body: 'A scheduled job can use a cron expression, a fixed interval (`every`), or a\none-time timestamp (`at`); manual runs are also supported. The built-in\nscheduler invokes an Agent with unattended-deny approval policy and records\nits scheduler outcome. Other scheduler providers have their own capabilities.\nSee the [scheduler API](api.md#scheduler) for exact inputs and outcomes.\n\nScheduler receipts describe the observed execution outcome. They do not attach\na Flow run or prove the requested business result by themselves. Inspect the\nrecorded output and any explicitly attached evidence workflow before claiming\nunattended work achieved its goal.\n\nNotifications are provider-based: subsystems and plugins contribute notifications that Station aggregates, persists, and delivers, so a long-running or scheduled piece of work can tell you it needs attention.',
+    body: 'A scheduled job can use a cron expression, a fixed interval (`every`), or a\none-time timestamp (`at`); manual runs are also supported. The built-in\nscheduler invokes an Agent with unattended-deny approval policy and records\nits scheduler outcome.\nSee the [scheduler API](api.md#scheduler) for exact inputs and outcomes.\n\nScheduler receipts describe the observed execution outcome. They do not attach\na Flow run or prove the requested business result by themselves. Inspect the\nrecorded output and any explicitly attached evidence workflow before claiming\nunattended work achieved its goal.\n\nNotifications are provider-based: subsystems and plugins contribute notifications that Station aggregates, persists, and delivers, so a long-running or scheduled piece of work can tell you it needs attention.',
     parentId: 'manual',
     sourcePath: 'docs/reference/station-docs.md',
     sourceAnchor: 'scheduled-jobs-and-notifications',

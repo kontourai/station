@@ -43,7 +43,6 @@ export interface SchedulerServiceOptions {
   builtin: Omit<BuiltinSchedulerOptions, 'logger'>;
 }
 
-/** Internal route result; legacy output never fabricates a receipt/run id. */
 /**
  * A caller-supplied schedule the projector cannot evaluate — a bad cron field
  * or an unknown IANA zone. Distinct from a storage or conflict failure because
