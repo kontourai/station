@@ -1427,7 +1427,10 @@ export async function createBrowserRelayApplicationCredential(input: {
   };
 }
 
-/** Same-origin HTTPS cookie adoption; relayed cross-origin pages are rejected by the SDK contract. */
+/**
+ * Same-origin HTTPS cookie adoption; relayed cross-origin pages are rejected by the SDK contract.
+ * No production caller yet: added in #2451 ahead of the relay wiring that will call it.
+ */
 export async function adoptBrowserRelayCookies(input: {
   connectionId: string;
   applicationOrigin: string;

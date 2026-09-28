@@ -46,7 +46,10 @@ import type {
 import { Hono } from 'hono';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
 import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
-import { RUNTIME_ROOT_DELETE_FORBIDDEN_ERROR } from '../../knowledge-store/session-backed-roots.js';
+import {
+  KNOWLEDGE_ROOT_NOT_FOUND_ERROR,
+  RUNTIME_ROOT_DELETE_FORBIDDEN_ERROR,
+} from '../../knowledge-store/session-backed-roots.js';
 import { expandTilde } from '../../utils/paths.js';
 import { errorMessage } from '../schemas/schemas.js';
 
@@ -235,12 +238,16 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
   app.delete('/roots/:id', async (c) => {
     try {
       const id = c.req.param('id');
+      const root = await deps.store.getRoot(id);
+      if (!root) {
+        return c.json(
+          { success: false, error: KNOWLEDGE_ROOT_NOT_FOUND_ERROR },
+          404,
+        );
+      }
       // The built-in conversation root is registered by Station at boot;
       // removing it would orphan its per-caller projections (Refs #2656).
-      if (
-        (await deps.store.getRoot(id))?.adapterId ===
-        CONVERSATION_STORE_ADAPTER_ID
-      ) {
+      if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID) {
         return c.json(
           { success: false, error: RUNTIME_ROOT_DELETE_FORBIDDEN_ERROR },
           403,
