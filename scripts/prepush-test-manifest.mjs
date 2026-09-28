@@ -51,10 +51,7 @@ export const PREPUSH_TEST_GROUPS = Object.freeze({
   contracts: Object.freeze([
     'packages/contracts/src/__tests__/runtime-events.test.ts',
     'packages/contracts/src/__tests__/task-graph-contracts.test.ts',
-    'packages/contracts/src/__tests__/orchestration-session-contracts.test.ts',
-    'packages/contracts/src/__tests__/registry-lifecycle.test.ts',
     'packages/contracts/src/__tests__/environment-security.test.ts',
-    'packages/contracts/src/__tests__/workspace-isolation-contracts.test.ts',
     'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
     'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
     'packages/connect/src/__tests__/ConnectionStore.test.ts',

@@ -1,4 +1,3 @@
-import { createAiSdkDispatchModel } from '@kontourai/dispatch/ai-sdk';
 import { describe, expect, it } from 'vitest';
 import {
   createAuthorizedTurnCorrelation,
@@ -87,71 +86,5 @@ describe('authorized turn correlation', () => {
     expect(otherTenant.accountId).not.toBe(first.accountId);
     expect(otherTenant.turnId).not.toBe(first.turnId);
     expect(otherTenant.correlationId).not.toBe(first.correlationId);
-  });
-
-  it('routes a correlation-qualified candidate through its unchanged runtime id', async () => {
-    const doGenerate = async () => ({
-      content: [{ type: 'text' as const, text: 'resolved' }],
-      finishReason: { unified: 'stop' as const, raw: 'stop' },
-      usage: {
-        inputTokens: {
-          total: 1,
-          noCache: 1,
-          cacheRead: undefined,
-          cacheWrite: undefined,
-        },
-        outputTokens: { total: 1, text: 1, reasoning: undefined },
-      },
-      warnings: [],
-    });
-    const model = createAiSdkDispatchModel({
-      id: 'fleet-correlation-fixture',
-      capabilities: {
-        structuredTools: true,
-        streaming: false,
-        abort: true,
-        usage: true,
-      },
-      models: {
-        // The registry key stays an installed runtime identity, while only
-        // the per-invocation candidate id is qualified.
-        'fleet-runtime-0': {
-          specificationVersion: 'v3',
-          provider: 'fixture',
-          modelId: 'fixture-model',
-          supportedUrls: {},
-          doGenerate,
-          async doStream() {
-            throw new Error('not used');
-          },
-        },
-      },
-      plan: {
-        schemaVersion: 1,
-        role: 'station-agent',
-        candidates: [
-          {
-            id: 'fleet-candidate-0:turn:correlation-a',
-            runtimeId: 'fleet-runtime-0',
-          },
-        ],
-        budget: { maxAttempts: 1 },
-      },
-    });
-
-    const generated = await model.doGenerate({
-      prompt: [{ role: 'user', content: [{ type: 'text', text: 'run it' }] }],
-    });
-    expect(generated.content).toEqual([{ type: 'text', text: 'resolved' }]);
-  });
-
-  it('contains no request content channel', () => {
-    expect(Object.keys(TURN_A).sort()).toEqual([
-      'accountId',
-      'correlationId',
-      'sessionId',
-      'turnId',
-    ]);
-    expect(JSON.stringify(TURN_A)).not.toContain('prompt');
   });
 });

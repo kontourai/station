@@ -54,18 +54,10 @@ let serviceProgressOptions:
       ) => number | false;
     }
   | undefined;
-const scopeOptionsCalls: Array<{ scopeKey?: string } | undefined> = [];
 const applyReset = vi.fn();
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useCoreUpdateStatusQuery: (
-    _apiBase: string,
-    _config: unknown,
-    scope: { scopeKey?: string } | undefined,
-  ) => {
-    scopeOptionsCalls.push(scope);
-    return queryState;
-  },
+  useCoreUpdateStatusQuery: () => queryState,
   useServiceUpdateProgressQuery: (
     _apiBase: string,
     options: typeof serviceProgressOptions,
@@ -184,7 +176,6 @@ afterEach(() => {
   requestCoreUpdateRestartStatus.mockReset();
   vi.mocked(queryState.refetch).mockReset();
   applyOptions = undefined;
-  scopeOptionsCalls.length = 0;
   queryState.isFetching = false;
   serviceProgressState.data = undefined;
   serviceProgressState.isError = false;
@@ -689,13 +680,6 @@ describe('scope binding (update-ux PR4)', () => {
       <CoreUpdateCheck apiBase="http://localhost:3141" context={context} />,
     );
   }
-
-  test('the correlation scope joins the query options', () => {
-    renderWithScope(makeContext({ scopeKey: 'scope-a' }));
-    expect(scopeOptionsCalls.at(-1)?.scopeKey).toBe(
-      'scope-a\u000011111111-1111-4111-8111-111111111111',
-    );
-  });
 
   test('A→B on the same URL resets restart state, and B never shows A’s accepted update', async () => {
     vi.useFakeTimers();

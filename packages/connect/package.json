@@ -24,7 +24,8 @@
     "./known-environment": "./src/core/knownEnvironmentRegistry.ts",
     "./application-channel": "./src/core/applicationChannel.ts",
     "./self-hosted-browser": "./src/core/selfHostedBrowser.ts",
-    "./native-diagnostic-echo": "./src/core/nativeDiagnosticEcho.ts"
+    "./native-diagnostic-echo": "./src/core/nativeDiagnosticEcho.ts",
+    "./native-application": "./src/core/nativeApplicationTransport.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets && node ../../scripts/write-dist-stamp.mjs",

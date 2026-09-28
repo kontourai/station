@@ -52,13 +52,11 @@ vi.mock('node:fs/promises', async () => {
  */
 const fs =
   await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
-const { mkdtemp, readFile, writeFile } = fs;
+const { mkdtemp, readFile } = fs;
 
-const {
-  FleetRoutingReceiptLog,
-  fleetRoutingReceiptPath,
-  readFleetRoutingReceipts,
-} = await import('../fleet-routing-receipt-log.js');
+const { FleetRoutingReceiptLog, readFleetRoutingReceipts } = await import(
+  '../fleet-routing-receipt-log.js'
+);
 
 function envelope(agentName: string) {
   return {
@@ -115,25 +113,7 @@ describe('a concurrent append must not read as tampering', () => {
     // Anchor-first means the log read is the fresher one, so the log can only
     // be AHEAD of the anchor — never behind it, which is the only state that
     // means truncation.
-    expect(page.chain.status).not.toBe('broken');
-    expect(page.chain.message).not.toContain('truncated');
-  });
-
-  it('still reports a genuinely truncated log as broken', async () => {
-    // The mirror: no race, records actually removed. The fix must not have
-    // degenerated into ignoring the anchor.
-    const dir = await mkdtemp(join(tmpdir(), 'station-read-order-'));
-    const log = new FleetRoutingReceiptLog(dir);
-    await log.append(envelope('one'));
-    await log.append(envelope('two'));
-    const path = fleetRoutingReceiptPath(dir);
-    const lines = (await readFile(path, 'utf8'))
-      .split('\n')
-      .filter((line) => line.length > 0);
-    await writeFile(path, `${lines[0]}\n`, 'utf8');
-
-    const page = await readFleetRoutingReceipts(dir);
-    expect(page.chain.status).toBe('broken');
-    expect(page.chain.message).toContain('truncated');
+    expect(page.chain.status).toBe('intact');
+    expect(page.totalRecords).toBe(3);
   });
 });

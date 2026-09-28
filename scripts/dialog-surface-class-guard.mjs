@@ -83,7 +83,7 @@ import { invokedDirectly } from './lib/module-entry.mjs';
  * classes, confirmed styled). Restated at the file's tail via
  * SCOPE_SENTINELS.
  */
-export const SCAN_PATHSPECS = ['src-ui/src'];
+const SCAN_PATHSPECS = ['src-ui/src'];
 
 /**
  * `(file, className)` pairs exempt because the defining stylesheet is

@@ -16,6 +16,7 @@ import { classifyManagedModelBinding } from '@kontourai/station-contracts/manage
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { Tool } from '../../types';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { connectionStatusLabel } from '../../utils/execution';
 import type { AgentFormData } from './types';
 
@@ -65,11 +66,11 @@ type AgentLike = {
 };
 
 /**
- * Every persisted Agent field is deliberately classified before copying.
- * `satisfies Record<keyof AgentSpec,...>` turns a new contract field into a
- * compile failure until its copy policy is explicitly chosen.
+ * Every persisted Agent field is deliberately classified before copying: a
+ * new contract field fails to compile until its copy policy is chosen. It is
+ * a compile-time check only; `cloneableAgentFields` below is the copy.
  */
-export const AGENT_SPEC_COPY_CLASSIFICATION = {
+({
   name: 'clone',
   prompt: 'clone',
   description: 'clone',
@@ -87,7 +88,7 @@ export const AGENT_SPEC_COPY_CLASSIFICATION = {
   commands: 'exclude',
   ui: 'exclude',
   provenance: 'exclude',
-} as const satisfies Record<keyof AgentSpec, 'clone' | 'exclude'>;
+}) satisfies Record<keyof AgentSpec, 'clone' | 'exclude'>;
 
 export function createEmptyAgentForm(
   defaultRuntimeConnectionId = '',
@@ -395,7 +396,9 @@ export function agentSaveErrorMessage(error: unknown): string {
   ) {
     return STATION_ENGINE_SETTING_SAVE_MESSAGE;
   }
-  return error instanceof Error ? error.message : 'Could not save this Agent.';
+  return error instanceof Error
+    ? userFacingErrorMessage(error)
+    : 'Could not save this Agent.';
 }
 
 export function buildAgentPayload(
