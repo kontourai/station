@@ -337,7 +337,7 @@
     "src-server/routes/chat/__tests__/chat-primary-stream.dedup.test.ts": 1,
     "src-server/routes/chat/__tests__/chat-primary-stream.trace-id.test.ts": 1,
     "src-server/routes/chat/__tests__/chat-request-preparation.test.ts": 2,
-    "src-server/routes/chat/__tests__/chat-turn-dedup.test.ts": 2,
+    "src-server/routes/chat/__tests__/chat-turn-dedup.test.ts": 1,
     "src-server/routes/chat/__tests__/conversations.routes.test.ts": 1,
     "src-server/routes/connections/__tests__/acp.routes.test.ts": 1,
     "src-server/routes/connections/__tests__/app-home.routes.test.ts": 9,

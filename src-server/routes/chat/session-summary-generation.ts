@@ -112,17 +112,10 @@ export function renderSessionSummaryTranscript(
   let size = 0;
   for (const turn of [...turns].reverse()) {
     const addition = turn.text.length + (included.length ? 2 : 0);
-    if (addition > SESSION_SUMMARY_TRANSCRIPT_MAX_CHARS - size) {
-      if (included.length === 0) {
-        const prefix = `${turn.message.role === 'assistant' ? 'Assistant' : 'User'}: `;
-        return {
-          transcript: `${prefix}${capped(textOf(turn.message)).slice(-(SESSION_SUMMARY_TRANSCRIPT_MAX_CHARS - prefix.length))}`,
-          included: [],
-          partialMessage: turn.message,
-        };
-      }
-      continue;
-    }
+    // `capped` bounds every turn far below the transcript budget, so the
+    // newest turn always fits and `included` is never empty for a non-empty
+    // `turns`.
+    if (addition > SESSION_SUMMARY_TRANSCRIPT_MAX_CHARS - size) continue;
     included.unshift(turn.message);
     size += addition;
   }
@@ -134,15 +127,6 @@ export function renderSessionSummaryTranscript(
       SESSION_SUMMARY_TRANSCRIPT_MAX_CHARS - size - (included.length ? 2 : 0);
     if (room > 12 && firstGoal.text.length <= room)
       included.unshift(firstGoal.message);
-  }
-  if (included.length === 0 && turns.length) {
-    const last = turns.at(-1)!;
-    const prefix = `${last.message.role === 'assistant' ? 'Assistant' : 'User'}: `;
-    return {
-      transcript: `${prefix}${capped(textOf(last.message)).slice(-(SESSION_SUMMARY_TRANSCRIPT_MAX_CHARS - prefix.length))}`,
-      included: [],
-      partialMessage: last.message,
-    };
   }
   const transcript = included
     .map(
@@ -246,13 +230,10 @@ export async function generateSessionSummary({
       message:
         'No structure model is configured. Set one in Settings → Models.',
     };
-  const {
-    transcript: renderedTranscript,
-    included,
-    partialMessage,
-  } = renderSessionSummaryTranscript(messages);
+  const { transcript: renderedTranscript, included } =
+    renderSessionSummaryTranscript(messages);
   const transcript = transcriptOverride ?? renderedTranscript;
-  if (!transcript || (included.length === 0 && !partialMessage))
+  if (!transcript || included.length === 0)
     return {
       failed: true,
       kind: 'nothing-to-summarize',
@@ -368,7 +349,6 @@ export async function generateSessionSummary({
           kind: 'empty-result',
           message: `The structure model (${structureModel}) returned an empty overview.`,
         };
-      const source = included.length ? included : [partialMessage!];
       const contextBoundaryCount = new Set(
         messages.flatMap((message) => {
           const boundary = message.metadata?.provenance?.contextBoundary;
@@ -390,23 +370,25 @@ export async function generateSessionSummary({
         contextBoundaries: [],
         model: structureModel,
         sourceRange: {
-          fromMessageId: source[0]!.id,
-          throughMessageId: source.at(-1)!.id,
+          fromMessageId: included[0]!.id,
+          throughMessageId: included.at(-1)!.id,
           messageCount: included.length,
         },
         sourceRanges: [
           {
-            fromMessageId: source[0]!.id,
-            throughMessageId: source.at(-1)!.id,
+            fromMessageId: included[0]!.id,
+            throughMessageId: included.at(-1)!.id,
             messageCount: included.length,
           },
         ],
-        summarizedFromMessageId: source[0]!.id,
-        summarizedThroughMessageId: source.at(-1)!.id,
+        summarizedFromMessageId: included[0]!.id,
+        summarizedThroughMessageId: included.at(-1)!.id,
         summarizedMessageCount: included.length,
         sourceRevision: conversationIntentRevision(messages),
         sourceMessageCount: messages.length,
-        partialMessageIncluded: Boolean(partialMessage),
+        // Every rendered turn is whole (see renderSessionSummaryTranscript).
+        // The field stays for summaries earlier builds persisted.
+        partialMessageIncluded: false,
         contextBoundaryCount,
         generationUsage: observedUsageReceipt(result?.usage),
       };

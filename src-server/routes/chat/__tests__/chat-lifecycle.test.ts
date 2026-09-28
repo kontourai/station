@@ -25,13 +25,6 @@ vi.mock('../../../utils/pricing.js', () => ({
   })),
 }));
 
-// Only the temp-agent write is stubbed; `persistUserTurnIfMissing` stays real
-// so the failed-turn assertions below exercise what actually lands in
-// storage, in order.
-vi.mock('../chat-persistence.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../chat-persistence.js')>()),
-}));
-
 import { tokensInput, tokensOutput } from '../../../telemetry/metrics.js';
 import { estimateCost, findModelPricing } from '../../../utils/pricing.js';
 import {
@@ -422,50 +415,61 @@ describe('chat-lifecycle helpers', () => {
       );
     });
 
-    test('a cancelled turn with no failure text still recovers the user turn (#797 review)', async () => {
-      const ctx = createRuntimeContext();
-      const addMessage = vi.fn(
-        async (
-          _msg: any,
-          _userId: string,
-          _conversationId: string,
-          _metadata?: any,
-        ) => undefined,
-      );
-      const getMessages = vi.fn(
-        async (_userId: string, _conversationId: string) => [],
-      );
+    // With and without `getMessages`: an adapter that cannot be scanned for
+    // an existing copy must still get the user turn written.
+    test.each([
+      ['an empty scannable transcript', true],
+      ['an adapter with no getMessages', false],
+    ])(
+      'a cancelled turn with no failure text still recovers the user turn and persists no marker — %s (#797 review)',
+      async (_label, scannable) => {
+        const ctx = createRuntimeContext();
+        const addMessage = vi.fn(
+          async (
+            _msg: any,
+            _userId: string,
+            _conversationId: string,
+            _metadata?: any,
+          ) => undefined,
+        );
+        const getMessages = vi.fn(
+          async (_userId: string, _conversationId: string) => [],
+        );
 
-      // `chat-primary-stream.ts`'s graceful-cancellation branch persists an
-      // assistant "cancelled" message and never reaches the outer catch, so
-      // no `turnFailureText` is produced — the user's own message would
-      // otherwise still be lost.
-      await finalizeChatRequest({
-        ctx,
-        slug: 'agent-a',
-        plugin: 'plugin-a',
-        input: 'hello',
-        operationContext: {
-          userId: 'user-1',
+        // `chat-primary-stream.ts`'s graceful-cancellation branch persists an
+        // assistant "cancelled" message and never reaches the outer catch, so
+        // no `turnFailureText` is produced — the user's own message would
+        // otherwise still be lost.
+        await finalizeChatRequest({
+          ctx,
+          slug: 'agent-a',
+          plugin: 'plugin-a',
+          input: 'hello',
+          operationContext: {
+            userId: 'user-1',
+            conversationId: 'conversation-1',
+            traceId: 'trace-1',
+          },
+          completionReason: 'aborted',
+          accumulatedText: '',
+          reasoningText: '',
+          artifacts: [],
+          result: { usage: Promise.resolve({}) },
+          memoryAdapter: scannable
+            ? { addMessage, getMessages }
+            : { addMessage },
           conversationId: 'conversation-1',
-          traceId: 'trace-1',
-        },
-        completionReason: 'aborted',
-        accumulatedText: '',
-        reasoningText: '',
-        artifacts: [],
-        result: { usage: Promise.resolve({}) },
-        memoryAdapter: { addMessage, getMessages },
-        conversationId: 'conversation-1',
-        isNewConversation: false,
-        chatStartMs: Date.now(),
-        chatSpan: chatSpanStub(),
-      });
+          isNewConversation: false,
+          chatStartMs: Date.now(),
+          chatSpan: chatSpanStub(),
+        });
 
-      expect(addMessage).toHaveBeenCalledTimes(1);
-      expect(addMessage.mock.calls[0][0].role).toBe('user');
-      expect(addMessage.mock.calls[0][0].parts[0].text).toBe('hello');
-    });
+        // Exactly the user's own message: no [CHAT_ERROR] marker follows it.
+        expect(addMessage).toHaveBeenCalledTimes(1);
+        expect(addMessage.mock.calls[0][0].role).toBe('user');
+        expect(addMessage.mock.calls[0][0].parts[0].text).toBe('hello');
+      },
+    );
 
     test('a successful turn (non-empty accumulatedText) persists no marker', async () => {
       const ctx = createRuntimeContext();
@@ -502,50 +506,6 @@ describe('chat-lifecycle helpers', () => {
       });
 
       expect(addMessage).not.toHaveBeenCalled();
-    });
-
-    test('a zero-output turn with no turnFailureText (e.g. a user-cancelled turn) persists no marker', async () => {
-      const ctx = createRuntimeContext();
-      const addMessage = vi.fn(
-        async (
-          _msg: any,
-          _userId: string,
-          _conversationId: string,
-          _metadata?: any,
-        ) => undefined,
-      );
-
-      await finalizeChatRequest({
-        ctx,
-        slug: 'agent-a',
-        plugin: 'plugin-a',
-        input: 'hello',
-        operationContext: {
-          userId: 'user-1',
-          conversationId: 'conversation-1',
-          traceId: 'trace-1',
-        },
-        completionReason: 'aborted',
-        accumulatedText: '',
-        reasoningText: '',
-        artifacts: [],
-        result: { usage: Promise.resolve({}) },
-        memoryAdapter: { addMessage },
-        conversationId: 'conversation-1',
-        isNewConversation: false,
-        chatStartMs: Date.now(),
-        chatSpan: chatSpanStub(),
-      });
-
-      // No marker — but the user's own message is still recovered, because
-      // this graceful-cancellation path loses it too (archive#797 review).
-      expect(
-        addMessage.mock.calls.filter((call) =>
-          String(call[0]?.parts?.[0]?.text ?? '').includes('[CHAT_ERROR]'),
-        ),
-      ).toHaveLength(0);
-      expect(addMessage).toHaveBeenCalledTimes(1);
-      expect(addMessage.mock.calls[0][0].parts[0].text).toBe('hello');
     });
 
     test('a zero-output failure without a resolved userId persists no marker (defensive no-op, not a throw)', async () => {

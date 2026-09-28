@@ -140,7 +140,7 @@ describe('generateSessionSummary', () => {
     );
   });
 
-  test('keeps a single oversized final turn bounded without counting it as complete', () => {
+  test('caps an oversized turn and still includes it', () => {
     const rendered = renderSessionSummaryTranscript([
       {
         id: 'm1',
@@ -153,7 +153,6 @@ describe('generateSessionSummary', () => {
     );
     expect(rendered.transcript.startsWith('User: ')).toBe(true);
     expect(rendered.included).toEqual([expect.objectContaining({ id: 'm1' })]);
-    expect(rendered.partialMessage).toBeUndefined();
   });
 
   test('redacts secrets, excludes tool parts, and revisions include consumed context boundaries', () => {
