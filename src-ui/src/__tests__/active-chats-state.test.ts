@@ -371,6 +371,7 @@ describe('active chat state helpers', () => {
       () => 100,
       () => 'seed',
       () => [],
+      'conv-42',
     );
 
     expect(next?.ephemeralMessages?.[0]).toMatchObject({

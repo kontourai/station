@@ -1346,13 +1346,12 @@ export function createEphemeralMessageState(
     agentSlug: string,
     conversationId: string,
   ) => BackendTimestampMessage[],
-  backendConversationId?: string,
+  conversationId: string,
 ): ChatUIState | null {
   if (!chat) {
     return null;
   }
   const current = chat.ephemeralMessages || [];
-  const conversationId = backendConversationId ?? chat.conversationId ?? '';
   const backendMessages =
     chat.agentSlug && conversationId
       ? getBackendMessages(chat.agentSlug, conversationId)
