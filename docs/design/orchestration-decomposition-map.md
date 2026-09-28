@@ -840,8 +840,8 @@ at 1629 (`initialize`) / `.delete` at 2334 (`shutdown`) is module-global;
 the test file constructs the service 126 times in one process. Extraction
 must not disturb initialize/shutdown ordering. *(Slice 3 kept the
 ordering: the registry now lives in `attached-session-adoption.ts`, and the
-initialize/shutdown wiring is pinned by that file's source-invariant
-test.)*
+initialize/shutdown wiring is pinned by that file's service-owner
+wiring test, which runs two services over one ledger.)*
 
 **T8 — `orchestration-source-invariants.test.ts` pins this file path** in
 > *Superseded — see Part II (re-derived at `71699b7c1`).*

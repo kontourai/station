@@ -56,9 +56,9 @@ import {
 // promise `adopt()` awaits; its rejection must reach the adoption path (no
 // internal catch), and the `Promise.resolve()` initializer keeps
 // pre-initialize adoptions from hanging. `registerOwner()` is called from
-// the service's `initialize()`, NEVER from this constructor — the suite
-// constructs the service 126 times per process, and a ctor-registered owner
-// would mark every crashed test reservation as live (plan condition 3).
+// the service's `initialize()` and `unregisterOwner()` from `shutdown()`
+// (plan condition 3). `dispatch()` initializes before `adopt()` can reserve,
+// so no reservation carries the id of an owner that never initialized.
 
 export class AdoptionContinuationInProgressError extends Error {
   readonly code = 'adoption_continuation_in_progress';
