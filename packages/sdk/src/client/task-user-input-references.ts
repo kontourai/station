@@ -4,12 +4,8 @@ import type {
   TaskUserInputReferenceProjection,
 } from '@kontourai/station-contracts';
 import { envelopeError, type StationHttpError } from './api-error-message';
-import {
-  type ClientRequestOptions,
-  getJson,
-  mutateJson,
-  rethrowDeadline,
-} from './http';
+import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 type Envelope<T> = { success: boolean; data?: T };
 

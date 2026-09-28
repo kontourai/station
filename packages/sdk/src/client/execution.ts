@@ -23,12 +23,8 @@ import {
   StationHttpError,
 } from './api-error-message';
 import { ChatHttpError, isStationEnvelope } from './chatHttpError';
-import {
-  type ClientRequestOptions,
-  getJson,
-  mutateJson,
-  rethrowDeadline,
-} from './http';
+import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 /**
  * #2436: an approval-posture decision a send carries (a pick made before the
  * chat had a session, or while offline), and its compare-and-set basis: the

@@ -5,7 +5,8 @@ import {
   type ActionOperationWatchSnapshot,
   parseActionOperation,
 } from '@kontourai/station-contracts/action-operation';
-import { authenticatedFetch, rethrowDeadline } from './http';
+import { authenticatedFetch } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export class ActionOperationProtocolError extends Error {
   constructor(message: string) {

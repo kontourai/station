@@ -13,12 +13,8 @@
  */
 
 import { envelopeError } from './api-error-message';
-import {
-  type ClientRequestOptions,
-  getJson,
-  mutateJson,
-  rethrowDeadline,
-} from './http';
+import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 interface ConversationEnvelope<T> {
   success: boolean;

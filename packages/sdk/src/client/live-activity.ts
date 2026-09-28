@@ -3,7 +3,8 @@ import {
   type LiveActivityProjection,
   parseLiveActivityProjection,
 } from '@kontourai/station-contracts/live-activity';
-import { authenticatedFetch, rethrowDeadline } from './http';
+import { authenticatedFetch } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export class LiveActivityProtocolError extends Error {
   constructor(message: string) {

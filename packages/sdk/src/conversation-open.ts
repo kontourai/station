@@ -4,7 +4,8 @@ import {
   agentId as validateAgentId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
-import { authenticatedFetch, rethrowDeadline } from './client/http';
+import { authenticatedFetch } from './client/http';
+import { rethrowDeadline } from './client/request-deadline';
 import { resolveApiBase } from './query-core';
 
 /**

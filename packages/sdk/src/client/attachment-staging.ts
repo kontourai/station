@@ -15,8 +15,8 @@ import {
   type ClientRequestOptions,
   getJson,
   mutateJson,
-  unlessDeadline,
 } from './http';
+import { unlessDeadline } from './request-deadline';
 
 const ROOT = '/api/orchestration/attachment-staging';
 

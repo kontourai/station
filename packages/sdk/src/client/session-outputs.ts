@@ -5,12 +5,8 @@ import type {
 } from '@kontourai/station-contracts/session-outputs';
 import { SESSION_OUTPUTS_V1 } from '@kontourai/station-contracts/session-outputs';
 import { envelopeError, type StationHttpError } from './api-error-message';
-import {
-  type ClientRequestOptions,
-  getJson,
-  mutateJson,
-  rethrowDeadline,
-} from './http';
+import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const encoder = new TextEncoder();

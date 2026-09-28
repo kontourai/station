@@ -48,13 +48,9 @@ import type {
   ExecutionTarget,
 } from '@kontourai/station-contracts/execution-target';
 import { apiErrorMessage } from './api-error-message';
-import {
-  type ClientRequestOptions,
-  getJson,
-  mutateJson,
-  rethrowDeadline,
-} from './http';
+import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import type { ApprovalDecision } from './orchestration';
+import { rethrowDeadline } from './request-deadline';
 
 interface DelegationEnvelope<T> {
   success: boolean;

@@ -1,10 +1,6 @@
 import { apiErrorMessage } from './api-error-message';
-import {
-  type ApiRequestScope,
-  mutateJson,
-  rethrowDeadline,
-  StationHttpError,
-} from './http';
+import { type ApiRequestScope, mutateJson, StationHttpError } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export type CheckpointRestoreRefusalReason =
   | 'workspace_changed'

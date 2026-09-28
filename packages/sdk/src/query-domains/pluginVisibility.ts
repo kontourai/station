@@ -4,7 +4,8 @@ import type {
 } from '@kontourai/station-contracts/plugin-visibility';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
-import { authenticatedFetch, rethrowDeadline } from '../client/http';
+import { authenticatedFetch } from '../client/http';
+import { rethrowDeadline } from '../client/request-deadline';
 import type { QueryConfig } from '../query-core';
 
 /**

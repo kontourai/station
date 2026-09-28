@@ -7,7 +7,8 @@ import {
   type SessionInventoryV2GroupId,
 } from '@kontourai/station-contracts/session-inventory';
 import { envelopeError, type StationHttpError } from './api-error-message';
-import { type ClientRequestOptions, getJson, rethrowDeadline } from './http';
+import { type ClientRequestOptions, getJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export class SessionInventoryRequestError extends Error {
   readonly status: number;

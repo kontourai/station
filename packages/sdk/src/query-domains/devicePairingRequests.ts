@@ -1,5 +1,6 @@
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
-import { authenticatedFetch, rethrowDeadline } from '../client/http';
+import { authenticatedFetch } from '../client/http';
+import { rethrowDeadline } from '../client/request-deadline';
 import {
   type QueryConfig,
   resolveApiBase,

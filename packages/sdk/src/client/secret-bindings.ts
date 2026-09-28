@@ -1,6 +1,7 @@
 import type { SecretBindingView } from '@kontourai/station-contracts/secret-binding';
 import { envelopeError } from './api-error-message';
-import { authenticatedFetch, rethrowDeadline } from './http';
+import { authenticatedFetch } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export interface SecretBindingConsumerInput {
   integrationId: string;

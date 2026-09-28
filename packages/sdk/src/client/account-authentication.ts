@@ -19,8 +19,8 @@ import {
   getJson,
   mutateJson,
   StationHttpError,
-  unlessDeadline,
 } from './http';
+import { unlessDeadline } from './request-deadline';
 
 const path = z
   .string()

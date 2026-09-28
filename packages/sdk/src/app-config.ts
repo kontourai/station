@@ -1,7 +1,8 @@
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { apiErrorMessage } from './api-core';
-import { authenticatedFetch, rethrowDeadline } from './client/http';
+import { authenticatedFetch } from './client/http';
+import { rethrowDeadline } from './client/request-deadline';
 export interface UpdateAppLogLevelResult {
   value: AppConfig['logLevel'];
   revision: string;

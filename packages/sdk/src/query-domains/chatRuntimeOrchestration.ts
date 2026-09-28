@@ -36,7 +36,6 @@ import {
   authenticatedFetch,
   type ClientRequestOptions,
   isApiRequestScope,
-  rethrowDeadline,
 } from '../client/http';
 import {
   getOrchestrationConversationEventWindow,
@@ -46,6 +45,7 @@ import {
   type SessionBuilderRunView,
   type SessionFlowRunView,
 } from '../client/orchestration';
+import { rethrowDeadline } from '../client/request-deadline';
 import {
   type MutationOptions,
   type QueryConfig,

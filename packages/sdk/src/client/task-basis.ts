@@ -6,7 +6,8 @@ import {
   type StationTaskBasisCollection,
 } from '@kontourai/station-contracts/task-basis';
 import { envelopeError, type StationHttpError } from './api-error-message';
-import { type ClientRequestOptions, getJson, rethrowDeadline } from './http';
+import { type ClientRequestOptions, getJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export type { StationTaskBasisCollection };
 export { STATION_TASK_BASIS_COLLECTION_VERSION };

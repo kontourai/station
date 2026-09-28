@@ -671,8 +671,5 @@ export function useDeleteConversationMutation(
 
 import { withNormalizedAnswerability } from '@kontourai/station-contracts/orchestration';
 import { apiErrorMessage } from '../api-core';
-import {
-  authenticatedFetch,
-  StationHttpError,
-  unlessDeadline,
-} from '../client/http';
+import { authenticatedFetch, StationHttpError } from '../client/http';
+import { unlessDeadline } from '../client/request-deadline';

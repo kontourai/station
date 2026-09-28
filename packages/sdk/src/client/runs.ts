@@ -7,7 +7,8 @@
  */
 
 import { apiErrorMessage } from './api-error-message';
-import { type ClientRequestOptions, getJson, rethrowDeadline } from './http';
+import { type ClientRequestOptions, getJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 interface RunsEnvelope<T> {
   success: boolean;

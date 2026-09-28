@@ -450,4 +450,5 @@ export async function streamConversationTurn(input: {
   return { conversationId, finishReason };
 }
 
-import { authenticatedFetch, rethrowDeadline } from '../client/http';
+import { authenticatedFetch } from '../client/http';
+import { rethrowDeadline } from '../client/request-deadline';

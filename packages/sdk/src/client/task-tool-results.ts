@@ -13,12 +13,8 @@ import {
   SafeToolResultProjection,
 } from '@kontourai/thread';
 import { envelopeError, type StationHttpError } from './api-error-message';
-import {
-  type ClientRequestOptions,
-  getJson,
-  mutateJson,
-  rethrowDeadline,
-} from './http';
+import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export class TaskToolResultRequestError extends Error {
   readonly status: number;

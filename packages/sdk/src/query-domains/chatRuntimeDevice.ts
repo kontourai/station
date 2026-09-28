@@ -196,4 +196,5 @@ export async function createVoiceSession(apiBase?: string): Promise<{
   return (await response.json()) as { sessionId?: string };
 }
 
-import { authenticatedFetch, unlessDeadline } from '../client/http';
+import { authenticatedFetch } from '../client/http';
+import { unlessDeadline } from '../client/request-deadline';

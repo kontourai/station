@@ -10,12 +10,8 @@ import {
   type MobileDeviceSummary,
   type MobileDeviceTarget,
 } from '@kontourai/station-contracts/mobile-device';
-import {
-  type ClientRequestOptions,
-  getJson,
-  mutateJson,
-  rethrowDeadline,
-} from './client/http';
+import { type ClientRequestOptions, getJson, mutateJson } from './client/http';
+import { rethrowDeadline } from './client/request-deadline';
 
 export type {
   DeviceHostCheckResult,

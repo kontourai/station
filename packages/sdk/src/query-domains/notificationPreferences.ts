@@ -4,7 +4,8 @@ import {
   type NotificationPreferencesV1,
 } from '@kontourai/station-contracts/notification-preferences';
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch, rethrowDeadline } from '../client/http';
+import { authenticatedFetch } from '../client/http';
+import { rethrowDeadline } from '../client/request-deadline';
 import {
   type QueryConfig,
   resolveApiBase,

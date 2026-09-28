@@ -211,7 +211,7 @@ export function useRegistryPluginsQuery(config?: QueryConfig<any>) {
   );
 }
 
-import { authenticatedFetch, unlessDeadline } from '../client/http';
+import { authenticatedFetch } from '../client/http';
 
 // ── Workspace Home role (station#3122 stage 3) ─────────
 // The grant record is server-side; this build ships the read and revoke
@@ -230,6 +230,7 @@ import {
 } from '@kontourai/station-contracts/workspace-home-role';
 
 import { apiErrorMessage } from '../api-core';
+import { unlessDeadline } from '../client/request-deadline';
 export const WORKSPACE_HOME_ROLE_QUERY_KEY = ['workspace-home-role'] as const;
 
 export interface WorkspaceHomeRoleCandidateRecord {

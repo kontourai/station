@@ -1,5 +1,6 @@
 import type { CloudMoveTargetObservation } from '@kontourai/station-contracts/cloud-move';
-import { type ClientRequestOptions, getJson, rethrowDeadline } from './http';
+import { type ClientRequestOptions, getJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export type { CloudMoveTargetObservation } from '@kontourai/station-contracts/cloud-move';
 

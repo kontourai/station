@@ -12,12 +12,7 @@
  */
 
 import { envelopeError } from './api-error-message';
-import {
-  type ClientRequestOptions,
-  getJson,
-  mutateJson,
-  rethrowDeadline,
-} from './http';
+import { type ClientRequestOptions, getJson, mutateJson } from './http';
 
 interface KnowledgeEnvelope<T> {
   success: boolean;
@@ -278,6 +273,7 @@ import type {
   KitRecord,
   KitRecordType,
 } from '@kontourai/station-contracts/knowledge-store';
+import { rethrowDeadline } from './request-deadline';
 
 /** Body for `POST /api/knowledge/roots/:rootId/records`. */
 export interface CreateKnowledgeRecordInput extends CreateInput {}

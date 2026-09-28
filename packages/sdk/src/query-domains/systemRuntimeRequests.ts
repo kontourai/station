@@ -537,9 +537,5 @@ export async function fetchServerCapabilities(
 }
 
 import { apiErrorMessage } from '../api-core';
-import {
-  authenticatedFetch,
-  rethrowDeadline,
-  StationHttpError,
-  unlessDeadline,
-} from '../client/http';
+import { authenticatedFetch, StationHttpError } from '../client/http';
+import { rethrowDeadline, unlessDeadline } from '../client/request-deadline';

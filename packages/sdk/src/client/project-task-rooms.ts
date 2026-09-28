@@ -20,8 +20,8 @@ import {
   type ClientRequestOptions,
   type FetchSseConnection,
   fetchSSE,
-  rethrowDeadline,
 } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export class ProjectTaskRoomProtocolError extends Error {
   /**

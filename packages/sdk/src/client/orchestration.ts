@@ -41,9 +41,9 @@ import {
   type ClientRequestOptions,
   getJson,
   mutateJson,
-  rethrowDeadline,
   type StationHttpError,
 } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 interface OrchestrationEnvelope<T> {
   success: boolean;

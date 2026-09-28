@@ -14,9 +14,9 @@ import {
   type ClientRequestOptions,
   getJson,
   mutateJson,
-  rethrowDeadline,
   StationHttpError,
 } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 interface BoardEnvelope<T> {
   success: boolean;

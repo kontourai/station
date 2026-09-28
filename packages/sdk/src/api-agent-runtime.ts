@@ -1,5 +1,5 @@
 import { _getApiBase, _resolveAgent, getPluginHeaders } from './api-core';
-import { rethrowDeadline } from './client/http';
+import { rethrowDeadline } from './client/request-deadline';
 import { telemetry } from './telemetry';
 
 function isJsonRecord(value: unknown): value is Record<string, unknown> {
