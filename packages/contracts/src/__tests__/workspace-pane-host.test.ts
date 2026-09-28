@@ -772,11 +772,17 @@ describe('Workspace Pane host ambient scope', () => {
     expect(parseWorkspacePaneHostDocument(ambient)?.scope).toEqual({
       kind: 'ambient',
     });
-    expect(
-      parseWorkspacePaneHostDocument({
-        ...ambient,
-        scope: { kind: 'ambient', projectId: 'project', layoutId: 'layout' },
-      }),
-    ).toBeNull();
+    for (const identity of [
+      { projectId: 'project' },
+      { layoutId: 'layout' },
+      { taskId: 'task' },
+    ])
+      expect(
+        parseWorkspacePaneHostDocument({
+          ...ambient,
+          scope: { kind: 'ambient', ...identity },
+        }),
+        JSON.stringify(identity),
+      ).toBeNull();
   });
 });
