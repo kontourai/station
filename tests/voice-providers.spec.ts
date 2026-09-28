@@ -179,6 +179,12 @@ test.describe('Voice Providers — Settings UI', () => {
     `);
     // A second configured provider, so the default is a CHOICE: a <select>
     // holding only WebSpeech reports it whatever the default logic says.
+    // This catches a default that resolves to another registered provider.
+    // It cannot catch a default that resolves to nothing: WebSpeech is
+    // registered at startup, so it is always the first option, and the
+    // browser shows the first option for an unmatched value. The
+    // VoiceOrb "changes appearance while listening" test catches that case
+    // (the orb renders disabled).
     await page.route('**/api/system/capabilities', (r) =>
       r.fulfill({
         status: 200,
