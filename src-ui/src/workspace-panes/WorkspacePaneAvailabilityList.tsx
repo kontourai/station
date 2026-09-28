@@ -32,9 +32,9 @@ export interface WorkspacePaneAvailabilityListProps {
 }
 
 /**
- * The preview placeholder's accent is derived from the descriptor id alone —
- * the same hash-into-token-palette shape as `projectAccent` — so a pane keeps
- * its color regardless of catalog order or availability churn.
+ * The preview placeholder's accent is derived from the descriptor id alone,
+ * hashed into a token palette, so a pane keeps its color regardless of
+ * catalog order or availability churn.
  */
 const PANE_PREVIEW_ACCENTS = [
   'var(--event-agent-start)',

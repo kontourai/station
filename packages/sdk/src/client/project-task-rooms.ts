@@ -14,6 +14,7 @@ import {
   parseProjectTaskRoomBrowserHistory,
   parseProjectTaskRoomBrowserLiveSnapshot,
 } from '@kontourai/station-contracts/project-task-room-browser';
+import { envelopeError, type StationHttpError } from './api-error-message';
 import {
   authenticatedFetch,
   type ClientRequestOptions,
@@ -22,9 +23,25 @@ import {
 } from './http';
 
 export class ProjectTaskRoomProtocolError extends Error {
-  constructor(message: string) {
-    super(message);
+  /**
+   * Set only when Station refused the request (#2708): the answer's status,
+   * machine `code`, `details` and `Retry-After`. A malformed or unreadable
+   * room response leaves them absent.
+   */
+  readonly status?: number;
+  readonly code?: string;
+  readonly details?: unknown;
+  readonly retryAfterMs?: number;
+
+  constructor(failure: string | StationHttpError) {
+    super(typeof failure === 'string' ? failure : failure.message);
     this.name = 'ProjectTaskRoomProtocolError';
+    if (typeof failure === 'string') return;
+    this.status = failure.status;
+    if (failure.code !== undefined) this.code = failure.code;
+    if (failure.details !== undefined) this.details = failure.details;
+    if (failure.retryAfterMs !== undefined)
+      this.retryAfterMs = failure.retryAfterMs;
   }
 }
 
@@ -59,23 +76,33 @@ function roomPath(taskId: string, suffix = ''): string {
     throw new ProjectTaskRoomProtocolError('Task identity is invalid');
   return `/api/tasks/${encodeURIComponent(taskId)}/room${suffix}`;
 }
+/** Station refused: keep its status, code, details and Retry-After (#2708). */
+function refusal(response: Response, body: unknown): StationHttpError {
+  return envelopeError(
+    response,
+    body,
+    `Room request failed (${response.status})`,
+  );
+}
 async function envelope(response: Response): Promise<unknown> {
   let body: unknown;
   try {
     body = await response.json();
   } catch {
+    // A refusal that is not JSON still carries the status Station answered.
+    if (!response.ok)
+      throw new ProjectTaskRoomProtocolError(refusal(response, undefined));
     throw new ProjectTaskRoomProtocolError('Room response is not JSON');
   }
-  if (!record(body) || typeof body.success !== 'boolean')
+  if (!record(body) || typeof body.success !== 'boolean') {
+    if (!response.ok)
+      throw new ProjectTaskRoomProtocolError(refusal(response, body));
     throw new ProjectTaskRoomProtocolError(
       'Station sent a room response that could not be read',
     );
+  }
   if (!response.ok || body.success !== true || !has(body, 'data')) {
-    throw new ProjectTaskRoomProtocolError(
-      typeof body.error === 'string'
-        ? body.error
-        : `Room request failed (${response.status})`,
-    );
+    throw new ProjectTaskRoomProtocolError(refusal(response, body));
   }
   return body.data;
 }

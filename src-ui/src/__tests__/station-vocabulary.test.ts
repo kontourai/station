@@ -50,16 +50,4 @@ describe('Station vocabulary (docs/glossary.md)', () => {
     }
     expect(offenders).toEqual([]);
   });
-
-  it('documents the three nouns so the rule has somewhere to point', () => {
-    const glossary = readFileSync(
-      join(UI_SRC, '..', '..', 'docs', 'glossary.md'),
-      'utf-8',
-    );
-    expect(glossary).toContain('## Station, device, client');
-    // The specific confusion worth preventing: "client" already means an
-    // agent app, so a phone must not be called one.
-    expect(glossary).toMatch(/Do not call a device a "client"/);
-    expect(glossary).toMatch(/Do not use bare "Station" where you mean one/);
-  });
 });

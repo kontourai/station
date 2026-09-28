@@ -5,6 +5,7 @@ import {
   type StationBasisProjection,
   type StationTaskBasisCollection,
 } from '@kontourai/station-contracts/task-basis';
+import { envelopeError, type StationHttpError } from './api-error-message';
 import { type ClientRequestOptions, getJson } from './http';
 
 export type { StationTaskBasisCollection };
@@ -14,9 +15,32 @@ export type StationBasisResult =
   | StationTaskBasisCollection;
 
 export class TaskBasisRequestError extends Error {
-  constructor(readonly status: number) {
+  readonly status: number;
+  /**
+   * The refusal's machine `code` and `Retry-After`, when Station answered
+   * (#2708). The message stays generic on purpose: nothing the route sent
+   * about protected content crosses this seam.
+   */
+  readonly code?: string;
+  readonly retryAfterMs?: number;
+
+  /** `0` when no response was observed; else the envelope helper's error. */
+  constructor(answer: number | StationHttpError) {
     super('Task basis unavailable');
+    this.status = typeof answer === 'number' ? answer : answer.status;
+    if (typeof answer !== 'number') {
+      if (answer.code !== undefined) this.code = answer.code;
+      if (answer.retryAfterMs !== undefined)
+        this.retryAfterMs = answer.retryAfterMs;
+    }
   }
+}
+
+/** The observed answer, withholding everything the route said but its code. */
+function answered(response: Response, body?: unknown): StationHttpError {
+  return envelopeError(response, body, 'Task basis unavailable', {
+    message: 'Task basis unavailable',
+  });
 }
 
 /** Explicit Surface parser re-export; no Station semantic parser exists. */
@@ -69,10 +93,13 @@ export async function getTaskBasis(
       `${apiBase}/api/tasks/${encodeURIComponent(taskId)}/basis${query}`,
       options.request,
     );
-    const body = (await response.json()) as {
-      success?: boolean;
-      data?: unknown;
-    };
+    let body: { success?: boolean; data?: unknown };
+    try {
+      body = (await response.json()) as typeof body;
+    } catch {
+      // Station answered, just not in JSON: keep the status it answered with.
+      throw new TaskBasisRequestError(answered(response));
+    }
     const result = body.success ? parseTaskBasisResult(body.data) : null;
     // A valid envelope for another Task is never a response to this request.
     // Selected-answer projections intentionally lack a Task id.
@@ -82,7 +109,7 @@ export async function getTaskBasis(
       (!options.answerReferenceId &&
         (!('taskId' in result) || result.taskId !== taskId))
     )
-      throw new TaskBasisRequestError(response.status);
+      throw new TaskBasisRequestError(answered(response, body));
     return result;
   } catch (error) {
     if (error instanceof TaskBasisRequestError) throw error;

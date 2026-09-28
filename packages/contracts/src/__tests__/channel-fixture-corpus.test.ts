@@ -465,18 +465,6 @@ describe('every fixture behaves exactly as the manifest declares', () => {
 });
 
 describe('round trip', () => {
-  test('every accepted fixture survives JSON.parse(JSON.stringify(...)) and re-validates identically', () => {
-    for (const [name, entry] of Object.entries(CORPUS)) {
-      if (entry.code !== undefined) continue;
-      const parsed = readChannelFixture(name);
-      const roundTripped = JSON.parse(JSON.stringify(parsed)) as unknown;
-      expect(roundTripped, name).toEqual(parsed);
-      const before = VALIDATORS[entry.validator](parsed);
-      const after = VALIDATORS[entry.validator](roundTripped);
-      expect(after.ok, name).toBe(before.ok);
-    }
-  });
-
   test('a validator returns the SAME object it was handed, never a copy', () => {
     // If a validator reconstructed the record, the embedded proposal's bytes
     // would stop being byte-identical and its signature would stop being

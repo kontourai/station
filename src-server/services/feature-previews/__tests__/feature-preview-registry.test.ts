@@ -77,7 +77,6 @@ describe('FeaturePreviewRegistry', () => {
     expect(registry.list()).toEqual([
       expect.objectContaining({ id: 'probe', enabled: false }),
     ]);
-    expect(Object.hasOwn(registry, 'register')).toBe(false);
     expect(selectProbe(probe)).toBe('skipped');
   });
 

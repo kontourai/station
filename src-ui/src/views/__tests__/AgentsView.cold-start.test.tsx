@@ -38,7 +38,7 @@ const AGENT = {
 } as never;
 
 function badgeOf(readinessKnown: boolean) {
-  const [item] = buildAgentsViewItems([AGENT], [], undefined, undefined, {
+  const [item] = buildAgentsViewItems([AGENT], undefined, {
     readinessKnown,
   });
   render(<div data-testid="badge">{item?.badge}</div>);
@@ -62,7 +62,7 @@ describe('the Agents rail during the cold-start readiness window', () => {
   });
 
   test('the row itself survives — the word is withheld, not the rail', () => {
-    const items = buildAgentsViewItems([AGENT], [], undefined, undefined, {
+    const items = buildAgentsViewItems([AGENT], undefined, {
       readinessKnown: false,
     });
     expect(items).toHaveLength(1);
@@ -70,13 +70,7 @@ describe('the Agents rail during the cold-start readiness window', () => {
   });
 
   test('an omitted option keeps the settled behaviour', () => {
-    const [withOptions] = buildAgentsViewItems(
-      [AGENT],
-      [],
-      undefined,
-      undefined,
-      {},
-    );
+    const [withOptions] = buildAgentsViewItems([AGENT], undefined, {});
     render(<div data-testid="default">{withOptions?.badge}</div>);
     expect(screen.getByTestId('default').textContent).toContain('Ready');
   });

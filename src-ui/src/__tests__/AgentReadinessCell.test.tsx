@@ -16,8 +16,6 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import {
   AgentReadinessCell,
-  agentReadinessCompactState,
-  agentReadinessState,
   type ReadinessAgent,
 } from '../components/AgentReadinessCell';
 
@@ -118,51 +116,54 @@ describe('AgentReadinessCell — the one verb, host-named', () => {
  * change.
  */
 describe('AgentReadinessCell — the compact header form (station#4521)', () => {
-  test('agentReadinessCompactState shortens ONLY the caution case, keeping its tone', () => {
-    expect(agentReadinessCompactState(MODEL_MISSING)).toEqual({
-      label: 'Not set up',
-      tone: 'caution',
-    });
-    // The full form for the same agent still carries the server's sentence —
-    // proves the compact form is a DIFFERENT read, not a mutation of the
-    // shared derivation every other consumer (the list row, the New Chat
-    // picker) still calls.
-    expect(agentReadinessState(MODEL_MISSING)).toEqual({
-      label: 'Needs: No model connection is configured.',
-      tone: 'caution',
-    });
-  });
+  const UNMATERIALIZED = {
+    available: false,
+    unavailableReason: 'no definition',
+    enable: { engineConnectionId: 'claude' },
+  } as unknown as ReadinessAgent;
 
-  test('agentReadinessCompactState passes the Ready and "Not set up"(enable) states through unchanged', () => {
-    const ready: ReadinessAgent = { available: true };
-    expect(agentReadinessCompactState(ready)).toEqual({
-      label: 'Ready',
-      tone: 'positive',
-    });
-    const unmaterialized = {
-      available: false,
-      unavailableReason: 'no definition',
-      enable: { engineConnectionId: 'claude' },
-    } as unknown as ReadinessAgent;
-    expect(agentReadinessCompactState(unmaterialized)).toEqual({
-      label: 'Not set up',
-      tone: 'neutral',
-    });
-  });
-
-  test('AgentReadinessCell renders the SHORT label with `compact`, the full sentence without it', () => {
-    const { container: compact } = render(
-      <AgentReadinessCell agent={MODEL_MISSING} part="status" compact />,
+  function chip(agent: ReadinessAgent, compact: boolean) {
+    const { container } = render(
+      <AgentReadinessCell agent={agent} part="status" compact={compact} />,
     );
-    const compactChip = compact.querySelector('.agent-readiness__status');
-    expect(compactChip?.textContent).toBe('Not set up');
+    const status = container.querySelector('.agent-readiness__status');
+    expect(status).not.toBeNull();
+    return status as HTMLElement;
+  }
 
-    const { container: full } = render(
-      <AgentReadinessCell agent={MODEL_MISSING} part="status" />,
-    );
-    const fullChip = full.querySelector('.agent-readiness__status');
-    expect(fullChip?.textContent).toBe(
+  // The full form for the same agent still carries the server's sentence —
+  // the compact form is a DIFFERENT read, not a mutation of the shared
+  // derivation every other consumer (the list row, the New Chat picker) still
+  // renders.
+  test.each([
+    [
+      'a caution row shortens ONLY its label, keeping its caution tone',
+      MODEL_MISSING,
+      'Not set up',
       'Needs: No model connection is configured.',
-    );
+      'caution',
+    ],
+    [
+      'Ready passes through unchanged',
+      { available: true },
+      'Ready',
+      'Ready',
+      'positive',
+    ],
+    [
+      'the enable "Not set up" passes through unchanged',
+      UNMATERIALIZED,
+      'Not set up',
+      'Not set up',
+      'neutral',
+    ],
+  ] as const)('%s', (_label, agent, compactLabel, fullLabel, tone) => {
+    const compactChip = chip(agent, true);
+    expect(compactChip.textContent).toBe(compactLabel);
+    expect(compactChip.classList.contains(`tone-${tone}`)).toBe(true);
+
+    const fullChip = chip(agent, false);
+    expect(fullChip.textContent).toBe(fullLabel);
+    expect(fullChip.classList.contains(`tone-${tone}`)).toBe(true);
   });
 });
