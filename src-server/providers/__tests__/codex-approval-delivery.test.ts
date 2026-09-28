@@ -390,13 +390,24 @@ describe('#2880: Codex decision delivery', () => {
 
   test('a user decision after Codex closed the request is refused and never reads acknowledged', async () => {
     const { adapter, process, events, requestId } = await closedByCodex(9);
-    await expect(
-      adapter.respondToRequest(THREAD, requestId, 'accept'),
-    ).rejects.toThrow(/Unknown Codex approval request/);
+    const answer = await adapter
+      .respondToRequest(THREAD, requestId, 'accept')
+      .then(
+        () => 'accepted',
+        (error: Error) => error.message,
+      );
     await vi.advanceTimersByTimeAsync(CODEX_APPROVAL_ACK_WINDOW_MS * 2);
+    // The claim under test first: nothing reads as acknowledged.
+    expect(
+      of(events, 'request.delivery').filter(
+        (event) => event.outcome === 'acknowledged',
+      ),
+    ).toEqual([]);
+    expect(delegatedLastDecision(events)?.delivery).not.toBe('acknowledged');
+    // How: the decision is refused and never written.
+    expect(answer).toMatch(/Unknown Codex approval request/);
     expect(repliesTo(process, 9)).toEqual([]);
     expect(of(events, 'request.delivery')).toEqual([]);
-    expect(delegatedLastDecision(events)?.delivery).not.toBe('acknowledged');
     expect(of(events, 'request.resolved').map((event) => event.status)).toEqual(
       ['cancelled'],
     );
