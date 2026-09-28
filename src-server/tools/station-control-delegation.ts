@@ -69,7 +69,6 @@ import {
   PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
   providerQuotaFactsFromDetails,
 } from '../providers/provider-plan-quota.js';
-import { verifyDelegationContextAttestation } from '../runtime/agents/delegation-attestation.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
 import type { FullAccessGrant } from '../security/coding-authority.js';
 import {
@@ -112,6 +111,12 @@ import {
   ReceiverExecutionRefusal,
   receiverAdmittedCwd,
 } from '../services/projects/project-contribution-service.js';
+import {
+  fetchRemoteStation,
+  isRemoteStationTarget,
+  type RemoteStationForwarder,
+  RemoteStationTimeoutError,
+} from '../services/remote-stations/remote-station-forwarder.js';
 import {
   delegatedTaskFollowUps,
   delegatedTaskInterrupts,
@@ -242,7 +247,8 @@ interface SshEnvironmentView {
  *
  * archive#1123: a `'ssh'` target's `requestOptions` now ALSO carries
  * that same `Authorization: Bearer` header when a peer credential happens to
- * be provisioned for the same `environmentId` — see `connectSshTarget`. This
+ * be provisioned for the same `environmentId` — see `RemoteStationForwarder`
+ * (#2377 C2b; it replaced this module's `connectSshTarget`). This
  * is what lets SSH-tunneled peers satisfy the credential requirement in
  * `runtime-http.ts`. `requestOptions` stays unset for an `'ssh'` target with
  * no peer credential provisioned, so protected requests fail loudly with the
@@ -264,6 +270,12 @@ interface DelegationTarget {
    * `@kontourai/station-sdk/client` fetchers.
    */
   requestOptions?: { headers: Record<string, string> };
+  /**
+   * #2377 slice C2b: set only on a `current` target a tool resolved for a
+   * saved Environment. The call goes to this Station's own route, naming
+   * this Environment, and the route forwards it (see `resolveTarget`).
+   */
+  relayEnvironmentId?: string;
 }
 
 interface DelegationEnvironmentSelection {
@@ -398,7 +410,8 @@ type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
  * archive#1463 fix round — two corrections to the first cut, which called
  * this `path-verified` and treated it as reason to record NOTHING:
  *
- * 1. `connectSshTarget` throws unless `profile.verifiedProjectPath` exists,
+ * 1. SSH resolution (`connectSshTarget` then; `RemoteStationForwarder`
+ *    since #2377 C2b) throws unless `profile.verifiedProjectPath` exists,
  *    so every SSH delegation arrived here with a `projectPath` and every SSH
  *    delegation was therefore "verified". The disclosure archive#1463 exists to
  *    make only ever fired for peer targets — the entire SSH population, the
@@ -1307,9 +1320,27 @@ function currentControlApiBase(): string {
   return resolveControlApiBase();
 }
 
-/** #2601: this Station's derivation for the calling tool's verified caller. */
-const CALLER_DELEGATION_PATH =
-  '/api/orchestration/station-control/caller/delegation';
+/**
+ * #2377 slice C2b: every request this module makes. One to this Station's
+ * own API is unbounded here (a tool's call waits for the route, which owns
+ * the timeout); one to another Station, which only server code with the
+ * forwarder makes, goes through the seam's bounded fetch.
+ */
+function stationFetch(url: string, init?: RequestInit): Promise<Response> {
+  return new URL(url).origin === new URL(currentControlApiBase()).origin
+    ? fetch(url, init)
+    : fetchRemoteStation(url, init);
+}
+
+/** A transport failure's caller-safe message: ours for a slow Station. */
+function transportFailureMessage(
+  error: unknown,
+  unavailableMessage: string,
+): string {
+  return error instanceof RemoteStationTimeoutError
+    ? `${unavailableMessage}: ${error.message}`
+    : unavailableMessage;
+}
 
 type ForwardedDelegation = {
   delegation?: AgentDelegationContext;
@@ -1317,56 +1348,21 @@ type ForwardedDelegation = {
 };
 
 /**
- * #2601: the delegation context a station-control tool call forwards.
- *
- * To THIS Station an attested claim goes with its attestation, and nothing
- * else: its route derives the context from the verified caller, or keeps an
- * attested one.
- * To a saved Environment (peer or SSH Station) that route is bypassed, so
- * the context is settled here first:
- *  - a verified caller forwards the context THIS Station derives for it
- *    (the same derivation), and a caller at its depth limit is refused
- *    before anything is sent;
- *  - otherwise a context Station's own engine attested is forwarded (the
- *    attestation itself is not: another Station holds another key);
- *  - otherwise the pre-#2601 behaviour stands, and it is a claim: a
- *    `send_message` forwards whatever context it was given, and a
- *    `delegate_task` forwards none. Only an unverified, unattested
- *    station-control connection reaches this branch.
+ * #2601: the delegation context a station-control tool call sends. Since
+ * #2377 slice C2b a tool only ever calls THIS Station's route (a saved
+ * Environment is forwarded by that route), and the route derives the
+ * context from the verified caller (`resolveRequestDelegation`), or keeps a
+ * claim only when Station's own runtime attested it. So only an attested
+ * claim is sent, with its attestation: an unattested one could only fail
+ * the call's validation. The route's derivation is the same one that used
+ * to settle a tool's forward to a saved Environment, depth limit included.
  */
-async function delegationToForward(
-  target: DelegationTarget,
-  input: ForwardedDelegation,
-  unverifiedForwardsClaim: boolean,
-): Promise<ForwardedDelegation> {
-  if (target.kind === 'current')
-    // Only an attested claim can matter to this Station's route (it derives
-    // or drops every other one), so an unattested one is not sent: a
-    // malformed model claim must not fail the call's validation.
-    return input.delegation && input.delegationAttestation
-      ? {
-          delegation: input.delegation,
-          delegationAttestation: input.delegationAttestation,
-        }
-      : {};
-  const derived = await readJson<{
-    delegation?: AgentDelegationContext | null;
-  }>(
-    `${currentControlApiBase()}${CALLER_DELEGATION_PATH}`,
-    trustedRequest(),
-    'Station could not derive this delegation from the calling session',
-  );
-  if (derived.delegation) return { delegation: derived.delegation };
-  if (
-    input.delegation &&
-    verifyDelegationContextAttestation(
-      input.delegation,
-      input.delegationAttestation,
-    )
-  )
-    return { delegation: input.delegation };
-  return unverifiedForwardsClaim && input.delegation
-    ? { delegation: input.delegation }
+function delegationToForward(input: ForwardedDelegation): ForwardedDelegation {
+  return input.delegation && input.delegationAttestation
+    ? {
+        delegation: input.delegation,
+        delegationAttestation: input.delegationAttestation,
+      }
     : {};
 }
 
@@ -1513,9 +1509,12 @@ async function readJson<T>(
 ): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(url, init);
-  } catch {
-    throw new Error(unavailableMessage);
+    response = await stationFetch(url, init);
+  } catch (error) {
+    throw new Error(
+      transportFailureMessage(error, unavailableMessage),
+      error instanceof RemoteStationTimeoutError ? { cause: error } : undefined,
+    );
   }
   let payload: T & { error?: string };
   try {
@@ -1769,7 +1768,7 @@ async function postDelegationJson(
   path: string,
   body: unknown,
 ): Promise<Response> {
-  return fetch(`${target.apiBase}${path}`, {
+  return stationFetch(`${target.apiBase}${path}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -1795,8 +1794,10 @@ async function postPeerPortableFollowUp<T>(
   let response: Response;
   try {
     response = await postDelegationJson(target, path, body);
-  } catch {
-    throw new PeerPortableFollowUpError(unavailableMessage);
+  } catch (error) {
+    throw new PeerPortableFollowUpError(
+      transportFailureMessage(error, unavailableMessage),
+    );
   }
   let payload: (ApiEnvelope<T> & PeerPortableErrorEnvelope) | null;
   try {
@@ -1831,7 +1832,7 @@ async function getCanonical<T>(
 ): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${target.apiBase}${path}`, {
+    response = await stationFetch(`${target.apiBase}${path}`, {
       method: 'GET',
       headers: target.requestOptions?.headers,
       signal,
@@ -1839,7 +1840,7 @@ async function getCanonical<T>(
   } catch (cause) {
     throw new CanonicalDelegationReadError(
       'transport',
-      unavailableMessage,
+      transportFailureMessage(cause, unavailableMessage),
       undefined,
       cause,
     );
@@ -1929,7 +1930,7 @@ async function postForegroundMessage(
 ): Promise<ForegroundMessageHandle> {
   let response: Response;
   try {
-    response = await fetch(`${target.apiBase}${path}`, {
+    response = await stationFetch(`${target.apiBase}${path}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -1937,10 +1938,13 @@ async function postForegroundMessage(
       },
       body: JSON.stringify(body),
     });
-  } catch {
-    // POST may have reached the peer before its response became unavailable.
-    // Preserve no-retry evidence rather than treating this as a safe retry.
-    throw new ForegroundMessageTurnIdentityUnavailableError(unavailableMessage);
+  } catch (error) {
+    // POST may have reached the peer before its response became unavailable
+    // (a timeout included). Preserve no-retry evidence rather than treating
+    // this as a safe retry.
+    throw new ForegroundMessageTurnIdentityUnavailableError(
+      transportFailureMessage(error, unavailableMessage),
+    );
   }
   let payload: ApiEnvelope<ForegroundMessageHandle>;
   try {
@@ -1966,6 +1970,17 @@ async function postForegroundMessage(
     );
   }
   if (!response.ok || !payload.success || payload.data === undefined) {
+    // #2377 C2b: another Station's refusal reaches this Station's route only
+    // as the closed receiver-refusal set (fixed copy); its own code never
+    // becomes this Station's answer, since the route now forwards for agents
+    // as well as for the operator's UI.
+    if (target.kind !== 'current' && !response.ok) {
+      const refusal = peerPortableRefusalFor(
+        response.status,
+        payload as PeerPortableErrorEnvelope,
+      );
+      if (refusal) throw refusal;
+    }
     const message = payload.error || unavailableMessage;
     // #2708/#2795: only this Station's own answer is relayed to the agent,
     // as a `LocalStationRefusal` cause; `code` below is the route contract.
@@ -1975,7 +1990,8 @@ async function postForegroundMessage(
       code?: string;
     };
     error.status = response.status;
-    if (typeof payload.code === 'string') error.code = payload.code;
+    if (target.kind === 'current' && typeof payload.code === 'string')
+      error.code = payload.code;
     throw error;
   }
   if (
@@ -1996,8 +2012,13 @@ async function readSanitizedJson<T>(
 ): Promise<T> {
   try {
     return await readJson<T>(url, init, unavailableMessage);
-  } catch {
-    throw new Error(unavailableMessage);
+  } catch (error) {
+    // Peer text is dropped; this Station's own timeout report is kept.
+    const timeout =
+      error instanceof Error && error.cause instanceof RemoteStationTimeoutError
+        ? error.cause
+        : undefined;
+    throw new Error(transportFailureMessage(timeout, unavailableMessage));
   }
 }
 
@@ -2024,278 +2045,74 @@ async function currentHandshake(): Promise<StationHandshake> {
   return handshake;
 }
 
-function requireLoopbackTunnel(value: string | undefined): string {
-  if (!value) {
-    throw new Error('SSH environment did not provide a verified tunnel');
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error('SSH environment returned an invalid tunnel');
-  }
-  if (
-    parsed.protocol !== 'http:' ||
-    !['127.0.0.1', '::1', '[::1]'].includes(parsed.hostname) ||
-    parsed.username ||
-    parsed.password ||
-    parsed.pathname !== '/' ||
-    parsed.search ||
-    parsed.hash
-  ) {
-    throw new Error('SSH environment returned a non-loopback tunnel');
-  }
-  return parsed.origin;
-}
-
 /**
- * archive#1123: distinguishes "no SSH profile matches this
- * environmentId at all" from every other SSH failure (unavailable list,
- * connect failure, binding mismatch, not-ready, OR a matching profile that
- * exists but is not yet verified) — `resolveTarget` falls back to the
- * peer-credential store ONLY on this exact, narrow case. An environment
- * that genuinely HAS an SSH profile — verified or not — keeps reporting
- * its own SSH-specific failure instead of masking it behind an unrelated
- * "no peer either" error. Review fix (LOW, archive#1123 PR archive#1178): this
- * used to also cover "profile found but unverified", silently falling
- * through to peer resolution for that case despite this docblock's claim
- * that only true not-found does — narrowed to match the documented intent
- * rather than the other way around, since a present-but-unverified profile
- * is exactly the kind of "genuinely a broken/misconfigured SSH profile"
- * case this distinction exists to protect.
- */
-const SSH_ENVIRONMENT_NOT_FOUND_MESSAGE =
-  'The selected environment is not a saved, verified SSH environment';
-
-async function connectSshTarget(
-  environmentId: string,
-  requestedProjectPath?: string,
-): Promise<DelegationTarget> {
-  const list = await readJson<ApiEnvelope<SshEnvironmentView[]>>(
-    `${currentControlApiBase()}/api/environments/ssh`,
-    trustedRequest(),
-    'Saved SSH environments are unavailable',
-    // This Station's own control API, and the first leaf every saved
-    // Environment resolves through: its typed refusal (#2377 slice C2a, a
-    // remote target needs a bound operator) reaches the agent.
-    { kind: 'current' },
-  );
-  if (!list.success || !Array.isArray(list.data)) {
-    throw new Error(list.error || 'Saved SSH environments are unavailable');
-  }
-  const saved = list.data.find(
-    (environment) => environment.profile.environmentId === environmentId,
-  );
-  if (!saved) {
-    throw new Error(SSH_ENVIRONMENT_NOT_FOUND_MESSAGE);
-  }
-  if (!saved.profile.verifiedProjectPath) {
-    // Deliberately a DIFFERENT message from SSH_ENVIRONMENT_NOT_FOUND_MESSAGE
-    // — resolveTarget's peer-store fallback matches on that exact string, so
-    // a present-but-unverified profile never falls through to the peer
-    // store; it reports its own failure instead (see this function's
-    // docblock).
-    throw new Error(
-      'The selected SSH environment is not yet verified; verify it before delegating work',
-    );
-  }
-  if (
-    requestedProjectPath &&
-    requestedProjectPath !== saved.profile.verifiedProjectPath
-  ) {
-    throw new Error(
-      'The requested project path does not match the verified SSH environment binding',
-    );
-  }
-
-  const connected = await readJson<ApiEnvelope<SshEnvironmentView>>(
-    `${currentControlApiBase()}/api/environments/ssh/${encodeURIComponent(saved.profile.id)}/connect`,
-    trustedRequest({ method: 'POST' }),
-    'The selected SSH environment could not be connected',
-  );
-  const view = connected.data;
-  if (!connected.success || !view) {
-    throw new Error(
-      connected.error || 'The selected SSH environment could not be connected',
-    );
-  }
-  if (
-    view.profile.environmentId !== environmentId ||
-    view.profile.verifiedProjectPath !== saved.profile.verifiedProjectPath
-  ) {
-    throw new Error(
-      'The SSH environment binding changed while connecting; select it again',
-    );
-  }
-  if (view.state.phase !== 'connected') {
-    throw new Error(
-      view.state.action ||
-        `The selected SSH environment is not ready (${view.state.phase})`,
-    );
-  }
-
-  // archive#1123: attach an outbound peer credential to the SSH
-  // tunnel too, when one is provisioned for this environmentId, so protected
-  // calls satisfy runtime authentication. SSH profile resolution/connection
-  // above is unaffected either way — this only decides whether the returned
-  // target also carries an `Authorization` header. If no credential is
-  // provisioned, the connection remains usable but protected API calls fail
-  // loudly with `401 authentication_required`.
-  //
-  // Security-review follow-up (archive#1123): fail-open stays, but
-  // silently — `fetchPeerCredential` only returns `null` for a clean 404
-  // ("no credential provisioned"); every other failure (network error,
-  // non-2xx, malformed JSON) throws. Conflating those two outcomes in a bare
-  // `catch {}` means a corrupted credential store or a post-upgrade
-  // permissions problem silently makes protected SSH calls fail with 401,
-  // indefinitely, with no operator-visible signal that credential delivery
-  // has stopped. Log a
-  // warning on the genuine-failure path so that regression is observable;
-  // stay silent on the expected `null` (nothing went wrong).
-  let requestOptions: DelegationTarget['requestOptions'];
-  try {
-    const peer = await fetchPeerCredential(environmentId);
-    if (peer) {
-      requestOptions = {
-        headers: { Authorization: `Bearer ${peer.credential}` },
-      };
-    }
-  } catch (error) {
-    console.warn(
-      `[station-control-delegation] peer credential lookup failed for environmentId=${environmentId}; ` +
-        'falling through to the unauthenticated SSH tunnel target (station#1123 slice 3 fail-open). ' +
-        'This is expected if the credential store is briefly unavailable, but if it persists, scope ' +
-        'enforcement has stopped for this SSH-tunneled environment.',
-      error instanceof Error ? error.message : error,
-    );
-  }
-
-  return {
-    apiBase: requireLoopbackTunnel(view.state.localUrl),
-    environmentId,
-    environmentName: view.profile.name,
-    kind: 'ssh',
-    projectPath: view.profile.verifiedProjectPath,
-    ...(view.profile.remoteHome ? { remoteHome: view.profile.remoteHome } : {}),
-    ...(requestOptions ? { requestOptions } : {}),
-  };
-}
-
-interface PeerCredentialView {
-  environmentId: string;
-  apiBase: string;
-  scope: string;
-  credential: string;
-  label: string | null;
-}
-
-/**
- * archive#1123: fetches the outbound peer credential provisioned for
- * `environmentId` from `PeerCredentialStore` (via the internal-only
- * `GET /api/environments/peers/:environmentId/credential` leaf). `null`
- * (never a throw) only for "no credential provisioned" (404) — every other
- * failure (network error, non-2xx, invalid body) throws, matching this
- * route's own internal-only trust posture. Shared by `connectPeerTarget`
- * (slice 2, a directly-reachable peer with no SSH profile) and
- * `connectSshTarget` (slice 3, attaching the same credential to an
- * SSH-tunneled target when one exists) — callers decide for themselves
- * whether a failure here should be fatal or best-effort.
- */
-async function fetchPeerCredential(
-  environmentId: string,
-): Promise<PeerCredentialView | null> {
-  let response: Response;
-  try {
-    response = await fetch(
-      `${currentControlApiBase()}/api/environments/peers/${encodeURIComponent(environmentId)}/credential`,
-      trustedRequest(),
-    );
-  } catch {
-    throw new Error('The selected peer environment is unavailable');
-  }
-  if (response.status === 404) return null;
-  let payload: ApiEnvelope<PeerCredentialView>;
-  try {
-    payload = (await response.json()) as ApiEnvelope<PeerCredentialView>;
-  } catch {
-    throw new Error(
-      'The selected peer environment returned an invalid response',
-    );
-  }
-  if (!response.ok || !payload.success || !payload.data) {
-    throw new Error(
-      payload.error || 'The selected peer environment is unavailable',
-    );
-  }
-  return payload.data;
-}
-
-/**
- * archive#1123: resolves a directly-reachable peer target from the
- * outbound `PeerCredentialStore`, attaching the stored bearer credential as
- * an `Authorization` header — the whole point of this kind existing (see
- * `docs/design/station-peer-pairing.md` §4's "why this is not cosmetic").
- * `null` (never a throw) when no peer credential is provisioned for this
- * `environmentId`, so `resolveTarget` can fall back to SSH resolution
- * exactly as it did before this slice.
+ * #2377 slice C2b: the target of a dispatch-family call.
  *
- * `requestedProjectPath` is accepted for signature symmetry with
- * `connectSshTarget` but intentionally unused: a peer target has no single
- * verified project-path binding (unlike an SSH profile) — `resolveProject`
- * resolves a project against `target.apiBase` the same way it already does
- * for `kind: 'current'`.
+ * - No Environment, or this Station's own: this Station.
+ * - A saved Environment, on this Station's server (the route composition
+ *   passes `remote`): the target the one remote seam resolves
+ *   (`RemoteStationForwarder`), after the route applied the caller's scope.
+ * - A saved Environment anywhere else (a station-control tool, which never
+ *   holds a `remote`): this Station again, carrying `relayEnvironmentId`, so
+ *   the call goes to this Station's own route with the Environment named,
+ *   and the route forwards it. A tool never resolves, connects to or holds
+ *   credentials for another Station.
  */
-async function connectPeerTarget(
-  environmentId: string,
-  _requestedProjectPath?: string,
-): Promise<DelegationTarget | null> {
-  const peer = await fetchPeerCredential(environmentId);
-  if (!peer) return null;
-  return {
-    apiBase: peer.apiBase,
-    environmentId,
-    environmentName: peer.label || peer.apiBase,
-    kind: 'peer',
-    requestOptions: { headers: { Authorization: `Bearer ${peer.credential}` } },
-  };
-}
-
 async function resolveTarget(
   input: Pick<DelegationEnvironmentSelection, 'environmentId' | 'projectPath'>,
+  remote?: RemoteStationForwarder,
+  orchestrationService?: OrchestrationService,
 ): Promise<DelegationTarget> {
   const current = await currentHandshake();
-  if (!input.environmentId || input.environmentId === current.environmentId) {
-    return {
-      apiBase: currentControlApiBase(),
-      environmentId: current.environmentId,
-      environmentName: 'Current environment',
-      kind: 'current',
-      projectPath: input.projectPath,
-      requestOptions: controlRequestOptions(),
-    };
-  }
-  try {
-    return await connectSshTarget(input.environmentId, input.projectPath);
-  } catch (error) {
-    // archive#1123: fall back to a directly-reachable peer ONLY
-    // when SSH genuinely has no matching profile — every other SSH error
-    // (unavailable list, connect failure, binding mismatch, not-ready) is
-    // reported as-is, and every environmentId with an existing SSH profile
-    // resolves through the byte-identical path it always has (§7's
-    // coexistence guarantee — nothing here changes SSH delegation
-    // behavior).
-    if (
-      error instanceof Error &&
-      error.message === SSH_ENVIRONMENT_NOT_FOUND_MESSAGE
-    ) {
-      const peer = await connectPeerTarget(
-        input.environmentId,
-        input.projectPath,
+  const here: DelegationTarget = {
+    apiBase: currentControlApiBase(),
+    environmentId: current.environmentId,
+    environmentName: 'Current environment',
+    kind: 'current',
+    projectPath: input.projectPath,
+    requestOptions: controlRequestOptions(),
+  };
+  if (!input.environmentId || input.environmentId === current.environmentId)
+    return here;
+  if (!remote) {
+    // In-process (server) code that was composed without the forwarder fails
+    // closed: relaying to this Station's own route from here would re-enter
+    // the dispatch with server authority instead of reaching the peer.
+    if (orchestrationService) {
+      throw new Error(
+        'Another Station is not reachable from this caller; this Station was composed without its remote forwarder',
       );
-      if (peer) return peer;
     }
-    throw error;
+    return { ...here, relayEnvironmentId: input.environmentId };
   }
+  const target = await remote.resolve(input.environmentId, input.projectPath);
+  if (!isRemoteStationTarget(target))
+    throw new Error('A remote Station target must come from its forwarder');
+  return {
+    apiBase: target.apiBase,
+    environmentId: target.environmentId,
+    environmentName: target.environmentName,
+    kind: target.kind,
+    ...(target.projectPath ? { projectPath: target.projectPath } : {}),
+    ...(target.remoteHome ? { remoteHome: target.remoteHome } : {}),
+    ...(target.requestOptions
+      ? { requestOptions: { headers: { ...target.requestOptions.headers } } }
+      : {}),
+  };
+}
+
+/** #2377 slice C2b: the Environment a forwarded body names at its target. */
+function relayEnvironment(target: DelegationTarget): EnvironmentRef {
+  return target.relayEnvironmentId
+    ? { kind: 'saved', id: environmentId(target.relayEnvironmentId) }
+    : { kind: 'current' };
+}
+
+/** #2377 slice C2b: the Environment a tool's call names to this Station's route. */
+function relayQuery(target: DelegationTarget): Record<string, string> {
+  return target.relayEnvironmentId
+    ? { environmentId: target.relayEnvironmentId }
+    : {};
 }
 
 function assertVerifiedSshWorkspace(
@@ -2644,8 +2461,21 @@ export async function discoverDelegationEnvironments(): Promise<DelegationEnviro
  */
 export async function discoverDelegationOptions(
   input: DelegationEnvironmentSelection,
+  remote?: RemoteStationForwarder,
 ): Promise<DelegationOptions> {
-  const target = await resolveTarget(input);
+  const target = await resolveTarget(input, remote);
+  // #2377 slice C2b: a tool asks this Station's route, which forwards.
+  if (target.relayEnvironmentId)
+    return postCanonical<DelegationOptions>(
+      target,
+      '/api/orchestration/delegations/options',
+      {
+        environmentId: target.relayEnvironmentId,
+        ...(input.projectSlug ? { projectSlug: input.projectSlug } : {}),
+        ...(input.projectPath ? { projectPath: input.projectPath } : {}),
+      },
+      'Station could not discover delegation targets on the selected Station',
+    );
   const project = await resolveProject(target, input);
   const [connectionEnvelope, agentEnvelope] = await Promise.all([
     readSanitizedJson<ApiEnvelope<AgentConnectionView[]>>(
@@ -3028,6 +2858,7 @@ function taskStatus(
 async function loadDelegatedTask(
   input: DelegatedTaskReferenceInput,
   orchestrationService?: OrchestrationService,
+  remote?: RemoteStationForwarder,
 ): Promise<{
   target: DelegationTarget;
   detail: {
@@ -3037,7 +2868,16 @@ async function loadDelegatedTask(
   metadata: Record<string, unknown>;
 }> {
   const readAuthority = readAuthorityForInput(input);
-  const target = await resolveTarget({ environmentId: input.environmentId });
+  const target = await resolveTarget(
+    { environmentId: input.environmentId },
+    remote,
+    orchestrationService,
+  );
+  // A tool's saved-Environment call is answered by this Station's route
+  // before it gets here; reading this Station's records for it would
+  // silently answer the wrong Station.
+  if (target.relayEnvironmentId)
+    throw new Error('Delegated task lookup must go through this Station');
   localServiceRequiredInHostedMode(target, readAuthority, orchestrationService);
   const signal = input.readTimeoutMs
     ? AbortSignal.timeout(input.readTimeoutMs)
@@ -3728,10 +3568,27 @@ async function verifyDelegatedTaskListItem(options: {
 export async function listDelegatedTasks(
   input: DelegatedTaskListInput,
   orchestrationService?: OrchestrationService,
+  remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskInventory> {
   const limit = delegatedTaskListLimit(input.limit);
   const readAuthority = readAuthorityForInput(input);
-  const target = await resolveTarget({ environmentId: input.environmentId });
+  const target = await resolveTarget(
+    { environmentId: input.environmentId },
+    remote,
+    orchestrationService,
+  );
+  // #2377 slice C2b: a tool asks this Station's route, which forwards.
+  if (target.relayEnvironmentId) {
+    const query = new URLSearchParams({
+      ...relayQuery(target),
+      ...(input.limit !== undefined ? { limit: String(input.limit) } : {}),
+    }).toString();
+    return getCanonical<DelegatedTaskInventory>(
+      target,
+      `/api/orchestration/delegations?${query}`,
+      'Delegated task inventory is unavailable on the selected Station',
+    );
+  }
   localServiceRequiredInHostedMode(target, readAuthority, orchestrationService);
   let rawSessions: unknown;
   try {
@@ -3807,13 +3664,16 @@ export async function listDelegatedTasks(
 export async function observeDelegatedTaskEvents(
   input: DelegatedTaskEventsInput,
   orchestrationService?: OrchestrationService,
+  remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskEventPage> {
   const afterSequence = parseTaskEventCursor(input.cursor);
   const limit = taskEventLimit(input.limit);
   const readAuthority = readAuthorityForInput(input);
-  const selectedTarget = await resolveTarget({
-    environmentId: input.environmentId,
-  });
+  const selectedTarget = await resolveTarget(
+    { environmentId: input.environmentId },
+    remote,
+    orchestrationService,
+  );
   localServiceRequiredInHostedMode(
     selectedTarget,
     readAuthority,
@@ -3821,6 +3681,7 @@ export async function observeDelegatedTaskEvents(
   );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
     const query = new URLSearchParams({
+      ...relayQuery(selectedTarget),
       ...(input.cursor ? { cursor: input.cursor } : {}),
       ...(input.limit !== undefined ? { limit: String(input.limit) } : {}),
     }).toString();
@@ -3834,7 +3695,7 @@ export async function observeDelegatedTaskEvents(
       ),
     );
   }
-  const loaded = await loadDelegatedTask(input, orchestrationService);
+  const loaded = await loadDelegatedTask(input, orchestrationService, remote);
   const currentSessionId = optionalString(loaded.detail.session?.threadId);
   if (!currentSessionId) {
     throw new Error('Delegated task current session has no identity');
@@ -3933,16 +3794,25 @@ export async function observeDelegatedTaskEvents(
 export async function observeDelegatedTask(
   input: DelegatedTaskReferenceInput,
   orchestrationService?: OrchestrationService,
+  remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskSnapshot> {
   const readAuthority = readAuthorityForInput(input);
-  const target = await resolveTarget({ environmentId: input.environmentId });
+  const target = await resolveTarget(
+    { environmentId: input.environmentId },
+    remote,
+    orchestrationService,
+  );
   localServiceRequiredInHostedMode(target, readAuthority, orchestrationService);
   if (target.kind !== 'current' || !orchestrationService) {
     try {
       const snapshot = normalizeDelegatedIdentity(
         await getCanonical<DelegatedTaskSnapshot>(
           target,
-          `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}`,
+          `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}${
+            target.relayEnvironmentId
+              ? `?${new URLSearchParams(relayQuery(target))}`
+              : ''
+          }`,
           'The selected Station could not read the delegated task',
           input.readTimeoutMs
             ? AbortSignal.timeout(input.readTimeoutMs)
@@ -3969,7 +3839,10 @@ export async function observeDelegatedTask(
       if (
         !(error instanceof CanonicalDelegationReadError) ||
         error.kind !== 'http' ||
-        error.status !== 404
+        error.status !== 404 ||
+        // This Station's own route answered: there is no older projection
+        // to fall back to, and its records are not the selected Station's.
+        target.relayEnvironmentId
       ) {
         throw error;
       }
@@ -3977,7 +3850,9 @@ export async function observeDelegatedTask(
       // projection. Their 1:1 root Session is still a valid compatibility
       // shape, and the SDK normalizer supplies the additive identity aliases.
       const snapshot = normalizeDelegatedIdentity(
-        snapshotFor(await loadDelegatedTask(input, orchestrationService)),
+        snapshotFor(
+          await loadDelegatedTask(input, orchestrationService, remote),
+        ),
       );
       if (
         target.kind === 'peer' &&
@@ -3997,7 +3872,9 @@ export async function observeDelegatedTask(
       return snapshot;
     }
   }
-  return snapshotFor(await loadDelegatedTask(input, orchestrationService));
+  return snapshotFor(
+    await loadDelegatedTask(input, orchestrationService, remote),
+  );
 }
 
 /**
@@ -4008,6 +3885,7 @@ export async function observeDelegatedTask(
 export async function refreshPeerDelegationActivity(
   input: Pick<DelegatedTaskReferenceInput, 'userId' | 'readAuthority'>,
   orchestrationService: OrchestrationService,
+  remote?: RemoteStationForwarder,
 ): Promise<void> {
   const readAuthority = readAuthorityForInput(input);
   const records = (
@@ -4031,6 +3909,7 @@ export async function refreshPeerDelegationActivity(
           readTimeoutMs: 1_500,
         },
         orchestrationService,
+        remote,
       ),
     ),
   );
@@ -4044,6 +3923,7 @@ export async function refreshPeerDelegationActivity(
 export async function continueDelegatedTask(
   input: ContinueDelegatedTaskInput,
   orchestrationService?: OrchestrationService,
+  remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskFollowUpHandle> {
   // Follow-up turns never inherit the create-time admission — a marked
   // portable session continues only under a freshly minted admission for
@@ -4052,9 +3932,11 @@ export async function continueDelegatedTask(
     throw new Error('Task follow-up message is required');
   }
   const readAuthority = readAuthorityForInput(input);
-  const selectedTarget = await resolveTarget({
-    environmentId: input.environmentId,
-  });
+  const selectedTarget = await resolveTarget(
+    { environmentId: input.environmentId },
+    remote,
+    orchestrationService,
+  );
   localServiceRequiredInHostedMode(
     selectedTarget,
     readAuthority,
@@ -4101,6 +3983,7 @@ export async function continueDelegatedTask(
         `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}/continue`,
         {
           message: input.message,
+          ...relayQuery(selectedTarget),
           ...(input.model ? { model: input.model } : {}),
           ...(input.modelOptions ? { modelOptions: input.modelOptions } : {}),
         },
@@ -4108,7 +3991,7 @@ export async function continueDelegatedTask(
       ),
     );
   }
-  const loaded = await loadDelegatedTask(input, orchestrationService);
+  const loaded = await loadDelegatedTask(input, orchestrationService, remote);
   // Minted here, on the actual executing receiver (`current` targets
   // only; peer targets forwarded above), from the thread's own
   // persisted marker — never public JSON.
@@ -4150,6 +4033,7 @@ export async function continueDelegatedTask(
       readAuthority,
     },
     orchestrationService,
+    remote,
   );
   delegatedTaskFollowUps.add(1, {
     target: snapshot.target.kind,
@@ -4173,11 +4057,14 @@ export async function continueDelegatedTask(
 export async function respondToDelegatedTaskRequest(
   input: RespondToDelegatedTaskRequestInput,
   orchestrationService?: OrchestrationService,
+  remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskRequestResponseHandle> {
   const readAuthority = readAuthorityForInput(input);
-  const selectedTarget = await resolveTarget({
-    environmentId: input.environmentId,
-  });
+  const selectedTarget = await resolveTarget(
+    { environmentId: input.environmentId },
+    remote,
+    orchestrationService,
+  );
   localServiceRequiredInHostedMode(
     selectedTarget,
     readAuthority,
@@ -4210,12 +4097,16 @@ export async function respondToDelegatedTaskRequest(
       await postPeerPortableFollowUp<DelegatedTaskRequestResponseHandle>(
         selectedTarget,
         `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}/respond`,
-        { requestId: input.requestId, decision: input.decision },
+        {
+          requestId: input.requestId,
+          decision: input.decision,
+          ...relayQuery(selectedTarget),
+        },
         'The selected Station could not resolve the delegated task request',
       ),
     );
   }
-  const loaded = await loadDelegatedTask(input, orchestrationService);
+  const loaded = await loadDelegatedTask(input, orchestrationService, remote);
   // Same fresh-admission enforcement as the continue path.
   const followUpAdmission = await mintPortableFollowUpAdmission(
     portableConsentOfBinding(sessionBinding(loaded.detail)),
@@ -4292,11 +4183,14 @@ export async function respondToDelegatedTaskRequest(
 export async function interruptDelegatedTask(
   input: DelegatedTaskReferenceInput & { turnId?: string },
   orchestrationService?: OrchestrationService,
+  remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskSnapshot & { interruptRequested: true }> {
   const readAuthority = readAuthorityForInput(input);
-  const selectedTarget = await resolveTarget({
-    environmentId: input.environmentId,
-  });
+  const selectedTarget = await resolveTarget(
+    { environmentId: input.environmentId },
+    remote,
+    orchestrationService,
+  );
   localServiceRequiredInHostedMode(
     selectedTarget,
     readAuthority,
@@ -4307,12 +4201,15 @@ export async function interruptDelegatedTask(
       await postCanonical<DelegatedTaskSnapshot & { interruptRequested: true }>(
         selectedTarget,
         `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}/interrupt`,
-        input.turnId ? { turnId: input.turnId } : {},
+        {
+          ...relayQuery(selectedTarget),
+          ...(input.turnId ? { turnId: input.turnId } : {}),
+        },
         'The selected Station could not interrupt the delegated task',
       ),
     );
   }
-  const loaded = await loadDelegatedTask(input, orchestrationService);
+  const loaded = await loadDelegatedTask(input, orchestrationService, remote);
   const snapshot = snapshotFor(loaded);
   if (!snapshot.canInterrupt) {
     throw new Error(
@@ -4378,6 +4275,7 @@ export function isInboundDelegationPeer(
 export async function delegateTask(
   input: DelegateTaskInput,
   orchestrationService?: OrchestrationService,
+  remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskHandle> {
   const readAuthority = readAuthorityForInput(input);
   const portableIntent = input.target.workspace?.kind === 'project-portable';
@@ -4392,12 +4290,16 @@ export async function delegateTask(
     );
   // The ONE environment resolution for this dispatch: the route never
   // resolves, so there is no second resolution to race these endpoints.
-  const selectedTarget = await resolveTarget({
-    environmentId:
-      input.target.environment.kind === 'saved'
-        ? input.target.environment.id
-        : undefined,
-  });
+  const selectedTarget = await resolveTarget(
+    {
+      environmentId:
+        input.target.environment.kind === 'saved'
+          ? input.target.environment.id
+          : undefined,
+    },
+    remote,
+    orchestrationService,
+  );
   if (portableIntent && selectedTarget.kind !== 'current') {
     // #484 no-onward-hop: an explicit portable arrival FROM an enrolled
     // peer must execute on THIS verified receiver or refuse — a caller
@@ -4479,7 +4381,7 @@ export async function delegateTask(
     // #2601: settled before the authority recheck below, so no await sits
     // between that recheck and the forward.
     const forwarded = input.stationControlToolCall
-      ? await delegationToForward(selectedTarget, input, false)
+      ? delegationToForward(input)
       : input.delegation
         ? { delegation: input.delegation }
         : {};
@@ -4504,7 +4406,10 @@ export async function delegateTask(
           '/api/orchestration/delegations',
           {
             prompt: input.prompt,
-            target: { ...pinnedTarget, environment: { kind: 'current' } },
+            target: {
+              ...pinnedTarget,
+              environment: relayEnvironment(selectedTarget),
+            },
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
             ...forwarded,
             // #485: the opt-in correlation rides the portable forward body
@@ -4521,7 +4426,10 @@ export async function delegateTask(
           '/api/orchestration/delegations',
           {
             prompt: input.prompt,
-            target: { ...pinnedTarget, environment: { kind: 'current' } },
+            target: {
+              ...pinnedTarget,
+              environment: relayEnvironment(selectedTarget),
+            },
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
             ...forwarded,
           },
@@ -5246,6 +5154,7 @@ export async function executeExecutionTargetMessage(
   input: AuthorityBearingForegroundMessageInput,
   orchestrationService?: OrchestrationService,
   admission?: ForegroundInvocationAdmission,
+  remote?: RemoteStationForwarder,
 ): Promise<ForegroundMessageHandle> {
   const capturedProject = admission?.project;
   const capturedAgent = admission?.agentSpec;
@@ -5285,13 +5194,20 @@ export async function executeExecutionTargetMessage(
     };
   }
   const readAuthority = readAuthorityForInput(input);
-  const selectedTarget = await resolveTarget({
-    environmentId:
-      input.target.environment.kind === 'saved'
-        ? input.target.environment.id
-        : undefined,
-  });
-  if (admission && selectedTarget.kind !== 'current')
+  const selectedTarget = await resolveTarget(
+    {
+      environmentId:
+        input.target.environment.kind === 'saved'
+          ? input.target.environment.id
+          : undefined,
+    },
+    remote,
+    orchestrationService,
+  );
+  if (
+    admission &&
+    (selectedTarget.kind !== 'current' || selectedTarget.relayEnvironmentId)
+  )
     throw new ForegroundInvocationUnavailableError();
   localServiceRequiredInHostedMode(
     selectedTarget,
@@ -5338,7 +5254,7 @@ export async function executeExecutionTargetMessage(
       ...remoteInput
     } = input;
     const forwarded = input.stationControlToolCall
-      ? await delegationToForward(selectedTarget, input, true)
+      ? delegationToForward(input)
       : input.delegation
         ? { delegation: input.delegation }
         : {};
@@ -5354,7 +5270,7 @@ export async function executeExecutionTargetMessage(
         ...forwarded,
         target: {
           ...pinnedTarget,
-          environment: { kind: 'current' },
+          environment: relayEnvironment(selectedTarget),
           ...remoteApprovalCarry(pinnedTarget.model, input.setApprovalMode),
         },
       },
@@ -5913,12 +5829,17 @@ export function resumedWorkspaceBinding(
 export async function continueExecutionTargetMessage(
   input: ContinueForegroundMessageInput,
   orchestrationService?: OrchestrationService,
+  remote?: RemoteStationForwarder,
 ): Promise<ForegroundMessageHandle> {
   const readAuthority = readAuthorityForInput(input);
-  const selectedTarget = await resolveTarget({
-    environmentId:
-      input.environment?.kind === 'saved' ? input.environment.id : undefined,
-  });
+  const selectedTarget = await resolveTarget(
+    {
+      environmentId:
+        input.environment?.kind === 'saved' ? input.environment.id : undefined,
+    },
+    remote,
+    orchestrationService,
+  );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
     if (selectedTarget.kind === 'ssh') {
       const detail = await existingSession(
@@ -5942,6 +5863,9 @@ export async function continueExecutionTargetMessage(
       `/api/orchestration/chat/${encodeURIComponent(input.conversationId)}/continue`,
       {
         message: input.message,
+        ...(selectedTarget.relayEnvironmentId
+          ? { environment: relayEnvironment(selectedTarget) }
+          : {}),
         ...(input.attachments ? { attachments: input.attachments } : {}),
         ...(input.ambientContext
           ? { ambientContext: input.ambientContext }

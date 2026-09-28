@@ -4,10 +4,6 @@ import {
   type PeerCredentialStore,
 } from '../../services/peers/peer-credential-store.js';
 import {
-  INTERNAL_API_TOKEN_HEADER,
-  isTrustedInternalApiToken,
-} from '../../utils/internal-api-token.js';
-import {
   errorMessage,
   getBody,
   param,
@@ -22,12 +18,10 @@ import {
  * currentness predicate supplied at composition and recheck it under the
  * store's file-mutation lock. Metadata reads remain governed by global scope
  * authorization. Direct loopback and SSH callers must present a credential
- * too. `GET`/`POST`/`DELETE` never return the raw credential —
- * only `GET /:environmentId/credential` does, and that leaf has an
- * additional, unconditional in-handler check: it 403s any request that
- * isn't carrying this Station's own internal API token, regardless of
- * pairing scope. `station-control-delegation.ts` is the only intended
- * caller of that leaf (see `connectPeerTarget`).
+ * too. No route here returns the raw credential. #2377 slice C2b deleted
+ * the one leaf that did (`GET /:environmentId/credential`, read by the
+ * station-control tools): the bearer is now read in-process, only by the
+ * one remote seam runtime composition builds (`RemoteStationForwarder`).
  *
  * Provisioning UX (slice 2, explicit stopgap): these routes are the whole
  * provisioning mechanism for now — a `station environment peers add/list/
@@ -41,7 +35,7 @@ export function createPeerCredentialRoutes(
   /**
    * archive#1123 review fix (MEDIUM, PR archive#1178): optional SSH-profile
    * lookup, mirroring the CLI's `warnIfSshProfileTakesPrecedence`.
-   * `resolveTarget` (`station-control-delegation.ts`) tries SSH first and
+   * `RemoteStationForwarder.resolve` tries SSH first and
    * only ever falls back to this store's `'peer'`-kind target resolution
    * (a different apiBase, a different connection) when no SSH profile
    * matches. When provided, a matching environmentId adds a non-blocking
@@ -50,7 +44,7 @@ export function createPeerCredentialRoutes(
    * change in slice 8).
    *
    * archive#1123 update: this credential is NOT unenforced in that
-   * case anymore. `connectSshTarget` now also fetches this same store entry
+   * case anymore. The SSH-tunneled target also carries this same store entry
    * and attaches its `Authorization: Bearer` header to requests over the SSH
    * tunnel, so the credential's scope IS what governs access there (see
    * `runtime-http.ts`'s credential requirement). What SSH precedence
@@ -125,29 +119,6 @@ export function createPeerCredentialRoutes(
       }
       throw error;
     }
-  });
-
-  // Internal-only: the raw credential this Station presents to the peer.
-  // Defense in depth beyond the route-scope table — never trust the scope
-  // check alone for a secret-bearing leaf. A remote pairing credential
-  // (even one somehow carrying access:manage) is refused here regardless.
-  app.get('/:environmentId/credential', (c) => {
-    if (!isTrustedInternalApiToken(c.req.header(INTERNAL_API_TOKEN_HEADER))) {
-      return c.json({ success: false, error: 'Forbidden' }, 403);
-    }
-    const record = store.get(param(c, 'environmentId'));
-    return record
-      ? c.json({
-          success: true,
-          data: {
-            environmentId: record.environmentId,
-            apiBase: record.apiBase,
-            scope: record.scope,
-            credential: record.credential,
-            label: record.label,
-          },
-        })
-      : c.json({ success: false, error: 'Peer credential not found' }, 404);
   });
 
   return app;

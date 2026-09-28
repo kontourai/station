@@ -526,6 +526,7 @@ import { ConversationPullRequestLinkStore } from '../../services/pull-requests/c
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
 import { PullRequestRepositoryContextResolver } from '../../services/pull-requests/pull-request-repository-context-resolver.js';
+import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import type {
   SecretBindingAdministration,
@@ -607,7 +608,6 @@ import {
 } from '../../utils/outward-error.js';
 import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import {
-  createCallerDelegationDeriver,
   createRequestDelegationResolver,
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
@@ -1254,6 +1254,15 @@ export function configureRuntimeRoutes(
   const peerCredentialStore = new PeerCredentialStore(
     context.configLoader.getProjectHomeDir(),
   );
+  // #2377 slice C2b: the one seam through which this Station reaches another
+  // Station. Only this composition holds it: the dispatch routes forward a
+  // saved Environment through it after their scope check, and no
+  // station-control tool (or HTTP route) ever receives a peer bearer.
+  const remoteStations = createRemoteStationForwarder({
+    ssh: context.sshEnvironmentService,
+    peers: peerCredentialStore,
+    warn: (message) => context.logger.warn(message),
+  });
   const actionOperations = context.actionOperations;
   // Command callbacks do not receive the Hono Request, but execute inside
   // the same verified ingress async context. Build their authority at call
@@ -2150,9 +2159,6 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createStationControlCallerRoutes({
       resolveRecord: resolveStationControlCallerRecord,
-      deriveCallerDelegation: createCallerDelegationDeriver(
-        requestDelegationSources,
-      ),
     }),
   );
   context.app.route(
@@ -3612,6 +3618,7 @@ export function configureRuntimeRoutes(
         createWebhookTurnStarter({
           readAuthorityFor: readAuthorityForExecution,
           orchestrationService: context.orchestrationService,
+          remoteStations,
         }),
       ),
     }),
@@ -3729,6 +3736,7 @@ export function configureRuntimeRoutes(
         delegateTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       // #485: the receiver's durable attempt-claim owner, threaded through
@@ -3787,6 +3795,8 @@ export function configureRuntimeRoutes(
         executeExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          undefined,
+          remoteStations,
         ),
       ),
       // #2601: a dispatch's delegation context comes from its verified
@@ -3861,49 +3871,59 @@ export function configureRuntimeRoutes(
         continueExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
-      discoverDelegationOptions: stationServerEntry(discoverDelegationOptions),
+      discoverDelegationOptions: stationServerEntry((input) =>
+        discoverDelegationOptions(input, remoteStations),
+      ),
       continueDelegatedTask: stationServerEntry((input) =>
         continueDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       respondToDelegatedTaskRequest: stationServerEntry((input) =>
         respondToDelegatedTaskRequest(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       interruptDelegatedTask: stationServerEntry((input) =>
         interruptDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       listDelegatedTasks: stationServerEntry((input) =>
         listDelegatedTasks(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       observeDelegatedTask: stationServerEntry((input) =>
         observeDelegatedTask(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       refreshDelegatedTaskActivity: stationServerEntry((input) =>
         refreshPeerDelegationActivity(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       observeDelegatedTaskEvents: stationServerEntry((input) =>
         observeDelegatedTaskEvents(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
+          remoteStations,
         ),
       ),
       presence: context.orchestrationStreamPresence,

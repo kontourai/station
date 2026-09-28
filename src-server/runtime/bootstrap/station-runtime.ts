@@ -172,6 +172,7 @@ import {
   terminalWorktreeStateForExit,
   WorktreeProvisioningService,
 } from '../../services/projects/worktree-provisioning-service.js';
+import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import type {
   FileSecretBindingAdministration,
@@ -1334,8 +1335,21 @@ export class StationRuntime {
           // #2377: a Discord message is a person's turn Station drives
           // itself; its loopback calls run as server code.
           const orchestrationService = this.orchestrationService;
+          // #2377 slice C2b: a bound conversation on a saved Environment
+          // forwards through the one remote seam, as the routes do.
+          const remoteStations = createRemoteStationForwarder({
+            ssh: this.sshEnvironmentService,
+            peers: new PeerCredentialStore(
+              this.configLoader.getProjectHomeDir(),
+            ),
+            warn: (message) => this.logger.warn(message),
+          });
           return runAsStationServer(() =>
-            continueExecutionTargetMessage(input, orchestrationService),
+            continueExecutionTargetMessage(
+              input,
+              orchestrationService,
+              remoteStations,
+            ),
           );
         },
         readTranscript: ({ sessionId, turnId }) =>

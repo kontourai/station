@@ -382,6 +382,20 @@ store.
 
 ## 11. Resolved decisions (2026-08-29)
 
+- **#2377 slice C2b — cross-Station forwarding is server-side (2026-09-27).**
+  A station-control tool no longer resolves, connects to, or holds a bearer
+  for another Station. It sends the saved Environment to this Station's own
+  dispatch route, which applies the caller's scope and then reaches the other
+  Station through the one remote seam, `RemoteStationForwarder`
+  (`src-server/services/remote-stations/remote-station-forwarder.ts`), built
+  only by runtime composition. The seam keeps the SSH-then-peer order
+  (`connectSshTarget`/`resolveTarget` below now name its `resolve`), attaches
+  the outbound bearer in-process, and bounds each request to the other
+  Station (`STATION_REMOTE_REQUEST_TIMEOUT_MS`, default 30 s), so a slow peer
+  is reported by the route. `GET /api/environments/peers/:id/credential`, the
+  internal-token leaf that returned the raw bearer to the tool process, is
+  deleted; no HTTP route returns an outbound peer bearer to any caller.
+
 - **#790 — paired peers are first-class delegation targets in the UI.** A peer
   provisioned in the outbound `PeerCredentialStore` (`station environment peers
   add`) appears on Connections → Computers as a `Peer Station` row (name,
