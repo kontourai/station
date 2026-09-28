@@ -1220,6 +1220,25 @@ attempt and the client starts a fresh enrollment. Activation ACK may be retried
 only with the same signed proof; Station returns the stored receipt only when
 its digest matches the committed ACK.
 
+### Native Device request proof (protocol foundation)
+
+`@kontourai/station-sdk/native-device-proof` exports
+`createNativeDeviceRequestProof`. It accepts a caller-supplied signer whose
+private P-256 Device key remains in native host custody, a trusted approved
+Device binding, and the exact method, path with query, and transmitted body
+bytes. Its compact ES256 JWS binds that request to the Station audience, Device
+and binding IDs, native route surface, **separate** Device-key thumbprint,
+unique Pion peer nonce, one-use JTI and a 30-second expiry. The route key in
+`surface.keyThumbprint` is not the Device key. The 16 KiB body limit matches
+the current application-channel pilot. The helper never receives a Device
+bearer, account continuation, broker secret or provider credential.
+
+This is a protocol component under #2893, not an enabled authentication path.
+Station must still store an operator-approved Device proof binding, verify the
+JWS and exact body against private native peer provenance, consume replay state
+before dispatch, and apply current Device, account, Project and resource
+authorization. No product UI or Tauri signing command consumes this helper yet.
+
 `listProjectViews(apiBase, options)` and `getProjectView(apiBase, slug, options)`
 from `@kontourai/station-sdk/client` return either the personal/operator Project
 shape or a validated `MemberProjectView` from

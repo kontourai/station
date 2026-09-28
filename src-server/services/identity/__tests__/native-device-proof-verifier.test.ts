@@ -5,7 +5,7 @@ import {
   type NativeDeviceBindingSnapshot,
 } from '@kontourai/station-contracts/native-device-proof';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
-import { createNativeDeviceRequestProof } from '@kontourai/station-sdk/client/native-device-proof';
+import { createNativeDeviceRequestProof } from '@kontourai/station-sdk/native-device-proof';
 import { describe, expect, test } from 'vitest';
 import {
   type NativeDeviceProofBindingView,
