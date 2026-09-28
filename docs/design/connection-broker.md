@@ -427,6 +427,50 @@ Real encrypted SDK login, Project traffic, reconnection and native delivery
 remain required before enabling the connector. This seam alone does not satisfy
 those acceptance requirements.
 
+### Native Device proof on the application channel (#2893)
+
+**Decision for the first native pilot; implementation pending.** The Tauri host
+keeps a paired Device bearer in its OS keyring and attaches it to host-owned
+HTTP requests in [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs). The
+native WebRTC application client in [#2856](https://github.com/kontourai/station/pull/2856)
+runs in the WebView, so that HTTP attachment does not reach its DataChannel.
+Returning the bearer to JavaScript would break native credential custody.
+Broker routing proof, Station signing trust, Device authority and account
+continuation remain separate; none can substitute for another.
+
+For relay-only protected requests, bind a **separate P-256 Device proof key**
+at explicit operator Device approval. The account key in
+[`native_account_proof_key.rs`](../../src-desktop/src/native_account_proof_key.rs)
+is a custody pattern, not the Device key. Station stores the Device public key,
+its random binding ID, the approved native surface and grant scope with the
+Device record. The host stores its private key in a distinct keyring namespace
+bound to the selected Station, Device and binding ID. An existing bearer Device
+needs an explicit operator-approved binding ceremony; a saved profile or broker
+grant cannot upgrade it silently. Local solo use still needs no person account.
+
+For each request the host signs one short-lived proof over the exact Station
+audience, Station and Device IDs, binding ID, native surface, unique Pion peer
+nonce, uppercase method, path **including query**, SHA-256 digest of the exact
+transmitted body bytes, JTI and expiry. The WebView may carry this one-request
+proof through the encrypted application channel but never receives the Device
+bearer or private key. The host checks the current saved-profile revision,
+approved Station trust and Device binding before signing. It refuses a generic
+signing request or a foreign Station/profile. Station verifies the signature
+against the *current* Device grant, independently hashes the received body,
+consumes the JTI before dispatch, and compares the proof's peer nonce/surface
+to private Pion provenance. Only then do ordinary Device scope, account,
+Project, resource and compute checks run. Direct HTTPS cookie/bearer paths
+remain unchanged. A revoked Device or binding fails on every subsequent
+request; account signout does not silently revoke or renew the Device.
+
+This approach reuses the existing JavaScript DataChannel and Station virtual
+application ingress without a second native WebRTC implementation. A host-owned
+native DataChannel could keep the bearer out of JavaScript too, but Station has
+no such desktop client today; it remains an alternative if the proof protocol
+cannot satisfy the packaged acceptance. Source and SDK proof tests, real Tauri
+IPC, a packaged Project read/reconnect/revoke, and physical two-person evidence
+are distinct proof layers.
+
 ### Transport qualification
 
 The [browser transport evaluation](../guides/local-collaboration-lab.md#browser-transport-evaluation)
