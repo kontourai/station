@@ -36,8 +36,15 @@ import {
   evaluateDocumentationReview,
 } from '../lib/documentation-review.mjs';
 import { publishImmutableSnapshot } from '../lib/immutable-snapshot.mjs';
+import {
+  forbidAmbientFreshnessMode,
+  JOB_ENV,
+  pinnedFreshnessEnv,
+} from './helpers/freshness-env.js';
 
 const makeTempDir = trackTempDirs();
+// Freshness reads here must pin a mode or use the job env explicitly (#2934).
+forbidAmbientFreshnessMode();
 
 describe('machine-maintained documentation review boundaries', () => {
   const hash = (bytes: string) =>
@@ -748,7 +755,12 @@ describe('learning atlas', () => {
           '--eval',
           `import { buildLearningGuide } from ${JSON.stringify(generator)}; try { await buildLearningGuide({check:true,root:${JSON.stringify(root)}}); } catch (error) { console.error(error.message); process.exitCode=1; }`,
         ],
-        { encoding: 'utf8', windowsHide: true },
+        {
+          encoding: 'utf8',
+          windowsHide: true,
+          // This fixture checks anchors, not freshness; pin the mode anyway.
+          env: pinnedFreshnessEnv({ STATION_DOCS_FRESHNESS: 'strict' }),
+        },
       );
     const baseline = check();
     expect(baseline.stderr).toBe('');
@@ -783,7 +795,12 @@ describe('learning atlas', () => {
     const ledger = JSON.parse(
       readFileSync('docs/learn/review-ledger.json', 'utf8'),
     );
-    const result = await checkDocumentationFreshness({ root: process.cwd() });
+    // The real ledger runs in the job's own mode: scoped on a pull request,
+    // advisory in the merge queue, on main and in the repo-scans job.
+    const result = await checkDocumentationFreshness({
+      root: process.cwd(),
+      env: JOB_ENV,
+    });
     const advisory = formatFreshnessAdvisory(result.policy, result.advisory);
     if (advisory) console.warn(advisory);
     expect(() => assertDocumentationFresh(result)).not.toThrow();

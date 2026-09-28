@@ -12,9 +12,15 @@ import {
   upsertFreshnessIssue,
 } from '../docs-freshness-sweep.mjs';
 import {
+  DOCS_FRESHNESS_ENV_KEYS,
   documentationFreshnessMode,
   freshnessBlocks,
 } from '../lib/documentation-freshness.mjs';
+import {
+  forbidAmbientFreshnessMode,
+  LEAKED_FRESHNESS_MODE,
+  pinnedFreshnessEnv,
+} from './helpers/freshness-env.js';
 
 const makeTempDir = trackTempDirs();
 const scripts = resolve(import.meta.dirname, '..');
@@ -27,17 +33,12 @@ const image = Buffer.from(
 const LEDGER = 'docs/learn/review-ledger.json';
 const MEDIA = 'docs/learn/media.json';
 
-// Child processes inherit neither this checkout's Git location nor the host
-// CI event, so each case states its own mode.
+// Fixture Git commands must not inherit this checkout's Git location.
 const baseEnv = Object.fromEntries(
-  Object.entries(process.env).filter(
-    ([key]) =>
-      !key.startsWith('GIT_') &&
-      !key.startsWith('GITHUB_') &&
-      !key.startsWith('STATION_DOCS_') &&
-      key !== 'STATION_CI_FAST_BASE',
-  ),
+  Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
 );
+// Every check below pins its mode; an unpinned read throws (#2934).
+forbidAmbientFreshnessMode();
 
 function git(root: string, args: string[]) {
   return execFileSync('git', args, {
@@ -170,7 +171,7 @@ function run(
 ) {
   return spawnSync(process.execPath, [join(scripts, script), ...args], {
     cwd: root,
-    env: { ...baseEnv, ...env },
+    env: pinnedFreshnessEnv(env),
     encoding: 'utf8',
     windowsHide: true,
   });
@@ -412,6 +413,24 @@ describe('scoped documentation freshness (#2923)', () => {
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain('Still stale');
     expect(check(f.root, { STATION_DOCS_FRESHNESS: 'strict' }).status).toBe(0);
+  });
+
+  it('runs with the ambient mode forbidden, and spawned checks scrub every mode variable', () => {
+    // The guard is live: an unpinned read of the job's mode throws here.
+    expect(process.env.STATION_DOCS_FRESHNESS).toBe(LEAKED_FRESHNESS_MODE);
+    expect(() => documentationFreshnessMode()).toThrow(
+      'must be scoped, advisory or strict',
+    );
+    const child = pinnedFreshnessEnv();
+    for (const key of DOCS_FRESHNESS_ENV_KEYS)
+      expect(child).not.toHaveProperty(key);
+    expect(DOCS_FRESHNESS_ENV_KEYS).toEqual([
+      'STATION_DOCS_FRESHNESS',
+      'STATION_DOCS_FRESHNESS_BASE',
+      'STATION_CI_FAST_BASE',
+      'GITHUB_ACTIONS',
+      'GITHUB_EVENT_NAME',
+    ]);
   });
 
   it('decides blocking from one function for every mode', () => {
