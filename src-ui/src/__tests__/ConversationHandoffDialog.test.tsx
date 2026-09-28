@@ -14,7 +14,11 @@ const fenceConversationHandoff = vi.fn(
   }),
 );
 
-vi.mock('@kontourai/station-sdk/client', () => ({
+// The real module stays underneath: `userFacingErrorMessage` reads
+// `StationHttpError` from it, and one test builds a refusal with the real
+// fetcher.
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   handoffExecutionMessage: (...args: unknown[]) =>
     handoffExecutionMessage(...args),
   getConversationHandoffStatus: (...args: unknown[]) =>
@@ -420,6 +424,73 @@ describe('ConversationHandoffDialog', () => {
     expect(restored.onAccepted.mock.calls[0][0].targetId).toBe('codex');
   });
 
+  // #2708 A-3a: the handoff route validates its body; a refusal as the REAL
+  // execution fetcher throws it reads as the server's reason.
+  test('a validation refusal from the real fetcher shows its reason', async () => {
+    const actual = await vi.importActual<
+      typeof import('@kontourai/station-sdk/client')
+    >('@kontourai/station-sdk/client');
+    const refusal = await realValidationRefusal(
+      () =>
+        actual.handoffExecutionMessage('http://station.test', 'c1', {
+          idempotencyKey: 'k1',
+        } as never),
+      'Write a message to hand off.',
+      'message',
+    );
+    handoffExecutionMessage.mockRejectedValueOnce(refusal);
+    const { onDefiniteFailure } = renderDialog();
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toBe(
+        'Write a message to hand off.',
+      ),
+    );
+    expect(onDefiniteFailure).toHaveBeenCalledOnce();
+  });
+
+  // #2708 A-3a review: a proxy's page keeps its status on the error, but it
+  // is not Station's answer — the handoff stays indeterminate and retained.
+  test.each([403, 502])(
+    'a proxy HTML %i from the real fetcher stays indeterminate',
+    async (status) => {
+      const actual = await vi.importActual<
+        typeof import('@kontourai/station-sdk/client')
+      >('@kontourai/station-sdk/client');
+      const previous = globalThis.fetch;
+      globalThis.fetch = (async () =>
+        new Response('<html>Bad gateway</html>', { status })) as typeof fetch;
+      let failure: unknown;
+      try {
+        failure = await actual
+          .handoffExecutionMessage('http://station.test', 'c1', {
+            idempotencyKey: 'k1',
+          } as never)
+          .catch((caught: unknown) => caught);
+      } finally {
+        globalThis.fetch = previous;
+      }
+      expect(failure).toMatchObject({ status, stationEnvelope: false });
+      handoffExecutionMessage.mockRejectedValueOnce(failure);
+      const { onDefiniteFailure } = renderDialog();
+      fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole('alert').textContent).toContain(
+          'final response',
+        ),
+      );
+      expect(onDefiniteFailure).not.toHaveBeenCalled();
+    },
+  );
+
   test('a failed provider turn still applies the Agent switch once and clears pending retry', async () => {
     handoffExecutionMessage.mockRejectedValueOnce(
       new TypeError('response lost'),
@@ -448,3 +519,26 @@ describe('ConversationHandoffDialog', () => {
     ).toBeNull();
   });
 });
+
+/** The refusal the REAL SDK fetcher throws for a validation 400 (#2708). */
+async function realValidationRefusal(
+  call: () => Promise<unknown>,
+  reason: string,
+  field: string,
+): Promise<unknown> {
+  const previous = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        success: false,
+        error: 'Validation failed',
+        details: { formErrors: [], fieldErrors: { [field]: [reason] } },
+      }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    )) as typeof fetch;
+  try {
+    return await call().catch((caught: unknown) => caught);
+  } finally {
+    globalThis.fetch = previous;
+  }
+}

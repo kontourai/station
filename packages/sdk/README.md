@@ -35,8 +35,9 @@ or a copied result. Station reauthorizes each read and the actual queued write.
 `@kontourai/station-sdk/task-tool-results` is the separate React query surface.
 Its protected query withholds cached content during revalidation, clears prior
 content on failure, and cancels obsolete requests when the Task changes.
-`TaskToolResultRequestError` keeps only a generic message and response status;
-it does not expose a protected URL or an upstream error body.
+`TaskToolResultRequestError` keeps a generic message, the response status and
+the refusal's machine `code` and `Retry-After`; it does not expose a protected
+URL or an upstream error body.
 
 These APIs do not change semantic answer standing or automatically promote an
 Output. The native Basis item actions are a separate integration step.

@@ -16,6 +16,7 @@ import { classifyManagedModelBinding } from '@kontourai/station-contracts/manage
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { Tool } from '../../types';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { connectionStatusLabel } from '../../utils/execution';
 import type { AgentFormData } from './types';
 
@@ -395,7 +396,9 @@ export function agentSaveErrorMessage(error: unknown): string {
   ) {
     return STATION_ENGINE_SETTING_SAVE_MESSAGE;
   }
-  return error instanceof Error ? error.message : 'Could not save this Agent.';
+  return error instanceof Error
+    ? userFacingErrorMessage(error)
+    : 'Could not save this Agent.';
 }
 
 export function buildAgentPayload(

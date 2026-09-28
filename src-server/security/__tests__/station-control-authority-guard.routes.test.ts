@@ -1081,6 +1081,10 @@ describe('the server guard alone gives agents a typed refusal (F2)', () => {
     ['delete_integration', { id: 'x' }],
     ['list_review_receipts', { projectSlug: 'project-a' }],
     ['list_plugins', {}],
+    // #2708 A-3a: every agent CRUD tool's fetcher now reads the envelope
+    // through the helper.
+    ['create_agent', { name: 'A', slug: 'a', systemPrompt: 'p' }],
+    ['update_agent', { slug: 'a', name: 'B' }],
     ['delete_agent', { slug: 'a' }],
     ['update_config', { updates: { theme: 'dark' } }],
     [
