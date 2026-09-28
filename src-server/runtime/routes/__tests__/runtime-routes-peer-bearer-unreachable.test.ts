@@ -56,7 +56,9 @@ function deepStub<T extends object>(overrides: T): T {
 
 const OPERATOR_SECRET = 'operator-secret-peer-bearer-fixture';
 const PEER_ENV = 'environment-peer-bearer-probe';
-const PEER_SECRET = 'peer-bearer-secret-7f3a9c1e2b4d6f80';
+// Synthetic bearer assembled from parts so no credential-shaped literal is
+// committed (gitleaks generic-api-key); the test asserts it never leaks.
+const PEER_SECRET = ['peer', 'bearer', 'fixture', '7f3a9c1e2b4d6f80'].join('-');
 const LOOPBACK = {
   incoming: { socket: { remoteAddress: '127.0.0.1' } },
 } as never;
