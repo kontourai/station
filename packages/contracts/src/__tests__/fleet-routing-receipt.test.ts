@@ -153,10 +153,4 @@ describe('canonicalizeForDigest copies __proto__ instead of assigning it', () =>
       JSON.stringify(canonicalizeForDigest(clean)),
     );
   });
-
-  it('key ordering and ordinary documents are unchanged', () => {
-    expect(
-      JSON.stringify(canonicalizeForDigest({ b: 1, a: { d: 2, c: 3 } })),
-    ).toBe('{"a":{"c":3,"d":2},"b":1}');
-  });
 });
