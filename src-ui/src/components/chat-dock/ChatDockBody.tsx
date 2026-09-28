@@ -1052,6 +1052,23 @@ export function ChatDockBody({
           )}
         </div>
       )}
+      {(activeSession.unacknowledgedDecisions?.length ?? 0) > 0 && (
+        // #2880: a decision Station recorded that the engine has not
+        // acknowledged. Shown beside the transcript, not in the streaming
+        // row: a turn stuck after an approval often has no streaming row.
+        // "Not yet": a late acknowledgement removes it, and it never claims
+        // the reply failed or that the engine applied it.
+        <div
+          className="chat-stream-status"
+          role="status"
+          data-chat-decision-delivery={activeSession.id}
+        >
+          <span>
+            Your decision is recorded, but the engine has not acknowledged it
+            yet. Station has not re-sent it.
+          </span>
+        </div>
+      )}
       {activeSession.unsentMessages?.length ? (
         <LazyBoundary
           load={loadUnsentMessages}

@@ -864,12 +864,7 @@ function ChatMessageListComponent({
                         (activeSession.pendingApprovals?.length ?? 0) > 0
                         ? 'Waiting for approval'
                         : 'Waiting on you'
-                      : // #2880: a recorded decision the engine has not
-                        // acknowledged. "Not yet": a late acknowledgement
-                        // clears it, and it never claims the reply failed.
-                        (activeSession.unacknowledgedDecisions?.length ?? 0) > 0
-                        ? 'Decision recorded, not yet acknowledged by the engine'
-                        : undefined
+                      : undefined
                   }
                   attributionAgent={streamingAttributionAgent}
                   owner={owner}

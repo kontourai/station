@@ -247,3 +247,28 @@ describe('ChatDockBody interrupted-turn marker (station#4080 slice 1)', () => {
     expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
   });
 });
+
+/**
+ * #2880: the dock states a recorded-but-unacknowledged decision beside the
+ * transcript, where it shows even when a stuck turn has no streaming row.
+ * This file already mounts the real `ChatDockBody`, so the notice is pinned
+ * here rather than in a copy of its harness.
+ */
+describe('ChatDockBody unacknowledged-decision notice (#2880)', () => {
+  const NOTICE =
+    'Your decision is recorded, but the engine has not acknowledged it yet. Station has not re-sent it.';
+
+  test('shows the not-yet notice while a decision is unacknowledged', () => {
+    renderDock(buildSession({ unacknowledgedDecisions: ['req-1'] }));
+    const notice = document.querySelector(
+      '[data-chat-decision-delivery="turn-interrupted-session"]',
+    );
+    expect(notice?.getAttribute('role')).toBe('status');
+    expect(notice?.textContent?.replace(/\s+/g, ' ').trim()).toBe(NOTICE);
+  });
+
+  test('says nothing once every decision is acknowledged', () => {
+    renderDock(buildSession({ unacknowledgedDecisions: [] }));
+    expect(document.querySelector('[data-chat-decision-delivery]')).toBeNull();
+  });
+});
