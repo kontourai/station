@@ -1208,6 +1208,7 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
       record_(f.root, ['docs/a.md', '--note', 'Our review of a.']).status,
     ).toBe(0);
     commit(f.root, 'record a');
+    const oursTip = git(f.root, ['rev-parse', 'HEAD']);
     // Merging their branch conflicts on the removed file; keep theirs, fold.
     expect(merge(f.root, 'theirs').status).toBe(1);
     expect(conflicted(f.root)).toEqual([LEGACY_REVIEW_LEDGER]);
@@ -1230,6 +1231,24 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
       digest: hash('export const b = 2;\n'),
       revision: changedB,
     });
+    const foldedState = readReviewState(f.root).ledger.records.map(
+      ({ notes: _notes, ...entry }: any) => entry,
+    );
+    // The author's direction: their branch merges ours and keeps its own file.
+    git(f.root, ['switch', '-q', 'theirs']);
+    expect(merge(f.root, oursTip).status).toBe(1);
+    expect(conflicted(f.root)).toEqual([LEGACY_REVIEW_LEDGER]);
+    git(f.root, ['checkout', '--ours', '--', LEGACY_REVIEW_LEDGER]);
+    expect(
+      run(f.root, 'migrate-review-ledger.mjs', ['--base', base]).status,
+    ).toBe(0);
+    commit(f.root, 'merge ours into theirs');
+    expect(check(f.root, strict).status).toBe(0);
+    expect(
+      readReviewState(f.root).ledger.records.map(
+        ({ notes: _notes, ...entry }: any) => entry,
+      ),
+    ).toEqual(foldedState);
   });
 
   it('stales a value binding only when its cited value changes', () => {

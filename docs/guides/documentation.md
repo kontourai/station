@@ -139,6 +139,7 @@ npm run docs:review:record -- docs/guides/example.md --note "..." --drop-source 
 npm run docs:review:record -- docs/guides/example.md --note "..." --rereview   # a new review of unchanged bytes
 npm run docs:review:record -- --batch reviews.json   # [{ "path", "note", "removedSources"?, "addedSources"?, "rereview"? }]
 npm run docs:review:record -- --verify-bindings      # revisions that do not contain their recorded bytes
+npm run docs:review:record -- docs/guides/example.md --note "..." --drop-source package.json --add-source 'package.json#/scripts/docs:truth:gate'
 ```
 
 Commit the reviewed document and source changes first. The command binds each
@@ -159,7 +160,18 @@ refuses:
 It writes nothing unless every entry in the batch is valid. New records still
 need their kind, summary and limits written by hand. It then lists records that
 remain stale on inputs the batch touched, such as a page that cites a document
-you just changed.
+you just changed. With `--json`, the command and `docs:freshness:check` print a
+machine-readable result, and a refusal carries a stable `code`.
+
+A source can name one value in a JSON file by
+[JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901), such as
+`package.json#/scripts/docs:truth:gate` or `package.json#/engines`. Only that
+value is hashed, and the binding names the commit that set it. Cite values
+instead of a whole broad manifest when the page depends only on named scripts
+or fields: adding an unrelated script then stales nothing, while changing a
+cited value still does. Whole-file bindings remain right when a page describes
+the manifest as a whole, such as its dependency set. Value bindings apply to
+JSON files only; `pnpm-lock.yaml` and other YAML stay whole-file.
 
 `--verify-bindings` lists each binding whose revision does not contain its
 recorded bytes, such as bytes recorded before they were committed or a record
@@ -209,6 +221,22 @@ impact and catch-up, the learning reader, the knowledge-graph example and the
 record command. Catch-up also reads the earlier single-file layout
 (`docs/learn/review-ledger.json`) from history. The layout change alone never
 puts a record into a change's scope.
+
+A branch that recorded reviews in the old single file conflicts when it merges
+`main`: the file is modified on the branch and deleted on `main`. Keep the
+branch's version of the old file, then fold it into the new layout:
+
+```sh
+git checkout --ours -- docs/learn/review-ledger.json   # --theirs when the branch is the side being merged in
+node scripts/migrate-review-ledger.mjs --base "$(git merge-base HEAD MERGE_HEAD)"
+git add -A docs/learn && git commit --no-edit
+```
+
+The command applies each record the branch changed since that base. It merges
+bindings per source, adds the branch's appended checks as one new notes file
+and deletes the old file. Where both sides reviewed different bytes of one
+source, it keeps the binding that matches the current bytes. If neither
+matches, the record stays stale, and the command names it so you can review it.
 
 Staleness that no single pull request owns, such as two merges that combine,
 is collected by the Nightly

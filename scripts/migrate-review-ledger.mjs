@@ -12,10 +12,9 @@ import { execFileSync } from 'node:child_process';
 // A branch that recorded reviews in the old file conflicts with the migration
 // when it merges main (the old file is modified on one side and deleted on the
 // other). Resolve that conflict by keeping the branch's old file
-// (`git checkout --theirs -- docs/learn/review-ledger.json` when merging main
-// into the branch, `--ours` when the branch is checked out and main merges
-// in the other direction), then run this command with `--base` set to the
-// merge base. Each record the branch changed since the base is folded into
+// (`git checkout --ours -- docs/learn/review-ledger.json` when merging main
+// into the branch, `--theirs` when the branch is the side being merged in),
+// then run this command with `--base` set to the merge base. Each record the branch changed since the base is folded into
 // the per-record files: changed bindings and source edits are applied, and
 // appended checks become one new notes file. Where both sides rebound one
 // binding differently, the binding whose hash matches the current bytes
