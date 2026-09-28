@@ -10,7 +10,6 @@ import {
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import {
   NativeInvocationStorageUnavailableError,
-  PluginForegroundRunStorageUnavailableError,
   type RunService,
   VoiceTurnStorageUnavailableError,
 } from '../../services/orchestration/run-service.js';
@@ -40,7 +39,6 @@ export function createRunRoutes(
   const errorStatus = (error: unknown) =>
     error instanceof SchedulerStorageUnavailableError ||
     error instanceof NativeInvocationStorageUnavailableError ||
-    error instanceof PluginForegroundRunStorageUnavailableError ||
     error instanceof VoiceTurnStorageUnavailableError
       ? 503
       : 500;
@@ -53,7 +51,6 @@ export function createRunRoutes(
           | 'schedule'
           | 'invoke'
           | 'voice'
-          | 'plugin'
           | undefined,
         providerId: c.req.query('providerId'),
         sourceId: c.req.query('sourceId'),

@@ -2565,24 +2565,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-shared/collaborative-editor-pane.ts",
-      "rule": "as-unknown",
-      "fingerprint": "92559dbfbaae333889a30acbff9d8968886c80fb8ca42f2ebc09c08c5d2edf07",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-shared/collaborative-editor-pane.ts",
-      "rule": "as-unknown",
-      "fingerprint": "f71fef8de78d0449b912086e0f6670ba058a43be97a00a93481d0e79218980ba",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-shared/collaborative-editor-pane.ts",
-      "rule": "as-unknown",
-      "fingerprint": "31703e226fa097f8b2b5631ded681c5f58d7639952cf1305b2ba7e7a46814c81",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-ui/src/components/chat-dock/ChatDockBody.tsx",
       "rule": "as-any",
       "fingerprint": "b9c895492d1f49431157d886c13ddf7fed82c40d0ddc8dacb3b802c83fcb8a86",

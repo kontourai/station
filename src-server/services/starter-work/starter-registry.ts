@@ -1,3 +1,4 @@
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
 import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
@@ -135,6 +136,8 @@ export type StarterSessionOwner = {
      * `/commands adoptSession`.
      */
     fullAccessGrant: FullAccessGrant | null;
+    /** #1796: the launching request's server-derived origin, for receipts. */
+    clientOrigin?: ClientOrigin;
     /**
      * The launching request's owner stamp. The source must be readable by
      * its principal, and the adopted child records it as owner (acting for no
@@ -513,6 +516,8 @@ export class StarterRegistry {
     fullAccessGrant: FullAccessGrant | null,
     /** The launching request's owner stamp for the dispatched session. */
     owner: SessionOwnerStamp,
+    /** #1796: the launching request's server-derived origin, for receipts. */
+    clientOrigin?: ClientOrigin,
   ): Promise<StartTaskStarterLaunchResult> {
     this.assertKnown(input.starterId);
     this.assertPrerequisite();
@@ -616,6 +621,8 @@ export class StarterRegistry {
       skillName: input.dispatch?.skillName ?? task.skillName,
       sourceSurface: 'starter-work',
       fullAccessGrant,
+      // #1796: the server-derived origin, never one the body carried.
+      clientOrigin,
       ownerUserId: owner.ownerUserId,
       ...(owner.ownerAttribution
         ? { ownerAttribution: owner.ownerAttribution }
@@ -670,6 +677,8 @@ export class StarterRegistry {
     fullAccessGrant: FullAccessGrant | null,
     /** The launching request's owner stamp; see `StarterSessionOwner.continue`. */
     owner: SessionOwnerStamp,
+    /** #1796: the launching request's server-derived origin, for receipts. */
+    clientOrigin?: ClientOrigin,
   ): Promise<ContinueSessionStarterLaunchResult> {
     this.assertKnown(input.starterId);
     this.assertPrerequisite();
@@ -693,6 +702,7 @@ export class StarterRegistry {
         operationId: input.operationId,
         fullAccessGrant,
         owner,
+        ...(clientOrigin ? { clientOrigin } : {}),
       });
     } catch (error) {
       return {

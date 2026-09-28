@@ -70,7 +70,7 @@ function escapeAttr(text: string): string {
   return escapeXml(text).replace(/"/g, '&quot;');
 }
 
-export function extractJson(text: string): string | null {
+function extractJson(text: string): string | null {
   const start =
     text.indexOf('{') === -1
       ? text.indexOf('[')

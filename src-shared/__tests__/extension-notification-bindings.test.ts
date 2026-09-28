@@ -1,11 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
-  _resetUnboundExtensionNotices,
   EXTENSION_NOTIFICATION_BINDINGS,
-  EXTENSION_NOTIFICATION_EVIDENCE_GAPS,
-  EXTENSION_NOTIFICATION_PROMOTIONS,
   extensionNotificationBinding,
-  isBoundExtensionNotification,
   takeUnboundExtensionNotice,
 } from '../extension-notification-bindings.js';
 
@@ -18,10 +14,11 @@ describe('extension notification bindings', () => {
           Object.isFrozen(binding) && Object.isFrozen(binding.observedAgainst),
       ),
     ).toBe(true);
-    // L2 (station#4084 review fix round): project `evidence` too — a wrong
-    // evidence tag on a tuple (e.g. attributing the new error/rate_limit
-    // binding to #1815's runtime observation instead of #4084's) must fail
-    // this test, not stay invisible because the projection omitted it.
+    // The exact (namespace, type, consumer) allowlist (ADR 0013), plus its
+    // provenance. archive#4084 review fix round: project `evidence` and
+    // `observedAgainst` too, so a binding attributed to the wrong runtime
+    // observation (e.g. error/rate_limit credited to #1815 instead of #4084)
+    // fails here instead of hiding behind the projection.
     expect(
       EXTENSION_NOTIFICATION_BINDINGS.map(
         ({ namespace, type, consumer, observedAgainst, evidence }) => ({
@@ -190,14 +187,7 @@ describe('extension notification bindings', () => {
     ]);
   });
 
-  test('keeps the unevidenced v3 spelling as a gap and exact no-op', () => {
-    expect(EXTENSION_NOTIFICATION_EVIDENCE_GAPS).toEqual([
-      {
-        namespace: '_kiro',
-        observedAgainst: 'kiro-v3',
-        gap: 'notification spelling has not been observed',
-      },
-    ]);
+  test('keeps the unevidenced v3 spelling as an exact no-op', () => {
     expect(
       extensionNotificationBinding('_kiro', 'mcp/oauth_request'),
     ).toBeUndefined();
@@ -206,32 +196,12 @@ describe('extension notification bindings', () => {
     ).toBeUndefined();
   });
 
-  test('every promotion stays bound until the adapter emits the Station event', () => {
-    for (const item of EXTENSION_NOTIFICATION_PROMOTIONS) {
-      expect(
-        isBoundExtensionNotification(item.namespace, item.type),
-        `${item.namespace}/${item.type} must stay bound until resolved`,
-      ).toBe(true);
-    }
-  });
-
-  test('Grok queue/changed promotes to Station follow-up queue, not steer', () => {
-    const item = EXTENSION_NOTIFICATION_PROMOTIONS.find(
-      (promotion) =>
-        promotion.namespace === '_x.ai' && promotion.type === 'queue/changed',
-    );
-    expect(item?.stationEvent).toBe('queuedMessages');
-  });
-
   test('takeUnboundExtensionNotice fires once per provider-tuple', () => {
-    _resetUnboundExtensionNotices();
-    expect(takeUnboundExtensionNotice('acp', '_x.ai', 'never/seen')).toBe(true);
-    expect(takeUnboundExtensionNotice('acp', '_x.ai', 'never/seen')).toBe(
-      false,
-    );
-    expect(takeUnboundExtensionNotice('claude', '_x.ai', 'never/seen')).toBe(
-      true,
-    );
-    _resetUnboundExtensionNotices();
+    // A tuple no other test in this module instance takes, so the
+    // process-lifetime first-seen set starts without it.
+    const type = 'bindings-test/fires-once';
+    expect(takeUnboundExtensionNotice('acp', '_x.ai', type)).toBe(true);
+    expect(takeUnboundExtensionNotice('acp', '_x.ai', type)).toBe(false);
+    expect(takeUnboundExtensionNotice('claude', '_x.ai', type)).toBe(true);
   });
 });

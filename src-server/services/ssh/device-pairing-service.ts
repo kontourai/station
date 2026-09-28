@@ -2064,6 +2064,20 @@ export class DevicePairingService {
       .map(publicDevice);
   }
 
+  /**
+   * #1796: whether paired device `deviceId` is live (not revoked, not pending)
+   * and still holds `scope`. Read at every turn start and respawn for a
+   * session whose `host` stamp that device granted.
+   */
+  deviceHoldsScope(deviceId: string, scope: PairingScope): boolean {
+    const device = this.#registry.devices.find((item) => item.id === deviceId);
+    return (
+      device?.revokedAt === null &&
+      device.pendingEnrollmentId === undefined &&
+      pairingScopeIncludes(device.scope, scope)
+    );
+  }
+
   /** Private current incarnation for an explicitly promoted home-control grant. */
   homeControlGrantRevision(deviceId: string): number | undefined {
     const device = this.#registry.devices.find((item) => item.id === deviceId);

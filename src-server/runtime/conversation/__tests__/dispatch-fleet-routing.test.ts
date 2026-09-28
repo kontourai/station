@@ -70,8 +70,10 @@ vi.mock('../../plugins/runtime-provider-resolution.js', () => ({
 let capturedPlan: any;
 let capturedOnReceipt: any;
 let capturedModels: Record<string, unknown> = {};
+let capturedDispatchOptions: any;
 vi.mock('@kontourai/dispatch/ai-sdk', () => ({
   createAiSdkDispatchModel: (options: any) => {
+    capturedDispatchOptions = options;
     capturedPlan = options.plan;
     capturedOnReceipt = options.onReceipt;
     capturedModels = options.models;
@@ -223,6 +225,7 @@ beforeEach(() => {
   capturedPlan = undefined;
   capturedOnReceipt = undefined;
   capturedModels = {};
+  capturedDispatchOptions = undefined;
   vi.clearAllMocks();
 });
 
@@ -807,6 +810,67 @@ describe('authorized turn to fleet receipt correlation (station#3866)', () => {
     ]);
     expect(written[0]!.selection?.candidateId).toBe(fleetB.id);
     expect(written[1]!.selection?.candidateId).toBe(fleetA.id);
+  });
+
+  it('serves a correlation-qualified plan through the real ai-sdk wrapper by its unchanged runtime id', async () => {
+    await createConfiguredDispatchModel(spec, config(resolution()), primary);
+    const { createAiSdkDispatchModel: realCreateAiSdkDispatchModel } =
+      await vi.importActual<typeof import('@kontourai/dispatch/ai-sdk')>(
+        '@kontourai/dispatch/ai-sdk',
+      );
+    // Station's own options, with the registry's language models replaced by
+    // one answering fixture per runtime id Station registered.
+    const servedBy: string[] = [];
+    const models = Object.fromEntries(
+      Object.keys(capturedModels).map((runtimeId) => [
+        runtimeId,
+        {
+          specificationVersion: 'v3' as const,
+          provider: 'fixture',
+          modelId: runtimeId,
+          supportedUrls: {},
+          async doGenerate() {
+            servedBy.push(runtimeId);
+            return {
+              content: [{ type: 'text' as const, text: 'resolved' }],
+              finishReason: { unified: 'stop' as const, raw: 'stop' },
+              usage: {
+                inputTokens: {
+                  total: 1,
+                  noCache: 1,
+                  cacheRead: undefined,
+                  cacheWrite: undefined,
+                },
+                outputTokens: { total: 1, text: 1, reasoning: undefined },
+              },
+              warnings: [],
+            };
+          },
+          async doStream(): Promise<never> {
+            throw new Error('not used');
+          },
+        },
+      ]),
+    );
+    const model = realCreateAiSdkDispatchModel({
+      ...capturedDispatchOptions,
+      models,
+    });
+
+    const generated = await runWithAuthorizedTurnCorrelation(turnA, () =>
+      model.doGenerate({
+        prompt: [{ role: 'user', content: [{ type: 'text', text: 'run it' }] }],
+      }),
+    );
+
+    expect(generated.content).toEqual([{ type: 'text', text: 'resolved' }]);
+    expect(servedBy).toEqual(['runtime-0']);
+    // The receipt joins the candidate Station qualified with the turn, while
+    // the registry lookup above used the installed runtime id.
+    expect(written).toHaveLength(1);
+    expect(written[0]!.selection?.candidateId).toBe(
+      'candidate-0:turn:correlation-a',
+    );
   });
 
   it('reuses one stable correlation on redelivery rather than beginning a second operation', async () => {

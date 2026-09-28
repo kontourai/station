@@ -110,16 +110,6 @@ describe('GuidanceView', () => {
     expect(screen.getByText('Skills body (commands)')).toBeTruthy();
   });
 
-  test('the filter never reaches Commands, which it would narrow nothing of', () => {
-    render(
-      <GuidanceView
-        route={{ type: 'guidance', tab: 'commands', filter: 'commands' }}
-      />,
-    );
-
-    expect(screen.getByText('Commands body')).toBeTruthy();
-  });
-
   // archive#4463: the page title is a CONSTANT and must not change when the
   // tab changes — the tab strip already names the section, so the tabs must
   // not restate it the way the retired per-tab header used to. #2144 slice 4
@@ -136,31 +126,29 @@ describe('GuidanceView', () => {
   // tests exist to catch.
   const FALLBACK_TITLE = 'FALLBACK — must be overridden';
 
+  function renderFramed(route: Parameters<typeof GuidanceView>[0]['route']) {
+    return render(
+      <PageFrame spec={{ title: FALLBACK_TITLE }} routeIdentity="guidance">
+        <GuidanceView route={route} />
+      </PageFrame>,
+    );
+  }
+
+  // The filter narrows the Skills list only. Carried onto Commands, the header
+  // would claim a narrowed command-skills list the tab does not show.
+  test('a commands filter on the Commands tab keeps the Commands header', () => {
+    renderFramed({ type: 'guidance', tab: 'commands', filter: 'commands' });
+
+    expect(screen.getByText('Commands body')).toBeTruthy();
+    expect(
+      screen.getByText('Slash commands available to agents in chat.'),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('Skills that are runnable as a slash command.'),
+    ).toBeNull();
+  });
+
   describe('the page title stays "Skills" across tabs', () => {
-    function renderFramed(route: Parameters<typeof GuidanceView>[0]['route']) {
-      return render(
-        <PageFrame spec={{ title: FALLBACK_TITLE }} routeIdentity="guidance">
-          <GuidanceView route={route} />
-        </PageFrame>,
-      );
-    }
-
-    test('on the Skills tab', () => {
-      renderFramed({ type: 'guidance', tab: 'skills' });
-      expect(
-        screen.getByRole('heading', { level: 1, name: 'Skills' }),
-      ).toBeTruthy();
-      expect(screen.queryByText(FALLBACK_TITLE)).toBeNull();
-    });
-
-    test('on the Commands tab', () => {
-      renderFramed({ type: 'guidance', tab: 'commands' });
-      expect(
-        screen.getByRole('heading', { level: 1, name: 'Skills' }),
-      ).toBeTruthy();
-      expect(screen.queryByText(FALLBACK_TITLE)).toBeNull();
-    });
-
     test('switching from Skills to Commands does not retitle the page', () => {
       const { rerender } = render(
         <PageFrame spec={{ title: FALLBACK_TITLE }} routeIdentity="guidance">

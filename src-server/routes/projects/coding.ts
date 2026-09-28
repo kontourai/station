@@ -65,7 +65,7 @@ const CODING_EXEC_NOT_GRANTED = {
   success: false as const,
   code: 'coding-exec-not-granted' as const,
   error:
-    "This device is not allowed to run commands on this Station's computer. The Station's operator can allow it: Devices, this device's access, Run commands.",
+    "This device is not allowed to run commands on this Station's computer. The Station's operator can allow it: on the Station's host, run: station environment access devices, then station environment access scope <this device> --add coding:exec; or in the Station desktop app on its host, select the Station name (top right) → Paired devices → this device → Change access → Run commands → Apply.",
 };
 
 /**

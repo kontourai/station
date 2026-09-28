@@ -40,6 +40,7 @@ import {
   STATION_PROOF_PROTOCOL_VERSION,
   type StationCompatibility,
 } from '@kontourai/station-contracts';
+import { PAIRING_SCOPE_APPROVAL_FULL_ACCESS } from '@kontourai/station-contracts/environment-security';
 import {
   assertExistingSecurityDirectory,
   EnvironmentSecurityRecordError,
@@ -322,6 +323,16 @@ export class EnvironmentSecurityService {
    * Web Push subscription routes require this — not verifyCredential — to
    * enforce that only a paired device can subscribe.
    */
+  /** #1796: whether a paired device still holds `approval:full-access`. */
+  deviceHoldsFullAccess(deviceId: string): boolean {
+    return (
+      this.#devicePairingService?.deviceHoldsScope(
+        deviceId,
+        PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+      ) ?? false
+    );
+  }
+
   canSharePersonalConversation(requesterId: string, ownerId: string): boolean {
     return (
       this.#devicePairingService?.canSharePersonalConversation(

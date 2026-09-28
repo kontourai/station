@@ -1793,6 +1793,27 @@ describe('CI verification workflow contracts', () => {
       CI_FAST_TIMEOUT_MS + boundedMs + 3 * 60_000,
     );
 
+    // The selection can include tests that exec zsh, which ubuntu-22.04
+    // lacks: the shard provisions it exactly as full-regression does, before
+    // the tests run.
+    const zshName =
+      'Provision and preflight zsh for process-heavy installer fixtures';
+    const fullRegressionZsh = (
+      load(workflow('full-regression.yml')) as {
+        jobs: Record<string, Job>;
+      }
+    ).jobs['full-regression'].steps?.find((step) => step.name === zshName);
+    expect(fullRegressionZsh?.run).toContain('apt-get install --yes zsh');
+    const shardZshIndex = shardSteps.findIndex((step) => step.name === zshName);
+    expect(shardZshIndex).toBeGreaterThan(-1);
+    expect(shardSteps[shardZshIndex].run).toBe(fullRegressionZsh?.run);
+    expect(shardSteps[shardZshIndex]['timeout-minutes']).toBe(
+      fullRegressionZsh?.['timeout-minutes'],
+    );
+    expect(shardZshIndex).toBeLessThan(
+      shardSteps.findIndex((step) => step.name === 'Run fast-checks shard'),
+    );
+
     // The plan is uploaded once and read, by exact name, by the shards and
     // the aggregator; the receipts' upload name matches the aggregator's
     // download pattern.

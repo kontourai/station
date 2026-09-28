@@ -299,16 +299,9 @@ designated_requirement="$(codesign -d -r- "$candidate" 2>&1 | node "$build_root/
   exit 1
 }
 if [[ -e "$destination" ]]; then
-  existing_designated_requirement="$(codesign -d -r- "$destination" 2>&1 | node "$build_root/ops/nightly/macos-signing-identity.mjs" --raw-designated-requirement)" || {
-    print -u2 'Existing Station Nightly has no readable designated requirement; refusing to replace a credential-owning app.'
-    exit 1
-  }
-  if [[ "$existing_designated_requirement" == *cdhash* ]]; then
-    print 'Migrating the existing ad-hoc Station Nightly signature to the stable certificate-backed requirement.'
-  elif [[ "$existing_designated_requirement" != "$designated_requirement" ]]; then
-    print -u2 'Existing Station Nightly has a different stable designated requirement. Keep its signing identity or perform an explicit credential migration; replacement is refused.'
-    exit 1
-  fi
+  # The helper allows the one ad-hoc -> stable migration and an unchanged
+  # requirement; it prints its own refusal and exits non-zero otherwise.
+  codesign -d -r- "$destination" 2>&1 | node "$build_root/ops/nightly/macos-signing-identity.mjs" --designated-requirement-transition "$designated_requirement" || exit 1
 fi
 
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$candidate/Contents/Info.plist")"

@@ -2,15 +2,17 @@
  * @vitest-environment jsdom
  */
 
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   GUIDANCE_TAB_MEMORY_KEY,
-  isGuidanceFilter,
   readRememberedGuidanceTab,
   resolveGuidanceTab,
 } from '../views/guidance-tab';
 
-afterEach(() => sessionStorage.clear());
+afterEach(() => {
+  vi.restoreAllMocks();
+  sessionStorage.clear();
+});
 
 // Guidance has ONE authored concept (Skills) and one runtime view (Commands).
 // Nothing resolves to a Playbooks tab any more — the noun is gone from the UI.
@@ -32,15 +34,12 @@ describe('resolveGuidanceTab', () => {
     expect(resolveGuidanceTab(undefined)).toBe('skills');
   });
 
+  // Privacy-restricted webviews throw on sessionStorage access; Guidance must
+  // still open rather than crash its route.
   test('an unreadable memory is the same answer as no memory', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
     expect(resolveGuidanceTab(undefined)).toBe('skills');
-  });
-});
-
-describe('isGuidanceFilter', () => {
-  test('accepts only the narrowing that exists', () => {
-    expect(isGuidanceFilter('commands')).toBe(true);
-    expect(isGuidanceFilter('playbooks')).toBe(false);
-    expect(isGuidanceFilter(undefined)).toBe(false);
   });
 });

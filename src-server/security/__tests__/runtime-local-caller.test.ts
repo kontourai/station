@@ -3,10 +3,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   bindRuntimeLocalOperator,
+  getRuntimeAuthenticatedRequestPrincipal,
   isBoundLocalGrantMintedOperator,
   isBoundRuntimeLocalOperator,
   isLocalRuntimeCaller,
   type RuntimeAuthenticatedRequestPrincipal,
+  setRuntimeAuthenticatedRequestPrincipal,
 } from '../runtime-request-security.js';
 
 const homePossession: RuntimeAuthenticatedRequestPrincipal = {
@@ -141,5 +143,27 @@ describe('isLocalRuntimeCaller — mint-time home-possession only', () => {
         bind({ ...operatorPrincipal, mintKind: 'local-grant' }),
       ),
     ).toBe(false);
+  });
+});
+
+describe('runtime authenticated request principal', () => {
+  it('keeps the middleware-authenticated cookie or bearer principal on its exact request', () => {
+    const request = new Request('http://station.test/api/tasks/task/room');
+    setRuntimeAuthenticatedRequestPrincipal(request, {
+      credential: 'paired-device-credential',
+      authority: 'device-credential',
+      source: 'session',
+    });
+    expect(getRuntimeAuthenticatedRequestPrincipal(request)).toEqual({
+      credential: 'paired-device-credential',
+      authority: 'device-credential',
+      source: 'session',
+    });
+    // Request-scoped, never ambient: another request carries no principal.
+    expect(
+      getRuntimeAuthenticatedRequestPrincipal(
+        new Request('http://station.test/api/tasks/task/room'),
+      ),
+    ).toBeUndefined();
   });
 });

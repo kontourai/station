@@ -130,16 +130,15 @@ describe('macOS nightly lane', () => {
     );
     expect(installer).not.toContain('codesign --force --deep --sign -');
     expect(installer).toContain('--candidate-designated-requirement');
-    expect(installer).toContain('--raw-designated-requirement');
     expect(installer).not.toContain("sed -n 's/^designated => //p'");
     expect(installer).toContain(
       'stable certificate-backed designated requirement',
     );
+    // The transition decision itself is proven through the CLI mode in
+    // ops/nightly/macos-signing-identity.test.mjs; this pins that the swap
+    // runs it and stops on its refusal.
     expect(installer).toContain(
-      'Migrating the existing ad-hoc Station Nightly signature',
-    );
-    expect(installer).toContain(
-      'Existing Station Nightly has a different stable designated requirement',
+      '--designated-requirement-transition "$designated_requirement" || exit 1',
     );
     expect(installer).toContain(
       'codesign --verify --deep --strict --verbose=2 "$candidate"',
@@ -153,6 +152,9 @@ describe('macOS nightly lane', () => {
     );
     expect(installer).toContain('Nightly built app STATION_DESKTOP_PORT is ');
     expect(installer).toContain('expected $expected_nightly_port.');
+    expect(installer).toContain('scripts/lib/nightly-build-identity.mjs');
+    expect(installer).toContain('--config src-desktop/tauri.nightly.conf.json');
+    expect(installer).toContain('--config "$nightly_config"');
     expect(installer).toContain('bundle.macOS.bundleVersion');
     expect(installer).toContain('Print :CFBundleShortVersionString');
     expect(installer).toContain('Print :CFBundleVersion');
