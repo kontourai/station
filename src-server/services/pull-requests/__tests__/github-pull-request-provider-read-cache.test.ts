@@ -322,4 +322,64 @@ describe('GitHubPullRequestProvider forge read coalescing (#2937)', () => {
     await provider.listPullRequests(station, openQuery);
     expect(gh.count('pr list')).toBe(2);
   });
+  test('the conflict indicator read is one narrow list per repository, never the review fields', async () => {
+    const gh = fakeGh();
+    const { provider } = providerWith(gh);
+    gh.holdAll();
+    const pending = Array.from({ length: 6 }, (_, index) =>
+      provider.listOpenPullRequestMergeability(
+        contextFor('kontourai', 'station', `/row-${index}`),
+      ),
+    );
+    for (let turn = 0; turn < 4; turn += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      gh.releaseAll();
+    }
+    for (const result of await Promise.all(pending))
+      expect(result).toMatchObject({
+        available: true,
+        data: [
+          { ref: '7', sourceBranch: 'feature', mergeability: 'conflicting' },
+        ],
+      });
+    expect(gh.listCalls()).toEqual([
+      [
+        'pr',
+        'list',
+        '--repo',
+        'github.com/kontourai/station',
+        '--state',
+        'open',
+        '--limit',
+        '100',
+        '--json',
+        'number,headRefName,mergeable',
+      ],
+    ]);
+    expect(gh.count('auth')).toBe(1);
+
+    // The review list is a separate read with its own fields.
+    await provider.listPullRequests(station, openQuery);
+    expect(gh.count('pr list')).toBe(2);
+    expect(gh.listCalls()[1]).toContain(
+      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
+    );
+    // A write invalidates the narrow read too.
+    await provider.mergePullRequest(station, '7', { method: 'squash' });
+    await provider.listOpenPullRequestMergeability(station);
+    expect(gh.count('pr list')).toBe(3);
+  });
+
+  test('malformed narrow output is a failure, not a retained answer', async () => {
+    const gh = fakeGh();
+    const { provider } = providerWith(gh);
+    gh.stdoutNext('pr list', JSON.stringify([{ number: 7 }]));
+    await expect(
+      provider.listOpenPullRequestMergeability(station),
+    ).resolves.toMatchObject({ available: false });
+    await expect(
+      provider.listOpenPullRequestMergeability(station),
+    ).resolves.toMatchObject({ available: true, data: [{ ref: '7' }] });
+    expect(gh.count('pr list')).toBe(2);
+  });
 });

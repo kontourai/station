@@ -269,6 +269,45 @@ describe('pull request operator gate', () => {
     ]);
   });
 
+  test('the mergeability route answers the narrow read, not a pull request named "mergeability" (#2937)', async () => {
+    const transport = vi.fn(async (args: string[]) => ({
+      stdout:
+        args[0] === 'pr'
+          ? JSON.stringify([
+              { number: 7, headRefName: 'b', mergeable: 'CONFLICTING' },
+            ])
+          : '',
+    }));
+    const provider = new GitHubPullRequestProvider(transport);
+    const getPullRequest = vi.spyOn(provider, 'getPullRequest');
+    const routes = createPullRequestRoutes(() => [provider], context, {
+      operatorIdentityForRequest: () => undefined,
+    });
+    const response = await routes.request(
+      '/github/github.com/o/r/mergeability?project=p',
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        available: true,
+        data: [{ ref: '7', sourceBranch: 'b', mergeability: 'conflicting' }],
+      },
+    });
+    expect(getPullRequest).not.toHaveBeenCalled();
+    expect(transport.mock.calls.at(-1)?.[0]).toContain(
+      'number,headRefName,mergeable',
+    );
+  });
+
+  test('a provider without the narrow read is refused, not answered with the full list', async () => {
+    const x = app();
+    const response = await x.app.request('/github/github.com/o/r/mergeability');
+    expect(response.status).toBe(404);
+    expect(x.provider.listPullRequests).not.toHaveBeenCalled();
+    expect(x.provider.getPullRequest).not.toHaveBeenCalled();
+  });
+
   test('returns the provider result effective capability layer to surfaces', async () => {
     const x = app();
     x.provider.offeredCapabilities = { ...caps, approve: false };

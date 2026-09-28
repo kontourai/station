@@ -2,6 +2,7 @@ import type {
   IPullRequestProvider,
   PullRequest,
   PullRequestAvailability,
+  PullRequestBranchMergeability,
   PullRequestCapabilities,
   PullRequestMergeInput,
   PullRequestMergeMethod,
@@ -153,6 +154,18 @@ class ForgeReadCache {
   }
 }
 
+/**
+ * gh's default of 30 would hide a session's pull request behind thirty newer
+ * ones; the narrow fields keep a longer page cheap.
+ */
+const GITHUB_MERGEABILITY_LIST_LIMIT = 100;
+const githubMergeability = (value: unknown): PullRequest['mergeability'] =>
+  value === 'MERGEABLE'
+    ? 'mergeable'
+    : value === 'CONFLICTING'
+      ? 'conflicting'
+      : 'unknown';
+
 const canonicalHost = (host: string) =>
   host.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
 
@@ -193,12 +206,19 @@ export function normalizeGitHubPullRequest(
       : 'NONE',
     comments: Array.isArray(value.comments) ? value.comments.length : 0,
     nativeId: String(value.number),
-    mergeability:
-      value.mergeable === 'MERGEABLE'
-        ? 'mergeable'
-        : value.mergeable === 'CONFLICTING'
-          ? 'conflicting'
-          : 'unknown',
+    mergeability: githubMergeability(value.mergeable),
+  };
+}
+
+export function normalizeGitHubBranchMergeability(
+  value: any,
+): PullRequestBranchMergeability {
+  if (!Number.isInteger(value?.number) || typeof value.headRefName !== 'string')
+    throw new Error('GitHub CLI returned an incomplete pull request');
+  return {
+    ref: String(value.number),
+    sourceBranch: value.headRefName,
+    mergeability: githubMergeability(value.mergeable),
   };
 }
 
@@ -321,24 +341,32 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       };
     }
   }
-  private async call(
+  private call(
     context: PullRequestRepositoryContext,
     args: string[],
     { shared = false }: { shared?: boolean } = {},
   ): Promise<PullRequestResult<any>> {
+    const normalize = (v: any) => ({
+      ...normalizeGitHubPullRequest(v, this.getHost(context)),
+      repository: {
+        owner: context.repository.owner,
+        name: context.repository.name,
+      },
+    });
+    return this.read(context, args, shared, (parsed) =>
+      Array.isArray(parsed) ? parsed.map(normalize) : normalize(parsed),
+    );
+  }
+  private async read<T>(
+    context: PullRequestRepositoryContext,
+    args: string[],
+    shared: boolean,
+    normalize: (parsed: unknown) => T,
+  ): Promise<PullRequestResult<T>> {
     const a = await this.getAvailability(context);
     if (!a.available) return a;
-    const read = async () => {
-      const parsed = JSON.parse((await this.gh(args, context)).stdout);
-      const normalize = (v: any) => ({
-        ...normalizeGitHubPullRequest(v, this.getHost(context)),
-        repository: {
-          owner: context.repository.owner,
-          name: context.repository.name,
-        },
-      });
-      return Array.isArray(parsed) ? parsed.map(normalize) : normalize(parsed);
-    };
+    const read = async () =>
+      normalize(JSON.parse((await this.gh(args, context)).stdout));
     try {
       // The key is the exact argv, so each query shape (state, limit) is its
       // own read. Normalizing inside the read keeps malformed output a
@@ -489,6 +517,35 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
         ...(q.limit ? ['--limit', String(q.limit)] : []),
       ],
       { shared: true },
+    );
+  }
+  /**
+   * One narrow list per repository for conflict indicators (#2937): only the
+   * three fields they read, so it costs the forge a fraction of the review
+   * list and shares nothing with it but the availability probe.
+   */
+  listOpenPullRequestMergeability(c: PullRequestRepositoryContext) {
+    const host = this.getHost(c);
+    return this.read(
+      c,
+      [
+        'pr',
+        'list',
+        '--repo',
+        `${host}/${c.repository.owner}/${c.repository.name}`,
+        '--state',
+        'open',
+        '--limit',
+        String(GITHUB_MERGEABILITY_LIST_LIMIT),
+        '--json',
+        'number,headRefName,mergeable',
+      ],
+      true,
+      (parsed) => {
+        if (!Array.isArray(parsed))
+          throw new Error('GitHub CLI returned no pull request list');
+        return parsed.map(normalizeGitHubBranchMergeability);
+      },
     );
   }
   getPullRequest(c: PullRequestRepositoryContext, ref: string) {

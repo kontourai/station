@@ -14,7 +14,10 @@ import { LiveCollaboratorsSection } from '../components/live-activity/LiveCollab
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 import { SessionEvidenceButton } from '../components/session/SessionEvidenceButton';
 import { SessionProjectPill } from '../components/session/SessionProjectPill';
-import { SessionPullRequestConflictChip } from '../components/session/SessionPullRequestConflictChip';
+import {
+  SessionPullRequestConflictChip,
+  SessionPullRequestObservationProvider,
+} from '../components/session/SessionPullRequestConflictChip';
 import {
   DelegatedTaskCoordinator,
   DelegatedTaskStarter,
@@ -744,7 +747,7 @@ export function SessionsView({
     : undefined;
 
   return (
-    <>
+    <SessionPullRequestObservationProvider>
       {/* empty-state action: delegation starter and filter reset are adjacent */}
       <SplitPaneLayout
         heightResponsive
@@ -893,6 +896,6 @@ export function SessionsView({
           });
         }}
       />
-    </>
+    </SessionPullRequestObservationProvider>
   );
 }
