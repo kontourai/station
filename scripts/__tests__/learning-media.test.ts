@@ -305,6 +305,7 @@ it('checks the actual capture manifest and recorded source bytes in the required
   );
   // media.json metadata joined with each capture's review (#2936).
   const { media: manifest } = readReviewState(process.cwd());
+  if (!manifest) throw new Error('The repository has no capture manifest');
   // #2923: the same scoped/advisory/strict decision as the review ledger.
   const captures = await compileLearningMedia(
     manifest,

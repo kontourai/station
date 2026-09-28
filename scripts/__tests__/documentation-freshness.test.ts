@@ -204,10 +204,19 @@ function fixture({ commitIt = true } = {}) {
   };
 }
 
-const compiled = (root: string, path: string) =>
-  readReviewState(root).ledger.records.find(
+function compiled(root: string, path: string) {
+  const found = readReviewState(root).ledger.records.find(
     (entry: { path: string }) => entry.path === path,
   );
+  if (!found) throw new Error(`No compiled review record: ${path}`);
+  return found;
+}
+
+function compiledMedia(root: string) {
+  const { media } = readReviewState(root);
+  if (!media) throw new Error('No compiled capture manifest');
+  return media;
+}
 
 /** Hand-edit one record file, keeping the canonical layout. */
 function editRecord(root: string, path: string, edit: (data: any) => void) {
@@ -435,7 +444,7 @@ describe('scoped documentation freshness (#2923)', () => {
     expect(f.read(MEDIA)).toBe(before);
     expect(recorded.stdout).not.toContain('Still stale');
     expect(check(f.root, strict).status).toBe(0);
-    const capture = readReviewState(f.root).media.captures[0];
+    const capture = compiledMedia(f.root).captures[0];
     expect(capture.sources).toEqual([
       {
         path: 'src/ui.ts',
@@ -953,7 +962,10 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
 
   it('reads the single-file layout from history, and the layout change alone puts no record in scope', () => {
     const f = fixture();
-    const current = readReviewState(f.root);
+    const current = {
+      ledger: readReviewState(f.root).ledger,
+      media: compiledMedia(f.root),
+    };
     // Rebuild the pre-#2936 layout from the same reviews.
     const legacyLedger = {
       version: 1,
