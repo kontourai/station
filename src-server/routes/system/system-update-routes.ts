@@ -84,7 +84,7 @@ const DEFAULT_INSTANCE_ID = 'default';
  * provenance, its own installer-driven self-update), so in practice this
  * predicate only gates the source checkout's git-pull path.
  */
-export function coreUpdateSupervision(
+function coreUpdateSupervision(
   env: NodeJS.ProcessEnv = process.env,
 ): SelfUpdateUnavailableCode | null {
   if (env.STATION_SERVICE_MANAGED === '1') return 'service-managed';

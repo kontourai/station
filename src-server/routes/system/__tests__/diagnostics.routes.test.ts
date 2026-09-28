@@ -14,31 +14,6 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   serverLogsRead: { add: vi.fn() },
 }));
 
-const { isLocalRuntimeCallerMock, originalEvaluate } = vi.hoisted(() => {
-  const originalEvaluate = (request: { principal?: { locality?: string } }) =>
-    request.principal?.locality === 'home-possession';
-  return {
-    originalEvaluate,
-    isLocalRuntimeCallerMock: vi.fn(originalEvaluate),
-  };
-});
-
-vi.mock(
-  '../../../security/runtime-request-security.js',
-  async (importOriginal) => {
-    const actual =
-      await importOriginal<
-        typeof import('../../../security/runtime-request-security.js')
-      >();
-    isLocalRuntimeCallerMock.mockImplementation(originalEvaluate);
-    actual.localRuntimeCaller.evaluate = isLocalRuntimeCallerMock;
-    return {
-      ...actual,
-      isLocalRuntimeCaller: isLocalRuntimeCallerMock,
-    };
-  },
-);
-
 const { createDiagnosticsRoutes } = await import('../diagnostics.js');
 const { createServerLogReader } = await import(
   '../../../services/infra/server-log-reader.js'
@@ -46,7 +21,6 @@ const { createServerLogReader } = await import(
 const { serverLogsRead } = await import('../../../telemetry/metrics.js');
 const {
   bindRuntimeLocalOperator,
-  isLocalRuntimeCaller,
   localRuntimeCaller,
   setRuntimeAuthenticatedRequestPrincipal,
 } = await import('../../../security/runtime-request-security.js');
@@ -70,9 +44,7 @@ function fakeDiagnosticsService(bundle: unknown = { schemaVersion: 1 }) {
 const tempDirs: string[] = [];
 
 afterEach(() => {
-  isLocalRuntimeCallerMock.mockReset();
-  isLocalRuntimeCallerMock.mockImplementation(originalEvaluate);
-  localRuntimeCaller.evaluate = isLocalRuntimeCallerMock;
+  vi.restoreAllMocks();
   vi.clearAllMocks();
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
@@ -685,8 +657,11 @@ describe('Diagnostics Routes — local caller reads unredacted; remote stays red
       },
     );
 
+    // The one predicate is replaced for this test only; every other test
+    // runs the production predicate against real principal shapes.
+    const predicate = vi.spyOn(localRuntimeCaller, 'evaluate');
     try {
-      isLocalRuntimeCallerMock.mockReturnValue(false);
+      predicate.mockReturnValue(false);
       const developerForced = await (
         await app.request(
           '/logs',
@@ -704,7 +679,7 @@ describe('Diagnostics Routes — local caller reads unredacted; remote stays red
         'read_logs leaked an unredacted secret after the shared predicate was replaced',
       ).not.toContain(SEEDED_API_KEY);
 
-      isLocalRuntimeCallerMock.mockReturnValue(true);
+      predicate.mockReturnValue(true);
       const developerOpened = await (
         await app.request(
           '/logs',
@@ -715,8 +690,6 @@ describe('Diagnostics Routes — local caller reads unredacted; remote stays red
       const toolOpened = (await tools.read_logs.handler({})).content[0].text;
       expect(developerOpened).toContain(SEEDED_API_KEY);
       expect(toolOpened).toContain(SEEDED_API_KEY);
-      expect(isLocalRuntimeCaller).toBe(isLocalRuntimeCallerMock);
-      expect(localRuntimeCaller.evaluate).toBe(isLocalRuntimeCallerMock);
     } finally {
       vi.unstubAllGlobals();
       if (previousApiBase === undefined) delete process.env.STATION_API_BASE;

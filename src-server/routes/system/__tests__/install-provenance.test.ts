@@ -7,9 +7,7 @@ import {
   DEFAULT_REPOSITORY,
   fetchChannelLatestSha,
   NIGHTLY_SOURCE_STAMP_FILENAME,
-  normalizeOriginUrl,
   readNightlySourceStamp,
-  refspecFromStampRef,
   resolveInstallProvenance,
   resolveSelfUpdateEligibility,
 } from '../install-provenance.js';
@@ -256,29 +254,28 @@ describe('resolveInstallProvenance', () => {
   });
 });
 
-describe('refspecFromStampRef', () => {
+describe('fetchChannelLatestSha', () => {
   test.each([
     ['origin/main', 'refs/heads/main'],
     ['main', 'refs/heads/main'],
     ['origin/release/v2', 'refs/heads/release/v2'],
     ['refs/tags/v1.0.0', 'refs/tags/v1.0.0'],
-  ])('%s → %s', (input, expected) => {
-    expect(refspecFromStampRef(input)).toBe(expected);
-  });
-});
-
-describe('fetchChannelLatestSha', () => {
-  test('returns the sha ls-remote reports', async () => {
-    const exec = async () => ({
-      stdout: `${OTHER_SHA}\trefs/heads/main\n`,
-      stderr: '',
-    });
-    await expect(
-      fetchChannelLatestSha(DEFAULT_REPOSITORY, 'origin/main', {
-        exec: exec as never,
-      }),
-    ).resolves.toBe(OTHER_SHA);
-  });
+  ])(
+    'asks ls-remote for stamp ref %s as %s and returns its sha',
+    async (ref, refspec) => {
+      const exec = vi.fn().mockResolvedValue({
+        stdout: `${OTHER_SHA}\t${refspec}\n`,
+        stderr: '',
+      });
+      await expect(
+        fetchChannelLatestSha(DEFAULT_REPOSITORY, ref, { exec: exec as never }),
+      ).resolves.toBe(OTHER_SHA);
+      expect(exec).toHaveBeenCalledWith(
+        ['ls-remote', DEFAULT_REPOSITORY, refspec],
+        expect.anything(),
+      );
+    },
+  );
 
   test('throws when ls-remote returns nothing (unknown ref)', async () => {
     const exec = async () => ({ stdout: '', stderr: '' });
@@ -376,28 +373,37 @@ describe('resolveSelfUpdateEligibility (#1624)', () => {
     return root;
   }
 
-  test('eligible when the checkout exists, origin matches, installer present', async () => {
-    const checkout = checkoutWithInstaller();
-    const exec = vi.fn().mockResolvedValue({
-      stdout: 'git@github.com:kontourai/station.git\n',
-      stderr: '',
-    });
-    const result = await resolveSelfUpdateEligibility(
-      { repository: REPO, sourceCheckout: checkout },
-      { exec: exec as never, platform: 'darwin' },
-    );
-    expect(result).toEqual({
-      eligible: true,
-      checkoutPath: checkout,
-      installerPath: join(checkout, 'ops', 'nightly', 'install-macos.zsh'),
-    });
-    // Origin was asked of the checkout itself — identity is proven live,
-    // never taken from the stamp.
-    expect(exec).toHaveBeenCalledWith(
-      ['remote', 'get-url', 'origin'],
-      expect.objectContaining({ cwd: checkout }),
-    );
-  });
+  // The checkout's origin may be spelled any way git accepts; each names the
+  // same repository as the https stamp.
+  test.each([
+    'git@github.com:kontourai/station.git',
+    'ssh://git@github.com:2222/kontourai/station.git',
+    'https://github.com/kontourai/station',
+  ])(
+    'eligible when the checkout exists, origin %s matches, installer present',
+    async (origin) => {
+      const checkout = checkoutWithInstaller();
+      const exec = vi.fn().mockResolvedValue({
+        stdout: `${origin}\n`,
+        stderr: '',
+      });
+      const result = await resolveSelfUpdateEligibility(
+        { repository: REPO, sourceCheckout: checkout },
+        { exec: exec as never, platform: 'darwin' },
+      );
+      expect(result).toEqual({
+        eligible: true,
+        checkoutPath: checkout,
+        installerPath: join(checkout, 'ops', 'nightly', 'install-macos.zsh'),
+      });
+      // Origin was asked of the checkout itself — identity is proven live,
+      // never taken from the stamp.
+      expect(exec).toHaveBeenCalledWith(
+        ['remote', 'get-url', 'origin'],
+        expect.objectContaining({ cwd: checkout }),
+      );
+    },
+  );
 
   test.each([
     ['no recorded checkout', null, undefined, 'no source checkout recorded'],
@@ -459,28 +465,5 @@ describe('resolveSelfUpdateEligibility (#1624)', () => {
     );
     expect(result.eligible).toBe(false);
     if (!result.eligible) expect(result.reason).toContain('macOS');
-  });
-});
-
-describe('normalizeOriginUrl', () => {
-  test.each([
-    [
-      'git@github.com:kontourai/station.git',
-      'https://github.com/kontourai/station',
-    ],
-    [
-      'ssh://git@github.com:2222/kontourai/station.git',
-      'https://github.com/kontourai/station',
-    ],
-    [
-      'https://github.com/kontourai/station',
-      'https://github.com/kontourai/station',
-    ],
-    [
-      'https://github.com/kontourai/station.git',
-      'https://github.com/kontourai/station',
-    ],
-  ])('%s → %s', (input, expected) => {
-    expect(normalizeOriginUrl(input)).toBe(expected);
   });
 });
