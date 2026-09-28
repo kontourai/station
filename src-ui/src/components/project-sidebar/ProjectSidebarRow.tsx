@@ -13,7 +13,6 @@ import {
   ProjectLayoutChips,
 } from './ProjectLayoutChips';
 import { sidebarLayoutPaneId } from './pill-region-placement';
-import { projectAccent } from './projectAccent';
 import type { ProjectRowReorderProps } from './useProjectListReorder';
 
 /**
@@ -30,7 +29,7 @@ export function ProjectSidebarRow({
   activeLayout,
   collapsed,
   onNavigate,
-  accent: accentProp,
+  accent,
   liveCount = 0,
   liveLabel = '',
   reorder,
@@ -40,6 +39,7 @@ export function ProjectSidebarRow({
   activeLayout: string | null;
   collapsed: boolean;
   onNavigate?: () => void;
+  /** The set-aware color `projectAccents` allocates over the sidebar's projects. */
   accent?: string;
   /**
    * Sessions in this project's live lanes — Needs you plus Active now, the
@@ -147,7 +147,6 @@ export function ProjectSidebarRow({
   const btnClass = `sidebar__project-btn${
     isActive ? ' sidebar__project-btn--active' : ''
   }`;
-  const accent = accentProp ?? projectAccent(project.slug);
 
   const showReorderHandle = !collapsed && reorder && reorder.count > 1;
 

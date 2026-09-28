@@ -275,6 +275,52 @@ describe.skipIf(!chromiumAvailable)(
       }
     });
 
+    /**
+     * 2026-08-26 audit F6: a standalone item's right padding keeps its content
+     * off the pane's edge, but inside `.split-pane__item-row` that edge is the
+     * trailing action, already spaced by the row's own gap and padding. A copy
+     * of the standalone padding on the in-row item doubled the space between
+     * the name column and the button and ellipsized short names early. So a
+     * trailing row reserves less on each side of the action than one
+     * standalone padding.
+     */
+    test('a trailing row does not reserve a standalone row padding around its action', async () => {
+      const page = await browser.newPage({
+        viewport: { width: 1440, height: 700 },
+      });
+      try {
+        await page.setContent(
+          fixtureHtml(railMarkup(STATION_AGENT_NEEDING_SETUP), 280),
+        );
+        const gaps = await page.evaluate(() => {
+          const rect = (selector: string) => {
+            const element = document.querySelector(selector);
+            if (!element) throw new Error(`${selector} did not render`);
+            return element.getBoundingClientRect();
+          };
+          const row = rect('.split-pane__item-row');
+          const text = rect('.split-pane__item-row .split-pane__item-text');
+          const trailing = rect('.split-pane__item-trailing');
+          const standalone = document.createElement('button');
+          standalone.className = 'split-pane__item';
+          document.querySelector('.split-pane__left')?.append(standalone);
+          return {
+            standalonePadding: Number.parseFloat(
+              getComputedStyle(standalone).paddingRight,
+            ),
+            beforeAction: trailing.left - text.right,
+            afterAction: row.right - trailing.right,
+          };
+        });
+        expect(gaps.standalonePadding).toBeGreaterThan(0);
+        expect(gaps.beforeAction).toBeGreaterThanOrEqual(0);
+        expect(gaps.beforeAction).toBeLessThan(gaps.standalonePadding);
+        expect(gaps.afterAction).toBeLessThan(gaps.standalonePadding);
+      } finally {
+        await page.close();
+      }
+    });
+
     // The pixels the first version of this fix produced, and the reason the
     // first version of this test did not see them: shrinking the badge made
     // the pill (a `display: grid` badge whose own white-space is `normal`)

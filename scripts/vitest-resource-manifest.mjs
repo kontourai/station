@@ -961,6 +961,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/chatFeedback.geometry.test.tsx',
   // #2260: owns Chromium for actual mobile close-target geometry and hit testing.
   'src-ui/src/__tests__/ProjectSidebarHeader.mobileCloseGeometry.test.tsx',
+  // archive#3331: owns Chromium touch emulation for the sidebar reorder
+  // handle's coarse-pointer visibility, size and hit testing.
+  'src-ui/src/__tests__/ProjectSidebarReorder.coarseGeometry.test.tsx',
   // Owns Chromium to measure the legacy action-row wrap and touch-target
   // floor against the real index.css cascade at a phone viewport.
   'src-ui/src/__tests__/legacy-action-row.touch-target.test.ts',
@@ -1040,6 +1043,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // is right that nothing here can see a `playwright-core` spawn, so an
   // omission is silent until the run is slow or flaky.
   'src-ui/src/__tests__/SplitPaneLayout.railName.overflow.test.tsx',
+  // Chromium hit-testing of the framed mobile detail sheet between a fixed
+  // toolbar and dock.
+  'src-ui/src/__tests__/SplitPaneLayout.mobileSheet-geometry.test.tsx',
   // #1536 F (round 3): same shape again — launches a real Chromium to read the
   // Layout menu's RESOLVED row/group borders. A text scan could not: the first
   // fix tied on specificity with a rule 90 lines below it and lost on source

@@ -4,7 +4,6 @@ import {
   collapseSplitPaneState,
   expandSplitPaneState,
   framedBreadcrumbSegments,
-  isSplitPaneMobile,
   parseSplitPaneState,
   resizePaneFromKeyboard,
   resizePaneFromPointer,
@@ -87,9 +86,7 @@ describe('SplitPaneLayout.logic', () => {
     });
   });
 
-  test('classifies mobile breakpoint and detail sheet visibility', () => {
-    expect(isSplitPaneMobile(768)).toBe(true);
-    expect(isSplitPaneMobile(769)).toBe(false);
+  test('classifies detail sheet visibility', () => {
     expect(shouldShowMobileDetailSheet(true, 'item-1')).toBe(true);
     expect(shouldShowMobileDetailSheet(true, null)).toBe(false);
     expect(shouldShowMobileDetailSheet(true, null, true)).toBe(true);
