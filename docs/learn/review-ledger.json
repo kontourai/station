@@ -19200,7 +19200,7 @@
     {
       "path": "docs/guides/testing.md",
       "documentDigest": "520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "a46172592acf20a3cfee3333445b94f6de5597c3",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
@@ -19384,11 +19384,11 @@
         },
         {
           "path": "scripts/run-changed-verification.mjs",
-          "digest": "2b8be667f2da430df0f58ebd4d475a665ab037bcc471073bebbeca0c8f6ccfae"
+          "digest": "e20b9fda50aefc0e588a73fb3bcd05795b477c5cfce76ac95eba7d5e58a4036c"
         },
         {
           "path": "scripts/__tests__/changed-verification.test.ts",
-          "digest": "e3312055e67b0b484e7e8d1013f808d9b3a33d9b85efef7612765ec24c3859b6"
+          "digest": "e2e1d3d2774db506db263f07169bc12cfd3c7781a465ac29e43c378e65a1620a"
         },
         {
           "path": "scripts/__tests__/fast-checks-shard-cli.test.ts",
@@ -19436,7 +19436,8 @@
         "Integration source review through e0314c727: ci.yml adds a zsh provisioning step to fast-checks shards (job timeout 60->65, pinned by ci-workflow-contract.test.ts). The test-impact manifest dropped the literal-swap-gate spawned edge (11->10) and the native-notification-watch scan suite and added the knowledge file-transactions scan suite. path-read-pin-boundary adds one fixture exemption, and bearing/forage deps were removed. The guide makes no claims about those counts, steps or timeouts, and its fast-checks shard description remains accurate. Source review is separate from executed test evidence.",
         "Integration source review through abfc7a889: #2864 adds one TEMP_VIA_FIXTURE directory-walk exemption, for plugin-proposal-staged-reinstall.test.ts, to scripts/__tests__/path-read-pin-boundary.test.ts. The guide makes no claim about that exemption list or its size. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 55cc03451 (#2910) makes a product-law path add its law's observation and fault-injection vitest-file suites to the changed selection, where it used to route to a ci-fast lane and defer the whole diff. 1cc8576b4 (#2907) drops keyedQueryDefaults from the repo-scan and path-read lists, renames the SDK browser-bundle manifest targets to browser-entry-bundles.test.ts and adds a profile.test.ts directory-walk exemption. The guide never claimed that product laws defer to a ci-fast lane and names none of these suites. Its claims still hold: exit 3 is a deferral, deferred lanes stay deferred, and changed areas are matched to their registered laws. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: #2914 adds Android NDK, PR-smoke bound and no-child-process tests to ci-workflow-contract; the Playwright image version vs pnpm-lock assertion remains. It repoints the path-read-pin fixtures, drops the native-recovery-docs impact rules and adds the store-registry test in test-impact-manifest. It also makes verification-policy-gate run validateLaneCatalog and un-export its E2E latest markers, which are still enforced. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: #2914 adds Android NDK, PR-smoke bound and no-child-process tests to ci-workflow-contract; the Playwright image version vs pnpm-lock assertion remains. It repoints the path-read-pin fixtures, drops the native-recovery-docs impact rules and adds the store-registry test in test-impact-manifest. It also makes verification-policy-gate run validateLaneCatalog and un-export its E2E latest markers, which are still enforced. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 follow-up: run-changed-verification.mjs changed only by forwarding runChangedVerification's paths from the representative narrow-diff fixture (its summary had always printed 0 changed paths); changed-verification.test.ts asserts that count and records the measured basis for the existing 120s CLI liveness limit. Claims unaffected. Source review only; no new executed evidence beyond the focused suite."
       ]
     },
     {
@@ -25455,7 +25456,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "40c0d99d7078ddf93c5b3a0ac777d239bea9e7653524db53b7444fc82c4155e1",
-      "sourceRevision": "42491ca6bab31b1365b33e3190c171819881eb72",
+      "sourceRevision": "a46172592acf20a3cfee3333445b94f6de5597c3",
       "summary": "Reviewed request identity, schema and semantic pass conditions, source drift, terminal reporting, artifact protection, handoff/orphan retention and CLI composition. Qualified inventory read errors and preview path disclosure.",
       "limits": "Historical redaction sweep counts and release incidents are retained observations, not rerun measurements. Source/focused evidence does not establish a new full-regression or hosted promotion receipt.",
       "sources": [
@@ -25505,7 +25506,7 @@
         },
         {
           "path": "scripts/run-changed-verification.mjs",
-          "digest": "2b8be667f2da430df0f58ebd4d475a665ab037bcc471073bebbeca0c8f6ccfae"
+          "digest": "e20b9fda50aefc0e588a73fb3bcd05795b477c5cfce76ac95eba7d5e58a4036c"
         },
         {
           "path": "scripts/run-verification.mjs",
@@ -25522,7 +25523,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Shard planning records actual related-discovery duration and its existing cap; no coverage or execution semantics weakened.",
         "Reviewed landing deltas through 111744681: Discovery derives timeout after refinement, keeps a 30s reserve and 60s standalone fallback, refuses insufficient/invalid budgets, and removes the deadline from child environments. Malformed CLI environment is refused before a diagnostic; exhausted valid preparation records infrastructure failure. Read the changed document in context; its purpose and prior evidence limits remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
         "Integration source review through e0314c727: package.json only removed the bearing/forage dependencies. The trust-reconcile-manifest entry and the package.json/lockfile digest inputs are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 42491ca6b: 55cc03451 changes scripts/run-changed-verification.mjs. A product-law path now adds its law's observation and fault-injection Vitest suites to the selection instead of adding a ci-fast lane and setting escalated. Non-vitest-file evidence is refused. The doc makes no claim about how product laws are routed, and its receipt validation, terminal status and exit-3 provisional/deferred claims are unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 42491ca6b: 55cc03451 changes scripts/run-changed-verification.mjs. A product-law path now adds its law's observation and fault-injection Vitest suites to the selection instead of adding a ci-fast lane and setting escalated. Non-vitest-file evidence is refused. The doc makes no claim about how product laws are routed, and its receipt validation, terminal status and exit-3 provisional/deferred claims are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 follow-up: run-changed-verification.mjs changed only by forwarding runChangedVerification's paths from the representative narrow-diff fixture (its summary had always printed 0 changed paths); changed-verification.test.ts asserts that count and records the measured basis for the existing 120s CLI liveness limit. Claims unaffected. Source review only; no new executed evidence beyond the focused suite."
       ]
     },
     {
@@ -29654,7 +29656,7 @@
     },
     {
       "path": "scripts/__tests__/fixtures/changed-verification/README.md",
-      "sourceRevision": "42491ca6bab31b1365b33e3190c171819881eb72",
+      "sourceRevision": "a46172592acf20a3cfee3333445b94f6de5597c3",
       "kind": "fixture",
       "state": "classified",
       "summary": "One-sentence fixture marker. scenarios.json names this README as a boundary-selection input; it is not a production feature or executable module.",
@@ -29663,7 +29665,7 @@
       "sources": [
         {
           "path": "scripts/__tests__/changed-verification.test.ts",
-          "digest": "e3312055e67b0b484e7e8d1013f808d9b3a33d9b85efef7612765ec24c3859b6"
+          "digest": "e2e1d3d2774db506db263f07169bc12cfd3c7781a465ac29e43c378e65a1620a"
         },
         {
           "path": "scripts/__tests__/fixtures/changed-verification/scenarios.json",
@@ -29671,7 +29673,7 @@
         },
         {
           "path": "scripts/run-changed-verification.mjs",
-          "digest": "2b8be667f2da430df0f58ebd4d475a665ab037bcc471073bebbeca0c8f6ccfae"
+          "digest": "e20b9fda50aefc0e588a73fb3bcd05795b477c5cfce76ac95eba7d5e58a4036c"
         }
       ],
       "checks": [
@@ -29682,7 +29684,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Shard planning records actual related-discovery duration and its existing cap; no coverage or execution semantics weakened. Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts.",
         "Reviewed landing deltas through 111744681: Deadline tests cover the actual selector CLI over fixtures. The representative full-checkout test retains all assertions but has a 120s child / 125s outer liveness fence; measured checkout overhead exceeded its former 30s cap. Discovery derives timeout after refinement, keeps a 30s reserve and 60s standalone fallback, refuses insufficient/invalid budgets, and removes the deadline from child environments. Malformed CLI environment is refused before a diagnostic; exhausted valid preparation records infrastructure failure. Read the changed document in context; its purpose and prior evidence limits remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
         "Integration source review through e0314c727: changed-verification.test.ts only changed the SPAWNED_SCRIPT_EDGES count from 11 to 10. The README's narrow-diff demo and 120-second liveness claims still match the test (timeout: 120_000). The ledger summary calls this a 'one-sentence' marker, but the file is a 15-line explanation; the summary wording, not the README, is stale. Classification review only.",
-        "Integration source review through 42491ca6b: 55cc03451 (#2910) makes a product-law path add its law's observation and fault-injection Vitest suites to the selection (productLawEvidenceTests) instead of adding a ci-fast lane and escalating. The test delta covers that behavior. The representative narrow-diff demo and the 120_000 ms liveness timeout that the README describes are unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 42491ca6b: 55cc03451 (#2910) makes a product-law path add its law's observation and fault-injection Vitest suites to the selection (productLawEvidenceTests) instead of adding a ci-fast lane and escalating. The test delta covers that behavior. The representative narrow-diff demo and the 120_000 ms liveness timeout that the README describes are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "2026-09-28 follow-up: run-changed-verification.mjs changed only by forwarding runChangedVerification's paths from the representative narrow-diff fixture (its summary had always printed 0 changed paths); changed-verification.test.ts asserts that count and records the measured basis for the existing 120s CLI liveness limit. Claims unaffected. Source review only; no new executed evidence beyond the focused suite."
       ]
     },
     {
