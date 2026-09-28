@@ -18,15 +18,19 @@
  *   manifests and the liveness entry the update window re-points to the
  *   launcher (instances.json) must stay exactly as they are, and logs are the
  *   record of what the failed trial did.
- * - `external`: content kept in the home whose format no Station version
- *   owns, so no trial can migrate it: the default project directories under
- *   `workspaces/` (users' repositories, with their `node_modules` and its
- *   symbolic links). Excluded from update rollback: neither snapshotted nor
- *   restored, and left in place, exactly as the trial left it. Rolling it
- *   back would only discard work done during the trial window, and copying
- *   it made every update backup as large as the user's code (#2675 D
- *   review). Nested external paths (`STATION_HOME_EXTERNAL_PATHS`) extend
- *   this below a `state` root.
+ * - `external`: content kept in the home that an update does not snapshot
+ *   or roll back: the default project directories under `workspaces/`
+ *   (users' repositories, with their `node_modules` and its symbolic links),
+ *   left in place exactly as the trial left it. Copying it made every update
+ *   backup as large as the user's code (#2675 D review).
+ *   Accepted gap, stated plainly: `workspaces/` is NOT free of
+ *   Station-versioned data. Station writes `<project>/.station/` stores into
+ *   each project (diff comments, trust bundles, review-evidence receipts,
+ *   survey-review sessions, flow-review evidence), and a trial can change
+ *   their format; a rollback does not restore them. Projects in directories
+ *   the user chose outside the home were never rolled back either, so the
+ *   default location is treated the same. Nested external paths
+ *   (`STATION_HOME_EXTERNAL_PATHS`) extend this below a `state` root.
  *
  * An entry this registry does not name is treated as `state` (backed up and
  * restored), the data-safe default; the completeness test in

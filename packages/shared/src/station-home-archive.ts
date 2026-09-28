@@ -233,6 +233,8 @@ export interface StationHomeBackupOptions {
   lifecycleHooks?: StationHomeLifecycleHooks;
   /** Private fault seam: copies one file into the staging tree. */
   copyFile?: (source: string, target: string) => void;
+  /** Private seam: the backup volume's free space (defaults to statfs). */
+  statfs?: (directory: string) => { bavail: number; bsize: number };
 }
 
 export interface StationHomeRestoreOptions {
@@ -762,6 +764,18 @@ function strictManifest(
     seen.add(key);
     return { path: segments, target: entry.target, directory: entry.directory };
   });
+  // A restore recreates links before or after the files; either way nothing
+  // may be written THROUGH a recorded link. A tampered manifest that put a
+  // file or another link below one would have the restore place it wherever
+  // that link points, outside the home.
+  const linkKeys = symlinks.map((link) => link.path);
+  const below = (path: string[], link: string[]) =>
+    path.length > link.length &&
+    link.every((segment, index) => path[index] === segment);
+  for (const entry of [...files, ...symlinks]) {
+    if (linkKeys.some((link) => below(entry.path, link)))
+      fail('backup manifest places a path below a symbolic link');
+  }
   return {
     schemaVersion: STATION_HOME_UPDATE_BACKUP_SCHEMA,
     homeSchemaVersion: value.homeSchemaVersion as number,
@@ -857,16 +871,31 @@ export function createStationHomeBackup(
   return createBackup(options, 'home');
 }
 
-/** Fails before any copy when the backup's volume cannot hold it. */
-function assertFreeSpace(directory: string, bytes: number): void {
+/**
+ * Fails before any copy when the backup's volume cannot hold it. Each file
+ * occupies whole blocks, so its size is rounded up to the block size: a home
+ * of many small files needs far more than the sum of their bytes.
+ */
+function assertFreeSpace(
+  directory: string,
+  sizes: readonly number[],
+  statfs: (directory: string) => { bavail: number; bsize: number } = (path) =>
+    statfsSync(path),
+): void {
   let available: number;
+  let block: number;
   try {
-    const stats = statfsSync(directory);
+    const stats = statfs(directory);
     available = stats.bavail * stats.bsize;
+    block = stats.bsize > 0 ? stats.bsize : 1;
   } catch {
     // No statfs here: the copy's own ENOSPC is the check.
     return;
   }
+  const bytes = sizes.reduce(
+    (total, size) => total + Math.ceil(size / block) * block,
+    0,
+  );
   const needed = bytes + UPDATE_BACKUP_FREE_SPACE_MARGIN_BYTES;
   if (available < needed)
     fail(
@@ -917,7 +946,8 @@ function createBackup(
     if (kind === 'update')
       assertFreeSpace(
         outputParent,
-        files.reduce((total, file) => total + file.size, 0),
+        files.map((file) => file.size),
+        options.statfs,
       );
     mkdirSync(staging, { mode: 0o700 });
     const stagingStats = lstatSync(staging);
@@ -1149,7 +1179,12 @@ export function readStationHomeBackupManifest(
 export interface StationHomeUpdateBackupOptions
   extends Pick<
     StationHomeBackupOptions,
-    'maxFiles' | 'maxBytes' | 'maxFileBytes' | 'lifecycleHooks' | 'copyFile'
+    | 'maxFiles'
+    | 'maxBytes'
+    | 'maxFileBytes'
+    | 'lifecycleHooks'
+    | 'copyFile'
+    | 'statfs'
   > {
   homeDir: string;
   /** Outside the home; one per update (install root's runtime/update-backups/<id>). */

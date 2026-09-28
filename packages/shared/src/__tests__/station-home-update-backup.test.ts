@@ -448,6 +448,83 @@ describe('update backup of a realistic home (#2675 D review F1)', () => {
     expect(lstatSync(fixture.alias).isSymbolicLink()).toBe(true);
   });
 
+  it('refuses a manifest that places a file or a link below a recorded link (review L1)', () => {
+    for (const entry of ['link', 'file'] as const) {
+      const fixture = realisticHome();
+      mkdirSync(join(fixture.root, 'update-backups'));
+      createStationHomeUpdateBackup({
+        homeDir: fixture.home,
+        backupDir: fixture.backupDir,
+      });
+      const manifestPath = join(
+        fixture.backupDir,
+        STATION_HOME_BACKUP_MANIFEST,
+      );
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      // The draft's link points outside the home: anything restored below
+      // it would land there.
+      const below = [
+        'plugins',
+        'draft',
+        'node_modules',
+        '@kontourai',
+        'station-shared',
+        'planted',
+      ];
+      if (entry === 'link') {
+        manifest.symlinks.push({
+          path: below,
+          target: '/etc',
+          directory: true,
+        });
+      } else {
+        manifest.files.push({
+          path: below,
+          size: 0,
+          sha256: createHash('sha256').update('').digest('hex'),
+          mode: 0o600,
+        });
+      }
+      writeFileSync(manifestPath, JSON.stringify(manifest));
+      expect(() =>
+        restoreStationHomeUpdateBackup({
+          homeDir: fixture.home,
+          backupDir: fixture.backupDir,
+        }),
+      ).toThrow(/below a symbolic link/);
+      expect(existsSync(join(fixture.outside, 'planted'))).toBe(false);
+    }
+  });
+
+  it('refuses a backup its volume cannot hold, counting whole blocks per file (review L3)', () => {
+    const fixture = serviceHome();
+    mkdirSync(join(fixture.root, 'update-backups'));
+    // Many small files: their bytes are few, their blocks are not.
+    mkdirSync(join(fixture.home, 'skills'), { recursive: true });
+    for (let index = 0; index < 64; index += 1)
+      writeFileSync(join(fixture.home, 'skills', `s${index}.md`), 'x');
+    const margin = 256 * 1024 * 1024;
+    const bsize = 1024 * 1024;
+    // Room for every byte plus the margin, but not for 64+ one-MiB blocks.
+    const statfs = () => ({ bavail: margin / bsize + 8, bsize });
+    expect(() =>
+      createStationHomeUpdateBackup({
+        homeDir: fixture.home,
+        backupDir: fixture.backupDir,
+        statfs,
+      }),
+    ).toThrow(/not enough free space for the update backup/);
+    // Refused before anything was staged or published.
+    expect(readdirSync(join(fixture.root, 'update-backups'))).toEqual([]);
+    // With room, the same backup goes through.
+    createStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+      statfs: () => ({ bavail: margin / bsize + 1024, bsize }),
+    });
+    expect(existsSync(fixture.backupDir)).toBe(true);
+  });
+
   it('reusing an existing backup takes the maintenance lease too (F3)', () => {
     const fixture = serviceHome();
     mkdirSync(join(fixture.root, 'update-backups'));

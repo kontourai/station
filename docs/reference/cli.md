@@ -1715,9 +1715,15 @@ running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
 manifests, `instances.json`, logs, monitoring, quarantine and `tmp` (which the
 service owns), and but the default project directories under `workspaces/`
-and the browser's `browser/chromium` and `browser/profiles` (which no Station
-version migrates: an update neither copies nor rolls them back). Symbolic
-links in it are kept as links. The trial has 240 seconds to prove its
+and the browser's `browser/chromium` and `browser/profiles`: an update neither
+copies nor rolls them back. For `workspaces/` this is an accepted gap, not a
+claim that it holds no Station data: Station writes `.station/` stores into
+each project (diff comments, trust bundles, review-evidence receipts,
+survey-review sessions, flow-review evidence), and a rolled-back update leaves
+them as the trial left them, as it always has for projects outside the home.
+Symbolic links in the backup are kept as links; a link at the top of a state
+root (for example `browser` pointing at another volume) is kept as that link,
+and what it points to is neither snapshotted nor rolled back. The trial has 240 seconds to prove its
 identity; if it does, the update commits and `current` follows it. If it does
 not, the launcher restores the backup, including `.station-home-schema.json`,
 and restarts the previous version. A trial gets at most two attempts, and a

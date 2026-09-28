@@ -312,7 +312,68 @@ function pointCurrentAt(installRoot, version) {
 // --- process identity -------------------------------------------------------
 
 const BIRTH_PROBE_TIMEOUT_MS = 1_500;
-const WINDOWS_OWN_BIRTH_TIMEOUT_MS = 10_000;
+
+function localAbsoluteDirectory(value) {
+  return typeof value === 'string' &&
+    win32.isAbsolute(value) &&
+    !value.startsWith('\\\\')
+    ? win32.normalize(value)
+    : null;
+}
+
+/**
+ * The PowerShell a birth probe runs, as packages/shared's
+ * windows-system-utility.mjs resolves it: Windows PowerShell at its fixed
+ * System32 path (a service manager's PATH may not carry it), or PowerShell 7
+ * at %ProgramFiles%\PowerShell\7 when it is installed there, else by name.
+ */
+function windowsShell(kind) {
+  const systemRoot = localAbsoluteDirectory(
+    process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+  );
+  if (kind === 'powershell') {
+    return systemRoot
+      ? win32.join(
+          systemRoot,
+          'System32',
+          'WindowsPowerShell',
+          'v1.0',
+          'powershell.exe',
+        )
+      : null;
+  }
+  const roots = [process.env.ProgramW6432, process.env.ProgramFiles]
+    .map(localAbsoluteDirectory)
+    .filter(Boolean);
+  roots.push(
+    win32.join(win32.parse(systemRoot ?? 'C:\\Windows').root, 'Program Files'),
+  );
+  for (const root of new Set(roots)) {
+    const candidate = win32.join(root, 'PowerShell', '7', 'pwsh.exe');
+    if (existsSync(candidate)) return candidate;
+  }
+  return 'pwsh.exe';
+}
+
+/**
+ * Own-birth attempts, the schedule packages/shared's process-identity.mjs
+ * `ownProcessBirthProbeSchedule` gives a cold Windows start (#2746, #2830):
+ * Windows PowerShell for 10 s, then PowerShell 7 for 20 s. Off Windows, three
+ * short probes. service-launcher.test.ts pins the two schedules together.
+ */
+// Exported for service-launcher.test.ts (the parity pin).
+// fallow-ignore-next-line unused-export
+export function ownBirthSchedule(platform = process.platform) {
+  return platform === 'win32'
+    ? [
+        { timeoutMs: 10_000, shell: 'powershell' },
+        { timeoutMs: 20_000, shell: 'pwsh7' },
+      ]
+    : Array.from({ length: 3 }, () => ({
+        timeoutMs: BIRTH_PROBE_TIMEOUT_MS,
+        shell: 'powershell',
+      }));
+}
 
 /**
  * A process's start time, as packages/shared/src/process-identity.mjs's
@@ -324,7 +385,11 @@ const WINDOWS_OWN_BIRTH_TIMEOUT_MS = 10_000;
  */
 // Exported for service-launcher.test.ts (the parity pin) and install.sh.
 // fallow-ignore-next-line unused-export
-export function processBirth(pid, timeoutMs = BIRTH_PROBE_TIMEOUT_MS) {
+export function processBirth(
+  pid,
+  timeoutMs = BIRTH_PROBE_TIMEOUT_MS,
+  shell = 'powershell',
+) {
   try {
     if (process.platform === 'linux') {
       const stat = readFileSync(`/proc/${pid}/stat`, 'utf8').trim();
@@ -342,18 +407,10 @@ export function processBirth(pid, timeoutMs = BIRTH_PROBE_TIMEOUT_MS) {
       return `linux:${bootId}:${startTime}`;
     }
     if (process.platform === 'win32') {
-      const systemRoot =
-        process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows';
-      if (!win32.isAbsolute(systemRoot) || systemRoot.startsWith('\\\\'))
-        return null;
+      const command = windowsShell(shell);
+      if (!command) return null;
       const output = execFileSync(
-        win32.join(
-          win32.normalize(systemRoot),
-          'System32',
-          'WindowsPowerShell',
-          'v1.0',
-          'powershell.exe',
-        ),
+        command,
         [
           '-NoProfile',
           '-NonInteractive',
@@ -396,12 +453,8 @@ export function processBirth(pid, timeoutMs = BIRTH_PROBE_TIMEOUT_MS) {
 
 /** This process's own start time; it is certainly alive, so retried. */
 function ownBirth() {
-  const timeout =
-    process.platform === 'win32'
-      ? WINDOWS_OWN_BIRTH_TIMEOUT_MS
-      : BIRTH_PROBE_TIMEOUT_MS;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const birth = processBirth(process.pid, timeout);
+  for (const { timeoutMs, shell } of ownBirthSchedule()) {
+    const birth = processBirth(process.pid, timeoutMs, shell);
     if (birth) return birth;
   }
   return null;
