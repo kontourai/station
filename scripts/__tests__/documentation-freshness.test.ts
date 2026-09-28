@@ -1,12 +1,6 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import {
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
@@ -25,6 +19,7 @@ import {
 import {
   captureReviewFile,
   LEGACY_REVIEW_LEDGER,
+  listReviewLedgerFiles,
   REVIEW_LEDGER_DIR,
   readReviewState,
   readReviewStateAt,
@@ -226,13 +221,12 @@ function editRecord(root: string, path: string, edit: (data: any) => void) {
   writeFileSync(file, serializeRecordFile(data));
 }
 
-const notesFiles = (root: string) => {
-  try {
-    return readdirSync(join(root, REVIEW_LEDGER_DIR, 'notes')).sort();
-  } catch {
-    return [];
-  }
-};
+/** Notes file names in the fixture's ledger, tracked or not yet added. */
+const notesFiles = (root: string) =>
+  listReviewLedgerFiles(root)
+    .filter((file: string) => file.startsWith(`${REVIEW_LEDGER_DIR}/notes/`))
+    .map((file: string) => file.slice(`${REVIEW_LEDGER_DIR}/notes/`.length))
+    .sort();
 
 function run(
   root: string,
