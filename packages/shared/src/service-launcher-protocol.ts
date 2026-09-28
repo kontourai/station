@@ -289,6 +289,20 @@ function launcherUpdateProgress(
   if (!isTimestamp(update.finishedAt)) return null;
   if (update.status === 'committed')
     return { state: 'committed', ...base, finishedAt: update.finishedAt };
+  if (update.status === 'needs-operator') {
+    if (
+      typeof update.reason !== 'string' ||
+      !Number.isSafeInteger(update.restoreAttempts)
+    )
+      return null;
+    return {
+      state: 'needs-operator',
+      ...base,
+      reason: update.reason,
+      restoreAttempts: update.restoreAttempts as number,
+      finishedAt: update.finishedAt,
+    };
+  }
   if (
     (update.status === 'rolled-back' || update.status === 'failed') &&
     typeof update.reason === 'string'
@@ -339,6 +353,8 @@ export function readServiceUpdateProgress(
     resultFile.kind === 'ok' ? requestResultProgress(resultFile.value) : null;
   const finished = (progress: ServiceUpdateProgress | null | undefined) =>
     progress && 'finishedAt' in progress ? Date.parse(progress.finishedAt) : -1;
+  // An update the operator must recover outranks any later request result.
+  if (launcher?.state === 'needs-operator') return launcher;
   if (launcher && finished(launcher) >= finished(result)) return launcher;
   return result ?? launcher ?? { state: 'idle' };
 }

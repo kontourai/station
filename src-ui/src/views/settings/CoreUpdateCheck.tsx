@@ -420,7 +420,10 @@ export function CoreUpdateCheck({
     serviceUpdateInFlight &&
     Date.now() - trackedServiceUpdate.startedAt > SERVICE_UPDATE_FOLLOW_MS;
   const serviceProgressLine = serviceProgress
-    ? serviceUpdateProgressLine(serviceProgress)
+    ? serviceUpdateProgressLine(
+        serviceProgress,
+        status?.serverIdentity?.instanceId,
+      )
     : null;
 
   // Apply-offer gating (plan): current scope, successful comparison, explicit
@@ -450,6 +453,7 @@ export function CoreUpdateCheck({
     status.releaseCheck === 'verified' &&
     !!status.latestVersion &&
     !serviceUpdateInFlight &&
+    serviceProgress?.state !== 'needs-operator' &&
     !trackedServiceUpdate &&
     !awaitingOutcomeRecheck;
   const canApply =

@@ -42,6 +42,7 @@ export {
   serviceUpdatePaths,
   writeServiceUpdateRequest,
 } from '@kontourai/station-shared/service-launcher-protocol';
+
 /**
  * install.sh's test-only verifier override, which install.sh itself honors
  * only beside STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1; carried through
@@ -187,7 +188,7 @@ function settleOrphanedClaim(
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     text = '';
   }
-  const request = parseRequest(text);
+  const request = parseServiceUpdateRequest(text);
   let accepted: unknown;
   try {
     accepted = (

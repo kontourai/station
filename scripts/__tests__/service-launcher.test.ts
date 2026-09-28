@@ -22,6 +22,7 @@ import {
   writeServiceUpdateRequest,
 } from '../../packages/cli/src/commands/service-launcher-link.js';
 import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
+import { readServiceUpdateProgress } from '../../packages/shared/src/service-launcher-protocol.js';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { readRegistryInstances } from '../../src-server/tools/instance-registry-bridge.js';
 import {
@@ -814,6 +815,17 @@ describe('an update keeps moving when its pieces fail (#2675 D review F1, F4-F7)
     expect(stuck).toMatchObject({
       reason: 'candidate-exited:3',
       restoreAttempts: 3,
+    });
+    // The server's reader (#2675 D3) reads the launcher's own record as
+    // needs-operator, never as unavailable.
+    expect(readServiceUpdateProgress(install.installRoot)).toEqual({
+      state: 'needs-operator',
+      requestId: expect.any(String),
+      fromVersion: '1.0.0',
+      targetVersion: '1.1.0',
+      reason: 'candidate-exited:3',
+      restoreAttempts: 3,
+      finishedAt: stuck.finishedAt,
     });
     // The recovery is logged right after the state is written.
     await waitFor('the recovery instruction', () =>

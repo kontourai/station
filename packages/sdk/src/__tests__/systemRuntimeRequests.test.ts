@@ -439,6 +439,37 @@ describe('systemRuntimeRequests', () => {
         },
         { state: 'unavailable' },
       ],
+      [
+        {
+          state: 'needs-operator',
+          requestId: REQUEST_ID,
+          fromVersion: '1.0.0',
+          targetVersion: '1.1.0',
+          reason: 'prepared-timeout',
+          restoreAttempts: 3,
+          finishedAt: '2026-09-27T12:00:00.000Z',
+        },
+        {
+          state: 'needs-operator',
+          requestId: REQUEST_ID,
+          fromVersion: '1.0.0',
+          targetVersion: '1.1.0',
+          reason: 'prepared-timeout',
+          restoreAttempts: 3,
+          finishedAt: '2026-09-27T12:00:00.000Z',
+        },
+      ],
+      [
+        {
+          state: 'needs-operator',
+          requestId: REQUEST_ID,
+          fromVersion: '1.0.0',
+          targetVersion: '1.1.0',
+          reason: 'prepared-timeout',
+          finishedAt: '2026-09-27T12:00:00.000Z',
+        },
+        { state: 'unavailable' },
+      ],
       [{ state: 'queued' }, { state: 'unavailable' }],
       [
         {

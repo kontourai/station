@@ -361,6 +361,13 @@ export function applyArchiveUpdate(
       error: 'A Station update is already in progress.',
     };
   }
+  if (progress.state === 'needs-operator') {
+    return {
+      ok: false,
+      status: 409,
+      error: `The update to ${progress.targetVersion} could not be rolled back and needs an operator on the host first.`,
+    };
+  }
   try {
     return {
       ok: true,

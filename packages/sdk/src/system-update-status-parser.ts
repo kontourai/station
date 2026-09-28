@@ -222,6 +222,31 @@ export function parseServiceUpdateProgress(
         finishedAt,
       };
     }
+    case 'needs-operator': {
+      const requestId = optionalRequestId(value.requestId);
+      const fromVersion = text('fromVersion');
+      const targetVersion = text('targetVersion');
+      const reason = text('reason');
+      const finishedAt = text('finishedAt');
+      if (
+        requestId === undefined ||
+        !fromVersion ||
+        !targetVersion ||
+        !reason ||
+        !finishedAt ||
+        !Number.isSafeInteger(value.restoreAttempts)
+      )
+        return unavailable;
+      return {
+        state: 'needs-operator',
+        requestId,
+        fromVersion,
+        targetVersion,
+        reason,
+        restoreAttempts: value.restoreAttempts as number,
+        finishedAt,
+      };
+    }
     case 'up-to-date': {
       const requestId = text('requestId');
       const version = text('version');

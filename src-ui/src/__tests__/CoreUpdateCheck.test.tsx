@@ -1265,6 +1265,32 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     expect(again.disabled).toBe(false);
   });
 
+  test('an update that could not be rolled back names the operator’s recovery and offers no apply', () => {
+    renderWith(
+      archiveService({
+        serviceUpdate: {
+          state: 'needs-operator',
+          requestId: REQUEST_ID,
+          fromVersion: '0.8.0-preview.1',
+          targetVersion: '0.8.0-preview.2',
+          reason: 'prepared-timeout',
+          restoreAttempts: 3,
+          finishedAt: '2026-09-27T12:00:00.000Z',
+        },
+      }),
+    );
+    const line = screen.getByText(/could not be rolled back/);
+    expect(line.className).toContain('settings__update-msg--error');
+    expect(line.textContent).toContain('after 3 attempts');
+    expect(line.textContent).toContain(
+      'station service stop --instance=view-instance && station service start --instance=view-instance',
+    );
+    expect(screen.queryByText(/cannot be read/)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Update server to/ }),
+    ).toBeNull();
+  });
+
   test('a server that stops answering mid-update says it is restarting, not that the update failed', () => {
     serviceProgressState.data = {
       state: 'updating',

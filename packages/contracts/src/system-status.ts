@@ -113,6 +113,9 @@ export type ServiceUpdatePhase =
  * - `rolled-back` / `failed`: the launcher kept (or returned to)
  *   `fromVersion`; `reason` is the launcher's code (e.g. `prepared-timeout`,
  *   `candidate-exited:1`, `backup-failed`).
+ * - `needs-operator`: the launcher could not restore the home to roll the
+ *   update back, `restoreAttempts` times; it keeps the backup, runs no
+ *   version, and retries once each time the service is stopped and started.
  * - `up-to-date`: staging found nothing newer than `version`.
  * - `staging-failed` / `rejected`: the request ended before any trial;
  *   `reason` is the staging failure or the launcher's refusal.
@@ -144,6 +147,15 @@ export type ServiceUpdateProgress =
       fromVersion: string;
       targetVersion: string;
       reason: string;
+      finishedAt: string;
+    }
+  | {
+      state: 'needs-operator';
+      requestId: string | null;
+      fromVersion: string;
+      targetVersion: string;
+      reason: string;
+      restoreAttempts: number;
       finishedAt: string;
     }
   | {

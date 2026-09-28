@@ -597,6 +597,53 @@ describe('GET /core-update/service-update', () => {
     ).toMatchObject({ state: 'committed', requestId: null });
   });
 
+  test('an update the launcher could not roll back needs an operator, and blocks another apply', async () => {
+    const install = makeInstall();
+    const app = createApp(install);
+    const paths = serviceUpdatePaths(install.installRoot);
+    // The launcher's own record after its last failed restore.
+    writeState(install, {
+      id: UPDATE_ID,
+      fromVersion: RUNNING,
+      targetVersion: NEWER,
+      requestId: REQUEST_ID,
+      status: 'needs-operator',
+      reason: 'prepared-timeout',
+      attempts: 2,
+      restoreAttempts: 3,
+      finishedAt: '2026-09-27T12:10:00.000Z',
+    });
+    // A later request result does not hide it.
+    writeFileSync(
+      paths.result,
+      JSON.stringify({
+        requestId: '11111111-2222-4333-8444-555555555555',
+        status: 'failed',
+        reason: 'x',
+        at: '2026-09-27T13:00:00.000Z',
+      }),
+    );
+    const progress = {
+      state: 'needs-operator',
+      requestId: REQUEST_ID,
+      fromVersion: RUNNING,
+      targetVersion: NEWER,
+      reason: 'prepared-timeout',
+      restoreAttempts: 3,
+      finishedAt: '2026-09-27T12:10:00.000Z',
+    };
+    expect(
+      await json(await app.request('/core-update/service-update')),
+    ).toEqual(progress);
+    expect(
+      (await json(await app.request('/core-update'))).serviceUpdate,
+    ).toEqual(progress);
+    const post = await app.request('/core-update', { method: 'POST' });
+    expect(post.status).toBe(409);
+    expect((await json(post)).error).toMatch(/needs an operator/);
+    expect(existsSync(paths.request)).toBe(false);
+  });
+
   test('an unreadable state, or a server that is not the launcher’s, reads unavailable', async () => {
     const install = makeInstall();
     const paths = serviceUpdatePaths(install.installRoot);

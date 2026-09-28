@@ -389,6 +389,8 @@ export const SERVICE_UPDATE_IN_FLIGHT: ReadonlySet<
  */
 export function serviceUpdateProgressLine(
   progress: ServiceUpdateProgress,
+  /** The service's instance, for the recovery command; the answering server's. */
+  instance?: string,
 ): { tone: ComparisonTone; text: string } | null {
   switch (progress.state) {
     case 'idle':
@@ -447,6 +449,13 @@ export function serviceUpdateProgressLine(
         tone: 'error',
         text: `The update to ${progress.targetVersion} failed: ${serviceUpdateReason(progress.reason)}. The server runs ${progress.fromVersion} (${finishedTime(progress.finishedAt)}).`,
       };
+    case 'needs-operator': {
+      const name = instance ?? '<instance>';
+      return {
+        tone: 'error',
+        text: `The update to ${progress.targetVersion} could not be rolled back: the Station home could not be restored after ${progress.restoreAttempts} attempts (${serviceUpdateReason(progress.reason)}). The service keeps the home’s backup and runs no Station until an operator acts. Fix the cause shown in the service log, then retry the restore on the host with: station service stop --instance=${name} && station service start --instance=${name}`,
+      };
+    }
     case 'up-to-date':
       return {
         tone: 'success',
