@@ -97,7 +97,10 @@ Installer support does not establish that publication is enabled or that a
 release has been installed successfully; see the
 [archive install contract](release-channel-ports.md#prebuilt-archives-and-source-releases).
 
-The `publish` job is the only one with `contents: write` or a secret. It runs
+The `publish` job is the only one with `contents: write` and the only one that
+reads a secret. The Nightly caller passes `secrets: inherit`, because a reusable
+workflow's job receives its environment's secrets only then; without it the
+signing key arrives empty. It runs
 only when the repository variable `STATION_PORTABLE_NIGHTLY_PUBLISH` is exactly
 `enabled`, the run came from `nightly.yml` on `main`, and the version is a
 reservation. A direct dispatch of the publication workflow is always a dry

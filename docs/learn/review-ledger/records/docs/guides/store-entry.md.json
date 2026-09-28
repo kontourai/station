@@ -20,7 +20,7 @@
 
     {"path":".github/workflows/nightly-native-stage.yml","digest":"ad6292837e6b7f61057b6eef1c406d1374bc13a0aae97ebe321736b6f0c37f1d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":".github/workflows/nightly.yml","digest":"9de7c453d42f3d454a24e2081a99ec3c0ca639691d3a8b698cfa6fd3ede3d400","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/nightly.yml","digest":"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":".github/workflows/publish-release.yml","digest":"52286a0d9c756da6a30578f1e20da58dc04addd85fea7a3681944405a5ad49f5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

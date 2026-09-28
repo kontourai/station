@@ -9,7 +9,7 @@
 
   "limits": "No native build, real device, Keychain/Keystore write, signed artifact, Linux/Windows launch, provider account mutation, publication, upgrade or rollback executed in this continuation. Fixture and source checks do not establish live outcomes. Parent owns combined CI and final ledger integration.",
 
-  "document": {"digest":"21f86bbb1fd45c9f678f549627c1b9ad95229d3b80e487c2005996b300261c1d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+  "document": {"digest":"7a459f9e8b71560ce041403a37d667d004c15ae25017f2149de30a64649c569a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
   "sources": [
     {"path":".github/workflows/build-ios.yml","digest":"b4afee0a3cf62cd46226b9b68b648d15d00524a9d7bc27449e640fac6e3f9b73","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -20,7 +20,7 @@
 
     {"path":".github/workflows/nightly-native-stage.yml","digest":"ad6292837e6b7f61057b6eef1c406d1374bc13a0aae97ebe321736b6f0c37f1d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":".github/workflows/nightly.yml","digest":"9de7c453d42f3d454a24e2081a99ec3c0ca639691d3a8b698cfa6fd3ede3d400","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":".github/workflows/nightly.yml","digest":"555ac154d3eb7983e8dd5c6f3ff5f73e4f48ac6aac1800747fbbbc5ce4d36801","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":".github/workflows/publish-release.yml","digest":"52286a0d9c756da6a30578f1e20da58dc04addd85fea7a3681944405a5ad49f5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
@@ -136,7 +136,7 @@
 
     {"path":"scripts/portable-nightly-publication.mjs","digest":"ead20dbb641dd589b6f6eae6ecbd7923ac744f38e958ea57b0a099ba006d3940","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/__tests__/portable-nightly-publish-workflow.test.ts","digest":"fb6c30bc81b659d67325e21684117134ea6e689fe8a879df9bebeea519058d18","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/__tests__/portable-nightly-publish-workflow.test.ts","digest":"ae4fa2d2359a269c1716c241aab3f2884f6203e85059b17cadd39a488d640859","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"package.json#/scripts/build:desktop","digest":"9772f288b54c1d026ed8895d38309354aa31ff05cdec24a5ddfa37b4fbbe0c3c","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
 
