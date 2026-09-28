@@ -357,6 +357,46 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
     ).rejects.toThrow(/could not reset the conversations/);
   });
 
+  test('H3: --remove approval:full-access on a device that no longer holds it re-runs the reset', async () => {
+    const request = station((deviceId, body) => ({
+      ...DEVICES.find((device) => device.id === deviceId),
+      scope: (body.scope as string[]).join(' '),
+      fullAccessRevocation: {
+        cause: 'scope-removed',
+        reset: [{ conversationId: 'conversation:a', was: 'never' }],
+        stillFullAccess: [],
+        reconfined: [],
+        stillUnconfined: [],
+        unattributedHostStarts: { sessions: [], total: 0 },
+      },
+    }));
+    await run(['scope', 'aaaa1111', '--remove=approval:full-access'], request);
+    const post = request.mock.calls.find(([, path]) =>
+      path.endsWith('/scope'),
+    )!;
+    expect(JSON.parse(String(post[2]?.body))).toEqual({
+      scope: [
+        'orchestration:read',
+        'orchestration:operate',
+        'terminal:operate',
+      ],
+      expectedScope: DEVICES[0]!.scope,
+      resetFullAccess: true,
+    });
+    expect(printed()).toContain('resetting the conversations');
+    expect(printed()).toContain(
+      'conversation:a  was: its full-access decision',
+    );
+    // Any other no-op change still sends nothing.
+    const quiet = station();
+    stdout.mockReset();
+    await run(['scope', 'aaaa1111', '--remove=coding:exec'], quiet);
+    expect(printed()).toContain('No change.');
+    expect(quiet.mock.calls.some(([, path]) => path.endsWith('/scope'))).toBe(
+      false,
+    );
+  });
+
   test('a dry run prints the change and sends nothing', async () => {
     const request = station();
     await run(

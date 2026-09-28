@@ -8242,6 +8242,7 @@ export function configureDevicePairingHostRoutes(
       const body = (await request.json().catch(() => null)) as {
         scope?: unknown;
         expectedScope?: unknown;
+        resetFullAccess?: unknown;
       } | null;
       const scope = Array.isArray(body?.scope) ? body.scope : null;
       if (scope === null || scope.some((token) => typeof token !== 'string')) {
@@ -8282,8 +8283,11 @@ export function configureDevicePairingHostRoutes(
       // exactly this; a scope change is the same kind of decision.
       options.connectedClientPresence?.disconnectDevice(deviceId);
       // #1796 (G3): taking full access away resets what it had granted.
+      // H3: `resetFullAccess: true` re-runs that reset for a device that
+      // no longer holds it (a reset that failed after the scope change
+      // committed); the reset is idempotent.
       const lostFullAccess =
-        heldFullAccess &&
+        (heldFullAccess || body?.resetFullAccess === true) &&
         !pairingScopeIncludes(device.scope, 'approval:full-access');
       return c.json({
         ...device,

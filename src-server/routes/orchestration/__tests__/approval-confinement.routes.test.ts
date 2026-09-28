@@ -2061,4 +2061,51 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
       f.store.latestEventByMethod('actorless-grant', 'session.started'),
     ).toBeUndefined();
   });
+
+  test('H3: a reset that failed can be re-run, and running it again changes nothing more', async () => {
+    const f = await fixture({});
+    f.claude.completeTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const { conversationId, threadId } = await startAtFullAccess(
+      f,
+      laptop.credential,
+      'recorded',
+    );
+    vi.spyOn(f.service, 'resetFullAccessGrantedBy').mockRejectedValueOnce(
+      new Error('store unavailable'),
+    );
+
+    const failed = await removeFullAccess(f, laptop.device.id);
+
+    expect(failed.status).toBe(200);
+    expect(failed.body.fullAccessRevocationError).toBe('reset_failed');
+    expect(decisions(f, threadId).map((event) => event.approvalMode)).toEqual([
+      'never',
+    ]);
+    // A scope write that keeps it absent, without asking, resets nothing.
+    const plain = await removeFullAccess(f, laptop.device.id);
+    expect(plain.body.fullAccessRevocation).toBeUndefined();
+    const retry = () =>
+      f.request(
+        f.bearer(f.operator.credential),
+        `/api/pairing/devices/${encodeURIComponent(laptop.device.id)}/scope`,
+        { scope: standardScope, resetFullAccess: true },
+      );
+
+    const retried = await retry();
+
+    expect(retried.body.fullAccessRevocation).toMatchObject({
+      reset: [{ conversationId, was: 'never' }],
+      reconfined: [{ conversationId }],
+    });
+    const again = await retry();
+    expect(again.body.fullAccessRevocation).toMatchObject({
+      reset: [],
+      reconfined: [{ conversationId }],
+    });
+    expect(decisions(f, threadId).map((event) => event.approvalMode)).toEqual([
+      'never',
+      'ask',
+    ]);
+  });
 });

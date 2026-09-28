@@ -273,10 +273,22 @@ export async function runDeviceScopeCommand(
     throw new Error(
       'A device must keep at least one scope. To remove its access entirely, revoke it in Station.',
     );
-  if (after === before) {
+  // #1796 H3: `--remove approval:full-access` on a device that no longer
+  // holds it re-runs the reset of what its full access had granted (a reset
+  // that failed after the scope change). The scope itself is unchanged.
+  const retryReset =
+    after === before &&
+    'remove' in args.change &&
+    args.change.remove.includes('approval:full-access') &&
+    !current.includes('approval:full-access');
+  if (after === before && !retryReset) {
     write('No change.');
     return;
   }
+  if (retryReset)
+    write(
+      'It no longer holds approval:full-access: resetting the conversations its full access had given, again.',
+    );
   if (args.dryRun) {
     write('Dry run: nothing was changed.');
     return;
@@ -289,7 +301,11 @@ export async function runDeviceScopeCommand(
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope: next, expectedScope: device.scope }),
+        body: JSON.stringify({
+          scope: next,
+          expectedScope: device.scope,
+          ...(retryReset ? { resetFullAccess: true } : {}),
+        }),
       },
     );
     updated = parseDevice(answer);
