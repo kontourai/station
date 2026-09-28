@@ -149,12 +149,9 @@ interface ApiEnvelope<T> {
  * string. So only THIS Station's refusal keeps its code, and only as a
  * `LocalStationRefusal` cause; a peer's code is dropped.
  *
- * #2377 C2b review: another Station's words are dropped too (they reach an
- * agent's tool result); its refusal becomes this Station's fixed copy with
- * the HTTP status, and a read that outlived the target's bound (the SDK
- * deadline the forwarder set, `requestOptions.timeoutMs`) is reported as
- * this Station's timeout. Any other failure (a transport error, a protocol
- * error) passes through unchanged.
+ * #2377 C2b review: another Station's failure is rewritten by
+ * `anotherStationFailure` (its words dropped, its timeout reported as this
+ * Station's). This Station's own non-refusal failures pass through.
  */
 export async function readRelayingLocalRefusal<T>(
   target: SelectedStation,
@@ -198,23 +195,25 @@ async function readSelectedStation<T>(
 /**
  * #2377 C2b review: what another Station's failed SDK call becomes. Its words
  * never reach the caller (they would reach an agent's tool result): its HTTP
- * refusal becomes this Station's fixed copy with the status, and a call that
+ * refusal becomes this Station's fixed copy with the status. A call that
  * outlived the target's bound (the SDK deadline the forwarder set,
- * `requestOptions.timeoutMs`, headers or body) is reported as this Station's
- * timeout. Any other failure (a transport or protocol error raised here)
- * passes through.
+ * `requestOptions.timeoutMs`) arrives as the SDK's
+ * `StationRequestTimeoutError`, whether the deadline fired before the
+ * headers or while the body was read, and is reported as this Station's
+ * timeout, keeping the SDK's `mutation` fact: a command (respond,
+ * interrupt) whose answer never finished arriving may still have been
+ * applied, and the caller is told so. Any other failure passes through.
  */
 function anotherStationFailure(
   target: SelectedStation,
   error: unknown,
 ): unknown {
   const timeoutMs = target.requestOptions?.timeoutMs;
-  if (
-    timeoutMs !== undefined &&
-    (error instanceof StationRequestTimeoutError ||
-      (error instanceof Error && error.name === 'TimeoutError'))
-  ) {
-    const timeout = new RemoteStationTimeoutError(timeoutMs);
+  if (timeoutMs !== undefined && error instanceof StationRequestTimeoutError) {
+    const timeout = new RemoteStationTimeoutError(
+      timeoutMs,
+      error.mutation === true,
+    );
     return new Error(timeout.message, { cause: timeout });
   }
   if (error instanceof StationHttpError)
@@ -1391,9 +1390,29 @@ function currentControlApiBase(): string {
   return resolveControlApiBase();
 }
 
-/** Whether a URL is this Station's own control API (else: another Station). */
-function isThisStationUrl(url: string): boolean {
-  return new URL(url).origin === new URL(currentControlApiBase()).origin;
+/**
+ * #2377 C2b review: who answers a request. `kind` is the one label: a
+ * `current` endpoint is this Station; anything else is a target the remote
+ * forwarder minted (`resolveTarget` refuses any other), so it carries the
+ * route's bound. Every decision below (bounded or not, words kept or not,
+ * code relayed or not) reads this label, never the URL: a peer record whose
+ * address happens to be this Station's own origin is still another Station.
+ */
+export type StationEndpoint = {
+  readonly kind: DelegationTarget['kind'];
+  readonly requestOptions?: { readonly timeoutMs?: number };
+};
+
+const THIS_STATION: StationEndpoint = { kind: 'current' };
+
+/** A request to another Station that did not carry the route's bound. */
+export class UnboundedRemoteRequestError extends Error {
+  constructor() {
+    super(
+      'Station refused to contact another Station without the route-owned request bound',
+    );
+    this.name = 'UnboundedRemoteRequestError';
+  }
 }
 
 /**
@@ -1402,43 +1421,39 @@ function isThisStationUrl(url: string): boolean {
  * the timeout); one to another Station, which only server code with the
  * forwarder makes, goes through the seam's bounded fetch, bounded by the
  * `timeoutMs` the forwarder put on the target. A request to another Station
- * without one is refused rather than sent unbounded.
+ * without one is refused, before anything is sent.
  */
-function stationFetch(
+export function stationFetch(
+  endpoint: StationEndpoint,
   url: string,
-  init: RequestInit & { timeoutMs?: number } = {},
+  init: RequestInit = {},
 ): Promise<Response> {
-  const { timeoutMs, ...rest } = init;
-  if (isThisStationUrl(url)) return fetch(url, rest);
-  if (typeof timeoutMs !== 'number')
-    return Promise.reject(
-      new Error('A request to another Station must carry its route bound'),
-    );
-  return fetchRemoteStation(url, rest, timeoutMs);
+  if (endpoint.kind === 'current') return fetch(url, init);
+  const timeoutMs = endpoint.requestOptions?.timeoutMs;
+  if (timeoutMs === undefined)
+    return Promise.reject(new UnboundedRemoteRequestError());
+  return fetchRemoteStation(url, init, timeoutMs);
 }
 
-/** Whether an error is a request to another Station outliving its bound. */
-function remoteTimeoutOf(
+/** This Station's own report of a failed hop: a timeout or a refused send. */
+function hopFailureOf(
   error: unknown,
-): RemoteStationTimeoutError | undefined {
-  if (error instanceof RemoteStationTimeoutError) return error;
-  if (
-    error instanceof Error &&
-    error.cause instanceof RemoteStationTimeoutError
-  )
-    return error.cause;
-  return undefined;
+): RemoteStationTimeoutError | UnboundedRemoteRequestError | undefined {
+  const own = (value: unknown) =>
+    value instanceof RemoteStationTimeoutError ||
+    value instanceof UnboundedRemoteRequestError
+      ? value
+      : undefined;
+  return own(error) ?? (error instanceof Error ? own(error.cause) : undefined);
 }
 
-/** A transport failure's caller-safe message: ours for a slow Station. */
+/** A transport failure's caller-safe message: ours for a failed hop. */
 function transportFailureMessage(
   error: unknown,
   unavailableMessage: string,
 ): string {
-  const timeout = remoteTimeoutOf(error);
-  return timeout
-    ? `${unavailableMessage}: ${timeout.message}`
-    : unavailableMessage;
+  const hop = hopFailureOf(error);
+  return hop ? `${unavailableMessage}: ${hop.message}` : unavailableMessage;
 }
 
 /**
@@ -1448,12 +1463,13 @@ function transportFailureMessage(
  * status, #2377 C2b review).
  */
 function answerText(
-  url: string,
+  endpoint: StationEndpoint,
   peerText: unknown,
   unavailableMessage: string,
   status: number,
 ): string {
-  if (!isThisStationUrl(url)) return `${unavailableMessage} (HTTP ${status})`;
+  if (endpoint.kind !== 'current')
+    return `${unavailableMessage} (HTTP ${status})`;
   return typeof peerText === 'string' && peerText
     ? peerText
     : unavailableMessage;
@@ -1619,18 +1635,19 @@ function localRefusalOf(
 }
 
 async function readJson<T>(
+  endpoint: StationEndpoint,
   url: string,
-  init?: RequestInit,
-  unavailableMessage = 'Station request failed',
-  origin: { kind?: DelegationTarget['kind'] } = {},
+  init: RequestInit | undefined,
+  unavailableMessage: string,
 ): Promise<T> {
   let response: Response;
   try {
-    response = await stationFetch(url, init);
+    response = await stationFetch(endpoint, url, init);
   } catch (error) {
+    const hop = hopFailureOf(error);
     throw new Error(
       transportFailureMessage(error, unavailableMessage),
-      error instanceof RemoteStationTimeoutError ? { cause: error } : undefined,
+      hop ? { cause: hop } : undefined,
     );
   }
   let payload: T & { error?: string };
@@ -1641,25 +1658,25 @@ async function readJson<T>(
   }
   if (!response.ok) {
     const message = answerText(
-      url,
+      endpoint,
       payload.error,
       unavailableMessage,
       response.status,
     );
-    const cause = localRefusalOf(origin, payload, message);
+    const cause = localRefusalOf(endpoint, payload, message);
     throw new Error(message, cause ? { cause } : undefined);
   }
   return payload;
 }
 
 async function postCanonical<T>(
-  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'> &
-    Partial<Pick<DelegationTarget, 'kind'>>,
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions' | 'kind'>,
   path: string,
   body: unknown,
   unavailableMessage: string,
 ): Promise<T> {
   const payload = await readJson<ApiEnvelope<T>>(
+    target,
     `${target.apiBase}${path}`,
     {
       method: 'POST',
@@ -1668,31 +1685,13 @@ async function postCanonical<T>(
         ...(target.requestOptions?.headers ?? {}),
       },
       body: JSON.stringify(body),
-      ...remoteBound(target),
     },
     unavailableMessage,
-    target,
   );
   if (!payload.success || payload.data === undefined) {
-    throw new Error(
-      answerText(
-        `${target.apiBase}${path}`,
-        payload.error,
-        unavailableMessage,
-        200,
-      ),
-    );
+    throw new Error(answerText(target, payload.error, unavailableMessage, 200));
   }
   return payload.data;
-}
-
-/** The target's route-owned bound, for a request built from its headers. */
-function remoteBound(target: Pick<DelegationTarget, 'requestOptions'>): {
-  timeoutMs?: number;
-} {
-  return target.requestOptions?.timeoutMs !== undefined
-    ? { timeoutMs: target.requestOptions.timeoutMs }
-    : {};
 }
 
 /** Error envelopes the runtime auth boundary and the delegation route emit. */
@@ -1797,7 +1796,7 @@ export class PeerDelegationAttemptDuplicateError extends Error {
  * `postCanonical` byte-for-byte.
  */
 async function postPeerPortableDelegation<T>(
-  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'>,
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions' | 'kind'>,
   path: string,
   body: unknown,
   unavailableMessage: string,
@@ -1903,18 +1902,17 @@ class PeerPortableFollowUpError extends Error {
 }
 
 async function postDelegationJson(
-  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'>,
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions' | 'kind'>,
   path: string,
   body: unknown,
 ): Promise<Response> {
-  return stationFetch(`${target.apiBase}${path}`, {
+  return stationFetch(target, `${target.apiBase}${path}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       ...(target.requestOptions?.headers ?? {}),
     },
     body: JSON.stringify(body),
-    ...remoteBound(target),
   });
 }
 
@@ -1925,8 +1923,7 @@ async function postDelegationJson(
  * other failure becomes the generic sentinel — never peer text.
  */
 async function postPeerPortableFollowUp<T>(
-  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'> &
-    Partial<Pick<DelegationTarget, 'kind'>>,
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions' | 'kind'>,
   path: string,
   body: unknown,
   unavailableMessage: string,
@@ -1964,19 +1961,17 @@ async function postPeerPortableFollowUp<T>(
 }
 
 async function getCanonical<T>(
-  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'> &
-    Partial<Pick<DelegationTarget, 'kind'>>,
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions' | 'kind'>,
   path: string,
   unavailableMessage: string,
   signal?: AbortSignal,
 ): Promise<T> {
   let response: Response;
   try {
-    response = await stationFetch(`${target.apiBase}${path}`, {
+    response = await stationFetch(target, `${target.apiBase}${path}`, {
       method: 'GET',
       headers: target.requestOptions?.headers,
       signal,
-      ...remoteBound(target),
     });
   } catch (cause) {
     throw new CanonicalDelegationReadError(
@@ -1999,7 +1994,7 @@ async function getCanonical<T>(
   }
   if (!response.ok || !payload.success || payload.data === undefined) {
     const message = answerText(
-      `${target.apiBase}${path}`,
+      target,
       payload.error,
       unavailableMessage,
       response.status,
@@ -2068,22 +2063,20 @@ function foregroundIndeterminateDetail(
 
 /** Preserve no-retry foreground evidence when a remote Station returns it. */
 async function postForegroundMessage(
-  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'> &
-    Partial<Pick<DelegationTarget, 'kind'>>,
+  target: Pick<DelegationTarget, 'apiBase' | 'requestOptions' | 'kind'>,
   path: string,
   body: unknown,
   unavailableMessage: string,
 ): Promise<ForegroundMessageHandle> {
   let response: Response;
   try {
-    response = await stationFetch(`${target.apiBase}${path}`, {
+    response = await stationFetch(target, `${target.apiBase}${path}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         ...(target.requestOptions?.headers ?? {}),
       },
       body: JSON.stringify(body),
-      ...remoteBound(target),
     });
   } catch (error) {
     // POST may have reached the peer before its response became unavailable
@@ -2099,11 +2092,11 @@ async function postForegroundMessage(
   } catch {
     throw new ForegroundMessageTurnIdentityUnavailableError(unavailableMessage);
   }
-  const url = `${target.apiBase}${path}`;
   // Another Station's own words never reach the caller (#2377 C2b review).
-  const indeterminateText = isThisStationUrl(url)
-    ? payload.error || 'Foreground session start is indeterminate.'
-    : 'Foreground session start is indeterminate.';
+  const indeterminateText =
+    target.kind === 'current'
+      ? payload.error || 'Foreground session start is indeterminate.'
+      : 'Foreground session start is indeterminate.';
   const indeterminate = foregroundIndeterminateDetail(payload);
   if (indeterminate) {
     throw new ForegroundMessageIndeterminateError(
@@ -2134,7 +2127,7 @@ async function postForegroundMessage(
       if (refusal) throw refusal;
     }
     const message = answerText(
-      url,
+      target,
       payload.error,
       unavailableMessage,
       response.status,
@@ -2163,19 +2156,16 @@ async function postForegroundMessage(
 }
 
 async function readSanitizedJson<T>(
+  endpoint: StationEndpoint,
   url: string,
   init: RequestInit | undefined,
   unavailableMessage: string,
 ): Promise<T> {
   try {
-    return await readJson<T>(url, init, unavailableMessage);
+    return await readJson<T>(endpoint, url, init, unavailableMessage);
   } catch (error) {
-    // Peer text is dropped; this Station's own timeout report is kept.
-    const timeout =
-      error instanceof Error && error.cause instanceof RemoteStationTimeoutError
-        ? error.cause
-        : undefined;
-    throw new Error(transportFailureMessage(timeout, unavailableMessage));
+    // Answer text is dropped; this Station's own hop report is kept.
+    throw new Error(transportFailureMessage(error, unavailableMessage));
   }
 }
 
@@ -2192,6 +2182,7 @@ function trustedRequest(init?: RequestInit): RequestInit {
 
 async function currentHandshake(): Promise<StationHandshake> {
   const handshake = await readJson<StationHandshake>(
+    THIS_STATION,
     `${currentControlApiBase()}/.well-known/station/v1`,
     undefined,
     'Current Station environment is unavailable',
@@ -2463,6 +2454,7 @@ async function readConnection(
   id: string,
 ): Promise<ConnectionConfig> {
   const response = await readJson<ApiEnvelope<ConnectionConfig>>(
+    target,
     `${target.apiBase}/api/connections/${encodeURIComponent(id)}`,
     target.requestOptions,
     `Engine connection '${id}' is unavailable`,
@@ -2567,6 +2559,7 @@ export async function discoverDelegationEnvironments(): Promise<DelegationEnviro
   const [current, saved] = await Promise.all([
     currentHandshake(),
     readSanitizedJson<ApiEnvelope<SshEnvironmentView[]>>(
+      THIS_STATION,
       `${currentControlApiBase()}/api/environments/ssh`,
       trustedRequest(),
       'Saved SSH environments are unavailable',
@@ -2634,11 +2627,13 @@ export async function discoverDelegationOptions(
   const project = await resolveProject(target, input);
   const [connectionEnvelope, agentEnvelope] = await Promise.all([
     readSanitizedJson<ApiEnvelope<AgentConnectionView[]>>(
+      target,
       `${target.apiBase}/api/connections/agents`,
       target.requestOptions,
       'Engine connections are unavailable on the selected Station',
     ),
     readSanitizedJson<ApiEnvelope<DelegationAgentView[]>>(
+      target,
       `${target.apiBase}/api/agents`,
       target.requestOptions,
       'Agents are unavailable on the selected Station',
@@ -4503,10 +4498,10 @@ export async function delegateTask(
   // responder must name the selected environment back.
   if (portableIntent && selectedTarget.kind === 'peer') {
     const handshake = await readJson<StationHandshake>(
+      selectedTarget,
       `${selectedTarget.apiBase}/.well-known/station/v1`,
       {
         headers: selectedTarget.requestOptions?.headers ?? {},
-        ...remoteBound(selectedTarget),
       },
       'The selected Station could not be reached to confirm portable execution support',
     );

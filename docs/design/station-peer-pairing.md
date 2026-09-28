@@ -393,7 +393,12 @@ store.
   name its `resolve`), attaches the outbound bearer in-process, and bounds
   every dispatch request to the other Station, SDK reads included
   (`STATION_REMOTE_REQUEST_TIMEOUT_MS`, default 30 s, validated when the
-  runtime starts), so a slow peer is reported by the route. Another
+  runtime starts). A peer that is slow to send its headers, or sends them and
+  then stalls its body, is reported by the route as this Station's timeout.
+  For a write (a message, a response, an interrupt), the report says the
+  change may still have been applied. Whether a target is this Station or
+  another one is decided by the forwarder-minted target's kind, never by its
+  address. Another
   Station's refusal reaches the caller as this Station's fixed copy and the
   HTTP status, never its own words or code. Other server-side peer clients
   (session analytics, remote message search, home-authority room binding,

@@ -289,17 +289,66 @@ async function fetchWithDeadline(
   // derivation of what was actually sent, not a stand-in for an unknown.
   const method =
     init?.method ?? (input instanceof Request ? input.method : 'GET');
+  const timedOut = () =>
+    new StationRequestTimeoutError(url, timeoutMs, {
+      method,
+      ...(opts?.readOnly !== undefined ? { readOnly: opts.readOnly } : {}),
+    });
+  let response: Response;
   try {
-    return await request(input, { ...(init ?? {}), signal });
+    response = await request(input, { ...(init ?? {}), signal });
   } catch (error) {
-    if (deadline.aborted) {
-      throw new StationRequestTimeoutError(url, timeoutMs, {
-        method,
-        ...(opts?.readOnly !== undefined ? { readOnly: opts.readOnly } : {}),
-      });
-    }
+    if (deadline.aborted) throw timedOut();
     throw error;
   }
+  return deadlineBoundBody(response, deadline, timedOut);
+}
+
+const BODY_READERS = new Set<PropertyKey>([
+  'json',
+  'text',
+  'arrayBuffer',
+  'blob',
+  'formData',
+  'bytes',
+]);
+
+/**
+ * The deadline also governs the body: `fetch`'s signal aborts a body read
+ * still in progress when it fires. A body reader that fails that way raises
+ * the same `StationRequestTimeoutError` (with the same `mutation` fact) as a
+ * deadline missed before the headers, so a caller can tell "the server
+ * answered 200 and then stalled" (a write may have been applied) from a
+ * malformed body. Any other body failure is rethrown unchanged.
+ */
+function deadlineBoundBody(
+  response: Response,
+  deadline: AbortSignal,
+  timedOut: () => StationRequestTimeoutError,
+): Response {
+  return new Proxy(response, {
+    get(target, property) {
+      if (BODY_READERS.has(property)) {
+        return async () => {
+          const read = Reflect.get(
+            target,
+            property,
+            target,
+          ) as () => Promise<unknown>;
+          try {
+            return await read.call(target);
+          } catch (error) {
+            if (deadline.aborted) throw timedOut();
+            throw error;
+          }
+        };
+      }
+      if (property === 'clone')
+        return () => deadlineBoundBody(target.clone(), deadline, timedOut);
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  }) as Response;
 }
 
 export type ClientAuthenticatedRequestInit = RequestInit & {
@@ -451,7 +500,10 @@ export function envelopeErrorCode(body: unknown): string | undefined {
 export async function readJsonBody(response: Response): Promise<unknown> {
   try {
     return await response.json();
-  } catch {
+  } catch (error) {
+    // A deadline missed while reading the body is a timeout, not a body that
+    // is not JSON (`fetchWithDeadline`).
+    if (error instanceof StationRequestTimeoutError) throw error;
     return undefined;
   }
 }

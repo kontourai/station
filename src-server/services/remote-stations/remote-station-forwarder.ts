@@ -105,10 +105,20 @@ export function remoteStationRequestTimeoutMs(
 
 /** Another Station did not answer one request within the route's bound. */
 export class RemoteStationTimeoutError extends Error {
-  constructor(readonly timeoutMs: number) {
+  /**
+   * @param mutation whether the request could have changed state there (a
+   * write whose answer never finished arriving): then the outcome is unknown,
+   * not failed, and the message says the change may still have been applied.
+   */
+  constructor(
+    readonly timeoutMs: number,
+    readonly mutation = false,
+  ) {
     const seconds = Math.ceil(timeoutMs / 1000);
     super(
-      `The selected Station did not answer within ${seconds} second${seconds === 1 ? '' : 's'}`,
+      `The selected Station did not answer within ${seconds} second${seconds === 1 ? '' : 's'}${
+        mutation ? '; the change may still have been applied' : ''
+      }`,
     );
     this.name = 'RemoteStationTimeoutError';
   }
@@ -125,6 +135,8 @@ export async function fetchRemoteStation(
   timeoutMs: number,
 ): Promise<Response> {
   const timeout = AbortSignal.timeout(timeoutMs);
+  const method = (init.method ?? 'GET').toUpperCase();
+  const mutation = method !== 'GET' && method !== 'HEAD';
   const signal = init.signal
     ? AbortSignal.any([init.signal, timeout])
     : timeout;
@@ -132,7 +144,8 @@ export async function fetchRemoteStation(
   try {
     response = await fetch(url, { ...init, signal });
   } catch (error) {
-    if (timeout.aborted) throw new RemoteStationTimeoutError(timeoutMs);
+    if (timeout.aborted)
+      throw new RemoteStationTimeoutError(timeoutMs, mutation);
     throw error;
   }
   // Read the body under the same bound, so a peer that sends headers and
@@ -141,7 +154,8 @@ export async function fetchRemoteStation(
   try {
     text = await response.text();
   } catch (error) {
-    if (timeout.aborted) throw new RemoteStationTimeoutError(timeoutMs);
+    if (timeout.aborted)
+      throw new RemoteStationTimeoutError(timeoutMs, mutation);
     throw error;
   }
   const nullBody = [101, 204, 205, 304].includes(response.status);

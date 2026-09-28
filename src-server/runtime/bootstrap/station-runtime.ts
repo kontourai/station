@@ -1321,6 +1321,18 @@ export class StationRuntime {
           projectHomeDir,
         });
       this.unattendedGrantStore = new UnattendedGrantStore(projectHomeDir);
+      // #2377 slice C2b: a bound Discord conversation on a saved Environment
+      // forwards through the remote seam, as the routes do. Built once, here;
+      // the SSH service is assigned later in startup, so it is read at call
+      // time rather than captured now.
+      const remoteStations = createRemoteStationForwarder({
+        ssh: {
+          list: () => this.sshEnvironmentService.list(),
+          connect: (id) => this.sshEnvironmentService.connect(id),
+        },
+        peers: new PeerCredentialStore(projectHomeDir),
+        warn: (message) => this.logger.warn(message),
+      });
       this.discordGatewayService = new DiscordGatewayService({
         homeDir: projectHomeDir,
         logger: this.logger,
@@ -1335,15 +1347,6 @@ export class StationRuntime {
           // #2377: a Discord message is a person's turn Station drives
           // itself; its loopback calls run as server code.
           const orchestrationService = this.orchestrationService;
-          // #2377 slice C2b: a bound conversation on a saved Environment
-          // forwards through the one remote seam, as the routes do.
-          const remoteStations = createRemoteStationForwarder({
-            ssh: this.sshEnvironmentService,
-            peers: new PeerCredentialStore(
-              this.configLoader.getProjectHomeDir(),
-            ),
-            warn: (message) => this.logger.warn(message),
-          });
           return runAsStationServer(() =>
             continueExecutionTargetMessage(
               input,

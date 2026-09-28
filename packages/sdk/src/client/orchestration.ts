@@ -42,6 +42,7 @@ import {
   getJson,
   mutateJson,
   type StationHttpError,
+  StationRequestTimeoutError,
 } from './http';
 
 interface OrchestrationEnvelope<T> {
@@ -56,7 +57,10 @@ async function unwrapOrchestrationResponse<T>(response: Response): Promise<T> {
   let result: OrchestrationEnvelope<T> | null = null;
   try {
     result = (await response.json()) as OrchestrationEnvelope<T>;
-  } catch {
+  } catch (error) {
+    // A deadline missed mid-body is a timeout (with its `mutation` fact),
+    // not an unreadable body (`fetchWithDeadline`).
+    if (error instanceof StationRequestTimeoutError) throw error;
     // A body that is not JSON says nothing about the STATUS, and the status is
     // what a caller's retry classification reads. Throwing a bare Error here
     // made an intermediary's non-JSON 401/403 — a reverse proxy, a tunnel, an
@@ -116,7 +120,9 @@ export async function respondToRequest(
   let payload: OrchestrationEnvelope<unknown> | null = null;
   try {
     payload = (await response.json()) as OrchestrationEnvelope<unknown>;
-  } catch {
+  } catch (error) {
+    // A deadline missed mid-body: the command may have been applied.
+    if (error instanceof StationRequestTimeoutError) throw error;
     // Same shape as `unwrapOrchestrationResponse` above (station#3437,
     // mirrors #3378): a body that is not JSON says nothing about the
     // STATUS, and the status is what a caller's terminal/transient
