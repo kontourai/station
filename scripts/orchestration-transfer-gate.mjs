@@ -372,6 +372,16 @@ export function missingBaselineRootMessage(baseSha, candidateRoot) {
  * whose dependencies verify, qualifies; a baseline for any other commit is
  * never returned, whatever its directory name says.
  */
+/**
+ * @param {{
+ *   candidateRoot: string,
+ *   baseSha: string,
+ *   worktrees?: { path: string, head: string | null, branch: string | null, detached: boolean, locked: boolean, prunable: boolean, isPrimary: boolean }[],
+ *   verify?: (root: string) => unknown,
+ *   log?: (line: string) => void,
+ * }} options
+ * @returns {string | null}
+ */
 export function discoverTransferBaseline({
   candidateRoot,
   baseSha,
@@ -706,6 +716,12 @@ function runTransferGateInner(options) {
   return report;
 }
 
+/**
+ * @param {ReturnType<typeof parseArgs> & {
+ *   discoverBaseline?: (input: { candidateRoot: string, baseSha: string }) => string | null,
+ *   prepareDependencies?: object,
+ * }} [options]
+ */
 export function runTransferGate(options = parseArgs(process.argv.slice(2))) {
   return withTransferGitEnvironment(() => runTransferGateInner(options));
 }

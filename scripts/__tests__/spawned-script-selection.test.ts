@@ -53,10 +53,10 @@ const SCRIPT_GRAPH = {
 
 /** The fixture suites the real selector picks for one changed path. */
 function selectedTests(root: string, changed: string) {
-  return selectChangedVerification(
-    [changed],
-    [...TEST_IMPACT_MANIFEST, ...spawnedScriptEdges({ root })],
-  )
+  return selectChangedVerification([changed], [
+    ...TEST_IMPACT_MANIFEST,
+    ...spawnedScriptEdges({ root }),
+  ] as never)
     .tests.map((entry) => entry.path)
     .filter((path) => existsSync(join(root, path)));
 }
@@ -143,7 +143,7 @@ describe('the real tree', () => {
   it('selects guardrail-process-boundary for a change to learning-markdown (#2886)', () => {
     const changed = 'scripts/lib/learning-markdown.mjs';
     const suite = 'scripts/__tests__/guardrail-process-boundary.test.ts';
-    const selection = selectChangedVerification([changed], built);
+    const selection = selectChangedVerification([changed], built as never);
     const entry = selection.tests.find((test) => test.path === suite);
     expect(entry, JSON.stringify(selection.tests)).toBeDefined();
     // Selected by the derived edge, and by nothing the committed manifest
@@ -166,7 +166,7 @@ describe('the real tree', () => {
       expect(edge.supplemental, edge.pattern).toBe(true);
       expect(edge.related, edge.pattern).toBeUndefined();
       expect(edge.lanes, edge.pattern).toBeUndefined();
-      for (const test of edge.tests)
+      for (const test of edge.tests ?? [])
         expect(test.startsWith('tests/'), `${edge.pattern} -> ${test}`).toBe(
           false,
         );
