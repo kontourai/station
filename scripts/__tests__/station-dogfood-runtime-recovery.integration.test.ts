@@ -13,13 +13,13 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { findFreePortBlock, findFreePortOutside } from '../lib/free-ports.mjs';
-import { probeDogfoodHealth } from '../station-dogfood-health.mjs';
-import { reconcile } from '../station-dogfood-reconcile.mjs';
 import {
   reapAllLongRunningFixtureChildren,
   spawnLongRunningFixtureChild,
 } from '../../packages/cli/src/__tests__/helpers/longrunning-fixture-child.js';
+import { findFreePortBlock, findFreePortOutside } from '../lib/free-ports.mjs';
+import { probeDogfoodHealth } from '../station-dogfood-health.mjs';
+import { reconcile } from '../station-dogfood-reconcile.mjs';
 import { StationFixtureOwner } from './helpers/station-fixture-owner.js';
 
 const workspace = resolve(import.meta.dirname, '..', '..');

@@ -2,11 +2,11 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { inspectProcessFingerprint } from '../../../packages/cli/src/commands/platform.js';
 import {
   reapAllLongRunningFixtureChildren,
   spawnLongRunningFixtureChild,
 } from '../../../packages/cli/src/__tests__/helpers/longrunning-fixture-child.js';
+import { inspectProcessFingerprint } from '../../../packages/cli/src/commands/platform.js';
 import {
   observeFixtureCwds,
   runFixtureCwdLsof,
