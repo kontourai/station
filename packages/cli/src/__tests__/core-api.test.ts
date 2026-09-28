@@ -138,13 +138,13 @@ describe('resolveApiBase', () => {
     expect(resolveApiBase(parsed)).toBe('http://127.0.0.1:4242');
   });
 
-  // DEFAULT_SERVER_PORT is resolved from the load-time channel env; the
-  // stable literal (18141) is pinned in shared runtime-path-resolver.test.ts.
+  // The literal pins the CLI's DEFAULT_SERVER_PORT binding itself: the test
+  // runtime resolves the stable-local channel port, and a regression to 3141
+  // would point the CLI at the user's own Station.
   it('falls back to the current runtime port when nothing is set', () => {
     const parsed = parseCoreArgs([]);
-    expect(resolveApiBase(parsed)).toBe(
-      `http://127.0.0.1:${DEFAULT_SERVER_PORT}`,
-    );
+    expect(DEFAULT_SERVER_PORT).toBe(18141);
+    expect(resolveApiBase(parsed)).toBe('http://127.0.0.1:18141');
   });
 
   // #174 carry-along (#167 AC5): normalizeApiBase's `/api$/` strip is
