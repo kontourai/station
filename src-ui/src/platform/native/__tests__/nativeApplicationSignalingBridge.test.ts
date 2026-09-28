@@ -162,7 +162,10 @@ describe('native application signaling Tauri bridge', () => {
           routingGeneration: binding.scope.routingGeneration + 1,
         },
       },
-      { ...binding, surface: { ...binding.surface, clientInstanceId: 'other' } },
+      {
+        ...binding,
+        surface: { ...binding.surface, clientInstanceId: 'other' },
+      },
       { ...binding, trustRevision: binding.trustRevision + 1 },
       {
         ...binding,
@@ -191,7 +194,10 @@ describe('native application signaling Tauri bridge', () => {
     const invoke = vi.fn(async () => {
       reads++;
       return reads > 1
-        ? { ...binding, surface: { ...binding.surface, channel: 'stable' as const } }
+        ? {
+            ...binding,
+            surface: { ...binding.surface, channel: 'stable' as const },
+          }
         : binding;
     });
     const bridge = await createNativeApplicationSignalingBridge(
@@ -293,11 +299,10 @@ describe('native application signaling Tauri bridge', () => {
   });
 
   it('refuses a mismatched surface on open without invoking the host', async () => {
-    const invoke = vi.fn(
-      async (command: string) =>
-        command === 'station_native_relay_application_binding'
-          ? binding
-          : { expiresAt: Date.now() + 1_000 },
+    const invoke = vi.fn(async (command: string) =>
+      command === 'station_native_relay_application_binding'
+        ? binding
+        : { expiresAt: Date.now() + 1_000 },
     );
     const bridge = await createNativeApplicationSignalingBridge(
       'Workstation',

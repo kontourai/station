@@ -231,8 +231,7 @@ export async function createNativeRelaySignalingBridge(
           const fresh = await fetchBinding();
           const same =
             fresh.trustRevision === initial.trustRevision &&
-            fresh.scope.routingGeneration ===
-              initial.scope.routingGeneration &&
+            fresh.scope.routingGeneration === initial.scope.routingGeneration &&
             JSON.stringify(fresh.surface) === JSON.stringify(initial.surface) &&
             sameTrust(
               {

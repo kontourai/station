@@ -2,9 +2,9 @@ import type {
   NativeApplicationSignaling,
   NativeApplicationTrustOwner,
 } from '@kontourai/station-connect/native-application';
-import { invokeTauri } from './tauriInvoke';
-import { createNativeRelaySignalingBridge } from './nativeRelaySignalingBridge';
 import type { TauriInvoker } from './nativeRelaySignalingBridge';
+import { createNativeRelaySignalingBridge } from './nativeRelaySignalingBridge';
+import { invokeTauri } from './tauriInvoke';
 
 const defaultInvoker: TauriInvoker = {
   invoke: (command, args) => invokeTauri<unknown>(command, args),
