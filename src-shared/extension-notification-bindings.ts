@@ -261,7 +261,3 @@ export function takeUnboundExtensionNotice(
   unboundFirstSeen.add(key);
   return true;
 }
-
-export function _resetUnboundExtensionNotices(): void {
-  unboundFirstSeen.clear();
-}

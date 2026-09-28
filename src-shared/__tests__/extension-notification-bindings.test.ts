@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import {
-  _resetUnboundExtensionNotices,
   EXTENSION_NOTIFICATION_BINDINGS,
   EXTENSION_NOTIFICATION_EVIDENCE_GAPS,
   extensionNotificationBinding,
@@ -206,14 +205,11 @@ describe('extension notification bindings', () => {
   });
 
   test('takeUnboundExtensionNotice fires once per provider-tuple', () => {
-    _resetUnboundExtensionNotices();
-    expect(takeUnboundExtensionNotice('acp', '_x.ai', 'never/seen')).toBe(true);
-    expect(takeUnboundExtensionNotice('acp', '_x.ai', 'never/seen')).toBe(
-      false,
-    );
-    expect(takeUnboundExtensionNotice('claude', '_x.ai', 'never/seen')).toBe(
-      true,
-    );
-    _resetUnboundExtensionNotices();
+    // A tuple no other test in this module instance takes, so the
+    // process-lifetime first-seen set starts without it.
+    const type = 'bindings-test/fires-once';
+    expect(takeUnboundExtensionNotice('acp', '_x.ai', type)).toBe(true);
+    expect(takeUnboundExtensionNotice('acp', '_x.ai', type)).toBe(false);
+    expect(takeUnboundExtensionNotice('claude', '_x.ai', type)).toBe(true);
   });
 });

@@ -1,12 +1,7 @@
-import { afterEach, describe, expect, test, vi } from 'vitest';
-import { _resetUnboundExtensionNotices } from '../../../src-shared/extension-notification-bindings.js';
+import { describe, expect, test, vi } from 'vitest';
 import { observeInboundExtensionNotification } from '../extension-notification-observe.js';
 
 describe('observeInboundExtensionNotification', () => {
-  afterEach(() => {
-    _resetUnboundExtensionNotices();
-  });
-
   test('bound tuples do not warn', () => {
     const warn = vi.fn();
     expect(
@@ -26,7 +21,7 @@ describe('observeInboundExtensionNotification', () => {
       observeInboundExtensionNotification({
         provider: 'acp',
         namespace: '_x.ai',
-        type: 'never/seen',
+        type: 'observe-test/never-seen',
         logger: { warn },
       }),
     ).toBe('unbound');
@@ -34,7 +29,7 @@ describe('observeInboundExtensionNotification', () => {
       observeInboundExtensionNotification({
         provider: 'acp',
         namespace: '_x.ai',
-        type: 'never/seen',
+        type: 'observe-test/never-seen',
         logger: { warn },
       }),
     ).toBe('unbound');
@@ -43,7 +38,7 @@ describe('observeInboundExtensionNotification', () => {
     expect(warn.mock.calls[0][1]).toEqual({
       provider: 'acp',
       namespace: '_x.ai',
-      type: 'never/seen',
+      type: 'observe-test/never-seen',
     });
   });
 });
