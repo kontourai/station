@@ -681,6 +681,7 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
 export const REPO_SCAN_SUITES = Object.freeze([
   'packages/basis-pane/src/__tests__/package-boundary.test.ts',
   'packages/board-pane/src/__tests__/package-boundary.test.ts',
+  'packages/sdk/src/__tests__/body-read-deadline.scan.test.ts',
   'packages/sdk/src/__tests__/keyedQueryDefaults.test.ts',
   'packages/sdk/src/__tests__/publicBarrel.test.ts',
   'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',

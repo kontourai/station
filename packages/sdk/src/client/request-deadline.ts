@@ -71,7 +71,7 @@ export class StationRequestTimeoutError extends Error {
  * `StationRequestTimeoutError` (`fetchWithDeadline`); this passes it on
  * unchanged, with its `mutation` fact, instead of letting the catch report it
  * as an unreadable or non-JSON body. Anything else is left to the catch.
- * `src/__tests__/body-read-deadline-coverage.test.ts` holds every such catch
+ * `src/__tests__/body-read-deadline.scan.test.ts` holds every such catch
  * to it.
  */
 export function rethrowDeadline(error: unknown): void {
