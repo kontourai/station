@@ -10,7 +10,7 @@
       "scenario": "Create durable work",
       "evidence": "Running isolated Station with sample data and a sample display name. No Agent dispatched.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
+      "reviewedRevision": "e55e9acff3667a12116aa180fed2b1ac041c3b34",
       "sources": [
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -22,7 +22,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
+          "digest": "af8d26e723f4f20ea5a0725306b5d57ca657ce55071ff56fc5b83cabe27c0ceb"
         },
         {
           "path": "src-ui/src/views/ProjectPage.css",
@@ -45,6 +45,9 @@
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
         "docs/user/getting-started.md"
+      ],
+      "reviewNotes": [
+        "#2917 changes only .tool-call__row/.tool-call__line/.tool-call__actions layout and .tool-call__approve-btn primary/hover/disabled colours plus .tool-call__approve-error/status containment in src-ui/src/index.css. Viewed the capture: Project page with tasks and knowledge; no tool-call row or approval card is shown, so the changed selectors do not appear in it."
       ]
     },
     {
