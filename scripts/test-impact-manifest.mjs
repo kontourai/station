@@ -427,6 +427,8 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'scripts/__tests__/android-firebase-workflow-env.test.ts',
       'scripts/__tests__/android-network-policy.test.ts',
       'scripts/__tests__/backlog-priority-policy.test.ts',
+      // Derives the event-scoped env scrub list from the workflows (#2922).
+      'scripts/__tests__/ci-event-environment.test.ts',
       'scripts/__tests__/ci-workflow-contract.test.ts',
       'scripts/__tests__/ci-workflow-governance.test.ts',
       'scripts/__tests__/container-release.test.ts',
