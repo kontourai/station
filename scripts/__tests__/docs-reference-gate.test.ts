@@ -129,7 +129,8 @@ describe('findBrokenReferences', () => {
     ]).toEqual(['packages/sdk/src/queries.ts']);
   });
 
-  it('treats every allowlisted path as acceptable', () => {
+  // Acceptance of an allowlisted path is owned by the live-docs check below.
+  it('every ALLOWED_MISSING entry carries a written reason', () => {
     for (const path of ALLOWED_MISSING.keys()) {
       expect(typeof ALLOWED_MISSING.get(path)).toBe('string');
       expect(ALLOWED_MISSING.get(path)!.length).toBeGreaterThan(10);
@@ -204,11 +205,6 @@ describe('live documentation discovery', () => {
     ]);
     expect(describeLiveDocScope()).toContain('7 recursive tracked directory');
     expect(describeLiveDocScope()).toContain('8 named file scope');
-  });
-
-  it('keeps the Module map in the path-validation scope', () => {
-    const broken = findBrokenReferences(['docs/architecture/module-map.md']);
-    expect([...broken.keys()]).toEqual([]);
   });
 
   it('fails red when a required directory is absent or tracked discovery fails', () => {

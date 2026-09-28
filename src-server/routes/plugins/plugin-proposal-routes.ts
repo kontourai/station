@@ -115,9 +115,11 @@ async function observeLocalDigest(
   | { proposedContentDigest: string }
   | { proposedContentDigestUnavailable: PluginProposalDigestUnavailableReason }
 > {
+  // Staged as the install will stage it: a proposed folder's preview leaves
+  // its git metadata out (#2719), so this digest does too.
   const observed = await observeLocalPluginSourceDigest(path);
   return 'digest' in observed
-    ? { proposedContentDigest: observed.digest }
+    ? { proposedContentDigest: observed.digestWithoutGitMetadata }
     : { proposedContentDigestUnavailable: observed.unavailable };
 }
 

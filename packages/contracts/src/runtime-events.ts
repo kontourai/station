@@ -462,6 +462,17 @@ export interface SessionApprovalModeSetEvent extends CanonicalRuntimeEventBase {
   method: 'session.approval-mode-set';
   sessionId: string;
   approvalMode: ApprovalMode;
+  /**
+   * #1796: set only on the Ask Station records when the operator revokes a
+   * device's full access (`approval:full-access` removed, or the device
+   * revoked). Names the device whose grant this undoes; the decision it
+   * supersedes stays in history.
+   */
+  revocation?: {
+    reason: 'device-full-access-revoked';
+    deviceId: string;
+    cause: 'scope-removed' | 'device-revoked';
+  };
 }
 
 export interface ContentTextDeltaEvent extends CanonicalRuntimeEventBase {

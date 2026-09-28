@@ -43,10 +43,12 @@ describe('artifact build timestamp presentation', () => {
   });
 
   test.each([
+    [-5, 'just now'],
     [59, 'just now'],
     [60, '1 minute ago'],
     [3_600, '1 hour ago'],
     [86_400, '1 day ago'],
+    [172_800, '2 days ago'],
     [1_209_600, '2 weeks ago'],
     [Number.NaN, 'unavailable'],
     [Number.POSITIVE_INFINITY, 'unavailable'],

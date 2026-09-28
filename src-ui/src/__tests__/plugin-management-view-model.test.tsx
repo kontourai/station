@@ -1073,6 +1073,22 @@ describe('usePluginManagementViewModel', () => {
     ).toBeLessThan(mocks.installMutate.mock.invocationCallOrder[0]);
   });
 
+  test('carries a preview that excluded git metadata back as part of the approval (#2719)', async () => {
+    mocks.requestInstallConsent.mockResolvedValue(true);
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await primePreview(result, { ...PREVIEW, gitMetadata: 'excluded' });
+
+    await act(async () => {
+      await result.current.install([]);
+    });
+
+    expect(mocks.installMutate).toHaveBeenCalledTimes(1);
+    expect(mocks.installMutate.mock.calls[0][0].consent).toMatchObject({
+      contentDigest: 'sha256:reviewed',
+      gitMetadata: 'excluded',
+    });
+  });
+
   test('names dependency permissions in the decision and carries their byte-bound approval', async () => {
     mocks.requestInstallConsent.mockResolvedValue(true);
     const { result } = renderHook(() => usePluginManagementViewModel());

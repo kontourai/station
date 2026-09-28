@@ -317,31 +317,6 @@ export function mintStationControlMcpHeaderAuth(
   return { url: buildStationControlMcpHeaderUrl(port), token };
 }
 
-/**
- * Station #90 lane D: the stdio channel's mint, for a per-session stdio
- * station-control child. The child gets this token in its spawn env so its
- * REST calls name a session (`STATION_CONTROL_CALLER_TOKEN_ENV`). Same
- * per-session replacement, revocation and TTL as the HTTP channels.
- *
- * It is `bearer-exposed`: a child's env is readable by same-user processes,
- * and the Claude CLI passes it in `--mcp-config` argv. Anyone who copies it
- * can present it as this session, so it must never gate an action that
- * needs `bound` assurance. Production Claude delivery uses the in-process
- * channel instead (`station-control-in-process.ts`); this mint is the
- * fallback when that is not wired.
- */
-export function mintStationControlStdioCallerToken(
-  sessionId: string,
-  tenantExecutionContext?: TenantExecutionContext,
-): string {
-  return mintStationControlMcpToken(
-    sessionId,
-    'stdio-env-token',
-    undefined,
-    tenantExecutionContext,
-  ).token;
-}
-
 /** Test-only reset so suites don't leak state across test files. */
 export function __resetStationControlMcpTokensForTests(): void {
   tokensByDigest.clear();

@@ -13,7 +13,12 @@ import {
 } from '../../../security/runtime-request-security.js';
 import type { Logger } from '../../../utils/logger.js';
 import type { EventBus } from '../../orchestration/event-bus.js';
-import { VirtualApplicationIngress } from '../virtual-application.js';
+import {
+  readVerifiedNativeVirtualApplicationRequest,
+  readVerifiedVirtualApplicationRequest,
+  transferVerifiedNativeVirtualApplicationRequest,
+  VirtualApplicationIngress,
+} from '../virtual-application.js';
 
 const origin = 'https://station.example';
 const clientOrigin = 'https://client.example';
@@ -26,6 +31,72 @@ const request = (path = '/api/projects', init?: RequestInit) =>
   new Request(origin + path, init);
 
 describe('virtual application ingress', () => {
+  test('binds native surface only to a current admitted peer without an Origin', async () => {
+    const lifetime = new AbortController();
+    let current = true;
+    const surface = {
+      kind: 'station-native' as const,
+      appIdentifier: 'ai.kontour.station',
+      channel: 'nightly' as const,
+      clientInstanceId: 'a8dc21a9-5b2b-44cb-a143-f21106cc1b3c',
+      keyThumbprint: 'approved-key',
+    };
+    let copied: Request | undefined;
+    const handler = vi.fn((r: Request) => {
+      const native = readVerifiedNativeVirtualApplicationRequest(r);
+      expect(native?.surface).toEqual(surface);
+      expect(native?.requestOrigin).toBe(origin);
+      expect(readVerifiedVirtualApplicationRequest(r)).toBeUndefined();
+      copied = new Request(r.url, {
+        method: r.method,
+        headers: r.headers,
+        signal: r.signal,
+      });
+      expect(transferVerifiedNativeVirtualApplicationRequest(r, copied)).toBe(
+        true,
+      );
+      expect(readVerifiedNativeVirtualApplicationRequest(copied)).toBeDefined();
+      const changed = new Request(r.url, {
+        method: r.method,
+        headers: { Authorization: 'Bearer substituted' },
+      });
+      expect(transferVerifiedNativeVirtualApplicationRequest(r, changed)).toBe(
+        false,
+      );
+      expect(
+        readVerifiedNativeVirtualApplicationRequest(changed),
+      ).toBeUndefined();
+      return Response.json({ admitted: !!native });
+    });
+    const owner = new VirtualApplicationIngress(origin, undefined, () => ({
+      stationId: 'station-a',
+      connectionEnrollmentId: 'enrollment-a',
+      routingGeneration: 1,
+      connectionId: 'connection-a',
+      stationOrigin: origin,
+      surface,
+      signal: lifetime.signal,
+      isCurrent: () => current,
+    }));
+    owner.bind({ fetch: handler });
+    const application = owner.activate();
+    expect((await application.fetch(request())).status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(
+      (
+        await application.fetch(
+          request('/api/projects', { headers: { Origin: clientOrigin } }),
+        )
+      ).status,
+    ).toBe(403);
+    current = false;
+    expect(
+      readVerifiedNativeVirtualApplicationRequest(copied!),
+    ).toBeUndefined();
+    expect((await application.fetch(request())).status).toBe(403);
+    expect(handler).toHaveBeenCalledTimes(1);
+    owner.stop();
+  });
   test('uses real runtime admission without inventing socket or inherited authority', async () => {
     const logger = {
       info: vi.fn(),

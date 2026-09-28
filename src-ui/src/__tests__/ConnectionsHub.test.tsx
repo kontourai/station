@@ -12,10 +12,7 @@
 
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import {
-  CONNECTION_SECTIONS,
-  canonicalConnectionPath,
-} from '../views/connections-hub/connection-sections';
+import { canonicalConnectionPath } from '../views/connections-hub/connection-sections';
 
 const state: {
   connections: unknown[];
@@ -85,16 +82,6 @@ function railAttentionSection(): string | undefined {
 }
 
 describe('Connections section IA', () => {
-  test('one table supplies the five user-facing sections', () => {
-    expect(CONNECTION_SECTIONS.map((section) => section.id)).toEqual([
-      'models',
-      'engines',
-      'tools',
-      'knowledge',
-      'computers',
-    ]);
-  });
-
   test.each([
     ['/connections/providers', '/connections/models'],
     ['/connections/acp', '/connections/engines'],

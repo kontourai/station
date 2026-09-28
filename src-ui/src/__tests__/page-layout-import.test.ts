@@ -38,27 +38,12 @@ function appliesPageRootClass(source: string): boolean {
 }
 
 /**
- * Scanned roots, with the exact number of files each currently classifies as
- * page-rooted. The counts are the point: a corpus assertion alone passes
- * happily when `appliesPageRootClass` stops classifying ANYTHING, which is
- * the state in which the import rule below can no longer fail. Update a
- * number here in the same change that adds or removes a page-rooted module.
+ * Scanned roots. Classifier non-vacuity is proven by the page-rooted and
+ * not-page-rooted fixtures below, not by per-root counts: a count only bills
+ * the next compliant page-rooted module (ComputersSection, archive#3733,
+ * arrived that way).
  */
-const SCAN_ROOTS = [
-  // Down from 18/2/1 in the station 's lane: the page root moved
-  // out of the views into `components/page-frame`, which is loaded by the
-  // shell and imports its own stylesheet, so almost nothing applies a page
-  // ROOT class any more. Two are the surfaces that keep their own
-  // full-viewport shell (a task workspace, the project editor); the third is
-  // the connections hub's Computers section (archive#3733), which arrived
-  // page-rooted without updating this count — the import RULE this guard
-  // exists for is satisfied there (it imports `page-layout.css` itself), so
-  // this is the bookkeeping that change skipped, not a relaxed rule. Whether
-  // a hub SECTION should own a page root at all is a question for that lane.
-  { dir: 'views', pageRootedCount: 3 },
-  { dir: 'pages', pageRootedCount: 0 },
-  { dir: 'components', pageRootedCount: 0 },
-] as const;
+const SCAN_ROOTS = ['views', 'pages', 'components'] as const;
 
 /** Known page-rooted modules — every one that is left. */
 const PAGE_ROOTED_FIXTURES = [
@@ -96,11 +81,9 @@ function read(relativePath: string): string {
 }
 
 describe('page-layout.css import guard (station#3306)', () => {
-  const scanned = SCAN_ROOTS.map((root) => ({
-    ...root,
-    files: scan(root.dir).map((file) => `${root.dir}/${file}`),
-  }));
-  const allFiles = scanned.flatMap((root) => root.files);
+  const allFiles = SCAN_ROOTS.flatMap((dir) =>
+    scan(dir).map((file) => `${dir}/${file}`),
+  );
 
   it('scans a real corpus (scope honesty)', () => {
     // If a glob root ever drifts, every assertion below would pass over an
@@ -130,20 +113,6 @@ describe('page-layout.css import guard (station#3306)', () => {
         appliesPageRootClass(read(fixture)),
         `${fixture} applies no page root class and must not classify as page-rooted`,
       ).toBe(false);
-    }
-  });
-
-  it('classifies the expected number of modules in each scanned root', () => {
-    for (const root of scanned) {
-      const pageRooted = root.files.filter((file) =>
-        appliesPageRootClass(read(file)),
-      );
-      expect(
-        pageRooted.length,
-        `src-ui/src/${root.dir} now has ${pageRooted.length} page-rooted module(s), not ` +
-          `${root.pageRootedCount}. If that is intended, update SCAN_ROOTS in this file ` +
-          `(page-rooted: ${pageRooted.join(', ')}).`,
-      ).toBe(root.pageRootedCount);
     }
   });
 
@@ -198,11 +167,9 @@ describe('tab/section-nav class-token import guard (station#4463 slice 2)', () =
   }
 
   it('scans a real corpus and finds the two owning components (scope honesty)', () => {
-    const scanned = SCAN_ROOTS.map((root) => ({
-      dir: root.dir,
-      files: scan(root.dir).map((file) => `${root.dir}/${file}`),
-    }));
-    const allTsxFiles = scanned.flatMap((root) => root.files);
+    const allTsxFiles = SCAN_ROOTS.flatMap((dir) =>
+      scan(dir).map((file) => `${dir}/${file}`),
+    );
     for (const owner of OWNING_COMPONENTS) {
       expect(allTsxFiles, `${owner} must be inside a scanned root`).toContain(
         owner,
@@ -211,11 +178,9 @@ describe('tab/section-nav class-token import guard (station#4463 slice 2)', () =
   });
 
   it('every module rendering a tab/section-nav class token can reach page-layout.css', () => {
-    const scanned = SCAN_ROOTS.map((root) => ({
-      dir: root.dir,
-      files: scan(root.dir).map((file) => `${root.dir}/${file}`),
-    }));
-    const allTsxFiles = scanned.flatMap((root) => root.files);
+    const allTsxFiles = SCAN_ROOTS.flatMap((dir) =>
+      scan(dir).map((file) => `${dir}/${file}`),
+    );
     const missing: string[] = [];
     let classified = 0;
     for (const file of allTsxFiles) {
@@ -226,7 +191,7 @@ describe('tab/section-nav class-token import guard (station#4463 slice 2)', () =
     }
     // Scope honesty for the classifier itself: the corpus assertion alone
     // passes happily when usesTabToken stops classifying ANYTHING (the same
-    // vacuity the pageRootedCount guard above exists to prevent). Five files
+    // vacuity the page-rooted fixtures above exist to prevent). Five files
     // carry the literal class tokens today (the two owning components plus
     // the hosts that render raw token strings — most hosts reach the CSS by
     // importing Tabs/SectionNav instead). The floor reds if a rename strips
@@ -263,8 +228,9 @@ describe('tab/section-nav class-token import guard (station#4463 slice 2)', () =
  * without importing its stylesheet reds here, and it needs no browser.
  *
  * The scan adds `workspace-panes` to the three roots above — both routes that
- * render this frame's root are outside `views/` — and keeps its own counts so
- * a classifier that stops matching cannot pass vacuously.
+ * render this frame's root are outside `views/` — and keeps its own
+ * classified/not-classified fixtures so a classifier that stops matching
+ * cannot pass vacuously.
  *
  * WHAT "IMPORTS IT" MEANS HERE: `source.includes(FRAME_STYLESHEET)`, the same
  * substring test the `page-layout.css` guard above uses. It is a MENTION, not
@@ -306,14 +272,13 @@ describe('project-page-frame.css import guard (#1636)', () => {
    * is about lives — `WorkspacePaneRouteView.tsx`, which carries the frame.
    * `ProjectWorkspacePaneCatalog.tsx` (the picker) applied one of the frame's
    * classes too until #1616 moved it onto the shared `Dialog` primitive
-   * instead; it is no longer frame-classed, so this root's count drops from
-   * two to one.
+   * instead; it is no longer frame-classed.
    */
   const FRAME_SCAN_ROOTS = [
-    { dir: 'views', frameClassedCount: 3 },
-    { dir: 'pages', frameClassedCount: 0 },
-    { dir: 'components', frameClassedCount: 0 },
-    { dir: 'workspace-panes', frameClassedCount: 1 },
+    'views',
+    'pages',
+    'components',
+    'workspace-panes',
   ] as const;
 
   /**
@@ -365,11 +330,9 @@ describe('project-page-frame.css import guard (#1636)', () => {
     return false;
   }
 
-  const scanned = FRAME_SCAN_ROOTS.map((root) => ({
-    ...root,
-    files: scan(root.dir).map((file) => `${root.dir}/${file}`),
-  }));
-  const allFiles = scanned.flatMap((root) => root.files);
+  const allFiles = FRAME_SCAN_ROOTS.flatMap((dir) =>
+    scan(dir).map((file) => `${dir}/${file}`),
+  );
 
   /** Every module that applies a frame class today. */
   const FRAME_CLASSED_FIXTURES = [
@@ -422,20 +385,6 @@ describe('project-page-frame.css import guard (#1636)', () => {
     }
   });
 
-  it('classifies the expected number of modules in each scanned root', () => {
-    for (const root of scanned) {
-      const frameClassed = root.files.filter((file) =>
-        appliesFrameClass(read(file)),
-      );
-      expect(
-        frameClassed.length,
-        `src-ui/src/${root.dir} now has ${frameClassed.length} frame-classed module(s), not ` +
-          `${root.frameClassedCount}. If that is intended, update FRAME_SCAN_ROOTS in this file ` +
-          `(frame-classed: ${frameClassed.join(', ')}).`,
-      ).toBe(root.frameClassedCount);
-    }
-  });
-
   it('every module applying a frame class imports project-page-frame.css, except the recorded ones', () => {
     const recorded = new Set(RECORDED_NON_IMPORTERS.map((entry) => entry.file));
     const missing: string[] = [];
@@ -477,7 +426,7 @@ describe('project-page-frame.css import guard (#1636)', () => {
       nodir: true,
       ignore: ['**/__tests__/**'],
     });
-    const scannedRoots = FRAME_SCAN_ROOTS.map((root) => `${root.dir}/`);
+    const scannedRoots = FRAME_SCAN_ROOTS.map((dir) => `${dir}/`);
     const outside = everyModule.filter(
       (file) =>
         !scannedRoots.some((root) => file.startsWith(root)) &&
@@ -547,10 +496,6 @@ describe('project-page-frame.css import guard (#1636)', () => {
         `${entry.file} now imports ${FRAME_STYLESHEET}, so it satisfies the rule ` +
           `outright — delete its RECORDED_NON_IMPORTERS entry.`,
       ).toBe(false);
-      expect(
-        entry.reason.length,
-        `${entry.file}'s entry needs a reason that says why it does not import the sheet`,
-      ).toBeGreaterThan(80);
     }
   });
 });

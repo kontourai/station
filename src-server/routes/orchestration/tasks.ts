@@ -78,8 +78,8 @@ import {
 import { taskTurnReferenceResolutionTotal } from '../../telemetry/metrics.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import {
-  APPROVAL_FULL_ACCESS_NOT_GRANTED,
   fullAccessGrantForRequest,
+  fullAccessRefusal,
   refuseUngrantedFullAccess,
   requestedApprovalMode,
 } from './approval-authority.js';
@@ -1954,8 +1954,7 @@ export function createTaskRoutes(
           ? { ownerAttribution: owner.ownerAttribution }
           : {}),
       });
-      if (outcome.kind === 'forbidden')
-        return c.json(APPROVAL_FULL_ACCESS_NOT_GRANTED, 403);
+      if (outcome.kind === 'forbidden') return fullAccessRefusal(c);
       if (outcome.kind !== 'dispatched') throw new Error(outcome.reason);
       const data = outcome.result;
       return c.json({ success: true, data });

@@ -88,13 +88,12 @@ The lesson generalises past notifications: **native Rust HTTP is not usable on
 Android in this app**. Anything the host needs to fetch has to be resolved by
 the platform, not by `getaddrinfo`.
 
-## Status: the watch is landed and dormant
+## Status: the watch was retired
 
-`notification_watch_start` / `notification_watch_stop` exist and are tested, and
-**nothing calls them**. Push (below) supersedes it for backgrounded delivery.
-The dormant call site is commented in
-`src-ui/src/contexts/ApiBaseContext.tsx` so switching it on is a visible,
-small change rather than an archaeology exercise.
+The host-side watch (`notification_watch_start` / `notification_watch_stop`
+and their web callers) landed dormant and nothing ever called it. It has been
+deleted. Push (below) supersedes it for backgrounded delivery; the findings
+above are why a host poller does not come back.
 
 (Historical: archive#3088 corrected this record after a backlog sweep closed
 the original tracking issue with no code change. It is itself now closed, so
@@ -113,7 +112,7 @@ defect it was filed for.)
 Everything below the first row needs FCM on Android and APNs on iOS
 (archive#917, reseeded as #63 and batched into #177). The native capability
 report therefore returns `remote-push: unsupported` instead of allowing the
-presence of the local-notification plugin or dormant watch to be mistaken for
+presence of the local-notification plugin to be mistaken for
 wake-capable delivery. archive#1225 remains open until the mobile applications
 and server send credentials are provisioned; repository code cannot
 manufacture those provider identities.
@@ -803,7 +802,7 @@ wake-from-cold can be verified without a sender — see
 
 The desktop tray now owns a separate, narrow access-request watch (`src-desktop/src/local_access_watch.rs`). It watches only the local instance selected by native ownership, proving possession of that instance's owner-only boot secret through the local-access route. It does not depend on a mounted WebView. Pending requests remain in the tray menu; OS notification activation opens the exact still-pending request for Approve, Deny or Not now. Closing the dialog never grants access. Expired requests and changed instance ownership cannot be acted on through a stale notification.
 
-This is distinct from the dormant generic/mobile notification watch described above. It does not establish background mobile push support. Physical delivery and click evidence must be recorded against the native build; unit tests alone are not delivery proof.
+This is distinct from the retired generic/mobile notification watch described above. It does not establish background mobile push support. Physical delivery and click evidence must be recorded against the native build; unit tests alone are not delivery proof.
 
 Channel-specific `open-browser` links are handled by the desktop host. It verifies the requested loopback browser port against its owned Station before minting a launcher capability. These links carry an origin, never an operator credential or arbitrary redirect destination.
 
@@ -924,7 +923,7 @@ runtime and the two can never both alert. A shell without the command answers
   dismissed or cleared from Notification Center; past the cap alerts still
   show but their clicks open nothing.
 
-The legacy `notification_watch.rs` is not this: it posts raw titles and
-ignores envelopes, `hideContent`, quiet hours and mutes. It stays dormant.
+The retired host notification watch was not this: it posted raw titles and
+ignored envelopes, `hideContent`, quiet hours and mutes.
 Blocking-category alerts (`blockingAlert.ts`) still come from the webview and
 so still pause while it is hidden.

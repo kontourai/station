@@ -40,6 +40,13 @@ import {
   resolveApiBaseDetailed,
   withRequestTimeout,
 } from './core-api.js';
+import {
+  type DeviceAccessOperatorChannel,
+  parseDeviceScopeArgs,
+  renderGrantableScopes,
+  runDeviceScopeCommand,
+  runDevicesCommand,
+} from './device-access.js';
 import { DEFAULT_SERVER_PORT } from './helpers.js';
 import {
   collectPairingFlags,
@@ -67,6 +74,7 @@ import {
   type TailscaleOfferDependencies,
   type TailscaleOfferEndpoint,
 } from './tailscale-serve.js';
+import { terminalSafeJson, terminalSafeText } from './terminal-safe.js';
 
 /** Injectable device-pairing dependencies (real implementations by default). */
 export interface AccessRequestDependencies {
@@ -225,6 +233,9 @@ const USAGE = `Usage:
   station environment access list [--api-base=<loopback-url>|--station=<name>]
   station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
   station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
+  station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
+  station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
+  station environment access scopes [--json]
   station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
   station environment offer [--client-channel=<stable|beta|nightly>] [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
   station environment hosts [--api-base=<url>]
@@ -813,7 +824,21 @@ async function requestBareJson<T>(
     );
   }
   if (!response.ok) {
-    throw new Error(describeBareJsonFailure(response.status, value));
+    // The bare pairing routes answer `{ error: <code> }`; keep the code and
+    // status on the error (#1796) so a caller branches on them, not on text.
+    const code =
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as { error?: unknown }).error
+        : undefined;
+    throw Object.assign(
+      new Error(describeBareJsonFailure(response.status, value)),
+      {
+        status: response.status,
+        ...(typeof code === 'string' && /^[a-z_]{1,64}$/.test(code)
+          ? { code }
+          : {}),
+      },
+    );
   }
   return value as T;
 }
@@ -865,20 +890,6 @@ async function readBoundedJson(response: Response): Promise<unknown> {
   return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
 }
 
-function terminalSafeText(value: string): string {
-  return Array.from(value, (character) => {
-    if (!/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(character)) return character;
-    const codePoint = character.codePointAt(0) ?? 0;
-    if (codePoint <= 0xffff) {
-      return `\\u${codePoint.toString(16).padStart(4, '0')}`;
-    }
-    const offset = codePoint - 0x10000;
-    const high = 0xd800 + (offset >> 10);
-    const low = 0xdc00 + (offset & 0x3ff);
-    return `\\u${high.toString(16)}\\u${low.toString(16)}`;
-  }).join('');
-}
-
 /**
  * station#4515 review M2: a handshake's `environmentId` comes from whatever
  * process answered on the resolved loopback port — attacker-controlled, not
@@ -892,13 +903,6 @@ function terminalSafeText(value: string): string {
 function sanitizeUntrustedEnvironmentId(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0) return '(missing)';
   return terminalSafeText(value).slice(0, 128);
-}
-
-function terminalSafeJson(value: unknown): string {
-  return JSON.stringify(value, null, 2).replace(
-    /[\p{Cf}\p{Zl}\p{Zp}]/gu,
-    (character) => terminalSafeText(character),
-  );
 }
 
 function parsePairingRequest(value: unknown): PairingRequestView {
@@ -1446,63 +1450,22 @@ async function runAccessRequestCommand(
   return true;
 }
 
-async function runLocalAccessCommand(
-  args: string[],
+/**
+ * The operator channel on this Station's own host (#1796: shared by the
+ * pairing-request verbs and the device-scope verbs). A loopback listener
+ * must prove it owns the Station home this process reads, and only then is
+ * the home's operator credential sent. Nothing here is reachable from a
+ * paired remote CLI: a non-loopback target is refused before any read.
+ */
+async function openLocalOperatorChannel(
+  parsed: ReturnType<typeof parseCoreArgs>,
+  action: string,
   dependencies: EnvironmentCommandDependencies,
-): Promise<boolean> {
-  const parsed = parseCoreArgs(normalizeEnvironmentArgsForParsing(args));
-  if (parsed.positionals[0] !== 'access') return false;
-
-  const action = parsed.positionals[1];
-  if (!['list', 'approve', 'deny'].includes(action ?? '')) {
-    throw usageError();
-  }
-  // Validate the complete command shape before resolving a profile, reading a
-  // local credential, or contacting a listener. A malformed action must never
-  // have observable security-service or network effects.
-  if (
-    action === 'list' &&
-    (parsed.positionals.length !== 2 ||
-      !allowedFlags(parsed.flags, ['api-base', 'station']))
-  ) {
-    throw usageError();
-  }
-  if (
-    action !== 'list' &&
-    (parsed.positionals.length > 3 ||
-      !allowedFlags(parsed.flags, [
-        'api-base',
-        'station',
-        'latest',
-        'force',
-        ...(action === 'approve'
-          ? ['bind-person', 'bind-account', 'personal-device']
-          : []),
-      ]) ||
-      (parsed.flags['bind-person'] !== undefined &&
-        parsed.flags['bind-person'] !== true) ||
-      (parsed.flags['bind-account'] !== undefined &&
-        parsed.flags['bind-account'] !== true) ||
-      (parsed.flags['personal-device'] !== undefined &&
-        parsed.flags['personal-device'] !== true) ||
-      (parsed.flags.latest !== undefined && parsed.flags.latest !== true) ||
-      (parsed.flags.force !== undefined && parsed.flags.force !== true))
-  ) {
-    throw usageError();
-  }
-  const explicitId = action === 'list' ? undefined : parsed.positionals[2];
-  const useLatest = action !== 'list' && parsed.flags.latest === true;
-  if (explicitId && useLatest) {
-    throw new Error('Provide a request id or --latest, not both.');
-  }
-  const bindPerson = parsed.flags['bind-person'] === true;
-  const bindAccount = parsed.flags['bind-account'] === true;
-  const personalDevice = parsed.flags['personal-device'] === true;
-  if ([bindPerson, bindAccount, personalDevice].filter(Boolean).length > 1) {
-    throw new Error(
-      'Choose --bind-person, --bind-account, or --personal-device; use only one.',
-    );
-  }
+): Promise<{
+  requestOperatorJson: (path: string, init?: RequestInit) => Promise<unknown>;
+  resolved: ReturnType<typeof resolveApiBaseDetailed>;
+  apiBase: string;
+}> {
   // station#4515: `resolveApiBaseDetailed` (unlike the bare `resolveApiBase`
   // these verbs used to call) also names the saved Station a target resolved
   // through — from an explicit `--station=<name>`, but equally from
@@ -1518,11 +1481,11 @@ async function runLocalAccessCommand(
     throw new Error(
       targetProfile
         ? `Station "${targetProfile.name}" targets ${apiBase}, which is not a loopback address. ` +
-            'Environment-security commands (access list/approve/deny) operate only on a Station ' +
+            'Environment-security commands (access list/approve/deny/devices/scope) operate only on a Station ' +
             'running on this same machine, so a script can never approve device access on a Station ' +
             "it merely has network reach to. Run this command directly on that Station's host, " +
             `or pass a Station saved with a loopback (127.0.0.1 or [::1]) endpoint.`
-        : `Local access approval requires a loopback --api-base, but this resolved to ${apiBase}. ` +
+        : `Operator access commands (access list/approve/deny/devices/scope) require a loopback --api-base, but this resolved to ${apiBase}. ` +
             'Run this command on the Station host or over SSH, and pass an explicit ' +
             `--api-base=http://127.0.0.1:${DEFAULT_SERVER_PORT} if a remote Station is your default.`,
     );
@@ -1640,6 +1603,116 @@ async function runLocalAccessCommand(
       ...init,
       headers: { ...operatorHeaders, ...(init?.headers ?? {}) },
     });
+
+  return { requestOperatorJson, resolved, apiBase };
+}
+
+async function runLocalAccessCommand(
+  args: string[],
+  dependencies: EnvironmentCommandDependencies,
+): Promise<boolean> {
+  const parsed = parseCoreArgs(normalizeEnvironmentArgsForParsing(args));
+  if (parsed.positionals[0] !== 'access') return false;
+
+  const action = parsed.positionals[1];
+  if (
+    !['list', 'approve', 'deny', 'devices', 'scope', 'scopes'].includes(
+      action ?? '',
+    )
+  ) {
+    throw usageError();
+  }
+  // #1796: the device-scope verbs. Validated in full, and the scope change
+  // computed from the vocabulary, before any Station is contacted.
+  if (action === 'scopes') {
+    if (
+      parsed.positionals.length !== 2 ||
+      !allowedFlags(parsed.flags, ['json'])
+    )
+      throw usageError();
+    // Needs no Station: the vocabulary is this build's own.
+    (dependencies.stdout ?? console.log)(
+      renderGrantableScopes({ json: parsed.flags.json === true }),
+    );
+    return true;
+  }
+  if (action === 'devices' || action === 'scope') {
+    if (
+      action === 'devices' &&
+      (parsed.positionals.length !== 2 ||
+        !allowedFlags(parsed.flags, ['api-base', 'station', 'json']) ||
+        (parsed.flags.json !== undefined && parsed.flags.json !== true))
+    )
+      throw usageError();
+    const scopeArgs =
+      action === 'scope' ? parseDeviceScopeArgs(parsed, usageError) : undefined;
+    const { requestOperatorJson, resolved } = await openLocalOperatorChannel(
+      parsed,
+      action,
+      dependencies,
+    );
+    const channel: DeviceAccessOperatorChannel = {
+      request: requestOperatorJson,
+      target: describeResolvedTargetForHuman(resolved),
+    };
+    const write = dependencies.stdout ?? console.log;
+    if (scopeArgs) await runDeviceScopeCommand(channel, scopeArgs, write);
+    else
+      await runDevicesCommand(
+        channel,
+        { json: parsed.flags.json === true },
+        write,
+      );
+    return true;
+  }
+  // Validate the complete command shape before resolving a profile, reading a
+  // local credential, or contacting a listener. A malformed action must never
+  // have observable security-service or network effects.
+  if (
+    action === 'list' &&
+    (parsed.positionals.length !== 2 ||
+      !allowedFlags(parsed.flags, ['api-base', 'station']))
+  ) {
+    throw usageError();
+  }
+  if (
+    action !== 'list' &&
+    (parsed.positionals.length > 3 ||
+      !allowedFlags(parsed.flags, [
+        'api-base',
+        'station',
+        'latest',
+        'force',
+        ...(action === 'approve'
+          ? ['bind-person', 'bind-account', 'personal-device']
+          : []),
+      ]) ||
+      (parsed.flags['bind-person'] !== undefined &&
+        parsed.flags['bind-person'] !== true) ||
+      (parsed.flags['bind-account'] !== undefined &&
+        parsed.flags['bind-account'] !== true) ||
+      (parsed.flags['personal-device'] !== undefined &&
+        parsed.flags['personal-device'] !== true) ||
+      (parsed.flags.latest !== undefined && parsed.flags.latest !== true) ||
+      (parsed.flags.force !== undefined && parsed.flags.force !== true))
+  ) {
+    throw usageError();
+  }
+  const explicitId = action === 'list' ? undefined : parsed.positionals[2];
+  const useLatest = action !== 'list' && parsed.flags.latest === true;
+  if (explicitId && useLatest) {
+    throw new Error('Provide a request id or --latest, not both.');
+  }
+  const bindPerson = parsed.flags['bind-person'] === true;
+  const bindAccount = parsed.flags['bind-account'] === true;
+  const personalDevice = parsed.flags['personal-device'] === true;
+  if ([bindPerson, bindAccount, personalDevice].filter(Boolean).length > 1) {
+    throw new Error(
+      'Choose --bind-person, --bind-account, or --personal-device; use only one.',
+    );
+  }
+  const { requestOperatorJson, resolved, apiBase } =
+    await openLocalOperatorChannel(parsed, action, dependencies);
 
   if (action === 'list') {
     const requests = parsePairingRequestList(
@@ -1890,6 +1963,10 @@ export function normalizeEnvironmentArgsForParsing(args: string[]): string[] {
     '--scope',
     '--label',
     '--advertise-url',
+    // #1796: `access scope`'s scope lists.
+    '--add',
+    '--remove',
+    '--set',
     '--tailscale-serve-port',
   ]);
   const normalized: string[] = [];
