@@ -1763,4 +1763,76 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
         ?.actor,
     ).toEqual({ kind: 'device', deviceId: laptop.device.id });
   });
+
+  test('a device’s Default pick that resolves to unconfined never resets to Ask', async () => {
+    const f = await fixture({ station: 'never' });
+    f.claude.completeTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const response = await f.request(
+      f.bearer(laptop.credential),
+      '/api/orchestration/chat',
+      {
+        message: 'go',
+        target: { environment: { kind: 'current' }, agent: 'claude-agent' },
+        setApprovalMode: 'connection-default',
+        setApprovalModeBasedOn: null,
+      },
+    );
+    expect(response.status, response.text).toBe(200);
+    const threadId = f.claude.starts.at(-1)!.threadId;
+    expect(lastStart(f, 'claude-agent')).toMatchObject({
+      confinement: 'host',
+      approvalMode: 'never',
+    });
+
+    const removed = await removeFullAccess(f, laptop.device.id);
+
+    expect(removed.body.fullAccessRevocation.reset).toEqual([
+      {
+        conversationId: response.body.data.conversationId,
+        was: 'default-reaching-full-access',
+      },
+    ]);
+    expect(await nextTurn(f, threadId)).toMatchObject({
+      modelOptions: { approvalMode: 'ask' },
+    });
+  });
+
+  test('a respawn keeps the grantor beside the host stamp, so a later revoke still finds the session', async () => {
+    const f = await fixture({});
+    f.claude.completeTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const { conversationId, threadId } = await startAtFullAccess(
+      f,
+      laptop.credential,
+      'default-channel',
+    );
+    const stopped = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/commands',
+      { type: 'stopSession', threadId },
+    );
+    expect(stopped.status, stopped.text).toBe(200);
+    const starts = f.claude.starts.length;
+    await vi.waitFor(async () => {
+      const continued = await f.request(
+        f.bearer(f.operator.credential),
+        `/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
+        { message: 'again' },
+      );
+      expect(continued.status, continued.text).toBe(200);
+    });
+    expect(f.claude.starts.length).toBe(starts + 1);
+    const respawned = f.claude.starts.at(-1)!;
+    expect(respawned.metadata?.stationConfinementGrantor).toEqual({
+      kind: 'device',
+      deviceId: laptop.device.id,
+    });
+
+    const revoked = await revokeDevice(f, laptop.device.id);
+
+    expect(revoked.body.fullAccessRevocation.reset).toEqual([
+      { conversationId, was: 'host-start' },
+    ]);
+  });
 });
