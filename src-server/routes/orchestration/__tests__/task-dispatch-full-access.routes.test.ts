@@ -27,6 +27,7 @@ import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bo
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { createAgentDispatchActorResolver } from '../../../runtime/mcp/station-control-caller.js';
 import { isFullAccessGrant } from '../../../security/coding-authority.js';
+import { bindFullAccessRefusalIdentity } from '../../../security/full-access-refusal.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { sessionOwnerStampFor } from '../../../services/orchestration/session-owner-attribution.js';
@@ -54,12 +55,27 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true });
 });
 
-const REFUSAL = {
-  success: false,
-  code: 'approval-full-access-not-granted',
-  error:
-    "This device is not allowed to give an agent full access. The Station's operator can allow it: Devices, this device's access, Allow full access.",
-};
+/** #1796: the refusal names the paired device and the operator's grant path. */
+function refusedFor(phone: { device: { id: string; name: string } }) {
+  const short = phone.device.id.slice(0, 8);
+  const ui = `Connections → Paired devices → ${phone.device.name} → Change access → Allow full access → Apply`;
+  const cli = `station environment access scope ${short} --add approval:full-access`;
+  return {
+    success: false,
+    code: 'approval-full-access-not-granted',
+    error: `Full access was not applied. You asked for full access, but only this Station's operator can allow it, for device "${phone.device.name}" (${short}). Ask the operator to add the approval:full-access scope to it: in Station, ${ui}; or on the Station's host, run: ${cli}.`,
+    details: {
+      requested: 'never',
+      requester: {
+        kind: 'device',
+        deviceId: short,
+        deviceName: phone.device.name,
+      },
+      station: { environmentId: expect.any(String) },
+      grant: { by: 'operator', scope: 'approval:full-access', ui, cli },
+    },
+  };
+}
 
 const reservation: TaskDispatchReservation = {
   task: { id: 'task-1', projectId: 'project-1' } as never,
@@ -221,6 +237,16 @@ async function fixture() {
       allowedOrigins: [],
     },
   });
+  app.use('*', async (c, next) => {
+    bindFullAccessRefusalIdentity(c.req.raw, {
+      environmentId: () => security.devicePairing.environmentId(),
+      deviceName: (deviceId) =>
+        security.devicePairing
+          .listDevices()
+          .find((device) => device.id === deviceId)?.name,
+    });
+    await next();
+  });
   // Production's request principal: the same resolver the runtime routes
   // compose, over the runtime auth boundary's verified credential facts.
   const resolvePrincipal = createOrchestrationRequestPrincipalResolver({
@@ -326,7 +352,7 @@ test('a device without the grant cannot dispatch a Task at full access', async (
   const phone = f.pair('Phone');
   expect(await f.dispatchTask(phone.credential, 'never')).toEqual({
     status: 403,
-    body: REFUSAL,
+    body: refusedFor(phone),
   });
   expect(f.reserve).not.toHaveBeenCalled();
   expect(f.started).toEqual([]);
@@ -337,7 +363,7 @@ test('a device without the grant cannot launch Starter Work at full access, and 
   const phone = f.pair('Phone');
   expect(await f.launchStarter(phone.credential, 'never')).toEqual({
     status: 403,
-    body: REFUSAL,
+    body: refusedFor(phone),
   });
   expect(f.createTaskIdempotent).not.toHaveBeenCalled();
   expect(f.started).toEqual([]);
@@ -443,7 +469,7 @@ test("#2569: a device without the grant cannot dispatch a Task in an ACP agent's
       await f.post(phone.credential, '/api/tasks/task-1/dispatch', {
         runtimeConfig: { provider: 'acp', modelOptions: { mode } },
       }),
-    ).toEqual({ status: 403, body: REFUSAL });
+    ).toEqual({ status: 403, body: refusedFor(phone) });
   }
   expect(f.reserve).not.toHaveBeenCalled();
   expect(f.started).toEqual([]);

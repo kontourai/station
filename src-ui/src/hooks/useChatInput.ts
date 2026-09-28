@@ -908,7 +908,7 @@ export function useChatInput({
               updateChat(sessionId, { queuedApprovalMode: undefined });
             addEphemeralMessage(sessionId, {
               role: 'system',
-              content: fullAccessRefusalNote,
+              content: fullAccessRefusalNote(error),
             });
           }
           // Otherwise still queued: the next send carries it, and the server

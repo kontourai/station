@@ -141,6 +141,50 @@ export const APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE =
   'approval-full-access-not-granted' as const;
 
 /**
+ * #1796: who asked for full access, as the refusing Station identifies the
+ * request from its own verified credential. Safe metadata only: a device's
+ * display name and a short id, never a credential.
+ *
+ * - `device`: a paired device without `approval:full-access`. The operator
+ *   can grant it to this device.
+ * - `agent`: an Agent's own call. No grant exists: an agent never gives
+ *   itself, or any session, full access; a person must choose it.
+ * - `person`: any other caller that is not the operator in person (for
+ *   example an account session). The operator grants the scope to the
+ *   device that person uses.
+ */
+export type ApprovalFullAccessRequester =
+  | {
+      readonly kind: 'device';
+      readonly deviceId: string;
+      readonly deviceName: string;
+    }
+  | { readonly kind: 'agent' }
+  | { readonly kind: 'person' };
+
+/**
+ * #1796: the structured half of the `approval-full-access-not-granted`
+ * refusal, sent as the envelope's `details`. The `error` text says the same
+ * in words. `grant` is `null` when no grant exists (an Agent's call).
+ */
+export interface ApprovalFullAccessRefusalDetails {
+  /** What the caller asked for: its own consent to full access. */
+  readonly requested: 'never';
+  readonly requester: ApprovalFullAccessRequester;
+  /** The refusing Station. */
+  readonly station: { readonly environmentId?: string };
+  /** What only this Station's operator can do about it. */
+  readonly grant: {
+    readonly by: 'operator';
+    readonly scope: 'approval:full-access';
+    /** The Station UI path, on the operator's own session. */
+    readonly ui: string;
+    /** The operator command, run on the Station's own host. */
+    readonly cli?: string;
+  } | null;
+}
+
+/**
  * How long the orchestration service waits for the engine to acknowledge a
  * cooperative cancel before it forces teardown. Declared here — not privately
  * in the service — because the browser's Stop control has to outwait it: a

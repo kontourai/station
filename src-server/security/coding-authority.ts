@@ -32,6 +32,11 @@ import {
  * approval or command request.
  */
 function actsForAnAgent(request: Request): boolean {
+  return requestMayBeAnAgent(request);
+}
+
+/** {@link actsForAnAgent}, for the full-access refusal's wording (#1796). */
+export function requestMayBeAnAgent(request: Request): boolean {
   return (
     isAgentOriginatedRequest(request) ||
     getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal'

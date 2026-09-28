@@ -387,8 +387,22 @@ export function isFullAccessRefusal(error: unknown): boolean {
   );
 }
 
-export const fullAccessRefusalNote =
-  "Full access was not applied: this device is not allowed to give an agent full access. The Station's operator can allow it from this device's access settings.";
+/**
+ * The chat note for a full-access refusal (#1796): the Station's own words,
+ * which name this device and the operator's exact grant path, or a generic
+ * note when an older Station sent none.
+ */
+export function fullAccessRefusalNote(error: unknown): string {
+  const message =
+    error instanceof Error &&
+    error.message.startsWith('Full access was not applied')
+      ? error.message
+      : undefined;
+  return (
+    message ??
+    "Full access was not applied: only this Station's operator can allow it for this device (Connections → Paired devices → this device → Change access → Allow full access)."
+  );
+}
 
 /** The note a pick dropped by compare-and-set earns in the chat. */
 export function supersededPickNote(standing: ApprovalMode): string {

@@ -347,6 +347,7 @@ import { createSystemRoutes } from '../../routes/system/system.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
+import { bindFullAccessRefusalIdentity } from '../../security/full-access-refusal.js';
 import { isDefinitelyOffBox } from '../../security/off-box-peer.js';
 import {
   PairingFailureLimiter,
@@ -1674,6 +1675,21 @@ export function configureRuntimeRoutes(
             member.actions.includes(action),
         );
     },
+  });
+  // #1796: a refused full-access request names this Station and the paired
+  // device that asked, read from the pairing service's own records (a
+  // display name, never a credential), whichever route refuses it.
+  const fullAccessRefusalIdentity = {
+    environmentId: () =>
+      context.environmentSecurityService.devicePairing.environmentId(),
+    deviceName: (deviceId: string) =>
+      context.environmentSecurityService.devicePairing
+        .listDevices()
+        .find((device) => device.id === deviceId)?.name,
+  };
+  context.app.use('*', async (c, next) => {
+    bindFullAccessRefusalIdentity(c.req.raw, fullAccessRefusalIdentity);
+    await next();
   });
   // #2377 slice A: every request the boundary above stamped `kind:'internal'`
   // (every station-control tool call, and Station's own server code) is

@@ -472,6 +472,83 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   [PAIRING_SCOPE_APPROVAL_FULL_ACCESS]: ['operator-promotion'],
 };
 
+/**
+ * #1796: what each scope token means, in one place. A `Record` keyed by
+ * {@link PairingScope}, so a new token cannot compile without saying what
+ * it allows. The device access editor (`packages/connect`) and the operator
+ * CLI (`station environment access scopes`) both read it; neither keeps its
+ * own copy.
+ */
+export const PAIRING_SCOPE_DESCRIPTIONS: Record<
+  PairingScope,
+  { readonly label: string; readonly summary: string }
+> = {
+  [PAIRING_SCOPE_ORCHESTRATION_READ]: {
+    label: 'Read',
+    summary: 'Can view and stream chats, sessions and Station state.',
+  },
+  [PAIRING_SCOPE_ORCHESTRATION_OPERATE]: {
+    label: 'Operate',
+    summary: 'Can start, continue and steer chats and Agent work.',
+  },
+  [PAIRING_SCOPE_TERMINAL_OPERATE]: {
+    label: 'Terminal',
+    summary: "Can open an interactive terminal on this Station's computer.",
+  },
+  [PAIRING_SCOPE_ACCESS_MANAGE]: {
+    label: 'Manage access',
+    summary:
+      'Can manage pairing offers and devices. Held only by older default grants; never granted to a device here.',
+  },
+  [PAIRING_SCOPE_INFERENCE_INVOKE]: {
+    label: 'Fleet inference',
+    summary: 'Can request model completions from this Station.',
+  },
+  [PAIRING_SCOPE_ACCESS_APPROVE]: {
+    label: 'Approve pairing requests',
+    summary: 'Can approve or deny other devices asking to pair.',
+  },
+  [PAIRING_SCOPE_CONSENT_DECIDE]: {
+    label: 'Decide consent requests',
+    summary: 'Can approve or deny consent requests on the consent page.',
+  },
+  [PAIRING_SCOPE_HOME_TRANSFER]: {
+    label: 'Home transfer',
+    summary:
+      'Identifies this device for transfer setup. Moving homes and resuming agents are not available yet.',
+  },
+  [PAIRING_SCOPE_HOME_CONTROL]: {
+    label: 'Home control',
+    summary:
+      'Allows home-control sessions. Room access and Agent execution still require their own permissions.',
+  },
+  [PAIRING_SCOPE_ENGINE_LOGIN]: {
+    label: 'Start engine sign-in',
+    summary:
+      "Can start an engine's own device-code sign-in on this Station and see the code to approve. The engine stores the account in this Station's credential profile, so agents using that profile run as it; Station never sees the token.",
+  },
+  [PAIRING_SCOPE_CODING_EXEC]: {
+    label: 'Run commands',
+    summary:
+      "Can run one-off shell commands on this Station's computer (the Coding terminal's command box), as you and with your keys. Without it the device still reads and edits the Project's files.",
+  },
+  [PAIRING_SCOPE_APPROVAL_FULL_ACCESS]: {
+    label: 'Allow full access',
+    summary:
+      "Can put a chat, or an Agent's default, at full access: the agent runs with no sandbox and no approval prompts, as you. Without it the device can still tighten a chat to Ask or Auto, or pick Default.",
+  },
+};
+
+/**
+ * Whether the operator may grant `token` to an already-paired device (the
+ * device scope route's rule): every token except one whose ONLY path is the
+ * frozen default grant (`access:manage`).
+ */
+export function isPairingScopeGrantable(token: PairingScope): boolean {
+  const paths = PAIRING_SCOPE_GRANT_PATHS[token];
+  return !(paths.length === 1 && paths[0] === 'default-grant');
+}
+
 export const DEFAULT_PAIRING_SCOPE_PRESET: PairingScopePreset = 'standard';
 
 /** The space-delimited scope string a UI preset resolves to. */

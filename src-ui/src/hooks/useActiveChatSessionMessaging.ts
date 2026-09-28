@@ -477,7 +477,7 @@ export function useSendMessage(
             updateChat(sessionId, { queuedApprovalMode: undefined });
           addEphemeralMessage(sessionId, {
             role: 'system',
-            content: fullAccessRefusalNote,
+            content: fullAccessRefusalNote(error),
           });
         }
         // Stop deliberately releases the browser's foreground observer after
