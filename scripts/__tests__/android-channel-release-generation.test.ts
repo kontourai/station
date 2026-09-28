@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import {
   applyAndroidReleaseSigning,
   gradleWithAndroidReleaseSigning,
@@ -300,31 +301,46 @@ describe('clean Android channel release generation', () => {
   });
 
   it('verifies the signed nightly AAB strictly before uploading artifacts', () => {
-    const nightly = readFileSync(
-      '.github/workflows/nightly-native-stage.yml',
-      'utf8',
+    type Step = {
+      name?: string;
+      uses?: string;
+      run?: string;
+      if?: unknown;
+      shell?: string;
+      'continue-on-error'?: unknown;
+    };
+    const workflow = parse(
+      readFileSync('.github/workflows/nightly-native-stage.yml', 'utf8'),
+    ) as {
+      defaults?: unknown;
+      jobs: Record<string, { defaults?: unknown; steps: Step[] }>;
+    };
+    const job = workflow.jobs['stage-android'];
+    const buildIndex = job.steps.findIndex(
+      (step) => step.name === 'Build and verify the signed Android staging bytes',
     );
-    const build = nightly.indexOf(
-      'Build and verify the signed Android staging bytes',
+    const build = job.steps[buildIndex];
+    const uploadIndex = job.steps.findIndex((step) =>
+      step.uses?.startsWith('actions/upload-artifact@'),
     );
-    const artifactUpload = nightly.indexOf('actions/upload-artifact@', build);
-    const verify = nightly.indexOf(
-      'Bind the exact staged Android inventory into a receipt',
-      build,
-    );
+    expect(buildIndex).toBeGreaterThanOrEqual(0);
+    expect(uploadIndex).toBeGreaterThan(buildIndex);
 
-    expect(artifactUpload).toBeGreaterThan(build);
-    expect(artifactUpload).toBeGreaterThan(verify);
+    // The runner's default bash is `-e`: the step fails on the verifier's exit
+    // status only while nothing skips the step, tolerates its failure, swaps
+    // the shell, or turns errexit off.
+    expect(build.if).toBeUndefined();
+    expect(build['continue-on-error']).toBeUndefined();
+    expect(build.shell).toBeUndefined();
+    expect(workflow.defaults).toBeUndefined();
+    expect(job.defaults).toBeUndefined();
+    const lines = (build.run ?? '').split('\n').map((line) => line.trim());
+    expect(lines).not.toContainEqual(expect.stringMatching(/^set\s+\+e\b/));
 
-    const verification = nightly.slice(build, verify);
-    expect(verification).toContain(
-      'cohort-android/station-nightly-universal.aab',
-    );
-    expect(verification).toContain(
+    // The invocation is a whole line of its own: `|| true`, a captured
+    // `$(...)`, or a trailing `; true` would each make it lenient.
+    expect(lines).toContain(
       'node scripts/verify-android-aab-signature.mjs cohort-android/station-nightly-universal.aab "$ANDROID_UPLOAD_CERT_SHA256"',
     );
-    // A captured-and-swallowed invocation would still contain the positive
-    // pin above while making the verification lenient.
-    expect(verification).not.toContain('aab_verification=');
   });
 });
