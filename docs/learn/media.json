@@ -22,7 +22,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
+          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
         },
         {
           "path": "src-ui/src/views/ProjectPage.css",
@@ -72,7 +72,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
+          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -134,7 +134,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
+          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -208,7 +208,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
+          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -270,7 +270,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
+          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -315,7 +315,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
+          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -419,7 +419,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
+          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -500,7 +500,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
+          "digest": "4380ca314dcae0984afb921ea72565588facc45e36e39bd9e96e3767cc7911fc"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
