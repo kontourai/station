@@ -1,6 +1,6 @@
 import { expect, type Locator } from '@playwright/test';
 import { monitorBrowserHealth } from './helpers/browser-health';
-import { contrastRatio } from './helpers/color-contrast';
+import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
 import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
@@ -745,10 +745,18 @@ test.describe('Orchestration Chat Flow', () => {
           await button.evaluate((node) => getComputedStyle(node).opacity),
           `${label}: opacity`,
         ).toBe('1');
+        // Inactive controls are exempt from 4.5:1, but the disabled state
+        // must stay legible (3:1) and read as inactive: it paints no fill.
+        const disabled = await button.isDisabled();
         expect(
           await contrastRatio(button),
           `${label}: contrast`,
-        ).toBeGreaterThanOrEqual(4.5);
+        ).toBeGreaterThanOrEqual(disabled ? 3 : 4.5);
+        if (disabled)
+          expect(
+            (await backgroundPaint(button)).alpha,
+            `${label}: disabled fill`,
+          ).toBe(0);
       };
       for (const theme of ['light', 'dark'] as const) {
         await page.evaluate((value) => {
@@ -795,13 +803,81 @@ test.describe('Orchestration Chat Flow', () => {
 
     answer = 'settled';
     await page.setViewportSize({ width: 360, height: 800 });
+    const enabledBoxes = await card
+      .locator('.tool-call__approve-btn')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getBoundingClientRect().width),
+      );
     await allowOnce.click();
     await expect(card.getByRole('status')).toHaveText(
       'This request is no longer open.',
     );
     await expect(allowOnce).toBeDisabled();
+    // Disabling restyles the buttons without resizing them: a border that
+    // appears only when disabled shifted every button by 2px on click.
+    const disabledBoxes = await card
+      .locator('.tool-call__approve-btn')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getBoundingClientRect().width),
+      );
+    disabledBoxes.forEach((width, index) => {
+      expect(
+        Math.abs(width - enabledBoxes[index]),
+        `button ${index} width change on disable`,
+      ).toBeLessThan(0.5);
+    });
     await expectClearLayout('no longer open 360');
     await expectLegibleButtons('no longer open');
+
+    // A desktop viewport (above the 768px breakpoint, so the shared mobile
+    // `[class*="__actions"]` wrap rule does not apply) with the card in the
+    // real narrow right dock. The actions must wrap inside the card rather
+    // than overflow it with buttons squeezed into vertical letters.
+    answer = 'refuse';
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(
+      '/projects/dev/layouts/code?chat=conv-1&dock=open&dockSlotPlacement=right',
+    );
+    await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--right/);
+    await page.addStyleTag({
+      content:
+        '*, *::before, *::after { transition: none !important; animation: none !important; }',
+    });
+    await expect(allowOnce).toBeEnabled();
+    const dockWidth = (await page.locator('.chat-dock').boundingBox())!.width;
+    expect(dockWidth, 'right dock is a narrow column').toBeLessThanOrEqual(480);
+    const expectActionsContained = async (context: string) => {
+      const cardBox = (await card.boundingBox())!;
+      const actionsBox = (await card
+        .locator('.tool-call__actions')
+        .boundingBox())!;
+      expect(
+        actionsBox.x + actionsBox.width,
+        `${context}: actions inside the card`,
+      ).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
+      const lineCounts = await card
+        .locator('.tool-call__approve-btn')
+        .evaluateAll((nodes) =>
+          nodes.map((node) => {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            return new Set(
+              [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+            ).size;
+          }),
+        );
+      expect(lineCounts, `${context}: button labels on one line`).toEqual([
+        1, 1, 1,
+      ]);
+    };
+    await expectClearLayout('desktop right dock pending');
+    await expectActionsContained('desktop right dock pending');
+    await allowOnce.click();
+    await expect(card.getByRole('alert')).toContainText(
+      'Your decision was not delivered',
+    );
+    await expectClearLayout('desktop right dock refused');
+    await expectActionsContained('desktop right dock refused');
     browserHealth.assertHealthy();
   });
 });

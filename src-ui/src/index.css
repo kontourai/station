@@ -4815,9 +4815,7 @@ button.tool-call__line:hover {
   border-radius: 3px;
   cursor: pointer;
   font-weight: 400;
-  transition:
-    transform var(--motion-fast) var(--ease-standard),
-    opacity var(--motion-fast) var(--ease-standard);
+  transition: transform var(--motion-fast) var(--ease-standard);
 }
 
 .tool-call__approve-btn:active {
@@ -4826,11 +4824,12 @@ button.tool-call__line:hover {
 
 /* #2917: --text-on-accent is --accent-primary's contrast partner (a device
    accent override sets both together). White on dark's mint brand was
-   1.62:1. */
+   1.62:1. The filled variants carry a transparent 1px border so the
+   disabled state changes only its colour and style, never the size. */
 .tool-call__approve-btn--primary {
   background: var(--accent-primary);
   color: var(--text-on-accent);
-  border: none;
+  border: 1px solid transparent;
 }
 
 /* #2917: each filled variant sets its own hover fill. With only `opacity`
@@ -4853,7 +4852,7 @@ button.tool-call__line:hover {
 .tool-call__approve-btn--danger {
   background: var(--error-fill);
   color: white;
-  border: none;
+  border: 1px solid transparent;
 }
 
 /* #2917: see the primary hover above. */
@@ -4862,14 +4861,16 @@ button.tool-call__line:hover {
 }
 
 /* #2316: a decision in flight (or already accepted) cannot be sent twice.
-   #2917: a quiet token pair rather than 50% opacity, which took every
-   variant's text below 4.5:1 (as low as 1.43:1) while the card is still
-   telling the user what happened to their decision. */
+   #2917: unfilled, dashed and in the row label's own --text-muted rather
+   than 50% opacity, which took every variant's text as low as 1.43:1.
+   Visibly quieter than an enabled control, yet still legible: the #2917
+   journey holds it to 3:1 (inactive controls are exempt from 4.5:1). */
 .tool-call__approve-btn:disabled,
 .tool-call__approve-btn:disabled:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-primary);
+  background: transparent;
+  color: var(--text-muted);
+  border-style: dashed;
+  border-color: var(--border-primary);
   opacity: 1;
   cursor: default;
 }
