@@ -1,82 +1,128 @@
 # Responsive UI contracts
 
-Station treats phone support as a shared layout contract, not a set of
-route-specific patches. New surfaces should reuse the smallest owner below.
+New Station surfaces should reuse the shared layout and interaction owners
+below. These are contributor requirements and current implementation boundaries,
+not a claim that every existing screen has passed a phone or accessibility
+journey. The inventories record both covered cases and remaining adoption work.
 
-## Shared UI authority and Station adoption
+## Shared package and Station responsibilities
 
-Kontour UI owns the public explorer and its generated manifest, the consumer
-guide, `--k-*` tokens, product-theme boundary, and primitive accessibility
-contract. Consult the [consumer guide](https://github.com/kontourai/ui/blob/main/docs/consumer-guide.md)
-and [explorer manifest](https://github.com/kontourai/ui/blob/main/docs/explorer-manifest.json)
-instead of copying those contracts into Station.
+Kontour UI owns its public `--k-*` tokens, product themes and primitive contracts.
+Consult the [consumer guide](https://github.com/kontourai/ui/blob/main/docs/consumer-guide.md)
+and [explorer manifest](https://github.com/kontourai/ui/blob/main/docs/explorer-manifest.json).
+Use the installed package's public exports when implementing against Station's
+pinned dependency; upstream `main` can describe a different version.
 
-Station owns only adopter behavior: which Station surfaces need responsive
-composition, its runtime navigation and data semantics, and the local
-responsive-surface registry and tests named below. A Station consumer may
-compose the public primitives and tokens, but must not fork shared tokens,
-theme classes, or accessibility behavior. Its focused proof covers the
-Station-only keyboard, safe-area, route, and viewport interactions that remain
-after that shared contract is adopted.
+At that public package boundary, Station owns only adopter behavior. Shared
+tokens and primitive accessibility contracts stay with Kontour UI; the local
+shell responsibilities and remaining adoption work below stay with Station.
+
+Station composes those tokens and selected primitives with its own shell,
+navigation, responsive geometry and domain behavior. Adoption is partial:
+Station's [Dialog](../../src-ui/src/components/Dialog.tsx) and
+[ResponsiveDialogSurface](../../src-ui/src/components/ResponsiveDialogSurface.tsx)
+are local owners, not aliases for the package's native-dialog primitive. Do not
+copy package CSS or accessibility implementations into a feature. Extend the
+owning primitive when it needs shared behavior; keep Station-specific routing,
+history and viewport integration at the Station boundary. See [theming](theming.md)
+for the actual token cascade and channel overrides.
 
 ## Dialogs and sheets
 
-Use `ResponsiveDialogSurface` for Station-owned dialogs. It owns:
+Use `Dialog` for standard Station dialog chrome: labelled title, close action,
+scrollable body and footer. It composes `ResponsiveDialogSurface`. Use the lower
+level component for a surface with custom chrome; that consumer must supply its
+own overlay positioning/background and panel colors. The shared markers do not
+by themselves produce a complete visual dialog.
 
-- Visual Viewport height and offset updates while the software keyboard opens;
-- safe mobile focus policy (`panel` by default, or `desktop` for search-first
-  desktop flows);
-- Escape, backdrop dismissal, focus containment, and trigger focus restoration;
-- the `responsive-surface-overlay` and `responsive-surface-panel` contracts.
+`ResponsiveDialogSurface` currently owns:
 
-Wrap dialog footer controls in `ResponsiveSurfaceActions`. Feature classes
-still own desktop alignment and color; the shared marker owns phone wrapping,
-44px minimum targets, and bottom safe-area reachability. This keeps action-row
-behavior consistent without forcing every dialog into one visual layout.
+- a portal to `document.body`, avoiding the dock's stacking context;
+- Visual Viewport height/offset variables and mobile containment styles;
+- initial focus (`panel` by default; `desktop` or `always` only when justified),
+  Tab-boundary handling and return-focus restoration;
+- Escape and backdrop-pointer dismissal when `dismissible` permits it;
+- dialog-history registration when a history host is present and
+  `historyMode="entry"` applies;
+- the `responsive-surface-overlay` and `responsive-surface-panel` markers.
 
-The named layer scale is `sticky` < `popover` < `notice` < `dialog` < `system`.
-The shared overlay owns `--layer-dialog`; passive banners and reconnect notices
-must remain below it so they cannot intercept an active dialog. A blocking
-system surface must opt into `layer="system"` and, when it cannot safely close,
-`dismissible={false}`. Do not introduce feature-local five-digit z-indexes.
+Give the surface an accessible name. Do not add a second document Escape
+listener, backdrop handler, focus trap or mount-time input focus. On a phone,
+automatic input focus should follow an explicit request to type, rather than
+summoning the keyboard when a person opened a chooser. `dismissible={false}`
+suppresses the shared dismissal paths; the feature still owns a meaningful
+completion/recovery path.
 
-Feature components still own their labels, content, and desktop geometry. Do
-not add another document-level Escape listener, backdrop click handler, focus
-trap, or mount-time input focus inside a consumer. An input should only receive
-automatic focus on a phone when opening the surface was itself an explicit
-request to type.
+Wrap custom footer controls in `ResponsiveSurfaceActions`; `Dialog` already
+does this for its footer. Feature classes own desktop layout and colors. The
+shared mobile rules permit wrapping, add bottom safe-area padding, and give
+matching direct-child controls a 44px minimum. Nested controls and overflowing
+content still need their own caller test.
 
-Package-owned surfaces such as Station Connect should keep their package
-boundary. They must meet the same behavior tests before code is moved into a
-cross-package UI dependency.
+Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
+`"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
+anchored surface-popover, navigation, notification and palette tiers as well as
+sticky/dialog/system. A surface popover stays above the dock but below navigation and notification
+chrome; a modal dialog supersedes notification chrome.
+Do not use feature-local large z-index values to compensate for a wrong owner
+or stacking context. A blocking system surface must explicitly choose the
+system layer. Test stacked dialogs and notices together, not only in isolation.
 
-## Full-height workspaces
+Package-owned surfaces such as Station Connect retain their package boundary.
+They need their own behavior evidence; similar class names are not proof that
+they use Station's local component or inherit all of its behavior.
 
-Apply `useMobileVisualViewport` once at the outer workspace boundary and size
-descendants from `--responsive-visual-viewport-height`. Nested panels should
-use flex or grid with `min-width: 0` and `min-height: 0`; they should not each
-subscribe to `window.visualViewport` or calculate keyboard offsets.
+## Viewport and full-height workspaces
 
-Terminal and editor surfaces must keep their controls in one non-wrapping,
-horizontally scrollable row on phones. Hidden text inputs used by terminal
-libraries and visible command inputs use a 16px phone font size to prevent
-Safari input zoom.
+Use [useIsMobile](../../src-ui/src/hooks/useIsMobile.ts) for JavaScript layout
+choices. Its current query covers widths up to 768px **or** a coarse-pointer
+viewport up to 540px tall, so landscape phones retain mobile behavior. Keep
+corresponding CSS conditions aligned. The documentation token `--bp-mobile`
+cannot be substituted into a CSS media query. Dock placement has a different
+policy: a wide coarse-pointer device can be bottom-only without being mobile.
+
+Use [useMobileVisualViewport](../../src-ui/src/hooks/useMobileVisualViewport.ts)
+at the surface or workspace boundary that needs geometry, then size descendants
+from `--responsive-visual-viewport-height`. It combines Visual Viewport readings
+with the Android inset projection and falls back to window dimensions. The
+separate document publisher, installed by `main.tsx`, exposes
+`--visual-viewport-bottom-inset` for fixed siblings. The hook is not a global
+singleton: do not add redundant subscriptions in every nested panel.
+
+Use flex/grid with `min-width: 0` and `min-height: 0` where content must shrink.
+Keep one bounded scroll owner per region; use overscroll containment where a
+sheet should not scroll the page behind it. Apply safe-area values at the owning
+boundary, accounting for nested surfaces rather than adding the same inset to
+every child. Terminal/editor phone controls should stay in one horizontally
+scrollable row; their input font must avoid mobile browser zoom. Test the real
+terminal/editor caller instead of assuming a CSS declaration proves this.
 
 ## Controls and enforcement
 
-- Apply `tap-target` to compact interactive controls; the minimum target is
-  44 by 44 CSS pixels.
-- Use safe-area environment values at the surface boundary, not on every child.
-- Keep one bounded scroll owner per region and use `overscroll-behavior` where
-  a sheet should not move the page behind it.
-- Add every modal-like surface to `docs/ui/responsive-surfaces.json` and every
-  action surface to `docs/ui/responsive-action-surfaces.txt`.
-- Station-owned modal exceptions are not allowed. A newly discovered dialog
-  must adopt `ResponsiveDialogSurface`; package-owned exceptions require an
-  explicit package-boundary rationale and their own behavior proof.
-- Add a contract test for keyboard-sized Visual Viewport geometry, initial
-  focus, reachable controls, dismissal, and focus return. The responsive
-  ratchet rejects unclassified surfaces in `verify:static`.
-- Reuse `tests/helpers/visual-viewport.ts` in Playwright instead of installing
-  a route-local `window.visualViewport` shim. This keeps keyboard simulations
-  and viewport event timing identical across mobile journeys.
+Use `.tap-target` for compact interactive controls; the local floor is 44 by
+44 CSS pixels. Preserve visible keyboard focus. These CSS rules do not prove
+actual hit area after transforms, overlays or clipping.
+
+Record discovered modal-like surfaces in
+[responsive-surfaces.json](../ui/responsive-surfaces.json) and action surfaces in
+[responsive-action-surfaces.txt](../ui/responsive-action-surfaces.txt). New
+Station dialogs must adopt the shared owner; do not introduce Station modal
+exceptions. Package exceptions require a boundary rationale and evidence.
+
+The [responsive ratchet](../../scripts/responsive-surface-ratchet.mjs) discovers
+specific Modal/Drawer/Popover/Sheet filenames and action-class spellings. It
+checks inventory coverage, evidence text and declared component adoption; it
+does not execute those evidence files or discover every possible dialog name.
+Action inventories allow explicit deferred cases. The
+[mobile CSS ratchet](../../scripts/mobile-css-ratchet.mjs) separately limits
+named page-local responsive rules. A green ratchet is structural evidence,
+not a universal accessibility, keyboard or device certificate.
+
+For changed behavior, use the existing owner tests and an affected caller
+journey. Check initial focus, Tab traversal, Escape/backdrop, history behavior,
+focus return, reachable actions, long content, both themes and keyboard-sized
+viewports. Reuse [the Playwright viewport helper](../../tests/helpers/visual-viewport.ts)
+for controlled geometry. Its simulated keyboard does not replace a real
+browser/native keyboard run. The [testing guide](testing.md) explains how to
+record PASS, FAIL and NOT_VERIFIED without turning missing prerequisites into
+success.

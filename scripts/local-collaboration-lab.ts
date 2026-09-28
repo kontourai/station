@@ -8,7 +8,7 @@ const args = process.argv.slice(2);
 if (args.includes('--help')) {
   process.stdout.write(
     'Local collaboration lab: --check=security | --check=accounts | --check=all [--keep]\n' +
-      'Security checks TLS and pairing; accounts checks real local accounts and membership. All remains incomplete until shared content, relay, compute and plugin integration lands.\n',
+      'Security checks TLS and pairing; accounts checks real local accounts and membership. All combines these stages and exits 3; shared-content, relay, compute and plugin acceptance require separate profiles.\n',
   );
 } else {
   if (

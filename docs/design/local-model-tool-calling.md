@@ -1,5 +1,15 @@
 # Local-model (Ollama) tool calling — how to do it best
 
+> **Reading status: historical investigation.** The identity prefixes, configuration
+> fields, UI blocker, model recommendations, and live-test observations below
+> belong to the investigated version. They are preserved as evidence, not current
+> setup instructions or a renewed model-compatibility claim. Use the
+> [Connections guide](../guides/connections.md#local-first-ollama-no-credentials)
+> and [Agent guide](../guides/agents.md#agent-configuration) for current setup.
+> Current model binding and Ollama catalog behavior are owned by
+> [runtime provider resolution](../../src-server/runtime/plugins/runtime-provider-resolution.ts)
+> and the [Ollama provider](../../src-server/providers/llm/ollama-provider.ts).
+
 **Question:** how do we get the full tool flow (e.g. `render_component` → form renders → submit → re-entry) working end-to-end in the UI with a **local/free model** (Ollama first; OpenAI as a fallback)?
 
 **Short answer:** don't build tool-calling into the connected `OllamaAdapter`. Use the **provider-managed** path — which already passes MCP tools to any model connection (including Ollama) and is proven to work — and make a provider-managed-Ollama agent **selectable in the UI**. Pair it with a real tool-calling model (Qwen 2.5 / Llama 3.1), not a small vision model.

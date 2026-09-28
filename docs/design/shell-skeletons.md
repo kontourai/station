@@ -1,5 +1,15 @@
 # Design: Shell skeletons (#193 shell convergence)
 
+> **Reading status: shell policy with historical migration measurements.** The
+> original reference-instance descriptions, six-view table, byte counts, and
+> “this PR”/remaining-work labels record their port stages. They do not describe
+> every current wrapper or route. Current header ownership is implemented by
+> [PageFrame](../../src-ui/src/components/page-frame/PageFrame.tsx), the
+> [frame registry](../../src-ui/src/app-shell/page-frame-registry.ts), and
+> [SplitPaneLayout](../../src-ui/src/components/SplitPaneLayout.tsx).
+> The [ratchet](../../scripts/shell-conformance-ratchet.mjs) checks its declared
+> source patterns; passing it does not prove rendered layout or accessibility.
+
 > Status: **rule recorded, ratchet enforced** (Wave 1 of #242, opening #193's six-view
 > shell-convergence effort). This doc names the two canonical view skeletons, gives a usable
 > decision rule for choosing between them, maps all six #193 views to their target skeleton, and
@@ -201,8 +211,9 @@ The rule now:
   boundary's previous children with `display: none` — when an **urgent** update suspends, and
   Station's navigation is urgent (`App.tsx` calls a plain `setCurrentView` for clicks and
   `popstate` alike; nothing wraps navigation in `startTransition`). Under a transition React keeps
-  the departing content revealed and renders no fallback, which is the #3660 symptom itself; both
-  halves are pinned by test. And the fallback renders if and only if the outlet is suspended, so a
+  the departing content revealed and renders no fallback, which is the #3660 symptom itself.
+  The cold-route tests drive `AppViewContent`, not `App`; they do not catch a later
+  change that wraps App navigation in a transition. The fallback renders only while the outlet is suspended, so a
   warm transition shows no placeholder at all.
 - **A page action goes in the header's action slot**, via `<PageFrameActions>` or
   `SplitPaneLayout`'s `headerActions`/`onAdd` (which portal there when framed). List chrome — a
@@ -212,21 +223,26 @@ The rule now:
   the page title for a tabbed page (Guidance) wraps its tab bodies in `<PageHeaderScope>` so the
   tab's collection title cannot overwrite the page's.
 
-Recorded exceptions, matched one-for-one by a `null` in the registry and an entry in the ratchet's
-`BESPOKE_HEADER_EXCEPTIONS`: **Home** (its `<h1>` is a prompt, not a page name), the **shared-answer
-route** (renders outside the shell), the **project workspace's identity row** (its avatar/name/path
-header IS the content of that surface), two **dialog surfaces** whose `<h2>` is a modal's accessible
-name rather than a heading for a route, and the surfaces that own their whole viewport — **project**,
-**task**, **layout**, **workspace-pane**, **project-new** (a route-level dialog), **project-edit**
-(editor chrome: an unsaved badge and a Save/Back pair) and **not-found** (`ErrorState` is the page).
+The current ratchet has three file exceptions: `HomeSurface.tsx` (its `<h1>`
+is a prompt), `SharedAnswerView.tsx` (outside the shell), and
+`ProjectPageHeader.tsx` (the workspace's own identity row). The frame registry
+separately assigns `null` to routes that own their viewport, including Project,
+Task, Layout, and personal Board placements. These are different inventories:
+a self-shelled route does not need a ratchet exception unless its scanned file
+actually writes a counted heading. Consult both owners rather than expecting
+one exception entry per `null` route.
 
-`.page`/`.page--narrow`/`.page--full` remain only for those last self-shelled surfaces;
+`.page`/`.page--narrow`/`.page--full` remain for self-shelled surfaces;
 `page-layout.css` keeps the section/card/tab/row families every view still uses.
 
 ## 3. Six-view target mapping (#193)
 
-Root wrapper classes below are verified directly against the current tree (byte counts via
-`wc -c`, classes via direct file inspection) as of this doc's writing.
+This table preserves the original port-time inspection (`wc -c` and source
+reads). Its wrappers, sizes, and delivery labels are historical measurements,
+not the current inventory. For example, Connections now resolves into a section
+instead of rendering the old hub, and Project Settings has a `page page--full`
+root; current owners are [ConnectionsHub](../../src-ui/src/views/ConnectionsHub.tsx)
+and [ProjectSettingsView](../../src-ui/src/views/ProjectSettingsView.tsx).
 
 | # | View | Current root wrapper (verified) | Target skeleton | Status |
 |---|---|---|---|---|

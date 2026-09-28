@@ -1,15 +1,34 @@
 # Knowledge foundation — K2..K5 interface contract
 
+> **Reading status: implemented Knowledge foundations with historical planning sketches.**
+> Current [store contracts](../../packages/contracts/src/knowledge-store.ts),
+> [Station-owned file adapters](../../src-server/knowledge-store/adapters/default-store.ts),
+> and [index provider](../../src-server/knowledge-index/sqlite-vec-index-provider.ts)
+> take precedence over the dated pseudocode, dependency pins, and rollout notes.
+> Station implements the published format locally; it does not load a sibling
+> checkout as runtime authority. This review does not requalify every mutation,
+> migration, embedding provider, external Kit version, or Neo4j deployment.
+
 Design contract for the Knowledge foundation program (milestone #4, issues #200–#203), implementing
 [ADR-0009](../adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md): Kit-format,
 adapter-backed stores are canonical; the retrieval index is derived and rebuildable. The successor
 index is **sqlite-vec** (runner-up: real LanceDB as an optional adapter) — the evidence matrix,
 probe transcripts, and license notes live in ADR-0009's appendix and are not restated here.
 
-K2's and K3's planners should be able to implement directly from this document. Interface names are
-normative; shapes are precise enough to paste into TypeScript with minimal translation.
+The K2/K3 snippets preserve the original interface design. Use the checked-in
+contracts and current [Knowledge guide](../guides/knowledge.md) when implementing
+or integrating; the historical snippets are not a copy-paste API reference.
 
-## Today's seam (what is being extended/replaced)
+Current differences that matter when following the sketches: the registry can
+hold multiple personal roots; no production listener automatically indexes
+`onRecordsChanged`; Settings does not implement every K4 onboarding proposal;
+and Neo4j requires a process-local connection registration with no production
+setup caller. Historical dependency pins and milestone statements below are
+dated records, not the installed version or new live-provider evidence. The
+[repository-graph guide](../guides/repository-knowledge-graph.md) records the
+separate, bounded Kit consumer dogfood.
+
+## Original seam before K2
 
 - One globally-resolved vector connection: `resolveRuntimeVectorDbProvider` →
   `findRuntimeCapabilityConnection(providerService, 'vectordb')`
@@ -25,8 +44,9 @@ normative; shapes are precise enough to paste into TypeScript with minimal trans
 
 Layer 1 of ADR-0009. Store roots are first-class entities; every record CRUD call delegates to the
 Kit's published `KnowledgeStoreAdapter` contract (`kits/knowledge/docs/store-contract.md` §8 — inside the installed `@kontourai/flow-agents` package, not this repo, plus
-`supersede` from Addendum A.6 and `retire` from Addendum B.5) — Station never parses or writes the
-Kit's on-disk format itself and never imports Kit internals (ADR-0001; enforced by a zero-tolerance
+`supersede` from Addendum A.6 and `retire` from Addendum B.5). Station's own default
+and Obsidian adapters parse and write that format through KnowledgeFileTransactions;
+Station does not import Kit internals (ADR-0001; enforced by a zero-tolerance
 grep gate, `scripts/knowledge-kit-import-gate.mjs`, wired into `verify:static` as of K2 Wave 3 —
 issue #200's `k2-no-kit-internal-imports` AC).
 
@@ -67,8 +87,8 @@ export interface KnowledgeStoreRoot {
 
 /**
  * The Kit's adapter contract, §8 verbatim (+ A.6 supersede, B.5 retire).
- * Station TYPES this seam but the implementations are the Kit's own published adapter modules
- * (adapters/default-store, adapters/obsidian-store), loaded as ESM per the contract:
+ * Historical interface sketch. The current implementations are Station-owned
+ * default-store and obsidian-store adapters over the published format. The original Kit contract described:
  * "a JavaScript module (ESM) exporting a default class or factory function" whose
  * constructor/factory accepts `{ storeRoot }`.
  */
@@ -131,7 +151,10 @@ Notes for K2's planner:
   stub per this framing: `src-server/knowledge-store/neo4j-connection.ts` — a standalone
   connection-type registry (config shape, TCP-only reachability check, honest `{ok: false, reason}`
   query stub), never touching `KnowledgeStoreAdapter`/`KnowledgeStoreProvider`/the adapter registry.
-  A real bolt-driver graph-sync client remains K5's dual-adapter dogfood scope.
+  A real bolt-driver graph-sync client remains K5's dual-adapter dogfood scope. (Current source,
+  2026-09: the query stub has since been deleted; `neo4j-connection.ts` keeps registration and the
+  TCP reachability check, and fixed-query reads/sync live in `neo4j-graph-provider.ts` and
+  `neo4j-graph-sync.ts`.)
 - Root persistence rides Station's existing storage adapter (`~/.station`), not the store itself —
   the store directory must remain valid for non-Station consumers (Obsidian, the Kit CLI).
 - Existing per-project namespaces re-expressed as project roots is K2's compat path
@@ -329,12 +352,14 @@ Actual current on-disk layout (verified in source, 2026-07-05):
 Migration path (K3, one-time, **explicit command — never automatic on startup**):
 
 1. `./station knowledge migrate [--project <slug>]` reads, per project namespace: the document
-   metadata + `files/` content (canonical text) and the old `vectors.json` (reusable vectors when
-   the embedding connection is unchanged; re-embed otherwise).
+   metadata + `files/` content (canonical text, with stored chunk text as a fallback)
+   and the old `vectors.json`. The current importer checks vector width, not model
+   identity: matching dimensions can permit reuse from a different embedding model.
 2. Each project's namespace is re-expressed as a project-scoped K2 store root: documents become Kit
    `raw` records (provenance noting the migration) via the root's adapter — written only through
    the §8 contract.
-3. The new index is built by `rebuildRoot` from that store root.
+3. Compatible stored chunks are upserted into the derived index; missing or
+   incompatible vectors trigger `rebuildRoot` for the destination root.
 4. **The old directories are never touched**: `{dataDir}/vectordb/<namespace>/` and
    `{dataDir}/projects/<slug>/knowledge/<namespace>/` are preserved as-is, and the old read path
    keeps working, until the user explicitly confirms cutover. Cutover flips the read path to the
@@ -342,8 +367,11 @@ Migration path (K3, one-time, **explicit command — never automatic on startup*
    of the migration. Rollback before cutover = do nothing (old path still live); the new root and
    index are additive.
 
-This satisfies the program risk note ("K3 migration is the data-risk center: never destructive")
-and issue #201's AC ("migration verified on a copy of a real home").
+The numbered cutover description records the original rollout plan. The current
+[importer](../../src-server/knowledge-index/migrate-pre-index-knowledge.ts) copies
+records and indexes them; it does not switch the application read path or remove
+the old store. The program's real-home-copy acceptance criterion is not established
+by a source review or synthetic migration tests.
 
 Migration observations are non-authoritative: telemetry and logging failures cannot interrupt
 record creation or derived indexing. A retry skips an existing record but still idempotently
@@ -415,18 +443,13 @@ management lives in Settings vs the Connections page.
 >   Wave 1 commit, so no follow-up server change was needed when Wave 2's project-settings UI started
 >   calling `POST /roots` with an omitted `storeRoot` for `scope.kind === 'project'`.
 >
-> **`knowledgeStores` config flag status, unchanged by this work.** `AppConfig.knowledgeStores`
-> (`packages/contracts/src/config.ts`) still reads as "default off" in its own doc comment, and this
-> plan — like K2 and K3 before it — does not add any conditional on it: every route in
-> `knowledge-store-routes.ts`, every new SDK hook, and every new UI surface (Settings section,
-> project-settings subsection) is unconditionally reachable regardless of the
-> flag's value. Verified by repo-wide grep during this work: the only non-comment, non-type-decl
-> reference to the string `knowledgeStores` anywhere in `src-server/`, `src-ui/`, or `packages/` is
-> the config type declaration itself (`packages/contracts/src/config.ts`) plus one explanatory
-> comment (`src-server/runtime/bootstrap/runtime-service-bootstrap.ts`) — zero code paths branch on it. This
-> is flagged for the user at PR review, not silently decided: confirm this unconditional rollout is
-> intended, or decide separately whether the flag should become load-bearing (a larger, distinct
-> change this plan does not make).
+> **Current `knowledgeStores` scope.** Ordinary Knowledge routes and Settings
+> management are not gated by this flag. Personal runtime initialization passes
+> it to [conversation-root bootstrap](../../src-server/knowledge-store/conversation-root-bootstrap.ts),
+> which creates `root:conversations` only when it is `true` and the root is absent.
+> Turning it off does not remove an existing root. Hosted initialization refuses
+> that projection. The earlier K4 claim that no code reads the flag is historical.
+
 
 ## K5 — Meeting notes app (issue #203)
 
@@ -440,7 +463,7 @@ explicit validation AC.
 > `examples/meeting-notes/` (`plugin.json`, `layout.json`, `src/index.tsx`) — three tabs, **Capture**
 > (`src/CaptureModal.tsx` + `src/compile.ts`, a plugin-contributed `compile` agent at
 > `agents/compile/agent.json`), **Library** (`src/GraphPane.tsx`, the wikilink graph pane), **Ask**
-> (`src/AskPane.tsx`, retrieval-grounded Q&A). Two flagged core route additions close the primitive
+> (`src/AskPane.tsx`, indexed excerpts with source-record reads, not generated answers). Two flagged core route additions close the primitive
 > gaps this plan named: `src-server/routes/knowledge/knowledge-record-routes.ts` (record create/get/listByType/
 > link + a file-adapter `GET /roots/:rootId/graph`) and `knowledge-index-routes.ts`'s new
 > `POST /index/search` (embeds the query, calls `KnowledgeIndexProvider.search`, re-resolves every hit
@@ -466,7 +489,7 @@ explicit validation AC.
 > guarded MERGE of a root's records+links into Neo4j; never mutates the file store) and
 > `src-server/knowledge-store/neo4j-graph-provider.ts` (`readGraph(rootId)`, `shortestPath(rootId,
 > fromId, toId)`, plus `createNeo4jDriver`'s lazy-guarded real-driver loader). `neo4j-connection.ts`'s
-> K2 registration/reachability/query-stub surface is unchanged; the new modules consume
+> K2 registration/reachability/query-stub surface is unchanged (the query stub was later deleted); the new modules consume
 > `getNeo4jGraphViewConnection()` for config and a driver-injectable `Neo4jDriverLike` (real
 > `neo4j-driver` or `__tests__/fake-neo4j-driver.ts`'s in-memory double) for execution. `neo4j-driver`
 > is now an explicit direct dependency (`package.json`, pinned `^5.28.0`; previously present in
@@ -521,6 +544,8 @@ explicit validation AC.
 >   records is skipped and counted (`linksSkippedDangling`), never written as an edge to a
 >   non-existent node, but an already-synced-then-deleted record's own stale node is left in place.
 >   Named here as an accepted gap of the sync's "additive projection only" scope, not a silent one.
-> - **K6 routing/recall policy remains parked** — no issue exists yet; K5 does not attempt automatic
->   root selection (capture and Ask both require a manual root choice per R3) or any ranking/routing
->   logic beyond the K3 index's own similarity search.
+> - **K6 routing/recall policy is outside this design.** Capture requires a root;
+>   Ask starts with all personal + active-Project roots and allows an explicit
+>   narrower choice. Neither performs semantic root routing beyond that scope
+>   selection and the index's own similarity search. Consult GitHub for current
+>   follow-up ownership rather than treating the original planning status as live.

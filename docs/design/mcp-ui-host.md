@@ -1,5 +1,14 @@
 # MCP Apps in Station
 
+> **Reading status: current host design with staged custody history.**
+> [MCPService](../../src-server/services/plugins/mcp-service.ts), the
+> [browser frame](../../src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx), and
+> [tool-call route](../../src-server/routes/agents/tools.ts) own the live path.
+> The local custody and package-admission sections describe different layers;
+> neither SDK cleanup nor passing host tests proves remote effects stopped.
+> The verification list names evidence areas; it is not a new browser,
+> native-device, or external-server qualification.
+
 > Status: native host support is on by default behind the `mcpUiHost` setting.
 > Station targets MCP core `2026-07-28` and the independently versioned MCP Apps
 > extension `2026-01-26`.
@@ -77,14 +86,14 @@ state removal before SDK `finishAuth`. A closed SDK handle is not sufficient
 to prune a pending credential operation. Cleanup runs outside the owned scope
 to avoid waiting on itself; local inspection counts these retained operations.
 
-This is only the first local tranche of #1409. SDK close fulfillment does **not**
+This local custody layer originated as the first tranche of #1409. SDK close fulfillment does **not**
 prove that a stdio process, SDK-internal negotiation child, descendant process,
 or remote effect has drained. This owner is neither a shared-home lease nor a
 package/installation-generation retirement authority. External file edits and
-another runtime are not made atomic by its JavaScript fences. Native child
-supervision, shared-home admission, and the exclusive package/data mutation
-lease remain required before #1377 can safely update/remove package data.
-This change does not authorize or wire destructive package retirement.
+another runtime are not made atomic by its JavaScript fences. The
+[installation lifecycle](plugin-installation-lifecycle.md) now composes managed
+package admission and retains old code/data on update or withdrawal. It does
+not turn local cleanup into permission for physical reclamation.
 
 ### Shared package admission evidence (control-plane prerequisite)
 
@@ -114,11 +123,14 @@ current runtime roster stops a legacy binary from joining after a crash.
 The impact read can prove recorded package history, but an absent record is
 `unclassified`, not evidence that a package is unrelated or safe to delete.
 
-This prerequisite is not yet connected to all MCP entry points or package
-mutation owners. The Agent-Plugins package/data owner in #1377 is the planned
-refusal seam before its first backup/copy/delete; unrelated legacy plugin
-lifecycle remains outside this guarantee. No current declaration absence or
-inert test receipt authorizes destructive work. Real two-process SQLite tests
+The [Agent Plugin loader](../../src-server/services/plugins/agent-plugin-loader.ts)
+now binds selected package definitions to journal admission, and
+[local custody](../../packages/shared/src/mcp-local-custody.ts) crosses the
+captured effect boundary before constructing/connecting the SDK handle.
+The installation owner withdraws admission while retaining managed code and
+data. Legacy plugin lifecycle remains a separate path; this is not universal
+physical-retirement coverage. No declaration absence or inert test receipt
+authorizes destructive work. Real two-process SQLite tests
 prove claim/fence serialization, retained crash debt, incarnation ABA and
 unknown-commit refusal, not native containment, remote cancellation or physical
 platform compatibility. No home-schema upgrade or operator recovery is run.
@@ -149,7 +161,7 @@ The preferred tool shape is nested:
 ```
 
 Station also reads `_meta["ui/resourceUri"]` from existing Apps servers. When
-both forms exist, the nested value wins.
+both forms carry string values, the nested value wins.
 
 Visibility is enforced, not merely displayed:
 
@@ -165,6 +177,13 @@ The layout's approval policy remains an additional gate:
 - `read-only`: deny App tool calls;
 - `require`: route calls through Station's approval inbox;
 - `inherit`: require the current host confirmation until agent policy is wired.
+
+The browser host supplies `approvalPolicy` in its request. The route does not
+independently recover that value from a stored layout: `read-only` refuses,
+`require` waits when the approval registry is wired, and the other path calls
+the tool directly. The `inherit` confirmation is a browser-host step. These
+rules describe that host composition, not proof that an arbitrary authenticated
+API caller obtained an operator decision.
 
 ## Resource loading and policy
 
@@ -185,10 +204,13 @@ connection, and returns byte-capped content. The resource content may declare:
 }
 ```
 
-Station ignores tool-level `csp` and `permissions`, as required by the Apps
-spec. It validates resource domains, admits only HTTPS origins, and builds a
-deny-by-default policy. Permissions are limited to the Apps extension's
-supported set.
+Station ignores tool-level `csp` and `permissions`. Policy construction filters
+source strings by secure URL scheme: HTTPS for resource, frame and base-URI
+sources, and HTTPS or WSS for connections. It emits restrictive defaults plus
+the declared sources. Scheme filtering is not a complete CSP source-expression
+validator or proof of effective browser egress containment. Keep that assurance
+separate from metadata acceptance. Permissions are limited to the supported
+Apps fields.
 
 Station retains a bounded `mcp-ui.dev` embedded-result fallback for deployed
 servers that put a `ui://` resource in a tool result instead of declaring it.
@@ -205,14 +227,16 @@ The web host follows the Apps sandbox-proxy lifecycle:
    `sandbox="allow-scripts allow-same-origin"`.
 3. The proxy sends `ui/notifications/sandbox-proxy-ready`.
 4. Station sends `ui/notifications/sandbox-resource-ready` with the raw HTML and
-   sanitized resource policy.
+   parsed resource policy.
 5. The proxy creates an inner opaque-origin frame with `sandbox="allow-scripts"`
    and injects the resource's deny-by-default CSP.
 6. The proxy forwards non-reserved Apps bridge messages between Station and the
    inner View.
 
-The proxy serves only `GET /mcp-ui/proxy`. It does not receive the MCP resource
-URI, read resources, proxy arbitrary URLs, store credentials, or execute tools.
+The MCP proxy endpoint serves `GET /mcp-ui/proxy`; the same dedicated listener
+also serves the fixed `/plugin-host/frame` bootstrap. Neither is a general
+asset server. The MCP proxy does not receive the resource URI, read resources,
+proxy arbitrary URLs, store credentials, or execute tools.
 The outer proxy response applies only a `frame-ancestors` CSP, bound to the
 configured Station UI origins. It deliberately applies no resource directives
 that could be inherited by its inner `srcdoc`; the resource-specific CSP is
@@ -220,8 +244,9 @@ applied inside the inner document.
 
 The two-frame boundary prevents untrusted app code from becoming the proxy
 WindowProxy that Station trusts. Messages are also pinned to the expected
-window source. The inner frame receives no same-origin access, navigation,
-popups, modals, or undeclared network access.
+window source. The inner frame receives no same-origin access, top-level
+navigation, popup or modal permissions. Network restrictions retain the policy
+validation limits described above.
 
 If the proxy cannot start or its origin is not distinct from Station, the host
 degrades to an opaque-origin static `srcdoc` render. It never grants
@@ -235,8 +260,8 @@ host supports the initialize lifecycle, tool input and result notifications,
 size changes, display-mode requests, resource reads, and guarded tool calls.
 
 All App requests cross the same server-side authorization boundary as other
-Station actions. Browser code never holds provider credentials or a direct MCP
-transport.
+Station actions. The host bridge does not expose its configured provider
+credentials or direct MCP transport to the App.
 
 ## Threat controls
 
@@ -244,15 +269,18 @@ transport.
 | --- | --- |
 | App reaches Station DOM, cookies, or storage | Different-origin proxy plus an opaque inner frame |
 | App impersonates the trusted proxy | Inner frame has a distinct `WindowProxy`; source checks pin messages |
-| Network exfiltration | Resource-specific, deny-by-default CSP |
+| Network exfiltration | Resource-specific CSP; effective restrictions require source-expression and browser validation |
 | Camera, microphone, location, or clipboard access | Allow only validated declared permissions |
 | Cross-server tool calls | Re-resolve the frame reference and pin `serverId` |
 | Model-only tool called by an App | Enforce Apps visibility on the server |
-| Write without approval | Apply the layout approval policy before execution |
+| App requests a write through the host bridge | Apply the configured host approval path; the request policy is not independent proof of consent |
 | Arbitrary resource read | Read only the resolved tool's declared URI |
 | Huge or hanging content | Byte caps, request timeouts, and render bounds |
 
 ## Runtime surface
+
+Tool, integration and configuration routes below are relative to Station's API
+base. The proxy route belongs to its separate frame origin.
 
 - `GET /tools/mcp-ui/resolve?ref=...`: resolve a tool and its UI pointer.
 - `GET /tools/mcp-ui/resource?ref=...`: read its declared resource.

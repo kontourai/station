@@ -122,6 +122,9 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  'scripts/__tests__/learning-atlas.browser.test.ts',
+  // Disposable Git history and isolated HTTP adapter fixtures for the public example.
+  'examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs',
   // Runs the real portable-archive smoke against a fake archive whose start fails.
   'scripts/__tests__/portable-smoke-diagnostics.test.ts',
   // Copies the tracked tree and runs the repo-governance lane CLI twice (clean and violating).
@@ -431,6 +434,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/dogfood-reconcile-scenario-parity.test.ts',
   // One bounded node child proving the cli-doc parity entry point.
   'scripts/__tests__/cli-doc-parity.test.ts',
+  // Bounded node children prove generation and check failures in disposable roots.
+  'scripts/__tests__/metric-reference.test.ts',
   // Regenerate-and-diff plus real-entry-point runs: docs-index --check and
   // the repo hygiene gate each spawn one bounded node child.
   'scripts/__tests__/docs-index-reachability.test.ts',
@@ -438,6 +443,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // point as one bounded single-shot node child; everything else in the file
   // exercises pure decision composition.
   'scripts/__tests__/gate-for.test.ts',
+  // Bounded Git fixtures and CLI children exercise documentation catch-up.
+  'scripts/__tests__/documentation-impact.test.ts',
+  'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
   'scripts/__tests__/e2e-manifest.test.ts',

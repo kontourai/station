@@ -12,24 +12,37 @@ A starter workspace plugin that demonstrates the current layout-plugin contract 
 - multiple layout tabs (`Welcome`, `Notes`)
 - opening the chat dock from plugin UI
 - reading auth and agent state from `@kontourai/station-sdk`
-- persisting plugin-local state in the browser
+- keeping notes in browser localStorage under one fixed key
 
 ## Install
+
+Run from the checkout root with a running Station selected by automatic
+active-local discovery or the default loopback fallback. Review the install
+preview and grants, then add the layout to the intended Project. Explicit
+`--api-base` and saved-Station targets require a Git source for plugin install.
 
 ```bash
 ./station plugin install ./examples/demo-layout
 ```
 
-Or add the local registry manifest first and install from the registry:
+To browse the local registry fixture:
 
 ```bash
 ./station registry ./examples/registry/manifest.json
-./station registry install demo-layout
+./station registry
 ```
+
+Use the direct plugin install command above or the Registry UI's preview flow
+to install. The separate registry CLI lacks that consent step; see
+[#2809](https://github.com/kontourai/station/issues/2809).
 
 ## Why Keep This Example
 
-`minimal-layout` is the smallest possible starting point. `demo-layout` is the next step up: it is still approachable, but it demonstrates the actual structure most layout plugins will need in practice.
+`minimal-layout` demonstrates a current Workspace Pane; this example retains
+the legacy Layout contract with two tabs. Its notes share the
+`station-demo-notes` key across Projects and saved Stations on the same browser
+origin. They are not server-persisted, Project-scoped, or synchronized across
+devices; storage failures are ignored. Use a scoped store for real project data.
 
 ## Workspace host action migration
 

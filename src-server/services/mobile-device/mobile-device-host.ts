@@ -217,9 +217,9 @@ function parseHubActionResult(value: unknown): HubActionResult {
  * Inventory and capture read; `boot`, `attachStream` and `shutdown` are the
  * ONLY mutations, each a fixed hub route with a typed body built here from a
  * validated target (#1970) — never a caller-supplied path, and never the
- * hub's shell-exec routes. Where the hub is comes from a
- * `DeviceHubEndpoint` (explicit configuration today, a supervised hub
- * tomorrow); a bare `endpoint` string is the explicit case.
+ * hub's shell-exec routes. `DeviceHubEndpoint` supplies a configured local,
+ * consented managed, or admitted SSH connection; a bare `endpoint` string
+ * is the explicit local case.
  */
 export class LocalMobileDeviceHost {
   /** The device host this serves (`local`, or an SSH device host, #1973). */

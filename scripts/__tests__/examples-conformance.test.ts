@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseWorkspacePaneDescriptor } from '@kontourai/station-sdk/workspace-pane';
 import { afterEach, describe, expect, it } from 'vitest';
+import { loadAgentConfig } from '../../src-server/domain/config-loader-agents.js';
 import {
   CREDENTIAL_GATED,
   checkExample,
@@ -44,6 +45,49 @@ const MINIMAL = {
   'README.md': '# demo',
   'package.json': JSON.stringify({ name: 'demo', scripts: {} }),
 };
+
+describe('self-configuring Agent example', () => {
+  it('loads the shipped config through the real Agent loader and matches the guide', async () => {
+    const content = readFileSync(
+      'examples/self-configuring-agent/agent.json',
+      'utf8',
+    );
+    const home = makeExample('home', {
+      'agents/workspace-bootstrapper/agent.json': content,
+    });
+    const loaded = await loadAgentConfig(home, 'workspace-bootstrapper');
+    expect(loaded).toMatchObject(JSON.parse(content));
+    const guide = readFileSync('docs/guides/self-configuring-agent.md', 'utf8');
+    const section = guide
+      .split('## Example agent\n')[1]
+      ?.split('## Delegation rules\n')[0];
+    const example = section?.match(/```json\n([\s\S]*?)\n```/);
+    expect(example).not.toBeNull();
+    expect(JSON.parse(example![1]!)).toEqual(JSON.parse(content));
+  });
+
+  it('refuses the unsupported delegation block through the same loader', async () => {
+    const content = JSON.parse(
+      readFileSync('examples/self-configuring-agent/agent.json', 'utf8'),
+    );
+    const home = makeExample('home', {
+      'agents/workspace-bootstrapper/agent.json': JSON.stringify({
+        ...content,
+        delegation: { maxDepth: 2 },
+      }),
+    });
+    await expect(
+      loadAgentConfig(home, 'workspace-bootstrapper'),
+    ).rejects.toMatchObject({
+      errors: expect.arrayContaining([
+        expect.objectContaining({
+          keyword: 'additionalProperties',
+          params: { additionalProperty: 'delegation' },
+        }),
+      ]),
+    });
+  });
+});
 
 describe('documentedScripts', () => {
   it('extracts every npm run invocation from a README', () => {

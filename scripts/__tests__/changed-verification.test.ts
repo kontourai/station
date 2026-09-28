@@ -2809,7 +2809,8 @@ setInterval(() => {}, 1000);`,
       {
         cwd: process.cwd(),
         encoding: 'utf8',
-        timeout: 30_000,
+        // This includes creating and removing the full fixture checkout.
+        timeout: 120_000,
         windowsHide: true,
       },
     );
@@ -2823,7 +2824,7 @@ setInterval(() => {}, 1000);`,
     expect(result.stdout).toContain(
       'src-server/routes/chat/__tests__/chat-context.test.ts',
     );
-  }, 35_000);
+  }, 125_000);
 });
 
 describe('release metadata and code-health baselines are known paths (#2781)', () => {

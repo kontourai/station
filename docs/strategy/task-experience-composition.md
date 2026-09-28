@@ -1,5 +1,16 @@
 # Task Experience Composition
 
+> **Historical tracer-bullet record.** The status and acceptance table below
+> describe that implementation slice, not current delivery. Current composition
+> is documented in [Workspace Surfaces](../contexts/workspace-surfaces/CONTEXT.md)
+> and the [module map](../architecture/module-map.md). Enabled plugin capability
+> declarations can expose optional tabs, but their content still uses the
+> no-trusted-contract boundary. The remaining owner-contract work is tracked in
+> [#42](https://github.com/kontourai/station/issues/42), folded into
+> [#580](https://github.com/kontourai/station/issues/580). Old issue references
+> and reported test results below retain their historical meaning.
+
+
 > **Status:** experimental tracer bullet for #495, stacked on the unmerged #496
 > durable Task workspace. The labels **Direct**, **Deliver**, **Learn**, and
 > **Operate** are working product language, not final public naming.
@@ -28,7 +39,7 @@ first-party label.
 A typed, versioned cross-product reference contract with trusted producer and
 destination rules is required before any optional experience can become
 available. Unknown producers and contract versions must remain opaque. Station
-issue [#551](https://github.com/kontourai/station/issues/551) owns that contract
+issue [archive#551](https://github.com/kontourai/station-archive/issues/551) owns that contract
 follow-up.
 
 ## Acceptance evidence

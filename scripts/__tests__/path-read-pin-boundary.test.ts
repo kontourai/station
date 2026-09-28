@@ -514,6 +514,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     "this file: the detector's own strings name the calls it looks for; the prepush floor runs it (#1913)",
   'scripts/__tests__/portable-nightly-publish-workflow.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/prepush-typecheck.test.ts':
+    'Git reads run only in disposable linked-worktree and foreign-repository fixtures; the real hook and helper are copied as exact files',
   'scripts/__tests__/release-workflow.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/verification-policy-gate.test.ts':
@@ -557,6 +559,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/runtime/bootstrap/__tests__/station-runtime-store-quarantine.test.ts':
     TEMP_VIA_FIXTURE,
+  'src-server/routes/knowledge/__tests__/knowledge-create-identity.routes.test.ts':
+    'walks only Knowledge store roots under the tracked temporary Station home to compare bytes before and after route refusals',
   'src-server/services/agents/__tests__/playbook-skill-migration.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/services/browser/__tests__/chromium-acquisition.test.ts':

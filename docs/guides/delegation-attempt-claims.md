@@ -1,6 +1,6 @@
 # Delegation attempt claims (receiver request-claim slice)
 
-Opt-in exactly-once-ish protection for portable delegation creates. First
+Opt-in durable duplicate suppression for portable delegation creates. First
 slice only: the receiver claim + lookup foundation. Not the sender ledger,
 fences, cancel, UI, or retention protocol.
 
@@ -8,7 +8,8 @@ fences, cancel, UI, or retention protocol.
 
 `POST /api/orchestration/delegations` accepts an optional `attemptId`
 (closed charset, max 128 chars) on portable intents only. Without it,
-behavior is byte-identical to before. With it:
+the request does not opt into this claim protocol; ordinary authorization and
+delegation rules still apply. With it:
 
 - The attempt is forwarded to a peer receiver only if the receiver
   advertises the `delegationAttemptClaims` capability; otherwise the create
@@ -55,3 +56,11 @@ never evicted. Nothing in this slice replays, resends, or expires a claim:
 `none`/`preparing`/`unresolved` never authorize a second POST, and a
 production retention/expiry protocol with sender-visible semantics is still
 required before capacity pressure becomes routine.
+
+The public caller chain is the
+[`delegation route`](../../src-server/routes/orchestration/orchestration.ts),
+[`station-control delegation`](../../src-server/tools/station-control-delegation.ts),
+and [`claim store`](../../src-server/services/orchestration/delegation-attempt-claim-store.ts).
+The [SDK lookup](../../packages/sdk/src/client/delegations.ts) reads the receiver's
+closed projection. These bounds are not an exactly-once provider-effect guarantee
+or evidence that a real peer journey ran in this documentation review.

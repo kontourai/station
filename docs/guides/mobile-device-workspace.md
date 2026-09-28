@@ -1,65 +1,103 @@
-# Mobile device inspection
+# Mobile device workspace
 
-**Status:** the API/SDK slice of
-[#1967](https://github.com/kontourai/station/issues/1967), plus the shared
-Device pane ([#1969](https://github.com/kontourai/station/issues/1969)) that
-reads it. Managed setup, application installation, input control,
-logs/debugging, and paired dogfood qualification are separate tracked slices.
-This interface lists simulators/emulators and captures one frame from an already
-booted device. It does not claim a live stream or identify the foreground app.
+The Device pane lists simulators/emulators on the selected Station's device
+hosts and can open a shared live view with human input. It uses the same
+[live-surface contract](../architecture/module-map.md#shared-live-surface) as the
+[Browser pane](browser-workspace.md), with a device-specific producer and access
+policy. A separate single-frame capture API remains available; its result is
+a timestamped screenshot, not a claim that a live session exists.
 
-The Device pane is a dock surface offered by a region's "+" (`device`,
-`exposure: 'catalog'`). It asks for a frame, shows it with the time it was
-taken, and sends nothing back: there is no input in this build, and the pane
-says so in every state that shows a frame rather than leaving a reader to
-assume. The frame's shape comes from the capture's own `width`/`height`, so a
-device held in landscape needs no orientation field. A frame older than 30
-seconds is labelled old and is KEPT — a timestamped old frame is more
-informative than nothing, provided it says so — and a refused re-capture
-keeps it too, showing the refusal beside it rather than in its place. A frame
-is dropped only when it stops being about the thing on screen: choosing
-another device, or a change of Station or authority. Which device is selected is
-bounded pane state (`WorkspaceDevicePaneState`); the captured image is never
-persisted, and changing the selected Station or its authority unmounts the
-pane, which is what drops the decoded frame.
+This guide describes current code, replacing the earlier capture-only slice of
+[#1967](https://github.com/kontourai/station/issues/1967). Physical device/app,
+remote-host and release qualification require their own receipts. A visible
+screen alone does not identify the foreground application or its build.
 
 ## Configure a device host
 
-Use a personal Station instance. The API is not mounted in hosted tenant
-execution, where the operator's local device inventory must not be shared
-across tenants. The first adapter supports one explicit local host, named
-`local`; the viewer may use web or desktop. Remote-host registration is tracked
-in [#1973](https://github.com/kontourai/station/issues/1973).
+Use a personal Station instance. Hosted tenant runtimes do not mount the device
+routes. Install the platform prerequisites on the device host: Xcode and the
+chosen simulator runtime for iOS, or Android SDK/emulator tooling and an image
+for Android. This inventory is for simulators/emulators; do not infer physical
+phone support from it.
 
-Install Xcode and an iOS simulator runtime on a Mac, or the Android SDK and a
-compatible emulator image on a supported development host. Start the specific
-device you intend to inspect and install/launch your application using its
-normal development tools. Physical phones are excluded from this API.
+The operator can enable Station's managed device helper through the Device
+setup UI. The [toolchain service](../../src-server/services/devices/toolchain/device-toolchain-service.ts)
+records consent, installs its pinned helper and starts a supervised process.
+Later use can start an already-enabled helper on demand. The current pins and
+integrity records live in the toolchain source; a setup response is not proof
+that every platform prerequisite is ready. Disabling the managed helper stops
+it and withdraws that choice while retaining its installed files.
 
-Run a separately managed `expo-device-hub@0.9.0` on numeric loopback, using an
-available non-default port. The [isolated experiment](../../experiments/mobile-device/README.md)
-contains a pinned scratch-directory setup. Verify the port the hub actually
-bound; keep its dashboard and shell-oriented routes private. Station does not
-install, launch, restart, or stop that external helper in this slice.
-
-Set this server-side environment variable before starting Station:
+An explicitly configured **Device helper URL** overrides the managed helper.
+The setting resolves stored Station configuration before the
+`STATION_MOBILE_DEVICE_HUB_URL` environment fallback. For an independently
+managed helper, use an admitted numeric-loopback origin, for example:
 
 ```sh
 export STATION_MOBILE_DEVICE_HUB_URL=http://127.0.0.1:43871
 ```
 
-Only an exact `http://127.0.0.1:<port>` origin is admitted. Hostnames, alternate
-numeric IP syntax, paths, credentials, queries, fragments, default Station
-ports and redirects are rejected. Configuration is read at runtime startup;
-restart the same owned instance after changing it. An absent or invalid value
-produces an explicit unavailable inventory rather than failing Station startup.
+The configured endpoint admits only an exact `http://127.0.0.1:<port>` origin;
+hostnames, paths, credentials, queries, fragments and reserved ports are refused.
+Configuration is captured when these runtime services are composed; changing a
+setting does not prove the running service has adopted it. Restart the same
+owned instance to apply a different helper endpoint. Keep an external helper's
+private dashboard and shell routes off the network; Station does not own that
+external process's lifecycle.
 
-The browser connects to the selected Station endpoint using its existing
-credentials. It never needs to contact the helper's loopback URL directly.
-Consequently an HTTPS viewer can use the ordinary authenticated Station
-transport without an HTTP mixed-content dependency on its own machine.
+Operator-managed SSH device hosts also have current implementations:
+[host routes](../../src-server/routes/device-hosts.ts) register a host, check its
+connection, and separately enable/start its helper. They are not Station Device
+pairing. A registered address alone is not installation consent or proof that a
+remote simulator works. The
+[host registry](../../src-server/services/devices/hosts/device-host-registry.ts)
+and resolver carry the host identity into inventory, sessions, tools and shares.
+The viewer talks to its selected Station, never directly to the helper's loopback
+URL. Remote platform receipts remain separate from these source/fixture claims.
 
-## API and SDK
+## View, control and end a session
+
+Open **Device** from a region's pane chooser, select a host and exact device,
+then start a stopped device or open its live session. Startup can return a
+`starting` state while inventory polling waits for the booted target; acceptance
+is not completed boot. The current
+[pane](../../src-ui/src/workspace-panes/DeviceWorkspacePane.tsx) renders a
+`LiveSurfaceCanvas`, controller and input status, and device tools. Its bounded
+selection state does not persist captured image bytes or control authority.
+
+Devices belong to the operator. An active admin/owner of a Project may view or
+drive only devices shared with that Project, on the named host. Android shares
+resolve to AVD identity rather than treating a reusable emulator serial as a
+permanent grant. Starting a shared device uses drive authorization; powering it
+off and ending a session for everyone are operator operations. Membership,
+shares, current request credentials and the route's pairing scope all matter.
+[Device access](../../src-server/services/devices/device-access.ts) and
+[session routes](../../src-server/routes/mobile-device.ts) own those checks.
+
+The [producer](../../src-server/services/devices/device-live-surface-producer.ts)
+separates video and input liveness. iOS video uses MJPEG. Android video uses
+server-side H.264 decoding when a decoder is available; otherwise it reports a
+PNG screenshot-poll fallback. Controls reflect input-channel status independently
+of the most recent frame. A successful input write proves only that the hub
+socket accepted bytes, not that the device applied the gesture.
+
+Human input follows the shared control lease and stale-epoch/fence checks.
+Device live-surface Agent control is not wired: its authorizer requires a human
+request. The separate toolchain **Agent access** setting installs/enables
+agent-device tooling; it does not establish an Agent grant to this shared live
+surface or prove all tool use participates in the same lease.
+
+Closing or hiding a pane detaches that viewer. The
+[session service](../../src-server/services/devices/device-session-service.ts)
+ends an unwatched device session after a ten-minute grace by default; the device
+continues running. **End for everyone** unregisters the session for every viewer;
+powering off is a separate action. An observed stopped device or supervised
+helper exit also ends its sessions. An external helper does not emit the same
+exit signal, and an unavailable inventory is not proof that a device stopped.
+Browser sessions have different lifetime rules, so do not apply this
+device idle timeout to a Browser pane.
+
+## Single-frame API and SDK
 
 - `GET /api/mobile-devices/hosts/local/devices` returns host state,
   `observedAt`, and device ID/platform/name/runtime/booted metadata.
@@ -68,7 +106,8 @@ transport without an HTTP mixed-content dependency on its own machine.
   PNG dimensions, and `pngBase64`. The service re-discovers that exact target
   before capturing. A disappeared or stopped device is a conflict, not a frame.
 
-Inventory uses `orchestration:read`. Screen capture requires the stronger
+Alongside the per-device authorization above, inventory uses
+`orchestration:read`. Screen capture requires the stronger
 existing `terminal:operate` scope because a device screen can expose arbitrary
 applications and terminal content. A read-only credential can discover devices
 but cannot obtain their screens. The normal runtime authentication and origin
@@ -96,18 +135,28 @@ error messages. Clear private images when the selected Station/authority changes
 
 ## Failure and lifecycle behavior
 
-The helper exchange allows only the fixed inventory and screenshot paths.
-It omits credentials, refuses redirects, limits inventory to 256 KiB and 256
-devices, limits PNGs to 8 MiB and 8192 pixels per dimension, and caps concurrent
-helper requests at two. Each request and its streamed body share a 12-second
+The single-frame adapter limits its inventory and screenshot exchanges.
+The separate live session and tools paths have their own allowlists and bounds.
+It does not forward the viewer's credentials; the managed connection adds its
+own private helper secret. It refuses redirects, limits inventory to 256 KiB
+and 256 devices, limits PNGs to 8 MiB and 8192 pixels per dimension, and caps
+each adapter's concurrent inventory and screenshot lanes at two requests each.
+Each request and its streamed body share a 12-second
 deadline. A capture includes a fresh inventory exchange followed by capture.
 
 Incomplete platform discovery is `partial`; malformed or unreachable replies
 are `unavailable`. Raw helper diagnostics and local host paths are not returned.
 Neither an old inventory nor a successfully loaded wrapper establishes a live
 screen. The frame identifies the selected device, not the build or foreground
-application: record app provenance separately until the application lifecycle
-slice supplies it.
+application: record app/build provenance separately from the frame, even when
+the Tools drawer can inspect application state.
 
-Stop only the external helper and devices you started when the inspection is
-finished. Closing a viewer does not own their lifecycle in this slice.
+Use the owning lifecycle action for the resource you intend to stop: viewer,
+shared session, device and managed helper are distinct. No physical simulator,
+remote host, input effect, relay frame rate or native-client journey was verified
+by this documentation audit.
+
+Fixture owners include the [single-frame adapter tests](../../src-server/services/mobile-device/__tests__/mobile-device-host.test.ts),
+[session-route tests](../../src-server/routes/__tests__/mobile-device-sessions.routes.test.ts),
+and [producer tests](../../src-server/services/devices/__tests__/device-live-surface-producer.test.ts).
+They do not replace an application/build-specific device receipt.

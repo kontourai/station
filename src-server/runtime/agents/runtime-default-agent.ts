@@ -115,11 +115,11 @@ export function createRuntimeSelfIntegration() {
  * archive#1547: the built-in `station-docs` tool server.
  *
  * Note what this factory does NOT take and does NOT return: no `port`, and no
- * `env` key at all. That absence is load-bearing, not an oversight —
- * `session-agent-resolution.ts` rejects any tool server declaring a non-empty
- * `env` as `secret-boundary-env` on every channel, so declaring none is
- * exactly what lets this server be delivered to every engine, including the
- * ACP/wire engines that can never receive `station-control`.
+ * `env` key at all. That absence is load-bearing: documentation needs no
+ * credential delivery mechanism or secret-boundary exception. It still needs
+ * a supported tool-server transport; it does not make every engine capable
+ * of receiving MCP servers. Station Control has its own reviewed delivery
+ * and authorization requirements.
  *
  * `runtime-default-agent.test.ts` pins that emptiness against this factory's
  * real output AND against `stationDocsRuntimeIdentity` (the load-time

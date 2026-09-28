@@ -1,6 +1,6 @@
 # Deploy ledger
 
-Every ship this repository makes, recorded by the workflow that shipped it — the answer to "on this date, this version was deployed; how out of date am I?" (archive#4572).
+Release records appended by the publishing workflows, plus explicitly qualified historical entries (archive#4572). Check each record's source revision, workflow and caveats; this ledger is not proof that every attempted publication succeeded or was recorded.
 
 ## Machine-readable source of truth
 
@@ -22,7 +22,7 @@ Every ship this repository makes, recorded by the workflow that shipped it — t
 
 ### Site consumption
 
-This file decides nothing about how `station.kontourai.io` will read the ledger (archive#4572 site follow-up). What is true today: the in-repo path and schema above are the source of truth, every publish appends exactly one entry per shipped surface and commits it back to `main`, and the public raw JSON URL above is available to consumers without authentication. The site PR decides whether it reads that URL directly or copies the JSON, along with caching, refresh, and presentation. Because `main` moves, consumers should retain each entry’s `sha` and `workflowRunUrl` as evidence rather than treating a later fetch as an immutable release receipt.
+The public raw JSON URL can be read without authentication. Publishing workflows invoke the appender for their shipped surfaces and use a separate commit-back step. A publication and its ledger update can fail independently; this Markdown cannot establish completeness or current artifact availability. Consumers may read the JSON directly or copy it under their own caching and refresh policy. Because `main` moves, retain each entry’s `sha` and `workflowRunUrl` rather than treating a later fetch as an immutable release receipt.
 
 ## Ledger
 

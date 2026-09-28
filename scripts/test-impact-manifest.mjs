@@ -696,6 +696,7 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/dogfood-evidence-retention.test.ts',
   'scripts/__tests__/gate-scope.test.ts',
   'scripts/__tests__/ios-agent-activity-assets.test.ts',
+  'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/module-entry.scan.test.ts',
   'scripts/__tests__/product-docs-source-links.test.ts',
   // Copies the whole tracked tree and runs the repo-governance lane CLI on it.
@@ -1192,6 +1193,29 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
       'scripts/__tests__/public-doc-contract-examples.test.ts',
     ],
     reason: 'generated contributor command Interface',
+  },
+  {
+    pattern: 'scripts/lib/learning-media.mjs',
+    tests: ['scripts/__tests__/learning-media.test.ts'],
+    reason:
+      'captured UI media provenance, immutable bytes and source freshness',
+  },
+  {
+    pattern: 'scripts/documentation-impact.mjs',
+    tests: [
+      'scripts/__tests__/documentation-impact.test.ts',
+      'scripts/__tests__/gate-for.test.ts',
+    ],
+    reason: 'source-to-document guidance and incremental catch-up',
+  },
+  {
+    pattern: 'scripts/gate-for.mjs',
+    tests: [
+      'scripts/__tests__/gate-for.test.ts',
+      'scripts/__tests__/documentation-impact.test.ts',
+    ],
+    reason:
+      'pre-edit guidance includes current and recorded documentation dependencies',
   },
   {
     pattern: 'scripts/just-interface.mjs',

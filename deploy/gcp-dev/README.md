@@ -16,7 +16,8 @@ Keep cloud credentials on the operator's machine. The VM below has no attached
 service account or OAuth scopes.
 
 The initial profile is `e2-micro` in `us-central1-a` with a 30-GB `pd-standard`
-boot/data disk. It has about 1 GiB of RAM; the bootstrap adds a 2-GiB swap file.
+boot/data disk. Google's [E2 machine reference](https://docs.cloud.google.com/compute/docs/general-purpose-machines#e2_shared-core)
+defines the `e2-micro` memory profile; the bootstrap adds a 2-GiB swap file.
 Swap is prepared in a private temporary file and published only after its
 signature validates. Active swap is not reformatted, and unknown existing final
 files are preserved for inspection. A power loss or uncatchable interruption can
@@ -27,7 +28,7 @@ workloads fit. Measure readiness, memory pressure, and latency before selecting
 this profile for real work; resize to `e2-small` or larger if evidence requires it.
 
 Set a project-scoped monthly budget (the development target is $25) and review
-actual billing. Budget notifications do not stop spending. Google's
+actual billing. [Budget notifications do not cap spending](https://docs.cloud.google.com/billing/docs/how-to/budgets). Google's
 [free-tier allowances](https://docs.cloud.google.com/free/docs/free-cloud-features)
 may cover qualifying compute/disk use but are shared across the billing account.
 Public IPv4, snapshots, transfer, and model calls have separate costs. Persistent
@@ -83,6 +84,13 @@ Inspect `google-startup-scripts.service` and Docker through `gcloud compute ssh`
 with `--tunnel-through-iap`. Resource creation does not prove bootstrap completion.
 Use an operator-owned SSH key; never copy it or a Google refresh token into the VM.
 
+The [bootstrap](bootstrap.sh) installs the Debian Docker package when absent,
+starts Docker, creates the private data directories and prepares swap. It does
+not install Station, load an image or install a Compose plugin. If using Compose,
+provide and qualify that tooling separately. The recipe assumes the chosen
+project already has the required API, billing and IAM setup; it does not make
+resource creation idempotent or prove those permissions.
+
 ## Enroll a prebuilt image
 
 Build for `linux/amd64` in CI or on a capable build machine, not on the micro VM.
@@ -131,6 +139,11 @@ Before calling the environment usable, verify:
 
 No check above proves a provider login migrated or an active agent resumed.
 
+The port-3000 mapping and IAP forward expose Station's UI/HTTP/SSE path. They do
+not expose the separate terminal/voice WebSocket listeners. A PTY handshake
+inside the container is not a browser-terminal or voice journey;
+[#2769](https://github.com/kontourai/station/issues/2769) tracks that ingress gap.
+
 ## Recovery and cleanup
 
 Stop writers before taking an offline home backup; include workspace and
@@ -146,6 +159,10 @@ network/firewall/budget/project resources owned by the completed experiment.
 
 
 ## Recorded development qualification (2026-09-05)
+
+This is retained historical evidence for the named source revision and host
+profile. This documentation review did not provision a VM, rerun the drill,
+measure current billing, or verify a current image on GCP.
 
 A fresh `e2-micro`/Debian 12 host in `us-central1-a` ran a locally built
 `linux/amd64` Station image from source revision

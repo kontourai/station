@@ -1,13 +1,22 @@
 # Design: revision-bound evidence
 
-> Status: implemented contract for [#2891](https://github.com/kontourai/station/issues/2891).
+> **Reading status: current module contract with recorded implementation claims.**
+> [RevisionEvidenceModule](../../src-server/domain/revision-bound-evidence.ts)
+> owns receipt identity and resolution; [EventStore](../../src-server/services/orchestration/event-store.ts)
+> supplies SQLite persistence, and the
+> [room bridge](../../src-server/services/orchestration/project-task-room-revision-evidence-bridge.ts)
+> consumes its scoped reader. This does not establish current Flow, Survey, or
+> Veritas approval semantics, or revalidate every import, attribution, capacity,
+> and restart invariant below.
+
+> Status: implemented contract from [archive#2891](https://github.com/kontourai/station-archive/issues/2891).
 
 ## Purpose
 
 `RevisionEvidenceModule` turns a settled, durable `SharedWorkingState` snapshot
 into an immutable Station revision receipt. It is neither a filesystem adapter
 nor a second synchronization mechanism. It restores untrusted input through
-the #2889 contract, rejects retained deferred causal work as `pending_state`,
+the `SharedWorkingState` contract, rejects retained deferred causal work as `pending_state`,
 then reconstructs a canonical `restored.snapshot()` before it hashes or
 retains anything. A valid but differently ordered input snapshot therefore
 creates the same receipt identity.
@@ -25,7 +34,7 @@ exported but deliberately does not enter the revision identity, so distinct
 valid authority tokens cannot change an otherwise identical receipt ID. Unknown fields—
 including local paths—are neither hashed nor exported. The
 `revision-evidence-v1:<sha256>` identity binds the canonical snapshot and
-Station attribution, while its embedded #2889 shared revision is the content
+Station attribution, while its embedded shared working-state revision is the content
 witness. The interface bounds identifiers, labels, text,
 attestations, snapshots, records, import entry count, and total import bytes
 before durable admission.
@@ -39,8 +48,12 @@ the exact same Project, Task, and document scope.
 
 This module has no proposed-change decision lifecycle. `ProposedChangeService`
 owns the canonical `pending`, `approved`, `rejected`, and `superseded` states
-and decision provenance. The Module receives a narrow injected lookup seam and
-on each resolution verifies the current canonical record. An available diff
+and decision provenance. When composed with a proposed-change lookup, the module
+verifies the current canonical record on each resolution. The production room
+bridge currently supplies attribution but no proposed-change lookup and exposes
+no proposed-change resolution operation. Calling the module directly without
+that lookup returns `proposed_change_lookup_unavailable`.
+An available diff
 requires exact Project/Task/document scope, transitive `before → after`
 ancestry, both authority-derived correlations naming the exact change and its
 canonical Session (plus a canonical run when supplied), and exact text against
@@ -70,7 +83,7 @@ parent's remaining byte budget after delimiters and keys, stopping without
 allocating a serialized whole string. Array and object limits are checked before
 element/property walks; sparse array holes are counted as JSON `null`, and
 malformed/proxy faults reject rather than throw.
-It rederives every record identity from its reconstructed #2889
+It rederives every record identity from its reconstructed `SharedWorkingState`
 snapshot, validates parent closure and exact scope, and commits only a complete
 batch. It also asks a compatible authority to verify each opaque attestation
 against the exported revision ID, parents, scope/shared revision,

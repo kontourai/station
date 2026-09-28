@@ -3525,9 +3525,10 @@ function commonTaskEvent(
 
 /**
  * Convert canonical runtime history into the deliberately small remote-control
- * vocabulary. Prompts, reasoning text, metadata, tool inputs/outputs, request
- * payloads/responses, raw errors, filesystem paths, and extension payloads are
- * intentionally never copied.
+ * vocabulary. Raw prompt, reasoning, metadata, tool input/output, request
+ * payload/response, error, path, and extension fields are not copied. Assistant
+ * text and request titles remain bounded display content, not scrubbed text:
+ * a worker can still include paths or sensitive details in those strings.
  */
 export function projectDelegatedTaskEvent(
   sequence: number,

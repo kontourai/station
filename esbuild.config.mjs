@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import * as esbuild from 'esbuild';
+import { generateStationDocs } from './scripts/generate-station-docs.mjs';
 import { deriveServerBuildIdentity } from './scripts/lib/desktop-build-manifest.mjs';
 import { STATION_SERVER_EXTERNALS } from './scripts/lib/server-build-config.mjs';
 
@@ -47,6 +48,8 @@ const shared = {
 };
 
 const serverDir = process.env.STATION_BUILD_SERVER_DIR || 'dist-server';
+
+await generateStationDocs({ check: true });
 
 await Promise.all([
   esbuild.build({

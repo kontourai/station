@@ -1,5 +1,13 @@
 # Motion grammar
 
+> **Reading status: motion policy with recorded migration and measurement evidence.**
+> Current tokens and reduced-motion behavior are in
+> [tokens.css](../../src-ui/src/tokens.css); the
+> [ratchet](../../scripts/motion-contract-ratchet.mjs) and
+> [baseline](../../scripts/motion-contract-baseline.json) define structural
+> enforcement. The latency measurement and screenshot coverage below belong
+> to their recorded runs, not a fresh visual or device verification.
+
 Station motion communicates state and spatial relationships. It is not a
 decoration layer. Components consume the semantic tokens in `tokens.css`; new
 hard-coded durations/easings and `transition: all` are rejected by
@@ -27,7 +35,8 @@ instant, disables repeated animation, and preserves the final visible status.
 A component exception must explain why motion is essential and include a local
 test.
 
-That global rule zeroes `animation-duration` and `transition-duration`; it
+That global rule sets `animation-duration` and `transition-duration` to
+`0.01ms` and limits animation to one iteration; it
 does NOT zero `animation-delay`. Anything animating with a delay (a staggered
 list entrance, for example) must also zero its own delays under reduced
 motion explicitly, or a still-mounted element sits invisible for its
@@ -39,7 +48,7 @@ The app shell, page navigation, Schedule surfaces, transient notifications,
 chat, and (station#753) every remaining legacy surface now consume the shared
 grammar. A migrated file has no ceiling, so a new literal duration or easing
 fails the ratchet immediately. `scripts/motion-contract-baseline.json` carries
-exactly two exceptions, both coupled timing constants a token would decouple
+exceptions in two files (three counted declarations), both coupled timing constants a token would decouple
 from what they represent rather than express:
 
 - `NotificationHistory.css`'s dismiss-collapse animation duration is `4s`
