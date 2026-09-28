@@ -1212,6 +1212,16 @@ describe('CLI surface commands over HTTP', () => {
       value: false,
       configurable: true,
     });
+    // A read that did happen sees empty piped input at once, so a regression
+    // fails on the observed listener rather than hanging on the worker's stdin.
+    const stdinOn = vi.spyOn(process.stdin, 'on').mockImplementation(function (
+      this: typeof process.stdin,
+      event: string | symbol,
+      listener: (...args: unknown[]) => void,
+    ) {
+      if (event === 'end') queueMicrotask(() => listener());
+      return this;
+    });
 
     try {
       await runCli([
@@ -1225,7 +1235,9 @@ describe('CLI surface commands over HTTP', () => {
       expect(state.acpConnections).toEqual([
         { id: 'from-flags', command: 'from-flags-cli' },
       ]);
+      expect(stdinOn).not.toHaveBeenCalled();
     } finally {
+      stdinOn.mockRestore();
       Object.defineProperty(process.stdin, 'isTTY', {
         value: previousIsTTY,
         configurable: true,
