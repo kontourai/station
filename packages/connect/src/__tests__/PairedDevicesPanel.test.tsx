@@ -294,6 +294,52 @@ describe('PairedDevicesPanel', () => {
     expect(notice.querySelectorAll('a')).toHaveLength(1);
   });
 
+  test('#1796 G3: a revoke notice strips bidi and zero-width characters from titles', async () => {
+    // RLO reverses what follows; LRI/PDI isolate; ZWSP/ZWJ are invisible.
+    // Left in, a title could read as another conversation's.
+    const hostile = '\u202Edliub eht xiF\u202C \u2066ops\u2069\u200B\u200D';
+    stubHost({
+      devices: [device({ id: 'abc', name: 'Pixel 9' })],
+      revokeBody: {
+        id: 'abc',
+        fullAccessRevocation: {
+          cause: 'device-revoked',
+          reset: [
+            {
+              conversationId: 'conversation:reset-1',
+              title: hostile,
+              sessionId: 'session-reset-1',
+              was: 'never',
+            },
+            {
+              conversationId: 'conversation:reset-2',
+              title: '\u200B\u2067\u2069',
+              was: 'never',
+            },
+          ],
+          stillFullAccess: [],
+          unattributedHostStarts: { sessions: [], total: 0 },
+        },
+      },
+    });
+    renderPanel();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Revoke Pixel 9' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    const notice = await screen.findByTestId('full-access-revocation');
+    const open = screen.getByRole('link', { name: 'dliub eht xiF ops' });
+    expect(open.textContent).toBe('dliub eht xiF ops');
+    // Nothing visible left: it reads as untitled.
+    expect(notice.textContent).toContain(
+      'Untitled conversation conversation:reset-2',
+    );
+    expect(notice.textContent).not.toMatch(
+      /[\u200B-\u200F\u202A-\u202E\u2066-\u2069]/u,
+    );
+  });
+
   test('#1796 G3: revoking a device that had put nothing at full access adds no notice', async () => {
     const { calls } = stubHost({
       devices: [device({ id: 'abc', name: 'Pixel 9' })],

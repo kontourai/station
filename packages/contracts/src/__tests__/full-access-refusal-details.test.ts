@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vitest';
 import {
   parseApprovalFullAccessRefusalDetails,
   sanitizeRefusalDeviceName,
+  sanitizeUntrustedDisplayText,
 } from '../orchestration.js';
 
 const HOSTILE =
@@ -33,6 +34,19 @@ describe('sanitizeRefusalDeviceName', () => {
     expect(Array.from(sanitizeRefusalDeviceName('x'.repeat(65)))).toHaveLength(
       64,
     );
+  });
+});
+
+describe('sanitizeUntrustedDisplayText', () => {
+  test('strips bidi overrides, isolates and zero-width characters, and bounds the length', () => {
+    expect(
+      sanitizeUntrustedDisplayText(
+        '\u202Edliub eht xiF\u202C \u2066ops\u2069\u200B\u200D\u200E\uFEFF',
+        256,
+      ),
+    ).toBe('dliub eht xiF ops');
+    expect(sanitizeUntrustedDisplayText('\u200B\u2067\u2069', 256)).toBe('');
+    expect(sanitizeUntrustedDisplayText('abc de', 4)).toBe('abc');
   });
 });
 

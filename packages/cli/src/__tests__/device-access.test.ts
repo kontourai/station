@@ -335,7 +335,7 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
       'Reset to Ask (a turn already running finishes first; the next one asks):\n  conversation:a  was: its full-access decision',
     );
     expect(printed()).toContain(
-      'Still at full access, not changed:\n  "Fix the \\u001b[31mbuild" conversation:b  because of the Agent\'s default approval mode',
+      'Still at full access, not changed:\n  "Fix the [31mbuild" conversation:b  because of the Agent\'s default approval mode',
     );
     expect(printed()).toContain(
       '  older-\\u001b[31m  started 2026-09-01T00:00:00.000Z',
@@ -348,6 +348,37 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
       'Still unconfined, not changed:\n  conversation:c  because its engine is running with no decision to re-apply',
     );
     expect(printed()).not.toContain('\u001b');
+  });
+
+  test('G3: a conversation title loses its bidi and zero-width characters', async () => {
+    // RLO reverses what follows; LRI/PDI isolate; ZWSP/ZWJ are invisible.
+    // Left in, a title could read as another conversation's.
+    const hostile = '\u202Edliub eht xiF\u202C \u2066ops\u2069\u200B\u200D';
+    const request = station((deviceId, body) => ({
+      ...DEVICES.find((device) => device.id === deviceId),
+      scope: (body.scope as string[]).join(' '),
+      fullAccessRevocation: {
+        cause: 'scope-removed',
+        reset: [
+          { conversationId: 'conversation:a', title: hostile, was: 'never' },
+          // Nothing visible left: listed by id alone.
+          { conversationId: 'conversation:z', title: '\u200B\u2067\u2069', was: 'never' },
+        ],
+        stillFullAccess: [],
+        reconfined: [],
+        stillUnconfined: [],
+        unattributedHostStarts: { sessions: [], total: 0 },
+      },
+    }));
+    await run(['scope', 'aaaa1111', '--remove=terminal:operate'], request);
+    expect(printed()).toContain(
+      '  "dliub eht xiF ops" conversation:a  was: its full-access decision',
+    );
+    expect(printed()).toContain(
+      '\n  conversation:z  was: its full-access decision',
+    );
+    expect(printed()).not.toMatch(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069]/u);
+    expect(printed()).not.toMatch(/\\u(200[b-f]|202[a-e]|206[6-9])/iu);
   });
 
   test('G3: a reset that failed on the Station is an error, after the scope change', async () => {

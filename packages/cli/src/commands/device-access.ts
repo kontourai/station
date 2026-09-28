@@ -26,6 +26,7 @@ import {
   type PairingScope,
   parsePairingScope,
 } from '@kontourai/station-contracts/environment-security';
+import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orchestration';
 import { terminalSafeJson, terminalSafeText } from './terminal-safe.js';
 
 /** How the verbs reach Station as its operator; how it authenticated is not their concern. */
@@ -407,11 +408,18 @@ function reportFullAccessRevocation(
       ? report.unattributedHostStarts.total
       : unattributed.length;
   const id = (value: unknown) => terminalSafeText(String(value)).slice(0, 128);
-  // A conversation by title, where it has one, then its id.
-  const named = (entry: { conversationId?: unknown; title?: unknown }) =>
-    typeof entry.title === 'string' && entry.title.trim()
-      ? `"${id(entry.title)}" ${id(entry.conversationId)}`
+  // A conversation by title, where it has one, then its id. A title comes
+  // from session content: bidi and zero-width characters are stripped (not
+  // just escaped) so it cannot pass itself off as another conversation.
+  const named = (entry: { conversationId?: unknown; title?: unknown }) => {
+    const title =
+      typeof entry.title === 'string'
+        ? sanitizeUntrustedDisplayText(entry.title, 256)
+        : '';
+    return title
+      ? `"${id(title)}" ${id(entry.conversationId)}`
       : id(entry.conversationId);
+  };
   const reconfined = Array.isArray(report.reconfined) ? report.reconfined : [];
   const unconfined = Array.isArray(report.stillUnconfined)
     ? report.stillUnconfined

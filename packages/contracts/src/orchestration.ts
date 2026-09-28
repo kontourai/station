@@ -193,21 +193,34 @@ export interface ApprovalFullAccessRefusalDetails {
 export const FULL_ACCESS_REFUSAL_DEVICE_NAME_MAX = 64;
 
 /**
- * A requester-chosen device name, made safe to carry as data: control,
- * format and separator characters are removed (no terminal escapes, no
- * bidirectional overrides), whitespace is collapsed, and the result is
- * bounded. Markup is left as text; a client renders it as plain text.
+ * Untrusted text (a device name, a conversation title) made safe to show as
+ * one line: control, format and separator characters are removed (no
+ * terminal escapes, no bidirectional overrides or isolates, no zero-width
+ * characters), whitespace is collapsed, and the result is bounded to `max`
+ * code points. Markup is left as text; a client renders it as plain text.
+ * Returns '' when nothing visible remains.
  */
-export function sanitizeRefusalDeviceName(name: string): string {
-  const cleaned = name
+export function sanitizeUntrustedDisplayText(
+  value: string,
+  max: number,
+): string {
+  const cleaned = value
     .replace(/[\t\n\v\f\r\p{Zl}\p{Zp}]/gu, ' ')
     .replace(/[\p{Cc}\p{Cf}]/gu, '')
     .replace(/\s+/gu, ' ')
     .trim();
-  const bounded = Array.from(cleaned)
-    .slice(0, FULL_ACCESS_REFUSAL_DEVICE_NAME_MAX)
-    .join('');
-  return bounded.length > 0 ? bounded : 'this device';
+  return Array.from(cleaned).slice(0, max).join('').trim();
+}
+
+/**
+ * A requester-chosen device name, made safe to carry as data (see
+ * `sanitizeUntrustedDisplayText`), or "this device" when nothing is left.
+ */
+export function sanitizeRefusalDeviceName(name: string): string {
+  return (
+    sanitizeUntrustedDisplayText(name, FULL_ACCESS_REFUSAL_DEVICE_NAME_MAX) ||
+    'this device'
+  );
 }
 
 const isBoundedString = (value: unknown, max: number): value is string =>

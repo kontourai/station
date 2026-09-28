@@ -1,4 +1,5 @@
 import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
+import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orchestration';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { useEffect, useRef } from 'react';
 
@@ -69,7 +70,12 @@ function oneOf<T extends string>(
 const named = (
   entry: Record<string, unknown>,
 ): { title?: string; sessionId?: string } => {
-  const title = text(entry.title);
+  // A title comes from session content: strip bidi and zero-width
+  // characters so it cannot pass itself off as another conversation.
+  const rawTitle = text(entry.title);
+  const title = rawTitle
+    ? sanitizeUntrustedDisplayText(rawTitle, 256) || undefined
+    : undefined;
   const sessionId = text(entry.sessionId);
   return {
     ...(title ? { title } : {}),
