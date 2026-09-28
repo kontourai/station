@@ -523,6 +523,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     TEMP_VIA_FIXTURE,
   'src-server/routes/orchestration/__tests__/tasks.routes.test.ts':
     TEMP_VIA_FIXTURE,
+  'src-server/routes/plugins/__tests__/plugin-proposal-staged-reinstall.test.ts':
+    TEMP_VIA_FIXTURE,
   'src-server/routes/plugins/__tests__/plugin-proposed-install-git-metadata.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts':
