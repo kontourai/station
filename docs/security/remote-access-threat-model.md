@@ -435,6 +435,9 @@ What this does not close, stated so nobody assumes it does:
   follows; that device could already reach anywhere through `/exec`.
 - Changes to a device's scope are recorded only as the device record's
   current scope; there is no separate history of who granted or revoked what.
+  The grantor recorded beside a session's `host` start stamp and the Ask
+  decisions a full-access revocation records are per-conversation
+  attribution, not a scope-change log.
 
 ### Cross-station reads
 

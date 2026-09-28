@@ -449,8 +449,10 @@ Device-pairing scopes apply to protected HTTP requests even when a desktop app
 or CLI talks to Station on the same computer. A **Read-only** Device can view
 and stream permitted state, but cannot mutate resources. Remote terminal
 WebSockets additionally require `terminal:operate`; **Standard** includes that
-scope along with read and operate. Revoke and pair again with the intended
-grant when changing a Device's access.
+scope along with read and operate. The operator changes an existing Device's
+scope in place with **Paired devices** → the Device → **Change access**, or on
+the Station host with `station environment access scope`; `access:manage` is
+never granted this way.
 
 The current terminal and voice listeners retain a separate direct-loopback
 path without credential verification. Browser-shaped upgrades on that path
