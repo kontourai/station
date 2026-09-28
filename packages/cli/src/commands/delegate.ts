@@ -429,7 +429,7 @@ function providerQuotaLines(reason: DelegatedTaskReason): string[] {
  * stronger than the engine reported. "Acknowledged" is the engine closing the
  * request after Station's reply; it is not a claim the decision was applied.
  */
-export function formatDecisionLine(decision: DelegatedTaskDecision): string {
+function formatDecisionLine(decision: DelegatedTaskDecision): string {
   const recorded = `Decision on ${decision.requestId}: ${decision.status} (recorded)`;
   const waited =
     decision.waitedMs !== undefined

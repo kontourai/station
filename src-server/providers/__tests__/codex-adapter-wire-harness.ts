@@ -8,7 +8,7 @@ import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 
-export class FakeWritable extends Writable {
+class FakeWritable extends Writable {
   readonly lines: string[] = [];
 
   _write(
