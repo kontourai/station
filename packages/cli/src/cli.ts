@@ -1563,8 +1563,13 @@ export function describeCliError(error: unknown): string {
   if (
     (error as { code?: unknown } | null)?.code ===
     APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE
-  )
-    return `${message}\nRefused by the Station at ${getResolvedApiBase()}. Nothing was sent at another approval mode.`;
+  ) {
+    const target = getResolvedApiBase();
+    const where = target
+      ? `the Station at ${target.apiBase}${target.station ? ` (saved as "${target.station}")` : ''}`
+      : 'the Station this command targeted';
+    return `${message}\nRefused by ${where}. Nothing was sent at another approval mode.`;
+  }
   return explainRequestFailure(error, getResolvedApiBase()) ?? message;
 }
 

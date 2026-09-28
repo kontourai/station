@@ -400,7 +400,7 @@ export function fullAccessRefusalNote(error: unknown): string {
       : undefined;
   return (
     message ??
-    "Full access was not applied: only this Station's operator can allow it for this device (Connections → Paired devices → this device → Change access → Allow full access)."
+    "Full access was not applied: only this Station's operator can allow it for this device (on the Station's host: station environment access scope <device> --add approval:full-access)."
   );
 }
 

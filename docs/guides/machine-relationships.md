@@ -38,6 +38,38 @@ access. The read-only-ness belongs to the view, not to the delegation
 itself; a delegated task is exactly as read-write as running it locally
 would be, it just runs somewhere else.
 
+### What a paired device may do, and full access
+
+A paired device holds scopes: `orchestration:read`, `orchestration:operate`,
+`terminal:operate`, and the elevated ones the operator adds to an
+already-paired device (`station environment access scopes` lists them all with
+their meanings). The operator changes them per device on the Station's own
+host:
+
+```bash
+station environment access devices
+station environment access scope <device> --add approval:full-access
+station environment access scope <device> --remove approval:full-access
+```
+
+or, in the Station desktop app on that host, from the Station name (top
+right) → **Paired devices** → the device → **Change access**.
+
+**Full access** (`approval:full-access`) is the scope that lets a device put a
+chat, or an Agent's default, at approval mode `never`: the agent runs with no
+sandbox and no approval prompts, as the operator. A device without it that
+asks for full access is refused (`approval-full-access-not-granted`). The
+refusal names the device (its name and short id), the Station that refused,
+and the exact command above, and it separates what the caller asked for from
+what only the operator can grant. An Agent never gets full access through any
+grant; a person has to choose it. Nothing is retried at another approval mode.
+
+Removing the scope stops that device from choosing full access from its next
+request on. It does not change a session already running at full access, or
+an approval decision already recorded: those keep their posture until someone
+with the authority changes it (Ask, Auto or Default), the session ends, or it
+is revoked. Revoking the whole device ends its access immediately.
+
 ## Relationship table
 
 | | Direction | Trust model | What it unlocks | Persistence |

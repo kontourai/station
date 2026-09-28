@@ -58,12 +58,12 @@ afterEach(() => {
 /** #1796: the refusal names the paired device and the operator's grant path. */
 function refusedFor(phone: { device: { id: string; name: string } }) {
   const short = phone.device.id.slice(0, 8);
-  const ui = `Connections → Paired devices → ${phone.device.name} → Change access → Allow full access → Apply`;
+  const ui = `in the Station desktop app on its host, select the Station name (top right) → Paired devices → ${phone.device.name} → Change access → Allow full access → Apply`;
   const cli = `station environment access scope ${short} --add approval:full-access`;
   return {
     success: false,
     code: 'approval-full-access-not-granted',
-    error: `Full access was not applied. You asked for full access, but only this Station's operator can allow it, for device "${phone.device.name}" (${short}). Ask the operator to add the approval:full-access scope to it: in Station, ${ui}; or on the Station's host, run: ${cli}.`,
+    error: `Full access was not applied. You asked for full access, but only this Station's operator can allow it, for device "${phone.device.name}" (${short}). Ask the operator to add the approval:full-access scope to it: on the Station's host, run: ${cli}; or ${ui}.`,
     details: {
       requested: 'never',
       requester: {

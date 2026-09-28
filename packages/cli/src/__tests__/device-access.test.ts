@@ -301,13 +301,16 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
           isInteractive: false,
         },
       ),
-    ).rejects.toThrow(/requires a loopback --api-base/);
+    ).rejects.toThrow(
+      /Operator access commands \(access list\/approve\/deny\/devices\/scope\) require a loopback --api-base/,
+    );
     expect(request).not.toHaveBeenCalled();
     expect(createService).not.toHaveBeenCalled();
   });
 
   test('lists every scope with its meaning, from the contracts', async () => {
     await runEnvironmentCommand(['access', 'scopes', '--json'], {
+      projectHome: '/tmp/station-home-unused',
       stdout,
       stderr,
       isInteractive: false,
@@ -324,5 +327,25 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
     expect(
       listed.scopes.find((row) => row.scope === 'access:manage')?.grantable,
     ).toBe(false);
+  });
+});
+
+describe('a full-access refusal as the CLI prints it (#1796)', () => {
+  test('keeps the Station’s words, names the Station that refused, and says nothing was retried', async () => {
+    const { describeCliError } = await import('../cli.js');
+    const refusal = Object.assign(
+      new Error(
+        'Full access was not applied. You asked for full access, but only this Station’s operator can allow it, for device "Laptop CLI" (154d4e68).',
+      ),
+      { code: 'approval-full-access-not-granted', status: 403 },
+    );
+    const printed = describeCliError(refusal);
+    expect(printed).toContain('for device "Laptop CLI" (154d4e68)');
+    expect(printed).toMatch(
+      /Refused by the Station (at \S+|this command targeted)\./,
+    );
+    expect(printed).toContain('Nothing was sent at another approval mode.');
+    // Any other failure keeps its own rendering.
+    expect(describeCliError(new Error('boom'))).not.toContain('Refused by');
   });
 });

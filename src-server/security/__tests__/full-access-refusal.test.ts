@@ -47,7 +47,7 @@ describe('fullAccessRefusalBody', () => {
       grant: {
         by: 'operator',
         scope: 'approval:full-access',
-        ui: 'Connections → Paired devices → Laptop CLI → Change access → Allow full access → Apply',
+        ui: 'in the Station desktop app on its host, select the Station name (top right) → Paired devices → Laptop CLI → Change access → Allow full access → Apply',
         cli: 'station environment access scope 01234567 --add approval:full-access',
       },
     });
@@ -86,7 +86,7 @@ describe('fullAccessRefusalBody', () => {
     expect(body.details.grant).toEqual({
       by: 'operator',
       scope: 'approval:full-access',
-      ui: 'Connections → Paired devices → your device → Change access → Allow full access → Apply',
+      ui: 'in the Station desktop app on its host, select the Station name (top right) → Paired devices → your device → Change access → Allow full access → Apply',
     });
     expect(body.error).toContain('for the device you are using');
   });

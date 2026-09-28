@@ -381,7 +381,9 @@ A session spawned before this change has nothing recorded.
   - The scope is in no preset and never in the default grant, like
     `engine:login` and #2412's `coding:exec`.
   - The operator grants it once per device, in the device access editor
-    ("Allow full access").
+    (**Paired devices** → the device → **Change access** → "Allow full
+    access") or on the Station host with `station environment access scope
+    <device> --add approval:full-access` (#1796).
 - **One derivation.** The check is `mayGrantFullAccess` in
   `src-server/security/coding-authority.ts`, next to #2412's
   `mayRunCommandsOnHost`. It shares the same `isOperatorInPerson`.
@@ -439,7 +441,27 @@ A session spawned before this change has nothing recorded.
   - The tasks and starter routes keep an early 403 from the same derivation,
     so a refused Starter launch leaves no Task behind.
 - **The refusal.** It is 403 with `approval-full-access-not-granted`, decided
-  before the send or the command has any effect.
+  before the send or the command has any effect. Since #1796 it is
+  actionable without being weakened: `details` carries what was requested
+  (`never`), the requester derived from the request's own verified
+  credential (`device` with display name and short id, `agent`, or `person`),
+  the refusing Station's environment id, and the operator's grant path
+  (`grant.cli`, the exact host command
+  `station environment access scope <short-id> --add approval:full-access`,
+  and `grant.ui`, the desktop app path through **Paired devices** → the
+  device → **Change access**). An Agent's refusal has `grant: null`: no scope
+  lets an Agent choose full access. The wording is in
+  `src-server/security/full-access-refusal.ts`; `mayGrantFullAccess` stays the
+  only derivation. Clients show the Station's words and never retry at
+  another mode.
+- **Granting and revoking.** The grant is a device scope, managed like any
+  other on the operator's host channel (`station environment access
+  devices|scope|scopes`, over `POST /api/pairing/devices/:id/scope` with
+  `expectedScope`). The scope is read per request, so a removal refuses that
+  device's next full-access pick or dispatch at once. It does not reach back:
+  a session already started `host`-stamped at `never`, or a `never` decision
+  already recorded, keeps its posture until someone with the authority
+  changes it, the session ends, or the device is revoked.
 - **Who can reach a session at all.** Command authorization
   (`canReadSessionForCommand`) admits only the session owner's own
   principals. There is no multi-user shared session to decide for.

@@ -53,9 +53,15 @@ export function shortDeviceId(deviceId: string): string {
   return deviceId.slice(0, 8);
 }
 
-/** The Station UI path to a device's full-access grant. */
+/**
+ * The Station UI path to a device's full-access grant, as the UI labels it:
+ * the Station name at the top right opens the connection manager, whose
+ * "Paired devices" list has "Change access" per device. It needs the
+ * operator's own session (the Station desktop app on its host); a paired
+ * browser cannot list devices, so the host command comes first.
+ */
 export function fullAccessGrantUiPath(deviceName: string): string {
-  return `Connections → Paired devices → ${deviceName} → Change access → Allow full access → Apply`;
+  return `in the Station desktop app on its host, select the Station name (top right) → Paired devices → ${deviceName} → Change access → Allow full access → Apply`;
 }
 
 /** The operator command, run on the Station's own host. */
@@ -129,9 +135,9 @@ function messageFor(details: ApprovalFullAccessRefusalDetails): string {
       : 'the device you are using';
   return (
     `Full access was not applied. You asked for full access, but only this Station's operator can allow it, for ${who}. ` +
-    `Ask the operator to add the approval:full-access scope to it: in Station, ${grant.ui}` +
-    (grant.cli ? `; or on the Station's host, run: ${grant.cli}` : '') +
-    '.'
+    'Ask the operator to add the approval:full-access scope to it: ' +
+    (grant.cli ? `on the Station's host, run: ${grant.cli}; or ` : '') +
+    `${grant.ui}.`
   );
 }
 

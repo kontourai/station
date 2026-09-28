@@ -1485,7 +1485,7 @@ async function openLocalOperatorChannel(
             'running on this same machine, so a script can never approve device access on a Station ' +
             "it merely has network reach to. Run this command directly on that Station's host, " +
             `or pass a Station saved with a loopback (127.0.0.1 or [::1]) endpoint.`
-        : `Local access approval requires a loopback --api-base, but this resolved to ${apiBase}. ` +
+        : `Operator access commands (access list/approve/deny/devices/scope) require a loopback --api-base, but this resolved to ${apiBase}. ` +
             'Run this command on the Station host or over SSH, and pass an explicit ' +
             `--api-base=http://127.0.0.1:${DEFAULT_SERVER_PORT} if a remote Station is your default.`,
     );

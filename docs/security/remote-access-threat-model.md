@@ -275,6 +275,25 @@ default to full access rather than Standard:
   the host before any credential is issued, exactly as with any other
   pairing request.
 
+Beyond the presets, the operator adds elevated scopes to an already-paired
+device, never at pairing: in the desktop app (**Paired devices** → the device
+→ **Change access**) or on the Station host with `station environment access
+scope <device> --add|--remove|--set <scope>` (#1796). Both use
+`POST /api/pairing/devices/:id/scope`, which only the operator credential
+reaches; the CLI verbs additionally refuse any non-loopback target before
+reading a credential, so a paired remote CLI cannot run them, and there is no
+remote operator authentication. `access:manage` is not grantable this way.
+Each change is sent with the scope it replaces (`expectedScope`) and a
+concurrent change returns 409 `scope_changed` instead of being overwritten;
+the change drops the device's live terminal and voice leases. One such scope,
+`approval:full-access`, is the only way a device may choose approval mode
+`never`. Its refusal (403 `approval-full-access-not-granted`) names the
+device, the refusing Station and the operator's grant command, derived from
+the request's verified credential; it discloses no credential and grants
+nothing. Removing the scope refuses the device's next full-access request; a
+session already started at full access keeps its posture until changed or
+ended.
+
 Enforcement is a single route -> required-scope table
 (`src-server/security/pairing-route-scopes.ts`) consulted by one piece of
 middleware, never scattered per-handler checks. Every authenticated HTTP route
