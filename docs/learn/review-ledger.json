@@ -3503,7 +3503,7 @@
     {
       "path": "docs/architecture.md",
       "documentDigest": "d31fb4f0f2c41b8ca60c6cfc2cf0d1f0edcc59cc77aaac7a79610b58cecea6b3",
-      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
+      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full high-level overview and seven diagrams reviewed against current composition and callers. Corrected engine/tool ownership, durable versus live events, optional Flow/OTel, dedicated voice transport, plugin/provider boundaries, attached sessions and package scope; preserved all 30 prior reader anchors.",
@@ -3535,7 +3535,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/voice/registry.ts",
@@ -3688,7 +3688,8 @@
         "Integration source review through d72f79b08: #2904 wires the live full-access grantor check (runtime-initialize) and adds refusal-identity middleware plus device-revocation reset wiring (runtime-routes). resetFullAccessGrantedBy now records a new Ask approval-mode decision in orchestration-service. The overview's diagrams and its claims on durable versus live events, the dispatch receipt, and approval and authority separation still hold. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes contributorCommandMessage module-private in packages/cli/src/distribution.ts, and cf43e14d0 (#2731) adds recognizeCredential (runtime-routes.ts) plus a 403 insufficient_scope answer for a live but unadmitted credential (runtime-http.ts); prose accurate: distribution.ts still defines the published-CLI versus checkout boundary, and the HTTP-composition and credential/scope admission descriptions don't name a refusal status. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) SDK index adds requestServiceUpdateProgress/useServiceUpdateProgressQuery and shared package.json adds ./prebuilt-archive and ./service-launcher-protocol subpaths; the doc defers the surface to package exports and explicit subpaths; prose accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+        "Checked for claims about pull-request reads, QueryConfig options or SDK barrel contents: #2937 only adds exports (usePullRequestMergeabilityQuery, pullRequestMergeabilityQueryKey, PullRequestBranchMergeability) and an optional QueryConfig.refetchOnWindowFocus; no statement here changes."
       ]
     },
     {
@@ -7955,7 +7956,7 @@
     {
       "path": "docs/design/knowledge-recall-ui.md",
       "documentDigest": "6d02bb684296fcd35a2705e593fa6e8ac6b028dd1ef3e6c7552178fb2767abd4",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete recall decision against SDK exports, canonical record queries, metadata-key revalidation, selection/link/provenance rendering and caller-owned graph/shell/Neo4j behavior. Updated Library composition to reflect its actual list plus scroll/focus shell; distinguished fixture and installed-browser evidence.",
@@ -7987,7 +7988,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/query-domains/knowledgeStores.ts",
@@ -8011,7 +8012,8 @@
         "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
         "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
-        "Integration source review through 5731eba07: #2881 adds the requestServiceUpdateProgress and useServiceUpdateProgressQuery exports to the SDK index. The knowledge-recall exports the design names are unchanged; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: #2881 adds the requestServiceUpdateProgress and useServiceUpdateProgressQuery exports to the SDK index. The knowledge-recall exports the design names are unchanged; prose accurate. Source review is separate from executed test evidence.",
+        "Checked for claims about pull-request reads, QueryConfig options or SDK barrel contents: #2937 only adds exports (usePullRequestMergeabilityQuery, pullRequestMergeabilityQueryKey, PullRequestBranchMergeability) and an optional QueryConfig.refetchOnWindowFocus; no statement here changes."
       ]
     },
     {
@@ -8645,7 +8647,7 @@
     {
       "path": "docs/design/pane-host-contract.md",
       "documentDigest": "620f783a5b956c3789d15c2f36c87ef11eb3adcf9e21b145cdf157e4bbc2f77c",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
       "kind": "design",
       "state": "classified",
       "summary": "Pane-host design and extraction history, routed to the implemented shared contract and both adapters.",
@@ -8657,7 +8659,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "src-ui/src/components/plugins/PluginFrameHost.tsx",
@@ -8675,7 +8677,8 @@
       "checks": [
         "Full body read (1331 original lines across the tranche); bounded source/caller routing inspection. Purpose classification, not complete semantic certification.",
         "Entire original body byte-identical after removing reading banner.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) SDK index adds requestServiceUpdateProgress/useServiceUpdateProgressQuery only; pane host contract claims unaffected; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) SDK index adds requestServiceUpdateProgress/useServiceUpdateProgressQuery only; pane host contract claims unaffected; prose accurate. Source review is separate from executed test evidence.",
+        "Checked for claims about pull-request reads, QueryConfig options or SDK barrel contents: #2937 only adds exports (usePullRequestMergeabilityQuery, pullRequestMergeabilityQueryKey, PullRequestBranchMergeability) and an optional QueryConfig.refetchOnWindowFocus; no statement here changes."
       ]
     },
     {
@@ -17996,7 +17999,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -18016,7 +18019,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/queries.ts",
@@ -18024,7 +18027,7 @@
         },
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         },
         {
           "path": "packages/sdk/src/query-domains/agentAdmin.ts",
@@ -18148,7 +18151,8 @@
         "Required merge-queue recovery through 421517851: HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: pnpm-lock.yaml only removed the bearing and forage importer entries. The Dialog and responsive-surface guidance does not depend on them. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 adds a 403 insufficient_scope branch in runtime-http.ts for recognized but unadmitted credentials. The guide's Dialog, layer and viewport claims do not touch HTTP authentication. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2919) responsive-action-surfaces.txt's Dialog entry now also cites Dialog.chrome.geometry.test.tsx (the file exists). #2881 adds SDK exports requestServiceUpdateProgress/useServiceUpdateProgressQuery, shared prebuilt-archive/service-launcher-protocol exports and a /api/system/core-update/service-update pairing leaf, none of which touch the guide's Dialog/inventory/ratchet claims; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2919) responsive-action-surfaces.txt's Dialog entry now also cites Dialog.chrome.geometry.test.tsx (the file exists). #2881 adds SDK exports requestServiceUpdateProgress/useServiceUpdateProgressQuery, shared prebuilt-archive/service-launcher-protocol exports and a /api/system/core-update/service-update pairing leaf, none of which touch the guide's Dialog/inventory/ratchet claims; prose accurate. Source review is separate from executed test evidence.",
+        "Checked for claims about pull-request reads, QueryConfig options or SDK barrel contents: #2937 only adds exports (usePullRequestMergeabilityQuery, pullRequestMergeabilityQueryKey, PullRequestBranchMergeability) and an optional QueryConfig.refetchOnWindowFocus; no statement here changes."
       ]
     },
     {
@@ -19577,7 +19581,7 @@
     {
       "path": "docs/guides/theming.md",
       "documentDigest": "67f8d52d1b32a9f4878139c033b30e6215d6a85ccc15b58aa70f5d1ef3eabec3",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -19597,7 +19601,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/queries.ts",
@@ -19605,7 +19609,7 @@
         },
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         },
         {
           "path": "packages/sdk/src/query-domains/agentAdmin.ts",
@@ -19733,7 +19737,8 @@
         "Required merge-queue recovery through 421517851: HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: pnpm-lock.yaml only dropped the @kontourai/bearing and @kontourai/forage importers. No UI theming package changed, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds a 403 insufficient_scope branch for recognized but unadmitted credentials in runtime-http.ts; prose accurate: the theme selection, UI exports and contrast claims don't touch HTTP auth. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds SDK service-update exports, the shared prebuilt-archive and service-launcher-protocol subpaths, and a pairing-scope leaf. a290454b4 (#2919) adds a Dialog geometry test to responsive-action-surfaces.txt. None changes token, shared-package or station-dialog chrome guidance; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds SDK service-update exports, the shared prebuilt-archive and service-launcher-protocol subpaths, and a pairing-scope leaf. a290454b4 (#2919) adds a Dialog geometry test to responsive-action-surfaces.txt. None changes token, shared-package or station-dialog chrome guidance; prose accurate. Source review is separate from executed test evidence.",
+        "Checked for claims about pull-request reads, QueryConfig options or SDK barrel contents: #2937 only adds exports (usePullRequestMergeabilityQuery, pullRequestMergeabilityQueryKey, PullRequestBranchMergeability) and an optional QueryConfig.refetchOnWindowFocus; no statement here changes."
       ]
     },
     {
@@ -20724,7 +20729,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "bcae9c139d65732d7303df916b007009830c4e80bfe20601cf5f0b772c8f4952",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -20744,7 +20749,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/queries.ts",
@@ -20752,7 +20757,7 @@
         },
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         },
         {
           "path": "packages/sdk/src/query-domains/agentAdmin.ts",
@@ -20876,13 +20881,14 @@
         "Required merge-queue recovery through 421517851: HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: pnpm-lock.yaml only removed the root bearing/forage importer entries, which the backend patterns never mention, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds a configureRuntimeSecurity branch in runtime-http.ts that answers 403 insufficient_scope for a recognized but unadmitted credential. The patterns page describes runtime-http plus pairing route policy only as common admission that does not replace object-level checks. It also warns against inferring authentication from '403' in error text. Both statements remain correct. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read to the /api/system read tier in pairing-route-scopes.ts, the SDK exports requestServiceUpdateProgress and useServiceUpdateProgressQuery, and the shared subpaths prebuilt-archive and service-launcher-protocol. a290454b4 (#2919) adds a Dialog geometry test to responsive-action-surfaces.txt. The doc's claims still hold: one route-scope table that does not replace object-level checks, and explicit shared helper subpaths. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read to the /api/system read tier in pairing-route-scopes.ts, the SDK exports requestServiceUpdateProgress and useServiceUpdateProgressQuery, and the shared subpaths prebuilt-archive and service-launcher-protocol. a290454b4 (#2919) adds a Dialog geometry test to responsive-action-surfaces.txt. The doc's claims still hold: one route-scope table that does not replace object-level checks, and explicit shared helper subpaths. Prose accurate. Source review is separate from executed test evidence.",
+        "Checked for claims about pull-request reads, QueryConfig options or SDK barrel contents: #2937 only adds exports (usePullRequestMergeabilityQuery, pullRequestMergeabilityQueryKey, PullRequestBranchMergeability) and an optional QueryConfig.refetchOnWindowFocus; no statement here changes."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
-      "documentDigest": "1b78efc57356ebb65549f9d1488d01371bf47adfb7939f06229268082b5d5523",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "documentDigest": "42c6c7765de30e437f348e2e027d1cdddf6b5ab456da49fcfa6e762f530666c3",
+      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -20902,7 +20908,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/queries.ts",
@@ -20910,7 +20916,7 @@
         },
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         },
         {
           "path": "packages/sdk/src/query-domains/agentAdmin.ts",
@@ -21038,7 +21044,8 @@
         "Required merge-queue recovery through 421517851: HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: pnpm-lock.yaml only removed the bearing/forage importer entries. The frontend query/context patterns do not depend on them and remain accurate. Classification review only.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) answers a recognized but unadmitted credential with 403 instead of 401 in runtime-http.ts, so the browser keeps its device session; prose accurate: the query/context and ApiRequestScope patterns make no claim about which status drops the session. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d responsive-action-surfaces.txt adds the Dialog geometry test (#2919); SDK adds service-update progress exports and shared package.json adds prebuilt-archive/service-launcher-protocol subpaths plus a pairing read leaf (#2881); the doc's generic Dialog/ResponsiveDialogSurface and package-boundary guidance is unchanged; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d responsive-action-surfaces.txt adds the Dialog geometry test (#2919); SDK adds service-update progress exports and shared package.json adds prebuilt-archive/service-launcher-protocol subpaths plus a pairing read leaf (#2881); the doc's generic Dialog/ResponsiveDialogSurface and package-boundary guidance is unchanged; prose accurate. Source review is separate from executed test evidence.",
+        "Checked the cache and freshness section against query-core.ts; added the opt-in refetchOnWindowFocus, the default stays off (#2937)."
       ]
     },
     {
@@ -23081,12 +23088,12 @@
     },
     {
       "path": "docs/reference/contracts.md",
-      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
+      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented-claim review. Checked module ownership and41 named export subpaths; traced current Session summary/activity/input constraints, source-only learning/quotation routes and exact forge review/link owners, runtime identity/provenance, and account/relay declarations through existing SDK A/C and final API reviews. Prior supervision/quota/native-push review retained after inspecting source deltas: Muse comment only, delegation typed local-refusal causes outside status projection, native-push added known-answer fixture constant. Added caller links without inventing broader runtime guarantees.",
       "limits": "Review covers every current documented claim, not all possible behaviors of every exported module. Detailed historical Muse/Claude captures remain historical; no live provider, native push gateway, physical device, deployed account or relay journey was run. Contract declarations and valid parsers never prove authorization, delivery or owner completion. No new security probe.",
-      "documentDigest": "39945706aa08160f17fba22fc9bbb715899dd21b0661688c96ad6ebb8767a232",
+      "documentDigest": "226144f497aaddd1d0dc01db6e8d82cc96d30e79046f06a7178514dafc8ae57d",
       "sources": [
         {
           "path": "packages/cli/src/commands/delegate.ts",
@@ -23150,7 +23157,7 @@
         },
         {
           "path": "packages/contracts/src/pull-request-provider.ts",
-          "digest": "1bc819d5161a622cd295ea95ac7a8af87fba68235d9eac2d3eecc306f4cc5b95"
+          "digest": "569c14c5c749af1ec770131b795657c124297c7e89911dc37a7889173c5cfc34"
         },
         {
           "path": "packages/contracts/src/relay-enrollment.ts",
@@ -23319,7 +23326,8 @@
         "Integration source review through d72f79b08: #2904 added exports to the orchestration subpath: ApprovalFullAccessRequester, ApprovalFullAccessRefusalDetails, parseApprovalFullAccessRefusalDetails and the sanitize helpers. It added an optional `revocation` to SessionApprovalModeSetEvent in runtime-events. The delegate CLI now prints explainFullAccessRefusal for that code, while exit codes 2/3 and the status formatting are unchanged. orchestration-service gained the confinement grantor and revocation reset. No new export subpath was added. The module-ownership rows and the documented supervision, quota, delegation-status and native-push claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) makes muse-serve-session publish request.resolved (acknowledgement 'engine') when Station records a decision, and Muse's approval/resolved now publishes request.delivery acknowledged with engineStatus. It also adds the ApprovalAcknowledgement and RequestDeliveryEvent contracts and adds lastDecision and earlierUnacknowledgedDecisions to DelegatedTaskSnapshot and to the CLI status formatter. Corrected the Muse serve sentence that said approvals are 'resolved from Muse's own approval/resolved': a decision Station records now resolves on record and is acknowledged through request.delivery, and only requests Muse closes before Station decides still resolve from approval/resolved. The expiry, stall-watchdog and supervision/reason/transitionReason surface prose is still accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) system-status.ts adds the public ServiceUpdatePhase/ServiceUpdateProgress contract read by GET /api/system/core-update/service-update. install-provenance.ts adds an 'archive' install kind resolved via shared prebuilt-archive. Existing claims about DevicePresentation, the identity triple and UpdateProvenanceIssue are unchanged. Corrected the owned-shapes paragraph to name ServiceUpdateProgress and its phase. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); install-provenance.ts only made refspecFromStampRef and normalizeOriginUrl module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+        "Added PullRequestBranchMergeability and the optional listOpenPullRequestMergeability; checked against the contract, the GitHub/GitLab adapters and the route refusal for a provider without it (#2937)."
       ]
     },
     {
@@ -23857,12 +23865,12 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "0c1f436037261c43eeca3e079f5106948360c591",
+      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
       "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
-      "documentDigest": "444262f3adffa8bbce3486cd1873be08e8dc5bed1b0e295cd72681f7eac27592",
+      "documentDigest": "5fb124004bd80190d515a6ec9f210128a5aeae87696504fa58c82d50bd07de72",
       "sources": [
         {
           "path": "docs/design/mcp-ui-host.md",
@@ -24130,7 +24138,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/layout/context.tsx",
@@ -24158,7 +24166,7 @@
         },
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         },
         {
           "path": "packages/sdk/src/query-domains/agentAdmin.ts",
@@ -24852,7 +24860,8 @@
         "Integration source review through 42491ca6b: 1cc8576b4 removes the ambient boot helpers fetchBootPayload, seedBootPayload and fetchAndSeedBootPayload from packages/sdk/src/boot.ts, and makes the matching comment edits in client/agents.ts and cli/src/dev/http.ts. Main also rewrote the boot paragraph in this doc; the merge kept the branch's version (around line 859). That version already says the boot module is internal and not in the package export map, names only fetchBootPayloadAt and seedBootPayloadGuarded (both still exported), and no longer mentions the removed ambient helper, so the merged text is consistent and has no duplicate. cf43e14d0 adds recognizeCredential, so a live but unadmitted credential now gets 403 insufficient_scope instead of 401. usePairedDevicesQuery still says an authorization failure is a query error, and the knowledge-route 401/403 split is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c added approvalAcknowledgement 'in-process' to StationAgentAdapter, and conversationOpenPatch now also clears unacknowledgedDecisions alongside the other local approval state. That is consistent with the doc's statement that predecessor local approval state is not carried over; prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) adds archive/archive-service installKind, the station-upgrade/service-update applyMethod values, releaseCheck, serviceUpdate, requestServiceUpdateProgress and useServiceUpdateProgressQuery (root exports), and the service-update pairing leaf. The parser now checks installKind and releaseCheck against known values and still passes applyMethod through unchecked. a290454b4 (#2919) only removes internal UI exports. Main's merged paragraph fits the branch text: it has no duplicate and does not bring back the /queries subpath claim. Corrected the stale sentence that said installKind and applyMethod both pass through without enum validation; it now says installKind and releaseCheck are checked (an unknown value is left out) and applyMethod is still unchecked. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+        "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+        "Added usePullRequestMergeabilityQuery, its project-and-repository key and QueryConfig.refetchOnWindowFocus; checked against pullRequests.ts and query-core.ts (#2937)."
       ]
     },
     {
@@ -26880,7 +26889,7 @@
     {
       "path": "docs/user/work-board.md",
       "documentDigest": "bc2aca88d170022d9dbce1f604dcd9d6d7e52e3fa635b4e701bf49bc59efffb5",
-      "sourceRevision": "8ce79ef1bebbc82e5f6c8f39a59b85f947a3bac1",
+      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced pin identity/scope, pointer/keyboard handlers, narrow/coarse-pointer CSS, revision checks, one-snapshot Undo, cache/refresh behavior, and cleanup caller/store boundaries.",
@@ -26888,7 +26897,7 @@
       "sources": [
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         },
         {
           "path": "packages/sdk/src/spatial-board.ts",
@@ -26934,7 +26943,8 @@
       "checks": [
         "Independent final source/wording delta accepted.",
         "Work Board/checkpoint selection: 64 tests across 5 files passed, including mounted Board, store and routes.",
-        "Reviewed evidence routing through the architecture module to preserve the public user-guide content policy."
+        "Reviewed evidence routing through the architecture module to preserve the public user-guide content policy.",
+        "Checked for claims about pull-request reads, QueryConfig options or SDK barrel contents: #2937 only adds exports (usePullRequestMergeabilityQuery, pullRequestMergeabilityQueryKey, PullRequestBranchMergeability) and an optional QueryConfig.refetchOnWindowFocus; no statement here changes."
       ]
     },
     {
@@ -27909,7 +27919,7 @@
     {
       "path": "examples/meeting-transcription/README.md",
       "documentDigest": "06fb42eacb528cd10258b19e2edf0f7aa1ccdc267faaa8cdef40366280d20f1c",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: declared Pane/component entry, first supported voice-registry provider versus host preference, server placeholders, incremental/cumulative transcript handling, Station Agent chat handoff and lack of delivery acknowledgement, and no Knowledge record persistence. Documented a reproduced public-build containment gap.",
@@ -27945,7 +27955,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/voice/registry.ts",
@@ -27977,7 +27987,8 @@
         "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
         "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
         "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) only adds requestServiceUpdateProgress and useServiceUpdateProgressQuery to the SDK root exports. The example's SDK packaging and chat claims are unaffected; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) only adds requestServiceUpdateProgress and useServiceUpdateProgressQuery to the SDK root exports. The example's SDK packaging and chat claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
+        "Checked for claims about pull-request reads, QueryConfig options or SDK barrel contents: #2937 only adds exports (usePullRequestMergeabilityQuery, pullRequestMergeabilityQueryKey, PullRequestBranchMergeability) and an optional QueryConfig.refetchOnWindowFocus; no statement here changes."
       ]
     },
     {
@@ -29241,7 +29252,7 @@
     },
     {
       "path": "packages/sdk/AGENTS.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to the SDK reference, forbids app-internal imports by plugins, and requires both cache and waiting-caller observations for cancellation/authority races.",
@@ -29250,7 +29261,7 @@
       "sources": [
         {
           "path": "docs/reference/sdk.md",
-          "digest": "444262f3adffa8bbce3486cd1873be08e8dc5bed1b0e295cd72681f7eac27592"
+          "digest": "5fb124004bd80190d515a6ec9f210128a5aeae87696504fa58c82d50bd07de72"
         },
         {
           "path": "packages/sdk/package.json",
@@ -29258,7 +29269,7 @@
         },
         {
           "path": "packages/sdk/src/query-core.ts",
-          "digest": "3dc71c497d15ff9d669588556c87b3f5318fee60eb49b961b7c650fd619a329a"
+          "digest": "fd13ab3d8f8f7e9cfb224fdc47baea62682389194ffcfcf7d038934bf299ae9b"
         }
       ],
       "checks": [
@@ -29274,7 +29285,8 @@
         "Integration source review through c8bae67da: docs/reference/sdk.md gained the proposed-install gitMetadata consent echo. This policy only routes to that reference and duplicates none of its API prose, so it is accurate. Source review is separate from executed test evidence.",
         "Integration source review through ed05e6f6c: docs/reference/sdk.md extended the gitMetadata consent echo to recorded proposal-staged sources. This policy only routes to that reference and duplicates none of its API prose, so it is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) rewrites the boot paragraph in docs/reference/sdk.md. fetchBootPayloadAt and seedBootPayloadGuarded are now described as coming from the SDK's internal boot module, not a published @kontourai/station-sdk/boot export, and the ambient legacy boot helper sentence is removed. The AGENTS.md routes to that reference, forbids app-internal imports by plugins and keeps its cache-plus-waiting-caller race guidance. It names no boot export, so it stays consistent. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) docs/reference/sdk.md gains one paragraph on archive/archive-service status, serviceUpdate and requestServiceUpdateProgress/useServiceUpdateProgressQuery. It auto-merged once, with no duplicate. AGENTS.md only routes to that reference and asks for public changes to be documented there, which #2881 did; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) docs/reference/sdk.md gains one paragraph on archive/archive-service status, serviceUpdate and requestServiceUpdateProgress/useServiceUpdateProgressQuery. It auto-merged once, with no duplicate. AGENTS.md only routes to that reference and asks for public changes to be documented there, which #2881 did; prose accurate. Source review is separate from executed test evidence.",
+        "Checked for claims about pull-request reads, QueryConfig options or SDK barrel contents: #2937 only adds exports (usePullRequestMergeabilityQuery, pullRequestMergeabilityQueryKey, PullRequestBranchMergeability) and an optional QueryConfig.refetchOnWindowFocus; no statement here changes."
       ]
     },
     {
@@ -29309,7 +29321,7 @@
     },
     {
       "path": "packages/sdk/README.md",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "309df251a2aab65e5967152aea8573035fbcd867",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README read (including the original 556 lines). Checked source exports versus local dist output, exact authoring bundle input, host externalization, plugin install/approval boundaries, current chat/Dock/notification signatures, protected result APIs, opt-in Pane/voice surfaces and host theme/context requirements. Follow-up: Directory-source paragraph traced through install helper and actual target-source resolver. Final wording explicitly names automatic source categories and refuses explicit/saved localhost targets.",
@@ -29354,7 +29366,7 @@
         },
         {
           "path": "packages/sdk/src/index.ts",
-          "digest": "2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee"
+          "digest": "c5c0dd7612ef1716e79187abc407ebf73b4a49145fbcb1c9728eeb77822c3255"
         },
         {
           "path": "packages/sdk/src/providers.tsx",
@@ -29428,7 +29440,8 @@
         "Integration source review through e0314c727: the install transaction added .git exclusion only for sources that an open install proposal names (#2719). The README's CLI install from the author's own directory has no proposal, so it keeps its .git, and the preview/consent and target-selection wording is still accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 makes `requestJson` in core-api.ts and the SDK's `DelegationApiError` keep the envelope's `details`. tasks.ts answers the dispatch full-access refusal with the structured `fullAccessRefusal` body, and useActiveChatSessionMessaging renders a refusal card. The README does not document DelegationApiError fields or the refusal shape. Its `TaskToolResultRequestError` claims and 'a send may be queued or refused' are still true. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through abfc7a889: #2864's install.ts now also carries the preview's optional gitMetadata into the install consent. Corrected the list of fields the install command carries so it includes any gitMetadata: \"excluded\". Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: #2881 adds the requestServiceUpdateProgress and useServiceUpdateProgressQuery root exports. The README defers the detailed API to docs/reference/sdk.md and makes no exhaustive export claim; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: #2881 adds the requestServiceUpdateProgress and useServiceUpdateProgressQuery root exports. The README defers the detailed API to docs/reference/sdk.md and makes no exhaustive export claim; prose accurate. Source review is separate from executed test evidence.",
+        "Checked for claims about pull-request reads, QueryConfig options or SDK barrel contents: #2937 only adds exports (usePullRequestMergeabilityQuery, pullRequestMergeabilityQueryKey, PullRequestBranchMergeability) and an optional QueryConfig.refetchOnWindowFocus; no statement here changes."
       ]
     },
     {
