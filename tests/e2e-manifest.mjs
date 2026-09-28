@@ -315,8 +315,11 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'read-only Connections UI against the runner-owned temporary Station; trust refusal occurs before server enrollment, with only this browser context’s request observation and local page state',
     'tests/buffered-answer-delivery.spec.ts':
       'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local Answer delivery preference',
+    'tests/branding-theme-boot.spec.ts':
+      'browser-local page.route hold of /api/branding installed before navigation; the only writes are this browser context’s own localStorage (the branding theme cache and the onboarding dismissal)',
   },
   parallelSafe: [
+    'tests/branding-theme-boot.spec.ts',
     'tests/buffered-answer-delivery.spec.ts',
     'tests/agents-pane.spec.ts',
     'tests/toolbar-reachability.spec.ts',
@@ -690,6 +693,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'station#4287: exercises the shell CSP rather than asserting its header string. Serves the production-built UI through the lifecycle static server with the real bootstrap derivation, proves no nonce carrier is reachable from page code (window global, script .nonce IDL, nonce attribute), and proves a remote script minted from what page code CAN scrape is refused by script-src — paired with a control that lifts the nonce out of the response header and shows the same remote script then executes, so the refusal is the leak being closed and not a URL the policy would have refused anyway. Also proves the API-base bootstrap both runs and removes its own nonce-bearing element. jsdom enforces no CSP and never loads an external script, so this is only falsifiable in a real browser.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/branding-theme-boot.spec.ts',
+    bucket: 'product',
+    surface: 'Shell',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "#2836: the white-label branding theme's first paint. With /api/branding held, the built app must already carry the cached, re-validated theme inline on <html> (main.tsx pre-render path), replace it with the live answer once released (BrandingThemeBridge), and apply nothing from a hostile cached copy. Unit tests cover the helpers; only the built app proves main.tsx calls them.",
     exceptions: [],
   },
   {

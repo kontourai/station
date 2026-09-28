@@ -32,7 +32,8 @@ describe('BrandingThemeBridge', () => {
     branding = {
       loaded: true,
       theme: {
-        '--k-focus': '#1d4ed8',
+        // Flat: expanded into both modes, and readable in both.
+        '--k-focus': '#3b82f6',
         light: {
           '--k-action': '#1d4ed8',
           '--k-action-contrast': '#ffffff',
@@ -42,15 +43,14 @@ describe('BrandingThemeBridge', () => {
     render(<BrandingThemeBridge />);
     expect(root.style.getPropertyValue('--k-action')).toBe('#1d4ed8');
     expect(root.style.getPropertyValue('--k-action-contrast')).toBe('#ffffff');
-    expect(root.style.getPropertyValue('--k-focus')).toBe('#1d4ed8');
-    // The validated result is what the boot path will read next time.
+    expect(root.style.getPropertyValue('--k-focus')).toBe('#3b82f6');
+    // The validated, expanded result is what the boot path reads next time.
     expect(
       JSON.parse(localStorage.getItem(BRANDING_THEME_STORAGE_KEY) ?? 'null'),
     ).toEqual({
-      // #1d4ed8 is under 3:1 on the dark page, so the flat focus key is
-      // dropped for dark and kept for light.
+      dark: { '--k-focus': '#3b82f6' },
       light: {
-        '--k-focus': '#1d4ed8',
+        '--k-focus': '#3b82f6',
         '--k-action': '#1d4ed8',
         '--k-action-contrast': '#ffffff',
       },
@@ -65,12 +65,14 @@ describe('BrandingThemeBridge', () => {
         light: {
           '--k-action': '#a7f3d0',
           '--k-action-contrast': '#ffffff',
+          '--k-focus': '#1d4ed8', // valid alone; all-or-nothing drops it too
         },
       },
     };
     render(<BrandingThemeBridge />);
     expect(root.style.getPropertyValue('--k-action')).toBe('');
     expect(root.style.getPropertyValue('--k-action-contrast')).toBe('');
+    expect(root.style.getPropertyValue('--k-focus')).toBe('');
     expect(localStorage.getItem(BRANDING_THEME_STORAGE_KEY)).toBeNull();
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining(

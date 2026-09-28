@@ -38,7 +38,7 @@ Shape:
 
 ```js
 {
-  '--k-brand': '#…',          // flat keys apply to both modes
+  '--k-brand': '#…',          // flat keys are expanded into both modes
   dark:  { '--k-action': '#…', '--k-action-contrast': '#…' },  // per mode,
   light: { '--k-action': '#…', '--k-action-contrast': '#…' },  // wins over flat
 }
@@ -55,10 +55,11 @@ What Station accepts:
 - Values must be `#rgb` or `#rrggbb`. Named colours, `rgb()`, `var()`, `url()`,
   alpha and anything else are rejected.
 - Any other key is rejected. Nothing outside this list is ever written to the page.
-- A group that fails its check is dropped whole for that mode, and the default
-  stays. A pair is never applied halfway. Each rejection is logged in the browser
-  console with a `[branding-theme]` prefix.
-- One value rarely works in both modes, so prefer the `dark` / `light` objects.
+- All or nothing: if any key, value or check fails, in either mode, none of the
+  theme is applied and the default stays. Each rejection is logged in the
+  browser console with a `[branding-theme]` prefix.
+- Flat keys are expanded into both modes before checking, so a flat value must
+  pass in both. One value rarely does; prefer the `dark` / `light` objects.
 - A device accent chosen in **Settings → Appearance** still wins over the theme on
   that device.
 

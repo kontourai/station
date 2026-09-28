@@ -208,11 +208,13 @@ export interface BrandingData {
   appName: string;
   logo: { src: string; alt?: string } | null;
   /**
-   * White-label overrides from the branding provider: flat `--k-*` keys for
-   * both modes, or per-mode `dark` / `light` objects. Untrusted — Station's UI
-   * validates it before applying anything.
+   * White-label overrides exactly as the branding provider returned them:
+   * by convention flat `--k-*` keys for both modes and per-mode `dark` /
+   * `light` objects. `unknown` because nothing on the way validates it —
+   * a consumer must parse it before use (Station's UI does, in
+   * `src-ui/src/lib/branding-theme.ts`).
    */
-  theme: Record<string, string | Record<string, string>> | null;
+  theme: unknown;
   welcomeMessage: string | null;
 }
 

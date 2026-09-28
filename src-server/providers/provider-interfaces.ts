@@ -119,9 +119,10 @@ export interface IUserDirectoryProvider {
 
 /**
  * White-label theme overrides. Flat `--k-*` keys apply to both modes; a
- * `dark` or `light` object overrides per mode. The UI accepts only the
- * brand-slot allowlist with hex values that pass contrast checks and drops
- * everything else (src-ui/src/lib/branding-theme.ts).
+ * `dark` or `light` object overrides per mode. The UI applies the theme only
+ * if every key is in the brand-slot allowlist with a hex value and every
+ * contrast check passes; otherwise it applies none of it
+ * (src-ui/src/lib/branding-theme.ts).
  */
 export type BrandingTheme = Record<string, string | Record<string, string>>;
 

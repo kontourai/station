@@ -621,6 +621,14 @@ so a cache that refreshed only one side would tell two stories about it.
 
 Fetches conversations for an agent. Disabled when `agentSlug` is undefined.
 
+### `useBrandingQuery(config?)`
+
+Fetches the branding provider's answer (`appName`, `logo`, `theme`,
+`welcomeMessage`). `theme` is `unknown`: the white-label overrides exactly as
+the provider returned them, unvalidated, so parse them before use (see
+[examples/custom-branding](../../examples/custom-branding/README.md) for the
+shape and rules). An error answer rejects rather than resolving as no branding.
+
 ### `useConfigQuery(config?)`
 
 Fetches app configuration.

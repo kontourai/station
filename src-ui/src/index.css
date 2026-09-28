@@ -32,7 +32,7 @@
    fallback, and from @kontourai/ui 1.14 the shared primitives read them
    instead of the brand, so without them buttons and focus rings would drop
    back to the release accent. Every value is contrast-checked per mode by
-   `channel-accent-contrast.test.ts` with the same rules a white-label theme
+   `branding-role-cascade.test.ts` with the same rules a white-label theme
    has to pass (lib/branding-theme.ts): the action pair at 4.5:1, the action
    fill as accent text at 4.5:1 on page and panel, focus at 3:1. Where the
    brand itself fails those, the role is a nearby shade that passes. */

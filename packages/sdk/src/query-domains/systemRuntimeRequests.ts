@@ -408,15 +408,35 @@ export async function fetchBranding(
     `${apiBase}/api/branding`,
     ...signalInit(signal),
   );
-  const result = (await response.json()) as {
-    success: boolean;
-    data?: {
-      name?: string;
-      logo?: { src: string; alt?: string } | null;
-      theme?: Record<string, string | Record<string, string>> | null;
-      welcomeMessage?: string | null;
-    };
-  };
+  const result = (await response.json().catch(() => undefined)) as
+    | {
+        success: boolean;
+        data?: {
+          name?: string;
+          logo?: { src: string; alt?: string } | null;
+          theme?: unknown;
+          welcomeMessage?: string | null;
+        };
+        error?: string;
+      }
+    | undefined;
+  // An error answer must not read as "this Station has no branding": callers
+  // such as Station's white-label theme would clear a cached theme on it.
+  // Rejecting keeps the query's previous data (or none) instead.
+  if (!response.ok) {
+    throw new StationHttpError(
+      response.status,
+      apiErrorMessage(
+        result ?? {},
+        `Branding request rejected with HTTP ${response.status}`,
+      ),
+    );
+  }
+  if (!result?.success) {
+    throw new Error(
+      apiErrorMessage(result ?? {}, 'Branding request was not successful'),
+    );
+  }
   const data = result.data ?? {};
   return {
     appName: data.name || 'Station',

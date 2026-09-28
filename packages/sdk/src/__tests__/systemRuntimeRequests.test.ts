@@ -107,6 +107,32 @@ describe('systemRuntimeRequests', () => {
     expect(fetch).toHaveBeenCalledWith('http://example.test/api/branding');
   });
 
+  it('rejects a branding error answer instead of reporting "no theme"', async () => {
+    // A resolved `theme: null` would clear a white-label theme the UI cached;
+    // an error has to reject so the query keeps what it had.
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({ success: false, error: 'provider down' }),
+    } as Response);
+    await expect(fetchBranding()).rejects.toBeInstanceOf(StationHttpError);
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: false, error: 'provider down' }),
+    } as Response);
+    await expect(fetchBranding()).rejects.toThrow('provider down');
+  });
+
+  it('passes the provider theme through untouched for the consumer to validate', async () => {
+    const theme = { dark: { '--k-focus': '#93c5fd' }, '--k-brand': 'url(x)' };
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: { theme } }),
+    } as Response);
+    await expect(fetchBranding()).resolves.toMatchObject({ theme });
+  });
+
   it('returns an empty metrics list when monitoring reports failure', async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,

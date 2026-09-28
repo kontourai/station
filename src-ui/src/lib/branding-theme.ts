@@ -7,20 +7,22 @@
  * applies a theme must reject a pair that fails the contrast thresholds. The
  * endpoint is a no-credential boot read supplied by a plugin, so everything
  * here is untrusted input: only the five brand-slot properties below are ever
- * written, only after their values parse as hex colours, and a group that
- * fails its contrast rule is dropped whole, so an unreadable pair never lands.
+ * written, only after their values parse as hex colours, and only when the
+ * WHOLE theme passes — any rejection keeps the defaults, so an unreadable or
+ * half-applied theme never lands.
  *
  * Accepted shape (JSON-serialisable, backward compatible with the original
  * flat `Record<string, string>`):
  *
- *   { "--k-brand": "#…",                      // flat: applies to both modes
+ *   { "--k-brand": "#…",                      // flat: expanded into both modes
  *     "dark":  { "--k-action": "#…", … },      // per mode: wins over flat
  *     "light": { "--k-action": "#…", … } }
  *
- * The `{ dark, light }` shape matches the shared validator `@kontourai/ui` is
- * adding (`@kontourai/ui/contrast`), so `checkModeOverrides` below can be
- * replaced by it once Station can take that release; the parsing and the
- * apply path do not change.
+ * `@kontourai/ui/contrast` (ui 1.16.0) ships the shared check for the
+ * expanded `{ dark, light }` shape with the same all-or-nothing rule. Once
+ * Station can take that release, its `validateBrandOverride` replaces the
+ * validation inside `resolveBrandingTheme`; Station's stricter rule (the
+ * action fill also reads as text on page and panel) stays as an extra check.
  */
 
 import { contrastRatio } from './accent-contrast';
@@ -105,7 +107,9 @@ interface ModeCheck {
 }
 
 /**
- * Rate one mode's overrides and drop every group that fails. Groups:
+ * Rate one mode's overrides group by group. `accepted` lists the groups that
+ * pass; `resolveBrandingTheme` applies nothing unless every group in every
+ * mode passes. Groups:
  *
  * - action pair (`--k-action` + `--k-action-contrast`): both or neither; the
  *   pair meets AA text contrast. Station also paints `--accent-primary` (which
@@ -192,12 +196,10 @@ export function checkModeOverrides(
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
 }
 
 /** Keys are echoed into logs; keep an attacker-chosen key short. */
@@ -205,13 +207,23 @@ function describeKey(key: string): string {
   return JSON.stringify(key.length > 64 ? `${key.slice(0, 64)}…` : key);
 }
 
+/**
+ * A prototype-free record, so a key such as `__proto__` is stored and then
+ * rejected like any other unknown key instead of silently rewiring the object.
+ */
+function bareRecord<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
+}
+
 function readEntries(
   source: Record<string, unknown>,
-  into: BrandingModeOverrides,
+  into: Record<string, string>,
   scope: BrandingThemeMode | 'both',
   violations: BrandingThemeViolation[],
 ): void {
-  for (const [key, raw] of Object.entries(source)) {
+  // Own enumerable string keys only; JSON.parse makes `__proto__` one of them.
+  for (const key of Object.keys(source)) {
+    const raw = source[key];
     if (!ALLOWED.has(key)) {
       violations.push({
         mode: scope,
@@ -229,7 +241,12 @@ function readEntries(
       });
       continue;
     }
-    into[key as BrandingThemeProperty] = color;
+    Object.defineProperty(into, key, {
+      value: color,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
 }
 
@@ -238,9 +255,31 @@ export interface ResolvedBrandingTheme {
   violations: BrandingThemeViolation[];
 }
 
+function toModeOverrides(
+  source: Record<string, string>,
+): BrandingModeOverrides {
+  const out: BrandingModeOverrides = {};
+  for (const property of BRANDING_THEME_PROPERTIES) {
+    const value = source[property];
+    if (value !== undefined) out[property] = value;
+  }
+  return out;
+}
+
 /**
  * Parse an untrusted branding `theme` into validated per-mode overrides.
- * Anything not accepted is reported in `violations` and never applied.
+ *
+ * ALL OR NOTHING, like `@kontourai/ui/contrast`'s `validateBrandOverride`
+ * (ui 1.16.0): if anything in the theme is rejected — an unknown key, a value
+ * that is not a hex colour, or any group failing its contrast rule in either
+ * mode — nothing is applied and the defaults stay. A half-applied brand is a
+ * design nobody reviewed. Every violation is still reported for the log.
+ *
+ * Flat top-level `--k-*` keys (the original `Record<string, string>` form)
+ * are expanded into both modes BEFORE validation, per-mode entries winning.
+ * The swap to the shared validator replaces this function's validation step
+ * and hands it that expanded `{ dark, light }` shape; parsing, expansion and
+ * the apply path stay here.
  */
 export function resolveBrandingTheme(input: unknown): ResolvedBrandingTheme {
   const violations: BrandingThemeViolation[] = [];
@@ -255,10 +294,11 @@ export function resolveBrandingTheme(input: unknown): ResolvedBrandingTheme {
     return { overrides: {}, violations };
   }
 
-  const flat: Record<string, unknown> = {};
+  const flat = bareRecord<unknown>();
   const perMode: Partial<Record<BrandingThemeMode, Record<string, unknown>>> =
     {};
-  for (const [key, value] of Object.entries(input)) {
+  for (const key of Object.keys(input)) {
+    const value = input[key];
     if (key === 'dark' || key === 'light') {
       if (isPlainObject(value)) perMode[key] = value;
       else
@@ -268,34 +308,49 @@ export function resolveBrandingTheme(input: unknown): ResolvedBrandingTheme {
           reason: 'a mode entry must be an object of properties',
         });
     } else {
-      flat[key] = value;
+      Object.defineProperty(flat, key, {
+        value,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
     }
   }
 
-  const shared: BrandingModeOverrides = {};
+  const shared = bareRecord<string>();
   readEntries(flat, shared, 'both', violations);
 
-  const overrides: BrandingThemeOverrides = {};
+  const expanded: BrandingThemeOverrides = {};
   for (const mode of MODES) {
-    const specific: BrandingModeOverrides = {};
+    const specific = bareRecord<string>();
     const source = perMode[mode];
     if (source) readEntries(source, specific, mode, violations);
-    const merged = { ...shared, ...specific };
+    const merged = toModeOverrides({ ...shared, ...specific });
     if (Object.keys(merged).length === 0) continue;
-    const check = checkModeOverrides(mode, merged);
-    violations.push(...check.violations);
-    if (Object.keys(check.accepted).length > 0)
-      overrides[mode] = check.accepted;
+    violations.push(...checkModeOverrides(mode, merged).violations);
+    expanded[mode] = merged;
   }
-  return { overrides, violations };
+  return { overrides: violations.length === 0 ? expanded : {}, violations };
 }
+
+/** Enough to diagnose a theme without letting a hostile one flood the console. */
+const MAX_LOGGED_VIOLATIONS = 20;
 
 export function logBrandingThemeViolations(
   violations: readonly BrandingThemeViolation[],
 ): void {
-  for (const v of violations) {
+  if (violations.length === 0) return;
+  console.warn(
+    '[branding-theme] theme rejected; keeping the default theme. Nothing from it was applied.',
+  );
+  for (const v of violations.slice(0, MAX_LOGGED_VIOLATIONS)) {
     console.warn(
       `[branding-theme] rejected ${v.subject} (${v.mode}): ${v.reason}`,
+    );
+  }
+  if (violations.length > MAX_LOGGED_VIOLATIONS) {
+    console.warn(
+      `[branding-theme] …and ${violations.length - MAX_LOGGED_VIOLATIONS} more rejection(s)`,
     );
   }
 }
@@ -306,13 +361,32 @@ function currentThemeMode(root: HTMLElement): BrandingThemeMode {
 }
 
 interface RootState {
-  overrides: BrandingThemeOverrides;
+  overrides: Readonly<BrandingThemeOverrides>;
   observer: MutationObserver | null;
 }
 
 const rootState = new WeakMap<HTMLElement, RootState>();
 
-function writeMode(root: HTMLElement, overrides: BrandingThemeOverrides) {
+/**
+ * A frozen copy of just the allowlisted entries, taken at apply time, so the
+ * mode-flip re-apply writes what was validated even if the caller's object is
+ * mutated afterwards.
+ */
+function snapshot(
+  overrides: BrandingThemeOverrides,
+): Readonly<BrandingThemeOverrides> {
+  const copy: BrandingThemeOverrides = {};
+  for (const mode of MODES) {
+    const source = overrides[mode];
+    if (source) copy[mode] = Object.freeze(toModeOverrides({ ...source }));
+  }
+  return Object.freeze(copy);
+}
+
+function writeMode(
+  root: HTMLElement,
+  overrides: Readonly<BrandingThemeOverrides>,
+) {
   const values = overrides[currentThemeMode(root)] ?? {};
   for (const property of BRANDING_THEME_PROPERTIES) {
     // Re-checked at the write itself: nothing but an allowlisted property with
@@ -347,8 +421,9 @@ export function applyBrandingTheme(
       root.style.removeProperty(property);
     return;
   }
-  const next: RootState = state ?? { overrides, observer: null };
-  next.overrides = overrides;
+  const frozen = snapshot(overrides);
+  const next: RootState = state ?? { overrides: frozen, observer: null };
+  next.overrides = frozen;
   if (!next.observer && typeof MutationObserver !== 'undefined') {
     next.observer = new MutationObserver(() => {
       const live = rootState.get(root);
@@ -360,7 +435,7 @@ export function applyBrandingTheme(
     });
   }
   rootState.set(root, next);
-  writeMode(root, overrides);
+  writeMode(root, frozen);
 }
 
 /**

@@ -1,14 +1,16 @@
 /** @vitest-environment jsdom */
 
-import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { resolveCssImports } from '../../../../tests/helpers/css-cascade-fixture';
 import {
   applyBrandingTheme,
   BRANDING_THEME_PROPERTIES,
   type BrandingModeOverrides,
+  type BrandingThemeOverrides,
   checkModeOverrides,
   hexContrast,
+  logBrandingThemeViolations,
   resolveBrandingTheme,
   resolveCachedBrandingTheme,
   SHIPPED_MODE_TOKENS,
@@ -31,10 +33,10 @@ describe('shipped mode tokens', () => {
     // Read from the package itself, not from this module, so a token bump
     // that moves the page or panel fails here instead of silently rating
     // overrides against stale surfaces.
-    const require = createRequire(import.meta.url);
-    const css = readFileSync(
-      require.resolve('@kontourai/ui/tokens.css'),
-      'utf-8',
+    // Resolved through the package's own exports map, as the bundler does;
+    // the shared cascade helper does the read.
+    const css = resolveCssImports(
+      createRequire(import.meta.url).resolve('@kontourai/ui/tokens.css'),
     );
     const block = (selector: string) => {
       const start = css.indexOf(`${selector} {`);
@@ -59,20 +61,41 @@ describe('shipped mode tokens', () => {
 });
 
 describe('resolveBrandingTheme', () => {
-  test('rejects a non-allowlisted key and an injected value, keeping the valid ones', () => {
+  test('rejects a non-allowlisted key and an injected value, and then applies nothing', () => {
     const { overrides, violations } = resolveBrandingTheme({
       '--k-bg': '#000000',
       background: 'red',
       '--k-focus': 'red; background:url(x)',
-      '--k-brand': '#0a6a55',
+      light: { '--k-brand': '#0a6a55' },
     });
-    // Only the valid allowlisted property survives, in both modes.
-    expect(overrides.light).toEqual({ '--k-brand': '#0a6a55' });
-    expect(overrides.dark).toBeUndefined(); // #0a6a55 is unreadable on dark
+    // All or nothing: the valid light brand is not applied either.
+    expect(overrides).toEqual({});
     const subjects = violations.map((v) => v.subject);
     expect(subjects).toContain('"--k-bg"');
     expect(subjects).toContain('"background"');
     expect(subjects).toContain('--k-focus');
+  });
+
+  test('a __proto__ key is a logged violation, not a prototype write', () => {
+    const { overrides, violations } = resolveBrandingTheme(
+      JSON.parse(
+        '{"__proto__": {"--k-focus": "#93c5fd"}, "dark": {"--k-focus": "#93c5fd"}}',
+      ),
+    );
+    expect(overrides).toEqual({});
+    expect(violations.map((v) => v.subject)).toContain('"__proto__"');
+  });
+
+  test('flat keys expand into both modes before validation', () => {
+    // #1d4ed8 passes on the light surfaces and fails on the dark ones, so a
+    // flat value that is only valid in one mode rejects the whole theme.
+    const { overrides, violations } = resolveBrandingTheme({
+      '--k-focus': '#1d4ed8',
+    });
+    expect(overrides).toEqual({});
+    expect(violations.map((v) => `${v.mode}:${v.subject}`)).toEqual([
+      'dark:--k-focus',
+    ]);
   });
 
   test.each([
@@ -111,15 +134,58 @@ describe('resolveBrandingTheme', () => {
     expect(overrides.light).toEqual({ '--k-focus': '#1d4ed8' });
   });
 
-  test('a pale action pair is rejected in the mode it fails, and never half-applied', () => {
+  test('a pale action pair is rejected, and nothing else in the theme applies', () => {
     const { overrides, violations } = resolveBrandingTheme({
-      light: { '--k-action': '#a7f3d0', '--k-action-contrast': '#ffffff' },
+      light: {
+        '--k-action': '#a7f3d0',
+        '--k-action-contrast': '#ffffff',
+        '--k-focus': '#1d4ed8', // valid on its own
+      },
       dark: { '--k-action': '#34d399' }, // fill without its text
     });
     expect(overrides).toEqual({});
     expect(violations.map((v) => `${v.mode}:${v.reason}`)).toEqual([
       'dark:the action pair must be overridden together',
       expect.stringMatching(/^light:pair contrast 1\.\d+:1 is below 4\.5:1$/),
+    ]);
+  });
+
+  test('one failing mode rejects the valid other mode too', () => {
+    const { overrides } = resolveBrandingTheme({
+      light: { '--k-focus': '#1d4ed8' },
+      dark: { '--k-focus': '#1d4ed8' },
+    });
+    expect(overrides).toEqual({});
+  });
+
+  test("rejects an action pair that passes as a pair but not as Station's accent text", () => {
+    // Station paints --accent-primary (the action role) as link and accent
+    // text, so the fill must also read on the page and panel.
+    expect(hexContrast('#1e3a8a', '#ffffff')).toBeGreaterThan(4.5);
+    const { overrides, violations } = resolveBrandingTheme({
+      dark: { '--k-action': '#1e3a8a', '--k-action-contrast': '#ffffff' },
+    });
+    expect(overrides).toEqual({});
+    expect(violations).toEqual([
+      expect.objectContaining({
+        mode: 'dark',
+        subject: '--k-action/--k-action-contrast',
+        reason: expect.stringMatching(/^--k-action on the page\/panel/),
+      }),
+    ]);
+  });
+
+  test('rejects a brand that passes its pair but not as text on page and panel', () => {
+    const { overrides, violations } = resolveBrandingTheme({
+      dark: { '--k-brand': '#1e3a8a', '--k-brand-contrast': '#ffffff' },
+    });
+    expect(overrides).toEqual({});
+    expect(violations).toEqual([
+      expect.objectContaining({
+        mode: 'dark',
+        subject: '--k-brand/--k-brand-contrast',
+        reason: expect.stringMatching(/^--k-brand on the page\/panel/),
+      }),
     ]);
   });
 
@@ -217,6 +283,38 @@ describe('applyBrandingTheme', () => {
     }
     expect(root.style.getPropertyValue('--k-bg')).toBe('');
     expect(root.style.getPropertyValue('--k-focus')).toBe('');
+  });
+});
+
+describe('applyBrandingTheme snapshot', () => {
+  test('the mode-flip re-apply uses the validated snapshot, not a later mutation', async () => {
+    const root = freshRoot('dark');
+    const overrides: BrandingThemeOverrides = {
+      dark: { '--k-focus': '#93c5fd' },
+      light: { '--k-focus': '#1d4ed8' },
+    };
+    applyBrandingTheme(root, overrides);
+    // The caller's object changes after validation.
+    overrides.light = { '--k-focus': '#ffffff' };
+    root.setAttribute('data-theme', 'light');
+    await flush();
+    expect(root.style.getPropertyValue('--k-focus')).toBe('#1d4ed8');
+  });
+});
+
+describe('logBrandingThemeViolations', () => {
+  test('caps what a hostile theme can write to the console', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const theme: Record<string, string> = {};
+    for (let i = 0; i < 500; i += 1) theme[`--junk-${i}`] = 'x';
+    const { violations } = resolveBrandingTheme(theme);
+    expect(violations).toHaveLength(500);
+    logBrandingThemeViolations(violations);
+    // Header, 20 violations, and one "…and N more" line.
+    expect(warn).toHaveBeenCalledTimes(22);
+    expect(warn).toHaveBeenLastCalledWith(
+      '[branding-theme] …and 480 more rejection(s)',
+    );
   });
 });
 
