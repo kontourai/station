@@ -16,6 +16,7 @@ import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-h
 import {
   CWD,
   DEFAULT_INSTANCE_ID,
+  LIFECYCLE_CODE_ROOT,
   type LifecycleHomeSource,
   resolveLifecycleInstanceId,
   resolveServiceInstanceId,
@@ -31,6 +32,13 @@ import {
   sourceBuildStampNeedsRebuild,
   stop,
 } from './lifecycle.js';
+import type { LifecycleCodeRoot } from './lifecycle-code-root.js';
+import {
+  resolveServiceCodeLocation,
+  type ServiceCodeKind,
+  type ServiceCodeLocation,
+  serviceNodeDirectory,
+} from './service-command.js';
 import {
   installLaunchd,
   launchdRegistration,
@@ -130,6 +138,17 @@ export interface ServiceFs {
 }
 
 export interface ServiceManifest {
+  /**
+   * What the unit runs (#2675 slice C): `source` or a prebuilt `archive`.
+   * Absent in manifests written before slice C, which were all source.
+   */
+  kind?: ServiceCodeKind;
+  /**
+   * The installer-owned install root whose `current` an archive unit runs.
+   * The upgrade guard and install.sh recognize the service by it across
+   * versions.
+   */
+  installRoot?: string;
   /** Persisted pairing-trust origins; reinstalls preserve these (#1672). */
   allowedOrigins?: string[];
   /** Complete config is persisted so drift guidance never resets a service. */
@@ -175,6 +194,8 @@ export interface ServiceRegistration {
 }
 
 export interface ServiceDependencies {
+  /** What `service install` runs from; defaults to this CLI's code root. */
+  codeRoot?: LifecycleCodeRoot;
   /**
    * Builds stale service artifacts before replacing the supervisor. This keeps
    * a cold build outside the post-install identity readiness budget.
@@ -473,6 +494,13 @@ function readManifest(
     !manifest.instanceId ||
     !manifest.unitPath ||
     (manifest.baseDir !== undefined && typeof manifest.baseDir !== 'string') ||
+    (manifest.kind !== undefined &&
+      manifest.kind !== 'archive' &&
+      manifest.kind !== 'source') ||
+    (manifest.installRoot !== undefined &&
+      (manifest.kind !== 'archive' ||
+        typeof manifest.installRoot !== 'string' ||
+        manifest.installRoot.length === 0)) ||
     (manifest.features !== undefined &&
       manifest.features !== null &&
       typeof manifest.features !== 'string') ||
@@ -589,8 +617,14 @@ function restoreManifest(
   }
 }
 
-export function captureServicePath(run: CommandRunner, fs: ServiceFs): string {
-  const { accepted, nodeDir } = collectServicePathCandidates(run, fs);
+export function captureServicePath(
+  run: CommandRunner,
+  fs: ServiceFs,
+  location?: ServiceCodeLocation,
+): string {
+  const { accepted, nodeDir } = collectServicePathCandidates(run, fs, {
+    nodeDir: location ? serviceNodeDirectory(location) : undefined,
+  });
   if (!accepted.includes(nodeDir)) {
     throw new Error(
       `Unsafe Node executable directory for service PATH: ${nodeDir}`,
@@ -1219,8 +1253,12 @@ export async function runServiceCommand(
       lifecycle,
       instanceId,
     );
-    const repoPath = fs.realpathSync(CWD);
-    const nodePath = fs.realpathSync(process.execPath);
+    const location = resolveServiceCodeLocation({
+      codeRoot: dependencies.codeRoot ?? LIFECYCLE_CODE_ROOT,
+      execPath: process.execPath,
+      fs,
+      platform,
+    });
     // A backend reinstall has an owned prior supervisor. Retain its verified
     // boot identity and require readiness to observe a different one after
     // the backend has stopped and replaced it.
@@ -1255,17 +1293,16 @@ export async function runServiceCommand(
       );
     }
     const common = {
+      ...location,
       fs,
       lifecycle,
-      nodePath,
-      repoPath,
       run,
     };
     const manifest =
       platform === 'darwin'
         ? installLaunchd(instanceId, {
             ...common,
-            servicePath: captureServicePath(run, fs),
+            servicePath: captureServicePath(run, fs, location),
             ...(priorInstance?.found
               ? {
                   stopOwnedInstance: () =>
@@ -1279,7 +1316,7 @@ export async function runServiceCommand(
         : platform === 'linux'
           ? installSystemd(instanceId, {
               ...common,
-              servicePath: captureServicePath(run, fs),
+              servicePath: captureServicePath(run, fs, location),
             })
           : installWindowsService(instanceId, common);
     manifest.installedAt = (
@@ -1449,12 +1486,12 @@ export async function runServiceCommand(
             manifest.platform === 'darwin'
               ? installLaunchd(instanceId, {
                   ...common,
-                  servicePath: captureServicePath(run, fs),
+                  servicePath: captureServicePath(run, fs, location),
                 })
               : manifest.platform === 'linux'
                 ? installSystemd(instanceId, {
                     ...common,
-                    servicePath: captureServicePath(run, fs),
+                    servicePath: captureServicePath(run, fs, location),
                   })
                 : installWindowsService(instanceId, common);
           recovered.installedAt = (
@@ -1587,7 +1624,11 @@ export async function runServiceCommand(
   // Compared only for a managed install: without a manifest there is no unit
   // Station wrote, so no captured PATH to speak about.
   const servicePath = existing
-    ? inspectServicePathDrift(existing, { fs, run })
+    ? inspectServicePathDrift(existing, {
+        fs,
+        nodeDir: serviceNodeDirectory(existing),
+        run,
+      })
     : null;
   const remedy = existing
     ? resolveServiceInstallRemedy(existing, lifecycle.baseDir)

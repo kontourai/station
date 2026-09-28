@@ -8,6 +8,16 @@
 #     installed archive's Node.js verifies);
 #   - the installed version's own install.sh uninstalls it.
 #
+# With SMOKE_SYSTEMD_SERVICE=1 (Linux with a systemd user manager, #2675
+# slice C) it then installs the first archive again as a systemd --user
+# service and checks that:
+#   - the unit runs the bundled Node.js and bin/station.mjs through
+#     <install root>/current, and waits 75 s before killing on stop;
+#   - `station upgrade` restarts that service as the second archive, whose
+#     provenance sha must differ from the first's so the identity check means
+#     something;
+#   - `service uninstall` and then install.sh uninstall remove it all.
+#
 #   scripts/smoke-install-prebuilt-archive.sh <first archive> <second archive> <work dir>
 #
 # Each archive needs its builder descriptor (<archive>.json) beside it, and
@@ -101,7 +111,13 @@ first_version="$(publish "$first_archive")"
 python3 -m http.server "$serve_port" --bind 127.0.0.1 --directory "$work/serve" \
   >"$work/http.log" 2>&1 &
 serve_pid=$!
+service_instance=smoke-service
+service_installed=false
 cleanup() {
+  if [ "$service_installed" = true ]; then
+    env -i "${service_env[@]}" "$launcher" service uninstall \
+      "--instance=$service_instance" --base="$station_home" >/dev/null 2>&1 || true
+  fi
   env -i HOME="$smoke_home" PATH="$no_node_path" "$launcher" stop --base="$station_home" >/dev/null 2>&1 || true
   kill "$serve_pid" >/dev/null 2>&1 || true
 }
@@ -178,4 +194,94 @@ env -i "${installer_env[@]}" "$install_root/current/install.sh" uninstall 2>&1 |
 test ! -e "$install_root"
 test ! -e "$launcher"
 test -d "$station_home"
-echo 'Prebuilt archive install smoke passed.'
+
+if [ "${SMOKE_SYSTEMD_SERVICE:-0}" != 1 ]; then
+  echo "== skipping the service path: SMOKE_SYSTEMD_SERVICE is not 1 (only the Linux leg has a systemd user manager to register with; ${SMOKE_SERVICE_SKIP_REASON:-set it to run the service path})"
+  echo 'Prebuilt archive install smoke passed.'
+  exit 0
+fi
+
+echo "== service path: install $first_version as a systemd --user service"
+# The user manager reads units from the invoking user's real
+# ~/.config/systemd/user, which is where `service install` writes them (it
+# follows HOME). So this path keeps the real HOME and pins every Station
+# root to the smoke's instead.
+: "${XDG_RUNTIME_DIR:?the service path needs XDG_RUNTIME_DIR for systemctl --user}"
+: "${DBUS_SESSION_BUS_ADDRESS:?the service path needs DBUS_SESSION_BUS_ADDRESS for systemctl --user}"
+service_env=(
+  HOME="$HOME"
+  PATH="$no_node_path"
+  XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR"
+  DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
+  STATION_ROOT="$station_root"
+  STATION_BIN_DIR="$smoke_home/.local/bin"
+  STATION_CHANNEL=beta
+  STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL="http://127.0.0.1:$serve_port/public.pem"
+  STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1
+  STATION_INSTALL_SERVER_PORT="$server_port"
+  STATION_INSTALL_UI_PORT="$ui_port"
+)
+descriptor_sha() {
+  node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).release.sha' "$1.json"
+}
+first_sha="$(descriptor_sha "$first_archive")"
+second_sha="$(descriptor_sha "$second_archive")"
+if [ "$first_sha" = "$second_sha" ]; then
+  echo "both archives claim sha $first_sha: the service identity check could not tell them apart" >&2
+  exit 1
+fi
+# Prints the service's `status --json` unit.active and instance.sha.
+service_identity() {
+  env -i "${service_env[@]}" "$launcher" service status \
+    "--instance=$service_instance" --base="$station_home" --json \
+    >"$work/service-status.json" 2>>"$work/service-status.err" || true
+  node -e '
+    const s = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+    process.stdout.write(`${s.unit?.active} ${s.instance?.sha}`);
+  ' "$work/service-status.json"
+}
+
+publish "$first_archive" >/dev/null
+env -i "${service_env[@]}" STATION_INSTALL_NO_START=1 \
+  STATION_INSTALL_PUBLIC_MANIFEST_URL="http://127.0.0.1:$serve_port/preview.json" \
+  sh "$repo/install.sh" 2>&1 | tee "$work/service-install-archive.log"
+test "$(readlink "$install_root/current")" = "$(cd "$install_root" && pwd -P)/versions/$first_version"
+service_installed=true
+env -i "${service_env[@]}" "$launcher" service install \
+  "--instance=$service_instance" --base="$station_home" \
+  "--port=$server_port" "--ui-port=$ui_port" 2>&1 | tee "$work/service-install.log"
+unit="$HOME/.config/systemd/user/station-$service_instance.service"
+physical_install_root="$(cd "$install_root" && pwd -P)"
+cat "$unit"
+grep -qF "ExecStart=\"$physical_install_root/current/runtime/bin/node\" \"$physical_install_root/current/bin/station.mjs\" \"service\" \"run\"" "$unit" || {
+  echo 'the unit does not run the bundled Node.js and bin/station.mjs through current' >&2
+  exit 1
+}
+if grep -q '/versions/' "$unit"; then
+  echo 'the unit names a version directory, which an upgrade would leave behind' >&2
+  exit 1
+fi
+grep -qx 'TimeoutStopSec=75' "$unit"
+grep -qx 'Environment=STATION_SERVICE_MANAGED=1' "$unit"
+test "$(service_identity)" = "true $first_sha"
+
+echo "== station upgrade restarts the service as $second_version"
+publish "$second_archive" >/dev/null
+env -i "${service_env[@]}" "$launcher" upgrade 2>&1 | tee "$work/service-upgrade.log"
+grep -q "Restarting Station service $service_instance" "$work/service-upgrade.log"
+test "$(readlink "$install_root/current")" = "$physical_install_root/versions/$second_version"
+observed="$(service_identity)"
+if [ "$observed" != "true $second_sha" ]; then
+  echo "after the upgrade the service reports '$observed', expected 'true $second_sha'" >&2
+  exit 1
+fi
+
+echo "== service uninstall, then install.sh uninstall"
+env -i "${service_env[@]}" "$launcher" service uninstall \
+  "--instance=$service_instance" --base="$station_home" 2>&1 | tee "$work/service-uninstall.log"
+service_installed=false
+test ! -e "$unit"
+env -i "${service_env[@]}" "$install_root/current/install.sh" uninstall 2>&1 | tee "$work/service-uninstall-archive.log"
+test ! -e "$install_root"
+test ! -e "$launcher"
+echo 'Prebuilt archive install smoke passed, including the systemd service path.'

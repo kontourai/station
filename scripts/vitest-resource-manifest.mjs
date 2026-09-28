@@ -216,12 +216,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Builds two tiny real repositories to prove CLI artifact provenance ignores
   // hostile inherited Git routing and sees a staged dirty index.
   'packages/cli/src/__tests__/build-metadata.test.ts',
-  // Builds throwaway Git repositories and runs the gate as a child process, so
-  // the real exit status is what the assertions read; process ownership is the
-  // behavior under test, not a helper.
-  'scripts/__tests__/literal-swap-gate.test.ts',
-  // Same shape: throwaway Git repositories, and the real-time wait gate run
-  // as a child process so its exit status (0/1/2) is what is asserted.
+  // Builds throwaway Git repositories and runs the real-time wait gate as a
+  // child process, so its exit status (0/1/2) is what the assertions read.
   'scripts/__tests__/test-realtime-wait-gate.test.ts',
   // station#1648: runs the Playwright install script as a child process behind
   // a fake `npx` on PATH, because the exit status and the argv it really

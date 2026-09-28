@@ -6,12 +6,16 @@ import type {
   ServiceLifecycleArgs,
   ServiceRegistration,
 } from './service.js';
+import {
+  renderServiceCommand,
+  type ServiceCodeLocation,
+  SYSTEMD_STOP_TIMEOUT_SECONDS,
+  serviceCodeLocationOf,
+} from './service-command.js';
 
-interface InstallDependencies {
+interface InstallDependencies extends ServiceCodeLocation {
   fs: ServiceFs;
   lifecycle: ServiceLifecycleArgs;
-  nodePath: string;
-  repoPath: string;
   run: CommandRunner;
   servicePath: string;
 }
@@ -72,31 +76,18 @@ function systemdWorkingDirectory(value: string): string {
   return value;
 }
 
-export function renderSystemdUnit(input: {
-  instanceId: string;
-  lifecycle: ServiceLifecycleArgs;
-  nodePath: string;
-  repoPath: string;
-  servicePath: string;
-}): string {
-  const args = [
-    input.nodePath,
-    join(input.repoPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
-    join(input.repoPath, 'scripts', 'station-cli.ts'),
-    'service',
-    'run',
-    `--instance=${input.instanceId}`,
-    `--base=${input.lifecycle.baseDir}`,
-    `--port=${input.lifecycle.serverPort}`,
-    `--ui-port=${input.lifecycle.uiPort}`,
-    `--host=${input.lifecycle.host ?? '127.0.0.1'}`,
-    ...(input.lifecycle.features
-      ? [`--features=${input.lifecycle.features}`]
-      : []),
-    ...(input.lifecycle.allowedOrigins ?? []).map(
-      (origin) => `--allowed-origin=${origin}`,
-    ),
-  ];
+export function renderSystemdUnit(
+  input: ServiceCodeLocation & {
+    instanceId: string;
+    lifecycle: ServiceLifecycleArgs;
+    servicePath: string;
+  },
+): string {
+  const command = renderServiceCommand(
+    input,
+    input.instanceId,
+    input.lifecycle,
+  );
   return `[Unit]
 Description=Station user service (${input.instanceId})
 After=network-online.target
@@ -104,16 +95,16 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=${systemdWorkingDirectory(input.repoPath)}
+WorkingDirectory=${systemdWorkingDirectory(command.workingDirectory)}
 Environment=${unitQuote(`PATH=${input.servicePath}`)}
 Environment=${unitQuote(`STATION_ROOT=${input.lifecycle.stationRoot ?? ''}`)}
 Environment=STATION_SERVICE_MANAGED=1
-ExecStart=${args.map(unitQuote).join(' ')}
+ExecStart=${command.argv.map(unitQuote).join(' ')}
 # Deliberately no Nice=, CPUWeight=, or IOSchedulingClass=: this user-facing
 # service should retain systemd's normal scheduling defaults, not a background tier.
 Restart=always
 RestartSec=5
-TimeoutStopSec=30
+TimeoutStopSec=${SYSTEMD_STOP_TIMEOUT_SECONDS}
 KillMode=mixed
 NoNewPrivileges=true
 PrivateTmp=true
@@ -284,7 +275,8 @@ export function installSystemd(
   instanceId: string,
   dependencies: InstallDependencies,
 ): ServiceInstallResult {
-  const { fs, lifecycle, nodePath, repoPath, run, servicePath } = dependencies;
+  const { fs, lifecycle, run, servicePath } = dependencies;
+  const location = serviceCodeLocationOf(dependencies);
   const manager = run('systemctl', ['--user', 'show-environment']);
   if (manager.status !== 0 || manager.error) {
     throw new Error(
@@ -296,10 +288,9 @@ export function installSystemd(
   const unitName = registration.unitName as string;
   const unitPath = registration.unitPath;
   const content = renderSystemdUnit({
+    ...location,
     instanceId,
     lifecycle,
-    nodePath,
-    repoPath,
     servicePath,
   });
   const priorStatus = systemdStatus(registration, { fs, run });
@@ -377,9 +368,8 @@ export function installSystemd(
     host: lifecycle.host ?? '127.0.0.1',
     installedAt: '',
     instanceId,
-    nodePath,
+    ...location,
     platform: 'linux',
-    repoPath,
     serverPort: lifecycle.serverPort,
     uiPort: lifecycle.uiPort,
     unitName,

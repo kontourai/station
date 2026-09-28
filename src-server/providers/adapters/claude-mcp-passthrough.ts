@@ -78,11 +78,6 @@ export interface ClaudeStationControlDelivery {
    * preferred: its caller credential is `bound` and never leaves Station.
    */
   inProcess?: () => unknown;
-  /**
-   * Fallback stdio child's caller token (`bearer-exposed`: the CLI copies
-   * the child's env into its argv). Used only when `inProcess` is absent.
-   */
-  callerToken?: () => string | undefined;
   /** Passed to the stdio child so its REST calls keep their tenant. */
   tenantExecutionContext?: TenantExecutionContext;
 }
@@ -139,7 +134,6 @@ export function resolveClaudeMcpServers(
         toolDef,
         builtin ? stationControlEnv : undefined,
         builtin ? stationControl.tenantExecutionContext : undefined,
-        builtin ? stationControl.callerToken?.() : undefined,
       );
       servers[server.id] = {
         type: 'stdio',
