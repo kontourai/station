@@ -1,5 +1,6 @@
-import { expect } from '@playwright/test';
+import { expect, type Locator } from '@playwright/test';
 import { monitorBrowserHealth } from './helpers/browser-health';
+import { contrastRatio } from './helpers/color-contrast';
 import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
@@ -508,6 +509,299 @@ test.describe('Orchestration Chat Flow', () => {
     await expect(
       page.getByText('Awaiting tool approval (1)'),
     ).not.toBeVisible();
+    browserHealth.assertHealthy();
+  });
+
+  /**
+   * #2917, in a real browser: jsdom has no layout, so only Chromium can say
+   * whether the inline approval card keeps its label and glyphs clear of its
+   * buttons. The card here is the pending-approvals strip's ToolCallDisplay —
+   * an open request no transcript row answers — driven through the real
+   * answer path into each state the issue names: pending, refused ("was not
+   * delivered"), and "no longer open" (buttons disabled).
+   */
+  test('keeps the approval card label visible and its glyphs clear of the buttons at 360px and 720px, with legible buttons in both themes (#2917)', async ({
+    page,
+  }) => {
+    const browserHealth = await monitorBrowserHealth(page);
+    let answer: 'refuse' | 'settled' = 'refuse';
+    await page.route('**/api/system/status', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ready: true,
+          acp: { connected: false, connections: [] },
+          clis: {},
+          prerequisites: [],
+          providers: {
+            configured: [
+              {
+                id: 'codex',
+                type: 'codex',
+                enabled: true,
+                capabilities: ['llm'],
+              },
+            ],
+            detected: { ollama: false, bedrock: false },
+          },
+          capabilities: {
+            chat: {
+              ready: true,
+              source: 'codex',
+            },
+          },
+        }),
+      });
+    });
+    await page.route('**/api/orchestration/commands', async (route) => {
+      await route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'The engine connection closed before the answer landed.',
+        }),
+      });
+    });
+    await page.route(
+      /\/api\/orchestration\/sessions\/session-1\/requests\/req-2917(?:\?|$)/,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(
+            answer === 'settled'
+              ? {
+                  success: true,
+                  data: {
+                    state: 'resolved',
+                    reference: {
+                      threadId: 'session-1',
+                      requestId: 'req-2917',
+                      requestEventId: 'evt-req-2917',
+                    },
+                    message: 'Answered elsewhere.',
+                  },
+                }
+              : { success: false },
+          ),
+        });
+      },
+    );
+
+    // History, not a live emit: the strip reads the durable event window,
+    // which is what a reload with a request still open presents.
+    await installMockOrchestrationEventWindow(page, 'codex', {
+      'session-1': [
+        {
+          method: 'turn.started',
+          provider: 'codex',
+          threadId: 'session-1',
+          turnId: 'turn-0',
+          createdAt: '2026-04-05T11:59:58.000Z',
+          prompt: 'Set up the repo',
+        },
+        {
+          method: 'turn.completed',
+          provider: 'codex',
+          threadId: 'session-1',
+          turnId: 'turn-0',
+          createdAt: '2026-04-05T11:59:59.000Z',
+          outputText: 'Ready.',
+        },
+        {
+          method: 'request.opened',
+          provider: 'codex',
+          threadId: 'session-1',
+          createdAt: '2026-04-05T12:00:05.000Z',
+          eventId: 'evt-req-2917',
+          requestId: 'req-2917',
+          requestType: 'permission',
+          title: 'Approve command',
+          payload: {
+            toolName: 'shell_exec',
+            toolInput: {
+              command:
+                'npm run test:focused -- src-ui/src/components/chat/ToolCallDisplay.tsx --reporter=verbose',
+            },
+          },
+        },
+      ],
+    });
+    await page.goto('/projects/dev/layouts/code?chat=conv-1');
+    await page.evaluate(() => {
+      sessionStorage.setItem(
+        'activeChats',
+        JSON.stringify([
+          {
+            sessionId: 'session-1',
+            conversationId: 'conv-1',
+            agentSlug: 'dev-agent',
+            model: 'claude-sonnet',
+            provider: 'codex',
+            providerOptions: {
+              reasoningEffort: 'high',
+              fastMode: false,
+            },
+            orchestrationSessionStarted: true,
+            ephemeralMessages: [],
+            inputHistory: [],
+          },
+        ]),
+      );
+    });
+    await page.reload();
+    await dismissSetupLauncher(page);
+    await openChatRegion(page);
+    await waitForMockOrchestrationSse(page);
+    await expect(page.getByText('Ready.', { exact: true })).toBeVisible();
+    await page.addStyleTag({
+      content:
+        '*, *::before, *::after { transition: none !important; animation: none !important; }',
+    });
+    const card = page
+      .getByRole('region', { name: 'Approvals waiting on you' })
+      .locator('.tool-call');
+    const allowOnce = card.getByRole('button', {
+      name: 'Allow Once',
+      exact: true,
+    });
+    await expect(allowOnce).toBeVisible();
+
+    const expectClearLayout = async (context: string) => {
+      const label = await card.locator('.tool-call__label').boundingBox();
+      expect(label, `${context}: label box`).not.toBeNull();
+      // Collapsed to 0px on main at 360px (every state) and at 720px once
+      // the refused sentence showed.
+      expect(label!.width, `${context}: label width`).toBeGreaterThan(40);
+      // The line keeps at least its 10rem (160px) basis, or the whole row
+      // when the row is narrower: sharing a row with the actions must never
+      // squeeze it below that (squeezed, the label read as one letter).
+      const row = await card.locator('.tool-call__row').boundingBox();
+      const line = await card.locator('.tool-call__line').boundingBox();
+      expect(line!.width, `${context}: line width`).toBeGreaterThanOrEqual(
+        Math.min(160, row!.width) - 1,
+      );
+      const buttons = await card
+        .locator('.tool-call__approve-btn')
+        .evaluateAll((nodes) =>
+          nodes.map((node) => {
+            const r = node.getBoundingClientRect();
+            return {
+              text: node.textContent,
+              x: r.x,
+              y: r.y,
+              w: r.width,
+              h: r.height,
+            };
+          }),
+        );
+      expect(buttons, context).toHaveLength(3);
+      const glyphs = await card
+        .locator('.tool-call__glyph, .tool-call__awaiting, .tool-call__chevron')
+        .evaluateAll((nodes) =>
+          nodes.map((node) => {
+            const r = node.getBoundingClientRect();
+            return {
+              name: node.className,
+              x: r.x,
+              y: r.y,
+              w: r.width,
+              h: r.height,
+            };
+          }),
+        );
+      expect(
+        glyphs.length,
+        `${context}: glyphs rendered`,
+      ).toBeGreaterThanOrEqual(2);
+      const overlaps = glyphs.flatMap((glyph) =>
+        buttons
+          .filter(
+            (button) =>
+              glyph.x < button.x + button.w &&
+              button.x < glyph.x + glyph.w &&
+              glyph.y < button.y + button.h &&
+              button.y < glyph.y + glyph.h,
+          )
+          .map((button) => `${glyph.name} over ${button.text}`),
+      );
+      expect(overlaps, `${context}: glyph/button overlap`).toEqual([]);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+        `${context}: no horizontal overflow`,
+      ).toBe(true);
+    };
+
+    const expectLegibleButtons = async (context: string) => {
+      const measure = async (button: Locator, label: string) => {
+        // contrastRatio does not model element opacity, which is how the
+        // disabled and hover states used to fade the text under 4.5:1. Pin
+        // it separately so the ratio below is the painted one.
+        expect(
+          await button.evaluate((node) => getComputedStyle(node).opacity),
+          `${label}: opacity`,
+        ).toBe('1');
+        expect(
+          await contrastRatio(button),
+          `${label}: contrast`,
+        ).toBeGreaterThanOrEqual(4.5);
+      };
+      for (const theme of ['light', 'dark'] as const) {
+        await page.evaluate((value) => {
+          document.documentElement.setAttribute('data-theme', value);
+        }, theme);
+        for (const button of await card
+          .locator('.tool-call__approve-btn')
+          .all()) {
+          const label = `${context} ${theme} ${await button.textContent()}`;
+          await page.mouse.move(0, 0);
+          await measure(button, label);
+          if (await button.isEnabled()) {
+            await button.hover();
+            await measure(button, `${label} (hover)`);
+          }
+        }
+      }
+      await page.mouse.move(0, 0);
+    };
+
+    await page.setViewportSize({ width: 360, height: 800 });
+    await expectClearLayout('pending 360');
+    await expectLegibleButtons('pending');
+
+    await allowOnce.click();
+    await expect(card.getByRole('alert')).toContainText(
+      'Your decision was not delivered',
+    );
+    await expectClearLayout('refused 360');
+    await expectLegibleButtons('refused');
+    await page.setViewportSize({ width: 720, height: 800 });
+    await expectClearLayout('refused 720');
+    // At 720px the row has room for the line's basis beside the buttons, so
+    // the refused sentence wraps under the buttons rather than widening the
+    // actions until they drop below the label.
+    const [labelBox, allowBox] = await Promise.all([
+      card.locator('.tool-call__line').boundingBox(),
+      allowOnce.boundingBox(),
+    ]);
+    expect(
+      allowBox!.y,
+      'refused 720: buttons share the label row',
+    ).toBeLessThan(labelBox!.y + labelBox!.height);
+
+    answer = 'settled';
+    await page.setViewportSize({ width: 360, height: 800 });
+    await allowOnce.click();
+    await expect(card.getByRole('status')).toHaveText(
+      'This request is no longer open.',
+    );
+    await expect(allowOnce).toBeDisabled();
+    await expectClearLayout('no longer open 360');
+    await expectLegibleButtons('no longer open');
     browserHealth.assertHealthy();
   });
 });
