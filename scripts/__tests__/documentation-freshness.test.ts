@@ -404,17 +404,36 @@ describe('docs:review:record (#2924)', () => {
     f.write('src/a.ts', 'export const a = 2;\n');
     const before = f.read(LEDGER);
     f.write('src/untracked.ts', 'export const u = 1;\n');
-    for (const args of [
-      ['docs/a.md', '--note', '   '],
-      ['docs/a.md'],
-      ['docs/missing.md', '--note', 'Reviewed.'],
-      ['docs/a.md', '--note', 'Reviewed.', '--drop-source', 'src/nope.ts'],
-      ['docs/a.md', '--note', 'Reviewed.', '--add-source', 'src/a.ts'],
-      ['docs/a.md', '--note', 'Reviewed.', '--add-source', 'src/untracked.ts'],
-    ]) {
-      const refused = record_(f.root, args);
+    for (const [args, reason] of [
+      [['docs/a.md', '--note', '   '], 'Review note is empty: docs/a.md'],
+      [['docs/a.md'], 'Review note is empty: docs/a.md'],
+      [
+        ['docs/missing.md', '--note', 'Reviewed.'],
+        'No review record or capture for docs/missing.md',
+      ],
+      [
+        ['docs/a.md', '--note', 'Reviewed.', '--drop-source', 'src/nope.ts'],
+        'Not a recorded source of docs/a.md: src/nope.ts',
+      ],
+      [
+        ['docs/a.md', '--note', 'Reviewed.', '--add-source', 'src/a.ts'],
+        'Already a recorded source of docs/a.md: src/a.ts',
+      ],
+      [
+        [
+          'docs/a.md',
+          '--note',
+          'Reviewed.',
+          '--add-source',
+          'src/untracked.ts',
+        ],
+        'Recorded source is not tracked: docs/a.md -> src/untracked.ts',
+      ],
+    ] as const) {
+      const refused = record_(f.root, [...args]);
       expect(refused.status, args.join(' ')).toBe(1);
       expect(refused.stderr).toMatch(/^docs:review:record: /);
+      expect(refused.stderr).toContain(reason);
     }
     expect(f.read(LEDGER)).toBe(before);
 
