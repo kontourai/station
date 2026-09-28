@@ -6,11 +6,12 @@
  * Two claims, deliberately kept in one file because they are the same fix:
  * a collapsed banner is shorter, and the reserved space follows it, which is
  * the only reason collapsing does anything about overlap at all.
+ *
+ * What the published height and the collapse do under the real cascade (the
+ * content inset, the height tween, reduced motion) is measured in Chromium by
+ * `components/notifications/__tests__/BannerHost.reserve-cascade.test.tsx`.
  */
 
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -23,77 +24,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   act(() => bannerStore.reset());
 });
-
-const BANNER_CSS = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '../components/notifications/BannerHost.css',
-);
-
-/**
- * The MOTION PRIMITIVE. The reduced-motion decision is made once, here, for
- * the whole app; `BannerHost.css` no longer restates it for its own selectors
- *The contract these tests assert is
- * therefore spread across two files, and reading only one of them would let
- * either half be deleted with a green suite.
- */
-const TOKENS_CSS = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '../tokens.css',
-);
-
-/**
- * Comments are stripped before any of this file's CSS assertions run. Both
- * helpers below identify a rule by the text preceding its `{`, and this
- * stylesheet documents nearly every rule it declares — an un-stripped comment
- * silently makes a selector unmatchable, which reads as "the rule is missing"
- * rather than "the parser cannot see it".
- */
-function readCss(): string {
-  return readFileSync(BANNER_CSS, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-}
-
-function readTokensCss(): string {
-  return readFileSync(TOKENS_CSS, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-}
-
-/** Rule bodies for an exact selector, in source order. */
-function ruleBodies(css: string, selector: string): string[] {
-  const bodies: string[] = [];
-  const pattern = /([^{}]+)\{([^{}]*)\}/g;
-  let match = pattern.exec(css);
-  while (match !== null) {
-    if (match[1].replace(/\s+/g, ' ').trim() === selector)
-      bodies.push(match[2]);
-    match = pattern.exec(css);
-  }
-  return bodies;
-}
-
-/**
- * Bodies of every `@media (<condition>)` block, brace-balanced so a nested
- * rule cannot leak out of (or into) the block being asserted about.
- */
-function mediaBlocks(css: string, condition: string): string[] {
-  const blocks: string[] = [];
-  const header = `@media (${condition})`;
-  let from = css.indexOf(header);
-  while (from !== -1) {
-    const open = css.indexOf('{', from);
-    let depth = 0;
-    let cursor = open;
-    while (cursor < css.length) {
-      if (css[cursor] === '{') depth += 1;
-      else if (css[cursor] === '}') {
-        depth -= 1;
-        if (depth === 0) break;
-      }
-      cursor += 1;
-    }
-    blocks.push(css.slice(open + 1, cursor));
-    from = css.indexOf(header, cursor);
-  }
-  return blocks;
-}
 
 /**
  * jsdom lays nothing out, so every box reads 0. Geometry is supplied per
@@ -246,15 +176,6 @@ describe('BannerHost space reservation', () => {
       container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
     ).toBe('');
   });
-
-  test('the content area is inset by the published height', () => {
-    const css = readCss();
-    const [body] = ruleBodies(css, '.app__main > .main-content');
-    expect(body, 'no rule consumes the reservation').toBeDefined();
-    // On `.main-content` (the box that is NOT the scroller), so the band is
-    // taken out of the scroll viewport and nothing passes behind the banner.
-    expect(body).toMatch(/padding-top:\s*var\(--banner-stack-height,\s*0px\)/);
-  });
 });
 
 describe('BannerHost per-banner collapse', () => {
@@ -369,67 +290,5 @@ describe('BannerHost per-banner collapse', () => {
     if (card === null) return;
     expect(card.className).toMatch(/banner-host__item--exiting/);
     expect(card.className).not.toMatch(/banner-host__item--collapsed/);
-  });
-});
-
-describe('BannerHost collapse animation contract', () => {
-  test('collapse is a real height tween, behind prefers-reduced-motion', () => {
-    const css = readCss();
-
-    // The two ends of the tween: both lengths, so `height` interpolates.
-    const [item] = ruleBodies(css, '.banner-host__item');
-    expect(item).toMatch(/height:\s*var\(--banner-natural-height,\s*auto\)/);
-    const [collapsedCard] = ruleBodies(css, '.banner-host__item--collapsed');
-    expect(collapsedCard).toMatch(/height:\s*var\(--banner-collapsed-height\)/);
-
-    // Non-zero: the collapsed card is a bar, not a blank strip.
-    expect(item).toMatch(/--banner-collapsed-height:\s*(?!0px)\d+px/);
-
-    // The tween itself. Anchored on the separator before it: unanchored, this
-    // pattern also matches `min-height var(--motion-base)...` two rules down,
-    // and an injection that deleted the height tween outright still read as
-    // present. A regex that matches a different property is not a test.
-    const tween = /[\s,]height var\(--motion-base\) var\(--ease-standard\)/;
-    expect(css).toMatch(tween);
-
-    // "behind prefers-reduced-motion" is still the contract; what changed is
-    // WHERE it is derived. This file used to wrap the tween in its own
-    // `no-preference` block, which is the same preference the motion primitive
-    // already reads for every surface in the app — so the wrapper was a second
-    // copy of a decision, and the DRY rule retired it. The refusal now comes
-    // from `tokens.css`, asserted here rather than assumed: a universal rule,
-    // inside a `reduce` block, forcing transition AND animation duration to a
-    // near-zero value with `!important` (so it wins over this file's
-    // unconditional declaration regardless of order or specificity).
-    const [primitiveReduce] = mediaBlocks(
-      readTokensCss(),
-      'prefers-reduced-motion: reduce',
-    );
-    expect(primitiveReduce).toBeDefined();
-    expect(primitiveReduce).toMatch(/\*,\s*\*::before,\s*\*::after\s*\{/);
-    expect(primitiveReduce).toMatch(
-      /transition-duration:\s*0(?:\.\d+)?m?s\s*!important/,
-    );
-    expect(primitiveReduce).toMatch(
-      /animation-duration:\s*0(?:\.\d+)?m?s\s*!important/,
-    );
-  });
-
-  test('reduced motion refuses the tween but keeps the inset correct', () => {
-    const css = readCss();
-    // The inset TRANSITION is refused by the motion primitive (asserted in the
-    // test above), so this file no longer carries a `transition: none` copy of
-    // that decision. What it must never do is touch the inset ITSELF: the
-    // content area still has to be inset under reduced motion — only the move
-    // into place is refused. An inset that reduced motion switched OFF would
-    // put the overlap straight back for exactly the users who asked for less
-    // motion. So: the tween is declared, and NO reduced-motion rule anywhere
-    // in this file alters `padding-top`.
-    expect(css).toMatch(
-      /\.app__main > \.main-content \{\s*transition: padding-top/,
-    );
-    for (const reduce of mediaBlocks(css, 'prefers-reduced-motion: reduce')) {
-      expect(reduce).not.toMatch(/padding-top/);
-    }
   });
 });

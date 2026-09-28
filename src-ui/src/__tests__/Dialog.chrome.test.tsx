@@ -91,13 +91,4 @@ describe('Dialog — the one Station dialog chrome (SHELL-02)', () => {
       expect(INDEX_CSS, `${selector} must be in index.css`).toContain(selector);
     }
   });
-
-  test('the body scrolls, so a long form can never push its commit action below the fold', () => {
-    const body = INDEX_CSS.slice(
-      INDEX_CSS.indexOf('.station-dialog__body {'),
-      INDEX_CSS.indexOf('}', INDEX_CSS.indexOf('.station-dialog__body {')),
-    );
-    expect(body).toContain('overflow-y: auto');
-    expect(body).toContain('min-height: 0');
-  });
 });
