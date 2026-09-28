@@ -3728,6 +3728,7 @@ describe('collectDoctorReport', () => {
     ['tsx v4.21.0\r\nnode v24.18.0', 'pass', 'tsx v4.21.0 (node v24.18.0)'],
     ['tsx v4.0.0', 'pass', 'tsx v4.0.0'],
     ['', 'fail', 'Not found'],
+    ['\n', 'fail', 'Not found'],
     [null, 'fail', 'Not found'],
   ] as const)('reports tsx --version output %j as one labeled line', async (output, status, detail) => {
     const { doctor } = await loadLifecycleModule();
