@@ -144,8 +144,8 @@ function componentExists(candidate: string): boolean {
     // ONLY a missing path is absent. Catching every error made an unreadable
     // or looping component read as "not there", so the walk climbed past it
     // and the verdict was accept — while the containment verdict's contract
-    // promised the opposite ("I could not tell" must never read as "yes"). Constructed by the reviewer: a home at mode
-    // 000 holding a live symlink out of the home was accepted by both seams,
+    // promised the opposite ("I could not tell" must never read as "yes").
+    // Constructed by the reviewer: a home at mode 000 holding a live symlink out of the home was accepted by both seams,
     // and only the same permission failure that hid the redirect stopped the
     // write. A present-but-unanswerable component is PRESENT, which makes the
     // resolution below fail and the caller refuse (delta review 3, M1).

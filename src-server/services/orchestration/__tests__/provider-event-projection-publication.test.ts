@@ -17,7 +17,7 @@ const pixels = Buffer.alloc(6 * 1024, 7);
 const dataUrl = `data:image/png;base64,${pixels.toString('base64')}`;
 
 /**
- * station#4134: every provider event is projected once (inline attachment
+ * archive#4134: every provider event is projected once (inline attachment
  * bytes become a server-only blob reference) and that projected event is what
  * the live event bus carries; a completed turn persists with the outputs its
  * native calls declared.

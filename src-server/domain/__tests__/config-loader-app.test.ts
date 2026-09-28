@@ -611,9 +611,9 @@ describe('config-loader-app', () => {
   });
 
   // `mergeAppConfigUpdate` is the merge the real write path
-  // (`ConfigLoader.mutateAppConfig`) uses. Settings-revamp finding 2: a key
-  // whose update is undefined or null is deleted rather than assigned a literal
-  // `null` that AJV would reject inside `saveAppConfigFile`. archive#1194: a
+  // (`ConfigLoader.mutateAppConfig`) uses. A key whose update is undefined or
+  // null is deleted rather than assigned a literal `null` that AJV would
+  // reject inside `saveAppConfigFile`. archive#1194: a
   // registry-nullable key (`builtinAgentEngineConnectionId`, absent = re-derived
   // each boot, null = sticky explicit Station) persists null instead. The route
   // tests in config.routes.test.ts cover the null cases end to end; undefined

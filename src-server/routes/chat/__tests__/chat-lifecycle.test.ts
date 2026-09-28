@@ -421,7 +421,7 @@ describe('chat-lifecycle helpers', () => {
       ['an empty scannable transcript', true],
       ['an adapter with no getMessages', false],
     ])(
-      'a cancelled turn with no failure text still recovers the user turn and persists no marker — %s (#797 review)',
+      'a cancelled turn with no failure text still recovers the user turn and persists no marker — %s (archive#797 review)',
       async (_label, scannable) => {
         const ctx = createRuntimeContext();
         const addMessage = vi.fn(

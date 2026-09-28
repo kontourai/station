@@ -2045,7 +2045,7 @@ describe('StationAgentAdapter', () => {
         ),
     ],
   ])(
-    'threads the /chat rejection reason from %s into the thrown error and the runtime.error event (#1071)',
+    'threads the /chat rejection reason from %s into the thrown error and the runtime.error event (archive#1071)',
     async (_shape, response) => {
       const reason = chatRejectionReason;
       const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response());
@@ -2071,7 +2071,7 @@ describe('StationAgentAdapter', () => {
         .then(() => null)
         .catch((error: unknown) => error);
       // Exact equality, not toThrow's substring match — a doubled or suffixed
-      // message must fail here (review LOW).
+      // message must fail here.
       expect((thrown as Error).message).toBe(
         `Station agent did not accept the task turn: ${reason}`,
       );
@@ -2100,7 +2100,7 @@ describe('StationAgentAdapter', () => {
         }),
     ],
   ])(
-    'falls back to the generic rejection message when /chat returns %s (#1071)',
+    'falls back to the generic rejection message when /chat returns %s (archive#1071)',
     async (_shape, response) => {
       const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response());
       const adapter = new StationAgentAdapter({
