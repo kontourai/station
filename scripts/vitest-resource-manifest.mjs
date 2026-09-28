@@ -705,11 +705,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Owns real detached candidates from immutable instance snapshots and
   // verifies signal-time reaping in a separate fixture worker.
   'scripts/__tests__/helpers/station-fixture-owner.abnormal-exit.test.ts',
-  // station#1812: same abnormal-exit-reaper proof as the packages/cli
-  // entry above, against this directory's independent (duplicated)
-  // implementation -- spawns a real detached grandchild in a separate
-  // `node` process and SIGTERMs that process to prove the reaper survives.
-  'scripts/__tests__/helpers/longrunning-fixture-child.abnormal-exit.test.ts',
   // station#3423/#3435: runs the test-import-existence gate as a real child
   // process (positive/negative controls, the entrypoint-guard space-in-path
   // regression, and the real-repository count check) — same "gate as a real

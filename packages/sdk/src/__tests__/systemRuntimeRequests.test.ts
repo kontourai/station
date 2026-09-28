@@ -906,154 +906,88 @@ describe('systemRuntimeRequests', () => {
   // fetchers must preserve the response status rather than discarding it
   // once the body is inspected (or not inspected at all, for a non-ok
   // response whose body may not even be the `{success,data}` shape).
-  it('fleet routing receipts: preserves the response status as a StationHttpError', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 401,
-      json: async () => ({ success: false, error: 'Unauthorized' }),
-    } as Response);
-
-    let caught: unknown;
-    try {
-      await fetchFleetRoutingReceiptsForStation();
-    } catch (error) {
-      caught = error;
+  describe.each([
+    {
+      label: 'fleet routing receipts',
+      fetchReceipts: fetchFleetRoutingReceiptsForStation,
+      serverMessage:
+        'This Station cannot locate its receipt log, so whether it has fleet-routed anything is unknown rather than empty.',
+    },
+    {
+      label: 'fleet serve receipts',
+      fetchReceipts: fetchFleetServeReceiptsForStation,
+      serverMessage:
+        'This Station cannot locate its receipt log, so what it has served is unknown rather than empty.',
+    },
+  ])('$label', ({ fetchReceipts, serverMessage }) => {
+    async function rejection(): Promise<unknown> {
+      try {
+        await fetchReceipts();
+      } catch (error) {
+        return error;
+      }
+      throw new Error('expected the fleet receipt read to reject');
     }
-    expect(caught).toBeInstanceOf(StationHttpError);
-    expect((caught as StationHttpError).status).toBe(401);
-    // Must not collide with `isStationTransportFailure`'s "Failed to fetch"
-    // prefix marker for network unreachability.
-    expect((caught as StationHttpError).message).not.toMatch(
-      /^(?:TypeError:\s*)?Failed to fetch/i,
-    );
-  });
 
-  // fix-round HIGH-1: the route (`src-server/routes/operations/monitoring.ts`)
-  // deliberately authors a 503 body explaining WHY, and the fetcher must not
-  // discard it in favor of a synthesized "rejected with HTTP 503" — that
-  // sentence is the one thing standing between the reader and a lie
-  // ("Station isn't responding") once the copy derives from this message.
-  it('fleet routing receipts: a rejected response keeps the SERVER-authored error text, verbatim', async () => {
-    const serverMessage =
-      'This Station cannot locate its receipt log, so whether it has fleet-routed anything is unknown rather than empty.';
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 503,
-      json: async () => ({ success: false, error: serverMessage }),
-    } as Response);
+    it('preserves the response status as a StationHttpError', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({ success: false, error: 'Unauthorized' }),
+      } as Response);
 
-    let caught: unknown;
-    try {
-      await fetchFleetRoutingReceiptsForStation();
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(StationHttpError);
-    expect((caught as StationHttpError).status).toBe(503);
-    expect((caught as StationHttpError).message).toBe(serverMessage);
-  });
+      const caught = await rejection();
+      expect(caught).toBeInstanceOf(StationHttpError);
+      expect((caught as StationHttpError).status).toBe(401);
+      // Must not collide with `isStationTransportFailure`'s "Failed to fetch"
+      // prefix marker for network unreachability.
+      expect((caught as StationHttpError).message).not.toMatch(
+        /^(?:TypeError:\s*)?Failed to fetch/i,
+      );
+    });
 
-  it('fleet routing receipts: a rejected response with an unparseable body falls back to a synthesized message', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 502,
-      json: async () => {
-        throw new SyntaxError('Unexpected end of JSON input');
-      },
-    } as unknown as Response);
+    // The route (`src-server/routes/operations/monitoring.ts`) authors a 503
+    // body explaining why; the fetcher keeps it rather than synthesizing
+    // "rejected with HTTP 503", because UI copy derives from this message.
+    it('a rejected response keeps the SERVER-authored error text, verbatim', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: async () => ({ success: false, error: serverMessage }),
+      } as Response);
 
-    let caught: unknown;
-    try {
-      await fetchFleetRoutingReceiptsForStation();
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(StationHttpError);
-    expect((caught as StationHttpError).status).toBe(502);
-    expect((caught as StationHttpError).message).toContain('502');
-  });
+      const caught = await rejection();
+      expect(caught).toBeInstanceOf(StationHttpError);
+      expect((caught as StationHttpError).status).toBe(503);
+      expect((caught as StationHttpError).message).toBe(serverMessage);
+    });
 
-  it('fleet routing receipts: a successful-status body that reports failure still throws a plain Error', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ success: false, error: 'no data yet' }),
-    } as Response);
+    it('a rejected response with an unparseable body falls back to a synthesized message', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 502,
+        json: async () => {
+          throw new SyntaxError('Unexpected end of JSON input');
+        },
+      } as unknown as Response);
 
-    await expect(fetchFleetRoutingReceiptsForStation()).rejects.toThrow(
-      'no data yet',
-    );
-  });
+      const caught = await rejection();
+      expect(caught).toBeInstanceOf(StationHttpError);
+      expect((caught as StationHttpError).status).toBe(502);
+      expect((caught as StationHttpError).message).toContain('502');
+    });
 
-  it('fleet serve receipts: preserves the response status as a StationHttpError', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 403,
-      json: async () => ({ success: false, error: 'Forbidden' }),
-    } as Response);
+    it('a successful-status body that reports failure still throws a plain Error', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: false, error: 'no data yet' }),
+      } as Response);
 
-    let caught: unknown;
-    try {
-      await fetchFleetServeReceiptsForStation();
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(StationHttpError);
-    expect((caught as StationHttpError).status).toBe(403);
-    expect((caught as StationHttpError).message).not.toMatch(
-      /^(?:TypeError:\s*)?Failed to fetch/i,
-    );
-  });
-
-  it('fleet serve receipts: a rejected response keeps the SERVER-authored error text, verbatim', async () => {
-    const serverMessage =
-      'This Station cannot locate its receipt log, so what it has served is unknown rather than empty.';
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 503,
-      json: async () => ({ success: false, error: serverMessage }),
-    } as Response);
-
-    let caught: unknown;
-    try {
-      await fetchFleetServeReceiptsForStation();
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(StationHttpError);
-    expect((caught as StationHttpError).status).toBe(503);
-    expect((caught as StationHttpError).message).toBe(serverMessage);
-  });
-
-  it('fleet serve receipts: a rejected response with an unparseable body falls back to a synthesized message', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 502,
-      json: async () => {
-        throw new SyntaxError('Unexpected end of JSON input');
-      },
-    } as unknown as Response);
-
-    let caught: unknown;
-    try {
-      await fetchFleetServeReceiptsForStation();
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(StationHttpError);
-    expect((caught as StationHttpError).status).toBe(502);
-    expect((caught as StationHttpError).message).toContain('502');
-  });
-
-  it('fleet serve receipts: a successful-status body that reports failure still throws a plain Error', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ success: false, error: 'no data yet' }),
-    } as Response);
-
-    await expect(fetchFleetServeReceiptsForStation()).rejects.toThrow(
-      'no data yet',
-    );
+      const caught = await rejection();
+      expect(caught).toBeInstanceOf(Error);
+      expect(caught).not.toBeInstanceOf(StationHttpError);
+      expect((caught as Error).message).toBe('no data yet');
+    });
   });
 });

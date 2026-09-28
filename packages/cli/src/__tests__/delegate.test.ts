@@ -106,6 +106,16 @@ describe('station delegate over HTTP', () => {
     pathname: string;
     body: Record<string, unknown>;
   }> = [];
+  // Every request the mock server receives, reads included, so a test can
+  // prove a path issued none (or no status read).
+  const requestLog: Array<{ method: string; pathname: string }> = [];
+  const statusReads = () =>
+    requestLog.filter(
+      ({ method, pathname }) =>
+        method === 'GET' &&
+        /^\/api\/orchestration\/delegations\/[^/]+$/.test(pathname) &&
+        pathname !== '/api/orchestration/delegations/options',
+    );
   // #2459: the client-origin header each delegation POST carried.
   const delegationOrigins: Array<string | undefined> = [];
   // Capability-delivery disclosure fixtures: when set, the mock server
@@ -115,13 +125,19 @@ describe('station delegate over HTTP', () => {
     | { provider?: string; capabilityDelivery?: Record<string, unknown> }
     | undefined;
   let statusDeliveryFixture:
-    | { provider?: string; capabilityDelivery?: Record<string, unknown> }
+    | {
+        provider?: string;
+        capabilityDelivery?: Record<string, unknown>;
+        lastDecision?: Record<string, unknown>;
+        earlierUnacknowledgedDecisions?: Array<Record<string, unknown>>;
+      }
     | undefined;
 
   beforeEach(async () => {
     consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
     consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     requestBodies.length = 0;
+    requestLog.length = 0;
     delegationOrigins.length = 0;
     tasks.clear();
     conversations.clear();
@@ -144,6 +160,7 @@ describe('station delegate over HTTP', () => {
     server = createServer(async (req, res) => {
       const method = req.method || 'GET';
       const url = new URL(req.url || '/', 'http://127.0.0.1');
+      requestLog.push({ method, pathname: url.pathname });
       const body = method === 'POST' ? await readBody(req) : undefined;
       if (method === 'POST' && body) {
         requestBodies.push({ pathname: url.pathname, body });
@@ -469,6 +486,15 @@ describe('station delegate over HTTP', () => {
             ...(statusDeliveryFixture?.capabilityDelivery
               ? {
                   capabilityDelivery: statusDeliveryFixture.capabilityDelivery,
+                }
+              : {}),
+            ...(statusDeliveryFixture?.lastDecision
+              ? { lastDecision: statusDeliveryFixture.lastDecision }
+              : {}),
+            ...(statusDeliveryFixture?.earlierUnacknowledgedDecisions
+              ? {
+                  earlierUnacknowledgedDecisions:
+                    statusDeliveryFixture.earlierUnacknowledgedDecisions,
                 }
               : {}),
             ...(record.pendingRequest
@@ -1879,14 +1905,30 @@ Nothing was sent at another approval mode.`);
 
   test('--json emits the one stable shape for every verb (AC10)', async () => {
     const { runCli } = await import('../cli.js');
+    const emitted = async (args: string[]) => {
+      consoleLog.mockClear();
+      await runCli(['delegate', ...args, '--json', `--api-base=${apiBase}`]);
+      return JSON.parse(
+        consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+      ) as Record<string, unknown> & { data: { taskId?: string } };
+    };
+    const created = await emitted(['--agent=default', 'Ship it']);
+    const taskId = String(created.data.taskId);
+    const envelopes: Array<[string, Record<string, unknown>]> = [
+      ['create', created],
+      ['status', await emitted(['status', taskId])],
+      ['events', await emitted(['events', taskId])],
+      ['respond', await emitted(['respond', taskId, 'req-1', 'accept'])],
+      ['interrupt', await emitted(['interrupt', taskId])],
+      ['continue', await emitted(['continue', taskId, 'Keep going'])],
+      ['targets', await emitted(['targets'])],
+    ];
 
-    await runCli(['delegate', 'targets', '--json', `--api-base=${apiBase}`]);
-    const payload = JSON.parse(
-      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
-    );
-    expect(Object.keys(payload).sort()).toEqual(['data', 'kind', 'ok']);
-    expect(payload.ok).toBe(true);
-    expect(payload.kind).toBe('delegate.targets');
+    for (const [verb, payload] of envelopes) {
+      expect(Object.keys(payload).sort(), verb).toEqual(['data', 'kind', 'ok']);
+      expect(payload.ok, verb).toBe(true);
+      expect(payload.kind, verb).toBe(`delegate.${verb}`);
+    }
   });
 
   test('a missing positional is a usage error and exits 1 before any request (AC9)', async () => {
@@ -1895,6 +1937,7 @@ Nothing was sent at another approval mode.`);
     await expect(
       runCli(['delegate', 'status', `--api-base=${apiBase}`]),
     ).rejects.toThrow('Missing required argument: task id');
+    expect(requestLog).toEqual([]);
   });
 
   test('a 400 delegation rejection exits 3, distinct from a transport failure (AC9)', async () => {
@@ -2123,6 +2166,8 @@ Nothing was sent at another approval mode.`);
     expect(payload.kind).toBe('delegate.create');
     expect(payload.data.status).toBe('dispatched');
     expect(payload.data.pendingRequest).toBeUndefined();
+    // The default mode never probes the task's status after creating it.
+    expect(statusReads()).toEqual([]);
   });
 
   test('--on-request=fail on create exits distinctly with the pending requestId when one is already open (station#979 AC4 parity)', async () => {
@@ -2149,6 +2194,7 @@ Nothing was sent at another approval mode.`);
     expect(payload.data.pendingRequest.respondCommand).toMatch(
       /^station delegate respond 'task:\d+' 'req-pending-1' <accept\|acceptForSession\|decline\|cancel>$/,
     );
+    expect(statusReads()).toHaveLength(1);
   });
 
   test('--on-request=fail on create prints the ordinary success output when no request is pending (station#979)', async () => {
@@ -2427,6 +2473,127 @@ Nothing was sent at another approval mode.`);
       expect(text).toContain(
         'prompt not delivered: engine has no system-prompt channel (opencode)',
       );
+    } finally {
+      statusDeliveryFixture = undefined;
+    }
+  });
+
+  /**
+   * #2880: the recorded decision and the engine's report about it render as
+   * separate facts, never stronger than the serving Station forwarded.
+   */
+  test.each([
+    [
+      { delivery: 'acknowledged', waitedMs: 42 },
+      'Decision on req-7: approved (recorded), acknowledged by the engine after 42 ms',
+    ],
+    [
+      { delivery: 'acknowledged', waitedMs: 1_500, engineStatus: 'denied' },
+      'Decision on req-7: approved (recorded), acknowledged by the engine after 2 s; the engine reported: denied',
+    ],
+    [
+      { delivery: 'awaiting-acknowledgement' },
+      'Decision on req-7: approved (recorded), not yet acknowledged by the engine',
+    ],
+    [
+      {
+        delivery: 'unacknowledged',
+        reason: 'no-acknowledgement',
+        waitedMs: 30_000,
+      },
+      'Decision on req-7: approved (recorded), not yet acknowledged by the engine after 30 s; Station has not re-sent it',
+    ],
+    [
+      { delivery: 'unacknowledged', reason: 'invalid-reply', waitedMs: 0 },
+      'Decision on req-7: approved (recorded), not sent: Station refused a reply the engine would not accept; the engine is still waiting',
+    ],
+    [
+      { delivery: 'closed-by-engine' },
+      'Request req-7: closed by the engine before Station answered',
+    ],
+    [
+      { delivery: 'in-process' },
+      "Decision on req-7: approved (recorded), consumed by Station's own engine",
+    ],
+    [
+      { delivery: 'not-reported' },
+      'Decision on req-7: approved (recorded); this engine does not report delivery',
+    ],
+  ])('human output: decision delivery %o (#2880)', async (delivery, line) => {
+    const { runCli } = await import('../cli.js');
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'decision delivery',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+    statusDeliveryFixture = {
+      lastDecision: { requestId: 'req-7', status: 'approved', ...delivery },
+    };
+    try {
+      await runCli([
+        'delegate',
+        'status',
+        created.data.taskId,
+        `--api-base=${apiBase}`,
+      ]);
+      expect(printedText().split('\n')).toContain(line);
+    } finally {
+      statusDeliveryFixture = undefined;
+    }
+  });
+
+  test('human output: an earlier unacknowledged decision prints beside an acknowledged latest one (#2880)', async () => {
+    const { runCli } = await import('../cli.js');
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'decision delivery',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+    statusDeliveryFixture = {
+      earlierUnacknowledgedDecisions: [
+        {
+          requestId: 'req-6',
+          status: 'denied',
+          delivery: 'unacknowledged',
+          reason: 'no-acknowledgement',
+          waitedMs: 30_000,
+        },
+      ],
+      lastDecision: {
+        requestId: 'req-7',
+        status: 'approved',
+        delivery: 'acknowledged',
+        waitedMs: 42,
+      },
+    };
+    try {
+      await runCli([
+        'delegate',
+        'status',
+        created.data.taskId,
+        `--api-base=${apiBase}`,
+      ]);
+      const lines = printedText().split('\n');
+      const earlier = lines.indexOf(
+        'Decision on req-6: denied (recorded), not yet acknowledged by the engine after 30 s; Station has not re-sent it',
+      );
+      const latest = lines.indexOf(
+        'Decision on req-7: approved (recorded), acknowledged by the engine after 42 ms',
+      );
+      expect(earlier).toBeGreaterThanOrEqual(0);
+      expect(latest).toBe(earlier + 1);
     } finally {
       statusDeliveryFixture = undefined;
     }

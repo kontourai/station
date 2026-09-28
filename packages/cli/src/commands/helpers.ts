@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { readPluginManifest } from '@kontourai/station-shared/parsers';
 
@@ -309,26 +309,6 @@ export function isGitUrl(source: string): boolean {
         source.includes('gitlab') ||
         source.includes('github')))
   );
-}
-
-export function parseGitSource(source: string): {
-  url: string;
-  branch: string;
-} {
-  const [url, branch] = source.split('#');
-  return { url, branch: branch || 'main' };
-}
-
-export function extractPluginName(
-  source: string,
-  invokedCwd = INVOKED_CWD,
-): string {
-  if (isGitUrl(source)) {
-    const { url } = parseGitSource(source);
-    const match = url.match(/\/([^/]+?)(?:\.git)?$/);
-    return match ? match[1] : url.split('/').pop()!.replace('.git', '');
-  }
-  return basename(resolve(invokedCwd, source.replace(/\\/g, '/')));
 }
 
 /** Scan installed plugins for registry.json files and look up a dep by id */

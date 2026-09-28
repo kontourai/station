@@ -19,47 +19,10 @@ import {
 } from '../commands/profile-credentials.js';
 import { upsertProfile } from '../commands/profile-store.js';
 import { readBody } from './helpers/http-test-helpers.js';
-
-const reviewReceipt = {
-  schemaVersion: 1,
-  receiptId: 'a'.repeat(64),
-  requestId: 'request-1',
-  mode: 'initial',
-  target: {
-    kind: 'git-range',
-    projectSlug: 'demo',
-    baseRevision: 'origin/main',
-    headRevision: 'HEAD',
-    repositoryId: 'github.com/kontourai/station',
-    baseSha: '1'.repeat(40),
-    headSha: '2'.repeat(40),
-    diffSha256: '3'.repeat(64),
-  },
-  requestedBy: { actorId: 'operator' },
-  implementer: { actorId: 'agent:terra' },
-  startedAt: '2026-08-16T00:00:00.000Z',
-  completedAt: '2026-08-16T00:01:00.000Z',
-  executions: [
-    {
-      reviewerId: 'reviewer-1',
-      executorAgentSlug: 'station',
-      actor: { actorId: 'agent:sol' },
-      lens: { id: 'architecture', instructions: 'Review exact seams.' },
-      status: 'completed',
-      startedAt: '2026-08-16T00:00:00.000Z',
-      completedAt: '2026-08-16T00:01:00.000Z',
-      findings: [],
-      deltaAssessments: [],
-    },
-  ],
-  findings: [],
-  deltaAssessments: [],
-  interpretation: {
-    kind: 'review-findings',
-    decision: 'input-only',
-    gateVerdict: null,
-  },
-} as const;
+import {
+  completedReviewRequest,
+  reviewReceipt,
+} from './helpers/review-evidence-fixtures.js';
 
 describe('CLI surface commands over HTTP', () => {
   let server: ReturnType<typeof createServer>;
@@ -350,21 +313,7 @@ describe('CLI surface commands over HTTP', () => {
       if (url.pathname === '/api/projects/demo/reviews') {
         if (method === 'POST') {
           state.reviewRequests.push(body);
-          sendJson(201, {
-            success: true,
-            data: {
-              requestId: 'request-1',
-              projectSlug: 'demo',
-              state: 'completed',
-              startedAt: reviewReceipt.startedAt,
-              updatedAt: reviewReceipt.completedAt,
-              result: {
-                receipt: reviewReceipt,
-                attachment: { status: 'not-requested' },
-                cleanup: { status: 'completed' },
-              },
-            },
-          });
+          sendJson(201, { success: true, data: completedReviewRequest });
           return;
         }
         if (method === 'GET') {
@@ -1263,6 +1212,16 @@ describe('CLI surface commands over HTTP', () => {
       value: false,
       configurable: true,
     });
+    // A read that did happen sees empty piped input at once, so a regression
+    // fails on the observed listener rather than hanging on the worker's stdin.
+    const stdinOn = vi.spyOn(process.stdin, 'on').mockImplementation(function (
+      this: typeof process.stdin,
+      event: string | symbol,
+      listener: (...args: unknown[]) => void,
+    ) {
+      if (event === 'end') queueMicrotask(() => listener());
+      return this;
+    });
 
     try {
       await runCli([
@@ -1276,7 +1235,9 @@ describe('CLI surface commands over HTTP', () => {
       expect(state.acpConnections).toEqual([
         { id: 'from-flags', command: 'from-flags-cli' },
       ]);
+      expect(stdinOn).not.toHaveBeenCalled();
     } finally {
+      stdinOn.mockRestore();
       Object.defineProperty(process.stdin, 'isTTY', {
         value: previousIsTTY,
         configurable: true,
