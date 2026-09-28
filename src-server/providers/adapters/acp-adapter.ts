@@ -547,6 +547,9 @@ export const ACP_ADAPTER_CAPABILITIES = [
 export class AcpAdapter implements ProviderAdapterShape {
   readonly provider = 'acp' as const;
   readonly metadata = {
+    // #2880: the protocol has no acknowledgement of a decision; delivery is
+    // not reported.
+    approvalAcknowledgement: 'none' as const,
     displayName: 'Custom engine',
     description:
       'Custom engine connections launched from a configured command (e.g. Kiro), driven through the canonical ACP adapter seam.',
@@ -1680,6 +1683,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       requestId,
       method: 'request.resolved',
       status: mapAcpDecisionToApprovalStatus(decision),
+      acknowledgement: this.metadata.approvalAcknowledgement,
     });
   }
 

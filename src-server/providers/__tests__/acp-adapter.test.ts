@@ -621,6 +621,8 @@ describe('AcpAdapter', () => {
       method: 'request.resolved',
       requestId: opened.requestId,
       status: 'approved',
+      // #2880: ACP defines no acknowledgement of a permission response.
+      acknowledgement: 'none',
     });
 
     // Turn completion (row 13).

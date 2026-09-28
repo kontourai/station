@@ -15,6 +15,7 @@ import type {
   ApprovalMode,
   EngineId,
 } from '@kontourai/station-contracts/provider';
+import type { RequestDeliveryEvent } from '@kontourai/station-contracts/runtime-events';
 import type { ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
@@ -258,6 +259,16 @@ export interface UnsentMessageRecord {
   at: number;
 }
 
+/**
+ * #2880: a recorded decision the engine reported NOT acknowledged, and why:
+ * `no-acknowledgement` (sent; none arrived in the adapter's window) or
+ * `invalid-reply` (Station refused to send it; the engine is still waiting).
+ */
+export interface UnacknowledgedDecision {
+  requestId: string;
+  reason: NonNullable<RequestDeliveryEvent['reason']>;
+}
+
 export interface ChatSession {
   id: string;
   conversationId?: string;
@@ -354,6 +365,8 @@ export interface ChatSession {
   currentModeId?: string | null;
   planArtifact?: PlanArtifact | null;
   pendingApprovals?: string[];
+  /** See ChatUIState.unacknowledgedDecisions (#2880). */
+  unacknowledgedDecisions?: UnacknowledgedDecision[];
   isProcessingStep?: boolean;
   flowRun?: FlowRunBinding | null;
   /** See ChatUIState.activityHint — transient streaming-indicator hint. */

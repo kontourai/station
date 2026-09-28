@@ -751,6 +751,8 @@ export function mapStationAgentStreamEvent(options: {
 export class StationAgentAdapter implements ProviderAdapterShape {
   readonly provider = PROVIDER;
   readonly metadata = {
+    // #2880: Station's own engine consumes the decision in-process.
+    approvalAcknowledgement: 'in-process' as const,
     displayName: 'Station',
     description:
       'Station-owned agents with their configured model, skills, tools, and memory.',
@@ -1631,6 +1633,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       method: 'request.resolved',
       requestId,
       status,
+      acknowledgement: this.metadata.approvalAcknowledgement,
     });
   }
 

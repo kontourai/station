@@ -312,14 +312,22 @@ export function resolveApprovalOutcome(
   result: unknown;
 } {
   switch (method) {
-    case 'item/permissions/requestApproval':
+    // #2909: `PermissionsRequestApprovalResponse` is `{permissions, scope}`
+    // with no decision field, so the granted profile IS the answer. A denial
+    // grants the empty profile (every `GrantedPermissionProfile` field is
+    // optional). Its scope is `turn`, matching Codex's own denial (the
+    // default, empty profile with scope Turn): an empty grant has nothing to
+    // remember for the session.
+    case 'item/permissions/requestApproval': {
+      const granted = decision === 'accept' || decision === 'acceptForSession';
       return {
         decision,
         result: {
-          permissions: payload.permissions ?? {},
+          permissions: granted ? (payload.permissions ?? {}) : {},
           scope: decision === 'acceptForSession' ? 'session' : 'turn',
         },
       };
+    }
     case 'item/commandExecution/requestApproval':
     case 'item/fileChange/requestApproval':
       return { decision, result: { decision } };

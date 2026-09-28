@@ -44,8 +44,9 @@ function orchestrationDecisionForToolApproval(
  * Resolves only when the server accepted the decision and REJECTS otherwise
  * (HTTP error, network failure, `success: false`), so the card can say the
  * decision did not land instead of pretending it did. One refusal is not a
- * failure: when the request was ALREADY answered (e.g. from the toast), the
- * request itself says so, and the call resolves `already-settled`. That is
+ * failure: when the request is no longer open (answered from the toast,
+ * closed by the engine, cancelled, or expired), the request itself says so,
+ * and the call resolves `already-settled`. That is
  * read from the request's current state, never guessed from the error text.
  * Local bookkeeping (toast, pending list, streaming row) changes only after
  * success; the card itself clears when the durable `request.resolved`
