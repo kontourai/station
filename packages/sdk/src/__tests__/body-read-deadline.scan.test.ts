@@ -204,20 +204,36 @@ function wrapsWholeRequest(clause: ts.CatchClause): boolean {
  * reason. Keyed `file#owner`; a key that no longer names a site fails the
  * repository test, so the list cannot go stale.
  */
-const ALLOWED_FALLBACKS: Readonly<Record<string, string>> = {
-  'eventStreamResumeCapability.ts#fetchEventStreamResumeCapability':
+const ALLOWED_FALLBACKS: ReadonlyMap<string, string> = new Map([
+  [
+    'eventStreamResumeCapability.ts#fetchEventStreamResumeCapability',
     'capability probe: any failure, a deadline included, means "not supported" (unchanged)',
-  'sessionEventWindowCapability.ts#fetchSessionEventWindowCapability':
+  ],
+  [
+    'sessionEventWindowCapability.ts#fetchSessionEventWindowCapability',
     'capability probe: any failure, a deadline included, means "unknown" (unchanged)',
-  'client/attachment-staging.ts#getAttachmentStagingCapability':
+  ],
+  [
+    'client/attachment-staging.ts#getAttachmentStagingCapability',
     'capability probe: a failed legacy handshake means "unknown" (unchanged)',
-  'api-agent-runtime.ts#sendMessage':
+  ],
+  [
+    'api-agent-runtime.ts#sendMessage',
     'raw global fetch with no SDK deadline; its catch records telemetry and rethrows',
-  'api-agent-runtime.ts#callTool':
+  ],
+  [
+    'api-agent-runtime.ts#callTool',
     'raw global fetch with no SDK deadline; its catch records telemetry and rethrows',
-  'hooks/operations.ts#useUserLookup':
+  ],
+  [
+    'hooks/operations.ts#useUserLookup',
     'raw global fetch with no SDK deadline; the hook shows any failure as its error',
-};
+  ],
+]);
+
+function isAllowedFallback(key: string): boolean {
+  return ALLOWED_FALLBACKS.has(key);
+}
 
 /** Whether a `.catch` call's receiver chain reads a body. */
 function chainReadsBody(expression: ts.Expression): boolean {
@@ -289,7 +305,7 @@ function scanSource(text: string, file: string): Site[] {
           (request
             ? wrapsWholeRequest(node.catchClause)
             : guardsDeadline(node.catchClause)) ||
-          Object.hasOwn(ALLOWED_FALLBACKS, `${file}#${owner}`),
+          isAllowedFallback(`${file}#${owner}`),
         kind: request ? 'request' : 'try',
       });
     }
@@ -308,7 +324,7 @@ function scanSource(text: string, file: string): Site[] {
           (handler !== undefined &&
             ts.isCallExpression(handler) &&
             calledName(handler) === 'unlessDeadline') ||
-          Object.hasOwn(ALLOWED_FALLBACKS, `${file}#${owner}`),
+          isAllowedFallback(`${file}#${owner}`),
         kind: 'chain',
       });
     }
@@ -472,7 +488,7 @@ describe('every SDK body-read catch passes a deadline on', () => {
       sites.map((site) => `${site.where.split(':')[0]}#${site.owner}`),
     );
     expect(
-      Object.keys(ALLOWED_FALLBACKS).filter((key) => !owners.has(key)),
+      [...ALLOWED_FALLBACKS.keys()].filter((key) => !owners.has(key)),
     ).toEqual([]);
   });
 
