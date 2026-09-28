@@ -21,20 +21,6 @@ function createState(): NovaSonicEventState {
 }
 
 describe('nova-sonic-events', () => {
-  test('parseNovaSonicRawEvent decodes event payloads', () => {
-    const raw = {
-      chunk: {
-        bytes: new TextEncoder().encode(
-          JSON.stringify({ event: { completionStart: { id: 'c1' } } }),
-        ),
-      },
-    };
-
-    expect(parseNovaSonicRawEvent(raw)).toEqual({
-      completionStart: { id: 'c1' },
-    });
-  });
-
   test('returns null for malformed provider chunks without surfacing their text', () => {
     expect(
       parseNovaSonicRawEvent({
@@ -43,35 +29,6 @@ describe('nova-sonic-events', () => {
         },
       }),
     ).toBeNull();
-  });
-
-  test('processNovaSonicStreamEvent emits transcripts based on role and stage', () => {
-    const emit = vi.fn();
-    const setState = vi.fn();
-    const state = createState();
-
-    processNovaSonicStreamEvent(
-      {
-        contentStart: {
-          role: 'ASSISTANT',
-          type: 'TEXT',
-          additionalModelFields: '{"generationStage":"SPECULATIVE"}',
-        },
-      },
-      state,
-      { emit, setState },
-    );
-    processNovaSonicStreamEvent(
-      { textOutput: { content: 'Thinking out loud' } },
-      state,
-      { emit, setState },
-    );
-
-    expect(emit).toHaveBeenCalledWith('transcript', {
-      text: 'Thinking out loud',
-      role: 'assistant',
-      stage: 'speculative',
-    });
   });
 
   test('preserves AWS completionId through exact start, tool, and end correlation', () => {

@@ -1926,11 +1926,55 @@ describe('device pairing routes', () => {
 
   test('never records challenge or issued credential in request logs', async () => {
     const harness = createHarness();
-    const paired = await pairDevice(harness, 'Private phone');
-    const logs = JSON.stringify(
-      (harness.logger.info as ReturnType<typeof vi.fn>).mock.calls,
+    const offerResponse = await harness.request(
+      '/api/pairing/offers',
+      harness.json(
+        { endpoint: 'https://station.example.test' },
+        MASTER_CREDENTIAL,
+      ),
     );
-    expect(logs).not.toContain(paired.credential);
+    const offer = (await offerResponse.json()) as DevicePairingOffer;
+    const pending = (await (
+      await harness.request(
+        '/.well-known/station/v1/pairing/request',
+        harness.json({
+          deviceName: 'Private phone',
+          offerId: offer.offerId,
+          proof: offer.challenge,
+        }),
+      )
+    ).json()) as DevicePairingRequest;
+    await harness.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      harness.json({}, MASTER_CREDENTIAL),
+    );
+    const exchange = await harness.request(
+      '/.well-known/station/v1/pairing/exchange',
+      harness.json({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: pending.requestId,
+      }),
+    );
+    const { credential } = (await exchange.json()) as { credential: string };
+    // Present the issued credential too: a routine read logs at debug.
+    const read = await harness.request('/api/projects', {
+      headers: { Authorization: `Bearer ${credential}` },
+    });
+    expect(read.status).toBe(200);
+
+    const logs = JSON.stringify(
+      (['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const).map(
+        (level) =>
+          (harness.logger[level] as ReturnType<typeof vi.fn>).mock.calls,
+      ),
+    );
+    // Positive control: the offer that returned the challenge and the read
+    // that presented the credential were both logged.
+    expect(logs).toContain('POST /api/pairing/offers 201');
+    expect(logs).toContain('GET /api/projects 200');
+    expect(logs).not.toContain(offer.challenge);
+    expect(logs).not.toContain(credential);
     expect(logs).not.toContain('Private phone');
   });
 
