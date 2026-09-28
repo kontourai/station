@@ -77,7 +77,7 @@ export function getActiveRuntimeProjectSlug(
   return storageAdapter.listProjects()[0]?.slug;
 }
 
-export function shouldRegisterRuntimeDefaultSkillRegistry(
+function shouldRegisterRuntimeDefaultSkillRegistry(
   disableDefaultSkillRegistries: boolean | undefined,
   pluginOverrides: Record<string, any>,
 ): boolean {
@@ -86,7 +86,7 @@ export function shouldRegisterRuntimeDefaultSkillRegistry(
   return !disableDefaultSkillRegistries && !pluginDisabled;
 }
 
-export function initializeRuntimeUsageAggregator(
+function initializeRuntimeUsageAggregator(
   projectHomeDir: string,
   timers: NodeJS.Timeout[],
   logger: RuntimeStartupLogger,

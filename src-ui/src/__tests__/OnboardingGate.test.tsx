@@ -1454,19 +1454,21 @@ describe('OnboardingGate', () => {
       },
     ];
     currentStatus = chatReadyStatus();
+    // The positive case's status with ONLY ownership changed, so the absence
+    // below can only come from the ownership gate.
     bundledStatus = {
-      phase: 'stopped',
-      attempt: 0,
+      phase: 'failed',
+      attempt: 5,
       maxAttempts: 5,
       apiBase: null,
-      port: 38141,
-      lastExitCode: null,
+      port: null,
+      lastExitCode: 1,
       nextRetryInMs: null,
       logPath: '/tmp/station-server.log',
       ownership: 'service',
       canRunInBackground: true,
       failClosed: false,
-      message: 'A durable Station service owns this home.',
+      message: '',
     };
 
     render(
@@ -1476,6 +1478,7 @@ describe('OnboardingGate', () => {
     );
     fireEvent(window, new Event(OPEN_CONNECTIONS_MODAL_EVENT));
 
+    expect(screen.getByTestId('connection-manager')).toBeTruthy();
     expect(screen.queryByTestId('cm-restart-injected')).toBeNull();
   });
 

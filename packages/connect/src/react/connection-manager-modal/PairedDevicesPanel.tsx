@@ -2,6 +2,11 @@ import type { PairedDevice } from '@kontourai/station-contracts';
 import type { PairingScope } from '@kontourai/station-contracts/environment-security';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { deviceRevokeError } from '../../core/deviceActivity';
+import {
+  FullAccessRevocationNotice,
+  type FullAccessRevocationOutcome,
+  readFullAccessRevocation,
+} from '../FullAccessRevocationNotice';
 import { PairedDeviceList } from './PairedDeviceList';
 
 /**
@@ -43,6 +48,9 @@ export function PairedDevicesPanel({
   const [devices, setDevices] = useState<PairedDevice[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // #1796 (G3): what the last access change or revoke did to full access.
+  const [revocation, setRevocation] =
+    useState<FullAccessRevocationOutcome | null>(null);
   const [operatorCredential, setOperatorCredential] = useState('');
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set());
   const [now, setNow] = useState(() => Date.now());
@@ -158,6 +166,12 @@ export function PairedDevicesPanel({
           );
           return;
         }
+        setRevocation(
+          readFullAccessRevocation(
+            await response.json().catch(() => null),
+            device.name,
+          ),
+        );
         await refresh();
       } catch {
         setActionError(
@@ -192,6 +206,12 @@ export function PairedDevicesPanel({
           );
           return;
         }
+        setRevocation(
+          readFullAccessRevocation(
+            await response.json().catch(() => null),
+            device.name,
+          ),
+        );
         await refresh();
       } catch {
         setActionError(
@@ -297,6 +317,13 @@ export function PairedDevicesPanel({
         <div role="alert" className="station-connect-row__meta--warning">
           {actionError}
         </div>
+      )}
+
+      {revocation && (
+        <FullAccessRevocationNotice
+          outcome={revocation}
+          onDismiss={() => setRevocation(null)}
+        />
       )}
 
       <div className="station-connect-footer">

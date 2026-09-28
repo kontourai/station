@@ -186,10 +186,22 @@ async function parseFullEnvelope<T>(response: Response): Promise<T> {
   if (!response.ok || !payload?.success) {
     const error = payload?.error;
     const message = payload?.message;
-    throw new Error(
-      (typeof error === 'string' && error) ||
-        (typeof message === 'string' && message) ||
-        `Request failed with HTTP ${response.status}`,
+    const code = payload?.code;
+    // #1796: keep the envelope's code and the status, so a refusal (e.g.
+    // `approval-full-access-not-granted`) is rendered as one, not as text.
+    throw Object.assign(
+      new Error(
+        (typeof error === 'string' && error) ||
+          (typeof message === 'string' && message) ||
+          `Request failed with HTTP ${response.status}`,
+      ),
+      {
+        status: response.status,
+        ...(typeof code === 'string' && /^[a-z][a-z_-]{0,63}$/.test(code)
+          ? { code }
+          : {}),
+        ...(payload?.details !== undefined ? { details: payload.details } : {}),
+      },
     );
   }
 

@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
-import { beforeEach, test } from 'vitest';
+import { test, vi } from 'vitest';
 import {
   APNS_TOKEN_WINDOW_SECONDS,
   parseApnsCredentials,
   providerToken,
   providerTokenIssuedAt,
-  resetProviderTokenCacheForTest,
 } from '../src/apns-token.ts';
 import { fakeApnsKey, KEY_ID, NOW, TEAM_ID } from './helpers.ts';
 
@@ -17,15 +16,16 @@ const decode = (segment: string) =>
 const decodeJson = (segment: string) =>
   JSON.parse(new TextDecoder().decode(decode(segment)));
 
-beforeEach(() => resetProviderTokenCacheForTest());
-
 test('two isolates derive the byte-identical token for one window', async () => {
   const { credentials } = await fakeApnsKey();
   const first = await providerToken(credentials, NOW);
-  // A fresh isolate: nothing cached, a different moment in the same window.
-  resetProviderTokenCacheForTest();
+  // A fresh isolate: a new module instance with nothing cached, at a
+  // different moment in the same window.
+  vi.resetModules();
+  const isolate = await import('../src/apns-token.ts');
+  assert.notEqual(isolate.providerToken, providerToken);
   const windowStart = providerTokenIssuedAt(NOW);
-  const second = await providerToken(
+  const second = await isolate.providerToken(
     { ...credentials },
     windowStart + APNS_TOKEN_WINDOW_SECONDS - 1,
   );

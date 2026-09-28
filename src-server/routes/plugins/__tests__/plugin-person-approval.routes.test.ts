@@ -310,6 +310,11 @@ const CONSENT = {
   permissions: [],
   contentDigest: `sha256:${'a'.repeat(64)}`,
 };
+/**
+ * The approval a preview of a source an open proposal names produces: that
+ * preview staged it without git metadata and said so (#2719).
+ */
+const PROPOSED_CONSENT = { ...CONSENT, gitMetadata: 'excluded' as const };
 
 describe('#2323 S5: plugin lifecycle routes refuse Station’s agent caller', () => {
   test('POST /install: the internal caller is refused before anything is staged; a person reaches the installer', async () => {
@@ -888,7 +893,7 @@ describe('#2323 S5: completing a proposal through the ordinary routes', () => {
 
     const installed = await request('person', 'POST', '/api/plugins/install', {
       source,
-      consent: CONSENT,
+      consent: PROPOSED_CONSENT,
       proposalId: proposal.id,
     });
     expect(installed.status).toBe(200);
@@ -946,7 +951,7 @@ describe('#2323 S5: completing a proposal through the ordinary routes', () => {
 
     const installed = await request('person', 'POST', '/api/plugins/install', {
       source,
-      consent: CONSENT,
+      consent: PROPOSED_CONSENT,
       proposalId: proposal.id,
     });
     expect((await readJson(installed)).proposal).toEqual({
@@ -993,7 +998,7 @@ describe('#2323 S5: completing a proposal through the ordinary routes', () => {
 
     const installed = await request('person', 'POST', '/api/plugins/install', {
       source,
-      consent: CONSENT,
+      consent: PROPOSED_CONSENT,
       proposalId: install.id,
     });
     expect(installed.status).toBe(202);

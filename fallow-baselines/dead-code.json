@@ -285,7 +285,6 @@
     "src-server/services/ssh/environment-security-service.ts:EnvironmentSecurityRecordError",
     "src-server/telemetry/metrics.ts:promptOps",
     "src-server/telemetry.ts:OTEL_INSTALLATION_ID_ATTRIBUTE",
-    "src-server/telemetry.ts:resolveOtelResourceAttributes",
     "src-server/telemetry.ts:initializeTelemetry",
     "src-server/tools/instance-registry-bridge.ts:runInstanceRegistryBridge",
     "src-server/tools/station-control-delegation.ts:CanonicalDelegationReadError",
