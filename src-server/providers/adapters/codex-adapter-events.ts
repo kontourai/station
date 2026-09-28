@@ -385,57 +385,99 @@ function isEmptyElicitationSchema(schema: unknown): boolean {
   return schema.minProperties === undefined || schema.minProperties === 0;
 }
 
-/** A DNS name is at most 253 characters; anything longer is not a host. */
-const MAX_TITLE_HOST_LENGTH = 253;
-/** Enough of the command to recognise it without burying the host. */
-const MAX_TITLE_COMMAND_LENGTH = 120;
+/**
+ * Every `commandExecution` title fits in this many code points, so no
+ * downstream cut (the delegation snapshot keeps 200) can remove the part that
+ * matters: a host's registrable domain or a command's tail.
+ */
+export const MAX_COMMAND_APPROVAL_TITLE_LENGTH = 200;
+/**
+ * Room for the host in a network title. A longer host keeps its END, where
+ * the registrable domain is (`…aaaa.evil.example`), behind a leading "…".
+ */
+const MAX_TITLE_HOST_LENGTH = 120;
 const MAX_TITLE_PROTOCOL_LENGTH = 16;
+const ELLIPSIS = '\u2026';
 
 /**
  * The title of a `commandExecution` approval. A noun phrase, because each
  * surface wraps it in its own sentence ("Use …" on the card, "… wants to use
- * …" on the toast).
+ * …" on the toast). The title is also the only text a delegating agent's
+ * snapshot carries.
  *
- * - Network prompt: "network access to <host> (<protocol>) for: <command>".
- *   The host leads because it is what is being allowed; the command stays,
- *   bounded, because the title is the only text a delegating agent's
- *   snapshot carries, and the host alone does not say what will use it.
+ * - Network prompt (any non-null `networkApprovalContext`): "network access
+ *   to <host> (<protocol>) for: <command>", or "network access to an unnamed
+ *   host" when no host survives. Never the plain command title: the prompt
+ *   is about the network.
  * - Stdin write: "input to a running command[: <command>]". Codex's stdin
  *   approvals refer to the existing parent command, so the bare command
  *   would read as approval to START it.
+ * - Otherwise the command.
  *
  * Host, protocol and command are engine-supplied text: each is made one
- * line, stripped of control and format characters (bidi overrides and
- * isolates, zero-width characters) and bounded before it is shown.
+ * line and stripped of control and format characters (bidi overrides and
+ * isolates, zero-width characters). The whole title is bounded; a cut
+ * command ends in "…". Only the title is rewritten: the payload keeps the
+ * raw command.
  */
 function commandApprovalTitle(payload: Record<string, unknown>): string {
-  const command = displayText(payload.command, MAX_TITLE_COMMAND_LENGTH);
-  const context = payload.networkApprovalContext;
-  const host = isRecord(context)
-    ? displayText(context.host, MAX_TITLE_HOST_LENGTH)
-    : undefined;
-  if (host) {
-    const protocol = displayText(
-      (context as Record<string, unknown>).protocol,
-      MAX_TITLE_PROTOCOL_LENGTH,
-    );
-    const target = protocol
-      ? `network access to ${host} (${protocol})`
-      : `network access to ${host}`;
-    return command ? `${target} for: ${command}` : target;
+  const command = displayText(payload.command);
+  if (payload.networkApprovalContext != null) {
+    const context = isRecord(payload.networkApprovalContext)
+      ? payload.networkApprovalContext
+      : {};
+    const host = displayText(context.host);
+    const protocol = displayText(context.protocol);
+    const target =
+      (host
+        ? `network access to ${keepEnd(host, MAX_TITLE_HOST_LENGTH)}`
+        : 'network access to an unnamed host') +
+      (protocol ? ` (${keepStart(protocol, MAX_TITLE_PROTOCOL_LENGTH)})` : '');
+    return withCommand(target, ' for: ', command);
   }
   if (payload.kind === 'writeStdin') {
-    return command
-      ? `input to a running command: ${command}`
-      : 'input to a running command';
+    return withCommand('input to a running command', ': ', command);
   }
-  return extractString(payload.command) || 'Approve command execution';
+  return command
+    ? keepStart(command, MAX_COMMAND_APPROVAL_TITLE_LENGTH)
+    : 'Approve command execution';
 }
 
-function displayText(value: unknown, max: number): string | undefined {
+/** `lead` + `separator` + as much of `command` as fits the title bound. */
+function withCommand(
+  lead: string,
+  separator: string,
+  command: string | undefined,
+): string {
+  if (!command) return lead;
+  const room =
+    MAX_COMMAND_APPROVAL_TITLE_LENGTH - codePoints(lead + separator).length;
+  return `${lead}${separator}${keepStart(command, room)}`;
+}
+
+function codePoints(text: string): string[] {
+  return Array.from(text);
+}
+
+/** At most `max` code points, keeping the start; a cut ends in "…". */
+function keepStart(text: string, max: number): string {
+  const points = codePoints(text);
+  if (points.length <= max) return text;
+  return `${points.slice(0, Math.max(0, max - 1)).join('')}${ELLIPSIS}`;
+}
+
+/** At most `max` code points, keeping the end; a cut starts with "…". */
+function keepEnd(text: string, max: number): string {
+  const points = codePoints(text);
+  if (points.length <= max) return text;
+  return `${ELLIPSIS}${points.slice(points.length - (max - 1)).join('')}`;
+}
+
+/** Engine-supplied text made one visible line, unbounded (callers bound). */
+function displayText(value: unknown): string | undefined {
   const text = extractString(value);
   return text
-    ? sanitizeUntrustedDisplayText(text, max) || undefined
+    ? sanitizeUntrustedDisplayText(text, Number.POSITIVE_INFINITY) || undefined
     : undefined;
 }
 

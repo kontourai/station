@@ -3318,6 +3318,18 @@ function optionalString(value: unknown, maxLength = 512): string | undefined {
   return trimmed ? trimmed.slice(0, maxLength) : undefined;
 }
 
+/**
+ * `optionalString`, but a cut ends in "…" (still within `maxLength`), so a
+ * reader knows the text went on: a request title's tail can be what matters.
+ */
+function markedString(value: unknown, maxLength: number): string | undefined {
+  const text = optionalString(value, Number.POSITIVE_INFINITY);
+  if (!text || text.length <= maxLength) return text;
+  // Never leave half of a surrogate pair in front of the marker.
+  const kept = text.slice(0, maxLength - 1).replace(/[\uD800-\uDBFF]$/u, '');
+  return `${kept}\u2026`;
+}
+
 function optionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? value
@@ -3429,8 +3441,8 @@ export function projectDelegatedTaskEvent(
         ...(optionalString(event.requestType, 32)
           ? { requestType: optionalString(event.requestType, 32) }
           : {}),
-        ...(optionalString(event.title, 200)
-          ? { title: optionalString(event.title, 200) }
+        ...(markedString(event.title, 200)
+          ? { title: markedString(event.title, 200) }
           : {}),
       };
     case 'request.resolved':
