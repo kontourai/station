@@ -82,7 +82,11 @@ describe('cronToHuman names the zone its hour is written in', () => {
 
       const human = cronToHuman('0 8 * * 1-5', { timezone: BRISBANE });
       expect(human).toContain(`8:00 AM · ${BRISBANE}`);
-      expect(human).not.toContain(readerAbbreviation as string);
+      // A regression would format whatever date it runs on, so reject Denver
+      // under both halves of its DST year, in either spelling.
+      for (const spelling of ['MDT', 'MST', 'GMT-6', 'GMT-7']) {
+        expect(human).not.toContain(spelling);
+      }
     } finally {
       if (previousTz === undefined) delete process.env.TZ;
       else process.env.TZ = previousTz;

@@ -1145,7 +1145,7 @@ describe('MCPToolUIFrame', () => {
       },
     });
 
-    // No approvalPolicy (defaults to require) → embedded fetch must not happen.
+    // No approvalPolicy (prompts locally; not read-only) → embedded fetch must not happen.
     renderFrame({ ref: 'github/create_issue' });
 
     expect(await screen.findByText('MCP UI resource missing')).toBeTruthy();
@@ -1159,6 +1159,7 @@ describe('MCPToolUIFrame', () => {
   // v2 work-item test above: its `tools/call` would hang behind this prompt.
   test.each([
     { approvalPolicy: 'read-only', answer: null, reaches: false },
+    { approvalPolicy: undefined, answer: 'Deny', reaches: false },
     { approvalPolicy: 'inherit', answer: 'Deny', reaches: false },
     { approvalPolicy: 'inherit', answer: 'Approve', reaches: true },
   ] as const)(

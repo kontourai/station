@@ -1094,6 +1094,31 @@ describe('FilePreviewPane', () => {
     expect(colours).toContain('var(--syntax-number)');
   });
 
+  test('highlights markup-bearing source as literal text, never as elements', () => {
+    // Workspace content is untrusted: markup inside a highlighted token (the
+    // string literal) or in the gap between tokens must stay inert text.
+    const line = 'const value = "<img src=x onerror=alert(1)>"; <b>gap</b>';
+    previewQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        path: 'src/example.ts',
+        status: 'ready',
+        renderKind: 'source',
+        content: line,
+      },
+    });
+    const { container } = renderPane();
+    const tokens = [...container.querySelectorAll('[data-file-preview-token]')];
+    // Proves the highlighted path ran and the markup sat inside a token.
+    expect(tokens.map((node) => node.textContent)).toContain(
+      '"<img src=x onerror=alert(1)>"',
+    );
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('b')).toBeNull();
+    expect(container.textContent).toContain(line);
+  });
+
   // One dense line trips the per-line fallback; many light lines (32 tokens
   // each, 2,048 in all) are only caught by the whole-response preflight.
   test.each([
