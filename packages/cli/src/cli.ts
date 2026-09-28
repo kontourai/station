@@ -52,7 +52,10 @@ import {
   runEnvironmentCommand,
   type SshEnvironmentProfileStoreFactory,
 } from './commands/environment.js';
-import { explainRequestFailure } from './commands/errors.js';
+import {
+  explainFullAccessRefusal,
+  explainRequestFailure,
+} from './commands/errors.js';
 import { exportConfig } from './commands/export.js';
 import {
   DEFAULT_SERVER_PORT,
@@ -1554,6 +1557,8 @@ export async function runCli(
  */
 export function describeCliError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
+  const refusal = explainFullAccessRefusal(error, getResolvedApiBase());
+  if (refusal) return refusal;
   return explainRequestFailure(error, getResolvedApiBase()) ?? message;
 }
 

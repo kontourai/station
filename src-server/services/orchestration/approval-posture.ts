@@ -1,3 +1,4 @@
+import type { ClientOriginActor } from '@kontourai/station-contracts/client-origin';
 import {
   type ApprovalMode,
   type EngineId,
@@ -50,10 +51,13 @@ function applicableMode(
 }
 
 export interface ApprovalPostureStore {
-  latestApprovalModeDecision(
-    threadIds: readonly string[],
-  ):
-    | { threadId: string; approvalMode: unknown; globalSequence: number }
+  latestApprovalModeDecision(threadIds: readonly string[]):
+    | {
+        threadId: string;
+        approvalMode: unknown;
+        globalSequence: number;
+        actor?: unknown;
+      }
     | undefined;
   conversationForSession(
     sessionId: string,
@@ -67,6 +71,29 @@ export interface ApprovalPostureDecision {
   approvalMode: ApprovalMode;
   /** The recorded event's server global sequence. */
   sequence: number;
+  /** #1796: the thread the decision was recorded on. */
+  threadId: string;
+  /**
+   * #1796: who recorded it, from the event's server-derived
+   * `clientOrigin.actor`; `undefined` on events from before it existed.
+   */
+  actor?: ClientOriginActor;
+}
+
+function parseActor(value: unknown): ClientOriginActor | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const actor = value as { kind?: unknown; deviceId?: unknown };
+  if (actor.kind === 'device')
+    return typeof actor.deviceId === 'string' && actor.deviceId
+      ? { kind: 'device', deviceId: actor.deviceId }
+      : undefined;
+  if (
+    actor.kind === 'operator' ||
+    actor.kind === 'internal' ||
+    actor.kind === 'unknown'
+  )
+    return { kind: actor.kind };
+  return undefined;
 }
 
 function concrete(mode: unknown): ApprovalMode | undefined {
@@ -153,10 +180,30 @@ export class ApprovalPosture {
       this.conversationThreads(threadId),
     );
     if (!latest || !isApprovalMode(latest.approvalMode)) return undefined;
+    const actor = parseActor(latest.actor);
     return {
       approvalMode: latest.approvalMode,
       sequence: latest.globalSequence,
+      threadId: latest.threadId,
+      ...(actor ? { actor } : {}),
     };
+  }
+
+  /**
+   * #1796: which default, if any, puts `agentSlug`'s sessions at `never`:
+   * the Agent's own, else this Station's. A revocation lists, and never
+   * changes, a session whose full access comes from a default.
+   */
+  async fullAccessDefaultSource(
+    agentSlug: string | undefined,
+  ): Promise<'agent-default' | 'station-default' | undefined> {
+    const agent = agentSlug
+      ? concrete(await this.deps.resolveAgentDefault?.(agentSlug))
+      : undefined;
+    if (agent) return agent === 'never' ? 'agent-default' : undefined;
+    return concrete(await this.deps.resolveStationDefault?.()) === 'never'
+      ? 'station-default'
+      : undefined;
   }
 
   /**
