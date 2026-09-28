@@ -32,12 +32,14 @@ export interface NativeDeviceProofPublicKey {
 export interface NativeDeviceBindingSnapshot {
   /** The Station this binding was approved on. */
   readonly stationId: string;
-  /** Canonical HTTPS origin of the Station; proofs are audience-bound to it. */
+  /** Canonical HTTPS or loopback HTTP Station origin; proofs are audience-bound to it. */
   readonly stationAudience: string;
   /** The approved Device ID on that Station. */
   readonly deviceId: string;
   /** Random binding ID minted when this binding was approved. */
   readonly bindingId: string;
+  /** Approved Device proof key, independent of the route key in `surface`. */
+  readonly deviceProofKeyThumbprint: string;
   /** Full native installation surface the binding is bound to. */
   readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
   /** Unique Pion peer nonce this binding is scoped to. */
@@ -57,6 +59,7 @@ export interface NativeDeviceRequestProofClaimsV1 {
   readonly stationId: string;
   readonly deviceId: string;
   readonly bindingId: string;
+  readonly deviceProofKeyThumbprint: string;
   readonly surface: SelfHostedBrokerNativeClientSurfaceV2;
   readonly peerNonce: string;
   /** Uppercase HTTP method of the exact request. */
@@ -71,10 +74,4 @@ export interface NativeDeviceRequestProofClaimsV1 {
   readonly iat: number;
   /** Unix epoch seconds; at most 30 seconds after `iat`. */
   readonly exp: number;
-}
-
-/** Opaque courier value. Its JWS is verified, against the approved binding, before any use. */
-export interface NativeDeviceRequestProofV1 {
-  readonly version: typeof NATIVE_DEVICE_PROOF_VERSION;
-  readonly compactJws: string;
 }

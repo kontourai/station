@@ -27,7 +27,9 @@ const audience = z
     try {
       const url = new URL(value);
       return (
-        url.protocol === 'https:' &&
+        (url.protocol === 'https:' ||
+          (url.protocol === 'http:' &&
+            ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) &&
         url.origin === value &&
         !url.username &&
         !url.password
@@ -39,20 +41,21 @@ const audience = z
 const surfaceSchema = z
   .object({
     kind: z.literal('station-native'),
-    appIdentifier: z.string().min(1).max(256),
+    appIdentifier: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/),
     channel: z.enum(['dev', 'stable', 'beta', 'nightly']),
-    clientInstanceId: z.string().min(1).max(256),
+    clientInstanceId: z.string().uuid(),
     keyThumbprint: opaque,
   })
   .strict();
 const bindingSchema = z
   .object({
-    stationId: z.string().min(1),
+    stationId: z.string().uuid(),
     stationAudience: audience,
-    deviceId: z.string().min(1),
+    deviceId: z.string().uuid(),
     bindingId: z.string().uuid(),
+    deviceProofKeyThumbprint: opaque,
     surface: surfaceSchema,
-    peerNonce: z.string().min(1).max(256),
+    peerNonce: opaque,
   })
   .strict();
 
@@ -63,6 +66,21 @@ const base64url = (bytes: Uint8Array) =>
     .replace(/=+$/, '');
 const encode = (value: unknown) =>
   base64url(new TextEncoder().encode(JSON.stringify(value)));
+
+function canonicalPath(value: string): string {
+  if (
+    typeof value !== 'string' ||
+    !value.startsWith('/') ||
+    value.startsWith('//') ||
+    /[\\#\r\n\0]/.test(value) ||
+    value.length > 2048
+  )
+    throw new Error('Native Device proof request path is invalid.');
+  const parsed = new URL(value, 'https://station.invalid');
+  if (parsed.pathname + parsed.search !== value)
+    throw new Error('Native Device proof request path is not canonical.');
+  return value;
+}
 
 /** RFC 7638 thumbprint so the signer can be matched to the approved binding. */
 async function jwkThumbprint(publicKey: NativeDeviceProofPublicKey) {
@@ -106,18 +124,22 @@ export async function createNativeDeviceRequestProof(
     .strict()
     .parse(signer.publicKey);
   const thumbprint = await jwkThumbprint(publicKey);
-  if (thumbprint !== snapshot.surface.keyThumbprint)
+  if (thumbprint !== snapshot.deviceProofKeyThumbprint)
     throw new Error(
       'Native device proof key does not match the approved binding thumbprint.',
     );
   const method = request.method.toUpperCase();
-  if (!/^[A-Z]+$/.test(method))
+  if (!/^[A-Z]{1,16}$/.test(method))
     throw new Error('Native device proof requires an alphabetic HTTP method.');
-  const path = request.path;
-  if (!path.startsWith('/') || /\s/.test(path) || path.includes('#'))
+  const path = canonicalPath(request.path);
+  if (
+    !(request.body instanceof Uint8Array) ||
+    request.body.byteLength > 16 * 1024
+  )
     throw new Error(
-      'Native device proof requires an absolute request path without fragment.',
+      'Native Device proof request body exceeds the channel pilot limit.',
     );
+  const body = new Uint8Array(request.body);
   const iat = Math.floor(Date.now() / 1000);
   const protectedHeader = encode({
     alg: 'ES256',
@@ -130,14 +152,13 @@ export async function createNativeDeviceRequestProof(
     stationId: snapshot.stationId,
     deviceId: snapshot.deviceId,
     bindingId: snapshot.bindingId,
+    deviceProofKeyThumbprint: snapshot.deviceProofKeyThumbprint,
     surface: snapshot.surface,
     peerNonce: snapshot.peerNonce,
     htm: method,
     htu: path,
     bodySha256: base64url(
-      new Uint8Array(
-        await crypto.subtle.digest('SHA-256', new Uint8Array(request.body)),
-      ),
+      new Uint8Array(await crypto.subtle.digest('SHA-256', body)),
     ),
     jti: base64url(crypto.getRandomValues(new Uint8Array(16))),
     iat,

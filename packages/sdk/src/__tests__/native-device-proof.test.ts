@@ -89,16 +89,17 @@ async function binding(
     kind: 'station-native',
     appIdentifier: 'dev.kontourai.station',
     channel: 'stable',
-    clientInstanceId: 'instance-1',
-    keyThumbprint: key.thumbprint,
+    clientInstanceId: '33333333-3333-4333-8333-333333333333',
+    keyThumbprint: 'R'.repeat(43),
   };
   return {
     stationId: '11111111-1111-4111-8111-111111111111',
     stationAudience: audience,
     deviceId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
     bindingId: '22222222-2222-4222-8222-222222222222',
+    deviceProofKeyThumbprint: key.thumbprint,
     surface,
-    peerNonce: 'peer-nonce-1',
+    peerNonce: 'N'.repeat(43),
     ...overrides,
   };
 }
@@ -136,8 +137,9 @@ describe('native device request proof', () => {
       stationId: '11111111-1111-4111-8111-111111111111',
       deviceId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
       bindingId: '22222222-2222-4222-8222-222222222222',
+      deviceProofKeyThumbprint: key.thumbprint,
       surface: (await binding(key)).surface,
-      peerNonce: 'peer-nonce-1',
+      peerNonce: 'N'.repeat(43),
       htm: 'POST',
       htu: path,
       bodySha256,
@@ -214,23 +216,21 @@ describe('native device request proof', () => {
     ).rejects.toThrow('thumbprint');
   });
 
-  test('refuses a surface bound to another key or a non-native surface', async () => {
+  test('keeps the routing surface key independent and refuses a non-native surface', async () => {
     const key = await makeSigner();
-    await expect(
-      createNativeDeviceRequestProof(
-        key.signer,
-        await binding(key, {
-          surface: {
-            kind: 'station-native',
-            appIdentifier: 'dev.kontourai.station',
-            channel: 'stable',
-            clientInstanceId: 'instance-1',
-            keyThumbprint: 'A'.repeat(43),
-          },
-        }),
-        { method: 'POST', path, body: new Uint8Array(0) },
-      ),
-    ).rejects.toThrow('thumbprint');
+    const compact = await createNativeDeviceRequestProof(
+      key.signer,
+      await binding(key),
+      { method: 'POST', path, body: new Uint8Array(0) },
+    );
+    const claims = decode(compact.split('.')[1]!);
+    expect((claims.surface as { keyThumbprint: string }).keyThumbprint).toBe(
+      'R'.repeat(43),
+    );
+    expect(claims.deviceProofKeyThumbprint).toBe(key.thumbprint);
+    expect(claims.deviceProofKeyThumbprint).not.toBe(
+      (claims.surface as { keyThumbprint: string }).keyThumbprint,
+    );
     await expect(
       createNativeDeviceRequestProof(
         key.signer,
@@ -239,8 +239,8 @@ describe('native device request proof', () => {
             kind: 'browser',
             appIdentifier: 'dev.kontourai.station',
             channel: 'stable',
-            clientInstanceId: 'instance-1',
-            keyThumbprint: key.thumbprint,
+            clientInstanceId: '33333333-3333-4333-8333-333333333333',
+            keyThumbprint: 'R'.repeat(43),
           } as unknown as SelfHostedBrokerNativeClientSurfaceV2,
         }),
         { method: 'POST', path, body: new Uint8Array(0) },
@@ -279,6 +279,24 @@ describe('native device request proof', () => {
         path: '/api/v1/sessions#frag',
       }),
     ).rejects.toThrow('path');
+    await expect(
+      createNativeDeviceRequestProof(key.signer, await binding(key), {
+        ...request,
+        path: '//station.example.test/api/v1/sessions',
+      }),
+    ).rejects.toThrow('path');
+    await expect(
+      createNativeDeviceRequestProof(key.signer, await binding(key), {
+        ...request,
+        path: '/api/%2E%2E/sessions',
+      }),
+    ).rejects.toThrow('path');
+    const local = await createNativeDeviceRequestProof(
+      key.signer,
+      await binding(key, { stationAudience: 'http://127.0.0.1:4312' }),
+      request,
+    );
+    expect(decode(local.split('.')[1]!).aud).toBe('http://127.0.0.1:4312');
   });
 
   test('refuses malformed binding identities', async () => {
@@ -301,10 +319,26 @@ describe('native device request proof', () => {
     await expect(
       createNativeDeviceRequestProof(
         key.signer,
+        await binding(key, { peerNonce: 'N'.repeat(42) }),
+        request,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      createNativeDeviceRequestProof(
+        key.signer,
         await binding(key, { deviceId: '' }),
         request,
       ),
     ).rejects.toThrow();
+    await expect(
+      createNativeDeviceRequestProof(
+        key.signer,
+        await binding(key, {
+          deviceProofKeyThumbprint: 'A'.repeat(43),
+        }),
+        request,
+      ),
+    ).rejects.toThrow('thumbprint');
   });
 
   test('the minted window is capped at 30 seconds, so proofs expire', async () => {
@@ -320,5 +354,16 @@ describe('native device request proof', () => {
     expect(claims.exp).toBe((claims.iat as number) + 30);
     vi.setSystemTime(new Date('2026-09-27T12:00:31.000Z'));
     expect((claims.exp as number) * 1000).toBeLessThanOrEqual(Date.now());
+  });
+
+  test('refuses a body beyond the application channel pilot limit', async () => {
+    const key = await makeSigner();
+    await expect(
+      createNativeDeviceRequestProof(key.signer, await binding(key), {
+        method: 'POST',
+        path,
+        body: new Uint8Array(16 * 1024 + 1),
+      }),
+    ).rejects.toThrow('body');
   });
 });
