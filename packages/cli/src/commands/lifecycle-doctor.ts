@@ -114,7 +114,7 @@ function execVersion(command: string): string | null {
  * doctor output never emits a stray unlabeled `node v...` line, while keeping
  * the embedded Node version visible instead of silently dropping it.
  */
-export function parseTsxVersion(raw: string | null): string | null {
+function parseTsxVersion(raw: string | null): string | null {
   if (!raw) return null;
   const lines = raw
     .split(/\r?\n/)

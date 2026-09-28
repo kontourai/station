@@ -8,6 +8,20 @@ function rawEvent(event: any) {
   };
 }
 
+/**
+ * Ends the session and decodes every event the provider streamed to Bedrock:
+ * the request body handed to `client.send`, read to its end-of-stream.
+ */
+async function drainSentEvents(provider: NovaSonicProvider): Promise<any[]> {
+  await provider.disconnect();
+  const [command] = (provider as any).client.send.mock.calls[0];
+  const events: any[] = [];
+  for await (const item of command.input.body) {
+    events.push(JSON.parse(new TextDecoder().decode(item.chunk.bytes)).event);
+  }
+  return events;
+}
+
 function createMockBody() {
   const events: any[] = [];
   let resolve: (() => void) | null = null;
@@ -188,6 +202,23 @@ describe('NovaSonicProvider', () => {
     });
 
     provider.sendToolResult('tu-123', '{"temp": 72}');
+
+    const sent = await drainSentEvents(provider);
+    const promptName = sent.find((e) => e.promptStart).promptStart.promptName;
+    const start = sent.findIndex(
+      (e) => e.contentStart?.toolResultInputConfiguration,
+    );
+    expect(start).toBeGreaterThan(-1);
+    const { contentName } = sent[start].contentStart;
+    expect(sent[start].contentStart).toMatchObject({
+      promptName,
+      role: 'TOOL',
+      toolResultInputConfiguration: { toolUseId: 'tu-123' },
+    });
+    expect(sent.slice(start + 1, start + 3)).toEqual([
+      { toolResult: { promptName, contentName, content: '{"temp": 72}' } },
+      { contentEnd: { promptName, contentName } },
+    ]);
   });
 
   test('emits stateChange through lifecycle', async () => {
@@ -237,14 +268,34 @@ describe('NovaSonicProvider', () => {
     expect((provider as any).client.send).not.toHaveBeenCalled();
   });
 
-  test('sendAudio does not throw when active', async () => {
+  test('sendAudio streams microphone audio into the open audio content', async () => {
     await provider.connect({ systemPrompt: 'test', tools: [] });
-    expect(() => provider.sendAudio(Buffer.from('audio-data'))).not.toThrow();
+    provider.sendAudio(Buffer.from('audio-data'));
+
+    const sent = await drainSentEvents(provider);
+    const promptName = sent.find((e) => e.promptStart).promptStart.promptName;
+    const audioContent = sent.find(
+      (e) => e.contentStart?.type === 'AUDIO',
+    ).contentStart;
+    expect(sent.filter((e) => e.audioInput)).toEqual([
+      {
+        audioInput: {
+          promptName,
+          contentName: audioContent.contentName,
+          content: Buffer.from('audio-data').toString('base64'),
+        },
+      },
+    ]);
   });
 
-  test('sendAudio is no-op after disconnect', async () => {
+  test('sendAudio after disconnect retains nothing', async () => {
     await provider.connect({ systemPrompt: 'test', tools: [] });
-    await provider.disconnect();
-    expect(() => provider.sendAudio(Buffer.from('audio-data'))).not.toThrow();
+    const sent = await drainSentEvents(provider);
+    expect(sent.at(-1)).toEqual({ sessionEnd: {} });
+
+    // The request stream has ended, so a late chunk can never reach Bedrock;
+    // the only thing it could still do is pile up behind the end-of-stream.
+    provider.sendAudio(Buffer.from('audio-data'));
+    expect((provider as any).queue).toEqual([]);
   });
 });

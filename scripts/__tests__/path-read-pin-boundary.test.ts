@@ -106,7 +106,6 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // Walks the whole SDK source tree (a repo scan), like its neighbours here.
   'packages/sdk/src/__tests__/body-read-deadline.scan.test.ts',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts',
-  'packages/sdk/src/__tests__/keyedQueryDefaults.test.ts',
   'packages/shared/src/__tests__/plugin-build.test.ts',
   'packages/shared/src/__tests__/plugin-dependency-install.test.ts',
   'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
@@ -492,6 +491,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'walks its own fixture directory',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
+  'packages/cli/src/__tests__/profile.test.ts':
+    'lists the saved Station store directory under its temporary STATION_HOME',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts':
     'walks packages/sdk/src/client; its packages/sdk/src/client/** edge selects it',
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
@@ -532,6 +533,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
   'src-server/providers/app-home/__tests__/app-home-profiles.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/routes/orchestration/__tests__/tasks.routes.test.ts':
+    TEMP_VIA_FIXTURE,
+  'src-server/routes/plugins/__tests__/plugin-proposal-staged-reinstall.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/routes/plugins/__tests__/plugin-proposed-install-git-metadata.test.ts':
     TEMP_VIA_FIXTURE,

@@ -3,7 +3,6 @@ import { describe, expect, test } from 'vitest';
 import {
   allocateDevPorts,
   deriveDevInstanceAndHome,
-  fnv1a32,
   resolveDevOffset,
   resolveWorktreePath,
   STATION_DEV_MAX_OFFSET,
@@ -20,8 +19,9 @@ describe('resolveDevOffset — precedence + determinism', () => {
     const a = resolveDevOffset({ worktreePath: '/repos/wt/feature-x' });
     const b = resolveDevOffset({ worktreePath: '/repos/wt/feature-x' });
     expect(a.offset).toBe(b.offset);
-    expect(a.offset).toBeGreaterThanOrEqual(1);
-    expect(a.offset).toBeLessThanOrEqual(STATION_DEV_MAX_OFFSET);
+    // Pinned literal (FNV-1a 32 of the path, mod 500, plus 1): a hash change
+    // would silently move every existing dev worktree to new ports.
+    expect(a.offset).toBe(36);
     expect(a.source).toContain('worktree');
   });
 
@@ -39,11 +39,9 @@ describe('resolveDevOffset — precedence + determinism', () => {
 
   test('non-numeric STATION_DEV_INSTANCE seed is hashed into 1..MAX_OFFSET', () => {
     const resolved = resolveDevOffset({ devInstance: 'alpha' });
-    expect(resolved.offset).toBe(
-      (fnv1a32('alpha') % STATION_DEV_MAX_OFFSET) + 1,
-    );
-    expect(resolved.offset).toBeGreaterThanOrEqual(1);
-    expect(resolved.offset).toBeLessThanOrEqual(STATION_DEV_MAX_OFFSET);
+    // Pinned literal, independent of the hash under test.
+    expect(resolved.offset).toBe(168);
+    expect(STATION_DEV_MAX_OFFSET).toBe(500);
     expect(resolved.source).toContain('hashed');
   });
 

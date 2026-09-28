@@ -132,7 +132,9 @@ describe('createPlugin', () => {
     expect(shared.files).toContain('src');
   });
 
-  test.each(['pane', 'layout'] as const)(
+  // Template contents are owned by shared plugin-scaffold.test.ts; this CLI
+  // case proves the `layout` alias reaches the pane scaffold on disk.
+  test.each(['layout'] as const)(
     'the %s template creates one Workspace Pane without agent scaffolding',
     async (template) => {
       const root = mkdtempSync(join(tmpdir(), 'station-create-plugin-'));
@@ -159,31 +161,6 @@ describe('createPlugin', () => {
       });
     },
   );
-
-  test('creates a provider template with a server module and provider files', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-create-plugin-'));
-    cleanupDirs.push(root);
-
-    const { createPlugin } = await importCommands();
-    createPlugin('provider-kit', { cwd: root, template: 'provider' });
-
-    const pluginDir = join(root, 'provider-kit');
-    const manifest = JSON.parse(
-      readFileSync(join(pluginDir, 'plugin.json'), 'utf-8'),
-    );
-
-    expect(existsSync(join(pluginDir, 'plugin.mjs'))).toBe(true);
-    expect(existsSync(join(pluginDir, 'providers', 'branding.js'))).toBe(true);
-    expect(existsSync(join(pluginDir, 'src', 'index.tsx'))).toBe(false);
-    const station = manifest.extensions['io.kontourai.station'];
-    expect(station.serverModule).toBe('./plugin.mjs');
-    expect(station.providers[0].type).toBe('branding');
-    // Enforced at runtime; without them the provider never loads.
-    expect(station.permissions).toEqual([
-      'providers.register',
-      'plugin.server',
-    ]);
-  });
 
   test('refuses a name outside the Agent Plugins grammar before writing anything', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-create-plugin-'));

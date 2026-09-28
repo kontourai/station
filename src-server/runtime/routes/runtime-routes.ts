@@ -123,10 +123,12 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
   type DevicePrincipalBinding,
+  type FullAccessRevocationReport,
   type PairingScope,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
@@ -347,6 +349,7 @@ import { createSystemRoutes } from '../../routes/system/system.js';
 import { createInboundWebhookRoutes } from '../../routes/webhooks/inbound-webhooks.js';
 import { createWebhookTurnStarter } from '../../routes/webhooks/webhook-turn-starter.js';
 import { BoundedAttemptBudget } from '../../security/bounded-attempt-budget.js';
+import { bindFullAccessRefusalIdentity } from '../../security/full-access-refusal.js';
 import { isDefinitelyOffBox } from '../../security/off-box-peer.js';
 import {
   PairingFailureLimiter,
@@ -1183,6 +1186,11 @@ export function configureRuntimeRoutes(
             request,
           )
         : context.environmentSecurityService.verifyCredential(credential),
+    // Identity, not admission. authorizeCredential refuses an ordinary
+    // device on /api/pairing; this still recognizes the credential so the
+    // HTTP layer can answer 403 instead of revoking the browser session.
+    recognizeCredential: (credential: string) =>
+      context.environmentSecurityService.verifyCredential(credential),
     resolveGrantedScope: (credential: string) =>
       context.environmentSecurityService.resolveGrantedScope(credential),
     resolveCredentialAuthority: (credential: string) =>
@@ -1686,6 +1694,21 @@ export function configureRuntimeRoutes(
             member.actions.includes(action),
         );
     },
+  });
+  // #1796: a refused full-access request names this Station and the paired
+  // device that asked, read from the pairing service's own records (a
+  // display name, never a credential), whichever route refuses it.
+  const fullAccessRefusalIdentity = {
+    environmentId: () =>
+      context.environmentSecurityService.devicePairing.environmentId(),
+    deviceName: (deviceId: string) =>
+      context.environmentSecurityService.devicePairing
+        .listDevices()
+        .find((device) => device.id === deviceId)?.name,
+  };
+  context.app.use('*', async (c, next) => {
+    bindFullAccessRefusalIdentity(c.req.raw, fullAccessRefusalIdentity);
+    await next();
   });
   // #2377 slice A: every request the boundary above stamped `kind:'internal'`
   // (every station-control tool call, and Station's own server code) is
@@ -2198,6 +2221,8 @@ export function configureRuntimeRoutes(
         ),
       accountAuthentication: context.deploymentAuthentication?.service,
       relayEnrollment: context.relayEnrollment,
+      resetFullAccessGrantedBy: (input) =>
+        context.orchestrationService.resetFullAccessGrantedBy(input),
     },
   );
 
@@ -7805,9 +7830,46 @@ export function configureDevicePairingHostRoutes(
     isRequestPrincipalCurrent: (request: Request) => boolean;
     accountAuthentication?: DeploymentAuthenticationService;
     relayEnrollment?: RelayEnrollmentService;
+    /**
+     * #1796 (G3): reset the full access a device had granted, when the
+     * operator removes its `approval:full-access` or revokes it
+     * (`OrchestrationService.resetFullAccessGrantedBy`).
+     */
+    resetFullAccessGrantedBy?: (input: {
+      deviceId: string;
+      cause: FullAccessRevocationReport['cause'];
+      clientOrigin: ClientOrigin;
+    }) => Promise<FullAccessRevocationReport>;
   },
 ): void {
   const audit = options.audit;
+  /**
+   * #1796: the revocation's report, added to the route's answer. The scope
+   * change or revoke has already happened; a reset that fails is reported
+   * as such, never as success.
+   */
+  const revokeFullAccess = async (
+    request: Request,
+    deviceId: string,
+    cause: FullAccessRevocationReport['cause'],
+  ): Promise<
+    | { fullAccessRevocation: FullAccessRevocationReport }
+    | { fullAccessRevocationError: 'reset_failed' }
+    | Record<string, never>
+  > => {
+    if (!options.resetFullAccessGrantedBy) return {};
+    try {
+      return {
+        fullAccessRevocation: await options.resetFullAccessGrantedBy({
+          deviceId,
+          cause,
+          clientOrigin: resolveClientOriginForRequest(request),
+        }),
+      };
+    } catch {
+      return { fullAccessRevocationError: 'reset_failed' };
+    }
+  };
   const isRequestPrincipalCurrent = options.isRequestPrincipalCurrent;
   const currentOperator = (context: unknown, request: Request): boolean => {
     const authority = (context as { get: (key: string) => unknown }).get(
@@ -8168,7 +8230,7 @@ export function configureDevicePairingHostRoutes(
       observedAt: Date.now(),
     });
   });
-  app.delete('/api/pairing/devices/:deviceId', (c) => {
+  app.delete('/api/pairing/devices/:deviceId', async (c) => {
     try {
       const request = c.req.raw;
       if (!currentOperator(c, request)) {
@@ -8177,7 +8239,11 @@ export function configureDevicePairingHostRoutes(
       const deviceId = c.req.param('deviceId');
       const device = pairing.revokeDevice(deviceId, 'operator-credential');
       options.connectedClientPresence?.disconnectDevice(deviceId);
-      return c.json(device);
+      // #1796: revoking the device revokes its full access too.
+      return c.json({
+        ...device,
+        ...(await revokeFullAccess(request, deviceId, 'device-revoked')),
+      });
     } catch (error) {
       return c.json(
         { error: pairingErrorCode(error) },
@@ -8204,6 +8270,7 @@ export function configureDevicePairingHostRoutes(
       const body = (await request.json().catch(() => null)) as {
         scope?: unknown;
         expectedScope?: unknown;
+        resetFullAccess?: unknown;
       } | null;
       const scope = Array.isArray(body?.scope) ? body.scope : null;
       if (scope === null || scope.some((token) => typeof token !== 'string')) {
@@ -8220,6 +8287,11 @@ export function configureDevicePairingHostRoutes(
         return c.json({ error: 'authentication_required' }, 401);
       }
       const deviceId = c.req.param('deviceId');
+      const heldFullAccess = pairingScopeIncludes(
+        pairing.listDevices().find((entry) => entry.id === deviceId)?.scope ??
+          '',
+        'approval:full-access',
+      );
       const device = pairing.setDeviceScope(
         deviceId,
         scope as PairingScope[],
@@ -8238,7 +8310,19 @@ export function configureDevicePairingHostRoutes(
       // re-authenticate, where the new scope applies. Revoke already does
       // exactly this; a scope change is the same kind of decision.
       options.connectedClientPresence?.disconnectDevice(deviceId);
-      return c.json(device);
+      // #1796 (G3): taking full access away resets what it had granted.
+      // H3: `resetFullAccess: true` re-runs that reset for a device that
+      // no longer holds it (a reset that failed after the scope change
+      // committed); the reset is idempotent.
+      const lostFullAccess =
+        (heldFullAccess || body?.resetFullAccess === true) &&
+        !pairingScopeIncludes(device.scope, 'approval:full-access');
+      return c.json({
+        ...device,
+        ...(lostFullAccess
+          ? await revokeFullAccess(request, deviceId, 'scope-removed')
+          : {}),
+      });
     } catch (error) {
       const code = pairingErrorCode(error);
       return c.json(

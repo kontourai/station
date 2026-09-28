@@ -13,10 +13,7 @@ import {
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-file-preview';
 import { WORKSPACE_HOME_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-home-pane';
-import {
-  parseWorkspacePaneDescriptor,
-  workspacePaneModesSatisfiableBy,
-} from '@kontourai/station-contracts/workspace-pane';
+import { workspacePaneModesSatisfiableBy } from '@kontourai/station-contracts/workspace-pane';
 import { workspacePaneHostSuppliableContexts } from '@kontourai/station-contracts/workspace-pane-host';
 import { WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-spatial-board';
 import {
@@ -26,22 +23,17 @@ import {
 import { describe, expect, test } from 'vitest';
 import {
   createWorkspaceBoardPaneInstance,
-  isCanonicalWorkspaceBoardDescriptor,
   isCanonicalWorkspaceBoardPaneInstance,
   WORKSPACE_BOARD_PANE_DESCRIPTOR,
-  WORKSPACE_BOARD_PANE_DESCRIPTOR_ID,
-  WORKSPACE_BOARD_PANE_RENDERER_NAME,
-  WORKSPACE_BOARD_PANE_SOURCE_ID,
 } from '../workspace-board-pane';
 
 describe('the Board Workspace Pane declaration', () => {
   test('is a valid, builtin, Project-requiring declaration', () => {
-    expect(WORKSPACE_BOARD_PANE_DESCRIPTOR.id).toBe(
-      WORKSPACE_BOARD_PANE_DESCRIPTOR_ID,
-    );
+    // Saved layouts and the host renderer registry key on these literals.
+    expect(WORKSPACE_BOARD_PANE_DESCRIPTOR.id).toBe('pane:builtin:board');
     expect(WORKSPACE_BOARD_PANE_DESCRIPTOR.renderer).toEqual({
       kind: 'builtin-component',
-      name: WORKSPACE_BOARD_PANE_RENDERER_NAME,
+      name: 'workspace-board',
     });
     expect(WORKSPACE_BOARD_PANE_DESCRIPTOR.provenance).toEqual({
       origin: 'builtin',
@@ -112,26 +104,6 @@ describe('the Board Workspace Pane declaration', () => {
       WORKSPACE_HOME_PANE_DESCRIPTOR.id,
     ]);
   });
-
-  test('recognizes its own canonical declaration and refuses a renamed one', () => {
-    expect(
-      isCanonicalWorkspaceBoardDescriptor(WORKSPACE_BOARD_PANE_DESCRIPTOR),
-    ).toBe(true);
-    const decoy = parseWorkspacePaneDescriptor({
-      version: WORKSPACE_BOARD_PANE_DESCRIPTOR.version,
-      id: WORKSPACE_BOARD_PANE_DESCRIPTOR.id,
-      name: WORKSPACE_BOARD_PANE_DESCRIPTOR.name,
-      description: WORKSPACE_BOARD_PANE_DESCRIPTOR.description,
-      rendererId: 'renderer:plugin:decoy',
-      renderer: WORKSPACE_BOARD_PANE_DESCRIPTOR.renderer,
-      placement: WORKSPACE_BOARD_PANE_DESCRIPTOR.placement,
-      modes: WORKSPACE_BOARD_PANE_DESCRIPTOR.modes,
-      provenance: { origin: 'builtin' },
-      lifecycle: { stage: 'preview' },
-    });
-    expect(decoy).not.toBeNull();
-    expect(isCanonicalWorkspaceBoardDescriptor(decoy!)).toBe(false);
-  });
 });
 
 describe('the Board Workspace Pane occurrence', () => {
@@ -142,7 +114,7 @@ describe('the Board Workspace Pane occurrence', () => {
     expect(instance?.stateKey).toBe('workspace-board:project-1');
     expect(instance?.boundContext).toEqual({
       projectId: 'project-1',
-      sourceId: WORKSPACE_BOARD_PANE_SOURCE_ID,
+      sourceId: 'builtin:workspace-board',
     });
     expect(isCanonicalWorkspaceBoardPaneInstance(instance!)).toBe(true);
   });
@@ -152,7 +124,7 @@ describe('the Board Workspace Pane occurrence', () => {
     expect(
       isCanonicalWorkspaceBoardPaneInstance({
         ...instance,
-        boundContext: { sourceId: WORKSPACE_BOARD_PANE_SOURCE_ID },
+        boundContext: { sourceId: 'builtin:workspace-board' },
       }),
     ).toBe(false);
     expect(

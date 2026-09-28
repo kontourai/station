@@ -41,7 +41,6 @@ vi.mock('../api', () => ({
   _getApiBase: vi.fn().mockResolvedValue('http://example.test'),
 }));
 
-import { useApiQuery } from '../query-core';
 import {
   useEngineConnectionsQuery,
   useModelConnectionsQuery,
@@ -614,26 +613,5 @@ describe('station#3748 — an inventory read that failed is not an empty invento
         signal: new AbortController().signal,
       }),
     ).resolves.toEqual([]);
-  });
-});
-
-describe('station#3172 — the @tanstack/react-query mock passes through real exports', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('a hook that sets keepPreviousData: true does not throw on a missing mock export', () => {
-    // query-core.ts's `useApiQuery` reads the real `keepPreviousData`
-    // binding from '@tanstack/react-query' only when this flag is true —
-    // this is that read. Before station#3172's fix (a plain-object mock
-    // factory missing `keepPreviousData`), this call threw via Vitest's own
-    // mock-export proxy.
-    expect(() =>
-      renderHook(() =>
-        useApiQuery(['station-3172-probe'], async () => 'data', {
-          keepPreviousData: true,
-        }),
-      ),
-    ).not.toThrow();
   });
 });

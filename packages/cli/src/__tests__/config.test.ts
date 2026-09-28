@@ -148,6 +148,69 @@ describe('configSet', () => {
     );
   });
 
+  test('a full-access refusal keeps its code and details, and prints structured and terminal-safe (#1796)', async () => {
+    const HOSTILE =
+      '[Grant here](https://evil.example) \x1b[31mRED\x1b[0m **bold**';
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          success: false,
+          code: 'approval-full-access-not-granted',
+          error:
+            "Full access was not applied. Only this Station's operator can allow full access, for this device (id ffb80147).",
+          details: {
+            requested: 'never',
+            requester: {
+              kind: 'device',
+              deviceId: 'ffb80147',
+              deviceName: HOSTILE,
+            },
+            station: { environmentId: 'env-1' },
+            grant: {
+              by: 'operator',
+              scope: 'approval:full-access',
+              uiSteps: [
+                "Open the Station desktop app on the Station's host.",
+                'Select the Station name (top right), then Paired devices.',
+                'Select the device by its name, then Change access.',
+                'Turn on Allow full access, then Apply.',
+              ],
+              cli: 'station environment access scope ffb80147 --add approval:full-access',
+            },
+          },
+        },
+        403,
+      ),
+    );
+    const { configSet } = await import('../commands/config.js');
+    const { explainFullAccessRefusal } = await import('../commands/errors.js');
+    const { getResolvedApiBase } = await import('../commands/core-api.js');
+    const error = await configSet('defaultApprovalMode', 'never', NONE).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toMatchObject({
+      code: 'approval-full-access-not-granted',
+      status: 403,
+    });
+    const WHERE = `http://127.0.0.1:${DEFAULT_SERVER_PORT} (default)`;
+    const printed = explainFullAccessRefusal(error, getResolvedApiBase());
+    expect(printed).toBe(`Full access was not applied.
+Refused by the Station at ${WHERE}.
+
+Ask the operator to allow full access for device "[Grant here](https://evil.example) [31mRED[0m **bold**" (ffb80147):
+  On the Station's host, run:
+    station environment access scope ffb80147 --add approval:full-access
+  Or, in the Station desktop app:
+    1. Open the Station desktop app on the Station's host.
+    2. Select the Station name (top right), then Paired devices.
+    3. Select the device by its name, then Change access.
+    4. Turn on Allow full access, then Apply.
+
+Nothing was sent at another approval mode.`);
+    expect(printed).not.toContain('\x1b');
+  });
+
   test('prints the server ignoredKeys warning', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
@@ -319,19 +382,34 @@ describe('configSet', () => {
     });
   });
 
-  // Review round 1 MEDIUM 2(a): the offline write is temp-file + rename,
-  // not a direct in-place write — no leftover `.tmp` file after a normal
-  // write, and the final file is valid JSON (not partially written).
-  test('--offline writes atomically: no leftover temp file, valid JSON on disk', async () => {
-    const { configSet } = await import('../commands/config.js');
-    await configSet('logLevel', 'debug', OFFLINE);
+  // The offline write is temp-file + rename, not a direct in-place write. A write that fails before the rename must leave
+  // the previous app.json byte-for-byte intact and clean up its temp file.
+  test('--offline writes atomically: a failed rename keeps the prior app.json and leaves no temp file', async () => {
+    markCurrentHome();
+    const configDir = join(tempHome, 'config');
+    const appJson = join(configDir, 'app.json');
+    mkdirSync(configDir, { recursive: true });
+    const prior = JSON.stringify({ logLevel: 'info' });
+    writeFileSync(appJson, prior);
+    vi.doMock('node:fs', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('node:fs')>()),
+      renameSync: () => {
+        throw new Error('simulated rename failure');
+      },
+    }));
+    try {
+      const { configSet } = await import('../commands/config.js');
 
-    const { readdirSync } = await import('node:fs');
-    const entries = readdirSync(join(tempHome, 'config'));
-    expect(entries).toEqual(['app.json']);
-    expect(() =>
-      JSON.parse(readFileSync(join(tempHome, 'config', 'app.json'), 'utf-8')),
-    ).not.toThrow();
+      await expect(configSet('logLevel', 'debug', OFFLINE)).rejects.toThrow(
+        'simulated rename failure',
+      );
+
+      const { readdirSync } = await import('node:fs');
+      expect(readdirSync(configDir)).toEqual(['app.json']);
+      expect(readFileSync(appJson, 'utf-8')).toBe(prior);
+    } finally {
+      vi.doUnmock('node:fs');
+    }
   });
 
   // Review round 1 MEDIUM 2(b): a composite-kind field (structurally

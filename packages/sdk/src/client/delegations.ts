@@ -58,6 +58,7 @@ interface DelegationEnvelope<T> {
   error?: string;
   code?: string;
   retryable?: boolean;
+  details?: unknown;
 }
 
 /** A delegated engine-start refusal with a stable machine-readable cause. */
@@ -66,6 +67,8 @@ export class DelegationApiError extends Error {
     message: string,
     readonly code?: string,
     readonly retryable?: boolean,
+    /** The envelope's `details`, exactly as sent (e.g. #1796's refusal). */
+    readonly details?: unknown,
   ) {
     super(message);
     this.name = 'DelegationApiError';
@@ -85,6 +88,7 @@ async function unwrapDelegationResponse<T>(response: Response): Promise<T> {
       apiErrorMessage(result, `Delegation API error: ${response.status}`),
       result.code,
       result.retryable,
+      result.details,
     );
   }
   return result.data as T;

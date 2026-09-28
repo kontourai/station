@@ -5,10 +5,13 @@ vi.mock('../api', () => ({
 }));
 
 import { COOPERATIVE_STOP_BUDGET_MS } from '@kontourai/station-contracts/orchestration';
+import { ChatHttpError } from '../client/chatHttpError';
+import { StationRequestTimeoutError } from '../client/http';
 import {
   cleanupTerminalProcess,
   dispatchOrchestrationCommand,
   dispatchOrchestrationCommandWithReceipt,
+  fetchDelegationOptions,
   fetchLoadedOrchestrationSessions,
   fetchOrchestrationCommandReceipt,
   fetchOrchestrationCommandReceipts,
@@ -20,6 +23,7 @@ import {
   interruptOrchestrationTurn,
   STOP_REQUEST_BUDGET_MS,
   sendOrchestrationTurn,
+  setOrchestrationApprovalMode,
 } from '../query-domains/chatRuntimeOrchestration';
 
 function mockJsonResponse(payload: unknown, ok = true) {
@@ -140,6 +144,39 @@ describe('chatRuntimeOrchestration', () => {
       'This draft is starting on another device or tab.',
     );
     expect(refused?.code).toBe('draft_busy');
+  });
+
+  it('keeps a full-access refusal’s details on a rejected command (#1796)', async () => {
+    const details = {
+      requested: 'never',
+      requester: { kind: 'device', deviceId: 'ffb80147', deviceName: 'Laptop' },
+      station: {},
+      grant: null,
+    };
+    mockJsonResponse(
+      {
+        success: false,
+        error: 'Full access was not granted to device ffb80147.',
+        code: 'approval-full-access-not-granted',
+        details,
+      },
+      false,
+    );
+    const refused = await setOrchestrationApprovalMode({
+      threadId: 'thread-1',
+      approvalMode: 'never',
+      basedOnSequence: null,
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refused).toBeInstanceOf(ChatHttpError);
+    expect(refused).toMatchObject({
+      status: 500,
+      code: 'approval-full-access-not-granted',
+      stationEnvelope: true,
+      details,
+    });
   });
 
   it('sends ambient context out-of-band on sendTurn and omits it when absent (#685)', async () => {
@@ -276,9 +313,61 @@ describe('chatRuntimeOrchestration', () => {
         }),
     );
 
+    const explicit = await interruptOrchestrationTurn({
+      threadId: 'thread-hang',
+      timeoutMs: 5,
+    }).catch((error: unknown) => error);
+    expect(explicit).toBeInstanceOf(StationRequestTimeoutError);
+    expect(explicit).toMatchObject({ timeoutMs: 5 });
+
+    // Without a caller deadline the Stop budget applies. Shorten only the
+    // real timer so the default budget is observed on the timeout error; a
+    // request with no deadline at all fails here instead of hanging the test.
+    vi.mocked(fetch).mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          const signal = (init as RequestInit | undefined)?.signal;
+          signal?.addEventListener('abort', () =>
+            reject(new Error('aborted by deadline')),
+          );
+          setTimeout(() => reject(new Error('no client deadline')), 500);
+        }),
+    );
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, 'timeout')
+      .mockImplementation(() => realTimeout(5));
+    try {
+      const defaulted = await interruptOrchestrationTurn({
+        threadId: 'thread-hang',
+      }).catch((error: unknown) => error);
+      expect(defaulted).toBeInstanceOf(StationRequestTimeoutError);
+      expect(defaulted).toMatchObject({ timeoutMs: STOP_REQUEST_BUDGET_MS });
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
+  it('discovers delegation options without posting the apiBase', async () => {
+    const options = {
+      environment: { id: 'env-media', name: 'Media', kind: 'ssh' },
+      targets: [],
+    };
+    mockJsonResponse({ success: true, data: options });
+
     await expect(
-      interruptOrchestrationTurn({ threadId: 'thread-hang', timeoutMs: 5 }),
-    ).rejects.toThrow();
+      fetchDelegationOptions({
+        apiBase: 'http://station.test',
+        environmentId: 'env-media',
+      }),
+    ).resolves.toEqual(options);
+    expect(fetch).toHaveBeenCalledWith(
+      'http://station.test/api/orchestration/delegations/options',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ environmentId: 'env-media' }),
+      }),
+    );
   });
 
   it('interrupts a delegated task through its task-scoped control route', async () => {

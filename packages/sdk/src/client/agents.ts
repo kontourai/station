@@ -108,7 +108,7 @@ export async function fetchAgentCatalog(
  * The ONE envelope → `['agents']` cache-value derivation (station#3824).
  *
  * `useAgentsQuery` caches an `AgentCatalogProjection` and reads `data.agents`
- * off it. `seedBootPayload` wrote `/api/boot`'s agents section straight into
+ * off it. The boot seeder wrote `/api/boot`'s agents section straight into
  * the same key, and since #3751 changed that cached shape from a bare array
  * to this projection, the seeded value no longer had an `.agents` — so the
  * accelerator seeded a value the hook could not read, and the Agents rail was

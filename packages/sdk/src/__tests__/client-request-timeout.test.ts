@@ -149,17 +149,21 @@ describe('client request deadlines', () => {
   });
 
   it('passes a caller abort through unchanged instead of calling it a timeout', async () => {
-    setClientRequestTimeout(10_000);
-    vi.stubGlobal('fetch', hangingFetch());
+    const fetchMock = hangingFetch();
+    vi.stubGlobal('fetch', fetchMock);
     const controller = new AbortController();
+    // An explicit deadline keeps the deadline signal armed beside the
+    // caller's, so the caller's abort must be told apart from it once the
+    // request is in flight.
     const pending = authenticatedFetch(URL_UNDER_TEST, {
       signal: controller.signal,
+      timeoutMs: 10_000,
     });
-    controller.abort(new Error('user cancelled'));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const reason = new Error('user cancelled');
+    controller.abort(reason);
 
-    await expect(pending).rejects.not.toBeInstanceOf(
-      StationRequestTimeoutError,
-    );
+    await expect(pending).rejects.toBe(reason);
   });
 
   it('honours an explicit per-call timeout over the configured default', async () => {

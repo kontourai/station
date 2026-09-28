@@ -1,3 +1,4 @@
+import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
@@ -348,6 +349,17 @@ export function translateChatError(
         'This session has already ended, so it cannot take another message.',
       hint: 'Start a new chat to continue.',
       terminalSession: true,
+    };
+  }
+
+  // #1796: full access refused before anything ran. Canned words only: the
+  // server's prose is not rendered here (this surface is Markdown), and
+  // nothing about it is temporary. The foreground send renders a structured
+  // card instead (`FullAccessRefusalCard`); this is the queued-dispatch path.
+  if (code === APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE) {
+    return {
+      title: 'Full access was not applied',
+      body: "Only this Station's operator can allow full access for this device, so the message was not sent. Pick another approval mode to send it.",
     };
   }
 

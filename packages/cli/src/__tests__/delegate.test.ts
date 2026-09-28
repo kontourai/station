@@ -86,6 +86,10 @@ function projectHandleFor(projectSlug: string) {
   return { slug: projectSlug, path: `/work/${projectSlug}`, slugJoin };
 }
 
+/** The #1796 security review's device name: Markdown link, ANSI escapes, emphasis. */
+const HOSTILE =
+  '[Grant here](https://evil.example) \x1b[31mRED\x1b[0m **bold**';
+
 describe('station delegate over HTTP', () => {
   let server: ReturnType<typeof createServer>;
   let apiBase = '';
@@ -102,6 +106,16 @@ describe('station delegate over HTTP', () => {
     pathname: string;
     body: Record<string, unknown>;
   }> = [];
+  // Every request the mock server receives, reads included, so a test can
+  // prove a path issued none (or no status read).
+  const requestLog: Array<{ method: string; pathname: string }> = [];
+  const statusReads = () =>
+    requestLog.filter(
+      ({ method, pathname }) =>
+        method === 'GET' &&
+        /^\/api\/orchestration\/delegations\/[^/]+$/.test(pathname) &&
+        pathname !== '/api/orchestration/delegations/options',
+    );
   // #2459: the client-origin header each delegation POST carried.
   const delegationOrigins: Array<string | undefined> = [];
   // Capability-delivery disclosure fixtures: when set, the mock server
@@ -118,6 +132,7 @@ describe('station delegate over HTTP', () => {
     consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
     consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     requestBodies.length = 0;
+    requestLog.length = 0;
     delegationOrigins.length = 0;
     tasks.clear();
     conversations.clear();
@@ -140,6 +155,7 @@ describe('station delegate over HTTP', () => {
     server = createServer(async (req, res) => {
       const method = req.method || 'GET';
       const url = new URL(req.url || '/', 'http://127.0.0.1');
+      requestLog.push({ method, pathname: url.pathname });
       const body = method === 'POST' ? await readBody(req) : undefined;
       if (method === 'POST' && body) {
         requestBodies.push({ pathname: url.pathname, body });
@@ -187,6 +203,37 @@ describe('station delegate over HTTP', () => {
           sendJson(400, {
             success: false,
             error: "Unsupported option 'thinking' for codex target 'codex'",
+          });
+          return;
+        }
+        // #1796: the real refusal's shape (full-access-refusal.ts), for a
+        // device without approval:full-access.
+        if (selectedModelOptions?.approvalMode === 'never') {
+          sendJson(403, {
+            success: false,
+            code: 'approval-full-access-not-granted',
+            error:
+              "Full access was not applied. Only this Station's operator can allow full access, for this device (id ffb80147).",
+            details: {
+              requested: 'never',
+              requester: {
+                kind: 'device',
+                deviceId: 'ffb80147',
+                deviceName: HOSTILE,
+              },
+              station: { environmentId: 'env-1' },
+              grant: {
+                by: 'operator',
+                scope: 'approval:full-access',
+                uiSteps: [
+                  "Open the Station desktop app on the Station's host.",
+                  'Select the Station name (top right), then Paired devices.',
+                  'Select the device by its name, then Change access.',
+                  'Turn on Allow full access, then Apply.',
+                ],
+                cli: 'station environment access scope ffb80147 --add approval:full-access',
+              },
+            },
           });
           return;
         }
@@ -1280,6 +1327,41 @@ describe('station delegate over HTTP', () => {
     );
   });
 
+  test('a full-access refusal exits 3, structured from its details, with no escape byte from a hostile device name (#1796 G1)', async () => {
+    const { runCli } = await import('../cli.js');
+    const exit = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as never);
+
+    await runCli([
+      'delegate',
+      '--agent=codex',
+      '--approval-mode=never',
+      'Review the diff',
+      `--api-base=${apiBase}`,
+    ]);
+
+    expect(exit).toHaveBeenCalledWith(3);
+    const WHERE = `${apiBase} (from --api-base)`;
+    const printed = consoleError.mock.calls
+      .map((call) => call.join(' '))
+      .join('\n');
+    expect(printed).toContain(`Full access was not applied.
+Refused by the Station at ${WHERE}.
+
+Ask the operator to allow full access for device "[Grant here](https://evil.example) [31mRED[0m **bold**" (ffb80147):
+  On the Station's host, run:
+    station environment access scope ffb80147 --add approval:full-access
+  Or, in the Station desktop app:
+    1. Open the Station desktop app on the Station's host.
+    2. Select the Station name (top right), then Paired devices.
+    3. Select the device by its name, then Change access.
+    4. Turn on Allow full access, then Apply.
+
+Nothing was sent at another approval mode.`);
+    expect(printed).not.toContain('\x1b');
+  });
+
   test('rejects --model-option systemPrompt=... via the delegate path (review r1 HIGH fix 1)', async () => {
     const { runCli } = await import('../cli.js');
     const exit = vi
@@ -1809,14 +1891,30 @@ describe('station delegate over HTTP', () => {
 
   test('--json emits the one stable shape for every verb (AC10)', async () => {
     const { runCli } = await import('../cli.js');
+    const emitted = async (args: string[]) => {
+      consoleLog.mockClear();
+      await runCli(['delegate', ...args, '--json', `--api-base=${apiBase}`]);
+      return JSON.parse(
+        consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+      ) as Record<string, unknown> & { data: { taskId?: string } };
+    };
+    const created = await emitted(['--agent=default', 'Ship it']);
+    const taskId = String(created.data.taskId);
+    const envelopes: Array<[string, Record<string, unknown>]> = [
+      ['create', created],
+      ['status', await emitted(['status', taskId])],
+      ['events', await emitted(['events', taskId])],
+      ['respond', await emitted(['respond', taskId, 'req-1', 'accept'])],
+      ['interrupt', await emitted(['interrupt', taskId])],
+      ['continue', await emitted(['continue', taskId, 'Keep going'])],
+      ['targets', await emitted(['targets'])],
+    ];
 
-    await runCli(['delegate', 'targets', '--json', `--api-base=${apiBase}`]);
-    const payload = JSON.parse(
-      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
-    );
-    expect(Object.keys(payload).sort()).toEqual(['data', 'kind', 'ok']);
-    expect(payload.ok).toBe(true);
-    expect(payload.kind).toBe('delegate.targets');
+    for (const [verb, payload] of envelopes) {
+      expect(Object.keys(payload).sort(), verb).toEqual(['data', 'kind', 'ok']);
+      expect(payload.ok, verb).toBe(true);
+      expect(payload.kind, verb).toBe(`delegate.${verb}`);
+    }
   });
 
   test('a missing positional is a usage error and exits 1 before any request (AC9)', async () => {
@@ -1825,6 +1923,7 @@ describe('station delegate over HTTP', () => {
     await expect(
       runCli(['delegate', 'status', `--api-base=${apiBase}`]),
     ).rejects.toThrow('Missing required argument: task id');
+    expect(requestLog).toEqual([]);
   });
 
   test('a 400 delegation rejection exits 3, distinct from a transport failure (AC9)', async () => {
@@ -2053,6 +2152,8 @@ describe('station delegate over HTTP', () => {
     expect(payload.kind).toBe('delegate.create');
     expect(payload.data.status).toBe('dispatched');
     expect(payload.data.pendingRequest).toBeUndefined();
+    // The default mode never probes the task's status after creating it.
+    expect(statusReads()).toEqual([]);
   });
 
   test('--on-request=fail on create exits distinctly with the pending requestId when one is already open (station#979 AC4 parity)', async () => {
@@ -2079,6 +2180,7 @@ describe('station delegate over HTTP', () => {
     expect(payload.data.pendingRequest.respondCommand).toMatch(
       /^station delegate respond 'task:\d+' 'req-pending-1' <accept\|acceptForSession\|decline\|cancel>$/,
     );
+    expect(statusReads()).toHaveLength(1);
   });
 
   test('--on-request=fail on create prints the ordinary success output when no request is pending (station#979)', async () => {
