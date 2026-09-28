@@ -2,14 +2,15 @@ import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy'
 import { describe, expect, test, vi } from 'vitest';
 import type { OrchestrationService } from '../../../services/orchestration/orchestration-service';
 import type { SessionToolResultQueryOutcome } from '../../../services/orchestration/session-query-module';
-import { projectToolCompletedEvent } from '../../../services/orchestration/thread-tool-result-adapter';
+import { projectToolCompletedDescriptor } from '../../../services/orchestration/thread-tool-result-adapter';
 import { createOrchestrationRoutes } from '../orchestration';
 
 function found(): Extract<SessionToolResultQueryOutcome, { status: 'found' }> {
-  const projection = projectToolCompletedEvent({
+  const projection = projectToolCompletedDescriptor({
     eventId: 'event-a',
     threadId: 'session-a',
     turnId: 'turn-a',
+    method: 'tool.completed',
     toolCallId: 'reused-call',
     toolName: 'fixture-tool',
     status: 'success',

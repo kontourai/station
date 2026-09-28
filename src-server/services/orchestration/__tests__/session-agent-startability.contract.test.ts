@@ -73,17 +73,16 @@ const REGISTERED_ADAPTER_PROVIDERS = [
  * The providers `resolveSessionAgentForStart` exempts from the authored-spec
  * gate: `sessionDeliveryChannels` is undefined for them, because they have
  * no session-delivery concept — Station's own engine and the managed model
- * runtimes load authored specs themselves. This list may only SHRINK (with
- * the matrix entry that gates the provider) — never grow silently: a
- * provider gaining a matrix entry becomes gated and must be removed here,
- * and a NEW registered adapter absent from the matrix fails this suite until
- * its author consciously chooses gated (add a matrix entry) or exempt (add
- * it here, with the reasoning).
+ * runtimes load authored specs themselves. This pins the matrix exemption for
+ * the hand-listed adapters above only: a provider gaining a matrix entry
+ * becomes gated and must be removed here. A newly registered adapter is not
+ * detected, because REGISTERED_ADAPTER_PROVIDERS is not derived from the
+ * runtime's adapter construction.
  */
 const GATE_EXEMPT_PROVIDERS = ['bedrock', 'ollama', 'station-agent'] as const;
 
-describe('the orchestration-layer gate exemption set is pinned (shrink-only)', () => {
-  test('exactly {bedrock, ollama, station-agent} are exempt among registered adapters', () => {
+describe('the orchestration-layer gate exemption set is pinned', () => {
+  test('exactly {bedrock, ollama, station-agent} are exempt among the listed adapters', () => {
     const exempt = REGISTERED_ADAPTER_PROVIDERS.filter(
       (provider) => sessionDeliveryChannels(provider) === undefined,
     );

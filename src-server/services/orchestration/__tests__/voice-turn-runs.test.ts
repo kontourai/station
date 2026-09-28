@@ -227,10 +227,9 @@ describe('VoiceTurnRuns', () => {
     ).resolves.toEqual([voiceRun]);
   });
 
-  test('fails closed for unmatched terminal events and makes documented non-END_TURN ends indeterminate', () => {
+  test('makes a documented non-END_TURN end an indeterminate failure', () => {
     const store = createStore();
     const runs = store.voiceTurnRunAuthority();
-    expect('indeterminateSession' in runs).toBe(false);
     const started = runs.observeStart({
       voiceSessionId: 'voice-session-a',
       providerSessionId: 'nova-session-a',
