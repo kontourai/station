@@ -162,7 +162,7 @@ describe('systemd service backend', () => {
     expect(manifest.unitName).not.toContain('dogfood');
     expect(unit).toContain('Restart=always');
     expect(unit).toContain('RestartSec=5');
-    expect(unit).toContain('TimeoutStopSec=150');
+    expect(unit).toContain('TimeoutStopSec=165');
     expect(unit).toContain('KillMode=mixed');
     expect(unit).toContain('NoNewPrivileges=true');
     expect(unit).toContain('PrivateTmp=true');

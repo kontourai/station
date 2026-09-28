@@ -27,13 +27,14 @@
 // detached, the home snapshot is Station's store registry (run with the
 // version's own code), and update requests arrive from the server as a file
 // the child picks up, since the server has no channel to this process.
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
   chmodSync,
   closeSync,
   existsSync,
   fsyncSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -48,7 +49,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const LAUNCHER_PROTOCOL = 1;
@@ -76,6 +77,15 @@ export const DEFAULT_TIMINGS = Object.freeze({
 // Exported for service-launcher.test.ts, which pins the production values.
 // fallow-ignore-next-line unused-export
 export const MAX_TRIAL_ATTEMPTS = 2;
+/**
+ * Restores of one rollback before the launcher stops retrying on its own
+ * (#2675 D review F4). Each failed restore exits the launcher and its service
+ * manager starts it again; after this many the update is `needs-operator`
+ * and the launcher waits, serving nothing, until someone restarts it.
+ */
+// Exported for service-launcher.test.ts, which pins the production values.
+// fallow-ignore-next-line unused-export
+export const MAX_RESTORE_ATTEMPTS = 3;
 
 const VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+-]*$/;
 
@@ -205,7 +215,11 @@ function validUpdate(update, activeVersion) {
       ['stopping', 'backing-up', 'trial', 'restoring'].includes(update.phase)
     );
   if (status === 'committed') return targetVersion === activeVersion;
-  if (status === 'rolled-back' || status === 'failed')
+  if (
+    status === 'rolled-back' ||
+    status === 'failed' ||
+    status === 'needs-operator'
+  )
     return fromVersion === activeVersion;
   return false;
 }
@@ -295,34 +309,240 @@ function pointCurrentAt(installRoot, version) {
   fsyncDirectory(installRoot);
 }
 
-// --- the O_EXCL state lock --------------------------------------------------
+// --- process identity -------------------------------------------------------
 
-function processAlive(pid) {
+const BIRTH_PROBE_TIMEOUT_MS = 1_500;
+const WINDOWS_OWN_BIRTH_TIMEOUT_MS = 10_000;
+
+/**
+ * A process's start time, as packages/shared/src/process-identity.mjs's
+ * `lookupProcessBirthFingerprint` spells it (same probes, same output, so a
+ * birth either one records reads the same; service-launcher.test.ts pins the
+ * two against each other). Ported, not imported: this file runs from
+ * `<install root>/runtime/` with nothing of any Station version beside it.
+ * Null when it cannot be read, which proves nothing.
+ */
+// Exported for service-launcher.test.ts (the parity pin) and install.sh.
+// fallow-ignore-next-line unused-export
+export function processBirth(pid, timeoutMs = BIRTH_PROBE_TIMEOUT_MS) {
+  try {
+    if (process.platform === 'linux') {
+      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8').trim();
+      const commandEnd = stat.lastIndexOf(')');
+      if (commandEnd < 2) return null;
+      const startTime = stat
+        .slice(commandEnd + 1)
+        .trim()
+        .split(/\s+/)[19];
+      const bootId = readFileSync(
+        '/proc/sys/kernel/random/boot_id',
+        'utf8',
+      ).trim();
+      if (!/^\d+$/.test(startTime ?? '') || !bootId) return null;
+      return `linux:${bootId}:${startTime}`;
+    }
+    if (process.platform === 'win32') {
+      const systemRoot =
+        process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows';
+      if (!win32.isAbsolute(systemRoot) || systemRoot.startsWith('\\\\'))
+        return null;
+      const output = execFileSync(
+        win32.join(
+          win32.normalize(systemRoot),
+          'System32',
+          'WindowsPowerShell',
+          'v1.0',
+          'powershell.exe',
+        ),
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          [
+            `$process = [System.Diagnostics.Process]::GetProcessById(${Number(pid)})`,
+            'try { $created = $process.StartTime.ToUniversalTime() } finally { $process.Dispose() }',
+            '$ticks = $created.Ticks - ($created.Ticks % 10)',
+            '$normalized = [datetime]::new([long]$ticks, [System.DateTimeKind]::Utc)',
+            "$normalized.ToString('yyyy-MM-ddTHH:mm:ss.fffffffZ', [System.Globalization.CultureInfo]::InvariantCulture)",
+          ].join('; '),
+        ],
+        {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+          windowsHide: true,
+          timeout: timeoutMs,
+          killSignal: 'SIGKILL',
+        },
+      ).trim();
+      return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$/.test(output)
+        ? output
+        : null;
+    }
+    return (
+      execFileSync('ps', ['-o', 'lstart=', '-p', String(pid)], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
+        timeout: timeoutMs,
+        killSignal: 'SIGKILL',
+        // The start time must not depend on who asks (locale, zone).
+        env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+      }).trim() || null
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** This process's own start time; it is certainly alive, so retried. */
+function ownBirth() {
+  const timeout =
+    process.platform === 'win32'
+      ? WINDOWS_OWN_BIRTH_TIMEOUT_MS
+      : BIRTH_PROBE_TIMEOUT_MS;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const birth = processBirth(process.pid, timeout);
+    if (birth) return birth;
+  }
+  return null;
+}
+
+/** Only ESRCH proves a process is gone; EPERM is a live process. */
+function processState(pid) {
   try {
     process.kill(pid, 0);
-    return true;
+    return 'alive';
   } catch (error) {
-    return error?.code === 'EPERM';
+    if (error?.code === 'ESRCH') return 'dead';
+    return error?.code === 'EPERM' ? 'alive' : 'unknown';
+  }
+}
+
+// --- the state lock ----------------------------------------------------------
+
+/** How long an unreadable lock is left alone before it counts as stale. */
+const UNREADABLE_LOCK_GRACE_MS = 10_000;
+
+/**
+ * Whether a lock's text names a holder that may still hold it. A holder is
+ * its pid AND that process's start time (#2675 D review F2): the lock sits
+ * in the install root, so it outlives a reboot, and a pid alone is reused
+ * (in a container the launcher is often pid 1 on every boot). A lock is
+ * stale when its pid is gone or now belongs to a process born at another
+ * time; a live pid whose start time cannot be read keeps the lock (nothing
+ * proves it stale). A lock that is not one this launcher writes was left by
+ * something else and is stale once it is old enough not to be mid-write.
+ */
+function lockHolder(text, modifiedMs) {
+  let holder;
+  try {
+    holder = JSON.parse(text);
+  } catch {
+    holder = null;
+  }
+  if (
+    !holder ||
+    !Number.isInteger(holder.pid) ||
+    holder.pid < 1 ||
+    typeof holder.birth !== 'string' ||
+    holder.birth === '' ||
+    typeof holder.token !== 'string'
+  )
+    return {
+      held: Date.now() - modifiedMs < UNREADABLE_LOCK_GRACE_MS,
+      pid: null,
+    };
+  const state = processState(holder.pid);
+  if (state === 'dead') return { held: false, pid: holder.pid };
+  if (state === 'unknown') return { held: true, pid: holder.pid };
+  const birth = processBirth(holder.pid);
+  return { held: birth === null || birth === holder.birth, pid: holder.pid };
+}
+
+/**
+ * Removes a lock judged stale ONLY if it is still the lock that was judged:
+ * it is moved aside, and put back if its text changed meanwhile (another
+ * launcher reclaimed it and took it first). Without this, two launchers
+ * that both judged one stale lock would each delete it, the second deleting
+ * the first's fresh lock, and both would run. Residual: a third launcher
+ * that takes the lock while it is moved aside wins, and the one moved aside
+ * is lost; that takes three launchers racing on one install root.
+ */
+// Exported for service-launcher.test.ts, which proves the guard.
+// fallow-ignore-next-line unused-export
+export function reclaimStaleLock(lock, judged) {
+  const aside = `${lock}.stale.${process.pid}.${randomUUID()}`;
+  try {
+    renameSync(lock, aside);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return;
+    throw error;
+  }
+  try {
+    let moved = null;
+    try {
+      moved = readFileSync(aside, 'utf8');
+    } catch {
+      // Unreadable once moved: treated as changed, so it goes back.
+    }
+    if (moved === judged) return;
+    try {
+      linkSync(aside, lock);
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+    }
+  } finally {
+    rmSync(aside, { force: true });
+  }
+}
+
+/** Publishes the full lock record at once where hard links exist. */
+function createLock(lock, record) {
+  const staged = `${lock}.${process.pid}.${randomUUID()}.tmp`;
+  const fd = openSync(staged, 'wx', 0o600);
+  try {
+    writeFileSync(fd, record);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  try {
+    linkSync(staged, lock);
+    return;
+  } catch (error) {
+    if (error?.code === 'EEXIST') throw error;
+    // No hard links on this volume: an exclusive create, briefly empty,
+    // which the unreadable-lock grace covers.
+  } finally {
+    rmSync(staged, { force: true });
+  }
+  const fd2 = openSync(lock, 'wx', 0o600);
+  try {
+    writeFileSync(fd2, record);
+    fsyncSync(fd2);
+  } finally {
+    closeSync(fd2);
   }
 }
 
 /**
- * One launcher per install root. The lock names its holder; a lock whose
- * holder is gone (a killed launcher) is taken over, anything else refuses.
+ * One launcher per install root; install.sh takes the same lock to record
+ * a version (recordServiceActiveVersion). Throws when a live holder has it.
  */
 function acquireStateLock(installRoot) {
   const { runtime, lock } = statePaths(installRoot);
   mkdirSync(runtime, { recursive: true, mode: 0o700 });
+  const birth = ownBirth();
+  if (!birth)
+    throw new Error(
+      `cannot read this process's start time, which the launcher lock ${lock} records`,
+    );
   const token = randomUUID();
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  const record = `${JSON.stringify({ pid: process.pid, birth, token })}\n`;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const fd = openSync(lock, 'wx', 0o600);
-      try {
-        writeFileSync(fd, `${JSON.stringify({ pid: process.pid, token })}\n`);
-        fsyncSync(fd);
-      } finally {
-        closeSync(fd);
-      }
+      createLock(lock, record);
+      fsyncDirectory(runtime);
       return () => {
         try {
           if (JSON.parse(readFileSync(lock, 'utf8')).token === token)
@@ -333,25 +553,55 @@ function acquireStateLock(installRoot) {
       };
     } catch (error) {
       if (error?.code !== 'EEXIST') throw error;
-      let holder;
-      try {
-        holder = JSON.parse(readFileSync(lock, 'utf8'));
-      } catch {
-        holder = null;
-      }
-      if (
-        holder &&
-        Number.isInteger(holder.pid) &&
-        holder.pid !== process.pid &&
-        processAlive(holder.pid)
-      )
-        throw new Error(
-          `another Station launcher (pid ${holder.pid}) owns ${installRoot}`,
-        );
-      rmSync(lock, { force: true });
     }
+    let text;
+    let modifiedMs;
+    try {
+      text = readFileSync(lock, 'utf8');
+      modifiedMs = statSync(lock).mtimeMs;
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue;
+      throw error;
+    }
+    const holder = lockHolder(text, modifiedMs);
+    if (holder.held)
+      throw new Error(
+        holder.pid === null
+          ? `the Station launcher lock ${lock} is being written; retry`
+          : `another Station launcher (pid ${holder.pid}) owns ${installRoot}`,
+      );
+    reclaimStaleLock(lock, text);
   }
   throw new Error(`could not take the Station launcher lock ${lock}`);
+}
+
+/**
+ * install.sh's switch of a stopped launcher service (#2675 D review F9):
+ * records `version` as the one the service runs, under the launcher's own
+ * lock, and only when no update is unfinished. Throws otherwise, and a
+ * running launcher (which holds the lock) refuses it.
+ */
+// fallow-ignore-next-line unused-export
+export function recordServiceActiveVersion(installRoot, version) {
+  if (!VERSION_PATTERN.test(version))
+    throw new Error(`invalid version: ${version}`);
+  const release = acquireStateLock(installRoot);
+  try {
+    const status = readServiceState(installRoot)?.update?.status;
+    if (status === 'pending' || status === 'needs-operator')
+      throw Object.assign(
+        new Error(
+          `a supervised Station update is unfinished in ${installRoot}`,
+        ),
+        { code: 'STATION_UPDATE_UNFINISHED' },
+      );
+    writeServiceState(installRoot, {
+      protocol: LAUNCHER_PROTOCOL,
+      activeVersion: version,
+    });
+  } finally {
+    release();
+  }
 }
 
 // --- the launcher -----------------------------------------------------------
@@ -386,6 +636,7 @@ class Launcher {
     this.child = null;
     this.timer = undefined;
     this.queue = Promise.resolve();
+    this.stopWaiters = new Set();
     this.stopping = false;
     this.done = false;
     this.completion = new Promise((resolve, reject) => {
@@ -415,6 +666,7 @@ class Launcher {
     this.done = true;
     this.stopping = true;
     clearTimeout(this.timer);
+    clearInterval(this.idle);
     const child = this.child;
     this.child = null;
     if (child) await this.terminate(child);
@@ -425,6 +677,11 @@ class Launcher {
     if (this.stopping) return;
     this.stopping = true;
     clearTimeout(this.timer);
+    clearInterval(this.idle);
+    // A transition waiting on something (the liveness handoff) stops waiting,
+    // so a stop always fits the service manager's stop timeout.
+    for (const wake of this.stopWaiters) wake();
+    this.stopWaiters.clear();
     this.enqueue(async () => {
       const child = this.child;
       this.child = null;
@@ -570,6 +827,28 @@ class Launcher {
     }
     this.state = state;
     const update = state.update;
+    this.sweepBackups(
+      update?.status === 'pending' || update?.status === 'needs-operator'
+        ? update.id
+        : null,
+    );
+    if (update?.status === 'needs-operator') {
+      // Each start is one more try, the operator's way to retry once the
+      // cause is fixed: no restore runs on its own after the last attempt.
+      this.ownStop(update.fromVersion);
+      this.ownStop(update.targetVersion);
+      const { finishedAt: _finishedAt, ...unfinished } = update;
+      await this.rollBack(
+        {
+          ...unfinished,
+          status: 'pending',
+          phase: 'restoring',
+          restoreAttempts: MAX_RESTORE_ATTEMPTS - 1,
+        },
+        update.reason ?? 'rollback-interrupted',
+      );
+      return;
+    }
     if (update?.status === 'pending') {
       // A launcher that died mid-update may have left the old or the trial
       // version's detached server behind (launchd does not kill it); stop
@@ -592,6 +871,32 @@ class Launcher {
     return join(statePaths(this.installRoot).backups, update.id);
   }
 
+  /**
+   * Removes everything in update-backups but the unfinished update's backup
+   * (#2675 D review F6): a backup's staging copy
+   * (`.<id>.<pid>.<uuid>.tmp`) that a killed launcher or a service manager's
+   * SIGKILL left mid-copy, and backups no update names any more. Only the
+   * launcher, which holds the lock, and its update-home child write there,
+   * and neither runs yet.
+   */
+  sweepBackups(keep) {
+    const { backups } = statePaths(this.installRoot);
+    let names;
+    try {
+      names = readdirSync(backups);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      if (name === keep) continue;
+      try {
+        rmSync(join(backups, name), { recursive: true, force: true });
+      } catch (error) {
+        log(`could not remove ${join(backups, name)}: ${error.message}`);
+      }
+    }
+  }
+
   async continueUpdate(update) {
     if (update.phase === 'restoring') {
       await this.rollBack(update, update.reason ?? 'rollback-interrupted');
@@ -603,6 +908,12 @@ class Launcher {
     }
     if (update.attempts >= MAX_TRIAL_ATTEMPTS) {
       await this.rollBack(update, 'trial-attempts-exhausted');
+      return;
+    }
+    // A trial ran, so the home may hold its writes, and the backup that
+    // would undo them is gone: never snapshot that home as the old state.
+    if (update.attempts > 0 && !existsSync(this.backupDir(update))) {
+      await this.rollBack(update, 'backup-missing');
       return;
     }
     if (update.phase === 'stopping') {
@@ -701,15 +1012,21 @@ class Launcher {
     // before it stops, so for the whole window a desktop app sees a live
     // service that owns the home and does not start a second writer.
     const acknowledged = new Promise((resolve) => {
+      let timer;
+      const finish = (value) => {
+        clearTimeout(timer);
+        managed.process.off('message', onAck);
+        this.stopWaiters.delete(wake);
+        resolve(value);
+      };
       const onAck = (reply) => {
         if (reply?.type === 'handoff-ready' && reply.updateId === update.id)
-          resolve(true);
+          finish(true);
       };
+      const wake = () => finish(false);
       managed.process.on('message', onAck);
-      setTimeout(() => {
-        managed.process.off('message', onAck);
-        resolve(false);
-      }, this.timings.handoffAckMs);
+      this.stopWaiters.add(wake);
+      timer = setTimeout(wake, this.timings.handoffAckMs);
     });
     this.send(managed, {
       type: 'update-accepted',
@@ -799,6 +1116,10 @@ class Launcher {
    * again. The `restoring` phase is durable before the home is touched, so a
    * launcher killed mid-restore restores again rather than booting a half
    * restored home.
+   *
+   * A restore that fails exits the launcher (its service manager starts it
+   * again, and the next start retries); each try is counted, and after
+   * MAX_RESTORE_ATTEMPTS the update is `needs-operator` (#2675 D review F4).
    */
   async rollBack(update, reason, trial) {
     clearTimeout(this.timer);
@@ -808,29 +1129,55 @@ class Launcher {
     }
     if (this.stopping) return;
     const backupDir = this.backupDir(update);
-    const restoring = { ...update, phase: 'restoring', reason };
-    this.persist({ ...this.state, update: restoring }, 'restoring');
-    if (existsSync(backupDir)) {
-      // A failed restore leaves the update pending in `restoring` and the
-      // launcher exits: the old version never starts on a home the trial may
-      // have changed, and the next start retries.
-      this.runVersionCommand(update.fromVersion, [
-        'service',
-        'update-home',
-        'restore',
-        `--backup-dir=${backupDir}`,
-        `--base=${this.home}`,
-      ]);
+    if (!existsSync(backupDir)) {
+      // Before any trial, nothing ran on this home since the old version
+      // stopped: there is nothing to restore. After one, there is, and
+      // nothing to restore it from (#2675 D review F7): the old version
+      // starts on the home as it is, and the update is recorded as failed.
+      this.finishRollback(
+        update,
+        update.attempts > 0 ? 'backup-missing' : reason,
+      );
+      return;
     }
+    const restoreAttempts = update.restoreAttempts ?? 0;
+    if (restoreAttempts >= MAX_RESTORE_ATTEMPTS) {
+      this.needsOperator(update, reason, restoreAttempts);
+      return;
+    }
+    const restoring = {
+      ...update,
+      phase: 'restoring',
+      reason,
+      restoreAttempts: restoreAttempts + 1,
+    };
+    this.persist({ ...this.state, update: restoring }, 'restoring');
+    // A failure throws: the old version never starts on a home the trial
+    // may have changed, and the launcher exits for the next start to retry.
+    this.runVersionCommand(update.fromVersion, [
+      'service',
+      'update-home',
+      'restore',
+      `--backup-dir=${backupDir}`,
+      `--base=${this.home}`,
+    ]);
+    this.finishRollback(update, reason);
+  }
+
+  finishRollback(update, reason) {
+    const backupDir = this.backupDir(update);
     const finished = {
       id: update.id,
       fromVersion: update.fromVersion,
       targetVersion: update.targetVersion,
       ...(update.requestId ? { requestId: update.requestId } : {}),
-      status:
-        reason === 'backup-failed' || reason === 'target-runtime-missing'
-          ? 'failed'
-          : 'rolled-back',
+      status: [
+        'backup-failed',
+        'target-runtime-missing',
+        'backup-missing',
+      ].includes(reason)
+        ? 'failed'
+        : 'rolled-back',
       reason,
       attempts: update.attempts,
       finishedAt: new Date().toISOString(),
@@ -843,6 +1190,34 @@ class Launcher {
     pointCurrentAt(this.installRoot, update.fromVersion);
     log(`update to ${update.targetVersion} ${finished.status}: ${reason}`);
     this.startChild(update.fromVersion, 'active');
+  }
+
+  /**
+   * Restores keep failing: the launcher stops retrying and waits, running no
+   * version, so its service manager does not restart it in a loop and no
+   * Station starts on a half-restored home. The backup is kept. Recovery:
+   * fix the cause, then stop and start the service, and it tries once more.
+   */
+  needsOperator(update, reason, restoreAttempts) {
+    const next = {
+      id: update.id,
+      fromVersion: update.fromVersion,
+      targetVersion: update.targetVersion,
+      ...(update.requestId ? { requestId: update.requestId } : {}),
+      status: 'needs-operator',
+      reason,
+      attempts: update.attempts,
+      restoreAttempts,
+      finishedAt: new Date().toISOString(),
+    };
+    this.persist({ ...this.state, update: next }, 'needs-operator');
+    // Nothing else keeps this process alive; it waits for its stop.
+    this.idle = setInterval(() => undefined, 60 * 60_000);
+    log(
+      `could not restore ${this.home} after ${restoreAttempts} attempts to roll back the update to ${update.targetVersion} (${reason}); ` +
+        `its backup is kept at ${this.backupDir(update)}. Station stays stopped. ` +
+        `Fix the cause shown above, then retry the restore with: station service stop --instance=${this.instance} && station service start --instance=${this.instance}`,
+    );
   }
 
   /** Keeps the active version and its rollback target; best effort. */

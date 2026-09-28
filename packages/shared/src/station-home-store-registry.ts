@@ -18,6 +18,15 @@
  *   manifests and the liveness entry the update window re-points to the
  *   launcher (instances.json) must stay exactly as they are, and logs are the
  *   record of what the failed trial did.
+ * - `external`: content kept in the home whose format no Station version
+ *   owns, so no trial can migrate it: the default project directories under
+ *   `workspaces/` (users' repositories, with their `node_modules` and its
+ *   symbolic links). Excluded from update rollback: neither snapshotted nor
+ *   restored, and left in place, exactly as the trial left it. Rolling it
+ *   back would only discard work done during the trial window, and copying
+ *   it made every update backup as large as the user's code (#2675 D
+ *   review). Nested external paths (`STATION_HOME_EXTERNAL_PATHS`) extend
+ *   this below a `state` root.
  *
  * An entry this registry does not name is treated as `state` (backed up and
  * restored), the data-safe default; the completeness test in
@@ -27,7 +36,7 @@
  * The same `live` set is what `station home backup` leaves out, so the two
  * backups cannot disagree about what is product data.
  */
-export type StationHomeRootClass = 'state' | 'live';
+export type StationHomeRootClass = 'state' | 'live' | 'external';
 
 export const STATION_HOME_ROOTS: Readonly<
   Record<string, StationHomeRootClass>
@@ -91,7 +100,9 @@ export const STATION_HOME_ROOTS: Readonly<
   vectordb: 'state',
   workflows: 'state',
   'workspace-home-role.json': 'state',
-  workspaces: 'state',
+
+  // Default project directories: users' repositories (project-service.ts).
+  workspaces: 'external',
 
   'instances.json': 'live',
   logs: 'live',
@@ -127,6 +138,58 @@ export function classifyStationHomeRoot(
 /** Top-level entries a backup leaves out and a rollback leaves alone. */
 export function isLiveStationHomeRoot(name: string): boolean {
   return classifyStationHomeRoot(name) === 'live';
+}
+
+/**
+ * Every path, in segments, that an update neither snapshots nor rolls back
+ * (the `external` class). Beyond the external top-level roots, parts of a
+ * `state` root whose bytes belong to another program:
+ *
+ * - `browser/chromium`: the Chromium build Station downloads
+ *   (chromium-acquisition.ts), a large cache any version can fetch again.
+ * - `browser/profiles`: Chromium's own profile directories
+ *   (browser-session-registry.ts), in Chromium's format, which hold its
+ *   `Singleton*` symbolic links and can grow to gigabytes.
+ *
+ * The rest of `browser/` (sessions.json, local-targets.json,
+ * project-settings.json) is Station's and stays `state`.
+ */
+export const STATION_HOME_EXTERNAL_PATHS: readonly (readonly string[])[] =
+  Object.freeze([
+    ...Object.entries(STATION_HOME_ROOTS)
+      .filter(([, value]) => value === 'external')
+      .map(([name]) => Object.freeze([name])),
+    Object.freeze(['browser', 'chromium']),
+    Object.freeze(['browser', 'profiles']),
+  ]);
+
+function startsWith(
+  segments: readonly string[],
+  prefix: readonly string[],
+): boolean {
+  return (
+    prefix.length <= segments.length &&
+    prefix.every((segment, index) => segments[index] === segment)
+  );
+}
+
+/** Whether a home path is, or is inside, an `external` path. */
+export function isExternalStationHomePath(
+  segments: readonly string[],
+): boolean {
+  return STATION_HOME_EXTERNAL_PATHS.some((external) =>
+    startsWith(segments, external),
+  );
+}
+
+/** Whether a home directory holds an `external` path somewhere below it. */
+export function containsExternalStationHomePath(
+  segments: readonly string[],
+): boolean {
+  return STATION_HOME_EXTERNAL_PATHS.some(
+    (external) =>
+      external.length > segments.length && startsWith(external, segments),
+  );
 }
 
 /**

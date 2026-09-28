@@ -41,7 +41,12 @@ export const LAUNCHER_STOP_BUDGET_MS = 65_000 + 10_000 + 60_000;
 /**
  * A service manager must wait out the longest stop before it kills the unit:
  * systemd's KillMode=mixed SIGKILLs the whole cgroup, children included,
- * when TimeoutStopSec expires. The margin covers the launcher's own exit.
+ * when TimeoutStopSec expires. The margin covers the launcher's own exit and
+ * the transition a stop waits behind (#2675 D review F6: a stop during the
+ * liveness handoff ends that wait at once, so it adds nothing, but a margin
+ * of exactly the handoff's 15 s left no room at all when it did). A stop
+ * that lands during a home backup or restore waits for it, and SIGKILL
+ * interrupts it: both are idempotent, and the next start sweeps the copy.
  * (launchd's ExitTimeOut is already 600 s; Task Scheduler's /End only ends
  * the cmd wrapper, and `service stop` stops the Station children by record
  * there.)
@@ -49,7 +54,7 @@ export const LAUNCHER_STOP_BUDGET_MS = 65_000 + 10_000 + 60_000;
 export const SYSTEMD_STOP_TIMEOUT_SECONDS =
   Math.ceil(
     Math.max(SERVICE_SHUTDOWN_DEADLINE_MS, LAUNCHER_STOP_BUDGET_MS) / 1_000,
-  ) + 15;
+  ) + 30;
 
 export interface ServiceCodeLocation {
   /** Absent in manifests written before slice C, which were all `source`. */

@@ -1,10 +1,13 @@
 import { createHash } from 'node:crypto';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -12,8 +15,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
+  createStationHomeBackup,
   createStationHomeUpdateBackup,
   restoreStationHomeUpdateBackup,
+  STATION_HOME_BACKUP_MANIFEST,
+  STATION_HOME_UPDATE_BACKUP_SCHEMA,
   StationHomeArchiveError,
 } from '../station-home-archive.js';
 import { acquireStationHomeRuntimeLease } from '../station-home-lifecycle.js';
@@ -274,5 +280,198 @@ describe('update backup and in-place restore (#2675 D)', () => {
       restored.prepare('SELECT count(*) AS count FROM chunks').get(),
     ).toEqual({ count: 500 });
     restored.close();
+  });
+});
+
+/**
+ * A home in the shape real use leaves it (#2675 D review F1): a default
+ * project directory holding a repository with `node_modules/.bin` links, a
+ * plugin whose selection alias is an absolute link into its generations, a
+ * plugin draft linked to a package outside the home, and a browser root
+ * whose Chromium profiles are large and hold Chromium's dangling
+ * `SingletonLock` link.
+ */
+function realisticHome() {
+  const fixture = serviceHome();
+  const { home } = fixture;
+  const repo = join(home, 'workspaces', 'my-app');
+  mkdirSync(join(repo, 'node_modules', 'pkg'), { recursive: true });
+  mkdirSync(join(repo, 'node_modules', '.bin'));
+  writeFileSync(join(repo, 'package.json'), '{"name":"my-app"}\n');
+  writeFileSync(join(repo, 'node_modules', 'pkg', 'cli.js'), 'run()\n');
+  symlinkSync('../pkg/cli.js', join(repo, 'node_modules', '.bin', 'pkg'));
+
+  const generation = join(home, 'plugins', '.generations', 'k1', 'g1');
+  mkdirSync(join(generation, 'package'), { recursive: true });
+  writeFileSync(join(generation, 'package', 'index.js'), 'export {}\n');
+  const alias = join(home, 'plugins', 'demo');
+  symlinkSync(join(generation, 'package'), alias, 'dir');
+  const outside = join(fixture.root, 'installs', 'versions', '1.0.0', 'shared');
+  mkdirSync(outside, { recursive: true });
+  const draftLink = join(
+    home,
+    'plugins',
+    'draft',
+    'node_modules',
+    '@kontourai',
+    'station-shared',
+  );
+  mkdirSync(join(draftLink, '..'), { recursive: true });
+  symlinkSync(outside, draftLink, 'dir');
+
+  mkdirSync(join(home, 'browser', 'chromium'), { recursive: true });
+  writeFileSync(join(home, 'browser', 'chromium', 'chrome'), 'binary\n');
+  writeFileSync(join(home, 'browser', 'sessions.json'), '{"sessions":1}\n');
+  const profile = join(home, 'browser', 'profiles', 'p1', 'q1');
+  mkdirSync(join(profile, 'Cache'), { recursive: true });
+  for (let index = 0; index < 300; index += 1)
+    writeFileSync(join(profile, 'Cache', `f_${index}`), `${index}\n`);
+  symlinkSync('host-12345', join(profile, 'SingletonLock'));
+  return { ...fixture, repo, alias, draftLink, outside, profile, generation };
+}
+
+describe('update backup of a realistic home (#2675 D review F1)', () => {
+  it('records links as links, leaves external paths out, and stays inside a small file budget', () => {
+    const fixture = realisticHome();
+    mkdirSync(join(fixture.root, 'update-backups'));
+    // A home backup still refuses a link, as before.
+    expect(() =>
+      createStationHomeBackup({
+        homeDir: fixture.home,
+        outputDir: join(fixture.root, 'home-backup'),
+      }),
+    ).toThrow(/symbolic link/);
+    const { manifest } = createStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+      // The profile alone holds 300 files: excluded, it cannot count.
+      maxFiles: 50,
+    });
+    expect(manifest.schemaVersion).toBe(STATION_HOME_UPDATE_BACKUP_SCHEMA);
+    const files = manifest.files.map((file) => file.path.join('/'));
+    expect(files).toContain('browser/sessions.json');
+    expect(files).toContain('plugins/.generations/k1/g1/package/index.js');
+    for (const file of files) {
+      expect(file.startsWith('workspaces/')).toBe(false);
+      expect(file.startsWith('browser/profiles/')).toBe(false);
+      expect(file.startsWith('browser/chromium/')).toBe(false);
+    }
+    expect(
+      manifest.symlinks?.map((link) => [link.path.join('/'), link.target]),
+    ).toEqual([
+      ['plugins/demo', join(fixture.generation, 'package')],
+      ['plugins/draft/node_modules/@kontourai/station-shared', fixture.outside],
+    ]);
+    // Never followed: the backup's copy holds no link and nothing of the
+    // package outside the home (the draft holds only its link).
+    const copied = join(fixture.backupDir, 'home', 'plugins');
+    expect(readdirSync(copied)).toEqual(['.generations']);
+  });
+
+  it('a rollback restores links as links and leaves users repositories and the browser profiles as the trial left them', () => {
+    const fixture = realisticHome();
+    mkdirSync(join(fixture.root, 'update-backups'));
+    createStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+    // The trial: re-points the plugin alias, drops the draft link, rewrites
+    // Station's browser state; the user keeps working in the repository and
+    // Chromium keeps writing its profile.
+    rmSync(fixture.alias);
+    symlinkSync(join(fixture.home, 'plugins'), fixture.alias, 'dir');
+    rmSync(fixture.draftLink);
+    writeFileSync(join(fixture.home, 'plugins', 'trial.json'), '{}\n');
+    writeFileSync(
+      join(fixture.home, 'browser', 'sessions.json'),
+      '{"sessions":"trial"}\n',
+    );
+    writeFileSync(join(fixture.repo, 'written-during-trial.ts'), 'x\n');
+    writeFileSync(join(fixture.profile, 'Cookies'), 'trial\n');
+
+    restoreStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+
+    expect(lstatSync(fixture.alias).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(fixture.alias)).toBe(
+      join(fixture.generation, 'package'),
+    );
+    expect(lstatSync(fixture.draftLink).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(fixture.draftLink)).toBe(fixture.outside);
+    expect(existsSync(join(fixture.home, 'plugins', 'trial.json'))).toBe(false);
+    expect(
+      readFileSync(join(fixture.home, 'browser', 'sessions.json'), 'utf8'),
+    ).toBe('{"sessions":1}\n');
+    // External: exactly as the trial window left it, links included.
+    expect(
+      readFileSync(join(fixture.repo, 'written-during-trial.ts'), 'utf8'),
+    ).toBe('x\n');
+    expect(
+      readlinkSync(join(fixture.repo, 'node_modules', '.bin', 'pkg')),
+    ).toBe('../pkg/cli.js');
+    expect(readFileSync(join(fixture.profile, 'Cookies'), 'utf8')).toBe(
+      'trial\n',
+    );
+    expect(readlinkSync(join(fixture.profile, 'SingletonLock'))).toBe(
+      'host-12345',
+    );
+    expect(
+      readFileSync(join(fixture.home, 'browser', 'chromium', 'chrome'), 'utf8'),
+    ).toBe('binary\n');
+  });
+
+  it('refuses a manifest whose link would land outside the home', () => {
+    const fixture = realisticHome();
+    mkdirSync(join(fixture.root, 'update-backups'));
+    createStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+    const manifestPath = join(fixture.backupDir, STATION_HOME_BACKUP_MANIFEST);
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    manifest.symlinks.push({
+      path: ['..', 'escaped'],
+      target: '/etc',
+      directory: true,
+    });
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    expect(() =>
+      restoreStationHomeUpdateBackup({
+        homeDir: fixture.home,
+        backupDir: fixture.backupDir,
+      }),
+    ).toThrow(/unsafe path segment/);
+    expect(existsSync(join(fixture.root, 'escaped'))).toBe(false);
+    // Nothing was removed before the manifest was refused.
+    expect(lstatSync(fixture.alias).isSymbolicLink()).toBe(true);
+  });
+
+  it('reusing an existing backup takes the maintenance lease too (F3)', () => {
+    const fixture = serviceHome();
+    mkdirSync(join(fixture.root, 'update-backups'));
+    createStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+    // A desktop sidecar started on the home while the launcher was down.
+    const lease = acquireStationHomeRuntimeLease(fixture.home);
+    try {
+      expect(() =>
+        createStationHomeUpdateBackup({
+          homeDir: fixture.home,
+          backupDir: fixture.backupDir,
+        }),
+      ).toThrow(/inactive/);
+    } finally {
+      lease.release();
+    }
+    expect(
+      createStationHomeUpdateBackup({
+        homeDir: fixture.home,
+        backupDir: fixture.backupDir,
+      }).reused,
+    ).toBe(true);
   });
 });

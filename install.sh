@@ -1730,18 +1730,27 @@ hand_off_to_launcher() {
 
 # After this install switched `current` for a launcher-run service that is
 # not running, its launcher state must name the same version, or the next
-# start would move `current` back (#2675 slice D).
+# start would move `current` back (#2675 slice D). Written by the service's
+# own fixed launcher code, under its lock, and refused when an update became
+# unfinished since the check above (a registered unit that started on its
+# own meanwhile): one writer, one lock, one staleness rule (#2675 D review F9).
 record_launcher_active_version() {
   [ "$release_kind" = archive ] && [ -f "$launcher_state" ] || return 0
-  node -e '
-    const fs = require("node:fs");
-    const path = require("node:path");
-    const [file, version] = process.argv.slice(1);
-    const stage = path.join(path.dirname(file), `.service-state.json.${process.pid}.tmp`);
-    fs.writeFileSync(stage, `${JSON.stringify({ protocol: 1, activeVersion: version }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
-    const fd = fs.openSync(stage, "r"); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-    fs.renameSync(stage, file);
-  ' "$launcher_state" "$release_version"
+  # Through the environment, not argv: the launcher runs itself as a program
+  # when argv[1] names it, which `node -e <script> <launcher>` would.
+  STATION_RECORD_LAUNCHER="$install_root/runtime/station-launcher.mjs" \
+  STATION_RECORD_ROOT="$install_root" STATION_RECORD_VERSION="$release_version" \
+  node --input-type=module -e '
+    import { pathToFileURL } from "node:url";
+    const { STATION_RECORD_LAUNCHER: launcher, STATION_RECORD_ROOT: root, STATION_RECORD_VERSION: version } = process.env;
+    const { recordServiceActiveVersion } = await import(pathToFileURL(launcher).href);
+    try {
+      recordServiceActiveVersion(root, version);
+    } catch (error) {
+      console.error(error.message);
+      process.exit(1);
+    }
+  '
 }
 
 # Staging touches no service: the running version that asked for it keeps
@@ -1779,10 +1788,13 @@ if [ "$stage_only" = false ] && [ "$release_kind" = archive ] && [ -f "$launcher
     let state;
     try { state = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); } catch { process.exit(1); }
     if (state?.update?.status === "pending") process.exit(2);
+    if (state?.update?.status === "needs-operator") process.exit(3);
   ' "$launcher_state" || {
     launcher_state_status=$?
     [ "$launcher_state_status" = 2 ] && \
       fail "a supervised Station update is unfinished in $install_root; start the Station service to let its launcher finish or roll it back, then retry. Nothing was changed"
+    [ "$launcher_state_status" = 3 ] && \
+      fail "a supervised Station update could not be rolled back in $install_root: the Station service could not restore its home and is stopped (see its log). Fix the cause, then retry the restore with: station service stop --instance=<name> && station service start --instance=<name>; retry this install once the service runs. Nothing was changed"
     fail "the Station service launcher state is unreadable: $launcher_state; nothing was changed"
   }
   if [ -n "$active_services" ]; then

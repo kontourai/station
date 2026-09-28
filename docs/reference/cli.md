@@ -1700,7 +1700,7 @@ another port explicitly refuses rather than ignoring it. A registered unit
 that is not running (stopped, or waiting to be restarted after a crash) is
 stopped for the switch and left stopped, and the installer starts no separate
 Station beside it; `service start` starts it on the new version. Every unit
-sets `STATION_SERVICE_MANAGED=1`, and systemd waits 150 seconds
+sets `STATION_SERVICE_MANAGED=1`, and systemd waits 165 seconds
 (`TimeoutStopSec`) before it kills the unit: the launcher gives `service run`
 65 seconds to stop, then kills it and runs that version's own `station stop`.
 A unit installed by an earlier version keeps its shorter timeout until
@@ -1711,19 +1711,32 @@ records which version it runs. An update request
 (`runtime/update-request.json`) is staged by the running version with its own
 `install.sh` (`STATION_INSTALL_STAGE_ONLY=1`: downloaded, verified and sealed
 into `versions/<version>`, nothing else changed). The launcher then stops the
-running version, backs up the home once (every entry but the service
-manifests, `instances.json`, logs, monitoring, quarantine and `tmp`), and
-starts the new version as a trial. The trial has 240 seconds to prove its
+running version, backs up the home once, and starts the new version as a
+trial. The backup holds Station's own state: every entry but the service
+manifests, `instances.json`, logs, monitoring, quarantine and `tmp` (which the
+service owns), and but the default project directories under `workspaces/`
+and the browser's `browser/chromium` and `browser/profiles` (which no Station
+version migrates: an update neither copies nor rolls them back). Symbolic
+links in it are kept as links. The trial has 240 seconds to prove its
 identity; if it does, the update commits and `current` follows it. If it does
 not, the launcher restores the backup, including `.station-home-schema.json`,
 and restarts the previous version. A trial gets at most two attempts, and a
 launcher that is killed at any point finishes the same update when it starts
-again. Throughout, the service's registry entry names the launcher, so the
-desktop app keeps treating the home as owned by a live service.
+again. A restore that fails is retried up to three times (each failure
+restarts the unit); after that the update needs an operator: the launcher
+keeps the backup, starts no Station, and logs the error. Fix its cause, then
+run `station service stop --instance=<name>` and
+`station service start --instance=<name>`: each start tries the restore once
+more. While the launcher that accepted the update runs, the service's
+registry entry names it, so the desktop app keeps treating the home as owned
+by a live service; a launcher that restarted mid-update does not claim the
+entry again, so from then until a version publishes itself the entry names a
+process that has exited.
 `install.sh` (and so `station upgrade`) does not switch `current` under a
 running launcher service: it stages the version, asks the service to switch,
 and reports the outcome. It refuses to touch an install whose update is
-unfinished until the service has been started to finish it.
+unfinished until the service has been started to finish it, or one that needs
+an operator until the restore has succeeded.
 
 A client connected to such a server can start the same update: Settings →
 Connected Station server → **Check for server updates** fetches the signed

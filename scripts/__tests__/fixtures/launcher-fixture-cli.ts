@@ -104,6 +104,12 @@ async function serviceRun(): Promise<void> {
       onMessage: (listener) => process.on('message', listener),
       onDisconnect: (listener) => process.once('disconnect', listener),
       handOffLiveness: (launcherPid) => {
+        const block = Number(process.env.STATION_FIXTURE_HANDOFF_BLOCK_MS);
+        if (block > 0) {
+          // A supervisor too busy to confirm the handoff for a while.
+          log('handoff-blocked');
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, block);
+        }
         handOffServiceLivenessToLauncher(target, launcherPid);
         log(`handoff ${launcherPid}`);
       },
@@ -161,6 +167,10 @@ async function main(): Promise<void> {
         );
       }
     }
+    if (args[2] === 'restore' && process.env.STATION_FIXTURE_RESTORE_FAIL)
+      throw Object.assign(new Error('EACCES: permission denied, rmdir'), {
+        code: 'EACCES',
+      });
     runServiceUpdateHome(args.slice(2), home);
     return;
   }
