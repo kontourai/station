@@ -566,48 +566,43 @@ describe('Skill Routes', () => {
     expect(res.status).toBe(503);
   });
 
-  test('POST /local refuses a command word another root already owns', async () => {
-    const { app, skillService } = setup();
-    // A canonical package skill — unreachable by PUT, but it still owns /ship.
-    skillService.listSkills.mockReturnValue([
-      {
-        name: 'package-skill',
-        origin: 'package',
-        command: { enabled: true, name: 'ship' },
-      },
-    ]);
+  test.each([
+    {
+      refusal: 'a command word another root already owns',
+      // A canonical package skill — unreachable by PUT, but it still owns /ship.
+      skills: [
+        {
+          name: 'package-skill',
+          origin: 'package',
+          command: { enabled: true, name: 'ship' },
+        },
+      ],
+      input: { name: 'mine', command: { enabled: true, name: 'ship' } },
+      message: 'package-skill',
+    },
+    {
+      refusal: 'a skill name that derives no typable command',
+      skills: undefined,
+      input: { name: '🎉🎉', command: { enabled: true } },
+      message: 'no typable command word',
+    },
+  ])(
+    'POST /local refuses $refusal with 409 and the reason',
+    async ({ skills, input, message }) => {
+      const { app, skillService } = setup();
+      if (skills) skillService.listSkills.mockReturnValue(skills);
 
-    const res = await app.request('/local', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'mine',
-        body: 'Body',
-        command: { enabled: true, name: 'ship' },
-      }),
-    });
-    const body = await json(res);
+      const res = await app.request('/local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...input, body: 'Body' }),
+      });
+      const body = await json(res);
 
-    expect(res.status).toBe(409);
-    expect(body.error).toContain('package-skill');
-  });
-
-  test('POST /local refuses a skill name that derives no typable command', async () => {
-    const { app } = setup();
-    const res = await app.request('/local', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: '🎉🎉',
-        body: 'Body',
-        command: { enabled: true },
-      }),
-    });
-    const body = await json(res);
-
-    expect(res.status).toBe(409);
-    expect(body.error).toContain('no typable command word');
-  });
+      expect(res.status).toBe(409);
+      expect(body.error).toContain(message);
+    },
+  );
 
   test('POST /import refuses a file whose frontmatter claims a taken command', async () => {
     const { app, skillService } = setup();

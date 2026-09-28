@@ -72,6 +72,7 @@ import {
   getTenantRequestContext,
   tenantExecutionContextForRequest,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
+import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import {
@@ -144,9 +145,20 @@ import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
 import {
   fullAccessGrantForRequest,
+  fullAccessRefusalFor,
   refuseUngrantedFullAccess,
+  refuseUngrantedPick,
   requestedApprovalMode,
 } from './approval-authority.js';
+import {
+  foregroundDispatchTarget,
+  namesAnotherStation,
+  newSessionFacts,
+  refuseOutOfScopeDispatch,
+  refuseRemoteForStationControlCaller,
+  scopeDispatch,
+  withCanonicalCwd,
+} from './dispatch-scope.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -1281,6 +1293,13 @@ export function createOrchestrationRoutes(
     resolveAgentDispatchActor?: (
       request: Request,
     ) => AgentDispatchActor | undefined;
+    /**
+     * #2377 slice C2a: the server's records for what a station-control
+     * dispatch aims at, for the route-level scope rule
+     * (`refuseOutOfScopeDispatch`). Absent: every station-control caller's
+     * dispatch is refused.
+     */
+    stationControlDispatchScope?: StationControlDispatchScope;
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
     /**
      * #484 phase A: admits (or refuses) the explicit portable-execution
@@ -1701,6 +1720,29 @@ export function createOrchestrationRoutes(
         requestedApprovalMode(body.target.model?.options),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      const projectSlug =
+        body.target.workspace?.kind === 'project'
+          ? body.target.workspace.projectSlug
+          : undefined;
+      // #2377 slice C2a: a station-control caller stays in its scope. An
+      // input reply names its thread, a known conversation is a follow-up,
+      // anything else starts a session in the Project the body names.
+      const scoped = scopeDispatch(
+        c,
+        deps.stationControlDispatchScope,
+        (ownerId) =>
+          foregroundDispatchTarget(deps.stationControlDispatchScope, {
+            ownerId,
+            ...newSessionFacts(body.target, deps.projectDefaultEnvironment),
+            ...(body.conversationId
+              ? { conversationId: body.conversationId }
+              : {}),
+            ...(body.expectedInputRequest
+              ? { inputReplyThreadId: body.expectedInputRequest.threadId }
+              : {}),
+          }),
+      );
+      if ('refused' in scoped) return scoped.refused;
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
       if (body.expectedInputRequest) {
@@ -1747,10 +1789,6 @@ export function createOrchestrationRoutes(
       if (stagedAttachments?.length && !deps.hydrateStagedAttachments) {
         throw new Error('Attachment staging is unavailable for this Station.');
       }
-      const projectSlug =
-        body.target.workspace?.kind === 'project'
-          ? body.target.workspace.projectSlug
-          : undefined;
       // #2601: the body's context is a claim; this is what gets stamped.
       const delegation = await deps.resolveRequestDelegation?.(c.req.raw, {
         ...(claimedDelegation
@@ -1780,7 +1818,7 @@ export function createOrchestrationRoutes(
             ? { attachments: body.attachments as ChatAttachmentInput[] }
             : {}),
         target: normalizeExecutionTarget(
-          body.target,
+          withCanonicalCwd(body.target, scoped.canonicalCwd),
           !body.target.environment && projectSlug
             ? deps.projectDefaultEnvironment?.(projectSlug)
             : undefined,
@@ -1837,7 +1875,8 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
-      const refused = delegationRefusal(c, error);
+      const refused =
+        delegationRefusal(c, error) ?? fullAccessRefusalFor(c, error);
       if (refused) return refused;
       if (error instanceof ForegroundMessageIndeterminateError) {
         return c.json(
@@ -1965,6 +2004,8 @@ export function createOrchestrationRoutes(
         }
         return c.json({ success: true, data });
       } catch (error) {
+        const fullAccessRefused = fullAccessRefusalFor(c, error);
+        if (fullAccessRefused) return fullAccessRefused;
         if (error instanceof ForegroundMessageIndeterminateError) {
           return c.json(
             {
@@ -2119,6 +2160,17 @@ export function createOrchestrationRoutes(
           requestedApprovalMode(body.model?.options),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
+        // #2377 slice C2a: a follow-up stays in the caller's scope.
+        const scopeRefused = refuseOutOfScopeDispatch(
+          c,
+          deps.stationControlDispatchScope,
+          () => ({
+            kind: 'conversation',
+            conversationId: param(c, 'conversationId'),
+            remote: namesAnotherStation(body.environment),
+          }),
+        );
+        if (scopeRefused) return scopeRefused;
         const { principal, userId, ownerAttribution, fullAccessGrant } =
           resolveDispatchActor(deps, c);
         const data = await deps.continueForegroundMessage({
@@ -2164,6 +2216,8 @@ export function createOrchestrationRoutes(
         }
         return c.json({ success: true, data });
       } catch (error) {
+        const fullAccessRefused = fullAccessRefusalFor(c, error);
+        if (fullAccessRefused) return fullAccessRefused;
         if (error instanceof ForegroundMessageIndeterminateError) {
           return c.json(
             {
@@ -2228,6 +2282,16 @@ export function createOrchestrationRoutes(
         ),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      // #2377 slice C2a: a new task starts in the Project the body names.
+      const scoped = scopeDispatch(
+        c,
+        deps.stationControlDispatchScope,
+        (ownerId) =>
+          ownerId
+            ? { kind: 'new', ownerId, ...newSessionFacts(body.target) }
+            : undefined,
+      );
+      if ('refused' in scoped) return scoped.refused;
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
       const clientOrigin = resolveClientOriginForRequest(c.req.raw);
@@ -2288,7 +2352,9 @@ export function createOrchestrationRoutes(
       const data = await deps.delegateTask({
         ...request,
         ...(delegation ? { delegation } : {}),
-        target: normalizeExecutionTarget(body.target),
+        target: normalizeExecutionTarget(
+          withCanonicalCwd(body.target, scoped.canonicalCwd),
+        ),
         userId,
         principal,
         ownerAttribution,
@@ -2551,6 +2617,14 @@ export function createOrchestrationRoutes(
         400,
       );
     }
+    // #2377 slice C2a (decision 3): another Station needs a bound
+    // operator; refused before the route resolves the Environment as
+    // Station's own server code.
+    const remoteRefused = refuseRemoteForStationControlCaller(
+      c,
+      parsed.data.environmentId !== undefined,
+    );
+    if (remoteRefused) return remoteRefused;
     try {
       const data = await deps.observeDelegatedTask({
         ...parsed.data,
@@ -2584,6 +2658,14 @@ export function createOrchestrationRoutes(
         400,
       );
     }
+    // #2377 slice C2a (decision 3): another Station needs a bound
+    // operator; refused before the route resolves the Environment as
+    // Station's own server code.
+    const remoteRefused = refuseRemoteForStationControlCaller(
+      c,
+      parsed.data.environmentId !== undefined,
+    );
+    if (remoteRefused) return remoteRefused;
     try {
       const data = await deps.observeDelegatedTaskEvents({
         ...parsed.data,
@@ -2616,6 +2698,19 @@ export function createOrchestrationRoutes(
           ),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
+        // #2377 slice C2a: a follow-up to a task stays in the caller's scope.
+        const scopeRefused = refuseOutOfScopeDispatch(
+          c,
+          deps.stationControlDispatchScope,
+          () => ({
+            kind: 'task',
+            taskId: param(c, 'taskId'),
+            remote:
+              (getBody(c) as { environmentId?: unknown }).environmentId !==
+              undefined,
+          }),
+        );
+        if (scopeRefused) return scopeRefused;
         const { principal, userId, ownerAttribution, fullAccessGrant } =
           resolveDispatchActor(deps, c);
         // #484 continuation: the trusted route-bound mint factory for a
@@ -2694,6 +2789,23 @@ export function createOrchestrationRoutes(
         );
       }
       try {
+        // #2377 slice C2a (decision 3): answering a worker's request needs a
+        // bound caller (the guard's table entry) whose owner holds the
+        // Project `approve` action (admin or owner) where the task runs; in
+        // the global space, the operator.
+        const scopeRefused = refuseOutOfScopeDispatch(
+          c,
+          deps.stationControlDispatchScope,
+          () => ({
+            kind: 'task',
+            taskId: param(c, 'taskId'),
+            remote:
+              (getBody(c) as { environmentId?: unknown }).environmentId !==
+              undefined,
+          }),
+          'approve',
+        );
+        if (scopeRefused) return scopeRefused;
         const { principal, userId, ownerAttribution } = resolveDispatchActor(
           deps,
           c,
@@ -2757,6 +2869,11 @@ export function createOrchestrationRoutes(
           503,
         );
       }
+      const remoteRefused = refuseRemoteForStationControlCaller(
+        c,
+        (getBody(c) as { environmentId?: unknown }).environmentId !== undefined,
+      );
+      if (remoteRefused) return remoteRefused;
       try {
         const { principal, userId, ownerAttribution } = resolveDispatchActor(
           deps,
@@ -3920,8 +4037,15 @@ export function createOrchestrationRoutes(
     async (c) => {
       const command = getBody(c);
       // #2436: full access needs the operator in person or a granted device.
+      // #2377 slice C1: a Default that would run the engine at `never`
+      // unconfined needs the grant too.
       if (command.type === 'setApprovalMode') {
-        const refused = refuseUngrantedFullAccess(c, [command.approvalMode]);
+        const refused = await refuseUngrantedPick(c, command.approvalMode, () =>
+          orchestrationService.approvalPickReachesFullAccess({
+            threadId: command.threadId,
+            pick: command.approvalMode,
+          }),
+        );
         if (refused) return refused;
       }
       // Resolved once and reused for both the read authority below and the

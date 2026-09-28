@@ -222,6 +222,42 @@ describe('mapAcpSessionUpdate — content and tool events', () => {
     });
   });
 
+  test('an oversized tool call and its completion reach no event unbounded', () => {
+    const events: CanonicalRuntimeEvent[] = [];
+    const ctx = makeCtx(events);
+    const oversized = `${'provider-bytes '.repeat(4096)}tail`;
+
+    mapAcpSessionUpdate(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'tool-big',
+        title: 'dump',
+        rawInput: { blob: oversized },
+      } as any,
+      ctx,
+    );
+    mapAcpSessionUpdate(
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'tool-big',
+        status: 'completed',
+        content: [
+          { type: 'content', content: { type: 'text', text: oversized } },
+        ],
+        rawOutput: { blob: oversized },
+      } as any,
+      ctx,
+    );
+
+    expect(events.at(-1)).toMatchObject({
+      method: 'tool.completed',
+      toolCallId: 'tool-big',
+      outputReceipt: { truncated: true, fullOutput: 'unavailable' },
+    });
+    for (const event of events)
+      expect(JSON.stringify(event)).not.toContain(oversized);
+  });
+
   test('emits tool.progress for an in_progress tool_call_update', () => {
     const events: CanonicalRuntimeEvent[] = [];
     const ctx = makeCtx(events);

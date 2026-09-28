@@ -295,7 +295,7 @@ import {
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
 import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
-import { canRelayPluginIdentityEvent } from '../../routes/plugins/plugin-identity-enumeration.js';
+import { createPluginEventRelayGate } from '../../routes/plugins/plugin-identity-enumeration.js';
 import { isNonPersonCaller } from '../../routes/plugins/plugin-person-approval.js';
 import { createPluginProposalRoutes } from '../../routes/plugins/plugin-proposal-routes.js';
 import { createPluginSourceStatusRoutes } from '../../routes/plugins/plugin-source-status-routes.js';
@@ -605,7 +605,7 @@ import {
   outwardTransportFailure,
   sanitizedTransportError,
 } from '../../utils/outward-error.js';
-import { expandTilde } from '../../utils/paths.js';
+import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import {
   createCallerDelegationDeriver,
   createRequestDelegationResolver,
@@ -640,6 +640,7 @@ import {
   resolveStationControlCallerForRequest,
   stationControlCallerRecordSources,
 } from '../mcp/station-control-caller.js';
+import { createStationControlDispatchScope } from '../mcp/station-control-dispatch-scope.js';
 import {
   createStationEngineAvailabilityReader,
   resolveBedrockConnectionAuth,
@@ -1044,39 +1045,23 @@ export {
 } from '../../security/runtime-request-security.js';
 
 /**
- * Production `projectDefaultEnvironment` composition for foreground routes
- * (#480/#1964 placement). Returns the saved Project default VERBATIM —
- * including a paired-peer id or a dangling id — and only maps a missing or
- * non-saved configuration to `current`. Existence is NOT checked here on
- * purpose: the old SSH-only check silently turned a valid paired-peer
- * default AND a dangling default into local execution. The canonical target
- * resolver downstream validates the saved ref (or raises a named
- * unavailable outcome); it never executes locally for a saved intent.
- */
-export function resolveProjectDefaultEnvironmentRef(
-  projectService: {
-    getProject(slug: string): { defaultEnvironment?: EnvironmentRef };
-  },
-  projectSlug: string,
-): EnvironmentRef {
-  const configured = projectService.getProject(projectSlug).defaultEnvironment;
-  if (configured?.kind !== 'saved') return { kind: 'current' };
-  return configured;
-}
-
-/**
  * The exact `projectDefaultEnvironment` dependency the foreground routes
- * receive (#480/#1964 placement). The route wiring below and the
- * composition tests share this factory, so a test that drives
- * `/chat` through the factory's callback exercises the REAL production
- * callback — reintroducing the old SSH-only `current` substitution
- * anywhere on this path fails the composition, not just the unit.
+ * receive (#480/#1964 placement). Returns the saved Project default VERBATIM
+ * — including a paired-peer id or a dangling id — and only maps a missing or
+ * non-saved configuration to `current`. Existence is NOT checked here on
+ * purpose: the old SSH-only check silently turned a valid paired-peer default
+ * AND a dangling default into local execution. The canonical target resolver
+ * downstream validates the saved ref (or raises a named unavailable outcome);
+ * it never executes locally for a saved intent.
  */
 export function createProjectDefaultEnvironmentCallback(projectService: {
   getProject(slug: string): { defaultEnvironment?: EnvironmentRef };
 }): (projectSlug: string) => EnvironmentRef {
-  return (projectSlug: string) =>
-    resolveProjectDefaultEnvironmentRef(projectService, projectSlug);
+  return (projectSlug: string) => {
+    const configured =
+      projectService.getProject(projectSlug).defaultEnvironment;
+    return configured?.kind === 'saved' ? configured : { kind: 'current' };
+  };
 }
 
 /**
@@ -1643,6 +1628,58 @@ export function configureRuntimeRoutes(
         getProject: (slug) => context.storageAdapter.getProject(slug),
       }),
     );
+  // #2377 slices C1 and C2a: the server's records for whatever a
+  // station-control call aims at (a steer, an adoption, a dispatch, a
+  // follow-up, an answer), read from the same records as the caller's own
+  // session, for the one scope rule the guard and the dispatch routes apply.
+  const stationControlDispatchScope = createStationControlDispatchScope({
+    resolveRecord: (threadId) => resolveStationControlCallerRecord(threadId),
+    sessionOwnerId: (threadId) =>
+      context.orchestrationService.sessionRecordedOwnerId(threadId),
+    sessionExists: (threadId) =>
+      context.orchestrationService.hasSessionStartRecord(threadId),
+    sessionRunsHost: (threadId) =>
+      context.orchestrationService.sessionRunsHost(threadId),
+    conversationThreads: (threadId) => {
+      const store = context.orchestrationEventStore;
+      const lineage = store?.conversationForSession(threadId);
+      return store && lineage
+        ? store
+            .conversationSessions(lineage.conversationId)
+            .map((session) => session.sessionId)
+        : [];
+    },
+    conversationSessionIds: (conversationId) =>
+      context.orchestrationEventStore
+        ?.conversationSessions(conversationId)
+        .map((session) => session.sessionId) ?? [],
+    defaultSessionDirectory: () => safeHomeDirectory(),
+    projectDirectories: () => context.projectService.listProjects(),
+    sessionCwd: (threadId) =>
+      context.orchestrationEventStore?.readSessionByThread(threadId)?.cwd,
+    projectIdForSlug: (slug) => {
+      const id = context.storageAdapter.getProject(slug).id;
+      return typeof id === 'string' && id ? id : undefined;
+    },
+    // The same membership rule as the Project routes: an account principal
+    // holds exactly its membership's actions; any other owner is
+    // unrestricted in its own requests, so it may execute. Approving a
+    // worker's request is the operator's there: no membership row names
+    // anyone else an admin.
+    ownerMay: (ownerId, localProjectId, action) => {
+      if (!isDeploymentAccountPrincipalId(ownerId))
+        return action === 'execute' || ownerId === LOCAL_OPERATOR_PRINCIPAL_ID;
+      if (!context.projectMembership) return false;
+      return context.projectMembership
+        .admissionsForResolvedPrincipal(ownerId)
+        .some(
+          ({ scope, member }) =>
+            scope.localProjectId === localProjectId &&
+            member.status === 'active' &&
+            member.actions.includes(action),
+        );
+    },
+  });
   // #2377 slice A: every request the boundary above stamped `kind:'internal'`
   // (every station-control tool call, and Station's own server code) is
   // decided here from the station-control authority table, before any route
@@ -1667,6 +1704,13 @@ export function configureRuntimeRoutes(
           () => schedulerService.listJobs(),
           unattendedGrantStore,
         ),
+      // Slices C1 and C2a: the thread a `steerTurn` or `adoptSession` names.
+      commandThread: (threadId) =>
+        stationControlDispatchScope.target({
+          kind: 'thread',
+          threadId,
+          remote: false,
+        }),
       onRefusal: (refusal, method, path) =>
         context.logger.warn(
           `station-control authority refused ${method} ${path}: ${refusal.code}`,
@@ -2478,6 +2522,10 @@ export function configureRuntimeRoutes(
       // finding for an A1-preserved orphan.
       () =>
         context.projectService.listProjects().map((project) => project.slug),
+      // #2377 slice C1: an Agent write that leaves its effective default at
+      // `never` through this Station's default needs the full-access grant.
+      async () =>
+        (await context.configLoader.loadAppConfig()).defaultApprovalMode,
     ),
   );
   context.app.route(
@@ -3650,6 +3698,7 @@ export function configureRuntimeRoutes(
       // verified session's owner, or is marked unattributed; never silently
       // as the operator the internal token resolves to.
       resolveAgentDispatchActor,
+      stationControlDispatchScope,
       isRequestPrincipalCurrent,
       answerAssessmentModule,
       answerNarrativeBindingModule,
@@ -5821,26 +5870,12 @@ export function configureRuntimeRoutes(
        * Every failure path denies: an unattributable caller, a payload that
        * names no plugin, a grant record that cannot be read.
        */
-      canReadPluginEvent: (event, data, c) =>
-        canRelayPluginIdentityEvent({
-          event,
-          data,
-          principal: resolveSubscriberPrincipal(c),
-          canSee: (principal, pluginName) => {
-            try {
-              return pluginVisibility.canSee(principal, pluginName);
-            } catch (error) {
-              context.logger.debug?.(
-                'Plugin event relay denied: the visibility record could not be read',
-                {
-                  event,
-                  error: error instanceof Error ? error.message : error,
-                },
-              );
-              return false;
-            }
-          },
-        }),
+      canReadPluginEvent: createPluginEventRelayGate({
+        resolvePrincipal: resolveSubscriberPrincipal,
+        canSee: (principal, pluginName) =>
+          pluginVisibility.canSee(principal, pluginName),
+        logger: context.logger,
+      }),
       // Epic #2323 S3: a draft revision event names a Project, so it reaches
       // only subscribers who may read that Project — the same membership
       // check the Project read guard applies to the draft routes themselves.
@@ -6506,32 +6541,6 @@ export {
   INGRESS_IDENTITY_SOURCES,
   identifyIngress,
 } from '../../services/identity/identity-source.js';
-/**
- * station#4518 fix round (MED-2): memoizes a per-request derivation, keyed
- * on Request object IDENTITY — the same pattern `roomRequestPrincipals`
- * above already uses to resolve the room's caller once per request rather
- * than once per `#principal()` read. A fresh `Request` per real incoming
- * HTTP call means this NEVER caches across requests (a WeakMap entry is
- * only reachable through the exact object a caller already holds); it only
- * dedupes repeated calls WITHIN the handling of one request.
- * `resolveOrchestrationRequestPrincipal` wraps this because
- * `orchestration.ts`'s `readAuthorityFor(c)` — the single fail-closed
- * resolution point 41 call sites reach through — is called MORE THAN ONCE
- * inside at least two handlers in a single request (`GET
- * .../narrative/target`, `GET .../assessment/target`), each call redoing
- * the timing-safe operator-credential comparison and the paired-device
- * registry scan (a possible fsync) that a resolution performs.
- *
- * A THROWN resolution (`PrincipalUnresolvedError`) is deliberately never
- * cached, matching `roomRequestPrincipals`' own documented policy: a
- * missing cache entry and "not yet resolved" are indistinguishable to a
- * later call, and both correctly re-run the resolver — which fails closed
- * again, at the same (bounded) cost, rather than remembering a stale
- * refusal.
- */
-// `memoizePerRequest` moved to `utils/memoize-per-request.ts` (the canonical
-// principal owner now lives outside this module); re-exported here.
-export { memoizePerRequest } from '../../utils/memoize-per-request.js';
 
 /**
  * Whether the request came from a process on THIS machine that reached this

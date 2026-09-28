@@ -264,15 +264,21 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
       // where the decision can actually be taken. (#2323 S5: the route now
       // refuses this caller class too, so the refusal no longer rests on
       // this tool alone.)
-      jsonToolResult({
-        installed: false,
-        source,
-        reason: 'operator-approval-required',
-        message:
-          `Station did not install ${source}. A plugin install is approved by a person before anything is written. ` +
-          'Call propose_plugin_install with this source and a rationale: the person sees the proposal in Needs attention, ' +
-          'reviews the preview (permissions and the parts that run in Station’s own page), and installs it from there.',
-      }),
+      // #2795: nothing was installed, so the result is an MCP error — the
+      // raw invoke route and every host then read it as the refusal it is,
+      // not as a successful call.
+      jsonToolResult(
+        {
+          installed: false,
+          source,
+          reason: 'operator-approval-required',
+          message:
+            `Station did not install ${source}. A plugin install is approved by a person before anything is written. ` +
+            'Call propose_plugin_install with this source and a rationale: the person sees the proposal in Needs attention, ' +
+            'reviews the preview (permissions and the parts that run in Station’s own page), and installs it from there.',
+        },
+        { failed: true },
+      ),
   );
 
   server.tool(

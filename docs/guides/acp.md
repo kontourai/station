@@ -338,7 +338,7 @@ This calls the adapter's `getCommands()` (`ProviderAdapterShape`), aggregating w
 
 ### Accepted gap: per-keystroke argument autocomplete
 
-`ProviderAdapterShape` has no equivalent of the old per-keystroke, per-agent argument-autocomplete endpoint (no `getCommandOptions`-style method exists on the shape). Option-fetching for ACP-connected Agents always resolves to an empty list today. This is an explicitly accepted, adapter-inherited gap — filed as a follow-up, not silently absorbed into the static command list.
+`ProviderAdapterShape` has no equivalent of the old per-keystroke, per-agent argument-autocomplete endpoint (no `getCommandOptions`-style method exists on the shape). The UI offers no per-keystroke option-fetching for ACP-connected Agents; the static command list is the only ACP command surface. This is an explicitly accepted, adapter-inherited gap — filed as a follow-up, not silently absorbed into the static command list.
 
 ---
 

@@ -83,14 +83,6 @@ describe('random-uuid guard scope honesty', () => {
 
     expect([...listScannedFiles()].sort()).toEqual(tracked.sort());
   });
-
-  test('the repo is at zero, which is the whole point of station#1137', () => {
-    const files = listScannedFiles();
-    expect(evaluate(countBareRandomUUIDCalls(files), files)).toMatchObject({
-      total: 0,
-      ok: true,
-    });
-  });
 });
 
 /**

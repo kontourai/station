@@ -4020,6 +4020,25 @@ export class OrchestrationService {
   }
 
   /**
+   * #2377 slice C2a: whether Station recorded a start for this session, so a
+   * station-control call that names it is a follow-up, not a new session.
+   */
+  hasSessionStartRecord(threadId: string): boolean {
+    return this.firstStartedRecordOfThread(threadId) !== undefined;
+  }
+
+  /**
+   * #2377 slice C2a: the owner the session's start recorded
+   * (`metadata.userId`), the owner every session read and command compares
+   * against. Unlike `resolveSessionActingPrincipal`, a session an agent
+   * started unattributed still names its owner here: it acts for no one,
+   * but it belongs to that person.
+   */
+  sessionRecordedOwnerId(threadId: string): string | undefined {
+    return this.sessionAuthz.sessionOwnerUserId(threadId);
+  }
+
+  /**
    * #2601: the engine (`provider`) of the SAME record
    * `firstStartedMetadataOfThread` reads, so a caller's Agent-less identity
    * and its metadata can never come from two different events.
@@ -8512,6 +8531,45 @@ export class OrchestrationService {
       approvalMode: input.approvalMode,
       sequence,
     };
+  }
+
+  /**
+   * #2377 slice C1: whether `threadId` runs unconfined (`host`): its start
+   * stamp or a recorded `never`, exactly as its next turn reads it
+   * (`ApprovalPosture.standingConfinement`).
+   */
+  sessionRunsHost(threadId: string): boolean {
+    return (
+      this.approvalPosture.standingConfinement(
+        threadId,
+        this.readStartConfinementStamp(threadId),
+      ) === 'host'
+    );
+  }
+
+  /**
+   * #2377 slice C1: whether recording `pick` on `threadId` would run any
+   * engine of its conversation at full access
+   * (`ApprovalPosture.pickReachesFullAccess`), reading each session's start
+   * stamp and Agent the way a turn does (`agentSlug` stands in for a thread
+   * with no session yet).
+   */
+  async approvalPickReachesFullAccess(input: {
+    threadId: string;
+    pick: ApprovalMode;
+    agentSlug?: string;
+  }): Promise<boolean> {
+    return this.approvalPosture.pickReachesFullAccess({
+      ...input,
+      startOf: (threadId) => {
+        const agentSlug =
+          this.readLatestSessionStartMetadata(threadId)?.agentSlug;
+        return {
+          stamp: this.readStartConfinementStamp(threadId),
+          ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
+        };
+      },
+    });
   }
 
   /**

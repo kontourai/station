@@ -54,13 +54,13 @@ Run the changed selector first, then the exact focused checks it selects:
 
 ```sh
 npm run test:changed -- --base=origin/main --explain
-npm run test:focused -- scripts/__tests__/startup-readiness-static.test.ts src-ui/src/platform/native/__tests__/startupReadiness.test.ts
+npm run test:focused -- scripts/__tests__/startup-readiness-static.test.ts
 npm run verify:desktop-rust
 ```
 
 The static test pins release-channel hidden-window configuration and the one
-native reveal authority. The UI test proves the renderer retries an exact
-generation and refuses an owned sidecar with no valid ticket. The Rust lane
+native reveal authority. The renderer does not commit startup readiness; the
+native shell requests that commit itself. The Rust lane
 proves pure readiness and sidecar-supervisor transitions, including stale
 generation, deadline, retry, service recovery-surface recommit, and the
 four automatic respawns before the fifth counted exit is terminal. None launches

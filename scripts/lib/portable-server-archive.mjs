@@ -86,6 +86,7 @@ export function resolvePortableServerTarget(
   return {
     id,
     platform,
+    arch,
     format: target.format,
     archiveName: `station-server-${id}.${target.format}`,
     node: {
@@ -318,9 +319,10 @@ export async function bundleStationCli(
 }
 
 /**
- * Tells the CLI (lifecycle.ts `isPrebuiltArchiveRoot`, which pins the same
- * name and content) that this tree ships prebuilt, so `station build` and a
- * missing instance build refuse instead of running npm.
+ * Tells the CLI (packages/cli/src/commands/lifecycle-code-root.ts, which pins
+ * the same name and content) that this tree ships prebuilt, so `station build`
+ * and a missing instance build refuse instead of running npm, and lifecycle
+ * state lives outside the (read-only) tree.
  */
 export const PREBUILT_ARCHIVE_MARKER = Object.freeze({
   name: '.station-prebuilt-archive',
@@ -389,6 +391,9 @@ function treeFootprint(root) {
  *   .station-release.json   provenance (the installer's schemaVersion 2 shape)
  *   bin/station[.cmd]       launcher that runs runtime/, never a host Node
  *   bin/station.mjs         entry: release identity for --version, else the CLI
+ *   install.sh              the installer that installed this version, which
+ *                           `station upgrade` and the documented uninstall
+ *                           (`<install root>/current/install.sh uninstall`) run
  *   lib/station-cli.mjs     the lifecycle-capable Station CLI, bundled
  *   runtime/                the pinned, digest-verified official Node.js
  *   .station-prebuilt-archive  tells the CLI there is nothing to build
@@ -413,7 +418,12 @@ async function stagePortableServerTree({
     throw new Error(`${uiIndex} is missing; run \`npm run build:ui\` first`);
   }
   // Removes and recreates stageRoot, then stages node_modules into it.
-  stageDesktopServerRuntime({ projectRoot, outputRoot: stageRoot });
+  stageDesktopServerRuntime({
+    projectRoot,
+    outputRoot: stageRoot,
+    platform: target.platform,
+    arch: target.arch,
+  });
   // The CLI resolves every instance of a prebuilt archive to dist-server/
   // and dist-ui/ (lifecycle.ts resolveBuildPaths).
   const serverDir = join(stageRoot, 'dist-server');
@@ -441,6 +451,11 @@ async function stagePortableServerTree({
   });
   stageNodeRuntime(target, nodeDistributionBytes, join(stageRoot, 'runtime'));
   stageLaunchers(projectRoot, stageRoot);
+  // As in a source release (whose tarball is the repository), the archive
+  // carries the installer: packaged `station upgrade` re-runs it, so the
+  // version that verifies the next one is the installed one (#2675).
+  cpSync(join(projectRoot, 'install.sh'), join(stageRoot, 'install.sh'));
+  chmodSync(join(stageRoot, 'install.sh'), 0o755);
   writeFileSync(
     join(stageRoot, '.station-release.json'),
     `${JSON.stringify(release, null, 2)}\n`,
@@ -533,13 +548,31 @@ export async function buildPortableServerArchive({
   createdAt,
   nodeDistribution,
   keepStage = false,
+  expectedRing,
 }) {
   const target = resolvePortableServerTarget(
     platform,
     arch,
     readPortableNodeRuntime(projectRoot),
   );
+  // The staged node_modules are this host's install: its native modules and
+  // platform packages (the Claude Agent SDK binary, esbuild) are the host's,
+  // whatever the prune is told. A cross-target build would ship them under
+  // another target's name, so refuse it before anything is written.
+  const host = `${process.platform}-${process.arch}`;
+  if (target.id !== host) {
+    throw new Error(
+      `cannot build the ${target.id} portable archive on ${host}: its native modules come from this host's install; build it on a ${target.id} host`,
+    );
+  }
   const release = createPackagedReleaseManifest({ tag, sha, createdAt });
+  // A caller that names the ring it is building for (the nightly publication
+  // workflow) must get exactly that ring, not whichever ring the tag parses as.
+  if (expectedRing !== undefined && release.releaseChannel !== expectedRing) {
+    throw new Error(
+      `${tag} is a ${release.releaseChannel} release, not the requested ${expectedRing} ring`,
+    );
+  }
   const distributionBytes = await obtainNodeDistribution(target, {
     cacheDir: join(outputDir, 'node-cache'),
     nodeDistribution,

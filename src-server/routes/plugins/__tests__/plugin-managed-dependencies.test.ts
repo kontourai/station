@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -10,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import { replacePluginProvidersForSource } from '../../../providers/registries/registry.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -30,9 +32,11 @@ import {
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
 import { readPluginDependencyOwnership } from '../../../services/plugins/plugin-permissions.js';
 import { fetchPluginSource } from '../../../services/plugins/plugin-source.js';
+import { execGitSync } from '../../../utils/git-exec.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 
 const cleanupDirs: string[] = [];
+const tempDir = trackTempDirs();
 const packageStores: EventStore[] = [];
 function logger() {
   return {
@@ -89,7 +93,7 @@ afterEach(async () => {
 });
 
 describe('managed dependency graph uses canonical lifecycle owners', () => {
-  async function fixture(cycle = false) {
+  async function fixture(cycle = false, shapeChild?: (child: string) => void) {
     const root = mkdtempSync(join(tmpdir(), 'station-managed-dependency-'));
     cleanupDirs.push(root);
     mkdirSync(join(root, 'plugins'));
@@ -125,6 +129,7 @@ describe('managed dependency graph uses canonical lifecycle owners', () => {
       JSON.stringify({ name: 'Child', prompt: 'Child agent' }),
     );
     writePlugin(leaf, portable('leaf', {}));
+    shapeChild?.(child);
     const sources: Record<string, string> = {
       child,
       leaf,
@@ -228,6 +233,37 @@ describe('managed dependency graph uses canonical lifecycle owners', () => {
     expect(readFileSync(join(child.dataRoot!, 'state'), 'utf8')).toBe(
       'preserve child',
     );
+  });
+
+  test('stages a portable dependency the way its preview did, leaving every .git entry out', async () => {
+    // Nested repository metadata in a portable dependency: the preview
+    // approved it staged in dependency mode, so the install must stage it the
+    // same way (not fail closed, not carry the metadata in). Nested only: a
+    // registry source with a top-level `.git` is refused by the registry.
+    const f = await fixture(false, (child) => {
+      mkdirSync(join(child, 'tools', '.Git'), { recursive: true });
+      writeFileSync(
+        join(child, 'tools', '.Git', 'HEAD'),
+        'ref: refs/heads/main\n',
+      );
+      mkdirSync(join(child, 'vendor', '.git'), { recursive: true });
+      writeFileSync(join(child, 'vendor', '.git', 'HEAD'), 'x\n');
+      writeFileSync(join(child, 'vendor', 'kept.txt'), 'kept\n');
+    });
+    await installPluginFromSource(f.parent, [], f.installDeps, {
+      consent: f.consent,
+    });
+    const child = resolveInstalledPluginRoot(
+      f.installDeps.pluginsDir,
+      'child',
+    )!;
+    expect(
+      readFileSync(join(child.packageRoot, 'vendor', 'kept.txt'), 'utf8'),
+    ).toBe('kept\n');
+    const gitLike = (dir: string) =>
+      readdirSync(dir).filter((entry) => /^\.git[. ]*$/i.test(entry));
+    expect(gitLike(join(child.packageRoot, 'tools'))).toEqual([]);
+    expect(gitLike(join(child.packageRoot, 'vendor'))).toEqual([]);
   });
 
   test('late parent withdrawal failure compensates the nested graph with fresh child admissions', async () => {
@@ -395,6 +431,85 @@ describe('managed dependency graph uses canonical lifecycle owners', () => {
       existsSync(join(f.root, 'agents', 'child-agent', 'agent.json')),
     ).toBe(true);
   });
+});
+
+test('a legacy parent’s local portable dependency with a root .git installs as its preview staged it, without the repository', async () => {
+  // No registry: the legacy parent names the portable child by a relative
+  // source, and the child is a git checkout at its root.
+  const root = tempDir('station-legacy-portable-git-');
+  mkdirSync(join(root, 'plugins'));
+  const parent = join(root, 'parent-source');
+  const child = join(root, 'child-source');
+  writePlugin(parent, {
+    name: 'parent',
+    version: '1.0.0',
+    dependencies: [{ id: 'child', source: '../child-source' }],
+  });
+  writePlugin(child, {
+    $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+    name: 'child',
+    version: '1.0.0',
+    extensions: { 'io.kontourai.station': { schemaVersion: '1.0' } },
+  });
+  execGitSync(['init', '-b', 'main'], { cwd: child });
+  execGitSync(['add', '-A'], { cwd: child });
+  execGitSync(
+    [
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      'commit',
+      '-m',
+      'child',
+    ],
+    { cwd: child },
+  );
+  const store = new EventStore(join(root, 'events.sqlite'));
+  packageStores.push(store);
+  const installDeps = {
+    ...deps(root),
+    packageMcpJournal: store.createPackageMcpAdmissionJournal(),
+  };
+  const app = new Hono();
+  registerPluginInstallRoutes(app, {
+    ...installDeps,
+    projectVisiblePlugins: () => (installed) => installed,
+  });
+  const response = await app.request('/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: parent }),
+  });
+  const preview = (await response.json()) as any;
+  expect(preview, JSON.stringify(preview)).toMatchObject({
+    valid: true,
+    dependencies: [expect.objectContaining({ id: 'child' })],
+  });
+  await installPluginFromSource(parent, [], installDeps, {
+    consent: {
+      kind: 'operator-decision',
+      permissions: preview.permissions.required,
+      contentDigest: preview.contentDigest,
+      dependencies: preview.dependencies.map((entry: any) => entry.id),
+      dependencyApprovals: preview.dependencies.map((entry: any) => ({
+        id: entry.id,
+        permissions: entry.consent.permissions,
+        contentDigest: entry.consent.contentDigest,
+        dependencies: entry.consent.dependencies,
+      })),
+    },
+  });
+  const installed = resolveInstalledPluginRoot(installDeps.pluginsDir, 'child');
+  expect(installed?.kind).toBe('incarnation');
+  expect(
+    readdirSync(installed!.packageRoot).filter((entry) =>
+      /^\.git[. ]*$/i.test(entry),
+    ),
+  ).toEqual([]);
+  expect(
+    readPluginDependencyOwnership(root, 'parent').map((entry) => entry.id),
+  ).toEqual(['child']);
 });
 
 test('retained diamond recovery checks every version edge before deduplicating shared dependencies', async () => {

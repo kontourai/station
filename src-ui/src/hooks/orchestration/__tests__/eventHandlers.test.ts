@@ -60,15 +60,6 @@ describe('handleOrchestrationEvent — station#1301 slice 1 ingest seam', () => 
     ingestSpy.mockRestore();
   });
 
-  test('a content.text-delta on an untracked thread is ingested (cheap no-op) without throwing', () => {
-    expect(() =>
-      handleOrchestrationEvent(
-        'http://api',
-        event('content.text-delta', { itemId: 'i1', delta: 'hi' }),
-      ),
-    ).not.toThrow();
-  });
-
   test('does not treat a same-session turn.started event as proof for an unrelated foreground dispatch', async () => {
     let entries: unknown;
     _setOutboundQueueStorage({

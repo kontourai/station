@@ -103,6 +103,7 @@ function harness() {
 afterEach(() => {
   registrySeam.subscribers = [];
   vi.unstubAllGlobals();
+  window.localStorage.clear();
 });
 
 test('a cached granted status does not survive the server failing to affirm it — the floor projects', async () => {
@@ -170,4 +171,65 @@ test('revocation transitions to the floor optimistically, before the wire answer
   await waitFor(() =>
     expect(rendered.result.current.status).toEqual({ state: 'none' }),
   );
+});
+
+test('a grant planted in localStorage — the self-grant attack — cannot stand in for the server status', async () => {
+  // Before the re-scope the grant lived at this key, where same-origin plugin
+  // code could write it. The server says no grant exists; that answer wins.
+  window.localStorage.setItem(
+    'station:workspace-home-role',
+    JSON.stringify(grant),
+  );
+  _setApiBase('http://station.test');
+  // The server read is held open so the pending window is observable: a
+  // regression that trusts the planted record only until the server answers
+  // would mount untrusted Home code for exactly that window.
+  let answer: (() => void) | undefined;
+  const fetchMock = vi.fn(
+    () =>
+      new Promise((resolve) => {
+        answer = () =>
+          resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ success: true, status: { state: 'none' } }),
+          });
+      }),
+  );
+  vi.stubGlobal('fetch', fetchMock);
+  const { wrapper } = harness();
+  const seen: unknown[] = [];
+  const rendered = renderHook(
+    () => {
+      const status = useWorkspaceHomeRoleStatus();
+      seen.push(status);
+      return status;
+    },
+    { wrapper },
+  );
+
+  // The read is in flight and unanswered: the hook sits on the floor. Let
+  // timers and later promises settle while the response is still held, so a
+  // grant surfaced asynchronously during the pending window is also caught.
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  expect(rendered.result.current).toBeUndefined();
+  expect(seen.length).toBeGreaterThan(0);
+  expect(seen.every((status) => status === undefined)).toBe(true);
+
+  await act(async () => {
+    answer?.();
+  });
+  await waitFor(() =>
+    expect(rendered.result.current).toEqual({ state: 'none' }),
+  );
+  // No render, before or after the answer, ever carried the planted grant.
+  expect(
+    seen.filter(
+      (status) =>
+        (status as { state?: string } | undefined)?.state === 'granted',
+    ),
+  ).toEqual([]);
 });

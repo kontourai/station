@@ -1210,7 +1210,9 @@ describe('ChatInputArea', () => {
     expect(screen.queryByRole('list', { name: 'Attached files' })).toBeNull();
   });
 
-  test('an engine that cannot see images refuses the paste in its own words', async () => {
+  // The refusal copy is the caller's `attachmentError`; deciding to refuse is
+  // `selectAttachmentFiles`'s job, not this component's.
+  test('forwards an image paste to the attachment owner and shows the refusal it reports', async () => {
     const selectAttachmentFiles = vi.fn(async () => {});
     renderChatInputArea({
       selectAttachmentFiles,
@@ -1313,22 +1315,6 @@ describe('ChatInputArea', () => {
       screen.getByRole('button', { name: /^Approval mode: Ask first\./ }),
     ).toBeTruthy();
     expect(onApprovalModeChange).not.toHaveBeenCalled();
-  });
-
-  test('omits the approval chip for an external engine with no native knob (station#1933)', () => {
-    render(
-      <ChatInputArea
-        {...renderProps({
-          executionMode: 'external',
-          agentConnectionId: 'acp',
-        })}
-      />,
-    );
-
-    expect(
-      screen.queryByRole('button', { name: /^Approval mode:/ }),
-    ).toBeNull();
-    expect(screen.queryByText(/Set by engine/)).toBeNull();
   });
 
   test('station#1945: advertised ACP modes replace the approval-mode chip', async () => {

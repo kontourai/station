@@ -1258,7 +1258,10 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
       // uses, so the scratch tree carries it and its dependencies verbatim.
       extraScripts: ['tsc-slot.mjs'],
       libs: ['module-entry.mjs', 'typecheck-host-slots.mjs'],
-      productionFiles: ['packages/shared/src/process-identity.mjs'],
+      productionFiles: [
+        'packages/shared/src/process-identity.mjs',
+        'packages/shared/src/windows-system-utility.mjs',
+      ],
       files: {
         'package.json': `${JSON.stringify({ name: 'scratch', private: true }, null, 2)}\n`,
         'tsconfig.scripts.json': `${JSON.stringify(
@@ -1447,11 +1450,35 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
     expect(root.scripts['docs:truth:gate']).toBe(
       'node scripts/docs-truth-gate-aggregate.mjs',
     );
-    // Every lane the aggregate runner claims to run must be a REAL npm
-    // script, and its command text must be exactly what the old `&&` chain
-    // used to run for that check -- proving this is a mechanical un-chaining,
-    // not a change to what any individual check does.
-    const expectedCommands: Record<string, string> = {
+    // Membership, not order: the aggregate runs every lane to completion. A
+    // lane silently dropped from the catalog is the regression this exists
+    // for, and the lanes share no script-name prefix to derive the set from.
+    expect(DOCS_TRUTH_GATE_LANES.map((lane) => lane.id).sort()).toEqual(
+      [
+        'contribution:gate',
+        'labels:check',
+        'docs:issue-lifecycle:check',
+        'docs:contributor-commands:check',
+        'docs:public:hygiene',
+        'docs:hygiene:repo',
+        'docs:index:check',
+        'docs:cli-parity:check',
+        'docs:public:contract-examples',
+        'docs:foundations:test',
+        'docs:links:check',
+        'docs:truth:biome',
+      ].sort(),
+    );
+    // Every lane the aggregate runner claims to run must be a REAL npm script.
+    for (const lane of DOCS_TRUTH_GATE_LANES) {
+      expect(root.scripts).toHaveProperty(lane.script);
+    }
+    // Each node lane is pinned to its exact command. A pattern is not enough:
+    // repointing a lane at another script (docs-index.mjs without --check
+    // regenerates files and exits 0), adding --write, or passing a path
+    // (check-markdown-links.mjs narrows to that file) would all still match
+    // one. Literal on purpose -- never derive this from package.json.
+    const EXPECTED_NODE_LANE_COMMANDS: Record<string, string> = {
       'contribution:gate': 'node scripts/public-contribution-surfaces.mjs',
       'labels:check': 'node scripts/label-manifest.mjs',
       'docs:issue-lifecycle:check':
@@ -1465,28 +1492,15 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
         'node scripts/public-doc-contract-examples.mjs',
       'docs:links:check': 'node scripts/check-markdown-links.mjs',
     };
-    expect(DOCS_TRUTH_GATE_LANES.map((lane) => lane.id)).toEqual([
-      'contribution:gate',
-      'labels:check',
-      'docs:issue-lifecycle:check',
-      'docs:contributor-commands:check',
-      'docs:public:hygiene',
-      'docs:hygiene:repo',
-      'docs:index:check',
-      'docs:cli-parity:check',
-      'docs:public:contract-examples',
-      'docs:foundations:test',
-      'docs:links:check',
-      'docs:truth:biome',
-    ]);
-    for (const lane of DOCS_TRUTH_GATE_LANES) {
-      expect(root.scripts).toHaveProperty(lane.script);
-      if (expectedCommands[lane.id]) {
-        expect(root.scripts[lane.script]).toBe(expectedCommands[lane.id]);
-      }
-    }
-    // The extracted biome check's command text is byte-identical to what the
-    // old `&&` chain ran last, just given its own script id.
+    expect(Object.keys(EXPECTED_NODE_LANE_COMMANDS)).toHaveLength(10);
+    const nodeLaneCommands = Object.fromEntries(
+      DOCS_TRUTH_GATE_LANES.filter((lane) =>
+        root.scripts[lane.script].startsWith('node '),
+      ).map((lane) => [lane.id, root.scripts[lane.script]]),
+    );
+    expect(nodeLaneCommands).toEqual(EXPECTED_NODE_LANE_COMMANDS);
+    // lint:check's roots exclude .github/, so this lane is the only formatter
+    // check of the label manifest.
     expect(root.scripts['docs:truth:biome']).toContain(
       'npx biome check .github/labels.json',
     );

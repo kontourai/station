@@ -16,7 +16,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  CONTROL_CHARACTER_CLASS,
   ContentGateScanError,
   findControlCharacters,
   isForbiddenByte,
@@ -77,7 +76,9 @@ function inRepo<T>(dir: string, run: () => T): T {
 describe('the content-integrity gate sees files a control character would hide', () => {
   it('reports a tracked source file containing a literal NUL', () => {
     // The exact shape of the real defect: a NUL inside a template literal in
-    // an otherwise ordinary TypeScript file.
+    // an otherwise ordinary TypeScript file. The NUL makes the file BINARY to
+    // `git grep -I`, so every -I-based scanner silently skips it; this scan
+    // runs without -I and must still see it.
     const dir = scratchRepo({
       'key.ts': `export const k = (a: string, b: string) => "a${NUL}b";\n`,
       'clean.ts': 'export const ok = 1;\n',
@@ -93,34 +94,12 @@ describe('the content-integrity gate sees files a control character would hide',
     expect(inRepo(dir, () => findControlCharacters())).toEqual([]);
   });
 
-  it('sees a file that -I-based text scanners skip as binary', () => {
-    // The founding hazard: a NUL makes the file BINARY to `git grep -I`, so
-    // every -I-based scanner silently skips it. This scan runs without -I and
-    // must still see it.
-    const dir = scratchRepo({
-      'plain.ts': 'export const ok = 1;\n',
-      'hidden.ts': `export const k = "a${NUL}b";\n`,
-    });
-    expect(inRepo(dir, () => findControlCharacters())).toEqual(['hidden.ts']);
-  });
-
   it('excludes binary-by-content paths rather than flagging every asset', () => {
     const dir = scratchRepo({
       'logo.png': Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02]),
       'note.txt': 'plain\n',
     });
     expect(inRepo(dir, () => findControlCharacters())).toEqual([]);
-  });
-
-  it('permits TAB/LF/CR by construction, not by accident', () => {
-    // Pins the class itself: an edit that folded 0x09/0x0A/0x0D back into the
-    // range would make the gate fire on every file in the repo, and the
-    // obvious "fix" would be to weaken the gate. Fail here instead.
-    for (const allowed of ['\\x09', '\\x0A', '\\x0D']) {
-      expect(CONTROL_CHARACTER_CLASS).not.toContain(allowed);
-    }
-    expect(CONTROL_CHARACTER_CLASS).toContain('\\x00');
-    expect(CONTROL_CHARACTER_CLASS).toContain('\\x7F');
   });
 });
 
@@ -174,20 +153,6 @@ describe('the gate fails CLOSED when it cannot scan (round 2, L-3)', () => {
 });
 
 describe('isForbiddenByte — derived from CONTROL_CHARACTER_CLASS, pinned against an explicit expectation', () => {
-  it('agrees with CONTROL_CHARACTER_CLASS for every byte value (0-255)', () => {
-    // Not a comparison against itself: CONTROL_CHARACTER_CLASS is the fixed
-    // string `git grep -P` actually runs against, and this independently
-    // re-implements "does byte b fall in that class" via a fresh RegExp over
-    // every possible byte, rather than trusting `isForbiddenByte`'s own
-    // construction.
-    const classTest = new RegExp(CONTROL_CHARACTER_CLASS);
-    for (let byte = 0; byte <= 0xff; byte++) {
-      expect(isForbiddenByte(byte)).toBe(
-        classTest.test(String.fromCharCode(byte)),
-      );
-    }
-  });
-
   it('rejects exactly the C0 controls minus TAB/LF/CR, plus DEL — an explicit expected set', () => {
     const expectedForbidden = new Set<number>();
     for (let byte = 0x00; byte <= 0x1f; byte++) expectedForbidden.add(byte);

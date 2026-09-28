@@ -39,7 +39,7 @@ describe('FS Routes', () => {
   test('GET /browse returns directories for home', async () => {
     const app = createFsRoutes();
     const body = await json(await app.request('/browse'));
-    expect(body.data.path).toBeDefined();
+    expect(body.data.path).toBe(homedir());
     expect(Array.isArray(body.data.entries)).toBe(true);
   });
   test('GET /browse with explicit path', async () => {

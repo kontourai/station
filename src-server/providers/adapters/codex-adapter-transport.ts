@@ -26,18 +26,19 @@ import {
 import {
   type CodexProcessLike,
   type CodexSessionRecord,
+  type JsonRpcId,
   markCodexTurnTerminal,
 } from './codex-adapter-types.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 
 type JsonRpcRequest = {
-  id?: string | number;
+  id?: JsonRpcId;
   method: string;
   params?: unknown;
 };
 
 type JsonRpcResponse = {
-  id: string | number;
+  id: JsonRpcId;
   result?: unknown;
   error?: {
     code?: number;
@@ -382,7 +383,7 @@ export class CodexAdapterTransport {
     if (hasMethod(message) && hasId(message)) {
       this.handleServerRequest(
         record,
-        message as JsonRpcRequest & { id: string | number },
+        message as JsonRpcRequest & { id: JsonRpcId },
       );
       return;
     }
@@ -414,7 +415,7 @@ export class CodexAdapterTransport {
 
   sendResponse(
     record: CodexSessionRecord,
-    requestId: string,
+    requestId: JsonRpcId,
     result: unknown,
   ): void {
     record.process.stdin.write(
@@ -424,7 +425,7 @@ export class CodexAdapterTransport {
 
   sendErrorResponse(
     record: CodexSessionRecord,
-    requestId: string,
+    requestId: JsonRpcId,
     message: string,
   ): void {
     record.process.stdin.write(
@@ -602,7 +603,11 @@ export class CodexAdapterTransport {
     record: CodexSessionRecord,
     response: JsonRpcResponse,
   ): void {
-    const requestId = String(response.id);
+    // Station only issues string ids (`sendRequest`), and a peer echoes the
+    // id with its type, so a numeric id is never a reply to one of ours —
+    // `String()` would let a numeric `1` settle our pending `"1"` (#562).
+    if (typeof response.id !== 'string') return;
+    const requestId = response.id;
     const pending = record.pendingRpcRequests.get(requestId);
     if (!pending) return;
     record.pendingRpcRequests.delete(requestId);
@@ -620,9 +625,12 @@ export class CodexAdapterTransport {
 
   private handleServerRequest(
     record: CodexSessionRecord,
-    request: JsonRpcRequest & { id: string | number },
+    request: JsonRpcRequest & { id: JsonRpcId },
   ): void {
-    const requestId = String(request.id);
+    // #562: the reply must carry the id exactly as received (value and
+    // type). Codex sends numeric ids and drops a reply whose id is `"0"`
+    // for request `0`, leaving the approval recorded but never delivered.
+    const requestId = request.id;
     const canonicalRequestId = crypto.randomUUID();
     const event = mapServerRequestToEvent(
       record.externalThreadId,
@@ -1112,24 +1120,6 @@ export class CodexAdapterTransport {
   }
 }
 
-/** archive#896 wave 2: layered subprocess env for a codex session pointed at an
- * app-home profile. Always a copy: boot-internal secrets are scrubbed.
- *
- * #2663: PATH is the augmented search PATH the `codex` binary was resolved
- * from, as the Claude and ACP spawns already get through `augmentedSpawnEnv`.
- * An npm-installed codex is `#!/usr/bin/env node`; found through a login-shell
- * or mise directory the service PATH lacks, it was adopted and then died with
- * `env: node: No such file or directory`. Layered UNDER `extraEnv`, so a
- * per-connection override still wins, and the scrub still runs last. */
-export function codexSpawnEnv(
-  extraEnv?: Record<string, string>,
-): NodeJS.ProcessEnv {
-  return childProcessEnvironment({
-    PATH: resolveAugmentedPathSync(),
-    ...extraEnv,
-  });
-}
-
 function spawnCodexProcess(
   extraEnv?: Record<string, string>,
   extraArgs?: string[],
@@ -1141,11 +1131,19 @@ function spawnCodexProcess(
   // file and never touching the user's real `~/.codex/config.toml` (see
   // that module's header comment for why this is the wire-safe channel).
   //
-  // archive#1908: `TMPDIR` is merged into the spawn env HERE, at the one
-  // real spawn call site, rather than inside `codexSpawnEnv` itself — every
-  // real Codex `app-server` child still gets a Station-owned tmp dir
-  // Station reaps on a schedule (see `reapEngineSpawnTmpDir`). Boot-internal
-  // secrets are scrubbed by `codexSpawnEnv`.
+  // archive#896 wave 2: `extraEnv` layers an app-home profile
+  // (`CODEX_HOME`) over a copy of the process env; `childProcessEnvironment`
+  // scrubs boot-internal secrets from that copy.
+  //
+  // #2663: PATH is the augmented search PATH the `codex` binary was resolved
+  // from, as the Claude and ACP spawns already get through
+  // `augmentedSpawnEnv`. An npm-installed codex is `#!/usr/bin/env node`;
+  // found through a login-shell or mise directory the service PATH lacks, it
+  // was adopted and then died with `env: node: No such file or directory`.
+  // Layered UNDER `extraEnv`, so a per-connection override still wins.
+  //
+  // archive#1908: every real Codex `app-server` child gets a Station-owned
+  // tmp dir Station reaps on a schedule (see `reapEngineSpawnTmpDir`).
   //
   // station#2072: `extraEnv` now carries per-connection env overrides, so
   // TMPDIR is merged LAST — matching the claude seam's documented "TMPDIR
@@ -1154,7 +1152,11 @@ function spawnCodexProcess(
   // spawn tmp dir authoritative even if one arrives anyway.
   return spawn(binary, ['app-server', ...(extraArgs ?? [])], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: codexSpawnEnv({ ...extraEnv, TMPDIR: ensureEngineSpawnTmpDir() }),
+    env: childProcessEnvironment({
+      PATH: resolveAugmentedPathSync(),
+      ...extraEnv,
+      TMPDIR: ensureEngineSpawnTmpDir(),
+    }),
     windowsHide: true,
     detached: true,
   });

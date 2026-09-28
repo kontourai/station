@@ -45,10 +45,10 @@ import './route-pending-skeleton.css';
  * click and for `popstate` alike, and nothing in the UI wraps navigation in
  * `startTransition`. Under a transition React does the opposite: it keeps the
  * departing content revealed and renders no fallback at all, which is exactly
- * the symptom archive#3660 described. Both halves are asserted in
- * `__tests__/RoutePendingSkeleton.test.tsx`, so wrapping navigation in a
- * transition later reddens a test that names the reason instead of quietly
- * restoring the defect.
+ * the symptom archive#3660 described. The urgent half is asserted by the cold
+ * cases in `__tests__/RoutePendingSkeleton.test.tsx`; they drive
+ * `AppViewContent`, not `App`, so no test reddens if App's navigation is
+ * later wrapped in a transition.
  */
 export function RoutePendingSkeleton({
   view,

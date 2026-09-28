@@ -1067,15 +1067,6 @@ button:hover {
    global reset in tokens.css (animation-duration 0.01ms, iteration-count 1)
    fully collapses it — see mobile-css-ratchet on page-local at-rules. */
 
-/* Horizontal tab strips that must scroll (not clip) on narrow viewports.
-   Only takes effect under the mobile breakpoint; desktop keeps wrapping/static
-   layout untouched. */
-.header-nav {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
 /* Mobile: hamburger + logo in toolbar */
 .app-toolbar__sidebar-toggle {
   display: none;
@@ -2464,14 +2455,22 @@ button:hover {
   .chat-dock__project-switcher-hint {
   color: var(--text-secondary);
 }
+/* The Switch button aligns its lines to the start, so without a max-width the
+   name sizes to its text and a long one runs out of the column, under the
+   Open icon. The ellipsis sits on the label: a flex container's own
+   text-overflow never applies to its text. */
 .chat-dock__project-switcher-name {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  overflow: hidden;
+  max-width: 100%;
   color: var(--text-primary);
   font-weight: 600;
+}
+.chat-dock__project-switcher-label {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4969,6 +4968,64 @@ button.tool-call__line:hover {
   font-size: 0.9em;
 }
 
+/* Reasoning disclosure — the same quiet single-line weight as a collapsed
+   tool-call batch, so an engine that thinks before every tool round (one
+   reasoning row per round) does not stack full-size cards between them. The
+   expanded text hangs off a rule instead of a box for the same reason. */
+.reasoning-section {
+  margin: 2px 0;
+}
+
+.reasoning-section__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85em;
+  line-height: 1.5;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.reasoning-section__summary:hover {
+  background: var(--overlay-bg);
+  color: var(--text-primary);
+}
+
+.reasoning-section__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reasoning-section__chevron {
+  flex-shrink: 0;
+  opacity: 0.6;
+  font-size: 0.9em;
+}
+
+.reasoning-section__body {
+  margin: 2px 0 6px 4px;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--border-primary);
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  font-style: italic;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .tool-call-batch-sheet__overlay {
   position: fixed;
   inset: 0;
@@ -6544,10 +6601,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     margin-right: auto;
   }
 
-  .header-nav {
-    display: none;
-  }
-
   .header-divider {
     display: none;
   }
@@ -6733,7 +6786,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   }
 
   .tool-call__line,
-  .tool-call-batch__summary {
+  .tool-call-batch__summary,
+  .reasoning-section__summary {
     min-height: 44px;
   }
 

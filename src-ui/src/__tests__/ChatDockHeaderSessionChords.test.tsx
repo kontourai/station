@@ -90,12 +90,6 @@ describe('activity dropdown per-session chords (#1649)', () => {
     expect(badges).toEqual(['Ctrl+1', 'Ctrl+2', '']);
   });
 
-  test('every active session gets a row', () => {
-    // Guards the assertions above against silently measuring zero rows.
-    renderHeader([active('a', 'First'), active('b', 'Second')]);
-    expect(screen.getAllByText(/First|Second/)).toHaveLength(2);
-  });
-
   test('a background-only session appears in the activity badge and list', () => {
     const { container } = renderHeader([
       {

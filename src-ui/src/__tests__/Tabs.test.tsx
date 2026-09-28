@@ -89,20 +89,6 @@ describe('Tabs', () => {
     }
   });
 
-  test('a count renders inside the tab', () => {
-    render(
-      <Tabs
-        id="t"
-        activation="automatic"
-        aria-label="Counted tabs"
-        items={[{ key: 'models', label: 'Models', count: 3 }]}
-        activeKey="models"
-        onSelect={vi.fn()}
-      />,
-    );
-    expect(screen.getByRole('tab').textContent).toContain('3');
-  });
-
   /**
    * archive#4463: `.page__tab` is
    * `display: inline-flex`, and flexbox trims a flex item's OWN leading
@@ -151,9 +137,7 @@ describe('Tabs', () => {
     // attention-composed name.
     expect(accessibleName).toContain('Warn 2');
     expect(warnTab.textContent).toContain('Warn 2');
-    expect(warnTab.querySelector('span.page__tab-count')?.className).toContain(
-      'page__tab-count',
-    );
+    expect(warnTab.querySelector('span.page__tab-count')).toBeTruthy();
   });
 
   test('attention composes into the tab\'s own accessible name — never a nested role="status" a real AT would prune', () => {

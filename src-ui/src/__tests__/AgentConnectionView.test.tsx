@@ -1091,111 +1091,63 @@ describe('AgentConnectionView', () => {
     });
   });
 
-  test('claude shows the app-home opt-in, off by default, that saves the toggle', () => {
-    connectionQueryData = {
+  // archive#896: codex joins claude in the app-home opt-in.
+  test.each([
+    {
       id: 'claude',
-      kind: 'agent',
-      type: 'claude',
       name: 'Claude Code',
-      enabled: true,
-      status: 'ready',
       description: 'Claude Code integration.',
-      capabilities: ['agent-runtime'],
-      prerequisites: [],
-      config: {
-        executionClass: 'connected',
-        providerLabel: 'Claude',
-        provideSkills: [],
-        useAppHome: false,
-      },
-      setup: { state: 'ready', detected: true, configured: false },
-    };
-
-    render(
-      <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
-    );
-
-    fireEvent.click(screen.getByText('Advanced'));
-    const appHomeCheckbox = screen.getByRole('checkbox', {
-      name: /Run sessions in a Station-managed app home/,
-    });
-    expect((appHomeCheckbox as HTMLInputElement).checked).toBe(false);
-    // Import stays hidden until the toggle is on — never a silent action.
-    expect(
-      screen.queryByRole('button', {
-        name: 'Import a snapshot of your global Claude Code settings',
-      }),
-    ).toBeNull();
-
-    fireEvent.click(appHomeCheckbox);
-    expect(
-      screen.getByRole('button', {
-        name: 'Import a snapshot of your global Claude Code settings',
-      }),
-    ).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(save).toHaveBeenCalledWith({
-      connection: expect.objectContaining({
-        id: 'claude',
-        config: expect.objectContaining({ useAppHome: true }),
-      }),
-      isNew: false,
-    });
-  });
-
-  // archive#896: codex joins the app-home opt-in.
-  test('codex shows the app-home opt-in, off by default, that saves the toggle', () => {
-    connectionQueryData = {
+      config: { providerLabel: 'Claude', provideSkills: [] },
+    },
+    {
       id: 'codex',
-      kind: 'agent',
-      type: 'codex',
       name: 'Codex',
-      enabled: true,
-      status: 'ready',
       description: 'Codex app-server engine.',
-      capabilities: ['agent-runtime'],
-      prerequisites: [],
-      config: {
-        executionClass: 'connected',
-        providerLabel: 'Codex',
-        useAppHome: false,
-      },
-      setup: { state: 'ready', detected: true, configured: false },
-    };
+      config: { providerLabel: 'Codex' },
+    },
+  ])(
+    '$id shows the app-home opt-in, off by default, that saves the toggle',
+    ({ id, name, description, config }) => {
+      connectionQueryData = {
+        id,
+        kind: 'agent',
+        type: id,
+        name,
+        enabled: true,
+        status: 'ready',
+        description,
+        capabilities: ['agent-runtime'],
+        prerequisites: [],
+        config: { executionClass: 'connected', ...config, useAppHome: false },
+        setup: { state: 'ready', detected: true, configured: false },
+      };
+      const importName = `Import a snapshot of your global ${name} settings`;
 
-    render(
-      <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
-    );
+      render(
+        <AgentConnectionView selectedRuntimeId={id} onNavigate={vi.fn()} />,
+      );
 
-    fireEvent.click(screen.getByText('Advanced'));
-    const appHomeCheckbox = screen.getByRole('checkbox', {
-      name: /Run sessions in a Station-managed app home/,
-    });
-    expect((appHomeCheckbox as HTMLInputElement).checked).toBe(false);
-    // Import stays hidden until the toggle is on — never a silent action.
-    expect(
-      screen.queryByRole('button', {
-        name: 'Import a snapshot of your global Codex settings',
-      }),
-    ).toBeNull();
+      fireEvent.click(screen.getByText('Advanced'));
+      const appHomeCheckbox = screen.getByRole('checkbox', {
+        name: /Run sessions in a Station-managed app home/,
+      });
+      expect((appHomeCheckbox as HTMLInputElement).checked).toBe(false);
+      // Import stays hidden until the toggle is on — never a silent action.
+      expect(screen.queryByRole('button', { name: importName })).toBeNull();
 
-    fireEvent.click(appHomeCheckbox);
-    expect(
-      screen.getByRole('button', {
-        name: 'Import a snapshot of your global Codex settings',
-      }),
-    ).toBeTruthy();
+      fireEvent.click(appHomeCheckbox);
+      expect(screen.getByRole('button', { name: importName })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(save).toHaveBeenCalledWith({
-      connection: expect.objectContaining({
-        id: 'codex',
-        config: expect.objectContaining({ useAppHome: true }),
-      }),
-      isNew: false,
-    });
-  });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(save).toHaveBeenCalledWith({
+        connection: expect.objectContaining({
+          id,
+          config: expect.objectContaining({ useAppHome: true }),
+        }),
+        isNew: false,
+      });
+    },
+  );
 
   // archive#896: bounded profile GC — usage report + explicit clear.
   test('the app home clear action confirms before calling the clear mutation', () => {
@@ -1411,125 +1363,77 @@ describe('AgentConnectionView', () => {
     expect(refetchCredentialRecovery).toHaveBeenCalledTimes(1);
   });
 
-  test('keeps recovery actions disabled when application capability is missing', () => {
-    connectionQueryData = {
-      id: 'codex',
-      kind: 'agent',
-      type: 'codex',
-      name: 'Codex',
-      enabled: true,
-      status: 'ready',
-      capabilities: ['agent-runtime'],
-      prerequisites: [],
-      config: { useAppHome: true },
-      setup: { state: 'ready', detected: true, configured: false },
-    };
-    credentialRecoveryQueryData = {
-      profiles: [{ ref: 'backup-profile' }],
-      group: { profileRefs: ['backup-profile'], enrolledProfileRefs: [] },
-      policy: { automatic: false },
-    };
+  // One gate: recovery is unsupported unless group, policy, and application
+  // state are all present AND the capability is restart_resume. The enabled
+  // path is 'manual apply explains its billable verification…' below.
+  test.each([
+    {
+      state: 'application capability is missing',
+      recovery: {
+        profiles: [{ ref: 'backup-profile' }],
+        group: { profileRefs: ['backup-profile'], enrolledProfileRefs: [] },
+        policy: { automatic: false },
+      },
+    },
+    {
+      state: 'group and policy state are missing',
+      recovery: {
+        profiles: [{ ref: 'backup-profile' }],
+        application: { capability: 'restart_resume' },
+      },
+    },
+    {
+      state: 'the capability is unsupported',
+      recovery: {
+        profiles: [{ ref: 'backup-profile' }],
+        group: { profileRefs: ['backup-profile'], enrolledProfileRefs: [] },
+        policy: { automatic: false },
+        application: { capability: 'unsupported' },
+      },
+      explains: true,
+    },
+  ])(
+    'keeps automatic recovery and manual apply disabled when $state',
+    ({ recovery, explains }) => {
+      connectionQueryData = {
+        id: 'codex',
+        kind: 'agent',
+        type: 'codex',
+        name: 'Codex',
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+        prerequisites: [],
+        config: { useAppHome: true },
+        setup: { state: 'ready', detected: true, configured: false },
+      };
+      credentialRecoveryQueryData = recovery;
 
-    render(
-      <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
-    );
+      render(
+        <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
+      );
 
-    expect(
-      (
-        screen.getByRole('checkbox', {
-          name: /Automatically try an enrolled credential entry/,
-        }) as HTMLInputElement
-      ).disabled,
-    ).toBe(true);
-    expect(
-      (
-        screen.getByRole('button', {
-          name: 'Apply manually',
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
-  });
-
-  test('keeps recovery actions disabled when group and policy state are missing', () => {
-    connectionQueryData = {
-      id: 'codex',
-      kind: 'agent',
-      type: 'codex',
-      name: 'Codex',
-      enabled: true,
-      status: 'ready',
-      capabilities: ['agent-runtime'],
-      prerequisites: [],
-      config: { useAppHome: true },
-      setup: { state: 'ready', detected: true, configured: false },
-    };
-    credentialRecoveryQueryData = {
-      profiles: [{ ref: 'backup-profile' }],
-      application: { capability: 'restart_resume' },
-    };
-
-    render(
-      <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
-    );
-
-    expect(
-      (
-        screen.getByRole('checkbox', {
-          name: /Automatically try an enrolled credential entry/,
-        }) as HTMLInputElement
-      ).disabled,
-    ).toBe(true);
-    expect(
-      (
-        screen.getByRole('button', {
-          name: 'Apply manually',
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
-  });
-
-  test('unsupported capability keeps automatic recovery and manual apply disabled', () => {
-    connectionQueryData = {
-      id: 'codex',
-      kind: 'agent',
-      type: 'codex',
-      name: 'Codex',
-      enabled: true,
-      status: 'ready',
-      capabilities: ['agent-runtime'],
-      prerequisites: [],
-      config: { useAppHome: true },
-      setup: { state: 'ready', detected: true, configured: false },
-    };
-    credentialRecoveryQueryData = {
-      profiles: [{ ref: 'backup-profile' }],
-      group: { profileRefs: ['backup-profile'], enrolledProfileRefs: [] },
-      policy: { automatic: false },
-      application: { capability: 'unsupported' },
-    };
-
-    render(
-      <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
-    );
-
-    expect(
-      (
-        screen.getByRole('checkbox', {
-          name: /Automatically try an enrolled credential entry/,
-        }) as HTMLInputElement
-      ).disabled,
-    ).toBe(true);
-    expect(
-      (
-        screen.getByRole('button', {
-          name: 'Apply manually',
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
-    expect(
-      screen.getByText(/does not declare a safe application capability/),
-    ).toBeTruthy();
-  });
+      expect(
+        (
+          screen.getByRole('checkbox', {
+            name: /Automatically try an enrolled credential entry/,
+          }) as HTMLInputElement
+        ).disabled,
+      ).toBe(true);
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Apply manually',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      if (explains) {
+        expect(
+          screen.getByText(/does not declare a safe application capability/),
+        ).toBeTruthy();
+      }
+    },
+  );
 
   test('manual apply explains its billable verification and only runs after confirmation', () => {
     connectionQueryData = {

@@ -1391,14 +1391,6 @@
         "count": 1
       }
     },
-    "scripts/__tests__/trust-bundle-claim-prose.test.ts": {
-      "complexity_moderate": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "scripts/__tests__/verification-coordinator.test.ts": {
       "crap_moderate": {
         "count": 1
@@ -6214,14 +6206,6 @@
         "count": 1
       }
     },
-    "src-ui/src/components/coding-layout/CodingInspectorPanel.tsx": {
-      "complexity_moderate": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "src-ui/src/components/coding-layout/CodingTerminalPane.tsx": {
       "complexity_moderate": {
         "count": 1
@@ -7166,11 +7150,6 @@
         "count": 1
       }
     },
-    "src-ui/src/platform/native/startupReadiness.ts": {
-      "complexity_moderate": {
-        "count": 1
-      }
-    },
     "src-ui/src/platform/native/stationProfileStorage.ts": {
       "complexity_critical": {
         "count": 1
@@ -7908,9 +7887,6 @@
       }
     },
     "tests/android/mobile-layout.spec.ts": {
-      "crap_high": {
-        "count": 1
-      },
       "crap_moderate": {
         "count": 1
       }

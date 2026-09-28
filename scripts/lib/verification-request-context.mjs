@@ -47,6 +47,53 @@ export function assertExpectedRequest({
     throw new Error(`verification request changed before ${stage}`);
 }
 
+/**
+ * Everything a verification lane's children inherit from the coordinator,
+ * before any lease or phase: the bound toolchain, the lockfile preflight
+ * (station#4109), the request identity, and the request-bound environment
+ * (STATION_VERIFICATION_HISTORY_REF and PATH). The coordinator and the
+ * sharded fast-checks run (#2709) both take it from here, so a binding added
+ * here reaches both.
+ */
+export function prepareVerificationExecution({
+  lane,
+  cwd = process.cwd(),
+  env = process.env,
+  toolchain,
+  collectProvenance = collectVerificationProvenance,
+}) {
+  const resolvedToolchain =
+    toolchain ?? resolveVerificationToolchain({ cwd, env });
+  const executionEnv = verificationExecutionEnvironment(resolvedToolchain, env);
+  const collectBoundProvenance = ({
+    cwd: provenanceCwd = cwd,
+    ...rest
+  } = {}) => {
+    assertVerificationToolchain(resolvedToolchain);
+    return {
+      ...collectProvenance({ ...rest, cwd: provenanceCwd }),
+      toolchain: resolvedToolchain.toolchain,
+      toolchainIdentity: resolvedToolchain.identity,
+    };
+  };
+  const before = collectBoundProvenance({ cwd });
+  // station#4109: refuse before any phase admission when node_modules does
+  // not match the locked dependencies -- otherwise a stale install produces
+  // phase failures that read exactly like branch defects. This must run
+  // before `request`/admission are ever derived: a thrown
+  // VerificationEnvironmentStaleError here never reaches a lease, a phase,
+  // or a receipt.
+  assertInstalledDependenciesMatchLockfile({ repositoryRoot: before.worktree });
+  const request = createVerificationRequest(lane.id, before);
+  return {
+    toolchain: resolvedToolchain,
+    collectProvenance: collectBoundProvenance,
+    before,
+    request,
+    env: bindVerificationRequestEnvironment(executionEnv, request),
+  };
+}
+
 export function prepareCoordinatorContext({
   laneId,
   cwd = process.cwd(),
@@ -81,30 +128,19 @@ export function prepareCoordinatorContext({
   const hostPressureGated = isLaneHostPressureGated(lane);
   const sampler = hostCpuSampler ?? createHostCpuSampler({ threshold, now });
   const absoluteDeadline = deadlineAt ?? now() + laneTimeoutMs;
-  const resolvedToolchain =
-    toolchain ?? resolveVerificationToolchain({ cwd, env });
-  const executionEnv = verificationExecutionEnvironment(resolvedToolchain, env);
-  const collectBoundProvenance = ({
-    cwd: provenanceCwd = cwd,
-    ...rest
-  } = {}) => {
-    assertVerificationToolchain(resolvedToolchain);
-    return {
-      ...collectProvenance({ ...rest, cwd: provenanceCwd }),
-      toolchain: resolvedToolchain.toolchain,
-      toolchainIdentity: resolvedToolchain.identity,
-    };
-  };
-  const before = collectBoundProvenance({ cwd });
-  // station#4109: refuse before any phase admission when node_modules does
-  // not match the locked dependencies -- otherwise a stale install produces
-  // phase failures that read exactly like branch defects. This must run
-  // before `request`/admission are ever derived: a thrown
-  // VerificationEnvironmentStaleError here never reaches a lease, a phase,
-  // or a receipt.
-  assertInstalledDependenciesMatchLockfile({ repositoryRoot: before.worktree });
-  const request = createVerificationRequest(lane.id, before);
-  const requestEnv = bindVerificationRequestEnvironment(executionEnv, request);
+  const {
+    toolchain: resolvedToolchain,
+    collectProvenance: collectBoundProvenance,
+    before,
+    request,
+    env: requestEnv,
+  } = prepareVerificationExecution({
+    lane,
+    cwd,
+    env,
+    toolchain,
+    collectProvenance,
+  });
   assertExpectedRequest({
     lane,
     cwd,

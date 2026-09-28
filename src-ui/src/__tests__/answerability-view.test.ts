@@ -4,7 +4,6 @@ import { describe, expect, test } from 'vitest';
 import {
   isSessionUnanswerable,
   notificationAnswerabilityView,
-  notificationThreadId,
   sessionAnswerabilityView,
   sessionsByThreadId,
 } from '../utils/answerability';
@@ -91,32 +90,6 @@ describe('sessionAnswerabilityView', () => {
   });
 });
 
-describe('notificationThreadId', () => {
-  test('only an orchestration-kind notification names a joinable session', () => {
-    expect(
-      notificationThreadId(
-        approvalNotification({ requestKind: 'orchestration', threadId: 't-1' }),
-      ),
-    ).toBe('t-1');
-  });
-
-  test('a registry-kind approval has no session behind it and is not joined', () => {
-    // Same scope boundary `attention-projection.ts` draws server-side.
-    // Inventing a join here would be the fuzzy match the honesty bar forbids.
-    expect(
-      notificationThreadId(
-        approvalNotification({ requestKind: 'registry', threadId: 't-1' }),
-      ),
-    ).toBeUndefined();
-    expect(notificationThreadId(approvalNotification({}))).toBeUndefined();
-    expect(
-      notificationThreadId(
-        approvalNotification({ requestKind: 'orchestration', threadId: '' }),
-      ),
-    ).toBeUndefined();
-  });
-});
-
 describe('notificationAnswerabilityView', () => {
   const notification = approvalNotification({
     requestKind: 'orchestration',
@@ -151,13 +124,31 @@ describe('notificationAnswerabilityView', () => {
     ).toBe('not-applicable');
   });
 
-  test('a notification with no session behind it is left entirely alone', () => {
-    expect(
-      notificationAnswerabilityView(
-        approvalNotification({ requestKind: 'registry' }),
-        sessionsByThreadId([summary({ answerability: unanswerable })]),
-        true,
-      ).status,
-    ).toBe('not-applicable');
-  });
+  test.each([
+    // Same scope boundary `attention-projection.ts` draws server-side: only an
+    // orchestration-kind notification with a thread id has a session behind
+    // it. The first two rows name a session the settled read DOES list, so a
+    // join would be the fuzzy match the honesty bar forbids; the empty id
+    // would otherwise render as an "unknown" gap.
+    [
+      'a registry-kind approval',
+      { requestKind: 'registry', threadId: 'thread-1' },
+    ],
+    ['a notification with no request kind', { threadId: 'thread-1' }],
+    [
+      'an orchestration notification with an empty thread id',
+      { requestKind: 'orchestration', threadId: '' },
+    ],
+  ])(
+    '%s has no session behind it and is left entirely alone',
+    (_label, metadata) => {
+      expect(
+        notificationAnswerabilityView(
+          approvalNotification(metadata),
+          sessionsByThreadId([summary({ answerability: unanswerable })]),
+          true,
+        ).status,
+      ).toBe('not-applicable');
+    },
+  );
 });

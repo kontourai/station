@@ -16,6 +16,10 @@ import {
   REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA,
   readWorkflowDocuments,
 } from '../actionlint-gate.mjs';
+import {
+  FAST_CHECKS_PLAN_BUDGET_MS,
+  FAST_CHECKS_SHARD_COUNT,
+} from '../lib/fast-checks-shards.mjs';
 import { readPnpmLockfile } from '../lib/pnpm-lockfile.mjs';
 import {
   failureDigest,
@@ -42,6 +46,22 @@ const root = resolve(import.meta.dirname, '../..');
 
 function workflow(name: string) {
   return readFileSync(resolve(root, '.github/workflows', name), 'utf8');
+}
+
+/**
+ * #2709: the job that used to be `fast-checks` is `fast-checks-statics`; the
+ * `fast-checks` id is the required aggregator that follows it. Refuses a
+ * missing or reordered job rather than slicing to an empty string, which
+ * would let every negative assertion on the result pass vacuously.
+ */
+function staticsJobText(ci: string) {
+  const start = ci.indexOf('\n  fast-checks-statics:\n');
+  const end = ci.indexOf('\n  fast-checks:\n');
+  if (start < 0 || end <= start)
+    throw new Error(
+      'ci.yml must declare fast-checks-statics before fast-checks',
+    );
+  return ci.slice(start + 1, end + 1);
 }
 
 /**
@@ -1451,9 +1471,17 @@ describe('CI verification workflow contracts', () => {
     const smokeJobs = Object.entries(jobs)
       .filter(([, job]) => JSON.stringify(job).includes('test:e2e:pr-smoke'))
       .map(([id]) => id);
-    expect(smokeJobs).toEqual(['fast-checks']);
+    // #2709: fast-checks-statics runs it, and the required fast-checks
+    // aggregator needs that job's success.
+    expect(smokeJobs).toEqual(['fast-checks-statics']);
+    expect(
+      String((jobs['fast-checks-statics'] as { if?: string }).if),
+    ).toContain("github.event_name == 'workflow_dispatch'");
     expect(String((jobs['fast-checks'] as { if?: string }).if)).toContain(
       "github.event_name == 'workflow_dispatch'",
+    );
+    expect((jobs['fast-checks'] as { needs?: string[] }).needs).toContain(
+      'fast-checks-statics',
     );
   });
 
@@ -1525,8 +1553,11 @@ describe('CI verification workflow contracts', () => {
         .filter(([, job]) => (job.steps ?? []).some(runsCiFast))
         .map(([jobId, job]) => ({ id: `${file}#${jobId}`, job })),
     );
+    // fast-checks-plan runs the whole lane only on the transitional legacy
+    // path (#2709), and its fence covers that too.
     expect(callers.map(({ id }) => id).sort()).toEqual([
-      '.github/workflows/ci.yml#fast-checks',
+      '.github/workflows/ci.yml#fast-checks-plan',
+      '.github/workflows/ci.yml#fast-checks-statics',
       '.github/workflows/ci.yml#fork-smoke',
     ]);
     const unboundedAllowanceMs = 3 * 60_000;
@@ -1547,12 +1578,274 @@ describe('CI verification workflow contracts', () => {
     }
   });
 
+  it('shards the affected selection behind the required fast-checks aggregator (#2709)', () => {
+    type Step = {
+      name?: string;
+      run?: string;
+      uses?: string;
+      if?: string;
+      env?: Record<string, string>;
+      with?: Record<string, unknown>;
+      'timeout-minutes'?: number;
+    };
+    type Job = {
+      name?: string;
+      needs?: string | string[];
+      if?: string;
+      'timeout-minutes'?: number;
+      strategy?: { 'fail-fast'?: boolean; matrix?: { shard?: unknown } };
+      steps?: Step[];
+    };
+    const jobs = (load(workflow('ci.yml')) as { jobs: Record<string, Job> })
+      .jobs;
+    // The required status check is the job's display name. The aggregator
+    // keeps the bare id with no `name:`, so its check is exactly
+    // `fast-checks`, and no other job may report under that name.
+    expect(jobs['fast-checks'].name).toBeUndefined();
+    for (const [id, job] of Object.entries(jobs))
+      if (id !== 'fast-checks')
+        expect(job.name ?? id, id).not.toBe('fast-checks');
+    expect(jobs['fast-checks'].needs).toEqual([
+      'classify',
+      'fast-checks-plan',
+      'fast-checks-shard',
+      'fast-checks-statics',
+    ]);
+    // TRANSITIONAL legacy path (#2709): detection comes before any candidate
+    // command, exposes its answer as the job output the shards and the
+    // aggregator read, and gates the legacy lane against the plan steps.
+    const plan = jobs['fast-checks-plan'] as Job & {
+      outputs?: Record<string, string>;
+    };
+    const planSteps = (plan.steps ?? []) as Array<Step & { id?: string }>;
+    const detect = planSteps.findIndex((step) => step.id === 'mode');
+    expect(detect).toBeGreaterThan(-1);
+    expect(detect).toBeLessThan(
+      planSteps.findIndex((step) => step.run === 'npm run dependencies:ci'),
+    );
+    expect(plan.outputs).toEqual({
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      legacy: '${{ steps.mode.outputs.legacy }}',
+    });
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    const legacyIf = "${{ steps.mode.outputs.legacy == 'true' }}";
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    const plannedIf = "${{ steps.mode.outputs.legacy == 'false' }}";
+    for (const name of [
+      'Install pinned actionlint',
+      'Install Chromium for changed-set touch-target checks',
+      'Run legacy unsharded ci:fast',
+    ])
+      expect(planSteps.find((step) => step.name === name)?.if, name).toBe(
+        legacyIf,
+      );
+    for (const name of [
+      'Plan the affected-test selection',
+      'Upload fast-checks plan',
+    ])
+      expect(planSteps.find((step) => step.name === name)?.if, name).toBe(
+        plannedIf,
+      );
+    expect(jobs['fast-checks-shard'].if).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' }}",
+    );
+
+    // Downstream consumers still name the required check's id.
+    expect(jobs['full-regression'].needs).toEqual(['classify', 'fast-checks']);
+
+    const shard = jobs['fast-checks-shard'];
+    expect(shard.strategy?.['fail-fast']).toBe(false);
+    expect(shard.strategy?.matrix?.shard).toEqual(
+      Array.from({ length: FAST_CHECKS_SHARD_COUNT }, (_, index) => index + 1),
+    );
+    // Literal beside the derived value: a change to the constant must be a
+    // deliberate edit here too.
+    expect(FAST_CHECKS_SHARD_COUNT).toBe(4);
+    const shardSteps = shard.steps ?? [];
+    const shardRuns = shardSteps.flatMap((step) =>
+      typeof step.run === 'string' &&
+      /fast-checks-shard\.mjs|fast-checks:shard/.test(step.run)
+        ? [step.run]
+        : [],
+    );
+    expect(shardRuns).toHaveLength(2);
+    for (const run of shardRuns)
+      expect(run).toContain(`--shard="$SHARD/${FAST_CHECKS_SHARD_COUNT}"`);
+
+    // Every shard stays inside the lane budget: the shard runner enforces
+    // CI_FAST_TIMEOUT_MS itself, so its step has no step timeout below it,
+    // and the job fence covers that budget, every bounded step and the
+    // unbounded setup allowance.
+    const run = shardSteps.find(
+      (step) => step.name === 'Run fast-checks shard',
+    );
+    expect(run?.['timeout-minutes']).toBeUndefined();
+    expect(run?.if).toBeUndefined();
+    const boundedMs = shardSteps.reduce(
+      (sum, step) => sum + (step['timeout-minutes'] ?? 0) * 60_000,
+      0,
+    );
+    expect((shard['timeout-minutes'] ?? 0) * 60_000).toBeGreaterThanOrEqual(
+      CI_FAST_TIMEOUT_MS + boundedMs + 3 * 60_000,
+    );
+
+    // The plan is uploaded once and read, by exact name, by the shards and
+    // the aggregator; the receipts' upload name matches the aggregator's
+    // download pattern.
+    const uploads = (job: Job, name: string) =>
+      (job.steps ?? []).find((step) => step.name === name)?.with ?? {};
+    const planName = uploads(
+      jobs['fast-checks-plan'],
+      'Upload fast-checks plan',
+    ).name;
+    expect(planName).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'fast-checks-plan-${{ github.run_id }}',
+    );
+    for (const job of [shard, jobs['fast-checks']])
+      expect(uploads(job, 'Download fast-checks plan').name).toBe(planName);
+    expect(uploads(shard, 'Upload fast-checks shard receipt').name).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'fast-checks-receipt-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}',
+    );
+    expect(
+      uploads(jobs['fast-checks'], 'Download fast-checks shard receipts')
+        .pattern,
+    ).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'fast-checks-receipt-*-${{ github.run_id }}-*',
+    );
+  });
+
+  it('runs the shards and the plan in the environment the lane ran its tests in (#2709 review F1)', () => {
+    type Step = {
+      name?: string;
+      run?: string;
+      uses?: string;
+      env?: Record<string, string>;
+      with?: Record<string, unknown>;
+    };
+    type Job = { 'runs-on'?: unknown; steps?: Step[] };
+    const jobs = (load(workflow('ci.yml')) as { jobs: Record<string, Job> })
+      .jobs;
+    const statics = jobs['fast-checks-statics'].steps ?? [];
+    const laneIndex = statics.findIndex(
+      (step) => step.run === 'npm run ci:fast',
+    );
+    expect(laneIndex).toBeGreaterThan(-1);
+    const lane = statics[laneIndex];
+    const candidateCheckout = (steps: Step[]) => {
+      const checkouts = steps.filter((step) =>
+        step.uses?.startsWith('actions/checkout@'),
+      );
+      return checkouts[checkouts.length - 1]?.with ?? {};
+    };
+    // Tests that read git history (origin/main, the base) need the same clone.
+    const laneCheckout = candidateCheckout(statics);
+    expect(laneCheckout['fetch-depth']).toBe(0);
+    // Steps that shape the tests' environment before the lane: PATH, job env
+    // and the dependency install.
+    const shaping = statics
+      .slice(0, laneIndex)
+      .filter(
+        (step) =>
+          typeof step.run === 'string' &&
+          (/\$GITHUB_(PATH|ENV)\b/.test(step.run) ||
+            step.run === 'npm run dependencies:ci'),
+      )
+      .map((step) => step.run);
+    expect(shaping.length).toBeGreaterThanOrEqual(3);
+    // Action steps before the lane, compared with their inputs. Excluded, by
+    // name and with the reason: the base-policy checkout exists only for the
+    // pull-request title gate (fast-checks-statics owns that gate) and is
+    // overwritten by the candidate checkout before any test runs.
+    const REVIEWED_ACTION_EXCLUSIONS = new Map([
+      [
+        'Check out base policy for pull-request title gate',
+        'title gate only; the candidate checkout replaces it before the lane',
+      ],
+    ]);
+    const laneActions = statics
+      .slice(0, laneIndex)
+      .filter(
+        (step) => step.uses && !REVIEWED_ACTION_EXCLUSIONS.has(step.name ?? ''),
+      )
+      .map((step) => JSON.stringify({ uses: step.uses, with: step.with }));
+    // Checkout, pnpm and Node: a shrinking list would pass vacuously.
+    expect(laneActions).toHaveLength(3);
+    for (const name of REVIEWED_ACTION_EXCLUSIONS.keys())
+      expect(
+        statics.some((step) => step.name === name),
+        name,
+      ).toBe(true);
+
+    for (const [jobId, entryName] of [
+      ['fast-checks-shard', 'Run fast-checks shard'],
+      ['fast-checks-plan', 'Plan the affected-test selection'],
+    ] as const) {
+      const steps = jobs[jobId].steps ?? [];
+      expect(jobs[jobId]['runs-on'], jobId).toEqual(
+        jobs['fast-checks-statics']['runs-on'],
+      );
+      const checkout = candidateCheckout(steps);
+      for (const key of ['fetch-depth', 'repository', 'ref'])
+        expect(checkout[key], `${jobId} ${key}`).toEqual(laneCheckout[key]);
+      const entryIndex = steps.findIndex((step) => step.name === entryName);
+      const entry = steps[entryIndex];
+      // An npm-script entry, as `npm run ci:fast` was: npm_execpath and the
+      // npm lifecycle environment reach the tests.
+      expect(entry?.run, jobId).toMatch(/^npm run fast-checks:shard -- /);
+      // The lane step's env, minus the scope that only drops the selector.
+      const { STATION_CI_FAST_SCOPE: _scope, ...laneEnv } = lane.env ?? {};
+      expect(Object.keys(laneEnv).length).toBeGreaterThan(0);
+      for (const [key, value] of Object.entries(laneEnv))
+        expect(entry?.env?.[key], `${jobId} ${key}`).toBe(value);
+      if (jobId === 'fast-checks-shard') {
+        const before = steps.slice(0, entryIndex).map((step) => step.run);
+        for (const run of shaping) expect(before, jobId).toContain(run);
+      }
+      // Delta review: every action step that sets up the lane's tests
+      // (checkout, pnpm, Node, with its exact inputs) also precedes this
+      // entry, apart from the reviewed exclusions below.
+      const actionsBefore = steps
+        .slice(0, entryIndex)
+        .filter((step) => step.uses)
+        .map((step) => JSON.stringify({ uses: step.uses, with: step.with }));
+      for (const step of laneActions)
+        expect(actionsBefore, `${jobId} ${step}`).toContain(step);
+    }
+    // Job-level env reaches every step, tests included; the three jobs
+    // declare the same (today: none), so no job's tests see an extra input.
+    for (const jobId of ['fast-checks-shard', 'fast-checks-plan'])
+      expect(
+        (jobs[jobId] as { env?: unknown }).env,
+        `${jobId} job env`,
+      ).toEqual((jobs['fast-checks-statics'] as { env?: unknown }).env);
+    const pkg = JSON.parse(
+      readFileSync(resolve(root, 'package.json'), 'utf8'),
+    ) as { scripts: Record<string, string> };
+    expect(pkg.scripts['fast-checks:shard']).toBe(
+      'node scripts/fast-checks-shard.mjs',
+    );
+  });
+
+  it('pins the plan step fence to the budget discovery derives from (#2855)', () => {
+    type Step = { name?: string; 'timeout-minutes'?: number };
+    const jobs = (
+      load(workflow('ci.yml')) as { jobs: Record<string, { steps: Step[] }> }
+    ).jobs;
+    const step = jobs['fast-checks-plan'].steps.find(
+      (candidate) => candidate.name === 'Plan the affected-test selection',
+    );
+    expect((step?.['timeout-minutes'] ?? 0) * 60_000).toBe(
+      FAST_CHECKS_PLAN_BUDGET_MS,
+    );
+  });
+
   it('keeps fast feedback bounded and composes the full merge gate separately', () => {
     const ci = workflow('ci.yml');
-    const fastChecks = ci.slice(
-      ci.indexOf('  fast-checks:'),
-      ci.indexOf('  ui-bundle-delta:'),
-    );
+    const fastChecks = staticsJobText(ci);
     const fullRegression = ci.slice(
       ci.indexOf('  full-regression:'),
       ci.indexOf('  manual-completion-diagnostics:'),
@@ -1624,10 +1917,7 @@ describe('CI verification workflow contracts', () => {
     );
     expect(trigger).toContain('types: [opened, synchronize, reopened, edited]');
 
-    const fastChecks = ci.slice(
-      ci.indexOf('  fast-checks:'),
-      ci.indexOf('  ui-bundle-delta:'),
-    );
+    const fastChecks = staticsJobText(ci);
     const forkSmoke = ci.slice(
       ci.indexOf('  fork-smoke:'),
       ci.indexOf('  full-regression:'),
@@ -1738,10 +2028,7 @@ describe('CI verification workflow contracts', () => {
 
     const ci = workflow('ci.yml');
     const fullRegression = workflow('full-regression.yml');
-    const fastChecks = ci.slice(
-      ci.indexOf('  fast-checks:'),
-      ci.indexOf('  ui-bundle-delta:'),
-    );
+    const fastChecks = staticsJobText(ci);
     const extended = workflow('ci-extended.yml');
     const coverageShard = extended.slice(
       extended.indexOf('  coverage-shard:'),
@@ -1854,10 +2141,7 @@ describe('CI verification workflow contracts', () => {
 
   it('checks out enough history for exact candidate and completion identities', () => {
     const ci = workflow('ci.yml');
-    const fastChecks = ci.slice(
-      ci.indexOf('  fast-checks:'),
-      ci.indexOf('  ui-bundle-delta:'),
-    );
+    const fastChecks = staticsJobText(ci);
 
     expect(fastChecks).toContain('fetch-depth: 0');
     expect(fastChecks).toContain('STATION_CI_FAST_BASE');

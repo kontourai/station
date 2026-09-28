@@ -1,5 +1,3 @@
-import type { KitObservabilityConformanceReport } from '@kontourai/flow-agents/kit-observability-conformance';
-import { runKitObservabilityConformance } from '@kontourai/flow-agents/kit-observability-conformance';
 import type {
   KitObservabilityContribution,
   KitObservabilityContributionLoadResult,
@@ -10,7 +8,6 @@ import type {
   KitObservabilityRecord,
 } from '@kontourai/flow-agents/kit-observability-contract';
 import {
-  kitObservabilityDescriptorDigest,
   loadKitObservabilityContribution,
   negotiateKitObservabilityContribution,
   validateKitObservabilityRecord,
@@ -387,18 +384,6 @@ export class StationKitObservabilityHost {
         'Station approved the declared operator action; the Kit contribution remains read-only.',
       action: snapshot(action),
     };
-  }
-
-  runPublicConformance(): KitObservabilityConformanceReport {
-    return runKitObservabilityConformance({
-      negotiate: (contribution, host) =>
-        negotiateKitObservabilityContribution(
-          { status: 'supported', contribution, diagnostics: [] },
-          host,
-        ),
-      validateRecord: validateKitObservabilityRecord,
-      descriptorDigest: kitObservabilityDescriptorDigest,
-    });
   }
 }
 

@@ -1,8 +1,13 @@
 {
-  "signedBundlePaths": [".", "PlugIns/StationAgentActivity.appex"],
+  "signedBundlePaths": [
+    ".",
+    "PlugIns/StationAgentActivity.appex",
+    "PlugIns/StationNotificationService.appex"
+  ],
   "machOPaths": [
     "{executable}",
-    "PlugIns/StationAgentActivity.appex/StationAgentActivity"
+    "PlugIns/StationAgentActivity.appex/StationAgentActivity",
+    "PlugIns/StationNotificationService.appex/StationNotificationService"
   ],
   "embeddedRpathTargets": [],
   "privacyManifestPaths": [

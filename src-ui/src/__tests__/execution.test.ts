@@ -5,16 +5,10 @@ import {
   buildProviderOptions,
   canAgentStartChat,
   chatSessionIsLive,
-  connectionEvidenceDetail,
-  connectionEvidenceLabel,
-  executionStatusLabel,
   guaranteeConcreteModel,
-  isManagedRuntimeConnectionId,
   preferredChatRuntime,
-  preferredConnectedRuntime,
   resolveAgentExecution,
   resolveBindingStatus,
-  resolveEffectiveCapabilityState,
   resolveEffectiveModel,
   resolveGlobalProviderManagedExecution,
   resolveModelProviderLabel,
@@ -323,12 +317,6 @@ describe('execution utils', () => {
     });
   });
 
-  test('formats execution status labels for chat summary display', () => {
-    expect(executionStatusLabel(undefined)).toBe('Not started');
-    expect(executionStatusLabel('awaiting-approval')).toBe('Awaiting approval');
-    expect(executionStatusLabel('running')).toBe('Running');
-  });
-
   test('only allows chat for agents whose runtime is ready', () => {
     const runtimes = [
       {
@@ -378,29 +366,6 @@ describe('execution utils', () => {
         { execution: { agentConnectionId: engineConnectionId('nowhere') } },
         runtimes,
       ),
-    ).toBe(false);
-  });
-
-  test('an unbound Agent needs the Model-connection picker (#3662)', () => {
-    // `isManagedRuntimeConnectionId` gates whether the editor's Engine tab
-    // offers a Model connection. It answered `false` for an absent binding —
-    // so the one Agent shape that ALWAYS needs a Model connection, the
-    // Station-engine one, was the shape it was never offered to.
-    expect(isManagedRuntimeConnectionId(undefined, [])).toBe(true);
-    expect(isManagedRuntimeConnectionId('', [])).toBe(true);
-    // An external binding still answers false.
-    expect(
-      isManagedRuntimeConnectionId('codex', [
-        {
-          id: 'codex',
-          kind: 'agent',
-          type: 'codex',
-          enabled: true,
-          status: 'ready',
-          capabilities: ['agent-runtime'],
-          config: { engineId: 'codex' },
-        },
-      ] as never),
     ).toBe(false);
   });
 
@@ -535,75 +500,36 @@ describe('execution utils', () => {
     expect(runtime?.config.defaultModel).toBe('gpt-5-codex');
   });
 
-  test('prefers connected runtimes when choosing a connected agent default', () => {
-    const runtime = preferredConnectedRuntime([
-      {
-        id: 'bedrock',
-        kind: 'agent',
-        type: 'bedrock-runtime',
-        name: 'Managed Runtime',
-        enabled: true,
-        capabilities: ['agent-runtime'],
-        config: { engineId: 'station' },
-        status: 'ready',
-        prerequisites: [],
-      },
-      {
-        id: 'codex',
-        kind: 'agent',
-        type: 'codex',
-        name: 'Codex Runtime',
-        enabled: true,
-        capabilities: ['agent-runtime'],
-        config: { engineId: 'codex' },
-        status: 'ready',
-        prerequisites: [],
-      },
-    ] as any);
+  test('preferredChatRuntime keeps ACP connections out of the "connected" bucket (station#1003 Phase B parity with the pre-rename executionClass literal)', () => {
+    const kiro = {
+      id: 'kiro',
+      kind: 'agent',
+      type: 'acp',
+      name: 'Kiro',
+      enabled: true,
+      capabilities: ['agent-runtime'],
+      config: { engineId: 'acp' },
+      status: 'ready',
+      prerequisites: [],
+    };
+    const managed = {
+      id: 'bedrock',
+      kind: 'agent',
+      type: 'bedrock-runtime',
+      name: 'Managed Runtime',
+      enabled: true,
+      capabilities: ['agent-runtime'],
+      config: { engineId: 'station' },
+      status: 'ready',
+      prerequisites: [],
+    };
 
-    expect(runtime?.id).toBe('codex');
-  });
-
-  test('preferredConnectedRuntime and preferredChatRuntime exclude ACP connections from the "connected" bucket (station#1003 Phase B parity with the pre-rename executionClass literal)', () => {
-    const acpOnly = [
-      {
-        id: 'kiro',
-        kind: 'agent',
-        type: 'acp',
-        name: 'Kiro',
-        enabled: true,
-        capabilities: ['agent-runtime'],
-        config: { engineId: 'acp' },
-        status: 'ready',
-        prerequisites: [],
-      },
-    ] as any;
-
-    expect(preferredConnectedRuntime(acpOnly)).toBeNull();
-    // preferredChatRuntime still falls back to the broader "any selectable
-    // connection" pool when nothing "connected" or "managed" matches — the
-    // ACP exclusion only removes it from the connected/managed buckets, not
-    // from that final ready[0] fallback (unchanged from the pre-rename
-    // behavior).
-    expect(preferredChatRuntime(acpOnly)?.id).toBe('kiro');
-
-    const acpPlusCodex = [
-      ...acpOnly,
-      {
-        id: 'codex',
-        kind: 'agent',
-        type: 'codex',
-        name: 'Codex Runtime',
-        enabled: true,
-        capabilities: ['agent-runtime'],
-        config: { engineId: 'codex' },
-        status: 'ready',
-        prerequisites: [],
-      },
-    ] as any;
-
-    expect(preferredConnectedRuntime(acpPlusCodex)?.id).toBe('codex');
-    expect(preferredChatRuntime(acpPlusCodex)?.id).toBe('codex');
+    // An ACP connection listed first is not a "connected" runtime, so the
+    // Station-managed one wins over it.
+    expect(preferredChatRuntime([kiro, managed] as any)?.id).toBe('bedrock');
+    // It still stays in the final "any selectable connection" fallback when
+    // nothing connected or managed exists.
+    expect(preferredChatRuntime([kiro] as any)?.id).toBe('kiro');
   });
 
   test('resolves provider-managed execution for project-scoped chat', () => {
@@ -802,8 +728,10 @@ describe('execution utils', () => {
   });
 
   test('derives effective capability state from the current binding', () => {
+    // The global catalog stands in for "the model catalog has entries".
+    const CATALOG = [{ id: 'catalog', name: 'Catalog', originalId: 'catalog' }];
     expect(
-      resolveEffectiveCapabilityState({
+      resolveBindingStatus({
         agent: {
           slug: 'station',
           toolsConfig: { mcpServers: ['station-control'] },
@@ -822,8 +750,8 @@ describe('execution utils', () => {
           status: 'ready',
           prerequisites: [],
         } as any,
-        hasModelCatalog: true,
-      }),
+        globalModels: CATALOG,
+      }).capabilityState,
     ).toEqual({
       system_prompt: true,
       mcp: true,
@@ -833,7 +761,7 @@ describe('execution utils', () => {
     });
 
     expect(
-      resolveEffectiveCapabilityState({
+      resolveBindingStatus({
         agent: {
           slug: 'station',
           toolsConfig: { mcpServers: ['station-control'] },
@@ -849,8 +777,8 @@ describe('execution utils', () => {
             modelOptions: [{ id: 'llama3.2', name: 'Llama 3.2' }],
           },
         } as any,
-        hasModelCatalog: true,
-      }),
+        globalModels: CATALOG,
+      }).capabilityState,
     ).toEqual({
       system_prompt: true,
       mcp: false,
@@ -860,7 +788,7 @@ describe('execution utils', () => {
     });
 
     expect(
-      resolveEffectiveCapabilityState({
+      resolveBindingStatus({
         agent: {
           slug: 'claude',
           execution: {
@@ -871,8 +799,7 @@ describe('execution utils', () => {
           executionMode: 'external',
           agentConnectionId: engineConnectionId('claude'),
         } as any,
-        hasModelCatalog: false,
-      }),
+      }).capabilityState,
     ).toEqual({
       system_prompt: true,
       mcp: false,
@@ -882,7 +809,7 @@ describe('execution utils', () => {
     });
 
     expect(
-      resolveEffectiveCapabilityState({
+      resolveBindingStatus({
         agent: {
           slug: 'claude',
           execution: {
@@ -894,8 +821,8 @@ describe('execution utils', () => {
           executionMode: 'external',
           agentConnectionId: engineConnectionId('claude'),
         } as any,
-        hasModelCatalog: true,
-      }),
+        globalModels: CATALOG,
+      }).capabilityState,
     ).toEqual({
       system_prompt: true,
       mcp: false,
@@ -1073,54 +1000,6 @@ describe('execution utils', () => {
         sessionOverride: 'session-model',
       }),
     ).toMatchObject({ id: 'session-model', source: 'session override' });
-  });
-
-  test('labels chat confidence no stronger than its evidence', () => {
-    expect(
-      connectionEvidenceLabel({
-        evidenceVersion: 1,
-        level: 'catalog-ready',
-        observedAt: '2026-07-13T20:00:00.000Z',
-        freshness: 'fresh',
-        summary: 'Live catalog.',
-        smoke: {
-          status: 'not-tested',
-          freshness: 'unknown',
-          turnLimit: 1,
-        },
-      }),
-    ).toBe('Live catalog');
-    expect(
-      connectionEvidenceLabel({
-        evidenceVersion: 1,
-        level: 'catalog-ready',
-        observedAt: '2026-07-13T20:00:00.000Z',
-        freshness: 'fresh',
-        summary: 'Latest smoke failed.',
-        action: 'Sign in again.',
-        smoke: {
-          status: 'failed',
-          freshness: 'fresh',
-          reason: 'Authentication failed.',
-          turnLimit: 1,
-        },
-      }),
-    ).toBe('Smoke failed');
-    expect(
-      connectionEvidenceDetail({
-        evidenceVersion: 1,
-        level: 'prerequisite-ready',
-        observedAt: '2026-07-13T20:00:00.000Z',
-        freshness: 'fresh',
-        summary: 'Prerequisites are ready.',
-        action: 'Run smoke.',
-        smoke: {
-          status: 'not-tested',
-          freshness: 'unknown',
-          turnLimit: 1,
-        },
-      }),
-    ).toBe('Prerequisites are ready. Run smoke.');
   });
 
   test('sessionAdapterSupportsSteering reads midTurnSteer, not a connection capabilities flag', () => {

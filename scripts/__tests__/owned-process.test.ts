@@ -6,7 +6,7 @@ import {
   executeOwnedProcess,
   runWindowsTaskkill,
   terminateSuiteExecution,
-  waitForOwnedOutputEOF,
+  waitForSuiteSettlement,
 } from '../lib/owned-process.mjs';
 
 const NEVER = new Promise<never>(() => {});
@@ -421,13 +421,6 @@ describe('owned process lifecycle', () => {
     });
   });
 
-  test('fails closed when a receiver output stream never reaches EOF', async () => {
-    const child = mockChild();
-    const barrier = waitForOwnedOutputEOF(child, 1);
-    child.stdout.emit('end');
-    await expect(barrier).rejects.toThrow(/did not reach EOF/);
-  });
-
   test('retains exact Windows identities and missing receiver EOF evidence', async () => {
     const coordinatorStart = '2026-09-06T23:17:13.4057000Z';
     const targetStart = '2026-09-06T23:17:14.0000000Z';
@@ -565,10 +558,42 @@ describe('owned process lifecycle', () => {
   });
 
   test('fails closed when a receiver output stream errors before EOF', async () => {
-    const child = mockChild();
-    const barrier = waitForOwnedOutputEOF(child, 1);
+    const child = Object.assign(mockChild(), {
+      pid: 4242,
+      kill: () => true,
+      send: () => true,
+    });
+    const execution = executeOwnedCommand(
+      'phase.exe',
+      [],
+      (() => child) as never,
+      'fixture',
+      {
+        resolveParentIdentity: () => ({ pid: 99, start: 'parent-birth' }),
+        outputEofTimeoutMs: 1_000,
+      },
+      { platform: 'win32' },
+    );
+    child.emit('message', {
+      type: 'owned-command-bound',
+      pid: 5151,
+      processStart: 'child-birth',
+      guard: { pid: 5152, start: 'guard-birth' },
+      jobBound: true,
+    });
+    child.emit('message', { type: 'owned-command-complete', status: 0 });
     child.stdout.emit('error', new Error('raw output failure'));
-    await expect(barrier).rejects.toThrow(/raw output failure/);
+    child.stderr.emit('end');
+
+    // A clean COMPLETE 0 cannot outrank the broken pipe.
+    await expect(execution.promise).resolves.toMatchObject({
+      status: null,
+      error: expect.objectContaining({ message: 'raw output failure' }),
+    });
+    expect(execution.settlementEvidence().barriers).toMatchObject({
+      receiverOutputEof: false,
+      settlementProven: false,
+    });
   });
 
   test('does not coerce an object into a diagnostic start identity', () => {
@@ -939,6 +964,29 @@ describe('owned process lifecycle', () => {
     expect(signals).toEqual(['TERM', 'KILL']);
     expect(outcome).toMatchObject({ settled: false, escalated: true });
     expect(outcome.errors.at(-1)?.message).toMatch(/remained alive/);
+  });
+
+  test('settles a real cooperative process tree without escalation', async () => {
+    const execution = executeOwnedProcess(
+      process.execPath,
+      [
+        '-e',
+        "process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 1000)",
+      ],
+      undefined,
+      'cooperative child',
+      { stdio: 'ignore' },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    await expect(
+      terminateSuiteExecution(execution, {
+        processLabel: 'cooperative child',
+        waitForSuiteSettlement,
+        terminationGraceMs: 1_000,
+        terminationForceMs: 1_000,
+      }),
+    ).resolves.toEqual({ settled: true, escalated: false, errors: [] });
   });
 
   test('fails closed on Windows launcher close without a proven tree settlement', async () => {

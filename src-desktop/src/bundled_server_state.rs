@@ -348,10 +348,8 @@ mod tests {
 
     #[test]
     fn fail_closed_message_names_the_fix_without_the_internal_marker() {
-        let message = fail_closed_message(Some(
-            "STATION_HOME_RESET_REQUIRED: incompatible schema",
-        ))
-        .expect("a marker-carrying detail yields the fail-closed sentence");
+        let message = fail_closed_message(Some("STATION_HOME_RESET_REQUIRED: incompatible schema"))
+            .expect("a marker-carrying detail yields the fail-closed sentence");
         assert!(!message.contains(HOME_RESET_MARKER));
         assert!(message.contains("move or reset the Station home"));
 

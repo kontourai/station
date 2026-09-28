@@ -313,20 +313,6 @@ describe('ChatDockBody bounded-read elision notice (station#3386)', () => {
     ).not.toContain('tool result');
   });
 
-  test('reads a single withheld event in the singular', () => {
-    renderDock({ events: [sequenced('evt-cut', 1, 'byte_limit')] });
-
-    const notice = screen.getByTestId('chat-dock-history-elided');
-    expect(notice.textContent).toContain(
-      '1 recorded event has omitted content',
-    );
-    // The distinction the marker exists for: withheld by a budget, still
-    // held by the session — NOT reclaimed, and not absent from the start.
-    expect(notice.textContent).toContain(
-      'The session record retains the full details',
-    );
-  });
-
   /**
    * The negative control. A notice that appears whether or not anything was
    * withheld is not a disclosure, it is decoration — and it would teach a

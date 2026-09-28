@@ -218,6 +218,17 @@ const ORCHESTRATION_STORE_EDGES = Object.freeze([
 ]);
 
 /** Repository data readers and explicit runtime seams supplementing import analysis. */
+/**
+ * Every file under fallow-baselines/, enumerated rather than globbed: the
+ * three baselines code-health-gate.mjs passes to fallow. A new file there is
+ * an unknown path until it is added here with its own evidence.
+ */
+export const FALLOW_BASELINE_FILES = Object.freeze([
+  'fallow-baselines/dead-code.json',
+  'fallow-baselines/dupes.json',
+  'fallow-baselines/health.json',
+]);
+
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   {
     // #2458: the same overflow class as SDK_TRANSPORT_EDGES (#2301). The
@@ -328,9 +339,26 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     // shipping `/home/...` example paths only because nothing in PR CI
     // selected the sweep for a reference-doc change — the entry used to
     // name docs/conformance/** alone.
+    //
+    // #2803: this is also every doc path's evidence, so a docs change no
+    // longer defers the rest of the diff (the `prepush` lane it routed to ran
+    // no doc gate, and in ci:fast a lane only deferred). Each suite exercises
+    // the real docs tree: the privacy sweep, the live-docs reference check
+    // (docs:reference:gate's own logic), index reachability, compile-checked
+    // guide blocks, and the public-docs sources and vocabulary. The link
+    // check and the reference gate also run as ci:fast statics
+    // (run-ci-fast.mjs), so a code change that breaks a doc is caught too.
     pattern: 'docs/**',
-    tests: ['scripts/__tests__/repo-docs-hygiene.test.ts'],
-    reason: 'public repository documentation privacy boundary',
+    tests: [
+      'scripts/__tests__/repo-docs-hygiene.test.ts',
+      'scripts/__tests__/docs-reference-gate.test.ts',
+      'scripts/__tests__/docs-index-reachability.test.ts',
+      'scripts/__tests__/docs-snippets.test.ts',
+      'scripts/__tests__/product-docs-source-links.test.ts',
+    ],
+    reason:
+      'documentation: evidence is the live-docs suites here plus the ' +
+      'docs:reference:gate and docs:links:check ci:fast statics (#2803)',
   },
 
   Object.freeze({
@@ -481,6 +509,30 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'related-file edge and the selector reported an infrastructure error ' +
       'instead of running the policy test (station#1753)',
   }),
+  // #2781: release metadata and code-health baselines are known paths. Each
+  // is gated by a ci:fast static (FAST_STATIC_COMMANDS in run-ci-fast.mjs,
+  // which fast-checks-statics runs) and selects only the suite that runs the
+  // same gate over the repository's real files. As unknown paths they
+  // deferred the whole diff, so a published-package pull request ran none of
+  // its related suites in fast-checks.
+  Object.freeze({
+    pattern: '.changeset/**',
+    tests: Object.freeze(['scripts/__tests__/check-changesets.repo.test.ts']),
+    reason:
+      'changeset: evidence is check-changesets (ci:fast static); its suite ' +
+      'plans the repository changesets with the same planner (#2781)',
+  }),
+  ...FALLOW_BASELINE_FILES.map((path) =>
+    Object.freeze({
+      pattern: path,
+      tests: Object.freeze(['scripts/__tests__/code-health-gate.test.ts']),
+      reason:
+        'fallow baseline: evidence is code-health-gate (ci:fast static; it ' +
+        'reads the base revision baselines, so a candidate cannot rebaseline ' +
+        'itself); its suite runs the gate over fixtures copied from these ' +
+        'files (#2781)',
+    }),
+  ),
   Object.freeze({
     pattern: 'scripts/mobile-css-baseline.json',
     tests: Object.freeze(['scripts/__tests__/mobile-css-ratchet.test.ts']),
@@ -541,6 +593,23 @@ const SOURCE_READ_SCRIPT_EDGE_REASON =
 const GENERATED_SETTINGS_REGISTRY_TEST =
   'scripts/__tests__/gen-settings-registry.test.ts';
 export const UNMODELLED_INPUT_EDGES = Object.freeze([
+  // The signer CLI imports these shared modules, and ecosystem-manifest.test.ts
+  // reaches them only through that CLI as a child process, which the import
+  // graph cannot see. (The vectors test imports them directly.)
+  ...[
+    'packages/shared/src/release-manifest.mjs',
+    'packages/shared/src/portable-server-targets.mjs',
+    'packages/shared/src/release-rings.generated.mjs',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze(['scripts/__tests__/ecosystem-manifest.test.ts']),
+      reason:
+        'the release-manifest signer CLI imports this module; its tests ' +
+        'reach it only through the CLI child process (#2675)',
+    }),
+  ),
   // The generator loads its sources through a computed specifier (so the
   // scripts typecheck never follows it into `.tsx`), and `--check` reads the
   // checked-in artifact by path. `REGISTRY_SOURCE_PATHS` in the generator is
@@ -627,12 +696,14 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/ios-agent-activity-assets.test.ts',
   'scripts/__tests__/module-entry.scan.test.ts',
   'scripts/__tests__/product-docs-source-links.test.ts',
+  // Copies the whole tracked tree and runs the repo-governance lane CLI on it.
+  'scripts/__tests__/proof-family-route-error-egress.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
   'scripts/__tests__/random-uuid-guard.test.ts',
+  'scripts/__tests__/sdk-barrel-selection.repo.test.ts',
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
   'scripts/__tests__/test-import-existence-gate.scan.test.ts',
   'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
-  'scripts/__tests__/trust-bundle-claim-prose.test.ts',
   'src-server/providers/__tests__/child-work-conformance.test.ts',
   'src-server/providers/__tests__/turn-started-attachment-projection.test.ts',
   'src-server/routes/__tests__/sse-response-tripwire.test.ts',
@@ -686,7 +757,10 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
   Object.freeze({
     pattern: 'scripts/ecosystem-manifest.mjs',
     related: true,
-    tests: Object.freeze(['scripts/__tests__/ecosystem-manifest.test.ts']),
+    tests: Object.freeze([
+      'scripts/__tests__/ecosystem-manifest.test.ts',
+      'scripts/__tests__/release-manifest-vectors.test.ts',
+    ]),
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({
@@ -863,9 +937,8 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'scripts/__tests__/agent-instructions-gate.test.ts',
       'scripts/__tests__/verification-policy-gate.test.ts',
-      'scripts/__tests__/trust-reconcile-manifest.test.ts',
     ],
-    reason: 'root instruction routing, completion evidence, and wrapper policy',
+    reason: 'root instruction routing and wrapper policy',
   },
   {
     pattern: 'CLAUDE.md',
@@ -1224,19 +1297,9 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'Nightly hidden-window documentation source seam',
   },
   {
-    pattern: 'src-ui/src/platform/native/startupReadiness.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'renderer readiness documentation source seam',
-  },
-  {
     pattern: 'scripts/__tests__/startup-readiness-static.test.ts',
     tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
     reason: 'native startup static verification command contract',
-  },
-  {
-    pattern: 'src-ui/src/platform/native/__tests__/startupReadiness.test.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'renderer startup verification command contract',
   },
   {
     pattern: 'tests/plugin-host-security.spec.ts',
@@ -1608,11 +1671,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     pattern: 'tests/**',
     lanes: ['verify-e2e-full'],
     reason: 'E2E manifest/spec boundary',
-  },
-  {
-    pattern: 'docs/**',
-    lanes: ['prepush'],
-    reason: 'documentation bounded gate',
   },
   {
     pattern: 'src-desktop/**',

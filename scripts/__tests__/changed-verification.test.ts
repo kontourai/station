@@ -12,12 +12,19 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { attachCiFastDiagnostics } from '../lib/verification-ci-fast-diagnostics.mjs';
 import {
+  changedDeadlineFromEnv,
   changedPaths,
   discoverRelatedTestFiles,
   escalateUnavailableExplicitTests,
   parseRelatedTestDiscovery,
+  planChangedVerificationShards,
   planChangedVitestExecutions,
+  RELATED_DISCOVERY_FLOOR_MS,
+  RELATED_DISCOVERY_RESERVE_MS,
+  relatedDiscoveryTimeoutMs,
   renderChangedVerificationSummary,
   runChangedVerification,
   runOwnedChangedCommand,
@@ -30,6 +37,7 @@ import { SELECTOR_DEFERRED_EXIT_CODE } from '../run-ci-fast.mjs';
 import {
   buildTestImpactManifest,
   E2E_CONTRACT_BOUNDARIES,
+  FALLOW_BASELINE_FILES,
   SPAWNED_SCRIPT_EDGES,
   TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
@@ -37,6 +45,8 @@ import {
   validateTestImpactManifest,
 } from '../test-impact-manifest.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
+
+const makeTempDir = trackTempDirs();
 
 const scenarios = JSON.parse(
   readFileSync(
@@ -207,7 +217,7 @@ describe('changed verification selection', () => {
     );
     // Pinned by count, independently: the loop below is satisfied by an
     // empty list.
-    expect(UNMODELLED_INPUT_EDGES).toHaveLength(10);
+    expect(UNMODELLED_INPUT_EDGES).toHaveLength(13);
     for (const edge of UNMODELLED_INPUT_EDGES) {
       expect(edge.supplemental, edge.pattern).toBe(true);
       const path = edge.pattern.endsWith('/**')
@@ -230,19 +240,6 @@ describe('changed verification selection', () => {
         ].sort(),
       );
     }
-    // And the settings generator's inputs, named independently of the
-    // manifest, each reach its suite.
-    for (const path of [
-      'src-ui/src/views/settings/settings-catalog.ts',
-      'src-ui/src/views/settings/settings-deep-link.ts',
-      'packages/contracts/src/settings-registry.ts',
-      'packages/contracts/src/device-settings.ts',
-      'src-server/generated/settings-registry.json',
-    ])
-      expect(
-        selectChangedVerification([path]).tests.map((entry) => entry.path),
-        path,
-      ).toContain('scripts/__tests__/gen-settings-registry.test.ts');
   });
   test('a supplemental edge widens the layout contract receipt without narrowing it', () => {
     const selection = selectChangedVerification([
@@ -469,12 +466,7 @@ describe('changed verification selection', () => {
       ]),
     );
   });
-  test('uses a bounded named gate for docs and fails closed for risky selection', () => {
-    expect(
-      selectChangedVerification([scenarios.deferredEdges.docs]).lanes,
-    ).toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: 'prepush' })]),
-    );
+  test('fails closed for risky selection', () => {
     for (const paths of [
       [scenarios.escalations.rootConfig],
       [scenarios.escalations.vitestConfig],
@@ -506,8 +498,9 @@ describe('changed verification selection', () => {
       ]),
     );
   });
+  // http.ts is pinned in full, with the same #2301 checks, by 'the SDK
+  // transport edge names exactly its own-behaviour suites' below.
   test.each([
-    'packages/sdk/src/client/http.ts',
     'packages/sdk/src/client/bounded-response.ts',
     'packages/sdk/src/client/client-origin.ts',
   ])(
@@ -565,6 +558,35 @@ describe('changed verification selection', () => {
     // Nothing was deferred, so the result can complete rather than read
     // provisional on a selection that dropped the rest of the diff.
     expect(result.receipt.terminal.status).toBe('completed');
+  });
+  test('related discovery receives the merge base for SDK barrel refinement (#2707)', async () => {
+    const discovered: Array<{ paths: string[]; base: unknown }> = [];
+    await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: reportedRun(),
+      changedPathsFn: () => ({
+        mergeBase: 'merge-base-sha',
+        paths: ['packages/sdk/src/client/scheduler.ts'],
+      }),
+      discoverRelatedFiles: async (
+        _root: string,
+        relatedPaths: string[],
+        options?: { base?: string },
+      ) => {
+        discovered.push({ paths: [...relatedPaths], base: options?.base });
+        return ['packages/sdk/src/__tests__/scheduler.test.ts'];
+      },
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    // The merge base, not the `--base` ref: refinement reads the module as
+    // it was where this diff starts.
+    expect(discovered).toEqual([
+      {
+        paths: ['packages/sdk/src/client/scheduler.ts'],
+        base: 'merge-base-sha',
+      },
+    ]);
   });
   test.each([
     [
@@ -718,13 +740,18 @@ describe('changed verification selection', () => {
     },
   );
   test('the SDK transport edge names exactly its own-behaviour suites', () => {
+    const selection = selectChangedVerification([
+      'packages/sdk/src/client/http.ts',
+    ]);
+    // #2301: its import graph must not reach the fast lane, and no lane may
+    // switch the whole diff to deferred execution.
+    expect(selection.relatedPaths).not.toContain(
+      'packages/sdk/src/client/http.ts',
+    );
+    expect(selection.lanes).toEqual([]);
     // Pinned in full: trimming a suite from the list is a coverage loss that
     // a sampled arrayContaining would not notice.
-    expect(
-      selectChangedVerification(['packages/sdk/src/client/http.ts'])
-        .tests.map((entry) => entry.path)
-        .sort(),
-    ).toEqual([
+    expect(selection.tests.map((entry) => entry.path).sort()).toEqual([
       'packages/sdk/src/__tests__/authenticated-client-transport.test.ts',
       'packages/sdk/src/__tests__/client-entry-portability.test.ts',
       'packages/sdk/src/__tests__/client-fetchers-failure-paths.test.ts',
@@ -938,15 +965,15 @@ describe('changed verification selection', () => {
   });
   test('retains every sorted reason for a shared named lane', () => {
     const selection = selectChangedVerification([
-      'docs/z-last.md',
-      'docs/a-first.md',
+      'src-desktop/z-last.rs',
+      'src-desktop/a-first.rs',
     ]);
     expect(selection.lanes).toEqual([
       {
-        id: 'prepush',
+        id: 'verify-local',
         reasons: [
-          'documentation bounded gate: docs/a-first.md',
-          'documentation bounded gate: docs/z-last.md',
+          'native boundary: src-desktop/a-first.rs',
+          'native boundary: src-desktop/z-last.rs',
         ],
       },
     ]);
@@ -1022,7 +1049,14 @@ describe('changed verification selection', () => {
       failed: 0,
       infrastructureErrors: 0,
     });
-    expect(writeReceipt).toHaveBeenCalledTimes(3);
+    // Breadcrumb before cleanup, then selection, the bound diagnostic, and
+    // the receipt last.
+    expect(writeReceipt.mock.calls.map(([path]) => path)).toEqual([
+      '.kontourai/test-impact/changed-diagnostics.json',
+      '.kontourai/test-impact/changed-selection.json',
+      '.kontourai/test-impact/changed-diagnostics.json',
+      '.kontourai/test-impact/changed-verification.json',
+    ]);
     expect(result.receipt.artifacts.map(({ path }) => path)).toEqual([
       '.kontourai/test-impact/changed-selection.json',
       '.kontourai/test-impact/changed-diagnostics.json',
@@ -1235,6 +1269,48 @@ describe('changed verification selection', () => {
       },
     ]);
     expect(result.emptyRelatedSelection?.relatedPaths).toEqual([GLOB_ONLY]);
+  });
+  test('ci:fast accepts the diagnostic a post-run escalation leaves behind', async () => {
+    // The selection escalates only after Vitest has run and the early
+    // diagnostic breadcrumb is on disk. The diagnostic ci:fast attaches must
+    // still be the one the receipt digest-binds, or fast-checks turns a green
+    // provisional run into infrastructure_error.
+    const worktree = makeTempDir('station-changed-binding-');
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: emptyDiscoveryRun(),
+      changedPathsFn: () => ({ mergeBase: 'base-sha', paths: [GLOB_ONLY] }),
+      collectProvenance: provenance,
+      writeReceipt(path: string, contents: string) {
+        mkdirSync(dirname(join(worktree, path)), { recursive: true });
+        writeFileSync(join(worktree, path), contents);
+      },
+    });
+    // Reached the seam: suites ran, then the selection escalated.
+    expect(result.executed.length).toBeGreaterThan(0);
+    expect(result.selection.lanes.map(({ id }) => id)).toEqual(['test-full']);
+    const attached = attachCiFastDiagnostics(
+      { lane: { id: 'ci-fast' }, before: { ...provenance(), worktree } },
+      {},
+    );
+    expect(attached.unavailableAttachments).toBeUndefined();
+    expect(attached.attachments).toEqual([
+      {
+        name: 'changed-test-diagnostics',
+        path: join(worktree, '.kontourai/test-impact/changed-diagnostics.json'),
+        contentType: 'application/json',
+      },
+    ]);
+    const diagnostic = JSON.parse(
+      readFileSync(
+        join(worktree, '.kontourai/test-impact/changed-diagnostics.json'),
+        'utf8',
+      ),
+    );
+    expect(diagnostic.selection).toMatchObject({
+      deferredLanes: ['test-full'],
+      escalated: true,
+    });
   });
   test('an exact path-read pin covers its file when discovery is empty (#2176)', async () => {
     // A ratchet-baseline bump has no importer by construction; the pin test
@@ -1690,7 +1766,7 @@ setInterval(() => {}, 1000);`,
   });
   test('persists stable diagnostics before removing the temporary Vitest report', async () => {
     let temporaryReport = '';
-    let existedAtStableWrite = false;
+    let existedAtStableWrite: boolean | undefined;
     const run = vi.fn((_command, args) => {
       if (args.includes('--eval'))
         return {
@@ -1714,7 +1790,12 @@ setInterval(() => {}, 1000);`,
       }),
       collectProvenance: provenance,
       writeReceipt(path) {
-        if (path === '.kontourai/test-impact/changed-diagnostics.json')
+        // The first diagnostic write is the breadcrumb taken before cleanup;
+        // the final rewrite beside the receipt comes after the report is gone.
+        if (
+          path === '.kontourai/test-impact/changed-diagnostics.json' &&
+          existedAtStableWrite === undefined
+        )
           existedAtStableWrite = existsSync(temporaryReport);
       },
     });
@@ -2582,4 +2663,520 @@ setInterval(() => {}, 1000);`,
       'src-server/routes/chat/__tests__/chat-context.test.ts',
     );
   }, 35_000);
+});
+
+describe('release metadata and code-health baselines are known paths (#2781)', () => {
+  const manifest = buildTestImpactManifest({ root: process.cwd() });
+  const select = (paths: string[]) =>
+    selectChangedVerification(paths, manifest);
+  const CHANGESET = '.changeset/sdk-envelope-error.md';
+  const CHANGESET_SUITE = 'scripts/__tests__/check-changesets.repo.test.ts';
+  const BASELINE_SUITE = 'scripts/__tests__/code-health-gate.test.ts';
+  // A published SDK client module: its evidence is the related graph.
+  const SDK = 'packages/sdk/src/client/plugins.ts';
+
+  test('the baseline list is exactly what code-health-gate hands fallow', () => {
+    // Literal beside the derived list, so a change to either is deliberate.
+    expect(FALLOW_BASELINE_FILES).toEqual([
+      'fallow-baselines/dead-code.json',
+      'fallow-baselines/dupes.json',
+      'fallow-baselines/health.json',
+    ]);
+    const config = JSON.parse(readFileSync('.fallowrc.json', 'utf8'));
+    expect(
+      Object.entries(config)
+        .flatMap(([, value]) =>
+          value && typeof value === 'object' ? Object.values(value) : [],
+        )
+        .filter(
+          (value) =>
+            typeof value === 'string' && value.startsWith('fallow-baselines/'),
+        )
+        .sort(),
+    ).toEqual([...FALLOW_BASELINE_FILES].sort());
+    for (const path of FALLOW_BASELINE_FILES)
+      expect(existsSync(path), path).toBe(true);
+  });
+
+  test('a changeset-only diff selects its gate suite, names its evidence, and does not defer', () => {
+    const selection = select([CHANGESET]);
+    expect(selection.lanes).toEqual([]);
+    expect(selection.escalated).toBe(false);
+    expect(selection.relatedPaths).toEqual([]);
+    expect(selection.tests.map(({ path }) => path)).toEqual([CHANGESET_SUITE]);
+    expect(selection.tests[0].reasons.join(' ')).toContain(
+      'evidence is check-changesets',
+    );
+  });
+
+  test.each(FALLOW_BASELINE_FILES)(
+    'a baseline-only diff (%s) selects its gate suite, names its evidence, and does not defer',
+    (path) => {
+      const selection = select([path]);
+      expect(selection.lanes).toEqual([]);
+      expect(selection.escalated).toBe(false);
+      expect(selection.tests.map(({ path: test }) => test)).toEqual([
+        BASELINE_SUITE,
+      ]);
+      expect(selection.tests[0].reasons.join(' ')).toContain(
+        'evidence is code-health-gate',
+      );
+    },
+  );
+
+  test('an SDK change with a changeset keeps the SDK related selection', () => {
+    const alone = select([SDK]);
+    const mixed = select([SDK, CHANGESET, FALLOW_BASELINE_FILES[0]]);
+    expect(alone.lanes).toEqual([]);
+    expect(mixed.lanes).toEqual([]);
+    expect(mixed.escalated).toBe(false);
+    expect(mixed.relatedPaths).toEqual(alone.relatedPaths);
+    expect(mixed.relatedPaths).toContain(SDK);
+    expect(mixed.tests.map(({ path }) => path)).toEqual(
+      expect.arrayContaining([
+        ...alone.tests.map(({ path }) => path),
+        CHANGESET_SUITE,
+        BASELINE_SUITE,
+      ]),
+    );
+  });
+
+  test.each([
+    [['docs-private/notes.bin']],
+    [['fallow-baselines/unlisted.json']],
+    [[CHANGESET, 'docs-private/notes.bin']],
+    [['.fallowrc.json']],
+  ])('a truly unknown path still defers the whole diff: %j', (paths) => {
+    const selection = select(paths);
+    expect(selection.escalated).toBe(true);
+    expect(selection.lanes).toEqual([
+      expect.objectContaining({
+        id: 'ci-fast',
+        reasons: expect.arrayContaining([
+          expect.stringMatching(/^unknown changed path: /),
+        ]),
+      }),
+    ]);
+  });
+
+  test('end to end, a changeset-only diff completes rather than going provisional', async () => {
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: reportedRun(),
+      changedPathsFn: () => ({ mergeBase: 'base-sha', paths: [CHANGESET] }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    expect(result.selection.lanes).toEqual([]);
+    expect(result.exitCode).toBe(0);
+    expect(result.receipt.terminal.status).toBe('completed');
+    expect(result.executed.flatMap((execution) => execution.command)).toContain(
+      `./${CHANGESET_SUITE}`,
+    );
+  });
+});
+
+describe('related discovery takes its timeout from the caller budget (#2855)', () => {
+  // Literals beside the derived constants: a change to either is deliberate.
+  test('pins the floor and the reserve', () => {
+    expect(RELATED_DISCOVERY_FLOOR_MS).toBe(60_000);
+    expect(RELATED_DISCOVERY_RESERVE_MS).toBe(30_000);
+  });
+
+  test('deadline - now - reserve, and the floor alone with no deadline', () => {
+    const now = () => 1_000;
+    expect(relatedDiscoveryTimeoutMs()).toBe(60_000);
+    expect(
+      relatedDiscoveryTimeoutMs({ deadlineAt: 1_000 + 300_000, now }),
+    ).toBe(270_000);
+    // Exactly the floor after the reserve is still enough.
+    expect(relatedDiscoveryTimeoutMs({ deadlineAt: 1_000 + 90_000, now })).toBe(
+      60_000,
+    );
+  });
+
+  test.each([
+    ['one millisecond under the floor', 1_000 + 89_999, '59999ms'],
+    ['10s left', 1_000 + 10_000, '0ms'],
+    ['a deadline already past', 0, '0ms'],
+  ])(
+    'refuses a budget below the floor before starting: %s',
+    (_name, deadlineAt, left) => {
+      expect(() =>
+        relatedDiscoveryTimeoutMs({ deadlineAt, now: () => 1_000 }),
+      ).toThrow(
+        `Related Vitest discovery refused: ${left} of its budget remain after the 30000ms reserve, below the 60000ms minimum`,
+      );
+    },
+  );
+
+  test('refuses a deadline that is not an integer or allows more than the ci:fast lane', () => {
+    const now = () => 1_000;
+    expect(() => relatedDiscoveryTimeoutMs({ deadlineAt: 1.5, now })).toThrow(
+      'Related Vitest discovery deadline is invalid',
+    );
+    // 15 minutes + reserve + 1ms of budget: one past the maximum.
+    expect(() =>
+      relatedDiscoveryTimeoutMs({
+        deadlineAt: 1_000 + 15 * 60_000 + 30_000 + 1,
+        now,
+      }),
+    ).toThrow('Related Vitest discovery timeout is invalid');
+    expect(
+      relatedDiscoveryTimeoutMs({
+        deadlineAt: 1_000 + 15 * 60_000 + 30_000,
+        now,
+      }),
+    ).toBe(15 * 60_000);
+  });
+
+  test('parses the selector deadline strictly from its environment', () => {
+    expect(changedDeadlineFromEnv({})).toBeUndefined();
+    expect(
+      changedDeadlineFromEnv({
+        STATION_TEST_CHANGED_DEADLINE_AT: '1700000000000',
+      }),
+    ).toBe(1_700_000_000_000);
+    // One past Number.MAX_SAFE_INTEGER: sixteen digits, yet not exact.
+    for (const value of [
+      '-1',
+      '1e12',
+      '12.5',
+      ' 12',
+      'soon',
+      '9007199254740993',
+    ])
+      expect(
+        () =>
+          changedDeadlineFromEnv({ STATION_TEST_CHANGED_DEADLINE_AT: value }),
+        value,
+      ).toThrow('STATION_TEST_CHANGED_DEADLINE_AT must be');
+  });
+
+  /**
+   * A discovery child that needs `durationMs`. It answers only when the
+   * timeout it was given covers that, and otherwise returns what the owned
+   * runner returns on a timeout -- simulated time, no real sleep.
+   */
+  function timedDiscovery(durationMs: number) {
+    const timeouts: number[] = [];
+    const run = vi.fn(
+      async (
+        _command: string,
+        args: string[],
+        options: { timeoutMs?: number },
+      ) => {
+        if (!args.includes('--eval'))
+          throw new Error('only discovery runs here');
+        timeouts.push(options.timeoutMs as number);
+        if ((options.timeoutMs as number) >= durationMs)
+          return {
+            status: 0,
+            signal: null,
+            stdout: JSON.stringify([
+              'scripts/__tests__/changed-verification.test.ts',
+            ]),
+            stderr: '',
+            launch: { attempted: true, started: true },
+            cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+          };
+        return {
+          status: null,
+          signal: null,
+          stdout: '',
+          stderr: '',
+          error: new Error(
+            `Related Vitest discovery timed out after ${options.timeoutMs}ms`,
+          ),
+          launch: { attempted: true, started: true },
+          cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+        };
+      },
+    );
+    return { run, timeouts };
+  }
+  const refineNothing = (_root: string, paths: string[]) => ({
+    paths,
+    decisions: [],
+  });
+
+  test('a discovery slower than 60s but inside the caller budget completes', async () => {
+    const { run, timeouts } = timedDiscovery(90_000);
+    await expect(
+      discoverRelatedTestFiles(
+        process.cwd(),
+        ['scripts/lib/module-entry.mjs'],
+        {
+          run,
+          refine: refineNothing,
+          deadlineAt: 1_000 + 300_000,
+          now: () => 1_000,
+        },
+      ),
+    ).resolves.toEqual(['scripts/__tests__/changed-verification.test.ts']);
+    expect(timeouts).toEqual([270_000]);
+  });
+
+  test('a discovery that outlasts the remaining budget fails closed', async () => {
+    const { run, timeouts } = timedDiscovery(90_000);
+    await expect(
+      discoverRelatedTestFiles(
+        process.cwd(),
+        ['scripts/lib/module-entry.mjs'],
+        {
+          run,
+          refine: refineNothing,
+          deadlineAt: 1_000 + 100_000,
+          now: () => 1_000,
+        },
+      ),
+    ).rejects.toMatchObject({
+      phase: 'related-discovery',
+      message: expect.stringContaining('timed out after 70000ms'),
+    });
+    expect(timeouts).toEqual([70_000]);
+  });
+
+  test('with no budget a caller keeps the 60s floor, and a slower discovery fails closed', async () => {
+    const { run, timeouts } = timedDiscovery(61_000);
+    await expect(
+      discoverRelatedTestFiles(
+        process.cwd(),
+        ['scripts/lib/module-entry.mjs'],
+        {
+          run,
+          refine: refineNothing,
+        },
+      ),
+    ).rejects.toMatchObject({ phase: 'related-discovery' });
+    expect(timeouts).toEqual([60_000]);
+  });
+
+  test('the unsharded selector hands its deadline to discovery and fails closed past it', async () => {
+    // Real clock through the selector, so the derived timeout is pinned
+    // within the time this test itself takes.
+    const deadline = Date.now() + 300_000;
+    const slow = timedDiscovery(600_000);
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: slow.run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: ['scripts/lib/module-entry.mjs'],
+      }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+      discoveryDeadlineAt: deadline,
+    });
+    expect(slow.timeouts).toHaveLength(1);
+    expect(slow.timeouts[0]).toBeLessThanOrEqual(270_000);
+    expect(slow.timeouts[0]).toBeGreaterThan(260_000);
+    expect(result.receipt.terminal.status).toBe('infrastructure_error');
+    expect(result.exitCode).toBe(1);
+
+    const unbudgeted = timedDiscovery(600_000);
+    await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: unbudgeted.run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: ['scripts/lib/module-entry.mjs'],
+      }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    expect(unbudgeted.timeouts).toEqual([60_000]);
+  });
+
+  test('the fast-checks plan hands its deadline to discovery', async () => {
+    const deadline = Date.now() + 300_000;
+    const { run, timeouts } = timedDiscovery(90_000);
+    const plan = await planChangedVerificationShards('HEAD', {
+      root: process.cwd(),
+      run,
+      headSha: 'c'.repeat(40),
+      assertDependencyProvenance: () => ({
+        repositoryRoot: process.cwd(),
+        packages: [],
+      }),
+      changedPathsFn: () => ({
+        mergeBase: 'HEAD',
+        paths: ['scripts/lib/module-entry.mjs'],
+      }),
+      discoveryDeadlineAt: deadline,
+    });
+    expect(timeouts).toHaveLength(1);
+    expect(timeouts[0]).toBeLessThanOrEqual(270_000);
+    expect(timeouts[0]).toBeGreaterThan(260_000);
+    // Slower than the old 60s cap, inside the budget: the plan completes,
+    // and records the timeout the child actually ran under (#2803's record).
+    expect(plan.fileCount).toBeGreaterThan(0);
+    expect(plan.relatedDiscovery?.timeoutMilliseconds).toBe(timeouts[0]);
+  });
+});
+
+describe('an exhausted budget and the selector children (#2855 review)', () => {
+  function discoveryThatMustNotStart() {
+    return vi.fn(async () => {
+      throw new Error('discovery started despite an exhausted budget');
+    });
+  }
+  const refineNothing = (_root: string, paths: string[]) => ({
+    paths,
+    decisions: [],
+  });
+
+  test.each([
+    ['10s left', 1_000 + 10_000],
+    ['a deadline already past', 0],
+  ])(
+    'discovery with %s is refused, attributably, without starting a child',
+    async (_name, deadlineAt) => {
+      const run = discoveryThatMustNotStart();
+      await expect(
+        discoverRelatedTestFiles(
+          process.cwd(),
+          ['scripts/lib/module-entry.mjs'],
+          { run, refine: refineNothing, deadlineAt, now: () => 1_000 },
+        ),
+      ).rejects.toMatchObject({
+        phase: 'related-discovery',
+        childStarted: false,
+        message: expect.stringContaining(
+          'Related Vitest discovery refused: 0ms of its budget remain',
+        ),
+      });
+      expect(run).not.toHaveBeenCalled();
+    },
+  );
+
+  test('the unsharded selector writes an infrastructure_error receipt naming the remaining budget', async () => {
+    const run = discoveryThatMustNotStart();
+    const writeReceipt = vi.fn();
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: ['scripts/lib/module-entry.mjs'],
+      }),
+      collectProvenance: provenance,
+      writeReceipt,
+      discoveryDeadlineAt: Date.now() + 10_000,
+    });
+    expect(run).not.toHaveBeenCalled();
+    expect(result.receipt.terminal.status).toBe('infrastructure_error');
+    expect(result.preparation).toMatchObject({
+      phase: 'related-discovery',
+      error: expect.stringContaining('of its budget remain'),
+    });
+  });
+
+  test('no owned child inherits the selector discovery deadline', async () => {
+    const seen: Array<Record<string, string | undefined>> = [];
+    const execute = vi.fn(
+      (
+        _command,
+        _args,
+        _spawn,
+        _label,
+        options: { env: Record<string, string | undefined> },
+      ) => {
+        seen.push(options.env);
+        throw new Error('stop after capturing the spawn environment');
+      },
+    );
+    vi.stubEnv('STATION_TEST_CHANGED_DEADLINE_AT', '1700000000000');
+    try {
+      await runOwnedChangedCommand(process.execPath, ['-e', ''], {
+        cwd: process.cwd(),
+        execute,
+        processLabel: 'inherited environment',
+      });
+      await runOwnedChangedCommand(process.execPath, ['-e', ''], {
+        cwd: process.cwd(),
+        execute,
+        processLabel: 'explicit environment',
+        env: {
+          PATH: process.env.PATH,
+          STATION_TEST_CHANGED_DEADLINE_AT: '1700000000000',
+        },
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(seen).toHaveLength(2);
+    for (const env of seen) {
+      expect(env).not.toHaveProperty('STATION_TEST_CHANGED_DEADLINE_AT');
+      expect(env.PATH).toBe(process.env.PATH);
+    }
+  });
+});
+
+describe('documentation is evidence, not a whole-diff deferral (#2803)', () => {
+  const manifest = buildTestImpactManifest({ root: process.cwd() });
+  const select = (paths: string[]) =>
+    selectChangedVerification(paths, manifest);
+  const DOC = 'docs/reference/sdk.md';
+  const SDK = 'packages/sdk/src/client/plugins.ts';
+  const DOC_SUITES = [
+    'scripts/__tests__/docs-index-reachability.test.ts',
+    'scripts/__tests__/docs-reference-gate.test.ts',
+    'scripts/__tests__/docs-snippets.test.ts',
+    'scripts/__tests__/product-docs-source-links.test.ts',
+    'scripts/__tests__/repo-docs-hygiene.test.ts',
+  ];
+
+  test('a docs-only diff selects the live-docs suites, names its evidence, and does not defer', () => {
+    for (const path of [DOC, 'docs/guide.md', 'docs/design/new-note.md']) {
+      const selection = select([path]);
+      expect(selection.lanes, path).toEqual([]);
+      expect(selection.escalated, path).toBe(false);
+      expect(selection.relatedPaths, path).toEqual([]);
+      expect(
+        selection.tests.map(({ path: test }) => test),
+        path,
+      ).toEqual(expect.arrayContaining(DOC_SUITES));
+      const reasons = selection.tests
+        .flatMap(({ reasons }) => reasons)
+        .join(' ');
+      expect(reasons, path).toContain('docs:reference:gate');
+      expect(reasons, path).toContain('docs:links:check');
+    }
+  });
+
+  test('an SDK change with its reference doc keeps the SDK related selection', () => {
+    const alone = select([SDK]);
+    const mixed = select([SDK, DOC]);
+    expect(mixed.lanes).toEqual([]);
+    expect(mixed.escalated).toBe(false);
+    expect(mixed.relatedPaths).toEqual(alone.relatedPaths);
+    expect(mixed.tests.map(({ path }) => path)).toEqual(
+      expect.arrayContaining([
+        ...alone.tests.map(({ path }) => path),
+        ...DOC_SUITES,
+      ]),
+    );
+  });
+
+  test('a docs change beside a truly unknown path still defers', () => {
+    const selection = select([DOC, 'docs-private/notes.bin']);
+    expect(selection.escalated).toBe(true);
+    expect(selection.lanes.map(({ id }) => id)).toEqual(['ci-fast']);
+  });
+
+  test('end to end, a docs-only diff runs its suites and completes', async () => {
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: reportedRun(),
+      changedPathsFn: () => ({ mergeBase: 'base-sha', paths: [DOC] }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    expect(result.selection.lanes).toEqual([]);
+    expect(result.exitCode).toBe(0);
+    expect(result.receipt.terminal.status).toBe('completed');
+    const commands = result.executed.flatMap((execution) => execution.command);
+    for (const suite of DOC_SUITES) expect(commands).toContain(`./${suite}`);
+  });
 });

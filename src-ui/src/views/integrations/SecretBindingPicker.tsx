@@ -9,6 +9,7 @@ import {
 import { useMemo, useState } from 'react';
 import { Button } from '../../components/Button';
 import { SkeletonBlock } from '../../components/state';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 type Operation = 'bind' | 'unbind';
 type Retry = {
@@ -110,7 +111,7 @@ export function SecretBindingPicker({
     } catch (error) {
       setMessage(
         error instanceof Error
-          ? error.message
+          ? userFacingErrorMessage(error)
           : `Could not ${operation} this secret environment.`,
       );
       setRetry({
@@ -146,7 +147,10 @@ export function SecretBindingPicker({
         <SkeletonBlock count={1} label="Loading binding configuration" />
       ) : error ? (
         <div role="alert">
-          <p>Binding configuration could not be loaded: {error.message}</p>
+          <p>
+            Binding configuration could not be loaded:{' '}
+            {userFacingErrorMessage(error)}
+          </p>
           <Button size="sm" onClick={() => void retryQueries()}>
             Retry binding configuration
           </Button>

@@ -173,7 +173,13 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
 });
 
 describe('MutableSessionDetail error hand-off', () => {
-  test('appends a redacted reviewable draft without sending', () => {
+  const initialDetailState = { ...detailState };
+  beforeEach(() => {
+    Object.assign(detailState, initialDetailState);
+  });
+
+  /** A failed send with the composer shown: the state that offers hand-off. */
+  function sendFailed(overrides: Partial<typeof detailState> = {}) {
     Object.assign(detailState, {
       input: 'Keep my draft',
       hideGenericCompose: false,
@@ -185,7 +191,12 @@ describe('MutableSessionDetail error hand-off', () => {
         }),
         mutate: vi.fn(),
       },
+      ...overrides,
     });
+  }
+
+  test('appends a redacted reviewable draft without sending', () => {
+    sendFailed();
     detailState.setInput.mockClear();
     renderDetail();
     fireEvent.click(screen.getByRole('button', { name: 'Ask agent to help' }));
@@ -198,7 +209,8 @@ describe('MutableSessionDetail error hand-off', () => {
   });
 
   test('does not offer hand-off when the composer is hidden', () => {
-    Object.assign(detailState, { hideGenericCompose: true });
+    // Same failed send as above; the hidden composer is the only difference.
+    sendFailed({ hideGenericCompose: true });
     renderDetail();
     expect(
       screen.queryByRole('button', { name: 'Ask agent to help' }),

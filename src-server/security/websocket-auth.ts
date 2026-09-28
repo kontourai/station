@@ -1,4 +1,5 @@
 import { REMOTE_AUTH_PROTOCOL_VERSION } from '@kontourai/station-contracts';
+import { AUTH_RATE_LIMITED_ERROR_CODE } from '@kontourai/station-contracts/http';
 import type { RawData } from 'ws';
 
 export const WEBSOCKET_AUTH_CLOSE = {
@@ -7,7 +8,7 @@ export const WEBSOCKET_AUTH_CLOSE = {
   queryCredential: [4401, 'query_credential_rejected'],
   unsupportedPath: [4404, 'unsupported_path'],
   frameTooLarge: [4409, 'authentication_frame_too_large'],
-  rateLimited: [4429, 'authentication_rate_limited'],
+  rateLimited: [4429, AUTH_RATE_LIMITED_ERROR_CODE],
   capacityExceeded: [4429, 'authentication_capacity_exceeded'],
 } as const;
 

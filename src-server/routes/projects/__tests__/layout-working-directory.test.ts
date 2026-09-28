@@ -23,11 +23,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
-import {
-  codingLayoutRepoId,
-  withDerivedWorkingDirectory,
-  withoutPersistedWorkingDirectory,
-} from '../layout-working-directory.js';
+import { codingLayoutRepoId } from '../layout-working-directory.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   projectOps: { add: vi.fn() },
@@ -127,55 +123,6 @@ async function getLayoutConfig(app: TestApp): Promise<Record<string, unknown>> {
   expect(res.status).toBe(200);
   return (await json(res)).data.config;
 }
-
-describe('layout working-directory derivation helpers (pure)', () => {
-  test('strips a persisted working directory from a coding layout only', () => {
-    const coding = { type: 'coding', config: { workingDirectory: '/a', x: 1 } };
-    expect(withoutPersistedWorkingDirectory(coding).config).toEqual({ x: 1 });
-
-    const tasks = { type: 'tasks', config: { workingDirectory: '/a' } };
-    // Non-coding layouts are returned by identity: the server never wrote a
-    // working directory into them, so nothing here is ours to remove.
-    expect(withoutPersistedWorkingDirectory(tasks)).toBe(tasks);
-  });
-
-  test('a coding layout without the key is returned by identity', () => {
-    const layout = { type: 'coding', config: { tabs: [] } };
-    expect(withoutPersistedWorkingDirectory(layout)).toBe(layout);
-  });
-
-  test('derivation replaces a stale persisted value rather than deferring to it', () => {
-    const layout = { type: 'coding', config: { workingDirectory: '/stale' } };
-    expect(withDerivedWorkingDirectory(layout, '/current').config).toEqual({
-      workingDirectory: '/current',
-    });
-  });
-
-  test('no project working directory removes the key entirely, not sets it undefined', () => {
-    const layout = { type: 'coding', config: { workingDirectory: '/stale' } };
-    const derived = withDerivedWorkingDirectory(layout, undefined);
-    expect(Object.hasOwn(derived.config, 'workingDirectory')).toBe(false);
-    // The emitted JSON shape must equal the pre-change "no directory" shape.
-    expect(JSON.stringify(derived.config)).toBe('{}');
-  });
-
-  test('an empty-string project working directory still means "none"', () => {
-    // Pre-change the copy was guarded by plain truthiness; preserving that
-    // exactly is what makes this a zero-behavior-change read path.
-    const layout = { type: 'coding', config: {} };
-    expect(
-      Object.hasOwn(
-        withDerivedWorkingDirectory(layout, '').config,
-        'workingDirectory',
-      ),
-    ).toBe(false);
-  });
-
-  test('non-coding layouts are never given a derived working directory', () => {
-    const layout = { type: 'tasks', config: {} };
-    expect(withDerivedWorkingDirectory(layout, '/current')).toBe(layout);
-  });
-});
 
 /**
  * #2062 review BLOCKING-2, found by injection rather than by reading.
@@ -391,6 +338,18 @@ describe('transitions: a project working directory that moves and returns', () =
     const config = await getLayoutConfig(app);
     expect(Object.hasOwn(config, 'workingDirectory')).toBe(false);
   });
+
+  test('an empty-string project working directory still means "none"', async () => {
+    // Pre-change the copy was guarded by plain truthiness; preserving that
+    // exactly is what makes this a zero-behavior-change read path. A stale
+    // persisted copy must not survive either.
+    const home = tempHome();
+    const { app, storage } = appFor(home);
+    await seedProject(storage, '');
+    await seedLayout(storage, { workingDirectory: '/repos/stale' });
+    const config = await getLayoutConfig(app);
+    expect(Object.hasOwn(config, 'workingDirectory')).toBe(false);
+  });
 });
 
 describe('upgrade path: installs that already persisted a copy', () => {
@@ -480,6 +439,17 @@ describe('scope: non-coding layouts keep their own working directory', () => {
       workingDirectory: '/explicit',
     });
     expect(await getLayoutConfig(app)).toEqual({
+      workingDirectory: '/explicit',
+    });
+
+    // The write path leaves it alone too: only coding layouts are stripped.
+    const renamed = await app.request('/demo/layouts/coding', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Renamed' }),
+    });
+    expect(renamed.status).toBe(200);
+    expect(storedLayoutConfig(home)).toEqual({
       workingDirectory: '/explicit',
     });
   });

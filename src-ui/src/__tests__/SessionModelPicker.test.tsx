@@ -13,7 +13,6 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ResponsiveDialogSurface } from '../components/ResponsiveDialogSurface';
 import { SessionModelPicker } from '../components/session/SessionModelPicker';
 import { deviceSettingsStore } from '../lib/device-settings-store';
-import { resetModelPickerPreferencesCacheForTests } from '../settings/modelPickerPreferences';
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
@@ -23,7 +22,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 beforeEach(() => {
   window.localStorage.clear();
   vi.mocked(authenticatedFetch).mockReset();
-  resetModelPickerPreferencesCacheForTests();
+  deviceSettingsStore.reloadFromStorage();
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
     value: vi.fn().mockReturnValue({

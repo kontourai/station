@@ -39,6 +39,7 @@ const state = {
 const createAgent = vi.fn();
 const updateAgent = vi.fn();
 const materializeEngineAgent = vi.fn();
+const deleteAgent = vi.fn();
 const select = vi.fn((slug: string) => {
   state.selectedId = slug;
 });
@@ -126,7 +127,7 @@ vi.mock('../../../contexts/AgentsContext', () => ({
   useAgentActions: () => ({
     createAgent,
     updateAgent,
-    deleteAgent: vi.fn(),
+    deleteAgent,
   }),
 }));
 vi.mock('../../../contexts/ConfigContext', () => ({ useConfig: () => ({}) }));
@@ -179,6 +180,7 @@ beforeEach(() => {
   state.catalogReconciling = false;
   createAgent.mockReset().mockResolvedValue({ data: { slug: 'writer' } });
   updateAgent.mockReset().mockResolvedValue({ data: {} });
+  deleteAgent.mockReset().mockResolvedValue(undefined);
   materializeEngineAgent
     .mockReset()
     .mockResolvedValue({ data: { slug: 'claude-code' }, created: true });
@@ -330,6 +332,52 @@ describe('AC5 — a created Agent is in the list and selected, with no reload', 
       ]),
     );
   });
+});
+
+/**
+ * archive#3741: the required marker and the Create gate read one derivation
+ * of "this engine needs an authored prompt", so a field can never be unmarked
+ * and still refuse — nor marked and then accepted as empty.
+ */
+describe('the prompt requirement is one view-model derivation (archive#3741)', () => {
+  test.each([
+    ["Station's engine", 'model', 'helper', true],
+    [
+      "the reserved station Agent on Station's engine",
+      'model',
+      'station',
+      false,
+    ],
+    ['an engine that delivers its own prompt (Claude)', 'cli', 'helper', false],
+  ] as const)(
+    '%s: the marker and the Create gate agree',
+    (_label, start, slug, required) => {
+      const { result } = render();
+      act(() => {
+        result.current.handleNew();
+        if (start === 'model') result.current.handleStartWithModel();
+        else result.current.handleStartWithCli();
+        result.current.setForm((form) => ({
+          ...form,
+          slug,
+          name: 'Helper',
+          prompt: '',
+          execution: {
+            ...form.execution,
+            ...(start === 'cli' ? { agentConnectionId: 'claude' } : {}),
+          },
+        }));
+      });
+
+      expect(result.current.promptIsRequired).toBe(required);
+      expect(result.current.createBlocked).toBe(required);
+
+      act(() => {
+        result.current.setForm((form) => ({ ...form, prompt: 'Be helpful.' }));
+      });
+      expect(result.current.createBlocked).toBe(false);
+    },
+  );
 });
 
 describe('AC5 — a tools read that lands mid-activation is a wait, not an error', () => {
@@ -582,6 +630,38 @@ describe('AC7 — engineDefault is not a lock', () => {
     expect(select).toHaveBeenLastCalledWith('claude-code');
     // The picker's Enable posts the same thing — see NewChatModal's suite.
     expect(createAgent).not.toHaveBeenCalled();
+  });
+
+  // #2708 A-3a: an Enable refused by the validation middleware, as the REAL
+  // agent fetcher throws it, reads as the server's reason.
+  test('a refused Enable shows the reason from the real agent fetcher', async () => {
+    const { materializeEngineAgent: realMaterialize } = await import(
+      '@kontourai/station-sdk/client'
+    );
+    const refusal = await realValidationRefusal(
+      () => realMaterialize('http://station.test', 'claude'),
+      'Choose a detected engine.',
+      'engineId',
+    );
+    materializeEngineAgent.mockRejectedValueOnce(refusal);
+    state.agents = [
+      agent({
+        slug: 'claude',
+        name: 'Claude Code',
+        engineDefault: true,
+        execution: { agentConnectionId: 'claude' },
+        available: false,
+        unavailableReason: 'no definition',
+        enable: { engineConnectionId: 'claude' },
+      }),
+    ];
+    state.selectedId = 'claude';
+    const { result } = render();
+    await act(async () => {
+      await result.current.handleEnableSelected();
+    });
+
+    expect(result.current.enableError).toBe('Choose a detected engine.');
   });
 
   test('a read-only ACP agent keeps its lock and gets a Connections action', () => {
@@ -870,6 +950,36 @@ describe('persisted detail remains authoritative while the collection reconciles
   });
 });
 
+// archive#3662: an ABSENT engine binding is Station's own engine, not "no
+// engine", so the editor must offer the Model-connection choice for it. The
+// old predicate answered the other way and the one Agent shape that always
+// needs a Model connection was the shape never offered one.
+describe('an Agent with no engine binding edits as a Station-engine Agent (archive#3662)', () => {
+  test('an absent binding selects the Model-connection engine kind', () => {
+    state.selectedId = 'writer';
+    state.detail = agent({
+      slug: 'writer',
+      name: 'Writer',
+      execution: { agentConnectionId: '' },
+    });
+    const { result } = render();
+    expect(result.current.form.name).toBe('Writer');
+    expect(result.current.engineKind).toBe('model');
+  });
+
+  test('a binding to an external engine selects the CLI engine kind', () => {
+    state.selectedId = 'writer';
+    state.detail = agent({
+      slug: 'writer',
+      name: 'Writer',
+      execution: { agentConnectionId: 'claude' },
+    });
+    const { result } = render();
+    expect(result.current.form.name).toBe('Writer');
+    expect(result.current.engineKind).toBe('cli');
+  });
+});
+
 /**
  * archive#4521: does the editor actually let the user SET the
  * agent's model/provider binding — read from a loaded agent, and written
@@ -985,4 +1095,73 @@ describe('the built-in Station Agent saves its fields, not its resolved engine (
       'Change the built-in Agent engine in Settings, then save your changes again.',
     );
   });
+
+  // #2708 A-3a: a save refused by the validation middleware, as the REAL
+  // agent fetcher throws it, reads as the server's reason, not the schema key.
+  test('a validation refusal from the real agent fetcher shows its reason', async () => {
+    const { updateAgentRaw } = await import('@kontourai/station-sdk/client');
+    const refusal = await realValidationRefusal(
+      () => updateAgentRaw('http://station.test', 'station', {}),
+      'Name must not be empty.',
+      'name',
+    );
+    state.selectedId = 'station';
+    state.detail = { slug: 'station', name: 'Station' };
+    updateAgent.mockRejectedValue(refusal);
+    const { result } = render();
+
+    act(() => {
+      result.current.setForm((form) => ({
+        ...form,
+        description: 'Trigger save',
+      }));
+    });
+    await act(async () => {
+      await result.current.handleSave();
+    });
+
+    expect(result.current.error).toBe('Name must not be empty.');
+  });
+
+  test('a refused delete shows the reason from the real agent fetcher', async () => {
+    const { deleteAgentRaw } = await import('@kontourai/station-sdk/client');
+    const refusal = await realValidationRefusal(
+      () => deleteAgentRaw('http://station.test', 'station'),
+      'The built-in Agent cannot be deleted.',
+      'slug',
+    );
+    state.selectedId = 'station';
+    state.detail = { slug: 'station', name: 'Station' };
+    deleteAgent.mockRejectedValueOnce(refusal);
+    const { result } = render();
+
+    await act(async () => {
+      await result.current.handleDelete();
+    });
+
+    expect(result.current.error).toBe('The built-in Agent cannot be deleted.');
+  });
 });
+
+/** The refusal the REAL SDK fetcher throws for a validation 400 (#2708). */
+async function realValidationRefusal(
+  call: () => Promise<unknown>,
+  reason: string,
+  field: string,
+): Promise<unknown> {
+  const previous = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        success: false,
+        error: 'Validation failed',
+        details: { formErrors: [], fieldErrors: { [field]: [reason] } },
+      }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    )) as typeof fetch;
+  try {
+    return await call().catch((caught: unknown) => caught);
+  } finally {
+    globalThis.fetch = previous;
+  }
+}

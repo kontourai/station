@@ -1238,7 +1238,7 @@ function claudeTaskToolName(message: {
  * Returns undefined for non-terminal or unknown values so callers can
  * treat SDK/CLI version skew as a no-op.
  */
-export function mapClaudeTaskStatus(
+function mapClaudeTaskStatus(
   status: string | undefined,
 ): 'success' | 'error' | 'cancelled' | undefined {
   switch (status) {

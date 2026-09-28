@@ -216,6 +216,112 @@ describe('September 8 visual feedback regressions', () => {
     },
   );
 
+  // archive#3319: the row is a flexible name column beside a fixed Open icon.
+  // A long name must be cut short inside its column, never run under the icon.
+  test('a long project name truncates instead of displacing the Open icon', async () => {
+    const anchor = document.createElement('button');
+    document.body.appendChild(anchor);
+    const anchorRef = createRef<HTMLElement>();
+    anchorRef.current = anchor;
+    const project = {
+      hasWorkingDirectory: false,
+      layoutCount: 0,
+      hasKnowledge: false,
+    };
+    render(
+      <ChatDockProjectSwitcherSheet
+        anchorRef={anchorRef}
+        boundProjectSlug="knowledge-docs"
+        projects={[
+          {
+            ...project,
+            id: 'p-long',
+            slug: 'knowledge-docs',
+            name: 'Example · Knowledge Docs for the quarterly platform reliability review',
+          },
+          { ...project, id: 'p-short', slug: 'xyz', name: 'XYZ' },
+        ]}
+        onOpenProject={() => {}}
+        onSwitchProject={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const markup = document.querySelector(
+      '.responsive-surface-overlay',
+    )!.outerHTML;
+    const page = await browser.newPage({
+      viewport: { width: 1200, height: 768 },
+    });
+    try {
+      await page.setContent(`<style>${css}</style>${markup}`);
+      const rows = await page
+        .locator('.chat-dock__project-switcher-row')
+        .evaluateAll((nodes) =>
+          nodes.map((row) => {
+            const box = (element: Element | null) => {
+              if (!element) throw new Error('missing switcher row part');
+              return element.getBoundingClientRect().toJSON() as DOMRect;
+            };
+            const label = row.querySelector(
+              '.chat-dock__project-switcher-label',
+            );
+            const open = box(
+              row.querySelector('.chat-dock__project-switcher-open'),
+            );
+            const hit = document.elementFromPoint(
+              open.x + open.width / 2,
+              open.y + open.height / 2,
+            );
+            return {
+              row: box(row),
+              switchButton: box(
+                row.querySelector('.chat-dock__project-switcher-switch'),
+              ),
+              name: box(row.querySelector('.chat-dock__project-switcher-name')),
+              open,
+              // Too wide for its box, and whether that box cuts the text off
+              // or lets it paint on over the Open icon.
+              label: !label
+                ? 'missing'
+                : label.scrollWidth <= label.clientWidth + 1
+                  ? 'fits'
+                  : ['hidden', 'clip'].includes(
+                        getComputedStyle(label).overflowX,
+                      )
+                    ? 'clipped'
+                    : 'painted-outside',
+              openHit: Boolean(
+                hit?.closest('.chat-dock__project-switcher-open') &&
+                  row.contains(hit),
+              ),
+            };
+          }),
+        );
+
+      expect(rows).toHaveLength(2);
+      // The long name is genuinely too wide and is cut short in its own box;
+      // the short one is the control that fits untouched.
+      expect(rows.map((row) => row.label)).toEqual(['clipped', 'fits']);
+      for (const measured of rows) {
+        expect(measured.name.right).toBeLessThanOrEqual(
+          measured.switchButton.right + 1,
+        );
+        expect(measured.name.right).toBeLessThanOrEqual(measured.open.left + 1);
+        expect(measured.open.right).toBeLessThanOrEqual(measured.row.right + 1);
+        // Rounded: the anchored panel can sit on a subpixel offset.
+        expect(Math.round(measured.open.width)).toBeGreaterThanOrEqual(44);
+        expect(Math.round(measured.open.height)).toBeGreaterThanOrEqual(44);
+        expect(Math.round(measured.switchButton.height)).toBeGreaterThanOrEqual(
+          44,
+        );
+        expect(measured.openHit).toBe(true);
+      }
+    } finally {
+      await page.close();
+      anchor.remove();
+    }
+  });
+
   test.each([400, 900])(
     'Activity detail gets usable width inside a %ipx region',
     async (width) => {

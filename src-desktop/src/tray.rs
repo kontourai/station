@@ -1,18 +1,18 @@
 //! Native desktop tray for the selected Station sidecar or attached service.
 
 use crate::service_state::{
-    discover_manifest_for_runtime, probe_service_with_local_proof, resolve_station_home_for_channel, service_action,
-    service_command_is_trusted, ResolvedLocalService, ServiceAction, ServiceHealth,
-    ServiceManifest,
+    discover_manifest_for_runtime, probe_service_with_local_proof,
+    resolve_station_home_for_channel, service_action, service_command_is_trusted,
+    ResolvedLocalService, ServiceAction, ServiceHealth, ServiceManifest,
 };
 use crate::{BundledServerStatus, DesktopOwnerSnapshot, ServerOwnership};
 use serde::Deserialize;
-use std::fs::{read_to_string, symlink_metadata};
 use std::fmt::Display;
+use std::fs::{read_to_string, symlink_metadata};
 use std::io::Read;
 use std::net::IpAddr;
-use std::path::Path;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
@@ -206,13 +206,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         false,
         None::<&str>,
     )?;
-    let build = MenuItem::with_id(
-        app,
-        "tray-build",
-        build_text,
-        false,
-        None::<&str>,
-    )?;
+    let build = MenuItem::with_id(app, "tray-build", build_text, false, None::<&str>)?;
     let status = MenuItem::with_id(
         app,
         "tray-status",
@@ -234,13 +228,8 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         false,
         None::<&str>,
     )?;
-    let connections = MenuItem::with_id(
-        app,
-        "tray-connections",
-        "Connections…",
-        false,
-        None::<&str>,
-    )?;
+    let connections =
+        MenuItem::with_id(app, "tray-connections", "Connections…", false, None::<&str>)?;
     let connected_clients = MenuItem::with_id(
         app,
         "tray-connected-clients",
@@ -248,7 +237,13 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         false,
         None::<&str>,
     )?;
-    let access_requests = MenuItem::with_id(app, "tray-access-requests", "Pending access requests: 0", false, None::<&str>)?;
+    let access_requests = MenuItem::with_id(
+        app,
+        "tray-access-requests",
+        "Pending access requests: 0",
+        false,
+        None::<&str>,
+    )?;
     app.manage(crate::local_access_watch::LocalAccessWatch::default());
     let desktop_updates = update_settings_menu_item(app, TrayUpdateMenuItem::Desktop)?;
     let server_updates = update_settings_menu_item(app, TrayUpdateMenuItem::Server)?;
@@ -356,7 +351,9 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     {
         use tauri_plugin_deep_link::DeepLinkExt;
         if let Ok(Some(urls)) = app.deep_link().get_current() {
-            for url in urls { handle_browser_open_link(app, url.as_str()); }
+            for url in urls {
+                handle_browser_open_link(app, url.as_str());
+            }
         }
     }
     log::info!("Station tray initialized");
@@ -400,13 +397,7 @@ fn update_settings_menu_item<R: Runtime, M: Manager<R>>(
     item: TrayUpdateMenuItem,
 ) -> tauri::Result<MenuItem<R>> {
     let spec = item.spec();
-    MenuItem::with_id(
-        manager,
-        spec.id,
-        spec.label,
-        spec.enabled,
-        None::<&str>,
-    )
+    MenuItem::with_id(manager, spec.id, spec.label, spec.enabled, None::<&str>)
 }
 
 fn spawn_poll_thread(
@@ -619,9 +610,7 @@ fn apply_poller_failure_ui(state: &TrayState) {
         .set_text("Paired devices: unavailable");
     set_menu_item_enabled(&state.connected_clients, "Paired devices", false);
     set_menu_item_enabled(&state.desktop_updates, "Desktop app updates", false);
-    let _ = state
-        .server_updates
-        .set_text(SERVER_UPDATE_SETTINGS_LABEL);
+    let _ = state.server_updates.set_text(SERVER_UPDATE_SETTINGS_LABEL);
     set_menu_item_enabled(&state.server_updates, "Connected server updates", false);
     let _ = state.service_action.set_text("Service unavailable");
     set_menu_item_enabled(&state.service_action, "Service action", false);
@@ -923,7 +912,8 @@ struct LocalClientBuildManifest {
 /// would conflate backend deployment and local artifact provenance.
 fn local_client_build_label(app: &AppHandle) -> Option<String> {
     let resource_dir = app.path().resource_dir().ok()?;
-    let manifest = read_local_client_build_manifest(&resource_dir.join("dist-server/station-build.json"))?;
+    let manifest =
+        read_local_client_build_manifest(&resource_dir.join("dist-server/station-build.json"))?;
     compact_utc_build_label(&manifest.built_at)
 }
 
@@ -948,10 +938,9 @@ fn compact_utc_build_label(value: &str) -> Option<String> {
         || bytes.get(16) != Some(&b':')
         || bytes.get(19) != Some(&b'.')
         || !value.ends_with('Z')
-        || !bytes
-            .iter()
-            .enumerate()
-            .all(|(index, byte)| matches!(index, 4 | 7 | 10 | 13 | 16 | 19 | 23) || byte.is_ascii_digit())
+        || !bytes.iter().enumerate().all(|(index, byte)| {
+            matches!(index, 4 | 7 | 10 | 13 | 16 | 19 | 23) || byte.is_ascii_digit()
+        })
         || !valid_calendar_utc(value)
     {
         return None;
@@ -962,11 +951,26 @@ fn compact_utc_build_label(value: &str) -> Option<String> {
 fn valid_calendar_utc(value: &str) -> bool {
     let parse = |start: usize, end: usize| value.get(start..end)?.parse::<u32>().ok();
     let (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) = (
-        parse(0, 4), parse(5, 7), parse(8, 10), parse(11, 13), parse(14, 16), parse(17, 19),
-    ) else { return false; };
-    if !(1..=12).contains(&month) || day == 0 || hour > 23 || minute > 59 || second > 59 { return false; }
+        parse(0, 4),
+        parse(5, 7),
+        parse(8, 10),
+        parse(11, 13),
+        parse(14, 16),
+        parse(17, 19),
+    ) else {
+        return false;
+    };
+    if !(1..=12).contains(&month) || day == 0 || hour > 23 || minute > 59 || second > 59 {
+        return false;
+    }
     let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let max_day = match month { 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31, 4 | 6 | 9 | 11 => 30, 2 if leap => 29, 2 => 28, _ => return false };
+    let max_day = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return false,
+    };
     day <= max_day
 }
 
@@ -1021,12 +1025,23 @@ fn tray_context(app: &AppHandle) -> TrayContext {
         service.as_ref().map(|service| &service.manifest),
     );
     let has_trusted_manifest = trusted_manifest.is_some();
-    let endpoint_health = trusted_manifest.map(|manifest| probe_service_with_local_proof(Some(manifest), &|boot_id| {
-        let Some(state) = app.try_state::<crate::DesktopServerState>() else { return false; };
-        let Ok(api_base) = station_api_origin(manifest) else { return false; };
-        let ticket = crate::startup_readiness::StartupTicket { generation: 0, instance_id: manifest.instance_id.clone(), boot_id: boot_id.to_owned(), api_base };
-        crate::prove_bundled_startup_identity(&state.supervisor.context.launch, &ticket).is_ok()
-    }));
+    let endpoint_health = trusted_manifest.map(|manifest| {
+        probe_service_with_local_proof(Some(manifest), &|boot_id| {
+            let Some(state) = app.try_state::<crate::DesktopServerState>() else {
+                return false;
+            };
+            let Ok(api_base) = station_api_origin(manifest) else {
+                return false;
+            };
+            let ticket = crate::startup_readiness::StartupTicket {
+                generation: 0,
+                instance_id: manifest.instance_id.clone(),
+                boot_id: boot_id.to_owned(),
+                api_base,
+            };
+            crate::prove_bundled_startup_identity(&state.supervisor.context.launch, &ticket).is_ok()
+        })
+    });
     let snapshot = tray_backend_snapshot(&status, &owner, trusted_manifest, endpoint_health);
     TrayContext {
         snapshot,
@@ -1088,10 +1103,7 @@ fn desktop_update_route(renderer_admitted: bool) -> TrayUpdateRoute {
 /// connection, so the native renderer is used whenever it is admitted. Only
 /// when no usable native renderer exists may the already-supported trusted
 /// installed-service browser fallback open instead.
-fn server_update_route(
-    renderer_admitted: bool,
-    snapshot: &TrayBackendSnapshot,
-) -> TrayUpdateRoute {
+fn server_update_route(renderer_admitted: bool, snapshot: &TrayBackendSnapshot) -> TrayUpdateRoute {
     if renderer_admitted {
         return TrayUpdateRoute::NativeRenderer;
     }
@@ -1139,7 +1151,9 @@ fn open_desktop_update_settings(app: &AppHandle) {
             navigate_native_renderer(app, TrayNavigationDestination::DesktopUpdates)
         }
         TrayUpdateRoute::InstalledServiceBrowser | TrayUpdateRoute::Unavailable => {
-            log::warn!("Station tray could not open desktop update settings: no admitted native renderer")
+            log::warn!(
+                "Station tray could not open desktop update settings: no admitted native renderer"
+            )
         }
     }
 }
@@ -1292,13 +1306,15 @@ pub(crate) fn take_pending_tray_navigation<R: Runtime>(
     if !tray_navigation_label_admitted(window.label()) {
         return Err("Tray navigation replay is accepted only from the main WebView.".into());
     }
-    Ok(app.try_state::<PendingTrayNavigation>().and_then(|pending| {
-        pending
-            .0
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .take_lease(Instant::now())
-    }))
+    Ok(app
+        .try_state::<PendingTrayNavigation>()
+        .and_then(|pending| {
+            pending
+                .0
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .take_lease(Instant::now())
+        }))
 }
 
 #[tauri::command]
@@ -1310,13 +1326,15 @@ pub(crate) fn ack_pending_tray_navigation<R: Runtime>(
     if !tray_navigation_label_admitted(window.label()) {
         return Err("Tray navigation replay is accepted only from the main WebView.".into());
     }
-    Ok(app.try_state::<PendingTrayNavigation>().is_some_and(|pending| {
-        pending
-            .0
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .acknowledge(id)
-    }))
+    Ok(app
+        .try_state::<PendingTrayNavigation>()
+        .is_some_and(|pending| {
+            pending
+                .0
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .acknowledge(id)
+        }))
 }
 
 pub(crate) fn release_pending_navigation_lease<R: Runtime>(app: &AppHandle<R>, reason: &str) {
@@ -1505,8 +1523,7 @@ fn station_api_origin(manifest: &ServiceManifest) -> Result<String, String> {
 const API_DOCS_LAUNCH_PATH: &str = "/.well-known/station/v1/pairing/api-docs";
 
 /// Mirrors `PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH`.
-const API_DOCS_CAPABILITY_MINT_PATH: &str =
-    "/.well-known/station/v1/pairing/mint-ui-bootstrap";
+const API_DOCS_CAPABILITY_MINT_PATH: &str = "/.well-known/station/v1/pairing/mint-ui-bootstrap";
 
 /// Mirrors the `api-docs` member of `UI_BOOTSTRAP_PURPOSES` in
 /// `src-server/runtime/routes/runtime-routes.ts`. An unknown purpose is
@@ -1551,7 +1568,10 @@ fn station_api_docs_url(api_origin: &str) -> Result<String, String> {
 /// handing it a single-use capability in the URL FRAGMENT: a fragment is never
 /// transmitted to the server, so the capability stays out of request logs and
 /// out of the query string, where Station refuses credentials outright.
-fn api_docs_launch_url_with_capability(launch_url: &str, capability: &str) -> Result<String, String> {
+fn api_docs_launch_url_with_capability(
+    launch_url: &str,
+    capability: &str,
+) -> Result<String, String> {
     // The capability is a 32-byte base64url value. Bounding the length as well
     // as the alphabet keeps a wedged or hostile listener from handing the tray
     // an arbitrarily long string to carry into a URL.
@@ -1632,10 +1652,12 @@ fn mint_api_docs_capability(api_origin: &str, base_dir: &Path) -> Result<String,
         MAX_API_DOCS_MINT_RESPONSE_BYTES,
     )?;
     if !(200..300).contains(&status) {
-        return Err(format!("Station refused the API docs capability (HTTP {status})"));
+        return Err(format!(
+            "Station refused the API docs capability (HTTP {status})"
+        ));
     }
-    let parsed: serde_json::Value =
-        serde_json::from_str(&raw).map_err(|_| "invalid API docs capability response".to_string())?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|_| "invalid API docs capability response".to_string())?;
     parsed
         .get("token")
         .and_then(serde_json::Value::as_str)
@@ -1831,10 +1853,19 @@ fn update_once(app: &AppHandle) -> ServiceHealth {
     let state = app.state::<TrayState>().inner().clone();
     let context = tray_context(app);
     crate::desktop_companion::register(app, context.service.as_ref());
-    let access_target = context.snapshot.api_origin.clone().map(|origin| crate::local_access_watch::Target {
-        origin,
-        home: context.service.as_ref().map(|service| service.base_dir.clone()).unwrap_or_else(|| station_home(app)),
-    });
+    let access_target =
+        context
+            .snapshot
+            .api_origin
+            .clone()
+            .map(|origin| crate::local_access_watch::Target {
+                origin,
+                home: context
+                    .service
+                    .as_ref()
+                    .map(|service| service.base_dir.clone())
+                    .unwrap_or_else(|| station_home(app)),
+            });
     crate::local_access_watch::refresh(app.clone(), access_target);
     let access_count = crate::local_access_watch::pending_count(app);
     let access_item = state.access_requests.clone();
@@ -2091,7 +2122,10 @@ mod tests {
             Some(&service),
             Some(ServiceHealth::Running),
         );
-        assert_eq!(service_snapshot.label, "Local server: installed service alpha_1.2");
+        assert_eq!(
+            service_snapshot.label,
+            "Local server: installed service alpha_1.2"
+        );
         assert_eq!(service_snapshot.api_docs_label, "Open API docs (port 3141)");
         assert_eq!(service_snapshot.ui_label, "Open Station UI (port 3000)");
         assert_eq!(
@@ -2245,14 +2279,20 @@ mod tests {
         let running_snapshot =
             tray_backend_snapshot(&running, &DesktopOwnerSnapshot::Sidecar, None, None);
 
-        assert_eq!(starting_snapshot.label, "Local server: built into desktop app");
+        assert_eq!(
+            starting_snapshot.label,
+            "Local server: built into desktop app"
+        );
         assert_eq!(
             starting_snapshot.api_docs_label,
             "Open API docs (port 38141)"
         );
         assert_eq!(starting_snapshot.ui_label, "Show Station UI (desktop app)");
         assert_eq!(starting_snapshot.health, ServiceHealth::Stopped);
-        assert_eq!(running_snapshot.label, "Local server: built into desktop app");
+        assert_eq!(
+            running_snapshot.label,
+            "Local server: built into desktop app"
+        );
         assert_eq!(running_snapshot.health, ServiceHealth::Running);
         assert!(running_snapshot.can_open_ui());
         assert!(running_snapshot.can_open_api_docs());
@@ -2346,12 +2386,8 @@ mod tests {
         ] {
             let mut sidecar_status = status(ServerOwnership::Sidecar, Some(4310));
             sidecar_status.phase = phase;
-            let sidecar = tray_backend_snapshot(
-                &sidecar_status,
-                &DesktopOwnerSnapshot::Sidecar,
-                None,
-                None,
-            );
+            let sidecar =
+                tray_backend_snapshot(&sidecar_status, &DesktopOwnerSnapshot::Sidecar, None, None);
 
             assert!(tray_destination_availability(&sidecar, true, false, false).open_ui);
             assert!(tray_destination_availability(&sidecar, false, false, true).open_ui);
@@ -2478,16 +2514,16 @@ mod tests {
     #[cfg(target_os = "macos")]
     fn constructed_update_menu_items_promise_their_settings_navigation() {
         let app = tauri::test::mock_app();
-        let desktop =
-            update_settings_menu_item(app.handle(), TrayUpdateMenuItem::Desktop).expect("desktop item");
+        let desktop = update_settings_menu_item(app.handle(), TrayUpdateMenuItem::Desktop)
+            .expect("desktop item");
         assert_eq!(desktop.id().as_ref(), "tray-desktop-updates");
         assert_eq!(
             desktop.text().expect("desktop item text"),
             "Desktop app updates…"
         );
         assert!(!desktop.is_enabled().expect("desktop item enabled state"));
-        let server =
-            update_settings_menu_item(app.handle(), TrayUpdateMenuItem::Server).expect("server item");
+        let server = update_settings_menu_item(app.handle(), TrayUpdateMenuItem::Server)
+            .expect("server item");
         assert_eq!(server.id().as_ref(), "tray-server-updates");
         assert_eq!(
             server.text().expect("server item text"),
@@ -2527,7 +2563,8 @@ mod tests {
                 server_updates_enabled: false,
                 service_action_text: "Built-in service",
                 service_action_enabled: false,
-                tooltip: "Station vtest\nLocal server: built into desktop app\nHealth: Running".into(),
+                tooltip: "Station vtest\nLocal server: built into desktop app\nHealth: Running"
+                    .into(),
             }
         );
     }
@@ -2563,7 +2600,10 @@ mod tests {
         for snapshot in [&service, &sidecar, &unavailable] {
             assert_eq!(
                 admitted_renderer(snapshot),
-                (TrayUpdateRoute::NativeRenderer, TrayUpdateRoute::NativeRenderer),
+                (
+                    TrayUpdateRoute::NativeRenderer,
+                    TrayUpdateRoute::NativeRenderer
+                ),
                 "{:?} never changes an admitted renderer's destinations",
                 snapshot.kind
             );
@@ -3113,10 +3153,7 @@ mod tests {
         // bounded it.
         let token = "a".repeat(43);
         let body = format!("{{\"token\":\"{token}\"}}");
-        let padded = format!(
-            "{body}{}",
-            " ".repeat(MAX_API_DOCS_MINT_RESPONSE_BYTES + 1)
-        );
+        let padded = format!("{body}{}", " ".repeat(MAX_API_DOCS_MINT_RESPONSE_BYTES + 1));
         assert!(
             read_bounded(padded.as_bytes(), MAX_API_DOCS_MINT_RESPONSE_BYTES).is_err(),
             "an oversized body must be refused, not silently cut down to valid JSON"
@@ -3262,28 +3299,70 @@ mod tests {
 static BROWSER_HANDOFF_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// A protocol request may arrive before the owned backend finishes starting.
 pub(crate) fn handle_browser_open_link(app: &AppHandle, raw: &str) -> bool {
-    if url::Url::parse(raw).ok().and_then(|url| url.host_str().map(str::to_owned)).as_deref() != Some("open-browser") { return false; }
-    if BROWSER_HANDOFF_ACTIVE.swap(true, Ordering::SeqCst) { return true; }
-    let handle = app.clone(); let raw = raw.to_string();
+    if url::Url::parse(raw)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .as_deref()
+        != Some("open-browser")
+    {
+        return false;
+    }
+    if BROWSER_HANDOFF_ACTIVE.swap(true, Ordering::SeqCst) {
+        return true;
+    }
+    let handle = app.clone();
+    let raw = raw.to_string();
     thread::spawn(move || {
-      use tauri_plugin_dialog::DialogExt;
-      let started = Instant::now();
-      let outcome = loop {
-        if handle.try_state::<TrayState>().is_some() {
-          let context = tray_context(&handle);
-          if let Some(api_origin) = context.snapshot.api_origin {
-            let home = context.service.as_ref().map(|service| service.base_dir.clone()).unwrap_or_else(|| station_home(&handle));
-            let ui_origin = context.service.as_ref().and_then(|service| station_ui_url(&service.manifest).ok()).unwrap_or_else(|| api_origin.clone());
-            let channel = crate::channel_ports_generated::desktop_channel_from_identifier(&handle.config().identifier).unwrap_or("dev");
-            let scheme = crate::pairing_deep_link_channels_generated::native_pairing_deep_link_scheme(&handle.config().identifier, cfg!(debug_assertions), channel);
-            break crate::local_access_watch::browser_origin(&raw, &scheme, &ui_origin).and_then(|origin| crate::local_access_watch::open_browser(&handle, &crate::local_access_watch::Target {origin: api_origin, home}, &origin));
-          }
+        use tauri_plugin_dialog::DialogExt;
+        let started = Instant::now();
+        let outcome = loop {
+            if handle.try_state::<TrayState>().is_some() {
+                let context = tray_context(&handle);
+                if let Some(api_origin) = context.snapshot.api_origin {
+                    let home = context
+                        .service
+                        .as_ref()
+                        .map(|service| service.base_dir.clone())
+                        .unwrap_or_else(|| station_home(&handle));
+                    let ui_origin = context
+                        .service
+                        .as_ref()
+                        .and_then(|service| station_ui_url(&service.manifest).ok())
+                        .unwrap_or_else(|| api_origin.clone());
+                    let channel = crate::channel_ports_generated::desktop_channel_from_identifier(
+                        &handle.config().identifier,
+                    )
+                    .unwrap_or("dev");
+                    let scheme = crate::pairing_deep_link_channels_generated::native_pairing_deep_link_scheme(&handle.config().identifier, cfg!(debug_assertions), channel);
+                    break crate::local_access_watch::browser_origin(&raw, &scheme, &ui_origin)
+                        .and_then(|origin| {
+                            crate::local_access_watch::open_browser(
+                                &handle,
+                                &crate::local_access_watch::Target {
+                                    origin: api_origin,
+                                    home,
+                                },
+                                &origin,
+                            )
+                        });
+                }
+            }
+            if started.elapsed() > Duration::from_secs(30) {
+                break Err(
+                    "Station is still starting. Try Connect with Station again shortly."
+                        .to_string(),
+                );
+            }
+            thread::sleep(Duration::from_millis(500));
+        };
+        if let Err(error) = outcome {
+            handle
+                .dialog()
+                .message(error)
+                .title("Connect browser to Station")
+                .blocking_show();
         }
-        if started.elapsed() > Duration::from_secs(30) { break Err("Station is still starting. Try Connect with Station again shortly.".to_string()); }
-        thread::sleep(Duration::from_millis(500));
-      };
-      if let Err(error) = outcome { handle.dialog().message(error).title("Connect browser to Station").blocking_show(); }
-      BROWSER_HANDOFF_ACTIVE.store(false, Ordering::SeqCst);
+        BROWSER_HANDOFF_ACTIVE.store(false, Ordering::SeqCst);
     });
     true
 }

@@ -1657,17 +1657,34 @@ export const TENANT_EXECUTION_CONTEXT_REASON = [
 ] as const;
 export type TenantExecutionContextReason =
   (typeof TENANT_EXECUTION_CONTEXT_REASON)[number];
+/** The one dimension value recorded for anything outside the vocabulary. */
+const TENANT_EXECUTION_CONTEXT_INVALID = 'invalid';
+function closedDimension<T extends string>(
+  vocabulary: readonly T[],
+  value: unknown,
+): T | typeof TENANT_EXECUTION_CONTEXT_INVALID {
+  return (vocabulary as readonly unknown[]).includes(value)
+    ? (value as T)
+    : TENANT_EXECUTION_CONTEXT_INVALID;
+}
 export function tenantExecutionContextAttributes(input: {
   operation: TenantExecutionContextOperation;
   source: TenantExecutionContextSource;
   outcome: TenantExecutionContextOutcome;
   reason: TenantExecutionContextReason;
 }) {
-  // Project only this closed vocabulary. This is deliberately not `return
-  // input`: callers that accidentally pass a wider object through `any` must
-  // not turn tenant/host/session content into a metric dimension.
-  const { operation, source, outcome, reason } = input;
-  return { operation, source, outcome, reason };
+  // Project only this closed vocabulary, at runtime as well as in the types:
+  // a caller that passes a wider object or a tenant/host/session string
+  // through `any` must not turn that content into a metric dimension.
+  return {
+    operation: closedDimension(
+      TENANT_EXECUTION_CONTEXT_OPERATION,
+      input.operation,
+    ),
+    source: closedDimension(TENANT_EXECUTION_CONTEXT_SOURCE, input.source),
+    outcome: closedDimension(TENANT_EXECUTION_CONTEXT_OUTCOME, input.outcome),
+    reason: closedDimension(TENANT_EXECUTION_CONTEXT_REASON, input.reason),
+  };
 }
 export const codexToolServersDelivered = meter.createCounter(
   'station.codex.tool_servers.delivered',

@@ -10,9 +10,10 @@ import {
 } from '../compile';
 
 describe('EXTRACTION_PROMPT_PREFIX / buildExtractionPrompt', () => {
-  test('is vendored verbatim from MeetingTranscriptionModal.handleSend', () => {
-    // Never reword this without also updating the vendored precedent in
-    // examples/meeting-transcription — see compile.ts's module doc.
+  test('pins the extraction prompt bytes', () => {
+    // Vendored from examples/meeting-transcription's MeetingTranscriptionModal
+    // (see compile.ts's module doc); its test pins the same bytes, so reword
+    // both together.
     expect(EXTRACTION_PROMPT_PREFIX).toBe(
       'Here is a meeting transcript. Please extract the key action items, decisions made, and any important points:',
     );

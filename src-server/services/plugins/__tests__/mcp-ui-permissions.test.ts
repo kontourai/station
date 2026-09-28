@@ -16,11 +16,8 @@ import {
 } from '../../infra/__tests__/helpers/store-faults.js';
 import { GrantsStoreReservedKeyError } from '../grants-file-store.js';
 import {
-  allowMcpUiRender,
-  isMcpUiRenderAllowed,
   isMcpUiRenderRevoked,
   McpUiRenderGrantsUnavailableError,
-  revokeMcpUiRender,
   setMcpUiRenderAllowed,
 } from '../mcp-ui-permissions.js';
 
@@ -39,21 +36,19 @@ describe('mcp-ui render permissions (allow + revoke)', () => {
 
   test('a server is allowed by default (no store entry)', () => {
     expect(isMcpUiRenderRevoked(home, 'server-a')).toBe(false);
-    expect(isMcpUiRenderAllowed(home, 'server-a')).toBe(true);
   });
 
   test('revoke denies rendering for that server only', async () => {
-    await revokeMcpUiRender(home, 'server-a');
+    await setMcpUiRenderAllowed(home, 'server-a', false);
     expect(isMcpUiRenderRevoked(home, 'server-a')).toBe(true);
-    expect(isMcpUiRenderAllowed(home, 'server-a')).toBe(false);
     // A different, untouched server stays allowed.
     expect(isMcpUiRenderRevoked(home, 'server-b')).toBe(false);
   });
 
   test('allow clears a prior revoke back to the open default', async () => {
-    await revokeMcpUiRender(home, 'server-a');
+    await setMcpUiRenderAllowed(home, 'server-a', false);
     expect(isMcpUiRenderRevoked(home, 'server-a')).toBe(true);
-    await allowMcpUiRender(home, 'server-a');
+    await setMcpUiRenderAllowed(home, 'server-a', true);
     expect(isMcpUiRenderRevoked(home, 'server-a')).toBe(false);
   });
 
@@ -65,7 +60,7 @@ describe('mcp-ui render permissions (allow + revoke)', () => {
   });
 
   test('a MISSING store file still answers the open default — absence is not an error', async () => {
-    await revokeMcpUiRender(home, 'server-a');
+    await setMcpUiRenderAllowed(home, 'server-a', false);
     rmSync(file, { force: true });
     // Genuine absence means "no server was ever revoked". (The old test named
     // "a corrupt store file degrades to allowed" actually exercised THIS
@@ -75,7 +70,7 @@ describe('mcp-ui render permissions (allow + revoke)', () => {
   });
 
   test('revoked server + corrupt store: the answer is NOT allowed (fail-closed, #1835)', async () => {
-    await revokeMcpUiRender(home, 'server-a');
+    await setMcpUiRenderAllowed(home, 'server-a', false);
     corruptFile(file);
 
     // Pre-fix this read degraded to {} and silently re-allowed the revoked
@@ -83,13 +78,10 @@ describe('mcp-ui render permissions (allow + revoke)', () => {
     expect(() => isMcpUiRenderRevoked(home, 'server-a')).toThrow(
       McpUiRenderGrantsUnavailableError,
     );
-    expect(() => isMcpUiRenderAllowed(home, 'server-a')).toThrow(
-      McpUiRenderGrantsUnavailableError,
-    );
   });
 
   test('corrupt store: writes throw and leave the on-disk bytes unchanged', async () => {
-    await revokeMcpUiRender(home, 'server-a');
+    await setMcpUiRenderAllowed(home, 'server-a', false);
     corruptFile(file, '{ torn');
 
     await expect(setMcpUiRenderAllowed(home, 'server-b', true)).rejects.toThrow(
@@ -135,8 +127,8 @@ describe('mcp-ui render permissions (allow + revoke)', () => {
   test('a corrupt primary never resurrects a revoke-then-corrupt history as allowed (#1835 review finding 1)', async () => {
     // History: explicit allow, THEN revoke — `.previous` holds the ALLOWED
     // version. Auto-consuming it after corruption would silently re-allow.
-    await allowMcpUiRender(home, 'server-a');
-    await revokeMcpUiRender(home, 'server-a');
+    await setMcpUiRenderAllowed(home, 'server-a', true);
+    await setMcpUiRenderAllowed(home, 'server-a', false);
     expect(JSON.parse(readFileSync(`${file}.previous`, 'utf-8'))).toEqual({
       'server-a': { renderAllowed: true },
     });
@@ -144,10 +136,10 @@ describe('mcp-ui render permissions (allow + revoke)', () => {
 
     // The answer must never become "allowed" — every read throws, repeatedly,
     // and nothing is quarantined or rewritten.
-    expect(() => isMcpUiRenderAllowed(home, 'server-a')).toThrow(
+    expect(() => isMcpUiRenderRevoked(home, 'server-a')).toThrow(
       McpUiRenderGrantsUnavailableError,
     );
-    expect(() => isMcpUiRenderAllowed(home, 'server-a')).toThrow(
+    expect(() => isMcpUiRenderRevoked(home, 'server-a')).toThrow(
       McpUiRenderGrantsUnavailableError,
     );
     expect(readFileSync(file, 'utf-8')).toBe('not json');
@@ -157,7 +149,7 @@ describe('mcp-ui render permissions (allow + revoke)', () => {
   });
 
   test('primary missing while `.previous` exists is a torn state, not the open default (#1835 review finding 1)', async () => {
-    await revokeMcpUiRender(home, 'server-a');
+    await setMcpUiRenderAllowed(home, 'server-a', false);
     await setMcpUiRenderAllowed(home, 'server-b', true); // retains `.previous`
     rmSync(file);
 
@@ -170,9 +162,9 @@ describe('mcp-ui render permissions (allow + revoke)', () => {
   test('a server literally named __proto__ is rejected as a mutation target, never silently "revoked" (#1835 review finding 3)', async () => {
     // Pre-fix, grants['__proto__'] = {...} hit the prototype setter:
     // JSON.stringify wrote {} while the caller was told the revoke succeeded.
-    await expect(revokeMcpUiRender(home, '__proto__')).rejects.toThrow(
-      GrantsStoreReservedKeyError,
-    );
+    await expect(
+      setMcpUiRenderAllowed(home, '__proto__', false),
+    ).rejects.toThrow(GrantsStoreReservedKeyError);
     // Success is never paired with non-persisted state: nothing was written.
     expect(existsSync(file)).toBe(false);
   });

@@ -13,6 +13,29 @@ export const FAST_FEEDBACK_TIMEOUT_MS = CI_FAST_TIMEOUT_MS;
  */
 export const CI_FAST_BUDGET_EXCEEDED_CAUSE = `ci:fast exceeded its ${FAST_FEEDBACK_TIMEOUT_MS / 60_000}-minute feedback budget`;
 export const FAST_BASE_ENV = 'STATION_CI_FAST_BASE';
+/**
+ * Mirrors CHANGED_DEADLINE_ENV in run-changed-verification.mjs, which this
+ * runner must not import (it loads Vitest); run-ci-fast.test.ts pins them equal.
+ */
+export const CHANGED_DEADLINE_ENV = 'STATION_TEST_CHANGED_DEADLINE_AT';
+/**
+ * #2855: the share of the selector's allowance related discovery may use, so
+ * a slow discovery cannot starve the tests it selects. Discovery is a fixed
+ * graph build: 27-38s on hosted runners, up to 66s on a dev host at load
+ * 47-93. A quarter of the 680s allowance is 170s; after the selector's 30s
+ * reserve that is a 140s discovery timeout, ~3.7x the worst hosted and ~2x
+ * the worst loaded measurement, while the tests keep at least 510s.
+ */
+export const FAST_SELECTOR_DISCOVERY_SHARE = 0.25;
+/**
+ * #2709: the required `fast-checks` check is an aggregator over a sharded
+ * affected-test selection (scripts/fast-checks-shard.mjs) and a statics job.
+ * The statics job runs this lane with the scope set to `statics`, which drops
+ * the selector because the shards own it. Unset keeps the whole lane: local
+ * `npm run ci:fast` and fork-smoke still run the selection here.
+ */
+export const FAST_SCOPE_ENV = 'STATION_CI_FAST_SCOPE';
+export const FAST_SCOPE_STATICS = 'statics';
 export const SELECTOR_DEFERRED_EXIT_CODE = 3;
 export const CI_FAST_INFRASTRUCTURE_EXIT_CODE = PRODUCT_LAW_TIMEOUT_EXIT_CODE;
 /** Emitted only by this owner after its nested command has settled. */
@@ -124,6 +147,24 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // nightly full-regression gate, so #1795 could register the `open` verb
   // and land red on main, discovered by the next Nightly a day later.
   Object.freeze(['npm', Object.freeze(['run', 'docs:cli-parity:check'])]),
+  // #2803: docs are no longer a whole-diff deferral, and these two were
+  // composed only by verify:static (the merge queue and Nightly), which is
+  // how #2797 reached the queue with a broken doc reference. Both read every
+  // live doc against the repository, so a code change that breaks a doc
+  // fails here too. ~1s each (measured at load ~65).
+  Object.freeze(['npm', Object.freeze(['run', 'docs:reference:gate'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'docs:links:check'])]),
+  // #2803 review: once docs/** paths complete in fast-checks, these three
+  // docs:truth:gate members must run here too, or a doc edit they reject
+  // (a vendor name in the public pages, a hand-edited generated reference)
+  // reports completed and fails only in the queue. Node builtins and
+  // `git ls-files`, no build; ~0.2-2.7s each (measured at load ~80).
+  Object.freeze(['npm', Object.freeze(['run', 'docs:public:hygiene'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'docs:issue-lifecycle:check'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'docs:public:contract-examples']),
+  ]),
   // PRECONDITION for the typecheck aggregate below, same shape as
   // `build:connect`: the Basis MCP app bundles are git-ignored build output
   // that `typecheck:basis-pane`, `typecheck:server-tests`, and `typecheck:ui`
@@ -215,6 +256,19 @@ export function fastBase(env = process.env) {
   return base;
 }
 
+/**
+ * `all` unless the scope names exactly `statics`. Any other value is refused:
+ * a misspelled scope must not quietly run a different set of checks.
+ */
+export function fastScope(env = process.env) {
+  const scope = env[FAST_SCOPE_ENV];
+  if (scope === undefined || scope === '') return 'all';
+  if (scope === FAST_SCOPE_STATICS) return FAST_SCOPE_STATICS;
+  throw new Error(
+    `${FAST_SCOPE_ENV} must be unset or '${FAST_SCOPE_STATICS}', not '${String(scope).slice(0, 64)}'`,
+  );
+}
+
 /** A bounded execution fault, distinct from an invalid policy/configuration. */
 export class CiFastInfrastructureError extends Error {
   constructor(message, options) {
@@ -260,9 +314,10 @@ export function classifyCiFastCommandResult(result) {
   return result.status;
 }
 
-function run(command, args, { cwd, timeout }) {
+function run(command, args, { cwd, timeout, env }) {
   const result = spawnSync(command, args, {
     cwd,
+    ...(env ? { env } : {}),
     stdio: 'inherit',
     timeout,
     windowsHide: true,
@@ -284,19 +339,44 @@ export function runCiFast({
 } = {}) {
   const startedAt = now();
   const base = fastBase(env);
-  for (const [index, [command, args]] of [
-    [
-      process.execPath,
-      ['scripts/run-changed-verification.mjs', `--base=${base}`],
-    ],
+  const selector = fastScope(env) === 'all';
+  const commands = [
+    ...(selector
+      ? [
+          [
+            process.execPath,
+            ['scripts/run-changed-verification.mjs', `--base=${base}`],
+          ],
+        ]
+      : []),
     ...FAST_STATIC_COMMANDS,
-  ].entries()) {
+  ];
+  for (const [position, [command, args]] of commands.entries()) {
+    // `index === 0` names the selector; a statics-only lane has none.
+    const index = selector ? position : position + 1;
     const iterationStartedAt = now();
     const timeout =
       remaining(startedAt, now) - (index === 0 ? FAST_STATIC_RESERVE_MS : 0);
     if (timeout <= 0)
       throw new CiFastInfrastructureError(CI_FAST_BUDGET_EXCEEDED_CAUSE);
-    const status = execute(command, args, { cwd, timeout });
+    // #2855: the selector learns when its related discovery must end: a
+    // pinned share of its allowance, instead of a fixed 60s. The statics need
+    // no deadline of their own.
+    const status = execute(command, args, {
+      cwd,
+      timeout,
+      ...(index === 0
+        ? {
+            env: {
+              ...env,
+              [CHANGED_DEADLINE_ENV]: String(
+                iterationStartedAt +
+                  Math.floor(timeout * FAST_SELECTOR_DISCOVERY_SHARE),
+              ),
+            },
+          }
+        : {}),
+    });
     // station#2621: the timed-out receipt for a candidate merge_group run
     // showed no evidence at all of which step consumed the ~6 extra
     // minutes -- every command's own stdout is buffered by its own tooling

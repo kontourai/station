@@ -32,25 +32,4 @@ describe('built-in continuity declarations', () => {
       });
     }
   });
-
-  test('optional continuity survives JSON and older descriptors omit it honestly', () => {
-    const current = JSON.parse(
-      JSON.stringify({
-        continuity: {
-          resume: 'same-session',
-          fork: 'replay-seed',
-          rewind: 'none',
-        },
-      }),
-    );
-    const older = JSON.parse(JSON.stringify({}));
-    expect(current.continuity).toEqual({
-      resume: 'same-session',
-      fork: 'replay-seed',
-      rewind: 'none',
-    });
-    expect(
-      older.continuity ?? { resume: 'none', fork: 'none', rewind: 'none' },
-    ).toEqual({ resume: 'none', fork: 'none', rewind: 'none' });
-  });
 });

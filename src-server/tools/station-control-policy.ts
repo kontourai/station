@@ -114,8 +114,18 @@ export type StationControlHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
  *   connection default loosen it as surely as `never`). An agent must not
  *   approve its own requests or loosen its own approvals, so both need a
  *   bound operator caller (decision 3 names bound + Project approve for
- *   respond, which slice C adds; until then only the operator). `steerTurn`
- *   is dispatch and stays with slice C.
+ *   respond, which slice C adds; until then only the operator).
+ * - `thread-commands-stay-in-scope` (slices C1 and C2a, owner decisions
+ *   recorded on #2377): the same leaf carries `steerTurn`, which injects
+ *   input into a live turn, and `adoptSession`, which copies another
+ *   session's transcript and joins its posture. Both are held to the one
+ *   scope rule every dispatch route applies (`stationControlScopeRefusal`):
+ *   a bound operator keeps the operator's reach; anyone else only its own
+ *   owner's sessions, with the owner's Project `execute` action, never
+ *   remote; and a caller that is not bound stays in its own session's scope
+ *   (the same Project, or both in the global space) and never reaches a
+ *   session that runs `host`. The guard reads the thread (`commandThread`);
+ *   a thread it cannot read refuses.
  * - `retarget-of-granted-job-is-person-only`: an unattended grant a person
  *   gave a scheduled job is keyed by the job, not by what it runs. Changing a
  *   granted job's prompt, agent, provider or monitor (a monitor dispatch runs
@@ -125,11 +135,12 @@ export type StationControlHttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
  */
 export type StationControlRouteRule =
   | 'approval-commands-need-bound-operator'
+  | 'thread-commands-stay-in-scope'
   | 'retarget-of-granted-job-is-person-only';
 
 export interface StationControlRoute {
   readonly method: StationControlHttpMethod;
-  readonly rule?: StationControlRouteRule;
+  readonly rules?: readonly StationControlRouteRule[];
   /**
    * A path pattern: literal segments and `:name` segments, each `:name`
    * matching exactly one non-empty segment. No wildcards: every leaf a tool
@@ -165,12 +176,20 @@ export interface StationControlToolPolicy {
 const get = (path: string): StationControlRoute => ({ method: 'GET', path });
 const post = (
   path: string,
-  rule?: StationControlRouteRule,
-): StationControlRoute => ({ method: 'POST', path, ...(rule ? { rule } : {}) });
+  ...rules: StationControlRouteRule[]
+): StationControlRoute => ({
+  method: 'POST',
+  path,
+  ...(rules.length > 0 ? { rules } : {}),
+});
 const put = (
   path: string,
-  rule?: StationControlRouteRule,
-): StationControlRoute => ({ method: 'PUT', path, ...(rule ? { rule } : {}) });
+  ...rules: StationControlRouteRule[]
+): StationControlRoute => ({
+  method: 'PUT',
+  path,
+  ...(rules.length > 0 ? { rules } : {}),
+});
 const del = (path: string): StationControlRoute => ({ method: 'DELETE', path });
 
 /**
@@ -238,16 +257,30 @@ const PERSON_ONLY: Pick<
 };
 
 /**
- * The routes the cross-Station dispatch code (`station-control-delegation.ts`)
- * reaches on THIS Station when its target is the current Station, or while
- * resolving a saved SSH / peer target. Every dispatch-family tool can reach
- * any of them, because the path it takes depends on the target and on the
- * task's persisted binding, not on the tool name.
+ * #2377 slice C2a (decision 3: remote Stations need bound + operator): the
+ * leaves the dispatch code reaches while resolving a saved SSH or peer
+ * target — the SSH environment list, an SSH connect, and a peer's bearer.
+ * They are NOT dispatch leaves: only operator entries own them, so a caller
+ * that is not a bound operator is refused before it holds any bearer or
+ * makes Station connect anywhere. Dispatch route handlers still reach them
+ * as Station's own server code (the attestation), after the route's scope
+ * check. Slice C2b moves the tool-side resolution server-side.
  */
-export const DISPATCH_ROUTES: readonly StationControlRoute[] = [
+const REMOTE_TARGET_ROUTES: readonly StationControlRoute[] = [
   get('/api/environments/ssh'),
   post('/api/environments/ssh/:id/connect'),
   get('/api/environments/peers/:environmentId/credential'),
+];
+
+/**
+ * The routes the cross-Station dispatch code (`station-control-delegation.ts`)
+ * reaches on THIS Station when its target is the current Station. Every
+ * dispatch-family tool can reach any of them, because the path it takes
+ * depends on the target and on the task's persisted binding, not on the
+ * tool name. The dispatch routes among them decide the caller's scope
+ * themselves (`refuseOutOfScopeDispatch`, slice C2a).
+ */
+export const DISPATCH_ROUTES: readonly StationControlRoute[] = [
   get('/api/connections/agents'),
   get('/api/connections/:id'),
   get('/api/agents'),
@@ -262,7 +295,11 @@ export const DISPATCH_ROUTES: readonly StationControlRoute[] = [
   get('/api/orchestration/delegations/:taskId/events'),
   post('/api/orchestration/delegations/:taskId/continue'),
   post('/api/orchestration/delegations/:taskId/interrupt'),
-  post('/api/orchestration/commands', 'approval-commands-need-bound-operator'),
+  post(
+    '/api/orchestration/commands',
+    'approval-commands-need-bound-operator',
+    'thread-commands-stay-in-scope',
+  ),
   get('/api/orchestration/sessions/read-model'),
   get('/api/orchestration/sessions/:threadId'),
   get('/api/orchestration/sessions/:threadId/event-page'),
@@ -273,11 +310,11 @@ export const DISPATCH_ROUTES: readonly StationControlRoute[] = [
 ];
 
 /**
- * Slice C owns dispatch. Until then every dispatch tool keeps today's
- * effective policy: any VERIFIED caller (a delegated-custody or
- * bearer-exposed caller dispatches unattributed and its child starts
- * confined, `createAgentDispatchActorResolver`). A caller-less request is
- * refused (decision 4): dispatch is not a read.
+ * Dispatch admits any VERIFIED caller at the table (a caller-less request is
+ * refused, decision 4: dispatch is not a read); the dispatch ROUTES then
+ * hold it to its scope (slice C2a, `stationControlScopeRefusal`), and remote
+ * targets need a bound operator (`REMOTE_TARGET_ROUTES`). Still slice C:
+ * C2b moves cross-Station forwarding server-side.
  */
 const DISPATCH: Omit<StationControlToolPolicy, 'routes'> = {
   assurance: 'any',
@@ -511,22 +548,19 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
   // Decision 2: the saved SSH environments are the operator's Station-wide
   // configuration (the same view `get_ssh_environment` gives), so listing
-  // them is an operator-wide read. The LEAF stays open wider than this entry
-  // until slice C: every dispatch tool reaches `GET /api/environments/ssh`
-  // while resolving an SSH target, with any verified caller, so the guard
-  // admits any verified caller there. A caller-less request is refused.
+  // them is an operator-wide read. Since slice C2a no looser entry shares
+  // the leaf (`REMOTE_TARGET_ROUTES`).
   list_delegation_environments: {
     ...OPERATOR_READ,
-    tightenedBy: ['C'],
     routes: [get('/api/environments/ssh')],
   },
   list_delegation_targets: {
-    // Decision 1: discovery may reconnect a saved SSH environment. Every leaf
-    // it reaches is shared with dispatch, so the server enforces it only as
-    // loosely as dispatch until slice C.
+    // Decision 1: discovery may reconnect a saved SSH environment; those
+    // leaves are the operator's alone (slice C2a). The rest it shares with
+    // dispatch, which the server enforces only as loosely as dispatch.
     ...OPERATOR_MUTATION,
     tightenedBy: ['C'],
-    routes: DISPATCH_ROUTES,
+    routes: [...REMOTE_TARGET_ROUTES, ...DISPATCH_ROUTES],
   },
   list_delegated_tasks: { ...DISPATCH, routes: DISPATCH_ROUTES },
   delegate_task: {
@@ -537,10 +571,16 @@ export const STATION_CONTROL_TOOL_POLICY = {
   get_task_events: { ...DISPATCH, routes: DISPATCH_ROUTES },
   continue_task: { ...DISPATCH, routes: DISPATCH_ROUTES },
   respond_to_task_request: {
-    // Decision 3: bound + Project approve. Slice C adds the Project-approve
-    // path; until then only a bound operator answers a worker's request (an
-    // agent must not approve its own pending requests).
-    ...OPERATOR_MUTATION,
+    // Decision 3: bound + Project approve (admin or owner). The guard holds
+    // it to a bound caller with a recorded owner; the respond route decides
+    // the owner's `approve` action in the task's Project, and in the global
+    // space only the operator approves (slice C2a). It still shares the
+    // dispatch plumbing leaves (slice C).
+    assurance: 'bound',
+    role: 'project',
+    projectAction: 'approve',
+    toolClass: 'mutating',
+    personOnly: 'never',
     tightenedBy: ['C'],
     routes: [
       ...DISPATCH_ROUTES,
@@ -563,8 +603,6 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
   connect_ssh_environment: {
     ...OPERATOR_MUTATION,
-    // Its connect leaf is shared with dispatch (slice C).
-    tightenedBy: ['C'],
     routes: [
       post('/api/environments/ssh/:id/connect'),
       get('/api/environments/ssh/:id'),
@@ -801,6 +839,119 @@ export interface StationControlPolicyCaller {
     readonly id: string;
     readonly elevationEligible: boolean;
   };
+  /** Its own session's Project; authority needs `session-record`. */
+  readonly localProjectId?: string;
+  readonly projectIdSource?: 'session-record' | 'slug-lookup';
+  /** Display only; its presence without a record makes the scope unreadable. */
+  readonly projectSlug?: string;
+}
+
+/**
+ * #2377 slice C: the scope a session runs in (owner decision 2026-09-27).
+ *
+ * - `project`: its session-record Project (`ProjectConfig.id`, stamped when
+ *   it started).
+ * - `global`: it has no Project at all; the operator's "global space", a
+ *   scope of its own. A plain folder (`{kind:'directory'}`) is global only
+ *   when no Project's working directory contains it; otherwise it is that
+ *   Project's (`stationControlDirectoryScope`), so a global agent never
+ *   reaches into a Project implicitly.
+ * - `unreadable`: it names a Project Station cannot confirm as a session
+ *   record (a slug looked up now, a refused stamp, a slug with no Project).
+ *   It matches nothing, so it refuses.
+ */
+export type StationControlScope =
+  | { readonly kind: 'project'; readonly id: string }
+  | { readonly kind: 'global' }
+  | { readonly kind: 'unreadable' };
+
+/** The Project facts of a session record, as the caller resolver reads them. */
+export interface StationControlSessionProjectFacts {
+  readonly localProjectId?: string;
+  readonly projectIdSource?: 'session-record' | 'slug-lookup';
+  readonly projectSlug?: string;
+}
+
+/** The one derivation of a session's {@link StationControlScope}. */
+export function stationControlSessionScope(
+  facts: StationControlSessionProjectFacts,
+): StationControlScope {
+  if (facts.projectIdSource === 'session-record' && facts.localProjectId)
+    return { kind: 'project', id: facts.localProjectId };
+  if (facts.localProjectId || facts.projectIdSource || facts.projectSlug)
+    return { kind: 'unreadable' };
+  return { kind: 'global' };
+}
+
+function sameScope(a: StationControlScope, b: StationControlScope): boolean {
+  if (a.kind === 'unreadable' || b.kind === 'unreadable') return false;
+  if (a.kind === 'global' || b.kind === 'global') return a.kind === b.kind;
+  return a.id === b.id;
+}
+
+/**
+ * What the server's records say about the thread or new session a
+ * station-control dispatch, steer or adopt reaches (#2377 slice C).
+ */
+export interface StationControlDispatchTarget {
+  /** Its recorded owner; absent when it has none. */
+  readonly ownerId?: string;
+  readonly scope: StationControlScope;
+  /** Whether it runs `host` (unconfined): its start stamp or a recorded `never`. */
+  readonly host: boolean;
+  /** Whether it lives on another Station (a saved peer or SSH Environment). */
+  readonly remote: boolean;
+  /**
+   * Whether the owner holds the Project action the call needs there
+   * (`execute` to dispatch, `approve` to answer a worker's request). Absent
+   * when the call needs none (a dispatch in the global space).
+   */
+  readonly ownerHoldsAction?: boolean;
+}
+
+/**
+ * #2377 slices C1 and C2a: the ONE scope rule for everything a
+ * station-control caller aims at a session: a steer, an adoption, a new
+ * dispatch, a follow-up. `undefined` means allowed; `target` absent means
+ * the server could not read it, which refuses.
+ *
+ * - A bound operator caller keeps the operator's reach (decision 3); the
+ *   route's own session authorization still limits it.
+ * - Everyone else: only its own owner's sessions, never another Station
+ *   (decision 3: remote needs bound + operator), and only with the Project
+ *   action the call needs held by the owner (`ownerHoldsAction`).
+ * - Beyond that a bound caller is free; any other caller stays in its own
+ *   session's scope (same Project, or both global) and never reaches a
+ *   thread that runs `host`.
+ *
+ * The refusal names what would have admitted it:
+ * `station_control_assurance_insufficient` when a bound caller acting for
+ * the same person would pass, `station_control_role_required` when no
+ * credential would.
+ */
+export function stationControlScopeRefusal(
+  caller: StationControlPolicyCaller | null,
+  target: StationControlDispatchTarget | undefined,
+  isOperatorPrincipal?: (principalId: string) => boolean,
+): StationControlRefusal | undefined {
+  if (!caller) return stationControlRefusal('station_control_caller_required');
+  const operator = isOperatorCaller(caller, { caller, isOperatorPrincipal });
+  const bound = caller.assurance === 'bound';
+  if (operator && bound) return undefined;
+  const notOperatorEnough = stationControlRefusal(
+    operator
+      ? 'station_control_assurance_insufficient'
+      : 'station_control_role_required',
+  );
+  if (!target || !ownsThread(caller, target) || target.remote)
+    return notOperatorEnough;
+  if (target.ownerHoldsAction === false)
+    return stationControlRefusal('station_control_role_required');
+  if (bound) return undefined;
+  return !target.host &&
+    sameScope(stationControlSessionScope(caller), target.scope)
+    ? undefined
+    : stationControlRefusal('station_control_assurance_insufficient');
 }
 
 export interface StationControlPolicyContext {
@@ -820,6 +971,12 @@ export interface StationControlPolicyContext {
    * (it reads the grant store); absent means it does not.
    */
   readonly retargetsGrantedJob?: boolean;
+  /**
+   * For `thread-commands-stay-in-scope`: what the server's records say about
+   * the thread a `steerTurn` or `adoptSession` names. Only the server can
+   * know it; absent means the guard could not read it, which refuses.
+   */
+  readonly commandThread?: StationControlDispatchTarget;
 }
 
 const ASSURANCE_RANK = {
@@ -942,8 +1099,8 @@ function buildRouteIndex(): readonly IndexedRoute[] {
       };
       entry.owners.push(owner);
       entry.policies.push(policy);
-      if (route.rule && !entry.rules.includes(route.rule))
-        entry.rules.push(route.rule);
+      for (const rule of route.rules ?? [])
+        if (!entry.rules.includes(rule)) entry.rules.push(rule);
       byKey.set(key, entry);
     }
   };
@@ -1030,6 +1187,83 @@ const APPROVAL_COMMANDS: ReadonlySet<string> = new Set([
   'setApprovalMode',
 ]);
 
+/** The `type` of an `/api/orchestration/commands` body, if it has one. */
+function commandType(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const type = (body as { type?: unknown }).type;
+  return typeof type === 'string' ? type : undefined;
+}
+
+function isOperatorCaller(
+  caller: StationControlPolicyCaller,
+  context: StationControlPolicyContext,
+): boolean {
+  const isOperator =
+    context.isOperatorPrincipal ??
+    ((id: string) => id === STATION_CONTROL_OPERATOR_PRINCIPAL_ID);
+  return (
+    caller.principal?.elevationEligible === true &&
+    isOperator(caller.principal.id)
+  );
+}
+
+/** `approval-commands-need-bound-operator`. */
+function approvalCommandRefusal(
+  context: StationControlPolicyContext,
+): StationControlRefusal | undefined {
+  const type = commandType(context.body);
+  if (type === undefined || !APPROVAL_COMMANDS.has(type)) return undefined;
+  const caller = context.caller;
+  if (!caller) return stationControlRefusal('station_control_caller_required');
+  if (caller.assurance !== 'bound')
+    return stationControlRefusal('station_control_assurance_insufficient');
+  if (!isOperatorCaller(caller, context))
+    return stationControlRefusal('station_control_role_required');
+  return undefined;
+}
+
+/** The commands `thread-commands-stay-in-scope` holds to the caller's scope. */
+const SCOPED_THREAD_COMMANDS: ReadonlySet<string> = new Set([
+  'steerTurn',
+  'adoptSession',
+]);
+
+/** `thread-commands-stay-in-scope`: the shared scope rule, for these commands. */
+function threadCommandRefusal(
+  context: StationControlPolicyContext,
+): StationControlRefusal | undefined {
+  const type = commandType(context.body);
+  if (type === undefined || !SCOPED_THREAD_COMMANDS.has(type)) return undefined;
+  return stationControlScopeRefusal(
+    context.caller,
+    context.commandThread,
+    context.isOperatorPrincipal,
+  );
+}
+
+/** Only a recorded owner (`elevationEligible`) owns a session. */
+function ownsThread(
+  caller: StationControlPolicyCaller,
+  target: StationControlDispatchTarget,
+): boolean {
+  return (
+    caller.principal?.elevationEligible === true &&
+    target.ownerId === caller.principal.id
+  );
+}
+
+const ROUTE_RULE_REFUSALS: Record<
+  StationControlRouteRule,
+  (context: StationControlPolicyContext) => StationControlRefusal | undefined
+> = {
+  'approval-commands-need-bound-operator': approvalCommandRefusal,
+  'thread-commands-stay-in-scope': threadCommandRefusal,
+  'retarget-of-granted-job-is-person-only': (context) =>
+    context.retargetsGrantedJob
+      ? stationControlRefusal('station_control_person_only')
+      : undefined,
+};
+
 /**
  * The leaf's own body-dependent rules, applied after some tool's policy
  * admitted the request (so no tool reaching the leaf can loosen them).
@@ -1039,31 +1273,8 @@ function routeRuleRefusal(
   context: StationControlPolicyContext,
 ): StationControlRefusal | undefined {
   for (const rule of rules) {
-    if (rule === 'retarget-of-granted-job-is-person-only') {
-      if (context.retargetsGrantedJob)
-        return stationControlRefusal('station_control_person_only');
-      continue;
-    }
-    const body = context.body;
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      !APPROVAL_COMMANDS.has(String((body as { type?: unknown }).type))
-    )
-      continue;
-    const caller = context.caller;
-    if (!caller)
-      return stationControlRefusal('station_control_caller_required');
-    if (caller.assurance !== 'bound')
-      return stationControlRefusal('station_control_assurance_insufficient');
-    const isOperator =
-      context.isOperatorPrincipal ??
-      ((id: string) => id === STATION_CONTROL_OPERATOR_PRINCIPAL_ID);
-    if (
-      !caller.principal?.elevationEligible ||
-      !isOperator(caller.principal.id)
-    )
-      return stationControlRefusal('station_control_role_required');
+    const refusal = ROUTE_RULE_REFUSALS[rule](context);
+    if (refusal) return refusal;
   }
   return undefined;
 }

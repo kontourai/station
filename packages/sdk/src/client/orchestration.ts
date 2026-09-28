@@ -36,12 +36,12 @@
  * of being replaced with a generic status message.
  */
 import type { AdoptedSessionResult } from '@kontourai/station-contracts/orchestration';
-import { apiErrorMessage } from './api-error-message';
+import { envelopeError } from './api-error-message';
 import {
   type ClientRequestOptions,
   getJson,
   mutateJson,
-  StationHttpError,
+  type StationHttpError,
 } from './http';
 
 interface OrchestrationEnvelope<T> {
@@ -52,6 +52,7 @@ interface OrchestrationEnvelope<T> {
 }
 
 async function unwrapOrchestrationResponse<T>(response: Response): Promise<T> {
+  const fallback = `Orchestration API error: ${response.status}`;
   let result: OrchestrationEnvelope<T> | null = null;
   try {
     result = (await response.json()) as OrchestrationEnvelope<T>;
@@ -62,23 +63,16 @@ async function unwrapOrchestrationResponse<T>(response: Response): Promise<T> {
     // access gateway — indistinguishable from a transient failure, so a
     // consumer classifying terminality by `instanceof StationHttpError`
     // retried a request that could never clear (station#3378 review, HIGH).
-    if (!response.ok) {
-      throw new StationHttpError(
-        response.status,
-        `Orchestration API error: ${response.status}`,
-      );
-    }
-    throw new Error(`Orchestration API error: ${response.status}`);
+    // An unreadable 2xx is a protocol failure: there is no failure status.
+    if (!response.ok) throw envelopeError(response, undefined, fallback);
+    throw new Error(fallback);
   }
   if (!response.ok || !result.success) {
-    const message =
-      typeof result.error === 'string'
-        ? result.error
-        : `Orchestration API error: ${response.status}`;
-    if (!response.ok) {
-      throw new StationHttpError(response.status, message);
-    }
-    throw new Error(message);
+    // #2708: status, `code` (a station-control authority refusal, #2377),
+    // `details` and `Retry-After` survive. A 2xx `success:false` is a refusal
+    // too and keeps its observed status (200); every classifier here branches
+    // on the status as well as the class, so a 200 is never read as terminal.
+    throw envelopeError(response, result, fallback);
   }
   return result.data as T;
 }
@@ -118,6 +112,7 @@ export async function respondToRequest(
     opts,
     { type: 'respondToRequest', ...input },
   );
+  const fallback = `Orchestration API error: ${response.status}`;
   let payload: OrchestrationEnvelope<unknown> | null = null;
   try {
     payload = (await response.json()) as OrchestrationEnvelope<unknown>;
@@ -126,13 +121,8 @@ export async function respondToRequest(
     // mirrors #3378): a body that is not JSON says nothing about the
     // STATUS, and the status is what a caller's terminal/transient
     // classification reads. Message text unchanged.
-    if (!response.ok) {
-      throw new StationHttpError(
-        response.status,
-        `Orchestration API error: ${response.status}`,
-      );
-    }
-    throw new Error(`Orchestration API error: ${response.status}`);
+    if (!response.ok) throw envelopeError(response, undefined, fallback);
+    throw new Error(fallback);
   }
   if (!response.ok || !payload.success) {
     // The dispatch failure path can still carry a `receipt` (server-side
@@ -140,22 +130,15 @@ export async function respondToRequest(
     // orchestration.ts:297-314`) — preserved as a property on the thrown
     // error rather than dropped, so a caller that cares (e.g. an
     // audit/governance-facing surface) can still reach it (#165
-    // iteration-2 code-review LOW fix).
-    const message = apiErrorMessage(
+    // iteration-2 code-review LOW fix). The error is the envelope helper's
+    // (#2708): status, `code` and `details` survive, a 2xx `success:false`
+    // included (station#3437 review asked that a parsed JSON error body stay
+    // classifiable by `instanceof StationHttpError`; now every one does).
+    const error: StationHttpError & { receipt?: unknown } = envelopeError(
+      response,
       payload,
-      `Orchestration API error: ${response.status}`,
+      fallback,
     );
-    // station#3437 review (MEDIUM): mirror `unwrapOrchestrationResponse`'s
-    // `!response.ok` branch above — a status still carried by a *parsed*
-    // JSON error body (Station's own unauthenticated-request response,
-    // `runtime-http.ts`'s `c.json({success:false,error}, 401)`, is exactly
-    // this shape) must stay classifiable by `instanceof StationHttpError`,
-    // the same way the non-JSON-body path already is.
-    const error = (
-      response.ok
-        ? new Error(message)
-        : new StationHttpError(response.status, message)
-    ) as (Error | StationHttpError) & { receipt?: unknown };
     if (payload.receipt !== undefined) {
       error.receipt = payload.receipt;
     }

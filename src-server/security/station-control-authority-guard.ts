@@ -49,6 +49,7 @@ import { PrincipalUnresolvedError } from '../services/identity/principal-resolve
 import {
   authorizeStationControlRequest,
   matchStationControlRoute,
+  type StationControlDispatchTarget,
   type StationControlRefusal,
   stationControlRefusal,
   stationControlRefusalBody,
@@ -123,6 +124,13 @@ export interface StationControlAuthorityGuardOptions {
     jobName: string,
     changes: Record<string, unknown>,
   ): boolean | Promise<boolean>;
+  /**
+   * For the `thread-commands-stay-in-scope` rule: the server's records for
+   * a thread a `steerTurn` or `adoptSession` names (owner, session-record
+   * Project, whether it runs `host`). Absent, throwing or answering nothing:
+   * the command is refused (fail closed).
+   */
+  commandThread?(threadId: string): StationControlDispatchTarget | undefined;
   /** Called once per refusal, for the operator's logs. */
   onRefusal?(
     refusal: StationControlRefusal,
@@ -199,6 +207,46 @@ async function retargetsGrantedJob(
   }
 }
 
+/** The thread each scoped command names, by its body field. */
+const COMMAND_THREAD_FIELD: Readonly<Record<string, string>> = {
+  steerTurn: 'threadId',
+  adoptSession: 'sourceThreadId',
+};
+
+/**
+ * For `thread-commands-stay-in-scope`: the server's records for the thread
+ * a scoped command names. Read only for those commands on that leaf.
+ */
+function commandThread(
+  options: StationControlAuthorityGuardOptions,
+  method: string,
+  path: string,
+  body: unknown,
+): StationControlDispatchTarget | undefined {
+  const threadId = matchStationControlRoute(method, path)?.rules.includes(
+    'thread-commands-stay-in-scope',
+  )
+    ? scopedCommandThreadId(body)
+    : undefined;
+  if (threadId === undefined) return undefined;
+  try {
+    return options.commandThread?.(threadId);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The thread a scoped command's body names, if it is one. */
+function scopedCommandThreadId(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const record = body as Record<string, unknown>;
+  const type = record.type;
+  if (typeof type !== 'string' || !Object.hasOwn(COMMAND_THREAD_FIELD, type))
+    return undefined;
+  const threadId = record[COMMAND_THREAD_FIELD[type]!];
+  return typeof threadId === 'string' ? threadId : undefined;
+}
+
 /**
  * The guard middleware. Register it immediately after `configureRuntimeHttp`
  * (and before any route), so it sees the principal the boundary bound and
@@ -254,6 +302,7 @@ export function createStationControlAuthorityGuard(
         path,
         body,
       ),
+      commandThread: commandThread(options, method, path, body),
     });
     if (!refusal) {
       await next();

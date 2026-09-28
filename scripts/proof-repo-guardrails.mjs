@@ -667,7 +667,6 @@ const feedbackAnalysis = readRequiredSource(
   '../src-server/services/feedback/feedback-analysis.ts',
 );
 for (const requiredHelper of [
-  'export function extractJson',
   'export async function runMiniFeedbackAnalysis',
   'export async function runFullFeedbackAnalysis',
 ]) {
@@ -7047,11 +7046,6 @@ for (const requiredHelper of [
   'export async function api',
   'export function resolveControlApiBase',
   'export function jsonToolResult',
-  'export function buildAnalyticsUsagePath',
-  'export function buildChatRequest',
-  'export function createConversationId',
-  'export function buildSentMessageResult',
-  'export async function dispatchAgentMessage',
   'export async function navigateTo',
 ]) {
   if (!stationControlShared.includes(requiredHelper)) {

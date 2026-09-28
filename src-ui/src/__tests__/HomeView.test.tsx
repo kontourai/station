@@ -1321,11 +1321,21 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
       unavailable: [],
     };
     const onNavigate = vi.fn();
+    const focus = vi.fn();
+    const unregister = openChatsStore.registerNavigation({
+      focus,
+      openCollection: vi.fn(),
+    });
     renderHomeView({ continuation: null, onNavigate });
     const recent = screen.getByRole('region', { name: 'Recent work' });
 
     fireEvent.click(within(recent).getByText(CODEX_SESSION_TITLE));
+    // Local cards open through Activity or a chat focus, never onNavigate,
+    // so every open channel has to stay silent for the read-only card.
     expect(onNavigate).not.toHaveBeenCalled();
+    expect(showSurface).not.toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
+    unregister();
   });
 
   // archive#1097: when every visible item is a

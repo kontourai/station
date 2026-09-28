@@ -493,7 +493,7 @@ describe('createAgentHooks — Flow Agents policy seams (S3)', () => {
     expect(approved).toBe(true);
   });
 
-  test('quality gate runs after successful writes and logs warnings, never throws', () => {
+  test('quality gate runs after successful writes and logs its warnings', () => {
     const ws = optedInWorkspace();
     const service = policyService();
     const afterWriteSpy = vi
@@ -1009,13 +1009,13 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
     });
   });
 
-  // The scheduler-seam regression (real hooks + SC_READ_ONLY_TOOLS +
+  // The scheduler-seam regression (real hooks + SC_AUTO_APPROVED_TOOLS +
   // mutating station-control tool, no conversationId) is pinned END-TO-END
   // in voltagent-adapter.test.ts ('default temp agent denies ...'), which
   // builds the default-shaped temp agent through the real adapter and a
   // real model round-trip instead of modeling the caller contract here.
-  // The read-only twin (SC_READ_ONLY_TOOLS still auto-approves) lives
-  // there too.
+  // The read-only twin (a read-only tool still auto-approves) lives there
+  // too.
 });
 
 /**

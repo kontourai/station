@@ -79,44 +79,7 @@ function realTrackedTsxFiles(): string[] {
   ).sort();
 }
 
-/**
- * The src-ui-only slice of the scope. The two historical pathspec tests below
- * replay station#1559, which is a src-ui lesson; the shared-tree oracle is
- * `realTrackedTsxFiles`.
- */
-function realTrackedTsxFilesUnderRoot(): string[] {
-  const tracked = new Set(gitLsFiles(ROOT));
-  return walk(ROOT, '.tsx')
-    .filter((file) => tracked.has(file))
-    .sort();
-}
-
 describe('gate scope honesty (station#1559 / #1543)', () => {
-  describe('the git pathspec that caused the miss', () => {
-    it('omits every .tsx sitting directly in src-ui/src, which is why a `dir/**/*.ext` enumeration cannot be trusted', () => {
-      const real = realTrackedTsxFilesUnderRoot();
-      const rootLevel = real.filter(
-        (file) => file.slice(ROOT.length + 1).indexOf('/') === -1,
-      );
-      // If this ever becomes empty the premise below is untestable, not fixed.
-      expect(rootLevel.length).toBeGreaterThan(0);
-
-      const viaRecursiveGlob = new Set(gitLsFiles(`${ROOT}/**/*.tsx`));
-      const omitted = real.filter((file) => !viaRecursiveGlob.has(file));
-
-      // The omission is exactly the root-level files — git's `**` in this
-      // pathspec form requires at least one intervening directory.
-      expect(omitted).toEqual(rootLevel);
-    });
-
-    it('a plain directory pathspec does not have that hole', () => {
-      const viaDirectory = new Set(gitLsFiles(ROOT));
-      for (const file of realTrackedTsxFilesUnderRoot()) {
-        expect(viaDirectory.has(file)).toBe(true);
-      }
-    });
-  });
-
   describe('each gate enumerates the whole scope it reports on', () => {
     it.each([
       ['noun-consistency gate', nounGateFiles],
@@ -230,6 +193,10 @@ describe('gate scope honesty (station#1559 / #1543)', () => {
     });
 
     it('reproduces the exact station#1559 miss when handed the old pathspec result', () => {
+      // git's `dir/**/*.tsx` pathspec needs at least one intervening
+      // directory, so it omits every .tsx sitting directly in src-ui/src. If
+      // those files ever vanished, the old enumeration would match and this
+      // would go red rather than pass vacuously.
       const oldEnumeration = gitLsFiles(`${ROOT}/**/*.tsx`);
       expect(() =>
         assertScopeIsHonest({ ...base, files: oldEnumeration }),

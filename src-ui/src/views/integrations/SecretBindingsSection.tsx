@@ -10,6 +10,7 @@ import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 type Backend = 'env' | 'keychain' | 'op';
 type Form = {
@@ -280,7 +281,7 @@ export function SecretBindingsSection() {
           ) : error ? (
             <ErrorState
               title="Secret bindings unavailable"
-              description={error.message}
+              description={userFacingErrorMessage(error)}
               action={
                 <Button size="sm" onClick={() => void refetch()}>
                   Retry

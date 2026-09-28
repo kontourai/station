@@ -5,6 +5,12 @@
 // through the archive's own CLI on an isolated home and OS-chosen ports,
 // probe the API (authenticated) and the UI origin, and `station stop`.
 //
+// The archive runs read-only, as the installer leaves a version directory
+// (#2675 B1): `chmod -R a-w` on POSIX, and on every platform its file listing
+// must be unchanged afterwards. A second extraction stands in for the next
+// version of the same channel: it must see the instance the first one
+// started (same instance id, same lifecycle state outside both) and stop it.
+//
 //   node scripts/smoke-portable-server-archive.mjs --archive <path> \
 //     [--work-dir <dir>] [--long-path] [--keep]
 //
@@ -12,8 +18,10 @@
 // node_modules file crosses Windows' 260-character MAX_PATH (#2484).
 import { spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   closeSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -36,6 +44,12 @@ import {
   PORTABLE_ARCHIVE_ROOT,
   readPortableNodeRuntime,
 } from './lib/portable-server-archive.mjs';
+import {
+  describeCommandFailure,
+  redact,
+  stationLogReport,
+} from './lib/portable-smoke-diagnostics.mjs';
+import { parseStopHint } from './lib/station-stop-hint.mjs';
 
 const WINDOWS = process.platform === 'win32';
 const MAX_PATH = 260;
@@ -60,18 +74,77 @@ function fail(message) {
   throw new Error(message);
 }
 
+// Where a failed smoke looks for Station's logs (#2805): the throwaway HOME,
+// and every Station home a launcher announced (a POSIX --temp-home lives in
+// the OS temporary directory, outside HOME).
+const diagnosticRoots = new Set();
+
+function noteAnnouncedHome(output) {
+  const announced = /Station home: (.+) \(/.exec(output ?? '')?.[1];
+  if (announced) diagnosticRoots.add(announced);
+}
+
+/** Runs the launcher once, recording any Station home it announces. */
+function spawnLauncherSync(launcher, args, env, cwd, timeout) {
+  const { command, args: argv, options } = launcherInvocation(launcher, args);
+  const result = spawnSync(command, argv, {
+    ...options,
+    cwd,
+    env,
+    encoding: 'utf8',
+    timeout,
+    windowsHide: true,
+  });
+  noteAnnouncedHome(result.stdout);
+  return result;
+}
+
 function log(message) {
   console.log(`[portable-smoke] ${message}`);
 }
 
+const WINDOWS_SYSTEM_VARIABLES = [
+  'ALLUSERSPROFILE',
+  'CommonProgramFiles',
+  'CommonProgramFiles(x86)',
+  'CommonProgramW6432',
+  'COMPUTERNAME',
+  'NUMBER_OF_PROCESSORS',
+  'OS',
+  'PROCESSOR_ARCHITECTURE',
+  'PROCESSOR_IDENTIFIER',
+  'PROCESSOR_LEVEL',
+  'PROCESSOR_REVISION',
+  'ProgramData',
+  'ProgramFiles',
+  'ProgramFiles(x86)',
+  'ProgramW6432',
+  'PUBLIC',
+  'SystemDrive',
+  'USERDOMAIN',
+  'USERNAME',
+];
+
 /**
  * The environment of a host that never installed Node.js: only the base OS
- * directories on PATH and a throwaway HOME. Nothing is inherited.
+ * directories on PATH and a throwaway HOME. Only machine-level system
+ * variables are inherited.
  */
 function scrubbedEnvironment(home) {
   if (!WINDOWS) return { HOME: home, PATH: '/usr/bin:/bin' };
   const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
+  // Machine-level variables every Windows session and service has, so the
+  // smoke models a real host rather than one missing them. PATH stays
+  // minimal, so the archive still proves it needs no Node or PowerShell on
+  // PATH.
+  const system = Object.fromEntries(
+    WINDOWS_SYSTEM_VARIABLES.filter((name) => process.env[name]).map((name) => [
+      name,
+      process.env[name],
+    ]),
+  );
   return {
+    ...system,
     SystemRoot: systemRoot,
     windir: systemRoot,
     ComSpec: join(systemRoot, 'System32', 'cmd.exe'),
@@ -127,39 +200,23 @@ function launcherInvocation(launcher, args) {
 }
 
 function runLauncher(launcher, args, env, cwd, timeout = 30_000) {
-  const { command, args: argv, options } = launcherInvocation(launcher, args);
-  const result = spawnSync(command, argv, {
-    ...options,
-    cwd,
-    env,
-    encoding: 'utf8',
-    timeout,
-    windowsHide: true,
-  });
+  const result = spawnLauncherSync(launcher, args, env, cwd, timeout);
   const shown = args.map((arg) => arg.replace(cwd, '<home>')).join(' ');
-  if (result.error) fail(`station ${shown}: ${result.error}`);
+  if (result.error || result.status !== 0) {
+    fail(describeCommandFailure(shown, result, timeout));
+  }
   log(
     `$ station ${shown} -> exit ${result.status}:\n${redact(result.stdout.trim())}`,
   );
-  if (result.status !== 0) {
-    fail(`launcher exited ${result.status}: ${redact(result.stderr)}`);
-  }
   return result.stdout.trim();
 }
 
 /** Runs a command that must fail, and returns what it printed. */
 function runLauncherExpectingFailure(launcher, args, env, cwd) {
-  const { command, args: argv, options } = launcherInvocation(launcher, args);
-  const result = spawnSync(command, argv, {
-    ...options,
-    cwd,
-    env,
-    encoding: 'utf8',
-    timeout: 60_000,
-    windowsHide: true,
-  });
+  const timeout = 60_000;
+  const result = spawnLauncherSync(launcher, args, env, cwd, timeout);
   const shown = args.map((arg) => arg.replace(cwd, '<home>')).join(' ');
-  if (result.error) fail(`station ${shown}: ${result.error}`);
+  if (result.error) fail(describeCommandFailure(shown, result, timeout));
   const output = `${result.stdout}${result.stderr}`.trim();
   log(`$ station ${shown} -> exit ${result.status}:\n${redact(output)}`);
   if (result.status === 0) fail(`station ${shown} was expected to refuse`);
@@ -203,9 +260,61 @@ function extract(archive, destination) {
   }
 }
 
-/** A launch receipt names a single-use sign-in link; never echo the token. */
-function redact(text) {
-  return text.replace(/(#station-ui-bootstrap=)[^\s]+/g, '$1<redacted>');
+/** Every path under `root`, so the smoke can prove nothing was written there. */
+function treeListing(root) {
+  return readdirSync(root, { recursive: true, withFileTypes: true })
+    .map((entry) => {
+      const path = join(entry.parentPath, entry.name).slice(root.length + 1);
+      return entry.isDirectory() ? `${path}${sep}` : path;
+    })
+    .sort();
+}
+
+function diffListing(before, after) {
+  const was = new Set(before);
+  const now = new Set(after);
+  return [
+    ...after.filter((path) => !was.has(path)).map((path) => `+${path}`),
+    ...before.filter((path) => !now.has(path)).map((path) => `-${path}`),
+  ];
+}
+
+/**
+ * Leaves `root` as the installer will leave a version directory: nothing in
+ * it writable (`chmod -R a-w`). Returns the undo, for cleanup. Windows is
+ * skipped: its read-only attribute does not stop creating entries in a
+ * directory, so only an ACL deny could enforce this, and how the installer
+ * protects a version directory there belongs to the Windows installer slice.
+ * Root ignores mode bits, so it is skipped too. The unchanged-listing check
+ * runs everywhere regardless.
+ */
+function makeReadOnly(root) {
+  if (WINDOWS) {
+    log(
+      'read-only archive: skipped on Windows (the read-only attribute does not stop creating entries in a directory); the unchanged-listing check still runs',
+    );
+    return () => {};
+  }
+  if (process.getuid?.() === 0) {
+    log(
+      'read-only archive: skipped as root, which ignores mode bits; the unchanged-listing check still runs',
+    );
+    return () => {};
+  }
+  const paths = [root, ...treeListing(root).map((path) => join(root, path))];
+  const modes = new Map();
+  // Children before parents: a directory stays writable until its entries
+  // are done. Symlinks (node_modules/.bin) are left alone; chmod follows them.
+  for (const path of paths.reverse()) {
+    const info = lstatSync(path);
+    if (info.isSymbolicLink()) continue;
+    modes.set(path, info.mode & 0o7777);
+    chmodSync(path, info.mode & 0o7555);
+  }
+  log(`read-only archive: removed write permission from ${modes.size} entries`);
+  return () => {
+    for (const [path, mode] of [...modes].reverse()) chmodSync(path, mode);
+  };
 }
 
 async function fetchChecked(url, headers = {}) {
@@ -254,10 +363,13 @@ async function choosePorts() {
  * environment): an unset port falls back to a channel default the owner's
  * own Station uses.
  */
-async function bootAndProbe({ launcher, env, home, release }) {
+async function bootAndProbe({ launcher, nextLauncher, env, home, release }) {
   // The home a release of this channel owns (runtime-path-resolver's
   // runtimeInstancePath); a development checkout would pick instances/dev/<id>.
   const stationHome = join(home, '.station', 'instances', release.channel);
+  // Where every version of this channel keeps its lifecycle state (#2675 B1):
+  // <STATION_ROOT>/state/<channel>, STATION_ROOT defaulting to ~/.station.
+  const stateDir = join(home, '.station', 'state', release.channel);
   const { serverPort, uiPort } = await choosePorts();
   const lifecycleEnv = {
     ...env,
@@ -285,11 +397,28 @@ async function bootAndProbe({ launcher, env, home, release }) {
       home,
       START_TIMEOUT_MS,
     );
-    const stopEphemeral = /Stop with: station (stop --instance=\S+)/.exec(
-      ephemeral,
-    )?.[1];
-    if (!stopEphemeral) fail('station start --temp-home named no stop command');
-    runLauncher(launcher, stopEphemeral.split(' '), lifecycleEnv, home);
+    // An archive keeps a --temp-home instance's record inside that home
+    // (#2675), so the printed stop command names it.
+    // Parsed, not split on spaces: the home is quoted for the platform's
+    // shell, and parseStopHint refuses the other platform's quoting (#2805).
+    const stopEphemeral = parseStopHint(ephemeral);
+    if (!stopEphemeral) {
+      fail('station start --temp-home named no stop command with its home');
+    }
+    runLauncher(
+      launcher,
+      [
+        'stop',
+        // The launcher runs through cmd.exe on Windows, which passes a
+        // double-quoted argument through intact; POSIX spawns it directly.
+        WINDOWS
+          ? `--home="${stopEphemeral.home}"`
+          : `--home=${stopEphemeral.home}`,
+        `--instance=${stopEphemeral.instanceId}`,
+      ],
+      lifecycleEnv,
+      home,
+    );
     await waitUntilClosed([serverPort, uiPort]);
     // `stop` leaves the temporary home itself behind; the smoke owns it.
     const temporaryHome = /Station home: (.+) \(--temp-home\)/.exec(
@@ -300,6 +429,20 @@ async function bootAndProbe({ launcher, env, home, release }) {
     }
     // A recursive delete driven by parsed output: only ever the shape the
     // lifecycle creates (<tmp>/station/dev-home-*), never anything else.
+    // Its lifecycle state lived in the temporary home, which is its own
+    // Station root, and stop removed the record.
+    const temporaryState = join(
+      temporaryHome,
+      'state',
+      release.channel,
+      'instances',
+    );
+    if (!existsSync(temporaryState)) {
+      fail(`no lifecycle state in the temporary home: ${temporaryState}`);
+    }
+    if (readdirSync(temporaryState).some((entry) => entry.endsWith('.json'))) {
+      fail(`stop left a lifecycle record in ${temporaryState}`);
+    }
     const ownedHome = realpathSync(temporaryHome);
     if (
       !basename(ownedHome).startsWith('dev-home-') ||
@@ -382,6 +525,16 @@ async function bootAndProbe({ launcher, env, home, release }) {
     );
     if (proxied?.live !== true) fail('UI origin does not proxy the API');
     log('UI origin proxies /api/system/liveness to the server');
+    await proveArchiveLifecycle({
+      launcher,
+      nextLauncher,
+      lifecycleEnv,
+      home,
+      started,
+      stateDir,
+      serverPort,
+      uiPort,
+    });
   } catch (error) {
     failure = error;
   }
@@ -393,6 +546,91 @@ async function bootAndProbe({ launcher, env, home, release }) {
   }
   if (failure) throw failure;
   await waitUntilClosed([serverPort, uiPort]);
+}
+
+/**
+ * #2675 B1, against the running instance: its record lives outside the
+ * archive; `doctor` reports the bundled runtime; `upgrade` refuses precisely;
+ * and the next version of the channel resolves the same instance (a repeated
+ * start finds it running instead of launching another) and stops it.
+ */
+async function proveArchiveLifecycle({
+  launcher,
+  nextLauncher,
+  lifecycleEnv,
+  home,
+  started,
+  stateDir,
+  serverPort,
+  uiPort,
+}) {
+  const instanceId = /Instance: (\S+)/.exec(started)?.[1];
+  if (!instanceId) fail('station start named no instance');
+  const record = join(stateDir, 'instances', `${instanceId}.json`);
+  if (!existsSync(record)) {
+    fail(`instance ${instanceId} has no lifecycle record at ${record}`);
+  }
+  log(`lifecycle record outside the archive: ${record}`);
+
+  const doctor = spawnLauncher(
+    launcher,
+    ['doctor', '--json'],
+    lifecycleEnv,
+    home,
+  );
+  const checks = JSON.parse(doctor.stdout).report?.checks ?? [];
+  const node = checks.find((check) => check.label === 'Node.js');
+  const archive = checks.find((check) => check.label === 'Prebuilt archive');
+  if (!node?.detail.includes('(bundled: ') || !archive) {
+    fail(`station doctor did not report the bundled runtime: ${doctor.stdout}`);
+  }
+  log(`doctor: Node.js — ${node.detail}; Prebuilt archive — ${archive.detail}`);
+
+  const upgrade = runLauncherExpectingFailure(
+    launcher,
+    ['upgrade'],
+    lifecycleEnv,
+    home,
+  );
+  if (!upgrade.includes('cannot update a prebuilt Station archive in place')) {
+    fail(`station upgrade did not refuse as a prebuilt archive:\n${upgrade}`);
+  }
+
+  const again = runLauncher(
+    nextLauncher,
+    ['start', `--port=${serverPort}`, `--ui-port=${uiPort}`],
+    lifecycleEnv,
+    home,
+  );
+  if (
+    !again.includes('Already running') ||
+    !again.includes(`station stop --instance=${instanceId}`)
+  ) {
+    fail(
+      `the next version did not resolve the running instance ${instanceId}:\n${again}`,
+    );
+  }
+  log(`the next version resolves the running instance as ${instanceId}`);
+  runLauncher(
+    nextLauncher,
+    ['stop', `--instance=${instanceId}`],
+    lifecycleEnv,
+    home,
+  );
+  await waitUntilClosed([serverPort, uiPort]);
+  if (existsSync(record)) fail(`stopping left its record behind: ${record}`);
+  log('the next version stopped it');
+}
+
+/** Runs the launcher and returns its result whatever its exit status. */
+function spawnLauncher(launcher, args, env, cwd) {
+  const timeout = 60_000;
+  const result = spawnLauncherSync(launcher, args, env, cwd, timeout);
+  if (result.error) {
+    fail(describeCommandFailure(args.join(' '), result, timeout));
+  }
+  log(`$ station ${args.join(' ')} -> exit ${result.status}`);
+  return result;
 }
 
 async function waitUntilClosed(ports) {
@@ -483,6 +721,12 @@ async function main() {
     log(
       `extracted ${members.length} entries to ${extractRoot} (${extractRoot.length} chars; deepest path ${extractRoot.length + 1 + longestMember} chars)`,
     );
+    // The next version of the same channel, in its own directory, as an
+    // upgrade would install it beside the running one. Its bytes are this
+    // archive's: an instance's identity never depends on the release sha
+    // (packages/cli/src/__tests__/prebuilt-archive.test.ts pins that).
+    const nextRoot = join(work, 'next');
+    extract(archive, nextRoot);
     const release = JSON.parse(
       readFileSync(join(root, '.station-release.json'), 'utf8'),
     );
@@ -496,8 +740,15 @@ async function main() {
         'lib/station-cli.mjs still names an interpreter; it is only imported',
       );
     }
-    const launcher = join(root, 'bin', WINDOWS ? 'station.cmd' : 'station');
+    const launcherName = WINDOWS ? 'station.cmd' : 'station';
+    const launcher = join(root, 'bin', launcherName);
+    const nextLauncher = join(
+      realpathSync(join(nextRoot, PORTABLE_ARCHIVE_ROOT)),
+      'bin',
+      launcherName,
+    );
     const home = join(work, 'home');
+    diagnosticRoots.add(home);
     const env = scrubbedEnvironment(home);
     mkdirSync(env.TEMP ?? home, { recursive: true });
     mkdirSync(env.APPDATA ?? home, { recursive: true });
@@ -520,8 +771,25 @@ async function main() {
     if (identity.platform !== `${process.platform}-${process.arch}`) {
       fail(`archive reports ${identity.platform} on this host`);
     }
-    await bootAndProbe({ launcher, env, home, release });
+    const listing = treeListing(root);
+    const restoreWritable = makeReadOnly(root);
+    try {
+      await bootAndProbe({ launcher, nextLauncher, env, home, release });
+    } finally {
+      restoreWritable();
+    }
+    const changed = diffListing(listing, treeListing(root));
+    if (changed.length > 0) {
+      fail(`running Station wrote into its archive: ${changed.join(', ')}`);
+    }
+    log(`archive unchanged: ${listing.length} entries`);
     log('PASS');
+  } catch (error) {
+    // Before cleanup removes them: the logs of every Station this smoke ran.
+    console.error(
+      `[portable-smoke] Station logs after the failure:\n${stationLogReport(diagnosticRoots)}`,
+    );
+    throw error;
   } finally {
     if (!values.keep) {
       try {

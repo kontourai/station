@@ -46,6 +46,8 @@
  * (`check-generated-pages-links.mjs` also gets a pair below. It is NOT one of
  * the 54: the Pages workflow runs it, not `verify:static:raw`. It is here
  * because the fixture was free once the harness existed.)
+ * (`test-fixture-policy.mjs` later joined the accept runs, when
+ * `verification:policy:gate` was added to that file's derivation.)
  *
  * ## What this suite deliberately does NOT do
  *
@@ -254,6 +256,11 @@ const PRODUCTION_ACCEPT_GATES: ReadonlyArray<{
     script: 'stored-path-expansion-guard.mjs',
     reason:
       'a ratchet over the real src tree whose baseline entries must each still match a live finding; a fixture cannot carry the production baseline and a synthetic one would test nothing the unit test does not',
+  },
+  {
+    script: 'test-fixture-policy.mjs',
+    reason:
+      'reached through verification:policy:gate; its classification rules are proven in-process by test-fixture-policy.test.ts, and the subject here is the real test corpus and its checked-in baseline',
   },
 ];
 
@@ -735,6 +742,23 @@ describe('builder-delivery-viewer-import:gate rejects an unpublished import', ()
       `unapproved-module-capability: ${ROOT}/evil.ts:1`,
     );
   });
+
+  it('refuses an empty scope rather than reporting it clean', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const dir = scratchRepo({
+      script: SCRIPT,
+      files: {
+        'examples/other-plugin/src/plugin.tsx': clean[`${ROOT}/plugin.tsx`],
+      },
+    });
+    linkNodeModules(dir);
+    const result = runGuardrail(dir, SCRIPT);
+    expect(result.status, result.output).toBe(1);
+    expect(result.stderr).toContain(
+      'Builder Delivery Viewer import gate failed: no source files under examples/builder-delivery-viewer.',
+    );
+  });
 });
 
 describe('check-mobile-permissions rejects an unreviewed Android permission', () => {
@@ -1149,6 +1173,8 @@ describe('a11y:ratchet rejects a new accessibility violation', () => {
     const dir = scratchRepo({
       script: SCRIPT,
       git: false,
+      // The ratchet lints the roots named by the real lint:check script.
+      productionFiles: ['package.json'],
       files: {
         ...config,
         'src-ui/clean.tsx':
@@ -1169,6 +1195,7 @@ describe('a11y:ratchet rejects a new accessibility violation', () => {
     const dir = scratchRepo({
       script: SCRIPT,
       git: false,
+      productionFiles: ['package.json'],
       files: {
         ...config,
         'src-ui/clean.tsx': 'export const A = () => <button>x</button>;\n',
@@ -1192,6 +1219,7 @@ describe('a11y:ratchet rejects a new accessibility violation', () => {
     const dir = scratchRepo({
       script: SCRIPT,
       git: false,
+      productionFiles: ['package.json'],
       files: {
         ...config,
         'scripts/a11y-baseline.json': `${JSON.stringify(

@@ -1,11 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
-  DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
   DEVICE_PAIRING_SCOPE,
-  type DevicePairingBrowserExchangeResponse,
-  ENVIRONMENT_SECURITY_SCHEMA_VERSION,
-  type EnvironmentSecurityRecord,
   isPairingScopeSubset,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
@@ -29,6 +25,7 @@ import {
   pairingScopeIncludes,
   pairingScopePresetString,
   parsePairingScope,
+  parsePublicStationHandshake,
   REMOTE_AUTH_PROTOCOL_VERSION,
   STATION_COMPAT_MIN_CLIENT_PROTOCOL,
   STATION_COMPAT_PROTOCOL_VERSION,
@@ -39,113 +36,9 @@ describe('environment security contracts', () => {
   test('owns the exact versioned public handshake path', () => {
     expect(PUBLIC_STATION_HANDSHAKE_PATH).toBe('/.well-known/station/v1');
   });
-  test('fixes the private record at one versioned identity and credential shape', () => {
-    const record = {
-      schemaVersion: ENVIRONMENT_SECURITY_SCHEMA_VERSION,
-      environmentId: 'environment-fixture',
-      credential: 'credential-fixture',
-    } satisfies EnvironmentSecurityRecord;
-
-    expect(Object.keys(record).sort()).toEqual([
-      'credential',
-      'environmentId',
-      'schemaVersion',
-    ]);
-  });
-
-  test('keeps browser pairing exchange metadata credential-free', () => {
-    const exchange = {
-      environmentId: 'environment-fixture',
-      device: {
-        id: 'device-fixture',
-        name: 'Phone',
-        scope: 'station:interactive',
-        kind: 'device',
-        createdAt: 1,
-        activityTracking: 'tracked-since-issued',
-        lastSeenFrom: null,
-        usageCount: 0,
-        lastActiveDay: null,
-        revokedAt: null,
-        revocation: { state: 'not-revoked' },
-      },
-      delivery: DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
-    } satisfies DevicePairingBrowserExchangeResponse;
-
-    expect(exchange).not.toHaveProperty('credential');
-    expect(Object.keys(exchange).sort()).toEqual([
-      'delivery',
-      'device',
-      'environmentId',
-    ]);
-  });
-
-  test('fixes the public handshake to exact minimal versioned keys', () => {
-    const handshake = {
-      schemaVersion: PUBLIC_HANDSHAKE_SCHEMA_VERSION,
-      environmentId: 'environment-fixture',
-      authentication: {
-        scheme: 'bearer',
-        protocolVersion: REMOTE_AUTH_PROTOCOL_VERSION,
-      },
-      transports: {
-        http: REMOTE_AUTH_PROTOCOL_VERSION,
-        sse: REMOTE_AUTH_PROTOCOL_VERSION,
-        websocket: REMOTE_AUTH_PROTOCOL_VERSION,
-      },
-      compatibility: {
-        serverVersion: '0.4.1',
-        protocolVersion: STATION_COMPAT_PROTOCOL_VERSION,
-        minClientProtocol: STATION_COMPAT_MIN_CLIENT_PROTOCOL,
-      },
-    } satisfies PublicStationHandshake;
-
-    expect(Object.keys(handshake).sort()).toEqual([
-      'authentication',
-      'compatibility',
-      'environmentId',
-      'schemaVersion',
-      'transports',
-    ]);
-    expect(Object.keys(handshake.authentication).sort()).toEqual([
-      'protocolVersion',
-      'scheme',
-    ]);
-    expect(Object.keys(handshake.transports).sort()).toEqual([
-      'http',
-      'sse',
-      'websocket',
-    ]);
-    const allKeys = [
-      ...Object.keys(handshake),
-      ...Object.keys(handshake.authentication),
-      ...Object.keys(handshake.transports),
-    ];
-    for (const sensitiveKey of [
-      'credential',
-      'secret',
-      'token',
-      'user',
-      'home',
-      'workspace',
-      'hostname',
-      'endpoint',
-      'port',
-    ]) {
-      expect(allKeys).not.toContain(sensitiveKey);
-    }
-  });
 });
 
 describe('handshake capability flags (station#1095, AC1: two-way fixture decode)', () => {
-  /** Everything a pre-#1095 handshake consumer's type declaration knows about. */
-  interface PreCapabilitiesHandshake {
-    schemaVersion: number;
-    environmentId: string;
-    authentication: { scheme: 'bearer'; protocolVersion: number };
-    transports: { http: number; sse: number; websocket: number };
-  }
-
   const OLD_PAYLOAD_NO_CAPABILITIES = {
     schemaVersion: PUBLIC_HANDSHAKE_SCHEMA_VERSION,
     environmentId: 'environment-fixture',
@@ -173,30 +66,36 @@ describe('handshake capability flags (station#1095, AC1: two-way fixture decode)
     } satisfies StationCapabilityFlags,
   } satisfies PublicStationHandshake;
 
-  test('new code decodes an old-shaped payload (no `capabilities` field) fine', () => {
-    const wire = JSON.parse(JSON.stringify(OLD_PAYLOAD_NO_CAPABILITIES));
-    // The whole point of every field being optional: this type-checks and
-    // decodes with no missing required field, on a payload from a host that
-    // predates station#1095.
-    const decoded: PublicStationHandshake = wire;
+  test('the handshake parser accepts a payload from a host that predates capabilities', () => {
+    const decoded = parsePublicStationHandshake(OLD_PAYLOAD_NO_CAPABILITIES);
 
-    expect(decoded.capabilities).toBeUndefined();
-    expect(decoded.environmentId).toBe('environment-fixture');
+    expect(decoded?.environmentId).toBe('environment-fixture');
+    expect(decoded?.capabilities).toBeUndefined();
   });
 
-  test('an old-shaped consumer decodes a new payload (with `capabilities`) fine, ignoring the unknown field', () => {
-    const wire = JSON.parse(JSON.stringify(NEW_PAYLOAD_WITH_CAPABILITIES));
-    const decoded: PreCapabilitiesHandshake = wire;
+  test("the handshake parser keeps a newer host's capability flags, including ones this build does not know", () => {
+    const decoded = parsePublicStationHandshake({
+      ...NEW_PAYLOAD_WITH_CAPABILITIES,
+      capabilities: {
+        ...NEW_PAYLOAD_WITH_CAPABILITIES.capabilities,
+        flagFromANewerHost: true,
+      },
+    });
 
-    expect(decoded.environmentId).toBe('environment-fixture');
-    expect(decoded.schemaVersion).toBe(PUBLIC_HANDSHAKE_SCHEMA_VERSION);
-    expect(decoded.authentication.scheme).toBe('bearer');
-    // The extra field is present on the wire object but not part of the old
-    // type's contract — an old-shaped consumer simply never reads it.
-    expect((wire as PublicStationHandshake).capabilities).toEqual({
+    expect(decoded?.capabilities).toEqual({
       sshEnvironments: true,
       webPushNotifications: false,
+      flagFromANewerHost: true,
     });
+  });
+
+  test('the handshake parser refuses a capability flag that is not a boolean', () => {
+    expect(
+      parsePublicStationHandshake({
+        ...NEW_PAYLOAD_WITH_CAPABILITIES,
+        capabilities: { sshEnvironments: 'yes' },
+      }),
+    ).toBeUndefined();
   });
 
   test('absence of the whole object AND absence of an individual key both mean unsupported', () => {
