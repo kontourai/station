@@ -630,7 +630,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // directories to verify its real exit codes and rollback behavior.
   'scripts/__tests__/publish-mobile-feed-transaction.test.ts',
   // Runs the Tauri context CLI's --help path as a child process to prove it
-  // prints usage and exits 0 before any host probe or report.
+  // prints only usage and exits 0, with no host report.
   'scripts/__tests__/tauri-context.test.ts',
   // Runs short-lived bash fixtures through the owned-process fixture runner
   // to prove its launch, truncation, deadline and descendant-reaping refusals.

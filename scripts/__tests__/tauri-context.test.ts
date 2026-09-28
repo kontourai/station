@@ -21,7 +21,7 @@ describe('tauri context', () => {
       );
       expect(result.status).toBe(0);
       expect(result.stderr).toBe('');
-      // Exactly the usage text: no host report was built or printed.
+      // Exactly the usage text: no host report was printed.
       expect(result.stdout).toBe(TAURI_CONTEXT_USAGE);
     },
   );
