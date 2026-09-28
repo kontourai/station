@@ -362,7 +362,11 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
         reset: [
           { conversationId: 'conversation:a', title: hostile, was: 'never' },
           // Nothing visible left: listed by id alone.
-          { conversationId: 'conversation:z', title: '\u200B\u2067\u2069', was: 'never' },
+          {
+            conversationId: 'conversation:z',
+            title: '\u200B\u2067\u2069',
+            was: 'never',
+          },
         ],
         stillFullAccess: [],
         reconfined: [],
