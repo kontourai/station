@@ -25,6 +25,10 @@ mod notification_watch;
 #[cfg(not(mobile))]
 pub(crate) mod native_account_proof_key;
 #[cfg(not(mobile))]
+pub(crate) mod native_device_proof_key;
+#[cfg(not(mobile))]
+pub(crate) mod native_proof_key_core;
+#[cfg(not(mobile))]
 mod native_relay_key_approval;
 #[cfg(not(mobile))]
 pub(crate) mod native_relay_proof_key;
