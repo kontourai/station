@@ -216,6 +216,14 @@ with no recoverable failure evidence. Counts remain the canonical failure
 tally — `recoveredFailures` is corroborating identity, never an independent
 count source.
 
+An exhausted related-discovery budget stops the changed-test selector during
+preparation and produces infrastructure-error evidence, not failed test
+counts or a passing empty selection. A malformed deadline environment value
+is refused earlier, before the selector writes its diagnostic. Hosted shard
+plans record discovery elapsed time and the actual child timeout when a child
+ran; SDK refinement can finish without starting one. See the
+[testing guide](../guides/testing.md) for caller budgets and settlement reserve.
+
 When the RUNNER stops a lane rather than a check failing it, the receipt
 records the runner's own final word in `terminal.infrastructureCause`
 (station#1827). Two channels feed it, in this order: the payload of the

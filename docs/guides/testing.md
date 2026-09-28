@@ -206,8 +206,19 @@ The subset uses the same resource groups and worker limits as `test:full`:
 ordinary files use four workers, process-heavy files use two, and exclusive
 or shared-output groups run serially. Groups run in sequence. Deferred lanes
 remain deferred; this grouping does not broaden a bounded CI selection.
-Discovery has a 60-second deadline and a 1 MiB output limit. Discovery and
-test commands own their process trees, including cancellation and settlement.
+Discovery retains a 1 MiB output limit. Its timeout is calculated after SDK
+barrel refinement from the caller's remaining discovery budget, reserving
+30 seconds for child settlement and receipt or plan writing. Local `ci:fast`
+allocates a quarter of the selector's allowance to discovery so tests retain
+time to run; the hosted shard planner uses its five-minute planning allowance.
+A caller without a deadline keeps the 60-second timeout. With a deadline,
+less than 60 seconds remaining after the reserve is refused before discovery
+starts; it is not rounded up. Invalid deadlines and timeouts above the
+fifteen-minute lane ceiling are also refused.
+`STATION_TEST_CHANGED_DEADLINE_AT` carries an absolute epoch-millisecond
+deadline to the selector and is removed from discovery and test child
+environments. Discovery and test commands own their process trees, including
+cancellation and settlement.
 Missing or unsafe selected files and discovery failures stop execution and
 produce a preparation error in the diagnostic; they never count as executed
 tests or a passing empty selection.
