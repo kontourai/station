@@ -71,11 +71,6 @@ describe('ChatSettingsPanel accessibility', () => {
       false,
     );
     expect(select.value).toBe('token');
-
-    // The retired mechanism-named toggle is gone, not merely relabelled.
-    expect(
-      screen.queryByRole('switch', { name: 'Smooth answer reveal' }),
-    ).toBeNull();
     rendered.unmount();
     deviceSettingsStore.reset('featureSettings');
   });
@@ -127,13 +122,6 @@ describe('ChatSettingsPanel accessibility', () => {
     rendered.rerender(<ChatSettingsPanel {...panelProps} isOpen={false} />);
     await waitFor(() => expect(document.activeElement).toBe(trigger));
     trigger.remove();
-  });
-
-  test('does not expose dock position settings', () => {
-    render(<ChatSettingsPanel {...props()} />);
-
-    expect(screen.queryByText('Dock Position')).toBeNull();
-    expect(screen.queryByRole('menuitemradio')).toBeNull();
   });
 
   test('offers event replay only when developer tools are on and a handler exists', () => {

@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
+import { knowledgeRootIncarnationKey } from '@kontourai/station-sdk';
 import {
   act,
   cleanup,
@@ -9,7 +10,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { KnowledgeLibrary, rootIncarnationKey } from '../KnowledgeLibrary';
+import { KnowledgeLibrary } from '../KnowledgeLibrary';
 
 const mocks = vi.hoisted(() => ({
   roots: vi.fn(),
@@ -294,8 +295,8 @@ describe('KnowledgeLibrary', () => {
     });
     view.rerender(<KnowledgeLibrary />);
 
-    expect(rootIncarnationKey(replacementRoot)).not.toBe(
-      rootIncarnationKey(root),
+    expect(knowledgeRootIncarnationKey(replacementRoot)).not.toBe(
+      knowledgeRootIncarnationKey(root),
     );
     expect(screen.getByTestId('kl-authority').textContent).toContain(
       'Replacement personal knowledge',

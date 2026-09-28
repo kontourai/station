@@ -81,7 +81,7 @@ function strictHttpUrl(value: string | null | undefined): URL | null {
  * Exact endpoint equality. Hostnames compare as text — never through a DNS
  * alias equivalence — and both sides must be root paths on http(s).
  */
-export function exactEndpointMatch(
+function exactEndpointMatch(
   candidate: string | null | undefined,
   native: string | null | undefined,
 ): boolean {
@@ -105,7 +105,7 @@ const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
  * the full conjunction with the native binding, current native owner and
  * authenticated instance identity.
  */
-export function exactLoopbackPortMatch(
+function exactLoopbackPortMatch(
   apiBase: string,
   port: number | null | undefined,
 ): boolean {

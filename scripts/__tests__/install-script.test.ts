@@ -2254,7 +2254,7 @@ describe('prebuilt archive installs (#2675 B2)', {
       STATION_INSTALL_NO_START: '1',
     });
     expect(refused.stderr).toContain(
-      'could not download public ecosystem manifest',
+      'the public ecosystem manifest is larger than 1 MiB',
     );
     expect(refused.status).toBe(1);
   });

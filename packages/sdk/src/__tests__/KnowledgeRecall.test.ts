@@ -35,6 +35,7 @@ const projectRoot: KnowledgeStoreRoot = {
 describe('Knowledge recall contract', () => {
   test('shares personal plus active-project root scoping', () => {
     expect(isRelevantKnowledgeRoot(personalRoot, null)).toBe(true);
+    expect(isRelevantKnowledgeRoot(personalRoot, 'alpha')).toBe(true);
     expect(isRelevantKnowledgeRoot(projectRoot, 'alpha')).toBe(true);
     expect(isRelevantKnowledgeRoot(projectRoot, 'beta')).toBe(false);
     expect(isRelevantKnowledgeRoot(projectRoot, null)).toBe(false);

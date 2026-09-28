@@ -49,7 +49,7 @@ import { PrincipalUnresolvedError } from '../services/identity/principal-resolve
 import {
   authorizeStationControlRequest,
   matchStationControlRoute,
-  type StationControlCommandThread,
+  type StationControlDispatchTarget,
   type StationControlRefusal,
   stationControlRefusal,
   stationControlRefusalBody,
@@ -130,7 +130,7 @@ export interface StationControlAuthorityGuardOptions {
    * Project, whether it runs `host`). Absent, throwing or answering nothing:
    * the command is refused (fail closed).
    */
-  commandThread?(threadId: string): StationControlCommandThread | undefined;
+  commandThread?(threadId: string): StationControlDispatchTarget | undefined;
   /** Called once per refusal, for the operator's logs. */
   onRefusal?(
     refusal: StationControlRefusal,
@@ -222,7 +222,7 @@ function commandThread(
   method: string,
   path: string,
   body: unknown,
-): StationControlCommandThread | undefined {
+): StationControlDispatchTarget | undefined {
   const threadId = matchStationControlRoute(method, path)?.rules.includes(
     'thread-commands-stay-in-scope',
   )

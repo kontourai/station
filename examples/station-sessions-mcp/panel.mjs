@@ -14,7 +14,7 @@
  */
 
 /** Escape a value for safe interpolation into HTML text/attributes. */
-export function escapeHtml(value) {
+function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
