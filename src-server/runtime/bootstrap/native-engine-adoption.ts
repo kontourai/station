@@ -56,27 +56,12 @@ const SCREENSHOT_E2E_INSTANCE = /^e2e-screenshot-[a-z0-9]+-[a-z0-9]+$/;
  * screenshot instance id. Directly launched dotenv servers retain the same
  * documented residual as that seam because neither marker is attested there.
  */
-export function nativeEngineAdoptionSuppressed(
-  env: NodeJS.ProcessEnv,
-): boolean {
+function nativeEngineAdoptionSuppressed(env: NodeJS.ProcessEnv): boolean {
   return (
     env[SUPPRESS_NATIVE_ENGINE_ADOPTION_ENV] === '1' &&
     env.STATION_HOME_SOURCE === '--temp-home' &&
     SCREENSHOT_E2E_INSTANCE.test(env.STATION_INSTANCE_ID ?? '')
   );
-}
-
-export function nativeEngineAdoptionDetection(
-  env: NodeJS.ProcessEnv,
-  detect: NativeEngineDetect,
-): {
-  suppressed: boolean;
-  detect: NativeEngineDetect;
-} {
-  if (!nativeEngineAdoptionSuppressed(env)) {
-    return { suppressed: false, detect };
-  }
-  return { suppressed: true, detect: async () => false };
 }
 
 /** Backoff between detection attempts; ~2.2 minutes total window. */
@@ -179,11 +164,7 @@ interface NativeEngineAdoptionSummary {
 export async function adoptDetectedNativeEngines(
   deps: NativeEngineAdoptionDeps,
 ): Promise<NativeEngineAdoptionSummary> {
-  const detection = nativeEngineAdoptionDetection(
-    deps.env ?? process.env,
-    deps.detect ?? detectCliOnPath,
-  );
-  const detect = detection.detect;
+  const detect = deps.detect ?? detectCliOnPath;
   const delays = deps.delaysMs ?? ADOPTION_ATTEMPT_DELAYS_MS;
   const outcomes: NativeEngineAdoptionSummary['outcomes'] = {};
   // Station itself is an engine too. Persist its ordinary editable definition
@@ -228,7 +209,7 @@ export async function adoptDetectedNativeEngines(
   // #875: a screenshot runtime must not persist whatever native CLIs happen
   // to exist on its capture host. Keep the ordinary Station Agent setup above
   // intact, but close the adoption window before any host probe can run.
-  if (detection.suppressed) {
+  if (nativeEngineAdoptionSuppressed(deps.env ?? process.env)) {
     for (const candidate of NATIVE_ENGINE_CANDIDATES) {
       // 'suppressed', not 'absent' (station#1815 review round 2): `detect` is
       // called zero times here, so an absence would be a claim about a host
