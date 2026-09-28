@@ -548,7 +548,7 @@ function humanReport(report) {
   return lines.join('\n');
 }
 
-export function parseArgs(argv) {
+function parseArgs(argv) {
   const options = {
     format: 'human',
     maxChars: 60_000,

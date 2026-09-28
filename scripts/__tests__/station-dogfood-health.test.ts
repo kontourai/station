@@ -29,7 +29,6 @@ import {
   assertListenerOwnership,
   inspectProcessFingerprints,
   linuxProcessBirthFingerprint,
-  listeningPidsByPort,
   observeListeningPidsByPort,
   probeDogfoodHealth,
 } from '../station-dogfood-health.mjs';
@@ -324,7 +323,7 @@ describe('dogfood authenticated health', () => {
       .mockReturnValue(
         'p41\nn127.0.0.1:3141\nn127.0.0.1:3142\np42\nn127.0.0.1:3000\n',
       );
-    const owners = listeningPidsByPort(
+    const { owners } = observeListeningPidsByPort(
       [3141, 3142, 3141, 3000],
       deadline,
       lsof,
@@ -440,7 +439,11 @@ describe('dogfood authenticated health', () => {
       throw new Error(`unexpected command ${command}`);
     });
 
-    const owners = listeningPidsByPort([3141, 3142, 3000], deadline, runSync);
+    const { owners } = observeListeningPidsByPort(
+      [3141, 3142, 3000],
+      deadline,
+      runSync,
+    );
 
     expect(runSync).toHaveBeenCalledTimes(2);
     expect(runSync.mock.calls[1]?.[0]).toBe('ss');

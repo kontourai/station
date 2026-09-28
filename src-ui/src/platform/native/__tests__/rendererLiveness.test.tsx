@@ -39,6 +39,32 @@ describe('NativeRendererMountCommit', () => {
     expect(commitRendererMount).toHaveBeenCalledOnce();
   });
 
+  // Every desktop host gates its reveal on this commit; a platform missing
+  // here would never reveal its main window.
+  it.each(['linux', 'macos', 'windows'] as const)(
+    'commits the renderer mount on %s desktop',
+    async (platform) => {
+      const commitRendererMount = vi.fn(async () => ({
+        status: 'ok' as const,
+        value: undefined,
+      }));
+      const MountCommit = createNativeRendererMountCommit(
+        async () =>
+          ({
+            platform: 'tauri' as const,
+            getCapabilityReport: vi.fn(async () => ({
+              status: 'ok' as const,
+              value: { platform, capabilities: [] },
+            })),
+            commitRendererMount,
+          }) as never,
+      );
+
+      render(<MountCommit />);
+      await waitFor(() => expect(commitRendererMount).toHaveBeenCalledOnce());
+    },
+  );
+
   it('does not expose a native mount command in the browser adapter', async () => {
     const commitRendererMount = vi.fn();
     const MountCommit = createNativeRendererMountCommit(

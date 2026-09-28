@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
   assertUpdaterManifestNotRegressing,
-  createUpdaterManifest,
   createUpdaterManifestForPlatforms,
   readUpdaterSignatureFile,
   verifyUpdaterManifestAssets,
@@ -20,23 +19,46 @@ const VALID = Object.freeze({
   url: 'https://github.com/kontourai/station/releases/download/nightly-desktop/station-nightly-desktop-macos-aarch64.app.tar.gz',
 });
 
+const VALID_MANIFEST = Object.freeze({
+  version: VALID.version,
+  notes: '',
+  pub_date: VALID.pubDate,
+  platforms: {
+    'darwin-aarch64': {
+      signature: VALID.signature,
+      url: VALID.url,
+    },
+  },
+});
+
+/** One release platform, in the flat shape the single-asset cases vary. */
+function singlePlatformManifest({
+  platform,
+  signature,
+  url,
+  ...release
+}: {
+  version: string;
+  notes?: string;
+  pubDate: string;
+  platform: string;
+  signature: string;
+  url: string;
+  releaseTag: string;
+}) {
+  return createUpdaterManifestForPlatforms({
+    ...release,
+    platforms: [{ platform, signature, url }],
+  });
+}
+
 describe('the Tauri updater manifest (station#575)', () => {
   test('assembles one platform entry from valid input', () => {
-    expect(createUpdaterManifest(VALID)).toEqual({
-      version: VALID.version,
-      notes: '',
-      pub_date: VALID.pubDate,
-      platforms: {
-        'darwin-aarch64': {
-          signature: VALID.signature,
-          url: VALID.url,
-        },
-      },
-    });
+    expect(singlePlatformManifest(VALID)).toEqual(VALID_MANIFEST);
   });
 
   test('trims a signature read from a file with a trailing newline', () => {
-    const manifest = createUpdaterManifest({
+    const manifest = singlePlatformManifest({
       ...VALID,
       signature: `${VALID.signature}\n`,
     });
@@ -46,7 +68,7 @@ describe('the Tauri updater manifest (station#575)', () => {
   });
 
   test('carries an explicit notes string through unchanged', () => {
-    const manifest = createUpdaterManifest({
+    const manifest = singlePlatformManifest({
       ...VALID,
       notes: 'Station Nightly desktop build',
     });
@@ -77,7 +99,7 @@ describe('the Tauri updater manifest (station#575)', () => {
       'releaseTag must be non-empty',
     ],
   ])('fails closed on an invalid %s', (_field, input, message) => {
-    expect(() => createUpdaterManifest(input)).toThrow(message);
+    expect(() => singlePlatformManifest(input)).toThrow(message);
   });
 
   test('refuses a url that names a DIFFERENT release than releaseTag (station#575 MED-2)', () => {
@@ -86,7 +108,7 @@ describe('the Tauri updater manifest (station#575)', () => {
     // drifting from the other two. A url whose download path names a
     // different tag must never assemble a "valid-looking" manifest.
     expect(() =>
-      createUpdaterManifest({
+      singlePlatformManifest({
         ...VALID,
         url: 'https://github.com/kontourai/station/releases/download/nightly-npm/station-nightly-desktop-macos-aarch64.app.tar.gz',
       }),
@@ -94,7 +116,7 @@ describe('the Tauri updater manifest (station#575)', () => {
     // A url for the right tag but missing the exact "/download/<tag>/"
     // shape (e.g. a tag name that is a prefix of another) must also fail.
     expect(() =>
-      createUpdaterManifest({
+      singlePlatformManifest({
         ...VALID,
         releaseTag: 'nightly-desktop',
         url: 'https://github.com/kontourai/station/releases/download/nightly-desktop-preview/station-nightly-desktop-macos-aarch64.app.tar.gz',
@@ -109,14 +131,9 @@ describe('the Tauri updater manifest (station#575)', () => {
     'https://attacker.tld/kontourai/station/releases/download/nightly-desktop/station-nightly-desktop-macos-aarch64.app.tar.gz',
     'https://github.com/kontourai/station/releases/download/nightly-desktop/subdir/station-nightly-desktop-macos-aarch64.app.tar.gz',
   ])('rejects non-identical release asset URL %s', (url) => {
-    expect(() => createUpdaterManifest({ ...VALID, url })).toThrow(
+    expect(() => singlePlatformManifest({ ...VALID, url })).toThrow(
       /url must be exactly one Station release asset under releaseTag/,
     );
-  });
-
-  test('never merges a previous platforms map: one call names exactly one platform', () => {
-    const manifest = createUpdaterManifest(VALID);
-    expect(Object.keys(manifest.platforms)).toEqual(['darwin-aarch64']);
   });
 
   test('assembles every platform produced by one release without stale entries', () => {
@@ -163,7 +180,7 @@ describe('the Tauri updater manifest (station#575)', () => {
     const manifest = join(directory, 'latest.json');
     writeFileSync(asset, 'archive');
     writeFileSync(`${asset}.sig`, VALID.signature);
-    writeFileSync(manifest, JSON.stringify(createUpdaterManifest(VALID)));
+    writeFileSync(manifest, JSON.stringify(singlePlatformManifest(VALID)));
 
     expect(() =>
       verifyUpdaterManifestAssets({
@@ -192,7 +209,7 @@ describe('the Tauri updater manifest (station#575)', () => {
     writeFileSync(
       manifest,
       JSON.stringify(
-        createUpdaterManifest({
+        singlePlatformManifest({
           ...VALID,
           version: '0.1.3',
           releaseTag: 'stable-desktop',
@@ -301,9 +318,7 @@ describe('the Tauri updater manifest (station#575)', () => {
       { cwd: join(import.meta.dirname, '../..') },
     );
 
-    expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(
-      createUpdaterManifest(VALID),
-    );
+    expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(VALID_MANIFEST);
   });
 
   test('the CLI binds every repeated signature file to its platform asset', () => {

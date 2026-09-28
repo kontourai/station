@@ -1272,11 +1272,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'native window, logging, and activation documentation source seam',
   },
   {
-    pattern: 'src-desktop/src/tray.rs',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'native tray activation documentation source seam',
-  },
-  {
     pattern: 'src-desktop/tauri.conf.json',
     tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
     reason: 'native hidden-window documentation source seam',
@@ -1297,11 +1292,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'native startup static verification command contract',
   },
   {
-    pattern: 'tests/plugin-host-security.spec.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'hostile plugin browser-only evidence boundary',
-  },
-  {
     pattern: 'packages/cli/src/cli.ts',
     tests: [
       'scripts/__tests__/native-recovery-docs.test.ts',
@@ -1316,11 +1306,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
       'scripts/__tests__/public-doc-contract-examples.test.ts',
     ],
     reason: 'targeted lifecycle command help documentation source seam',
-  },
-  {
-    pattern: 'packages/cli/src/commands/lifecycle.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'targeted lifecycle ownership documentation source seam',
   },
   {
     pattern: 'scripts/lib/free-ports.mjs',
@@ -1652,9 +1637,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   ...E2E_CONTRACT_BOUNDARIES.map((pattern) => ({
     pattern,
     lanes: ['verify-e2e-full'],
-    ...(pattern === 'playwright.config.ts'
-      ? { tests: ['scripts/__tests__/native-recovery-docs.test.ts'] }
-      : {}),
     reason: 'E2E product-contract control boundary',
   })),
   {
