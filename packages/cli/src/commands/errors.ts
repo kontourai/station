@@ -10,6 +10,7 @@
  * once you know which Station the CLI picked and why.
  */
 
+import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import type { ApiBaseSource, ResolvedApiBase } from './core-api.js';
 
 /** How a resolved base URL is described in an error, e.g. `(default)`. */
@@ -79,6 +80,30 @@ export function isIndeterminateWriteFailure(error: unknown): boolean {
   return (
     isTimeout(error) && (error as { mutation?: unknown }).mutation === true
   );
+}
+
+/**
+ * #1796: a full-access refusal, as every command prints it. The message is
+ * the Station's own words (who asked, what only its operator can grant, and
+ * how); this names which Station answered, since the operator acts there,
+ * and says nothing was retried at another mode. `undefined` for any other
+ * error. It is not a transport failure, so it is separate from
+ * {@link explainRequestFailure}, whose callers treat a result as one.
+ */
+export function explainFullAccessRefusal(
+  error: unknown,
+  resolved: ResolvedApiBase | undefined,
+): string | undefined {
+  if (
+    (error as { code?: unknown } | null)?.code !==
+    APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE
+  )
+    return undefined;
+  const message = error instanceof Error ? error.message : String(error);
+  const where = resolved
+    ? `the Station at ${resolved.apiBase} (${describeApiBaseSource(resolved)})`
+    : 'the Station this command targeted';
+  return `${message}\nRefused by ${where}. Nothing was sent at another approval mode.`;
 }
 
 /**

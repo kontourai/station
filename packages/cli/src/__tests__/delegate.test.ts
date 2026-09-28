@@ -190,6 +190,17 @@ describe('station delegate over HTTP', () => {
           });
           return;
         }
+        // #1796: the real refusal's shape (full-access-refusal.ts), for a
+        // device without approval:full-access.
+        if (selectedModelOptions?.approvalMode === 'never') {
+          sendJson(403, {
+            success: false,
+            code: 'approval-full-access-not-granted',
+            error:
+              'Full access was not applied. You asked for full access, but only this Station\'s operator can allow it, for device "Laptop CLI" (ffb80147).',
+          });
+          return;
+        }
         // station#978 review r1 HIGH fix: system-prompt passthrough is
         // explicitly out of scope — mirrors the real server's unconditional
         // rejection of modelOptions.systemPrompt (every provider, proven
@@ -1277,6 +1288,27 @@ describe('station delegate over HTTP', () => {
     expect(consoleError).toHaveBeenCalledWith(
       'Error:',
       "Unsupported option 'thinking' for codex target 'codex'",
+    );
+  });
+
+  test('a full-access refusal exits 3 in the Station’s words and names the Station that refused (#1796)', async () => {
+    const { runCli } = await import('../cli.js');
+    const exit = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as never);
+
+    await runCli([
+      'delegate',
+      '--agent=codex',
+      '--approval-mode=never',
+      'Review the diff',
+      `--api-base=${apiBase}`,
+    ]);
+
+    expect(exit).toHaveBeenCalledWith(3);
+    expect(consoleError).toHaveBeenCalledWith(
+      'Error:',
+      `Full access was not applied. You asked for full access, but only this Station's operator can allow it, for device "Laptop CLI" (ffb80147).\nRefused by the Station at ${apiBase} (from --api-base). Nothing was sent at another approval mode.`,
     );
   });
 

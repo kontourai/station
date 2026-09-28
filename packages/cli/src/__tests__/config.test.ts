@@ -148,6 +148,34 @@ describe('configSet', () => {
     );
   });
 
+  test('a full-access refusal keeps its code, and prints naming the Station that refused (#1796)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          success: false,
+          code: 'approval-full-access-not-granted',
+          error:
+            'Full access was not applied. You asked for full access, but only this Station\'s operator can allow it, for device "Laptop CLI" (ffb80147).',
+        },
+        403,
+      ),
+    );
+    const { configSet } = await import('../commands/config.js');
+    const { explainFullAccessRefusal } = await import('../commands/errors.js');
+    const { getResolvedApiBase } = await import('../commands/core-api.js');
+    const error = await configSet('defaultApprovalMode', 'never', NONE).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toMatchObject({
+      code: 'approval-full-access-not-granted',
+      status: 403,
+    });
+    expect(explainFullAccessRefusal(error, getResolvedApiBase())).toBe(
+      `Full access was not applied. You asked for full access, but only this Station's operator can allow it, for device "Laptop CLI" (ffb80147).\nRefused by the Station at http://127.0.0.1:${DEFAULT_SERVER_PORT} (default). Nothing was sent at another approval mode.`,
+    );
+  });
+
   test('prints the server ignoredKeys warning', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({

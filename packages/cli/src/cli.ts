@@ -1,7 +1,4 @@
 #!/usr/bin/env tsx
-
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
-
 import {
   mintLocalBrowserToken,
   runOpenCommand,
@@ -55,7 +52,10 @@ import {
   runEnvironmentCommand,
   type SshEnvironmentProfileStoreFactory,
 } from './commands/environment.js';
-import { explainRequestFailure } from './commands/errors.js';
+import {
+  explainFullAccessRefusal,
+  explainRequestFailure,
+} from './commands/errors.js';
 import { exportConfig } from './commands/export.js';
 import {
   DEFAULT_SERVER_PORT,
@@ -1557,19 +1557,8 @@ export async function runCli(
  */
 export function describeCliError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  // #1796: a full-access refusal is the Station's own words (who asked, what
-  // only its operator can grant, and how). Name which Station answered,
-  // since the operator acts there. Nothing is retried at another mode.
-  if (
-    (error as { code?: unknown } | null)?.code ===
-    APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE
-  ) {
-    const target = getResolvedApiBase();
-    const where = target
-      ? `the Station at ${target.apiBase}${target.station ? ` (saved as "${target.station}")` : ''}`
-      : 'the Station this command targeted';
-    return `${message}\nRefused by ${where}. Nothing was sent at another approval mode.`;
-  }
+  const refusal = explainFullAccessRefusal(error, getResolvedApiBase());
+  if (refusal) return refusal;
   return explainRequestFailure(error, getResolvedApiBase()) ?? message;
 }
 
