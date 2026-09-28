@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import setup, { removeRunRoot } from '../../vitest.global-setup.js';
+
+const makeTempDir = trackTempDirs();
 
 // setup() is exercised for its returned teardown only: its temp root is
 // redirected to a scratch directory and the day-old sweep is stubbed, so the
@@ -63,7 +63,7 @@ describe('run-root teardown', () => {
       host: process.env.STATION_VITEST_HOST_TMPDIR,
       runRoot: process.env.STATION_VITEST_RUN_ROOT,
     };
-    scratch.root = mkdtempSync(join(tmpdir(), 'station-teardown-wiring-'));
+    scratch.root = makeTempDir('station-teardown-wiring-');
     const remove = vi.mocked(rm);
     remove.mockReset();
     remove.mockRejectedValue(
@@ -87,7 +87,6 @@ describe('run-root teardown', () => {
         if (value === undefined) delete process.env[key];
         else process.env[key] = value;
       }
-      rmSync(scratch.root, { recursive: true, force: true });
     }
   });
 

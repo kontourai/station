@@ -1,13 +1,6 @@
-import {
-  cpSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { cpSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { STATION_CHANNEL_PORTS_DATA } from '../../packages/shared/src/channel-ports.generated.js';
 import { CHANNEL_VERSION } from '../../packages/shared/src/release-manifest.mjs';
 import {
@@ -16,6 +9,7 @@ import {
   RELEASE_RINGS,
   syncGeneratedChannelPorts,
 } from '../channel-ports.mjs';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
 const root = resolve(import.meta.dirname, '../..');
 type ChannelPortAllocation = {
@@ -27,16 +21,11 @@ type ChannelPortAllocation = {
 const channelPorts = CHANNEL_PORTS as Record<string, ChannelPortAllocation>;
 const releaseChannels = ['stable', 'beta', 'nightly'] as const;
 
-const temporaryRoots: string[] = [];
-afterEach(() => {
-  for (const directory of temporaryRoots.splice(0))
-    rmSync(directory, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 /** A copy of the checked-in generated consumers, so drift never touches the worktree. */
 function generatedTreeCopy() {
-  const copy = mkdtempSync(join(tmpdir(), 'station-channel-ports-'));
-  temporaryRoots.push(copy);
+  const copy = makeTempDir('station-channel-ports-');
   for (const path of [
     'packages/shared/src/channel-ports.generated.ts',
     'packages/shared/src/release-rings.generated.mjs',
