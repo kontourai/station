@@ -426,13 +426,7 @@ function commandApprovalTitle(payload: Record<string, unknown>): string {
     const context = isRecord(payload.networkApprovalContext)
       ? payload.networkApprovalContext
       : {};
-    const host = displayText(context.host);
-    const protocol = displayText(context.protocol);
-    const target =
-      (host
-        ? `network access to ${keepEnd(host, MAX_TITLE_HOST_LENGTH)}`
-        : 'network access to an unnamed host') +
-      (protocol ? ` (${keepStart(protocol, MAX_TITLE_PROTOCOL_LENGTH)})` : '');
+    const target = `network access to ${hostLabel(displayText(context.host))}${protocolLabel(displayText(context.protocol))}`;
     return withCommand(target, ' for: ', command);
   }
   if (payload.kind === 'writeStdin') {
@@ -441,6 +435,35 @@ function commandApprovalTitle(payload: Record<string, unknown>): string {
   return command
     ? keepStart(command, MAX_COMMAND_APPROVAL_TITLE_LENGTH)
     : 'Approve command execution';
+}
+
+/**
+ * A DNS name (letters of any script, digits, hyphen, underscore, dots),
+ * an IPv4 address, or a bracketed IPv6 address. Nothing that could pass for
+ * the title's own separators (spaces, brackets, colons) fits.
+ */
+const HOST_SYNTAX =
+  /^(?:\[[0-9A-Fa-f:.]+(?:%[\p{L}\p{N}_.-]+)?\]|[\p{L}\p{M}\p{N}_-]+(?:\.[\p{L}\p{M}\p{N}_-]+)*\.?)$/u;
+const PROTOCOL_SYNTAX = /^[A-Za-z0-9]+$/;
+
+/**
+ * The host as the title shows it. A well-formed host is shown bare, cut from
+ * the left so its registrable domain stays. Anything else is engine text that
+ * could imitate the title's structure (`evil.example (https) for: ls`), so it
+ * is quoted, with its own quotes escaped, and cut the same way.
+ */
+function hostLabel(host: string | undefined): string {
+  if (!host) return 'an unnamed host';
+  if (HOST_SYNTAX.test(host)) return keepEnd(host, MAX_TITLE_HOST_LENGTH);
+  const escaped = host.replace(/[\\"]/g, (char) => `\\${char}`);
+  return `an unrecognised host "${keepEnd(escaped, MAX_TITLE_HOST_LENGTH)}"`;
+}
+
+function protocolLabel(protocol: string | undefined): string {
+  if (!protocol) return '';
+  return PROTOCOL_SYNTAX.test(protocol)
+    ? ` (${keepStart(protocol, MAX_TITLE_PROTOCOL_LENGTH)})`
+    : ' (unrecognised protocol)';
 }
 
 /** `lead` + `separator` + as much of `command` as fits the title bound. */
@@ -463,14 +486,22 @@ function codePoints(text: string): string[] {
 function keepStart(text: string, max: number): string {
   const points = codePoints(text);
   if (points.length <= max) return text;
-  return `${points.slice(0, Math.max(0, max - 1)).join('')}${ELLIPSIS}`;
+  const kept = points
+    .slice(0, Math.max(0, max - 1))
+    .join('')
+    .trimEnd();
+  return `${kept}${ELLIPSIS}`;
 }
 
 /** At most `max` code points, keeping the end; a cut starts with "…". */
 function keepEnd(text: string, max: number): string {
   const points = codePoints(text);
   if (points.length <= max) return text;
-  return `${ELLIPSIS}${points.slice(points.length - (max - 1)).join('')}`;
+  const kept = points
+    .slice(points.length - (max - 1))
+    .join('')
+    .trimStart();
+  return `${ELLIPSIS}${kept}`;
 }
 
 /** Engine-supplied text made one visible line, unbounded (callers bound). */

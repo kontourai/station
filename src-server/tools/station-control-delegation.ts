@@ -3319,15 +3319,16 @@ function optionalString(value: unknown, maxLength = 512): string | undefined {
 }
 
 /**
- * `optionalString`, but a cut ends in "…" (still within `maxLength`), so a
- * reader knows the text went on: a request title's tail can be what matters.
+ * `optionalString`, but bounded in code points (as the adapters bound their
+ * titles) and a cut ends in "…" within `maxLength`, so a reader knows the
+ * text went on: a request title's tail can be what matters.
  */
 function markedString(value: unknown, maxLength: number): string | undefined {
   const text = optionalString(value, Number.POSITIVE_INFINITY);
-  if (!text || text.length <= maxLength) return text;
-  // Never leave half of a surrogate pair in front of the marker.
-  const kept = text.slice(0, maxLength - 1).replace(/[\uD800-\uDBFF]$/u, '');
-  return `${kept}\u2026`;
+  if (!text) return text;
+  const points = Array.from(text);
+  if (points.length <= maxLength) return text;
+  return `${points.slice(0, maxLength - 1).join('')}\u2026`;
 }
 
 function optionalNumber(value: unknown): number | undefined {

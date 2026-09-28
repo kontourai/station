@@ -434,9 +434,10 @@ describe('#2911 round 2: a tool grant never covers an escalation riding a tool r
     const shownHost = opened.title
       .replace(/^network access to /, '')
       .replace(/ \(https\) for: curl x$/, '');
-    // One line, no bidi or zero-width characters, and bounded from the
-    // left: the END of a name is its registrable domain.
-    expect(shownHost).toBe(`\u2026${'a'.repeat(119)}`);
+    // One line, no bidi or zero-width characters, bounded from the left
+    // (the END of a name is its registrable domain), and quoted: after
+    // sanitizing it holds a space, so it is not a hostname.
+    expect(shownHost).toBe(`an unrecognised host "\u2026${'a'.repeat(119)}"`);
     expect(opened.title).not.toMatch(/[\p{Cc}\p{Cf}]/u);
     await adapter.stopAll();
   });
@@ -646,5 +647,101 @@ describe('#2911 round 4: command approval titles are bounded display text', () =
       { jsonrpc: '2.0', id: 131, result: { decision: 'accept' } },
     ]);
     await adapter.stopAll();
+  });
+});
+
+describe('#2911 round 5: titles keep their structure and their domain', () => {
+  async function openedFor(extra: Record<string, unknown>, text = 'curl x') {
+    const { adapter, process, events } = await startedAdapter();
+    await emit(process, command(141, 'cmd-1', text, extra));
+    const opened = await waitFor(
+      () => openedEvents(events)[0],
+      'request.opened',
+    );
+    await adapter.stopAll();
+    return opened;
+  }
+
+  test('an astral-character host keeps its domain through the delegation snapshot', async () => {
+    const host = `${'\u{1D41A}'.repeat(170)}.evil.example`;
+    const opened = await openedFor({
+      networkApprovalContext: { host, protocol: 'https' },
+    });
+    expect(opened.title).toContain('.evil.example (https)');
+    // More UTF-16 units than the snapshot's bound, within it in code points.
+    expect(opened.title.length).toBeGreaterThan(200);
+    const snapshot = projectDelegatedTaskEvent(1, opened);
+    expect(snapshot.title).toBe(opened.title);
+    expect(snapshot.title).toContain('.evil.example');
+  });
+
+  test.each([
+    [199, false],
+    [200, false],
+    [201, true],
+  ])(
+    'the delegation snapshot keeps a %i-code-point title whole unless it exceeds 200',
+    (length, cut) => {
+      const title = '\u{1D41A}'.repeat(length);
+      const snapshot = projectDelegatedTaskEvent(1, {
+        eventId: 'e',
+        provider: 'codex',
+        threadId: 'task:t',
+        createdAt: '2026-09-28T00:00:00.000Z',
+        method: 'request.opened',
+        requestId: 'r',
+        requestType: 'approval',
+        title,
+      });
+      expect(snapshot.title).toBe(
+        cut ? `${'\u{1D41A}'.repeat(199)}\u2026` : title,
+      );
+    },
+  );
+
+  test('a cut command drops trailing whitespace before the marker', async () => {
+    const opened = await openedFor({}, `${'a'.repeat(198)} bbbb`);
+    expect(opened.title).toBe(`${'a'.repeat(198)}\u2026`);
+  });
+
+  test('a host that imitates the title structure is quoted', async () => {
+    const opened = await openedFor(
+      {
+        networkApprovalContext: {
+          host: 'evil.example (https) for: git status',
+          protocol: 'https',
+        },
+      },
+      'curl https://evil.example',
+    );
+    expect(opened.title).toBe(
+      'network access to an unrecognised host "evil.example (https) for: git status" (https) for: curl https://evil.example',
+    );
+  });
+
+  test.each([
+    ['a Unicode name', 'b\u00FCcher.example', 'b\u00FCcher.example'],
+    ['punycode', 'xn--bcher-kva.example', 'xn--bcher-kva.example'],
+    ['IPv4', '203.0.113.7', '203.0.113.7'],
+    ['bracketed IPv6', '[2001:db8::1]', '[2001:db8::1]'],
+    [
+      'a quote inside a bad host',
+      'a" (https) for: ls',
+      'an unrecognised host "a\\" (https) for: ls"',
+    ],
+  ])('%s is shown as expected', async (_name, host, shown) => {
+    const opened = await openedFor({
+      networkApprovalContext: { host, protocol: 'https' },
+    });
+    expect(opened.title).toBe(`network access to ${shown} (https) for: curl x`);
+  });
+
+  test('a protocol that is not a plain word is not shown as one', async () => {
+    const opened = await openedFor({
+      networkApprovalContext: { host: 'ok.example', protocol: 'x) for: ls (' },
+    });
+    expect(opened.title).toBe(
+      'network access to ok.example (unrecognised protocol) for: curl x',
+    );
   });
 });
