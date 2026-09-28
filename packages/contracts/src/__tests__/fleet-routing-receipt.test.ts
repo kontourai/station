@@ -193,7 +193,7 @@ describe('the cap still binds every unverified claim', () => {
     });
   });
 
-  it('the label is DISTINCT from the local one — a probed peer is not a local model', () => {
+  it('the probe-verified label is DISTINCT from the peer-attested one', () => {
     expect(FLEET_PROBE_VERIFIED_EVIDENCE_LABEL).not.toBe(
       FLEET_PEER_ATTESTED_EVIDENCE_LABEL,
     );
@@ -213,18 +213,18 @@ describe('the cap still binds every unverified claim', () => {
         label: FLEET_PEER_ATTESTED_EVIDENCE_LABEL,
       });
     }
-    // And the underlying cap is untouched, not deleted (slice 4's record).
+    // And the underlying cap is untouched, not deleted.
     expect(capFleetEvidenceLevel('confirmed', 'peer-attested')).toBe(
       'declared',
     );
   });
 
-  it("finding 1: a 'passed' record whose expiresAt has gone by does NOT reach confirmed, even when the caller forgot to re-stamp it", () => {
+  it("a 'passed' record whose expiresAt has gone by does NOT reach confirmed, even when the caller forgot to re-stamp it", () => {
     // The replay case. `FleetProbeService.observe` stamps `status: 'stale'`
     // on an expired record, so the LIVE path never reaches this function with
     // an expired `passed`. But this function is exported from contracts, and
     // `ConsumerProbeObservation` is stored verbatim in the receipt — anything
-    // that reads one back (receipt replay, a cross-process cache, slice 7)
+    // that reads one back (receipt replay, a cross-process cache)
     // hands it over exactly as stored, with `status: 'passed'` intact.
     // Enforcing expiry only in the caller made the docblock's "and has not
     // expired" a promise the function did not keep.
@@ -259,7 +259,7 @@ describe('the cap still binds every unverified claim', () => {
     });
   });
 
-  it('a passing probe cannot manufacture evidence a peer never claimed', () => {
+  it('a passing probe outranks the manifest, even for a model the peer called unavailable', () => {
     // `unavailable` in means `unavailable` out is NOT the rule — a probe is a
     // genuine observation and outranks the manifest. But the peer's
     // unavailable models never reach the probe at all (they are excluded as
