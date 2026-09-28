@@ -253,7 +253,13 @@ function migrateReviewLedger({
         'checks',
       );
       if (folded.stale) stale.push(file);
-      for (const note of folded.notes) notes.push({ path: file, note });
+      for (const note of folded.notes)
+        notes.push({
+          path: file,
+          note,
+          revision: theirs.records.find((record) => record.path === file)
+            ?.sourceRevision,
+        });
       if (folded.data === undefined) files.set(recordFile(file), undefined);
       else if (!same(folded.data, parsed.records.get(file)?.data))
         files.set(recordFile(file), serializeRecordFile(folded.data));
@@ -273,18 +279,27 @@ function migrateReviewLedger({
         'reviewNotes',
       );
       if (folded.stale) stale.push(capture.path);
-      for (const note of folded.notes) notes.push({ path: capture.path, note });
+      for (const note of folded.notes)
+        notes.push({
+          path: capture.path,
+          note,
+          revision: capture.reviewedRevision,
+        });
       if (!same(folded.data, parsed.captures.get(capture.path)?.data))
         files.set(
           captureReviewFile(capture.path),
           serializeCaptureReviewFile(folded.data),
         );
     }
-    if (notes.length) {
-      const text = serializeNotesFile({
-        revision: git(root, ['rev-parse', 'HEAD']).trim(),
-        notes,
-      });
+    // One notes file per revision the branch recorded its notes at.
+    const head = git(root, ['rev-parse', 'HEAD']).trim();
+    const byRevision = new Map();
+    for (const { revision, ...note } of notes) {
+      const key = /^[a-f0-9]{40}$/.test(revision ?? '') ? revision : head;
+      byRevision.set(key, [...(byRevision.get(key) ?? []), note]);
+    }
+    for (const [revision, entries] of byRevision) {
+      const text = serializeNotesFile({ revision, notes: entries });
       files.set(notesFileName(text, now), text);
     }
   }

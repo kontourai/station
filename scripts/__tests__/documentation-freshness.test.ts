@@ -1226,6 +1226,11 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
     expect(compiled(f.root, 'docs/b.md').checks.at(-1)).toBe(
       'Their review of b.',
     );
+    // The folded note keeps the revision their review was recorded at.
+    expect(compiled(f.root, 'docs/b.md').notes.at(-1)).toMatchObject({
+      note: 'Their review of b.',
+      revision: changedB,
+    });
     expect(compiled(f.root, 'docs/b.md').sources[0]).toEqual({
       path: 'src/b.ts',
       digest: hash('export const b = 2;\n'),
