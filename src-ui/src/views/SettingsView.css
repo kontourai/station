@@ -846,7 +846,12 @@
   color: var(--text-on-accent);
   border-color: var(--accent-primary);
 }
+/* The global `button:hover` background outranks the single-class rule above;
+   without these the hovered apply button turned dark with dark-on-accent
+   text, reading as disabled. */
 .settings__update-btn--apply:hover:not(:disabled) {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
   opacity: 0.85;
 }
 .settings__update-meta {

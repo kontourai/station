@@ -2961,6 +2961,27 @@ the 503 `identity_unavailable` branch surfaces as a `StationHttpError` with
 its status preserved. Every export is re-exported from
 `@kontourai/station-sdk` and `@kontourai/station-sdk/queries`.
 
+A prebuilt release archive (#2675) reports `installKind: 'archive'`, or
+`'archive-service'` when the Station service's fixed launcher runs it and can
+update it. Its status carries `currentVersion`, `latestVersion` (the newest
+version its signed release manifest names), `channel` (the release ring), and
+`releaseCheck`: `'verified'`, `'unreachable'`, `'unverified'` (the manifest
+arrived but did not verify against the pinned keys), or `'not-recorded'`. The
+parser leaves out an `installKind` or `releaseCheck` it does not know rather
+than passing it on. `applyMethod` is `'service-update'` for an
+`archive-service`, `'station-upgrade'` for an installed archive no launcher
+runs, and `'reinstall'` for any other archive copy. An `archive-service`
+status also carries `serviceUpdate`, a `ServiceUpdateProgress` from
+`@kontourai/station-contracts/system-status` (an update under way, or the
+last one's outcome). `applyCoreUpdate` returns `serviceUpdate: { requestId }`
+when it queued such an update; follow it with
+`requestServiceUpdateProgress(apiBase, signal?)` (`GET
+/api/system/core-update/service-update`) or
+`useServiceUpdateProgressQuery(apiBase, { enabled, scopeKey?, refetchInterval
+})`, correlating the outcome by `requestId`. A progress body this SDK cannot
+read parses as `{ state: 'unavailable' }`, never as a neighbouring state, and
+a non-ok status throws a `StationHttpError`.
+
 `useCoreUpdateStatusQuery(apiBase, config?, scope?)` accepts an optional third
 `CoreUpdateStatusScope` argument: `{ scopeKey?, assertCurrent? }`. When
 `scopeKey` is present it joins the query key, so a cached comparison captured

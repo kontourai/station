@@ -1719,10 +1719,12 @@ installs (no `.git`) are not checked.
 What the unit runs depends on where `service install` runs from. A source
 checkout's unit runs its `scripts/station-cli.ts` through `tsx` with the
 installing Node.js, from the checkout's physical path. A prebuilt archive's
-unit runs `bin/station.mjs` with the archive's bundled Node.js; for the
-version `install.sh` made active, it runs them through
-`<install root>/current` (and puts `current/runtime/bin` on its `PATH`), so an
-upgrade switches `current` and restarts the unit without rewriting it. The
+unit runs `bin/station.mjs` with the archive's bundled Node.js. For the
+version `install.sh` made active (on Linux and macOS), the unit runs the
+archive's bundled Node.js through `<install root>/current` (and puts
+`current/runtime/bin` on its `PATH`) with the fixed service launcher that
+`service install` copies to `<install root>/runtime/station-launcher.mjs`; the
+launcher runs the active version. The
 service manifest records which (`kind`: `source` or `archive`) and, for such
 an archive, its `installRoot`; the installer and `station upgrade` recognize
 the service by that root. Installing a service from another version under
@@ -1732,10 +1734,71 @@ another port explicitly refuses rather than ignoring it. A registered unit
 that is not running (stopped, or waiting to be restarted after a crash) is
 stopped for the switch and left stopped, and the installer starts no separate
 Station beside it; `service start` starts it on the new version. Every unit
-sets `STATION_SERVICE_MANAGED=1`, and systemd waits 75 seconds
-(`TimeoutStopSec`) for `service run`'s 60-second shutdown before it kills the
-unit. A unit installed by an earlier version keeps `TimeoutStopSec=30` until
+sets `STATION_SERVICE_MANAGED=1`, and systemd waits 165 seconds
+(`TimeoutStopSec`) before it kills the unit: the launcher gives `service run`
+65 seconds to stop, then kills it and runs that version's own `station stop`.
+A unit installed by an earlier version keeps its shorter timeout until
 `station service install` is run again.
+
+A launcher-run service updates itself (#2675). `runtime/service-state.json`
+records which version it runs. An update request
+(`runtime/update-request.json`) is staged by the running version with its own
+`install.sh` (`STATION_INSTALL_STAGE_ONLY=1`: downloaded, verified and sealed
+into `versions/<version>`, nothing else changed). The launcher then stops the
+running version, backs up the home once, and starts the new version as a
+trial. The backup holds Station's own state: every entry but the service
+manifests, `instances.json`, logs, monitoring, quarantine and `tmp` (which the
+service owns), and but the default project directories under `workspaces/`
+and the browser's `browser/chromium` and `browser/profiles`: an update neither
+copies nor rolls them back. For `workspaces/` this is an accepted gap, not a
+claim that it holds no Station data: Station writes `.station/` stores into
+each project (diff comments, trust bundles, review-evidence receipts,
+survey-review sessions, flow-review evidence), and a rolled-back update leaves
+them as the trial left them, as it always has for projects outside the home.
+Symbolic links in the backup are kept as links; a link at the top of a state
+root (for example `browser` pointing at another volume) is kept as that link,
+and what it points to is neither snapshotted nor rolled back. The trial has 240 seconds to prove its
+identity; if it does, the update commits and `current` follows it. If it does
+not, the launcher restores the backup, including `.station-home-schema.json`,
+and restarts the previous version. A trial gets at most two attempts, and a
+launcher that is killed at any point finishes the same update when it starts
+again. A restore that fails is retried up to three times (each failure
+restarts the unit); after that the update needs an operator: the launcher
+keeps the backup, starts no Station, and logs the error. Fix its cause, then
+run `station service stop --instance=<name>` and
+`station service start --instance=<name>`: each start tries the restore once
+more. That includes any restart of the launcher, a reboot among them: every
+launcher start in this state runs one restore attempt on its own.
+`station service status` shows the update (`update` in `--json`), and in this
+state names the recovery; it is the place to see it, since no Station runs
+for a client to ask. While the launcher that accepted the update runs, the service's
+registry entry names it, so the desktop app keeps treating the home as owned
+by a live service; a launcher that restarted mid-update does not claim the
+entry again, so from then until a version publishes itself the entry names a
+process that has exited.
+`install.sh` (and so `station upgrade`) does not switch `current` under a
+running launcher service: it stages the version, asks the service to switch,
+and reports the outcome. It refuses to touch an install whose update is
+unfinished until the service has been started to finish it, or one that needs
+an operator until the restore has succeeded.
+
+A client connected to such a server can start the same update: Settings →
+Connected Station server → **Check for server updates** fetches the signed
+public manifest the install records (`manifestUrl` in
+`.station-release-state.json`) and verifies it against the pinned signing
+keys for the install's ring before it offers a newer version. Applying it
+writes the update request (owner-only, published atomically, refused while
+another update is queued or under way); progress and the outcome, including a
+rollback and its reason, are read back from `runtime/service-state.json` and
+`runtime/update-request-result.json`. Only the server the launcher's own child
+supervises may queue a request: the launcher's context
+(`STATION_SERVICE_LAUNCHER`) reaches that server and no other process, and it
+must name the server's install and version. An archive that no launcher runs
+reports its newest release and says to update with `station upgrade` on the
+host; an install that records no public manifest cannot be checked from a
+client. An update that needs an operator is not visible from a client: in that
+state the service runs no Station to answer, so the card keeps waiting and
+names `station service status --instance=<name>` on the host.
 
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse

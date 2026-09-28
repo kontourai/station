@@ -203,6 +203,14 @@ let identityQueue: Array<{
 }>;
 let rendererCalls: string[];
 let coreUpdateBody: () => unknown = () => ({ updateAvailable: false });
+/** A launcher-run archive's apply and progress routes (#2675 D3). */
+let applyBody: () => unknown = () => {
+  throw new Error('unexpected core-update POST');
+};
+let serviceProgressBody: () => unknown = () => {
+  throw new Error('unexpected service-update progress read');
+};
+let transportMethods: string[] = [];
 
 function identityResponseFor(over: Record<string, unknown> = {}) {
   return {
@@ -390,6 +398,16 @@ describe('ConnectedServerUpdates', () => {
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         transportCalls.push(url);
+        transportMethods.push(`${init?.method ?? 'GET'} ${url}`);
+        if (url.includes('/api/system/core-update/service-update')) {
+          return Response.json(serviceProgressBody());
+        }
+        if (
+          url.includes('/api/system/core-update') &&
+          init?.method === 'POST'
+        ) {
+          return Response.json(applyBody(), { status: 202 });
+        }
         if (url.includes('/api/system/core-update')) {
           // The mounted CoreUpdateCheck's own source query; the fixture body
           // is writer-shaped per test.
@@ -428,6 +446,146 @@ describe('ConnectedServerUpdates', () => {
     native.repository = null;
     native.bundledStatus = null;
     vi.unstubAllGlobals();
+    transportMethods = [];
+    applyBody = () => {
+      throw new Error('unexpected core-update POST');
+    };
+    serviceProgressBody = () => {
+      throw new Error('unexpected service-update progress read');
+    };
+  });
+
+  describe('a launcher-run release archive on a paired server (#2675 D3)', () => {
+    const REQUEST_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+    const REMOTE_IDENTITY = () =>
+      identityResponseFor({
+        instanceId: 'remote-instance',
+        bootId: 'remote-boot',
+        devicePresentation: { deviceClass: 'paired', hostName: 'Office host' },
+      });
+    /** The shape the server's archive route writes. */
+    const archiveServiceBody =
+      (over: Record<string, unknown> = {}) =>
+      () => ({
+        installKind: 'archive-service',
+        applyMethod: 'service-update',
+        channel: 'preview',
+        currentVersion: '0.8.0-preview.1',
+        latestVersion: '0.8.0-preview.2',
+        releaseCheck: 'verified',
+        updateAvailable: true,
+        serverIdentity: {
+          instanceId: 'remote-instance',
+          bootId: 'remote-boot',
+          sha: SHA,
+        },
+        provenanceIssue: null,
+        technicalDetail: null,
+        selfUpdateUnavailableReason: null,
+        selfUpdateUnavailableCode: null,
+        serviceUpdate: { state: 'idle' },
+        ...over,
+      });
+
+    async function renderArchive(coreUpdate: () => unknown) {
+      await renderHarness({
+        store: PAIRED_STORE,
+        profileOverrides: { supervisesBundledServer: false },
+        identity: REMOTE_IDENTITY,
+        coreUpdate,
+      });
+      await waitConnected();
+      await waitIdentitySettled();
+    }
+
+    it('applies through the service and follows the request to its rollback outcome', async () => {
+      await renderArchive(archiveServiceBody());
+      expect(
+        await screen.findByText(
+          'Station 0.8.0-preview.2 is available. This server runs 0.8.0-preview.1.',
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByText(/[Ss]ource update cannot/)).toBeNull();
+      // The server said it can update itself from here, and it has no
+      // source installation: neither connection-only line stands.
+      expect(screen.queryByText('Manage updates on that host.')).toBeNull();
+      expect(screen.queryByText('Source installation details')).toBeNull();
+      // Paired-server facts that stay true are kept.
+      expect(screen.getByText(/Server on station\.example\.test/)).toBeTruthy();
+
+      applyBody = () => ({
+        success: true,
+        serviceUpdate: { requestId: REQUEST_ID },
+        message: 'Update requested.',
+      });
+      serviceProgressBody = () => ({ state: 'staging', requestId: REQUEST_ID });
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Update server to 0.8.0-preview.2',
+        }),
+      );
+      expect(
+        await screen.findByText('Downloading and verifying the release…'),
+      ).toBeTruthy();
+      expect(
+        transportMethods.some(
+          (call) =>
+            call.startsWith('POST ') &&
+            call.endsWith('/api/system/core-update'),
+        ),
+      ).toBe(true);
+
+      serviceProgressBody = () => ({
+        state: 'rolled-back',
+        requestId: REQUEST_ID,
+        fromVersion: '0.8.0-preview.1',
+        targetVersion: '0.8.0-preview.2',
+        reason: 'candidate-exited:1',
+        finishedAt: '2026-09-27T12:10:00.000Z',
+      });
+      coreUpdateBody = archiveServiceBody({
+        serviceUpdate: serviceProgressBody(),
+      });
+      const rolledBack = await screen.findByText(
+        /The update to 0\.8\.0-preview\.2 was rolled back: the new version exited \(1\)\. The server runs 0\.8\.0-preview\.1/,
+        {},
+        { timeout: 5_000 },
+      );
+      expect(rolledBack.className).toContain('settings__update-msg--warning');
+      // The outcome re-checked the server rather than trusting the POST.
+      await waitFor(() =>
+        expect(
+          transportMethods.filter((call) =>
+            call.endsWith('/api/system/core-update'),
+          ).length,
+        ).toBeGreaterThanOrEqual(3),
+      );
+    });
+
+    it('an archive no launcher runs keeps "Manage updates on that host." and shows no source disclosure', async () => {
+      await renderArchive(
+        archiveServiceBody({
+          installKind: 'archive',
+          applyMethod: 'station-upgrade',
+          serviceUpdate: undefined,
+          selfUpdateUnavailableReason:
+            'this server is not run by the Station service\'s launcher, so it cannot update itself; update it on the host with "station upgrade"',
+        }),
+      );
+      expect(
+        await screen.findByText(
+          /Server update cannot be applied from here: this server is not run by/,
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: /Update server/ }),
+      ).toBeNull();
+      expect(screen.getByText('Manage updates on that host.')).toBeTruthy();
+      expect(screen.queryByText('Source installation details')).toBeNull();
+      expect(
+        screen.queryByText(/Source update cannot be applied here/),
+      ).toBeNull();
+    });
   });
 
   it('renders the built-in copy for an established embedded sidecar and never requests the source check', async () => {
@@ -521,6 +679,52 @@ describe('ConnectedServerUpdates', () => {
         transportCalls.some((url) => url.includes('/api/system/core-update')),
       ).toBe(true),
     );
+  });
+
+  it('a status naming its install kind replaces the unresolved "method unknown" line (#2675 D3)', async () => {
+    await renderHarness({
+      store: PAIRED_STORE,
+      bundledStatus: null,
+      profileOverrides: { supervisesBundledServer: true },
+      identity: () =>
+        identityResponseFor({
+          instanceId: 'remote-instance',
+          bootId: 'remote-boot',
+        }),
+      coreUpdate: () => ({
+        installKind: 'archive-service',
+        applyMethod: 'service-update',
+        channel: 'preview',
+        currentVersion: '0.8.0-preview.1',
+        latestVersion: '0.8.0-preview.2',
+        releaseCheck: 'verified',
+        updateAvailable: true,
+        serverIdentity: {
+          instanceId: 'remote-instance',
+          bootId: 'remote-boot',
+          sha: SHA,
+        },
+        provenanceIssue: null,
+        technicalDetail: null,
+        selfUpdateUnavailableReason: null,
+        serviceUpdate: { state: 'idle' },
+      }),
+    });
+    await waitConnected();
+    await waitIdentitySettled();
+    expect(
+      await screen.findByText('Server update method unknown.'),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check for server updates' }),
+    );
+    expect(
+      await screen.findByText(
+        'Station 0.8.0-preview.2 is available. This server runs 0.8.0-preview.1.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Server update method unknown.')).toBeNull();
+    expect(screen.queryByText('Source installation details')).toBeNull();
   });
 
   it('resolves unresolved when the desktop supervises nothing though identity answers', async () => {

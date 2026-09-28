@@ -682,6 +682,9 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'packages/basis-pane/src/__tests__/package-boundary.test.ts',
   'packages/board-pane/src/__tests__/package-boundary.test.ts',
   'packages/sdk/src/__tests__/publicBarrel.test.ts',
+  // Scans src-server, packages/shared/src and packages/cli/src for Station
+  // home-root literals the store registry must list (#2675 D1).
+  'packages/shared/src/__tests__/station-home-store-registry.test.ts',
   'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
   'scripts/__tests__/classify-ci-change.scan.test.ts',

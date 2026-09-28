@@ -42,6 +42,8 @@ describe('childProcessEnvironment', () => {
       STATION_SUPERVISOR_PID: '4242',
       STATION_SUPERVISOR_BIRTH: 'birth-a',
       STATION_SERVICE_MANAGED: '1',
+      // #2675 D: which install's updates this server may queue.
+      STATION_SERVICE_LAUNCHER: '{"protocol":1}',
     };
     expect(scrubBootInternalSecrets({ ...markers, KEEP: 'yes' })).toEqual({
       KEEP: 'yes',
@@ -50,6 +52,7 @@ describe('childProcessEnvironment', () => {
     expect(env).not.toHaveProperty('STATION_SUPERVISOR_PID');
     expect(env).not.toHaveProperty('STATION_SUPERVISOR_BIRTH');
     expect(env).not.toHaveProperty('STATION_SERVICE_MANAGED');
+    expect(env).not.toHaveProperty('STATION_SERVICE_LAUNCHER');
   });
 
   it('scrubs the internal API token and UI-bootstrap token from a copy', () => {

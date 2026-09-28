@@ -8,7 +8,10 @@
  * inventory; see docs/guides/nightly.md for the semantics they render.
  */
 
-import type { SystemIdentityResponse } from '@kontourai/station-contracts/system-status';
+import type {
+  ServiceUpdateProgress,
+  SystemIdentityResponse,
+} from '@kontourai/station-contracts/system-status';
 import type { CoreUpdateStatus } from '@kontourai/station-sdk';
 import type { ReactNode } from 'react';
 import { CheckGlyph } from '../../components/icons/Glyph';
@@ -22,6 +25,7 @@ export interface ComparisonView {
     | 'no-upstream'
     | 'checkout'
     | 'stamp'
+    | 'release'
     | 'unknown';
   tone: ComparisonTone;
   /** Derived sentence (S3–S10); null renders no state line at all. */
@@ -33,6 +37,62 @@ export interface ComparisonView {
    * supported and the scope is current.
    */
   diverged: boolean;
+}
+
+/** A prebuilt release archive, run by the service launcher or not (#2675). */
+export function isArchiveInstall(status: CoreUpdateStatus): boolean {
+  return (
+    status.installKind === 'archive' || status.installKind === 'archive-service'
+  );
+}
+
+/**
+ * A release archive's check (#2675 D3), from its typed facts: the verified
+ * manifest's version against the running one. Nothing here is read out of
+ * `message`.
+ */
+function releaseComparisonView(status: CoreUpdateStatus): ComparisonView {
+  const unknown: ComparisonView = {
+    kind: 'release',
+    tone: 'muted',
+    text: null,
+    glyph: false,
+    diverged: false,
+  };
+  const channel = status.channel ?? 'configured';
+  if (status.releaseCheck === 'unverified') {
+    return {
+      ...unknown,
+      tone: 'error',
+      text: `The ${channel} release manifest did not verify against Station’s signing keys. Update availability is unknown.`,
+    };
+  }
+  if (status.releaseCheck === 'not-recorded') {
+    return {
+      ...unknown,
+      text: 'This install records no public release manifest, so this server cannot check for a newer release.',
+    };
+  }
+  if (
+    status.releaseCheck !== 'verified' ||
+    !status.currentVersion ||
+    !status.latestVersion
+  ) {
+    return unknown;
+  }
+  if (status.updateAvailable) {
+    return {
+      ...unknown,
+      tone: 'warning',
+      text: `Station ${status.latestVersion} is available. This server runs ${status.currentVersion}.`,
+    };
+  }
+  return {
+    ...unknown,
+    tone: 'success',
+    text: `This server runs the newest ${channel} release (${status.currentVersion}).`,
+    glyph: true,
+  };
 }
 
 function commitCount(n: number): string {
@@ -66,6 +126,7 @@ export function deriveComparisonView(
       diverged: false,
     };
   }
+  if (isArchiveInstall(status)) return releaseComparisonView(status);
   if (
     status.provenanceIssue === 'missing' ||
     status.provenanceIssue === 'invalid-stamp' ||
@@ -198,6 +259,12 @@ export function comparisonMetadata(
   status: CoreUpdateStatus,
 ): Array<{ label: string; value: string }> {
   const labels: Array<{ label: string; value: string }> = [];
+  if (status.currentVersion) {
+    labels.push({ label: 'Version', value: status.currentVersion });
+  }
+  if (status.latestVersion) {
+    labels.push({ label: 'Latest release', value: status.latestVersion });
+  }
   if (status.branch) labels.push({ label: 'Branch', value: status.branch });
   if (status.currentHash) {
     const label =
@@ -280,4 +347,129 @@ export function ComparisonMessage({
       )}
     </div>
   );
+}
+
+/** The launcher's reason codes (station-launcher.mjs), in words. */
+function serviceUpdateReason(reason: string): string {
+  const exited = /^candidate-exited:(.+)$/.exec(reason);
+  if (exited) return `the new version exited (${exited[1]})`;
+  switch (reason) {
+    case 'prepared-timeout':
+      return 'the new version did not become ready in time';
+    case 'trial-attempts-exhausted':
+      return 'the new version did not start in its allowed attempts';
+    case 'backup-failed':
+      return 'the Station home could not be backed up';
+    case 'target-runtime-missing':
+      return 'the new version is missing or incomplete';
+    case 'candidate-start-failed':
+      return 'the new version could not be started';
+    case 'invalid-prepared':
+      return 'the new version reported readiness for a different update';
+    case 'rollback-interrupted':
+      return 'an interrupted rollback was completed';
+    default:
+      return reason;
+  }
+}
+
+function finishedTime(at: string): string {
+  const time = Date.parse(at);
+  return Number.isFinite(time) ? new Date(time).toLocaleString() : at;
+}
+
+export const SERVICE_UPDATE_IN_FLIGHT: ReadonlySet<
+  ServiceUpdateProgress['state']
+> = new Set(['queued', 'staging', 'updating']);
+
+/**
+ * One line for the service launcher's update progress (#2675 D3): what the
+ * runtime files say, in the tone of the outcome. Finished outcomes carry
+ * their time, since the same record answers until the next update.
+ */
+export function serviceUpdateProgressLine(
+  progress: ServiceUpdateProgress,
+  /** The service's instance, for the recovery command; the answering server's. */
+  instance?: string,
+): { tone: ComparisonTone; text: string } | null {
+  switch (progress.state) {
+    case 'idle':
+      return null;
+    case 'unavailable':
+      return {
+        tone: 'warning',
+        text: 'The Station service’s update progress cannot be read.',
+      };
+    case 'queued':
+      return {
+        tone: 'muted',
+        text: 'Update requested. Waiting for the Station service to start it…',
+      };
+    case 'staging':
+      return {
+        tone: 'muted',
+        text: 'Downloading and verifying the release…',
+      };
+    case 'updating':
+      switch (progress.phase) {
+        case 'stopping':
+          return {
+            tone: 'muted',
+            text: `Stopping Station ${progress.fromVersion} to switch to ${progress.targetVersion}…`,
+          };
+        case 'backing-up':
+          return {
+            tone: 'muted',
+            text: `Backing up the Station home before trying ${progress.targetVersion}…`,
+          };
+        case 'trial':
+          return {
+            tone: 'muted',
+            text: `Trying Station ${progress.targetVersion} (attempt ${progress.attempts}). The server restarts during the trial.`,
+          };
+        case 'restoring':
+          return {
+            tone: 'warning',
+            text: `Station ${progress.targetVersion} did not start. Restoring the Station home and returning to ${progress.fromVersion}…`,
+          };
+      }
+      return null;
+    case 'committed':
+      return {
+        tone: 'success',
+        text: `Server updated from ${progress.fromVersion} to ${progress.targetVersion} (${finishedTime(progress.finishedAt)}).`,
+      };
+    case 'rolled-back':
+      return {
+        tone: 'warning',
+        text: `The update to ${progress.targetVersion} was rolled back: ${serviceUpdateReason(progress.reason)}. The server runs ${progress.fromVersion} (${finishedTime(progress.finishedAt)}).`,
+      };
+    case 'failed':
+      return {
+        tone: 'error',
+        text: `The update to ${progress.targetVersion} failed: ${serviceUpdateReason(progress.reason)}. The server runs ${progress.fromVersion} (${finishedTime(progress.finishedAt)}).`,
+      };
+    case 'needs-operator': {
+      const name = instance ?? '<instance>';
+      return {
+        tone: 'error',
+        text: `The update to ${progress.targetVersion} could not be rolled back: the Station home could not be restored after ${progress.restoreAttempts} attempts (${serviceUpdateReason(progress.reason)}). The service keeps the home’s backup and runs no Station until an operator acts. Fix the cause shown in the service log, then retry the restore on the host with: station service stop --instance=${name} && station service start --instance=${name}`,
+      };
+    }
+    case 'up-to-date':
+      return {
+        tone: 'success',
+        text: `The server already runs the newest release (${progress.version}).`,
+      };
+    case 'staging-failed':
+      return {
+        tone: 'error',
+        text: `The release could not be downloaded or verified: ${progress.reason}`,
+      };
+    case 'rejected':
+      return {
+        tone: 'error',
+        text: `The Station service refused the update: ${progress.reason}`,
+      };
+  }
 }

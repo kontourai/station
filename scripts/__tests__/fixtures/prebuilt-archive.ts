@@ -150,6 +150,10 @@ export function buildPrebuiltArchive(
     failStart?: boolean;
     /** The sha a service this archive's CLI starts reports, if not its own. */
     serviceSha?: string;
+    /** Replaces the fake CLI bundled as lib/station-cli.mjs. */
+    cli?: string;
+    /** More files at the archive root, by relative path. */
+    extraFiles?: Record<string, string>;
   } = {},
 ): PrebuiltArchive {
   const ring = ringOf(version);
@@ -195,7 +199,13 @@ export function buildPrebuiltArchive(
     join(launcherSource, 'station.mjs'),
     join(root, 'bin', 'station.mjs'),
   );
-  writeFileSync(join(root, 'lib', 'station-cli.mjs'), FAKE_CLI);
+  copyFileSync(
+    join(launcherSource, 'station-launcher.mjs'),
+    join(root, 'bin', 'station-launcher.mjs'),
+  );
+  writeFileSync(join(root, 'lib', 'station-cli.mjs'), options.cli ?? FAKE_CLI);
+  for (const [path, content] of Object.entries(options.extraFiles ?? {}))
+    writeFileSync(join(root, path), content);
   if (options.failStart) writeFileSync(join(root, 'lib', 'fail-start'), '');
   if (options.serviceSha)
     writeFileSync(join(root, 'lib', 'service-sha'), options.serviceSha);
