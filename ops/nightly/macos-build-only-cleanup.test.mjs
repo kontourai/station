@@ -50,7 +50,8 @@ exec ${JSON.stringify(process.execPath)} "$@"`,
     'npm',
     signalParent
       ? 'kill -TERM $PPID; sleep 0.1; print child-done > "$CHILD_DONE"; exit 91'
-      : 'print npm-ran > "$NPM_RAN"; exit 91',
+      : // Records the STATION_ROOT a child inherits, proving it is exported.
+        'print -r -- "${STATION_ROOT-unexported}" > "$NPM_RAN"; exit 91',
   );
   if (signalParent) {
     script(
@@ -198,6 +199,35 @@ exit 99
         'build-checkout-v2',
       ),
     );
+  });
+  it('defaults an unset STATION_ROOT to ~/.station and exports it to children', () => {
+    const f = fixture();
+    const { STATION_ROOT: _unset, ...env } = process.env;
+    expect(() =>
+      execFileSync(
+        'zsh',
+        [installer, '--build-only', '--output-dir', f.output],
+        {
+          cwd: f.dir,
+          env: {
+            ...env,
+            GIT_LOG: f.gitLog,
+            HOME: f.home,
+            NPM_RAN: f.npmRan,
+            PATH: `${f.bin}:${process.env.PATH}`,
+          },
+          stdio: 'pipe',
+        },
+      ),
+    ).toThrow();
+    // The installer canonicalizes the checkout path (/var -> /private/var).
+    const stationRoot = realpathSync(join(f.home, '.station'));
+    expect(readFileSync(f.gitLog, 'utf8').trim()).toBe(
+      join(stationRoot, 'cache', 'nightly', 'build-checkout-v2'),
+    );
+    const exported = readFileSync(f.npmRan, 'utf8').trim();
+    expect(exported).not.toBe('unexported');
+    expect(realpathSync(exported)).toBe(stationRoot);
   });
   it('preserves a foreign lock while cleaning its owned staging', () => {
     const f = fixture({ foreignLock: true });

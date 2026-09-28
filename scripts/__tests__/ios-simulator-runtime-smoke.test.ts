@@ -119,6 +119,16 @@ describe('iOS simulator runtime smoke selection', () => {
     ].length;
     expect(callSites).toBeGreaterThan(0);
     expect(reactivating).toBe(callSites);
+    // The notification sheet can arrive after the shell has exposed Connect,
+    // so a launch-time dismissal alone is not enough: one reactivating
+    // dismissal must sit between the shell wait and the first WebView tap.
+    const shellWait = swiftSmoke.indexOf('waitForElement(connect');
+    const firstTap = swiftSmoke.indexOf('connect.tap()');
+    expect(shellWait).toBeGreaterThanOrEqual(0);
+    expect(firstTap).toBeGreaterThan(shellWait);
+    expect(swiftSmoke.slice(shellWait, firstTap)).toMatch(
+      /if dismissSystemAlertIfPresent\(\) \{\s+app\.activate\(\)\s+\}/,
+    );
     // A tap delivered to a WKWebView before its handler is attached is
     // dropped, and one existence wait afterwards cannot tell that apart from
     // a surface that never opens (#1174): each tap-opened surface is asserted
@@ -139,6 +149,11 @@ describe('iOS simulator runtime smoke selection', () => {
   test('registers final-state evidence and cleanup before launch', () => {
     const teardown = swiftSmoke.indexOf('addTeardownBlock {');
     const launch = swiftSmoke.indexOf('app.launch()');
+    const firstDismissal = swiftSmoke.indexOf(
+      'if dismissSystemAlertIfPresent()',
+    );
+    expect([...swiftSmoke.matchAll(/addTeardownBlock \{/g)]).toHaveLength(1);
+    expect(launch).toBeLessThan(firstDismissal);
     expect(teardown).toBeGreaterThanOrEqual(0);
     expect(teardown).toBeLessThan(launch);
     const teardownBody = swiftSmoke.slice(teardown, launch);
