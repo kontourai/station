@@ -1,6 +1,14 @@
 import { createHash } from 'node:crypto';
 import { isLearningSourcePath } from './learning-source-reader.mjs';
-import { LEARNING_MEDIA_MANIFEST } from './review-ledger-store.mjs';
+import {
+  bindingDigest,
+  bindingFile,
+  isBindingPath,
+} from './review-binding.mjs';
+import {
+  LEARNING_MEDIA_MANIFEST,
+  reviewError,
+} from './review-ledger-store.mjs';
 
 export { LEARNING_MEDIA_MANIFEST };
 
@@ -65,21 +73,18 @@ export async function compileLearningMedia(
     const changed = [];
     const seen = new Set();
     for (const source of capture.sources) {
+      const file = bindingFile(source.path);
       if (
-        !isLearningSourcePath(source.path) ||
-        (!reportMissing && !tracked.has(source.path)) ||
+        !isBindingPath(source.path) ||
+        (!reportMissing && !tracked.has(file)) ||
         seen.has(source.path) ||
         !/^[a-f0-9]{64}$/.test(source.digest) ||
         !/^[a-f0-9]{40}$/.test(source.revision)
       )
         throw new Error(`Invalid capture source: ${path}`);
       seen.add(source.path);
-      if (!tracked.has(source.path)) changed.push(source.path);
-      else if (
-        createHash('sha256')
-          .update(await read(source.path))
-          .digest('hex') !== source.digest
-      )
+      if (!tracked.has(file)) changed.push(source.path);
+      else if (bindingDigest(source.path, await read(file)) !== source.digest)
         changed.push(source.path);
     }
     if (
@@ -88,8 +93,10 @@ export async function compileLearningMedia(
         ? requireFresh({ path, inputs: captureInputs(capture) })
         : requireFresh)
     )
-      throw new Error(
+      throw reviewError(
+        'needs-refresh',
         `Learning capture needs review: ${path}; changed: ${changed.join(', ')}`,
+        { path, changed },
       );
     const bytes = await read(path);
     const limit = kind === 'image' ? 8 * 1024 * 1024 : 30 * 1024 * 1024;

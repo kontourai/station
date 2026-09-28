@@ -7,6 +7,7 @@ import {
 } from './documentation-review.mjs';
 import { captureInputs, compileLearningMedia } from './learning-media.mjs';
 import { createLearningSourceReader } from './learning-source-reader.mjs';
+import { bindingFile } from './review-binding.mjs';
 import { readReviewState, readReviewStateAt } from './review-ledger-store.mjs';
 
 /**
@@ -125,7 +126,7 @@ function unreviewedSourceDrops(kind, before, current, changedPaths, exists) {
   for (const [path, previous] of before) {
     const touched = previous.sources
       .map((source) => source.path)
-      .filter((source) => changedPaths.has(source));
+      .filter((source) => changedPaths.has(bindingFile(source)));
     const now = current.get(path);
     if (!now) {
       if (touched.length && exists(path))
@@ -134,6 +135,7 @@ function unreviewedSourceDrops(kind, before, current, changedPaths, exists) {
           path,
           inputs: inputs(previous),
           changed: touched,
+          rule: 'record-removed',
           problem: `record removed while this change modifies its cited sources: ${touched.join(', ')}; keep the record and review it`,
         });
       continue;
@@ -149,6 +151,7 @@ function unreviewedSourceDrops(kind, before, current, changedPaths, exists) {
       path,
       inputs: inputs(now),
       changed: dropped,
+      rule: 'unreviewed-drop',
       problem: `dropped cited sources this change modifies without a review note: ${dropped.join(', ')}; record the review with npm run docs:review:record -- ${path} --note "<what you checked>" --drop-source <path>`,
     });
   }
@@ -227,7 +230,7 @@ export function freshnessBlocks(policy, { kind, path, inputs }) {
   return (
     Boolean(policy.changedEntries?.[kind]?.has(path)) ||
     policy.changedPaths.has(path) ||
-    inputs.some((input) => policy.changedPaths.has(input))
+    inputs.some((input) => policy.changedPaths.has(bindingFile(input)))
   );
 }
 
@@ -310,6 +313,7 @@ export async function checkDocumentationFreshness({
         path: review.path,
         inputs: reviewInputs(review),
         changed: review.changed,
+        rule: 'stale',
       })),
     ...[...captures.values()]
       .filter((capture) => capture.changed.length)
@@ -318,6 +322,7 @@ export async function checkDocumentationFreshness({
         path: capture.path,
         inputs: captureInputs(capture),
         changed: capture.changed,
+        rule: 'stale',
       })),
   ];
   const blocking = [

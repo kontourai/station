@@ -6,6 +6,12 @@ import {
   renderLedgerMarkdown,
   validateEntry,
 } from '../deploy-ledger.mjs';
+import {
+  bindingDigest,
+  bindingFile,
+  isBindingPath,
+} from './review-binding.mjs';
+import { reviewError } from './review-ledger-store.mjs';
 
 const deployLedgerOwners = [
   'scripts/deploy-ledger.mjs',
@@ -53,9 +59,8 @@ function validateRecord(record, tracked, reportMissing) {
   const sources = new Set();
   for (const source of record.sources) {
     if (
-      typeof source?.path !== 'string' ||
-      !source.path ||
-      (!reportMissing && !tracked.has(source.path)) ||
+      !isBindingPath(source?.path) ||
+      (!reportMissing && !tracked.has(bindingFile(source.path))) ||
       sources.has(source.path) ||
       !digestPattern.test(source.digest) ||
       !revisionPattern.test(source.revision)
@@ -130,11 +135,12 @@ export async function evaluateDocumentationReview(
   if (documents.get(record.path) !== record.documentDigest)
     observedChanges.push(record.path);
   for (const source of record.sources) {
-    if (!tracked.has(source.path)) missing.add(source.path);
+    const file = bindingFile(source.path);
+    if (!tracked.has(file)) missing.add(source.path);
     let sourceDigest;
     if (!missing.has(source.path)) {
       try {
-        sourceDigest = digest(await read(source.path));
+        sourceDigest = bindingDigest(source.path, await read(file));
       } catch (error) {
         if (!reportMissing || error?.code !== 'ENOENT') throw error;
         missing.add(source.path);
@@ -206,8 +212,10 @@ export async function evaluateDocumentationReview(
       ? requireFresh({ path: record.path, inputs: reviewInputs(record) })
       : requireFresh)
   )
-    throw new Error(
+    throw reviewError(
+      'needs-refresh',
       `Documentation review needs refresh: ${record.path}; changed: ${changed.join(', ')}`,
+      { path: record.path, changed },
     );
   return {
     ...record,

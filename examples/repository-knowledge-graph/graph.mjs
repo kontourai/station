@@ -12,6 +12,10 @@ import {
 import { renderLearningDocument } from '../../scripts/lib/learning-markdown.mjs';
 import { createLearningSourceReader } from '../../scripts/lib/learning-source-reader.mjs';
 import {
+  bindingDigest,
+  bindingFile,
+} from '../../scripts/lib/review-binding.mjs';
+import {
   parseRecordFile,
   REVIEW_LEDGER_INDEX,
   REVIEW_LEDGER_VERSION,
@@ -317,10 +321,19 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
     for (const source of record.sources) {
       if (typeof source.path !== 'string')
         throw new Error('Malformed review source.');
-      const target = fileNode(source.path);
+      // A value binding (package.json#/scripts/x) depends on its file.
+      const file = bindingFile(source.path);
+      const target = fileNode(file);
       if (!target) continue;
+      const observed = observations.get(file);
+      const current =
+        file === source.path
+          ? observed?.digest
+          : observed?.availability === 'present'
+            ? bindingDigest(source.path, reader.read(file))
+            : undefined;
       const comparison =
-        observations.get(source.path)?.digest === source.digest
+        current === source.digest
           ? 'matches-recorded-digest'
           : 'changed-or-missing';
       edge(

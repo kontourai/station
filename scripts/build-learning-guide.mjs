@@ -23,6 +23,7 @@ import {
 } from './lib/learning-media.mjs';
 import { createLearningSourceReader } from './lib/learning-source-reader.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { bindingFile } from './lib/review-binding.mjs';
 import { readReviewState } from './lib/review-ledger-store.mjs';
 
 export {
@@ -235,12 +236,12 @@ export async function buildLearningGuide({
       // bytes to snapshot.
       ...[...media.values()].flatMap((capture) =>
         capture.sources
-          .map((source) => source.path)
+          .map((source) => bindingFile(source.path))
           .filter((file) => sourceFiles.has(file)),
       ),
       ...[...reviews.values()].flatMap((review) =>
         review.sources
-          .map((source) => source.path)
+          .map((source) => bindingFile(source.path))
           .filter((file) => sourceFiles.has(file)),
       ),
       ...[...documents, ...renderedModules].flatMap((doc) =>
@@ -275,7 +276,7 @@ export async function buildLearningGuide({
       reviewRecord: reviews.get(doc.path) ?? null,
     };
     const evidence = (snapshot.reviewRecord?.sources ?? []).map(
-      ({ path: file }) => sourceSnapshots[file],
+      ({ path: file }) => sourceSnapshots[bindingFile(file)],
     );
     return {
       ...snapshot,

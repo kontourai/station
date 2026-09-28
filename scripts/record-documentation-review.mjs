@@ -23,12 +23,18 @@ import { evaluateDocumentationReview } from './lib/documentation-review.mjs';
 import { compileLearningMedia } from './lib/learning-media.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
+  bindingDigest,
+  bindingFile,
+  isBindingPath,
+} from './lib/review-binding.mjs';
+import {
   compileReviewState,
   notesFileName,
   parseReviewLedgerFiles,
   REVIEW_LEDGER_INDEX,
   readGitObjects,
   readReviewFiles,
+  reviewError,
   serializeCaptureReviewFile,
   serializeLedgerIndex,
   serializeNotesFile,
@@ -36,11 +42,16 @@ import {
 } from './lib/review-ledger-store.mjs';
 
 const USAGE = [
-  'Usage: docs:review:record -- <path> --note "<review note>" [--drop-source <path>]... [--add-source <path>]... [--rereview]',
+  'Usage: docs:review:record -- <path> --note "<review note>" [--drop-source <path>]... [--add-source <path>]... [--rereview] [--json]',
   '       docs:review:record -- --batch <file.json>',
   '       docs:review:record -- --show-delta [<path>...]',
   '       docs:review:record -- --verify-bindings [<path>...]',
 ].join('\n');
+const UNVERIFIABLE = {
+  'different-bytes': 'the revision holds different bytes',
+  'absent-at-revision': 'the path is absent at the revision',
+  'revision-unavailable': 'the revision is not available locally',
+};
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const gitBlobId = (bytes) =>
   createHash('sha1')
@@ -72,7 +83,7 @@ export function parseRecordArguments(argv) {
       const next = argv[++index];
       // An option-shaped value is a forgotten argument, not a note or path.
       if (next === undefined || next.startsWith('--'))
-        throw new Error(`${arg} requires a value`);
+        throw reviewError('usage', `${arg} requires a value`);
       return next;
     };
     if (arg === '--batch') batch = value();
@@ -80,14 +91,16 @@ export function parseRecordArguments(argv) {
     else if (arg === '--drop-source') removedSources.push(value());
     else if (arg === '--add-source') addedSources.push(value());
     else if (arg === '--rereview') rereview = true;
+    else if (arg === '--json') continue;
     else if (arg === '--show-delta' || arg === '--verify-bindings') {
       if (mode !== 'record')
-        throw new Error(
+        throw reviewError(
+          'usage',
           `Choose one of --show-delta or --verify-bindings\n${USAGE}`,
         );
       mode = arg.slice(2);
     } else if (arg.startsWith('-'))
-      throw new Error(`Unknown option ${arg}\n${USAGE}`);
+      throw reviewError('usage', `Unknown option ${arg}\n${USAGE}`);
     else paths.push(arg);
   }
   const recording =
@@ -98,7 +111,8 @@ export function parseRecordArguments(argv) {
     addedSources.length;
   if (mode !== 'record') {
     if (recording)
-      throw new Error(
+      throw reviewError(
+        'usage',
         `--${mode} reads the ledger and records nothing\n${USAGE}`,
       );
     return { mode, paths };
@@ -111,12 +125,13 @@ export function parseRecordArguments(argv) {
       removedSources.length ||
       addedSources.length
     )
-      throw new Error(
+      throw reviewError(
+        'usage',
         `--batch cannot be combined with a path, note or flag\n${USAGE}`,
       );
     return { mode, batch };
   }
-  if (paths.length !== 1) throw new Error(USAGE);
+  if (paths.length !== 1) throw reviewError('usage', USAGE);
   return {
     mode,
     entries: [{ path: paths[0], note, removedSources, addedSources, rereview }],
@@ -125,11 +140,14 @@ export function parseRecordArguments(argv) {
 
 function validateEntries(entries) {
   if (!Array.isArray(entries) || !entries.length)
-    throw new Error('Review batch must be a non-empty JSON array');
+    throw reviewError(
+      'invalid-batch',
+      'Review batch must be a non-empty JSON array',
+    );
   const seen = new Set();
   return entries.map((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry))
-      throw new Error('Each review entry must be an object');
+      throw reviewError('invalid-batch', 'Each review entry must be an object');
     const {
       path: file,
       note,
@@ -138,13 +156,17 @@ function validateEntries(entries) {
       rereview = false,
     } = entry;
     if (typeof file !== 'string' || !file)
-      throw new Error('Review entry requires a path');
-    if (seen.has(file)) throw new Error(`Duplicate review entry: ${file}`);
+      throw reviewError('invalid-batch', 'Review entry requires a path');
+    if (seen.has(file))
+      throw reviewError('duplicate-entry', `Duplicate review entry: ${file}`);
     seen.add(file);
     if (typeof note !== 'string' || !note.trim())
-      throw new Error(`Review note is empty: ${file}`);
+      throw reviewError('empty-note', `Review note is empty: ${file}`);
     if (typeof rereview !== 'boolean')
-      throw new Error(`rereview must be true or false: ${file}`);
+      throw reviewError(
+        'invalid-batch',
+        `rereview must be true or false: ${file}`,
+      );
     for (const [name, list] of [
       ['removedSources', removedSources],
       ['addedSources', addedSources],
@@ -153,7 +175,10 @@ function validateEntries(entries) {
         !Array.isArray(list) ||
         list.some((source) => typeof source !== 'string' || !source)
       )
-        throw new Error(`${name} must be an array of paths: ${file}`);
+        throw reviewError(
+          'invalid-batch',
+          `${name} must be an array of paths: ${file}`,
+        );
     return {
       path: file,
       note: note.trim(),
@@ -174,7 +199,8 @@ function headRevision(root) {
       'HEAD^{commit}',
     ]).trim();
   } catch (error) {
-    throw new Error(
+    throw reviewError(
+      'no-head',
       `Cannot bind the review to HEAD: ${
         String(error?.stderr || error?.message)
           .trim()
@@ -183,7 +209,7 @@ function headRevision(root) {
     );
   }
   if (!/^[a-f0-9]{40}$/.test(revision))
-    throw new Error(`HEAD is not a full commit SHA: ${revision}`);
+    throw reviewError('no-head', `HEAD is not a full commit SHA: ${revision}`);
   return revision;
 }
 
@@ -206,7 +232,9 @@ function headBlobs(root) {
 export function unverifiableBindings(root, bindings) {
   const objects = readGitObjects(
     root,
-    bindings.map(({ path: file, revision }) => `${revision}:${file}`),
+    bindings.map(
+      ({ path: file, revision }) => `${revision}:${bindingFile(file)}`,
+    ),
   );
   const commits = new Map();
   const hasCommit = (revision) => {
@@ -219,13 +247,17 @@ export function unverifiableBindings(root, bindings) {
   };
   return bindings.flatMap((binding, index) => {
     const bytes = objects[index];
-    if (bytes !== undefined && digest(bytes) === binding.digest) return [];
+    if (
+      bytes !== undefined &&
+      bindingDigest(binding.path, bytes) === binding.digest
+    )
+      return [];
     const reason =
       bytes !== undefined
-        ? 'the revision holds different bytes'
+        ? 'different-bytes'
         : hasCommit(binding.revision)
-          ? 'the path is absent at the revision'
-          : 'the revision is not available locally';
+          ? 'absent-at-revision'
+          : 'revision-unavailable';
     return [{ ...binding, reason }];
   });
 }
@@ -248,11 +280,22 @@ const bindingsOf = (kind, entry) => [
 function editSources(file, sources, removed, added) {
   for (const source of removed)
     if (!sources.some((entry) => entry.path === source))
-      throw new Error(`Not a recorded source of ${file}: ${source}`);
+      throw reviewError(
+        'not-a-source',
+        `Not a recorded source of ${file}: ${source}`,
+      );
   const kept = sources.filter((entry) => !removed.includes(entry.path));
   for (const source of added) {
+    if (!isBindingPath(source))
+      throw reviewError(
+        'invalid-path',
+        `Not a repository path or JSON value path: ${source}`,
+      );
     if (source === file || kept.some((entry) => entry.path === source))
-      throw new Error(`Already a recorded source of ${file}: ${source}`);
+      throw reviewError(
+        'already-a-source',
+        `Already a recorded source of ${file}: ${source}`,
+      );
     kept.push({ path: source });
   }
   return kept;
@@ -264,7 +307,7 @@ function editSources(file, sources, removed, added) {
  * unrelated source's line stays untouched and merges cleanly (#2936).
  */
 async function rebind(entry, owner, context) {
-  const { snapshot, blobs, head, flagged, revisionOf } = context;
+  const { snapshot, head, flagged, revisionOf, committedAtHead } = context;
   const bindings = [
     ...(owner.document ? [{ ...owner.document, path: owner.path }] : []),
     ...editSources(
@@ -278,14 +321,21 @@ async function rebind(entry, owner, context) {
   const rebound = [];
   const refreshed = [];
   for (const binding of bindings) {
-    if (!snapshot.tracked.has(binding.path))
-      throw new Error(
+    const file = bindingFile(binding.path);
+    if (!snapshot.tracked.has(file))
+      throw reviewError(
+        'untracked',
         binding.path === owner.path
           ? `Reviewed document is not tracked: ${owner.path}`
           : `Recorded source is not tracked: ${owner.path} -> ${binding.path}; git add it or pass --drop-source ${binding.path}`,
       );
-    const bytes = await snapshot.read(binding.path);
-    const current = digest(bytes);
+    const bytes = await snapshot.read(file);
+    const current = bindingDigest(binding.path, bytes);
+    if (current === undefined)
+      throw reviewError(
+        'missing-value',
+        `No value at ${binding.path}: ${owner.path}; cite a value that exists or pass --drop-source ${binding.path}`,
+      );
     const stale = binding.digest !== current;
     if (stale) changed = true;
     const unverifiable = flagged.has(`${binding.revision}:${binding.path}`);
@@ -295,19 +345,21 @@ async function rebind(entry, owner, context) {
     }
     // The binding names the commit that holds the reviewed bytes, so
     // `git diff <revision> HEAD` later shows exactly what changed since.
-    if (blobs.get(binding.path) !== gitBlobId(bytes))
-      throw new Error(
+    if (!committedAtHead(binding.path, current, bytes))
+      throw reviewError(
+        'not-committed',
         `Reviewed bytes are not committed: ${binding.path}; commit them first, so the review binds a commit that contains them`,
       );
     if (unverifiable && !stale) rebound.push(binding.path);
     refreshed.push({
       path: binding.path,
       digest: current,
-      revision: revisionOf(binding.path) ?? head,
+      revision: revisionOf(binding.path, current) ?? head,
     });
   }
   if (!changed && !entry.rereview)
-    throw new Error(
+    throw reviewError(
+      'already-fresh',
       `Already fresh: ${owner.path}; its recorded bytes are unchanged. Pass --rereview to record a new review of unchanged bytes`,
     );
   const [document, ...sources] = owner.document
@@ -317,24 +369,49 @@ async function rebind(entry, owner, context) {
 }
 
 /**
- * The last commit at or before HEAD that set this path to its HEAD bytes;
- * branches that review the same bytes therefore bind the same commit.
+ * The commit that set a binding's current value, found by walking the file's
+ * history back from HEAD while the value is unchanged. Branches that review
+ * the same bytes, or the same JSON value, therefore bind the same commit.
  */
-function lastTouchingCommit(root, blobs) {
-  return (file) => {
-    const commit = git(root, [
-      'log',
-      '-1',
-      '--format=%H',
-      'HEAD',
-      '--',
-      file,
-    ]).trim();
-    if (!/^[a-f0-9]{40}$/.test(commit)) return undefined;
-    const [bytes] = readGitObjects(root, [`${commit}:${file}`]);
-    return bytes !== undefined && gitBlobId(bytes) === blobs.get(file)
-      ? commit
-      : undefined;
+function valueSettingCommit(root) {
+  return (path, current) => {
+    const file = bindingFile(path);
+    const commits = git(root, ['log', '--format=%H', 'HEAD', '--', file])
+      .split('\n')
+      .filter((line) => /^[a-f0-9]{40}$/.test(line));
+    let setter;
+    for (let start = 0; start < commits.length; start += 32) {
+      const chunk = commits.slice(start, start + 32);
+      const objects = readGitObjects(
+        root,
+        chunk.map((commit) => `${commit}:${file}`),
+      );
+      for (const [index, commit] of chunk.entries()) {
+        if (
+          objects[index] === undefined ||
+          bindingDigest(path, objects[index]) !== current
+        )
+          return setter;
+        setter = commit;
+      }
+    }
+    return setter;
+  };
+}
+
+/** Whether HEAD already holds the reviewed bytes, or the reviewed value. */
+function reviewedAtHead(root) {
+  const blobs = headBlobs(root);
+  const values = new Map();
+  return (path, current, bytes) => {
+    const file = bindingFile(path);
+    if (path === file) return blobs.get(file) === gitBlobId(bytes);
+    if (!values.has(file))
+      values.set(file, readGitObjects(root, [`HEAD:${file}`])[0]);
+    const committed = values.get(file);
+    return (
+      committed !== undefined && bindingDigest(path, committed) === current
+    );
   };
 }
 
@@ -402,7 +479,8 @@ export async function recordDocumentationReviews({
     if (record) return { kind: 'review', entry, raw: record };
     const capture = parsed.captures.get(entry.path);
     if (capture) return { kind: 'capture', entry, raw: capture };
-    throw new Error(
+    throw reviewError(
+      'unknown-entry',
       `No review record or capture for ${entry.path}; add a new record by hand with its kind, summary and limits`,
     );
   });
@@ -412,13 +490,12 @@ export async function recordDocumentationReviews({
       owners.flatMap(({ kind, raw }) => bindingsOf(kind, raw.data)),
     ).map(({ path: file, revision }) => `${revision}:${file}`),
   );
-  const blobs = headBlobs(root);
   const context = {
     snapshot,
-    blobs,
     head,
     flagged,
-    revisionOf: lastTouchingCommit(root, blobs),
+    revisionOf: valueSettingCommit(root),
+    committedAtHead: reviewedAtHead(root),
   };
   const recorded = [];
   for (const { kind, entry, raw } of owners) {
@@ -430,7 +507,8 @@ export async function recordDocumentationReviews({
         !snapshot.tracked.has(entry.path) ||
         metadata?.digest !== digest(await snapshot.read(entry.path))
       )
-        throw new Error(
+        throw reviewError(
+          'capture-changed',
           `Capture bytes differ from the recorded digest: ${entry.path}; a new capture needs its digest, capturedRevision and evidence updated, not only a review`,
         );
     }
@@ -537,7 +615,10 @@ async function evaluateAll(root, paths) {
       entries.push({ kind: 'capture', record: capture, evaluated: capture });
   for (const file of paths)
     if (!entries.some(({ record }) => record.path === file))
-      throw new Error(`No review record or capture for ${file}`);
+      throw reviewError(
+        'unknown-entry',
+        `No review record or capture for ${file}`,
+      );
   return entries.filter(
     ({ record }) => !paths.length || paths.includes(record.path),
   );
@@ -552,10 +633,10 @@ export async function showReviewDelta({ root = process.cwd(), paths = [] }) {
   const entries = await evaluateAll(root, paths);
   const blobs = headBlobs(root);
   const snapshot = createRepositorySnapshot(root);
-  const lines = [];
+  const deltas = [];
   for (const { kind, record, evaluated } of entries) {
     if (!evaluated.changed.length) {
-      if (paths.length) lines.push(`${kind} ${record.path} is fresh.`);
+      if (paths.length) deltas.push({ kind, path: record.path, fresh: true });
       continue;
     }
     const bindings = bindingsOf(kind, record);
@@ -569,42 +650,76 @@ export async function showReviewDelta({ root = process.cwd(), paths = [] }) {
       )?.revision;
       groups.set(revision, [...(groups.get(revision) ?? []), input]);
     }
+    const diffs = [];
     for (const [revision, inputs] of groups) {
-      lines.push(
-        `== ${kind} ${record.path}: git diff ${revision} HEAD -- ${inputs.join(' ')}`,
-      );
-      for (const input of inputs) {
-        if (flagged.has(input))
-          lines.push(
-            `   note: ${revision} does not contain the reviewed bytes of ${input}; the delta starts from that commit's bytes`,
-          );
+      // A value binding shows its whole file's diff.
+      const files = [...new Set(inputs.map(bindingFile))];
+      const uncommitted = [];
+      for (const file of files)
         if (
-          snapshot.tracked.has(input) &&
-          blobs.get(input) !== gitBlobId(await snapshot.read(input))
+          snapshot.tracked.has(file) &&
+          blobs.get(file) !== gitBlobId(await snapshot.read(file))
         )
-          lines.push(
-            `   note: ${input} has uncommitted changes that this delta omits`,
-          );
-      }
-      if (readGitObjects(root, [`${revision}^{commit}`])[0] === undefined) {
-        lines.push(
-          `   ${revision} is not available locally; fetch it or compare the recorded hashes`,
-        );
-        continue;
-      }
+          uncommitted.push(file);
+      const available =
+        readGitObjects(root, [`${revision}^{commit}`])[0] !== undefined;
+      diffs.push({
+        revision,
+        inputs,
+        files,
+        lacksReviewedBytes: inputs.filter((input) => flagged.has(input)),
+        uncommitted,
+        available,
+        diff: available
+          ? git(root, [
+              'diff',
+              '--no-color',
+              revision,
+              'HEAD',
+              '--',
+              ...files,
+            ]).trimEnd()
+          : undefined,
+      });
+    }
+    deltas.push({ kind, path: record.path, fresh: false, diffs });
+  }
+  return deltas;
+}
+
+/** The human form of `showReviewDelta`. */
+function formatReviewDelta(deltas) {
+  const lines = [];
+  for (const delta of deltas) {
+    if (delta.fresh) {
+      lines.push(`${delta.kind} ${delta.path} is fresh.`);
+      continue;
+    }
+    for (const item of delta.diffs) {
+      const values = item.inputs.filter(
+        (input) => input !== bindingFile(input),
+      );
       lines.push(
-        git(root, [
-          'diff',
-          '--no-color',
-          revision,
-          'HEAD',
-          '--',
-          ...inputs,
-        ]).trimEnd(),
+        `== ${delta.kind} ${delta.path}: git diff ${item.revision} HEAD -- ${item.files.join(' ')}${
+          values.length ? ` (cited values: ${values.join(', ')})` : ''
+        }`,
+      );
+      for (const input of item.lacksReviewedBytes)
+        lines.push(
+          `   note: ${item.revision} does not contain the reviewed bytes of ${input}; the delta starts from that commit's bytes`,
+        );
+      for (const file of item.uncommitted)
+        lines.push(
+          `   note: ${file} has uncommitted changes that this delta omits`,
+        );
+      lines.push(
+        item.available
+          ? item.diff
+          : `   ${item.revision} is not available locally; fetch it or compare the recorded hashes`,
       );
     }
   }
-  return lines;
+  return lines.length ? lines.join('\n') : 'No stale reviews or captures.';
 }
 
 /**
@@ -623,17 +738,21 @@ export async function verifyReviewBindings({
 }
 
 export async function main(argv = process.argv.slice(2)) {
+  const json = argv.includes('--json');
   const parsed = parseRecordArguments(argv);
   const root = git(process.cwd(), ['rev-parse', '--show-toplevel']).trim();
   if (parsed.mode === 'show-delta') {
-    const lines = await showReviewDelta({ root, paths: parsed.paths });
-    console.log(
-      lines.length ? lines.join('\n') : 'No stale reviews or captures.',
-    );
+    const deltas = await showReviewDelta({ root, paths: parsed.paths });
+    console.log(json ? JSON.stringify({ deltas }) : formatReviewDelta(deltas));
     return;
   }
   if (parsed.mode === 'verify-bindings') {
     const flagged = await verifyReviewBindings({ root, paths: parsed.paths });
+    if (flagged.length) process.exitCode = 1;
+    if (json) {
+      console.log(JSON.stringify({ flagged }));
+      return;
+    }
     if (!flagged.length) {
       console.log(
         'Every binding names a revision that contains its recorded bytes.',
@@ -645,14 +764,17 @@ export async function main(argv = process.argv.slice(2)) {
     );
     for (const item of flagged)
       console.log(
-        `  ${item.kind} ${item.owner} -> ${item.path} @ ${item.revision}: ${item.reason}`,
+        `  ${item.kind} ${item.owner} -> ${item.path} @ ${item.revision}: ${UNVERIFIABLE[item.reason]}`,
       );
-    process.exitCode = 1;
     return;
   }
   const entries =
     parsed.entries ?? JSON.parse(readFileSync(parsed.batch, 'utf8'));
   const result = await recordDocumentationReviews({ root, entries });
+  if (json) {
+    console.log(JSON.stringify(result));
+    return;
+  }
   console.log(
     `Recorded ${result.recorded.length} review(s) at ${result.revision} in ${result.notesFile}:`,
   );
@@ -677,9 +799,15 @@ if (invokedDirectly(import.meta.url)) {
   try {
     await main();
   } catch (error) {
-    console.error(
-      `docs:review:record: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    // `--json` reports a refusal by its stable code (#2927).
+    if (process.argv.includes('--json'))
+      console.log(
+        JSON.stringify({
+          error: { ...error, code: error?.code ?? 'error', message },
+        }),
+      );
+    console.error(`docs:review:record: ${message}`);
     process.exitCode = 1;
   }
 }

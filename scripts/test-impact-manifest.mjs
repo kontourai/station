@@ -1206,6 +1206,11 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'review-ledger record command and its refusals',
   },
   {
+    pattern: 'scripts/migrate-review-ledger.mjs',
+    tests: ['scripts/__tests__/documentation-freshness.test.ts'],
+    reason: 'single-file review ledger migration and branch fold (#2936)',
+  },
+  {
     pattern: '.github/workflows/docs-freshness-sweep.yml',
     tests: ['scripts/__tests__/documentation-freshness.test.ts'],
     reason: 'Nightly freshness sweep schedule and permissions',

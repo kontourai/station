@@ -122,7 +122,11 @@ it('warns on source drift and rejects it in the strict check without relabeling 
       changedRead,
       { requireFresh: true },
     ),
-  ).rejects.toThrow('Learning capture needs review');
+  ).rejects.toMatchObject({
+    code: 'needs-refresh',
+    path: capture.path,
+    changed: ['code.ts'],
+  });
   const rendered = renderLearningDocument(
     `![Task](${capture.path})`,
     'guide.md',
@@ -263,9 +267,14 @@ it('the real builder publishes immutable media bytes and its strict entry detect
   const pr = { STATION_DOCS_FRESHNESS_BASE: 'fixture-base' };
   const queue = { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'merge_group' };
   // No base resolves in this repository, so the scope is unknown: strict.
-  await expect(check({})).rejects.toThrow('Learning capture needs review');
+  const staleCapture = {
+    code: 'needs-refresh',
+    path: localCapture.path,
+    changed: ['code.ts'],
+  };
+  await expect(check({})).rejects.toMatchObject(staleCapture);
   // The change owns its stale capture; the merge queue only reports it.
-  await expect(check(pr)).rejects.toThrow('Learning capture needs review');
+  await expect(check(pr)).rejects.toMatchObject(staleCapture);
   const queued = await check(queue);
   expect(queued.captures[0].changed).toEqual(['code.ts']);
   // The same decision governs review records in the builder.
@@ -282,9 +291,11 @@ it('the real builder publishes immutable media bytes and its strict entry detect
   expect(
     removed.documents.find((doc) => doc.path === 'guide.md')?.reviewRecord,
   ).toMatchObject({ state: 'needs-review', changed: ['owner.ts'] });
-  await expect(check(pr)).rejects.toThrow(
-    'Documentation review needs refresh: guide.md; changed: owner.ts',
-  );
+  await expect(check(pr)).rejects.toMatchObject({
+    code: 'needs-refresh',
+    path: 'guide.md',
+    changed: ['owner.ts'],
+  });
   expect(
     readFileSync(
       join(root, '.kontourai/docs-learning', decodeURIComponent(url)),

@@ -12,6 +12,7 @@ import {
   isLearningSourcePath,
 } from './lib/learning-source-reader.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { bindingFile, isBindingPath } from './lib/review-binding.mjs';
 import {
   LEGACY_REVIEW_LEDGER,
   REVIEW_LEDGER_DIR,
@@ -65,7 +66,7 @@ function validateLedger(ledger) {
       !isLearningSourcePath(record.path) ||
       paths.has(record.path) ||
       !Array.isArray(record.sources) ||
-      record.sources.some((source) => !isLearningSourcePath(source.path))
+      record.sources.some((source) => !isBindingPath(source.path))
     )
       throw new Error('Invalid documentation impact record.');
     paths.add(record.path);
@@ -83,10 +84,13 @@ export function documentationImpact({ changedPaths, ledgers, topics }) {
     validateLedger(ledger);
     for (const record of ledger.records) {
       records.set(record.path, record);
+      // A value binding (package.json#/scripts/x) is led by its file: the
+      // report cannot tell which value a path change touched.
       for (const source of record.sources) {
-        const targets = reverse.get(source.path) ?? new Set();
+        const file = bindingFile(source.path);
+        const targets = reverse.get(file) ?? new Set();
         targets.add(record.path);
-        reverse.set(source.path, targets);
+        reverse.set(file, targets);
       }
     }
   }
@@ -293,8 +297,15 @@ export async function documentationCatchUp({
     const currentSources = new Set(
       current?.sources.map((source) => source.path),
     );
+    // Narrowing a whole-file binding to values inside that file keeps
+    // coverage of the file; it is not a removed dependency.
+    const currentFiles = new Set(
+      current?.sources.map((source) => bindingFile(source.path)),
+    );
     const removed = [...previous].filter(
-      (source) => !currentSources.has(source),
+      (source) =>
+        !currentSources.has(source) &&
+        !(source === bindingFile(source) && currentFiles.has(source)),
     );
     if (!current || removed.length)
       removedDependencies.push({

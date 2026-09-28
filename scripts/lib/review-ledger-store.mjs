@@ -61,6 +61,17 @@ const CAPTURE_REVIEW_FIELDS = ['sources', 'reviewedRevision', 'reviewNotes'];
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
+/**
+ * An error with a stable `code`, so callers and tests branch on the refusal
+ * rather than its wording (#2927). `details` adds fields such as `path`.
+ * @param {string} code
+ * @param {string} message
+ * @param {Record<string, unknown>} [details]
+ */
+export function reviewError(code, message, details = {}) {
+  return Object.assign(new Error(message), { code, ...details });
+}
+
 export const recordFile = (path) => `${RECORDS}${path}.json`;
 export const captureReviewFile = (path) => `${CAPTURES}${path}.json`;
 
@@ -143,8 +154,10 @@ function exactKeys(value, keys, file) {
     Object.keys(value).length !== keys.length ||
     keys.some((key) => !Object.hasOwn(value, key))
   )
-    throw new Error(
+    throw reviewError(
+      'invalid-shape',
       `Review ledger file must have exactly ${keys.join(', ')}: ${file}`,
+      { file },
     );
 }
 
@@ -153,8 +166,10 @@ function parseCanonical(file, text, keys, serialize) {
   try {
     value = JSON.parse(text);
   } catch (error) {
-    throw new Error(
+    throw reviewError(
+      'invalid-json',
       `Review ledger file is not valid JSON: ${file} (${error.message})`,
+      { file },
     );
   }
   exactKeys(value, keys, file);
@@ -163,12 +178,18 @@ function parseCanonical(file, text, keys, serialize) {
       ['sources', 'checks', 'reviewNotes', 'notes'].includes(key) &&
       !Array.isArray(value[key])
     )
-      throw new Error(`Review ledger field ${key} must be an array: ${file}`);
+      throw reviewError(
+        'invalid-shape',
+        `Review ledger field ${key} must be an array: ${file}`,
+        { file },
+      );
   // A reformatted file loses the blank-line separators that keep independent
   // edits from conflicting, so only the serializer's exact bytes are accepted.
   if (serialize(value) !== text)
-    throw new Error(
+    throw reviewError(
+      'not-canonical',
       `Review ledger file is not in its canonical layout: ${file}; write it with npm run docs:review:record (docs/guides/documentation.md)`,
+      { file },
     );
   return value;
 }
@@ -177,7 +198,11 @@ function parseCanonical(file, text, keys, serialize) {
 export function parseRecordFile(file, text) {
   const record = parseCanonical(file, text, RECORD_KEYS, serializeRecordFile);
   if (!isLearningSourcePath(record.path) || recordFile(record.path) !== file)
-    throw new Error(`Review record is not stored at its path: ${file}`);
+    throw reviewError(
+      'misplaced',
+      `Review record is not stored at its path: ${file}`,
+      { file },
+    );
   exactKeys(record.document, ['digest', 'revision'], file);
   return record;
 }
@@ -193,21 +218,35 @@ function parseCaptureFile(file, text) {
     !isLearningSourcePath(capture.path) ||
     captureReviewFile(capture.path) !== file
   )
-    throw new Error(`Capture review is not stored at its path: ${file}`);
+    throw reviewError(
+      'misplaced',
+      `Capture review is not stored at its path: ${file}`,
+      { file },
+    );
   return capture;
 }
 
 function parseNotesFile(file, text) {
   const name = NOTE_NAME.exec(file.slice(NOTES.length));
   if (!file.startsWith(NOTES) || !name)
-    throw new Error(`Unexpected review notes file name: ${file}`);
+    throw reviewError(
+      'unexpected-file',
+      `Unexpected review notes file name: ${file}`,
+      { file },
+    );
   if (sha256(text).slice(0, 12) !== name[2])
-    throw new Error(
+    throw reviewError(
+      'notes-edited',
       `Review notes are append-only; ${file} no longer matches its content hash. Add a new note with npm run docs:review:record instead of editing one.`,
+      { file },
     );
   const run = parseCanonical(file, text, NOTES_KEYS, serializeNotesFile);
   if (!/^[a-f0-9]{40}$/.test(run.revision))
-    throw new Error(`Invalid review notes revision: ${file}`);
+    throw reviewError(
+      'invalid-shape',
+      `Invalid review notes revision: ${file}`,
+      { file },
+    );
   for (const entry of run.notes) {
     exactKeys(entry, ['path', 'note'], file);
     if (
@@ -215,7 +254,9 @@ function parseNotesFile(file, text) {
       typeof entry.note !== 'string' ||
       !entry.note.trim()
     )
-      throw new Error(`Invalid review note in ${file}`);
+      throw reviewError('invalid-shape', `Invalid review note in ${file}`, {
+        file,
+      });
   }
   return run;
 }
@@ -227,7 +268,10 @@ function parseNotesFile(file, text) {
 export function parseReviewLedgerFiles(files) {
   const indexText = files.get(REVIEW_LEDGER_INDEX);
   if (indexText === undefined)
-    throw new Error(`Missing review ledger index: ${REVIEW_LEDGER_INDEX}`);
+    throw reviewError(
+      'missing-index',
+      `Missing review ledger index: ${REVIEW_LEDGER_INDEX}`,
+    );
   const index = parseCanonical(
     REVIEW_LEDGER_INDEX,
     indexText,
@@ -235,7 +279,8 @@ export function parseReviewLedgerFiles(files) {
     serializeLedgerIndex,
   );
   if (index.version !== REVIEW_LEDGER_VERSION)
-    throw new Error(
+    throw reviewError(
+      'unsupported-version',
       `Documentation review ledger requires version ${REVIEW_LEDGER_VERSION}.`,
     );
   /** @type {Map<string, { file: string, data: any }>} */
@@ -255,7 +300,12 @@ export function parseReviewLedgerFiles(files) {
       captures.set(data.path, { file, data });
     } else if (file.startsWith(NOTES)) {
       notes.push({ file, data: parseNotesFile(file, text) });
-    } else throw new Error(`Unexpected file in the review ledger: ${file}`);
+    } else
+      throw reviewError(
+        'unexpected-file',
+        `Unexpected file in the review ledger: ${file}`,
+        { file },
+      );
   }
   return { index, records, captures, notes };
 }
@@ -304,19 +354,24 @@ function compileCaptureReview(data, notes = []) {
  */
 function joinLearningMedia(manifest, reviews) {
   if (manifest?.version !== 1 || !Array.isArray(manifest.captures))
-    throw new Error('Learning media requires version 1 captures.');
+    throw reviewError(
+      'unsupported-version',
+      'Learning media requires version 1 captures.',
+    );
   const seen = new Set();
   const captures = manifest.captures.map((capture) => {
     const field = CAPTURE_REVIEW_FIELDS.find((key) =>
       Object.hasOwn(capture ?? {}, key),
     );
     if (field)
-      throw new Error(
+      throw reviewError(
+        'capture-review-mismatch',
         `${LEARNING_MEDIA_MANIFEST} must not carry the review field ${field}: ${capture.path}; capture reviews live in ${CAPTURES}`,
       );
     const review = reviews.get(capture?.path);
     if (!review)
-      throw new Error(
+      throw reviewError(
+        'capture-review-mismatch',
         `Missing capture review: ${captureReviewFile(capture?.path)}`,
       );
     seen.add(capture.path);
@@ -324,7 +379,8 @@ function joinLearningMedia(manifest, reviews) {
   });
   for (const path of reviews.keys())
     if (!seen.has(path))
-      throw new Error(
+      throw reviewError(
+        'capture-review-mismatch',
         `Capture review without a capture in ${LEARNING_MEDIA_MANIFEST}: ${path}`,
       );
   return { version: 1, captures };
@@ -347,7 +403,8 @@ export function compileReviewState(parsed, manifest) {
     ]),
   );
   if (manifest === undefined && reviews.size)
-    throw new Error(
+    throw reviewError(
+      'capture-review-mismatch',
       `Capture reviews exist but ${LEARNING_MEDIA_MANIFEST} is not tracked`,
     );
   return {
@@ -364,7 +421,10 @@ export function compileReviewState(parsed, manifest) {
 /** The pre-#2936 single ledger file, compiled into the current shape. */
 function fromLegacyReviewLedger(legacy) {
   if (legacy?.version !== 1 || !Array.isArray(legacy.records))
-    throw new Error('Legacy review ledger requires version 1 records.');
+    throw reviewError(
+      'unsupported-version',
+      'Legacy review ledger requires version 1 records.',
+    );
   return {
     version: REVIEW_LEDGER_VERSION,
     coverageBaseline: legacy.coverageBaseline ?? undefined,

@@ -172,7 +172,7 @@ describe('machine-maintained documentation review boundaries', () => {
         evaluateDocumentationReview(record, f.documents, f.tracked, f.read, {
           requireFresh: true,
         }),
-      ).rejects.toThrow('Documentation review needs refresh');
+      ).rejects.toMatchObject({ code: 'needs-refresh', path: record.path });
     }
   });
 
@@ -846,7 +846,11 @@ describe('learning atlas', () => {
         async () => 'changed code',
         { requireFresh: true },
       ),
-    ).rejects.toThrow('Documentation review needs refresh');
+    ).rejects.toMatchObject({
+      code: 'needs-refresh',
+      path: 'guide.md',
+      changed: ['owner.ts'],
+    });
     const changedDoc = new Map([['guide.md', digest('Changed guide')]]);
     expect(
       (await compileDocumentationReviews(ledger, changedDoc, files, read)).get(
