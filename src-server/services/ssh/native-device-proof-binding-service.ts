@@ -1,0 +1,520 @@
+import {
+  createHash,
+  createPublicKey,
+  randomUUID,
+  timingSafeEqual,
+} from 'node:crypto';
+import {
+  closeSync,
+  existsSync,
+  fchmodSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join } from 'node:path';
+import {
+  isPairingScopeSubset,
+  type PairedDevice,
+  parsePairingScope,
+} from '@kontourai/station-contracts/environment-security';
+import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
+
+const BINDINGS_SCHEMA_VERSION = 1 as const;
+const BINDINGS_FILE = 'native-device-proof-bindings.json';
+const PRIVATE_FILE_MODE = 0o600;
+const CLIENT_INSTANCE_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const BASE64URL_32_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const BINDING_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Canonical P-256 Elliptic-Curve public JWK. The private scalar (`d`) is
+ * refused on input and never stored: this slice binds a *proof* public key,
+ * and a stored private key would turn the sidecar into a bearer asset.
+ */
+export interface NativeDeviceProofPublicJwk {
+  readonly kty: 'EC';
+  readonly crv: 'P-256';
+  readonly x: string;
+  readonly y: string;
+}
+
+/** Why an active binding left the active state. */
+export type NativeDeviceProofBindingRevocationReason =
+  | 'operator-revoked'
+  | 'replaced';
+
+interface StoredBinding {
+  readonly bindingId: string;
+  readonly deviceProof: {
+    readonly jwk: NativeDeviceProofPublicJwk;
+    readonly thumbprint: string;
+  };
+  readonly deviceId: string;
+  readonly stationId: string;
+  readonly clientInstanceId: string;
+  readonly createdAt: number;
+  readonly approvedAt: number;
+  readonly approvedBy: string;
+  readonly deviceScopeAtApproval: string;
+  state: 'active' | 'revoked';
+  revokedAt?: number;
+  revocationReason?: NativeDeviceProofBindingRevocationReason;
+}
+
+/** Server-side view of one binding. Public-key material only, by construction. */
+export interface NativeDeviceProofBinding {
+  readonly bindingId: string;
+  readonly deviceProof: {
+    readonly jwk: NativeDeviceProofPublicJwk;
+    readonly thumbprint: string;
+  };
+  readonly deviceId: string;
+  readonly stationId: string;
+  readonly clientInstanceId: string;
+  readonly createdAt: number;
+  readonly approvedAt: number;
+  readonly approvedBy: string;
+  readonly deviceScopeAtApproval: string;
+  readonly state: 'active' | 'revoked';
+  readonly revokedAt?: number;
+  readonly revocationReason?: NativeDeviceProofBindingRevocationReason;
+}
+
+/** UI-safe projection: identities and timestamps, never key or scope internals. */
+export interface NativeDeviceProofBindingProjection {
+  readonly bindingId: string;
+  readonly deviceId: string;
+  readonly clientInstanceId: string;
+  readonly thumbprint: string;
+  readonly createdAt: number;
+  readonly approvedAt: number;
+  readonly state: 'active' | 'revoked';
+}
+
+/**
+ * The exact, server-derived answer a future proof verifier consumes. Both the
+ * binding and the Device scope are re-derived from Station state at read
+ * time; nothing here accepts request-supplied fields as authority.
+ */
+export interface NativeDeviceProofBindingCurrent {
+  readonly binding: NativeDeviceProofBinding;
+  readonly device: { readonly id: string; readonly scope: string };
+}
+
+export class NativeDeviceProofBindingError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = 'NativeDeviceProofBindingError';
+  }
+}
+
+const OPERATOR_AUTHORITY_TOKEN = Symbol(
+  'native-device-proof.operator-authority',
+);
+
+/**
+ * Capability that mints operator approval contexts. It is handed only to the
+ * trusted operator seam; a saved profile, broker route grant, account
+ * session, or legacy Device bearer never confers one.
+ */
+export class NativeDeviceProofOperatorAuthority {
+  approve(input: {
+    operatorPrincipalId: string;
+    approvalId?: string;
+    approvedAt?: number;
+  }): NativeDeviceProofOperatorApprovalContext {
+    if (input.operatorPrincipalId !== LOCAL_OPERATOR_PRINCIPAL_ID) {
+      throw new NativeDeviceProofBindingError('operator_unauthorized');
+    }
+    return new NativeDeviceProofOperatorApprovalContext({
+      token: OPERATOR_AUTHORITY_TOKEN,
+      operatorPrincipalId: input.operatorPrincipalId,
+      approvalId: input.approvalId ?? randomUUID(),
+      approvedAt: input.approvedAt ?? Date.now(),
+    });
+  }
+}
+
+export class NativeDeviceProofOperatorApprovalContext {
+  readonly operatorPrincipalId: string;
+  readonly approvalId: string;
+  readonly approvedAt: number;
+  #intact = true;
+
+  constructor(init: {
+    token: symbol;
+    operatorPrincipalId: string;
+    approvalId: string;
+    approvedAt: number;
+  }) {
+    if (init.token !== OPERATOR_AUTHORITY_TOKEN) {
+      throw new NativeDeviceProofBindingError('invalid_operator_approval');
+    }
+    this.operatorPrincipalId = init.operatorPrincipalId;
+    this.approvalId = init.approvalId;
+    this.approvedAt = init.approvedAt;
+  }
+
+  /** One approval authorizes exactly one service mutation. */
+  consume(): void {
+    if (!this.#intact) {
+      throw new NativeDeviceProofBindingError('operator_approval_reused');
+    }
+    this.#intact = false;
+  }
+}
+
+/** Narrow view of {@link DevicePairingService} this service depends on. */
+export interface NativeDeviceProofPairingSource {
+  environmentId(): string;
+  listDevices(): PairedDevice[];
+}
+
+interface BindingStoreFile {
+  readonly schemaVersion: number;
+  readonly bindings: StoredBinding[];
+}
+
+function isValidStoredJwk(value: unknown): value is NativeDeviceProofPublicJwk {
+  if (typeof value !== 'object' || value === null) return false;
+  const jwk = value as Record<string, unknown>;
+  return (
+    jwk.kty === 'EC' &&
+    jwk.crv === 'P-256' &&
+    typeof jwk.x === 'string' &&
+    BASE64URL_32_PATTERN.test(jwk.x) &&
+    typeof jwk.y === 'string' &&
+    BASE64URL_32_PATTERN.test(jwk.y) &&
+    !('d' in jwk)
+  );
+}
+
+function cloneBinding(stored: StoredBinding): NativeDeviceProofBinding {
+  return structuredClone({
+    ...stored,
+    deviceProof: { ...stored.deviceProof, jwk: { ...stored.deviceProof.jwk } },
+  });
+}
+
+/** RFC 7638 SHA-256 thumbprint over the canonical P-256 member set. */
+export function p256Thumbprint(jwk: NativeDeviceProofPublicJwk): string {
+  const canonical = JSON.stringify({
+    crv: jwk.crv,
+    kty: jwk.kty,
+    x: jwk.x,
+    y: jwk.y,
+  });
+  return createHash('sha256').update(canonical).digest('base64url');
+}
+
+export class NativeDeviceProofBindingStore {
+  readonly #filePath: string;
+  #bindings: StoredBinding[] | null;
+
+  constructor(homeDir: string) {
+    this.#filePath = join(homeDir, 'security', BINDINGS_FILE);
+    this.#bindings = null;
+  }
+
+  /** Strict load: corruption and version drift fail closed, never to empty. */
+  load(): StoredBinding[] {
+    if (this.#bindings) return this.#bindings;
+    if (!existsSync(this.#filePath)) {
+      this.#bindings = [];
+      return this.#bindings;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(readFileSync(this.#filePath, 'utf8'));
+    } catch {
+      throw new NativeDeviceProofBindingError('store_unavailable');
+    }
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      (parsed as BindingStoreFile).schemaVersion !== BINDINGS_SCHEMA_VERSION ||
+      !Array.isArray((parsed as BindingStoreFile).bindings)
+    ) {
+      throw new NativeDeviceProofBindingError('store_unavailable');
+    }
+    const bindings: StoredBinding[] = [];
+    for (const raw of (parsed as BindingStoreFile).bindings) {
+      if (!this.#isValidStoredBinding(raw)) {
+        throw new NativeDeviceProofBindingError('store_unavailable');
+      }
+      bindings.push(raw);
+    }
+    this.#bindings = bindings;
+    return bindings;
+  }
+
+  persist(bindings: StoredBinding[]): void {
+    this.#bindings = bindings;
+    const file: BindingStoreFile = {
+      schemaVersion: BINDINGS_SCHEMA_VERSION,
+      bindings,
+    };
+    const body = `${JSON.stringify(file, null, 2)}\n`;
+    mkdirSync(dirname(this.#filePath), { recursive: true, mode: 0o700 });
+    const tempPath = `${this.#filePath}.${randomUUID()}.tmp`;
+    const fd = openSync(tempPath, 'w', PRIVATE_FILE_MODE);
+    try {
+      writeFileSync(fd, body);
+      fsyncSync(fd);
+      fchmodSync(fd, PRIVATE_FILE_MODE);
+    } finally {
+      closeSync(fd);
+    }
+    renameFileSyncRetrying(tempPath, this.#filePath);
+  }
+
+  #isValidStoredBinding(raw: unknown): raw is StoredBinding {
+    if (typeof raw !== 'object' || raw === null) return false;
+    const b = raw as Record<string, unknown>;
+    return (
+      typeof b.bindingId === 'string' &&
+      BINDING_ID_PATTERN.test(b.bindingId) &&
+      isValidStoredJwk((b.deviceProof as { jwk?: unknown } | undefined)?.jwk) &&
+      typeof (b.deviceProof as { thumbprint?: unknown }).thumbprint ===
+        'string' &&
+      typeof b.deviceId === 'string' &&
+      typeof b.stationId === 'string' &&
+      typeof b.clientInstanceId === 'string' &&
+      CLIENT_INSTANCE_ID_PATTERN.test(b.clientInstanceId) &&
+      typeof b.createdAt === 'number' &&
+      typeof b.approvedAt === 'number' &&
+      typeof b.approvedBy === 'string' &&
+      typeof b.deviceScopeAtApproval === 'string' &&
+      (b.state === 'active' || b.state === 'revoked') &&
+      (b.state === 'active' || typeof b.revokedAt === 'number')
+    );
+  }
+}
+
+export class NativeDeviceProofBindingService {
+  readonly #store: NativeDeviceProofBindingStore;
+  readonly #pairing: NativeDeviceProofPairingSource;
+  readonly #now: () => number;
+
+  constructor(options: {
+    homeDir: string;
+    pairing: NativeDeviceProofPairingSource;
+    now?: () => number;
+  }) {
+    this.#store = new NativeDeviceProofBindingStore(options.homeDir);
+    this.#pairing = options.pairing;
+    this.#now = options.now ?? Date.now;
+  }
+
+  /**
+   * Create (or replace) the native Device proof binding for one client
+   * instance on an already-approved Device grant. Requires an explicit
+   * operator approval context minted by {@link NativeDeviceProofOperatorAuthority};
+   * every other authority path — profile, broker route, account session,
+   * legacy Device bearer — has no way to produce one.
+   */
+  createBinding(input: {
+    deviceId: string;
+    clientInstanceId: string;
+    jwk: NativeDeviceProofPublicJwk;
+    approval: NativeDeviceProofOperatorApprovalContext;
+  }): NativeDeviceProofBinding {
+    if (!(input.approval instanceof NativeDeviceProofOperatorApprovalContext)) {
+      throw new NativeDeviceProofBindingError('invalid_operator_approval');
+    }
+    input.approval.consume();
+    if (!CLIENT_INSTANCE_ID_PATTERN.test(input.clientInstanceId)) {
+      throw new NativeDeviceProofBindingError('invalid_client_instance_id');
+    }
+    const jwk = this.#validatedPublicJwk(input.jwk);
+    const device = this.#activeDevice(input.deviceId);
+    const stationId = this.#pairing.environmentId();
+    if (typeof stationId !== 'string' || stationId.length === 0) {
+      throw new NativeDeviceProofBindingError('station_unavailable');
+    }
+    const bindings = this.#store.load();
+    const now = this.#now();
+    for (const existing of bindings) {
+      if (
+        existing.state === 'active' &&
+        existing.deviceId === input.deviceId &&
+        existing.clientInstanceId === input.clientInstanceId
+      ) {
+        existing.state = 'revoked';
+        existing.revokedAt = now;
+        existing.revocationReason = 'replaced';
+      }
+    }
+    const binding: StoredBinding = {
+      bindingId: randomUUID(),
+      deviceProof: { jwk, thumbprint: p256Thumbprint(jwk) },
+      deviceId: input.deviceId,
+      stationId,
+      clientInstanceId: input.clientInstanceId,
+      createdAt: now,
+      approvedAt: input.approval.approvedAt,
+      approvedBy: input.approval.operatorPrincipalId,
+      deviceScopeAtApproval: device.scope,
+      state: 'active',
+    };
+    bindings.push(binding);
+    this.#store.persist(bindings);
+    return cloneBinding(binding);
+  }
+
+  revokeBinding(input: {
+    deviceId: string;
+    clientInstanceId: string;
+    approval: NativeDeviceProofOperatorApprovalContext;
+    reason?: NativeDeviceProofBindingRevocationReason;
+  }): NativeDeviceProofBinding[] {
+    if (!(input.approval instanceof NativeDeviceProofOperatorApprovalContext)) {
+      throw new NativeDeviceProofBindingError('invalid_operator_approval');
+    }
+    input.approval.consume();
+    const bindings = this.#store.load();
+    const now = this.#now();
+    const revoked: NativeDeviceProofBinding[] = [];
+    for (const existing of bindings) {
+      if (
+        existing.state === 'active' &&
+        existing.deviceId === input.deviceId &&
+        existing.clientInstanceId === input.clientInstanceId
+      ) {
+        existing.state = 'revoked';
+        existing.revokedAt = now;
+        existing.revocationReason = input.reason ?? 'operator-revoked';
+        revoked.push(cloneBinding(existing));
+      }
+    }
+    if (revoked.length === 0) {
+      throw new NativeDeviceProofBindingError('binding_not_found');
+    }
+    this.#store.persist(bindings);
+    return revoked;
+  }
+
+  /**
+   * Exact current binding for a device/client pair, re-derived from Station
+   * state. Returns null — never a stale or reconstructed answer — when the
+   * binding is absent, revoked, on a revoked or missing Device, paired
+   * against a different Station, or the Device's scope no longer covers the
+   * scope the binding was approved under.
+   */
+  currentBinding(input: {
+    deviceId: string;
+    clientInstanceId: string;
+  }): NativeDeviceProofBindingCurrent | null {
+    const stationId = this.#pairing.environmentId();
+    const binding = this.#store
+      .load()
+      .find(
+        (candidate) =>
+          candidate.state === 'active' &&
+          candidate.deviceId === input.deviceId &&
+          candidate.clientInstanceId === input.clientInstanceId,
+      );
+    if (!binding) return null;
+    if (binding.stationId !== stationId) return null;
+    const device = this.#activeDeviceOrNull(input.deviceId);
+    if (!device) return null;
+    if (!isPairingScopeSubset(binding.deviceScopeAtApproval, device.scope)) {
+      return null;
+    }
+    return {
+      binding: cloneBinding(binding),
+      device: { id: device.id, scope: device.scope },
+    };
+  }
+
+  /** Verifier-side lookup that refuses to proceed without a current binding. */
+  requireCurrentBinding(input: {
+    deviceId: string;
+    clientInstanceId: string;
+  }): NativeDeviceProofBindingCurrent {
+    const current = this.currentBinding(input);
+    if (!current)
+      throw new NativeDeviceProofBindingError('binding_unavailable');
+    return current;
+  }
+
+  /** Compare a presented proof key's thumbprint against the bound key. */
+  thumbprintMatches(
+    current: NativeDeviceProofBindingCurrent,
+    jwk: NativeDeviceProofPublicJwk,
+  ): boolean {
+    const candidate = Buffer.from(
+      p256Thumbprint(this.#validatedPublicJwk(jwk)),
+    );
+    const bound = Buffer.from(current.binding.deviceProof.thumbprint);
+    return (
+      candidate.length === bound.length && timingSafeEqual(candidate, bound)
+    );
+  }
+
+  projectionOf(
+    binding: NativeDeviceProofBinding,
+  ): NativeDeviceProofBindingProjection {
+    return {
+      bindingId: binding.bindingId,
+      deviceId: binding.deviceId,
+      clientInstanceId: binding.clientInstanceId,
+      thumbprint: binding.deviceProof.thumbprint,
+      createdAt: binding.createdAt,
+      approvedAt: binding.approvedAt,
+      state: binding.state,
+    };
+  }
+
+  #activeDevice(deviceId: string): PairedDevice {
+    const device = this.#activeDeviceOrNull(deviceId);
+    if (!device) throw new NativeDeviceProofBindingError('device_not_active');
+    return device;
+  }
+
+  #activeDeviceOrNull(deviceId: string): PairedDevice | null {
+    const device = this.#pairing
+      .listDevices()
+      .find((candidate) => candidate.id === deviceId);
+    if (!device || device.revokedAt !== null) return null;
+    if (parsePairingScope(device.scope) === null) return null;
+    return device;
+  }
+
+  #validatedPublicJwk(
+    jwk: NativeDeviceProofPublicJwk,
+  ): NativeDeviceProofPublicJwk {
+    if (!isValidStoredJwk(jwk)) {
+      throw new NativeDeviceProofBindingError('invalid_proof_jwk');
+    }
+    let key: ReturnType<typeof createPublicKey>;
+    try {
+      key = createPublicKey({ key: { ...jwk }, format: 'jwk' });
+    } catch {
+      throw new NativeDeviceProofBindingError('invalid_proof_jwk');
+    }
+    const exported = key.export({ format: 'jwk' }) as {
+      kty?: string;
+      crv?: string;
+      x?: string;
+      y?: string;
+    };
+    if (
+      exported.kty !== 'EC' ||
+      exported.crv !== 'P-256' ||
+      typeof exported.x !== 'string' ||
+      typeof exported.y !== 'string' ||
+      exported.x !== jwk.x ||
+      exported.y !== jwk.y
+    ) {
+      throw new NativeDeviceProofBindingError('invalid_proof_jwk');
+    }
+    return { kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y };
+  }
+}
