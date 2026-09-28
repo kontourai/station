@@ -464,7 +464,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "UX audit E1 (reports/agents-lane/DESIGN.md §2/§5): the Agents rail as a readiness board against a live Station — the engines band above the authored band, a non-ready row printing the server's own unavailableReason verbatim with exactly one fixing verb mapped from unavailableFix.kind and never identifying the missing engine by its connection id (station#3742), and a Ready row whose Chat action opens the shared New Chat picker onto a real composer. The non-ready row is seeded by binding an agent to an engine connection that does not exist, so the state is an observation rather than a mocked string. Desktop plus a 390x844 variant asserting the same one verb, a 44px repair target and no horizontal document scroll.",
+      "UX audit E1 (reports/agents-lane/DESIGN.md §2/§5): the Agents rail as a readiness board against a live Station — the engines band above the authored band, a non-ready row printing the server's own unavailableReason verbatim with exactly one fixing verb mapped from unavailableFix.kind and never identifying the missing engine by its connection id (archive#3742), and a Ready row whose Chat action opens the shared New Chat picker onto a real composer. The non-ready row is seeded by binding an agent to an engine connection that does not exist, so the state is an observation rather than a mocked string. Desktop plus a 390x844 variant asserting the same one verb, a 44px repair target and no horizontal document scroll.",
     exceptions: [],
   },
   {
@@ -1172,7 +1172,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "The two gate facts no sibling Agents spec can see, against the real API rather than mocked routes: the Create gate and the model picker giving ONE answer with the connections query deliberately delayed past the starting-point click, which is the state-dependent disagreement station#3743 records; and the required system prompt marked and gating Create instead of refusing after submit (station#3741). agents-new-model-turn owns the ready-connection wait and its inline repair, agents-editor-roundtrip the mobile sticky footer, agents-readiness-board the rail's readiness sentence and that an unavailable engine is never identified by its connection id (station#3742).",
+      "The two gate facts no sibling Agents spec can see, against the real API rather than mocked routes: the Create gate and the model picker giving ONE answer with the connections query deliberately delayed past the starting-point click, which is the state-dependent disagreement archive#3743 records; and the required system prompt marked and gating Create instead of refusing after submit (archive#3741). agents-new-model-turn owns the ready-connection wait and its inline repair, agents-editor-roundtrip the mobile sticky footer, agents-readiness-board the rail's readiness sentence and that an unavailable engine is never identified by its connection id (archive#3742).",
     exceptions: [],
   },
   {

@@ -134,7 +134,7 @@ function extractBalancedBody(source: string, anchor: string): string {
  * the fork path is not, because a fork starts from a transcript action that
  * harness stands in for.
  */
-describe('ChatDock project-binding wiring (station#4525)', () => {
+describe('ChatDock project-binding wiring (archive#4525)', () => {
   // archive#4525: a fork is none of the three things the
   // DeviceSettings docblock names as legitimate binding-change triggers
   // (an explicit picker pick, an explicit new-chat project choice, or
