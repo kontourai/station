@@ -33,6 +33,7 @@ import { readPluginManifestFile } from '../../../services/plugins/plugin-manifes
 import { readPluginDependencyOwnership } from '../../../services/plugins/plugin-permissions.js';
 import { fetchPluginSource } from '../../../services/plugins/plugin-source.js';
 import { execGitSync } from '../../../utils/git-exec.js';
+import { registerPluginConfigRoutes } from '../plugin-config-routes.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 
 const cleanupDirs: string[] = [];
@@ -510,6 +511,105 @@ test('a legacy parent’s local portable dependency with a root .git installs as
   expect(
     readPluginDependencyOwnership(root, 'parent').map((entry) => entry.id),
   ).toEqual(['child']);
+});
+
+test('a legacy parent’s consented provider dependency lists its settings and a pending providers.register grant, and leaves the list with its parent', async () => {
+  // The provider dependency asks for providers.register through its preview
+  // consent. Consent admits the install; it does not grant provider
+  // activation, so the inventory must show that grant as missing rather than
+  // loading the provider (its factory throws if anything ever does).
+  const root = tempDir('station-legacy-provider-dependency-');
+  mkdirSync(join(root, 'plugins'));
+  const parent = join(root, 'parent-source');
+  const provider = join(root, 'provider-source');
+  writePlugin(parent, {
+    name: 'parent',
+    version: '1.0.0',
+    dependencies: [{ id: 'provider', source: '../provider-source' }],
+  });
+  writePlugin(provider, {
+    name: 'provider',
+    version: '1.0.0',
+    settings: [{ key: 'fixtureLabel', label: 'Fixture label', type: 'text' }],
+    providers: [{ type: 'auth', module: './provider.js' }],
+  });
+  writeFileSync(
+    join(provider, 'provider.js'),
+    "export default function create() { throw new Error('unapproved provider activated'); }\n",
+  );
+  const store = new EventStore(join(root, 'events.sqlite'));
+  packageStores.push(store);
+  const installDeps = {
+    ...deps(root),
+    packageMcpJournal: store.createPackageMcpAdmissionJournal(),
+  };
+  const app = new Hono();
+  registerPluginInstallRoutes(app, {
+    ...installDeps,
+    projectVisiblePlugins: () => (installed) => installed,
+  });
+  registerPluginConfigRoutes(app, installDeps);
+  const preview = (await (
+    await app.request('/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: parent }),
+    })
+  ).json()) as any;
+  expect(preview, JSON.stringify(preview)).toMatchObject({
+    valid: true,
+    dependencies: [
+      expect.objectContaining({
+        id: 'provider',
+        consent: expect.objectContaining({
+          permissions: expect.arrayContaining(['providers.register']),
+        }),
+      }),
+    ],
+  });
+  await installPluginFromSource(parent, [], installDeps, {
+    consent: {
+      kind: 'operator-decision',
+      permissions: preview.permissions.required,
+      contentDigest: preview.contentDigest,
+      dependencies: preview.dependencies.map((entry: any) => entry.id),
+      dependencyApprovals: preview.dependencies.map((entry: any) => ({
+        id: entry.id,
+        permissions: entry.consent.permissions,
+        contentDigest: entry.consent.contentDigest,
+        dependencies: entry.consent.dependencies,
+      })),
+    },
+  });
+  const listed = async () =>
+    ((await (await app.request('/')).json()) as any).plugins as Array<{
+      name: string;
+      hasSettings: boolean;
+      permissions: {
+        granted: string[];
+        missing: Array<{ permission: string }>;
+      };
+    }>;
+  const installed = await listed();
+  expect(installed.map((plugin) => plugin.name).sort()).toEqual([
+    'parent',
+    'provider',
+  ]);
+  const providerRow = installed.find((plugin) => plugin.name === 'provider')!;
+  expect(providerRow.hasSettings).toBe(true);
+  expect(providerRow.permissions.granted).not.toContain('providers.register');
+  expect(providerRow.permissions.missing).toContainEqual(
+    expect.objectContaining({ permission: 'providers.register' }),
+  );
+  const settings = await app.request('/provider/settings');
+  expect(settings.status).toBe(200);
+  expect(((await settings.json()) as any).schema).toContainEqual(
+    expect.objectContaining({ key: 'fixtureLabel', type: 'text' }),
+  );
+
+  await uninstallInstalledPlugin('parent', installDeps);
+  expect(await listed()).toEqual([]);
+  expect((await app.request('/provider/settings')).status).toBe(404);
 });
 
 test('retained diamond recovery checks every version edge before deduplicating shared dependencies', async () => {

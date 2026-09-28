@@ -235,8 +235,6 @@ describe('e2e manifest', () => {
       'tests/plugin-preview.spec.ts',
       'tests/plugin-rejection-visibility.spec.ts',
       'tests/workspace-search-exact-message.spec.ts',
-      'tests/plugin-system.spec.ts',
-      'tests/plugin-dependency-lifecycle.spec.ts',
       'tests/survey-review-workbench.spec.ts',
       'tests/fieldwork-review.spec.ts',
       'tests/plugin-dev-hot-reload.spec.ts',
@@ -267,7 +265,7 @@ describe('e2e manifest', () => {
   it('partitions focused product selections without losing manifest order', () => {
     expect(
       getProductE2EExecutionPhases([
-        'tests/plugin-system.spec.ts',
+        'tests/plugin-preview.spec.ts',
         'tests/task-first-home.spec.ts',
         'tests/command-palette.spec.ts',
       ]),
@@ -283,7 +281,7 @@ describe('e2e manifest', () => {
       {
         name: 'shared-instance-exclusive',
         workers: 1,
-        specs: ['tests/plugin-system.spec.ts'],
+        specs: ['tests/plugin-preview.spec.ts'],
       },
     ]);
   });
