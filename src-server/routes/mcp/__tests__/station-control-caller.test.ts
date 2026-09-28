@@ -35,7 +35,6 @@ import {
   __resetStationControlMcpTokensForTests,
   DEFAULT_TTL_MS,
   mintStationControlMcpToken,
-  mintStationControlStdioCallerToken,
   revokeStationControlMcpToken,
 } from '../../../runtime/mcp/station-control-mcp-token.js';
 import {
@@ -445,6 +444,10 @@ const internalHeaders = () => ({
   [INTERNAL_PROXY_CALLER_HEADER]: 'local',
 });
 
+/** A `stdio-env-token` credential, the channel a stdio child reads from its env. */
+const stdioToken = (sessionId: string) =>
+  mintStationControlMcpToken(sessionId, 'stdio-env-token').token;
+
 describe('station-control verified caller (HTTP MCP)', () => {
   test('an HTTP-MCP tool call observes the verified caller, and a REST call made from inside it observes the same caller; forged sessionId/userId/principal arguments and identity headers are ignored', async () => {
     const { token } = mintStationControlMcpToken('session-a', 'url-token');
@@ -484,7 +487,7 @@ describe('station-control verified caller (HTTP MCP)', () => {
   });
 
   test('the MCP route refuses stdio-env and in-process tokens: neither channel ever dials it', async () => {
-    const stdio = mintStationControlStdioCallerToken('session-a');
+    const stdio = stdioToken('session-a');
     expect((await mcp(stdio, 1, 'initialize')).status).toBe(401);
     const inProcess = mintStationControlMcpToken('session-b', 'sdk-in-process');
     expect((await mcp(inProcess.token, 1, 'initialize')).status).toBe(401);
@@ -685,7 +688,7 @@ describe('station-control verified caller (stdio child path)', () => {
     // Runs the exact module code a stdio child runs: no AsyncLocalStorage
     // context, credential installed from the spawn env.
     process.env.STATION_API_BASE = baseUrl;
-    const token = mintStationControlStdioCallerToken('session-b');
+    const token = stdioToken('session-b');
     const env: NodeJS.ProcessEnv = {
       [STATION_CONTROL_CALLER_TOKEN_ENV]: token,
     };
@@ -761,7 +764,7 @@ describe('stdio caller token lifetime', () => {
     const minted = Date.now();
     const now = vi.spyOn(Date, 'now').mockReturnValue(minted);
     try {
-      const token = mintStationControlStdioCallerToken('session-a');
+      const token = stdioToken('session-a');
       installStationControlStdioCallerCredential({
         [STATION_CONTROL_CALLER_TOKEN_ENV]: token,
       });
@@ -1063,7 +1066,7 @@ describe('agent-started child sessions (security review B2, D1, D2, D3)', () => 
     process.env.STATION_API_BASE = baseUrl;
     installStationControlStdioCallerCredential({
       [STATION_CONTROL_CALLER_TOKEN_ENV]:
-        mintStationControlStdioCallerToken('session-a'),
+        stdioToken('session-a'),
     });
     await api('/api/orchestration/delegations', {
       method: 'POST',
