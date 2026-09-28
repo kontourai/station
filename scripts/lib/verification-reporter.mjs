@@ -18,6 +18,7 @@ import receiptSchema from '../../schemas/verification-receipt.schema.json' with 
   type: 'json',
 };
 import { withoutAnsi } from './ansi-escape.mjs';
+import { CI_FAST_STEP_MARKER_PATTERN } from './ci-fast-step-marker.mjs';
 import { writeReceiptSecurely } from './test-reliability.mjs';
 import {
   releaseVerificationArtifactMutation,
@@ -626,12 +627,18 @@ function slowDuration(line) {
 // step's diagnostic-shaped output -- a Biome warning line, say -- from
 // outranking the real failure a later step emits (station#3189, and the same
 // defect reported earlier as station#1871).
+//
+// A direct `node scripts/...` step prints no such header, so `ci:fast` marks
+// every step it runs itself (`scripts/lib/ci-fast-step-marker.mjs`); without
+// that, a failing direct step was blamed on the npm step before it.
 const NPM_RUN_STEP_HEADER = /^> \S+@\S+\s+([\w][\w:.,-]*)$/;
 
-function lastNpmRunStepBoundary(lines) {
+function lastStepBoundary(lines) {
   let boundary = null;
   for (let index = 0; index < lines.length; index += 1) {
-    const match = NPM_RUN_STEP_HEADER.exec(lines[index]);
+    const match =
+      NPM_RUN_STEP_HEADER.exec(lines[index]) ??
+      CI_FAST_STEP_MARKER_PATTERN.exec(lines[index]);
     if (match) boundary = { index, step: match[1] };
   }
   return boundary;
@@ -1101,7 +1108,7 @@ export function summarizeVerificationOutput({
     .split(/\r?\n/)
     .filter(Boolean);
   const lines = [...stdoutLines, ...stderrLines];
-  const stepBoundary = lastNpmRunStepBoundary(stdoutLines);
+  const stepBoundary = lastStepBoundary(stdoutLines);
   // STDOUT can be attributed: everything after the last header was produced by
   // the step that was still running at exit.
   const scopedStdout = stepBoundary

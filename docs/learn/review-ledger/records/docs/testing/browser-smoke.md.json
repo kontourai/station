@@ -20,7 +20,7 @@
 
     {"path":"scripts/__tests__/e2e-manifest.test.ts","digest":"117cf89146518ac74ddfc9befe51172135b198266eb372f83e308e9a1f57e94a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"2f28943e864a5eea369b11fba6e2cd5741bd7cc8979a3f20034679e0421b339d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
     {"path":"scripts/critical-browser-reporter.mjs","digest":"fa41f65ec79861edeb1cec7d9b9874f561af1912d4b2ef5bbde3841843baf2b6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

@@ -12,7 +12,7 @@
   "document": {"digest":"558526e5704b5514422d0f3edcf456ff6a87d424079ed291e6432224ce290af0","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 
   "sources": [
-    {"path":"scripts/__tests__/changed-verification.test.ts","digest":"e3312055e67b0b484e7e8d1013f808d9b3a33d9b85efef7612765ec24c3859b6","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+    {"path":"scripts/__tests__/changed-verification.test.ts","digest":"3cbddd65d8e3d23de2bc72565ccdf0d5f5226319a2f4d182f20d1c66b5bdf2bd","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
 
     {"path":"scripts/__tests__/fixtures/changed-verification/scenarios.json","digest":"2907f43f933ad105cbd3d77eb4c41bbc4883115e8cbc233ff9f6eb5867a17b48","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
 

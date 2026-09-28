@@ -44,7 +44,7 @@
 
     {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"f0376c008b04dedfd81e4e52b4198c463b57fe70d37de1cb6541fc1baad6ee9d","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"2f28943e864a5eea369b11fba6e2cd5741bd7cc8979a3f20034679e0421b339d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
     {"path":"scripts/cli-agent-e2e.mjs","digest":"d08c8d36c33e9ed6e682817bca9ef214d8a77b286c7cb426f9a82747f8e6d217","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -64,7 +64,7 @@
 
     {"path":"scripts/prepare-verify-static.mjs","digest":"fdfb52b1da5d1d22e155f8d1d681c9847f3076549b4d7997d3c0c3a1bf713c2d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/run-ci-fast.mjs","digest":"eb8fbe81fbd90e279711f64b1cb40ad28a49625b14dc619a68b12d338271ac54","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/run-ci-fast.mjs","digest":"9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
     {"path":"scripts/run-focused-tests.mjs","digest":"7587827cfbb7d8f6cde2181a8a0e392a4788acad7df3e69c5155ff849abea79c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 

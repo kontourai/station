@@ -9,7 +9,7 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
 
-  "document": {"digest":"c1561e1356529f776d9a4ee0728f3a15780417a527d9e8ea1931c5227e777564","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+  "document": {"digest":"96a55448c92106cb87224425635a37fa97882c1c52da11aa3a1fe31a7e56cbba","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
   "sources": [
     {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
@@ -36,11 +36,11 @@
 
     {"path":".veritas/repo-standards/default.repo-standards.json","digest":"739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"AGENTS.md","digest":"f36e98bb2ed75610e96f64267428f1e0e05edf017a91e51e8ac9a509125d3df0","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"AGENTS.md","digest":"f5409d83bf1c7772c37b3738209f5f8a4602d8f29ead5fb9f7f8918bc9929c8c","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
     {"path":"docs/guides/documentation.md","digest":"2aa944283e4ea545dddd7a3e156f0b6960c84bad47131639e9509acb2d72697a","revision":"294167795ff5e2a3e374d80411e081275d9adef9"},
 
-    {"path":"docs/guides/testing.md","digest":"520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"docs/guides/testing.md","digest":"98eea5a77a16fcc0e256c11d1f5dbf92710df700a5cbd046e2c1e2451c64d663","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
     {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
@@ -50,7 +50,7 @@
 
     {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"f0376c008b04dedfd81e4e52b4198c463b57fe70d37de1cb6541fc1baad6ee9d","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"2f28943e864a5eea369b11fba6e2cd5741bd7cc8979a3f20034679e0421b339d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
     {"path":"scripts/cli-agent-e2e.mjs","digest":"d08c8d36c33e9ed6e682817bca9ef214d8a77b286c7cb426f9a82747f8e6d217","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -70,7 +70,7 @@
 
     {"path":"scripts/prepare-verify-static.mjs","digest":"fdfb52b1da5d1d22e155f8d1d681c9847f3076549b4d7997d3c0c3a1bf713c2d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/run-ci-fast.mjs","digest":"eb8fbe81fbd90e279711f64b1cb40ad28a49625b14dc619a68b12d338271ac54","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/run-ci-fast.mjs","digest":"9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
     {"path":"scripts/run-focused-tests.mjs","digest":"7587827cfbb7d8f6cde2181a8a0e392a4788acad7df3e69c5155ff849abea79c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 

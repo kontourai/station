@@ -98,7 +98,7 @@
 
     {"path":"src-server/services/scheduling/builtin-scheduler-execution.ts","digest":"8285244d8cc76f2500ed6aacec1dc5589e05d3e1c55d79c0a349dcbc6bc5c76a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 
-    {"path":"src-server/tools/__tests__/station-docs-mcp-server.test.ts","digest":"5191f8493c39b336abdb999ebbf4c96ab11a1fd9266a7d155af4c9b956b53a6f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+    {"path":"src-server/tools/__tests__/station-docs-mcp-server.test.ts","digest":"2cc2af3a7bedebbbbcdd46a4815c6c80a41d24499be7ac9e82a63fb4180b7b44","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
     {"path":"src-server/tools/station-browser-mcp-server.ts","digest":"52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
 

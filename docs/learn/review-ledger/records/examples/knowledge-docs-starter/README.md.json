@@ -9,7 +9,7 @@
 
   "limits": "EXECUTED PASS: public plugin build. GitHub issue 268 was read and confirmed closed as batched into 570; the explicit current-repository URL is correct. No live model invocation, real document retrieval or answer-quality evidence.",
 
-  "document": {"digest":"51c92abbcd0e29c891baa06fadfd6065602d0431fc8084195dba510bd6a3c4bb","revision":"e464b70652dade22324fda9d6111f49082e80df3"},
+  "document": {"digest":"75285d1e90058ea4e6cb084057f98c5f4ca2b5f05c793fd9c35eb30e82ce75f5","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
   "sources": [
     {"path":"examples/knowledge-docs-starter/layout.json","digest":"1f39626634569aafc66ea649f1283cf71dab8f9955865a7238a2012c44ea2abe","revision":"e464b70652dade22324fda9d6111f49082e80df3"},

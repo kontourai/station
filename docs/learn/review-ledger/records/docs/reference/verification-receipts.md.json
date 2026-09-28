@@ -9,7 +9,7 @@
 
   "limits": "Historical redaction sweep counts and release incidents are retained observations, not rerun measurements. Source/focused evidence does not establish a new full-regression or hosted promotion receipt.",
 
-  "document": {"digest":"40c0d99d7078ddf93c5b3a0ac777d239bea9e7653524db53b7444fc82c4155e1","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+  "document": {"digest":"ff74bf1de7043ac6706c6e252e7e5cac78469dfecd92a760e2f44826212d62bd","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
   "sources": [
     {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -26,7 +26,7 @@
 
     {"path":"scripts/lib/verification-redaction.mjs","digest":"f7214a9928f8d2dd90950efa8ab72f57df9915316851113a4a28cccebb1e3726","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/lib/verification-reporter.mjs","digest":"095bb2104f3d08d17a3676660a2981ac6ad8e25b5e05e7af7ed0d47a9c3c8db2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/lib/verification-reporter.mjs","digest":"4b37b2cac52ce0d2dc2f55f2bf382f980d9addae087702c4ea1fa07d0cc16070","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
 
     {"path":"scripts/lib/verification-retention-inventory.mjs","digest":"e54cb647b5a480255133a204369accd8a419ecc06d9a4a1183deb4fd998b016a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

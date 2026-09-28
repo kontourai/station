@@ -18,7 +18,7 @@
 
     {"path":"scripts/check-changesets.mjs","digest":"715f234b8c8e740728db04e91df3245c6c54780dbbf1b5efe9b48f9a94b96550","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/run-ci-fast.mjs","digest":"eb8fbe81fbd90e279711f64b1cb40ad28a49625b14dc619a68b12d338271ac54","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"scripts/run-ci-fast.mjs","digest":"9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"}
   ],
 
   "checks": [

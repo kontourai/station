@@ -9,7 +9,7 @@
 
   "limits": "Full reading and bounded source review are not all-platform execution or universal semantic certification. No hosted CI, cloud, release or real provider/device proof. Protected policy activation is limited to the approved documentation additions in this branch.",
 
-  "document": {"digest":"520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+  "document": {"digest":"98eea5a77a16fcc0e256c11d1f5dbf92710df700a5cbd046e2c1e2451c64d663","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
 
   "sources": [
     {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
@@ -46,7 +46,7 @@
 
     {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"f0376c008b04dedfd81e4e52b4198c463b57fe70d37de1cb6541fc1baad6ee9d","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"2f28943e864a5eea369b11fba6e2cd5741bd7cc8979a3f20034679e0421b339d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"3de2360a632570b4e567c8397ce0b7388512b50fb17b6bdffbb10230babdbc35","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
 
     {"path":"scripts/cli-agent-e2e.mjs","digest":"d08c8d36c33e9ed6e682817bca9ef214d8a77b286c7cb426f9a82747f8e6d217","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -66,7 +66,7 @@
 
     {"path":"scripts/prepare-verify-static.mjs","digest":"fdfb52b1da5d1d22e155f8d1d681c9847f3076549b4d7997d3c0c3a1bf713c2d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/run-ci-fast.mjs","digest":"eb8fbe81fbd90e279711f64b1cb40ad28a49625b14dc619a68b12d338271ac54","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/run-ci-fast.mjs","digest":"9bb2bc8250a117ba45d8433cd353d22195cfca26f6c96e30e3358ca392b61a4d","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
 
     {"path":"scripts/run-focused-tests.mjs","digest":"7587827cfbb7d8f6cde2181a8a0e392a4788acad7df3e69c5155ff849abea79c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -94,7 +94,7 @@
 
     {"path":"scripts/test-impact-manifest.mjs","digest":"f8f251204e7567b245f3797c4fa6e86bbd10bb73219af108fd7bf7ab5ba11e90","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"c07e3e1ab3e7a9654b68316e817e95fe7a403ea5b1f9f643ea26e5d7c3a242ac","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"5638911fd695344c0aaf5e24464e8e23c236e383da9d38354b0735410b8999bf","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
 
     {"path":"scripts/__tests__/portable-server-archive.test.ts","digest":"080cf7aa36c4680b1a4e296ae8aa96b83ee57a84c71c61c225a074e9e3468b4a","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -102,7 +102,7 @@
 
     {"path":"scripts/run-changed-verification.mjs","digest":"2b8be667f2da430df0f58ebd4d475a665ab037bcc471073bebbeca0c8f6ccfae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/__tests__/changed-verification.test.ts","digest":"e3312055e67b0b484e7e8d1013f808d9b3a33d9b85efef7612765ec24c3859b6","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/__tests__/changed-verification.test.ts","digest":"3cbddd65d8e3d23de2bc72565ccdf0d5f5226319a2f4d182f20d1c66b5bdf2bd","revision":"a492cba4e1bec65beda3916a70eed4588e3f85d7"},
 
     {"path":"scripts/__tests__/fast-checks-shard-cli.test.ts","digest":"037b1bd06551519a7bbb62f72a829374b4f8de3714492f9689af5341b73ca296","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 

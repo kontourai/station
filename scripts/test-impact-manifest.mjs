@@ -2,6 +2,7 @@ import {
   invertPathReadPins,
   scanPathReadPins,
 } from './lib/path-read-pin-scan.mjs';
+import { spawnedScriptDependents } from './lib/spawned-script-scan.mjs';
 
 /**
  * E2E contract seams that Vitest import analysis cannot safely infer. Keep
@@ -426,6 +427,8 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'scripts/__tests__/android-firebase-workflow-env.test.ts',
       'scripts/__tests__/android-network-policy.test.ts',
       'scripts/__tests__/backlog-priority-policy.test.ts',
+      // Derives the event-scoped env scrub list from the workflows (#2922).
+      'scripts/__tests__/ci-event-environment.test.ts',
       'scripts/__tests__/ci-workflow-contract.test.ts',
       'scripts/__tests__/ci-workflow-governance.test.ts',
       'scripts/__tests__/container-release.test.ts',
@@ -1848,15 +1851,79 @@ export function pathReadPinEdges({ root = process.cwd(), entries } = {}) {
 }
 
 /**
- * The committed manifest plus the pin edges derived from the working tree.
- * `runChangedVerification` selects against this; the exported constant stays
+ * Reason recorded on every derived spawned-script edge (#2922).
+ */
+const SPAWNED_SCRIPT_DEPENDENCY_REASON =
+  'a test spawns a script that imports this file, directly or ' +
+  'transitively, outside the import graph Vitest sees (#2922)';
+
+const spawnedScriptEdgeCache = new Map();
+
+/**
+ * Impact edges derived from the tests that run `scripts/*.mjs` as a child
+ * process (`scripts/lib/spawned-script-scan.mjs`).
+ *
+ * A test that spawns a script has no import edge to it, and so none to the
+ * modules the script imports either: `vitest related` cannot schedule it for
+ * a change to either. `SPAWNED_SCRIPT_EDGES` above hand-lists a few of those
+ * scripts and nothing they import, which is how a change to
+ * `scripts/lib/learning-markdown.mjs` left `guardrail-process-boundary.test.ts`
+ * (it spawns `check-markdown-links.mjs`, which imports that module) to fail
+ * first in the merge queue (#2886). These edges follow the script's own
+ * relative imports, so every file the spawned script reaches selects the
+ * spawning test.
+ *
+ * Same contract as `pathReadPinEdges`: every edge is `supplemental`, so it
+ * only ADDS tests and never changes a path's boundary, escalation or related
+ * selection; tests Vitest cannot run (`tests/`) are filtered; a path that
+ * must own exactly one edge is skipped. Derived at gate time and kept out of
+ * `laneManifestDigest` for the same reason.
+ *
+ * @param {{
+ *   root?: string,
+ *   entries?: readonly { test: string, scripts: readonly string[] }[],
+ * }} [options] `entries` substitutes a spawn scan, for tests.
+ * @returns {readonly ImpactEdge[]}
+ */
+export function spawnedScriptEdges({ root = process.cwd(), entries } = {}) {
+  const cacheable = entries === undefined;
+  const cached = cacheable ? spawnedScriptEdgeCache.get(root) : undefined;
+  if (cached) return cached;
+  const edges = Object.freeze(
+    spawnedScriptDependents({ root, entries }).flatMap(({ path, tests }) => {
+      if (UNIQUE_IMPACT_PATTERNS.has(path)) return [];
+      const schedulable = tests.filter(
+        (test) => !VITEST_INELIGIBLE_TEST.test(test),
+      );
+      if (!schedulable.length) return [];
+      return [
+        Object.freeze({
+          pattern: path,
+          supplemental: true,
+          tests: Object.freeze(schedulable),
+          reason: SPAWNED_SCRIPT_DEPENDENCY_REASON,
+        }),
+      ];
+    }),
+  );
+  if (cacheable) spawnedScriptEdgeCache.set(root, edges);
+  return edges;
+}
+
+/**
+ * The committed manifest plus the pin and spawned-script edges derived from
+ * the working tree. `runChangedVerification` selects against this; the exported constant stays
  * static for the consumers that need a stable, tree-independent value.
  *
  * @param {Parameters<typeof pathReadPinEdges>[0]} [options]
  * @returns {readonly ImpactEdge[]}
  */
 export function buildTestImpactManifest(options) {
-  return Object.freeze([...TEST_IMPACT_MANIFEST, ...pathReadPinEdges(options)]);
+  return Object.freeze([
+    ...TEST_IMPACT_MANIFEST,
+    ...pathReadPinEdges(options),
+    ...spawnedScriptEdges({ root: options?.root }),
+  ]);
 }
 
 export function matches(pattern, path) {

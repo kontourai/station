@@ -68,6 +68,7 @@ import {
   PATH_READ_PIN_BOUNDARY_TEST,
   pathReadPinEdges,
   REPO_SCAN_SUITES,
+  spawnedScriptEdges,
   TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
@@ -100,6 +101,9 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Reads each workflow from a directory listing; the .github/workflows/**
+  // impact edge selects it (#2922).
+  'scripts/__tests__/ci-event-environment.test.ts',
   'packages/cli/src/__tests__/dev-security.test.ts',
   'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts',
   'packages/contracts/src/__tests__/flow-agents-vocabulary-drift.test.ts',
@@ -493,6 +497,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'walks its own fixture directory',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
+  'scripts/__tests__/ci-event-environment.test.ts':
+    'lists .github/workflows; the .github/workflows/** edge selects it',
   'packages/cli/src/__tests__/profile.test.ts':
     'lists the saved Station store directory under its temporary STATION_HOME',
   'packages/sdk/src/__tests__/client-entry-portability.test.ts':
@@ -766,7 +772,12 @@ describe('derived pin edges only add to selection', () => {
     expect(built.slice(0, TEST_IMPACT_MANIFEST.length)).toEqual(
       TEST_IMPACT_MANIFEST,
     );
-    expect(built.length).toBe(TEST_IMPACT_MANIFEST.length + derived.length);
+    // #2922: the spawned-script edges follow the pin edges.
+    expect(built.length).toBe(
+      TEST_IMPACT_MANIFEST.length +
+        derived.length +
+        spawnedScriptEdges({ root: ROOT }).length,
+    );
     expect(derived.length).toBeGreaterThan(40);
   });
 

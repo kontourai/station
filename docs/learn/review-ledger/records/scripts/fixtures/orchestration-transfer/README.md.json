@@ -16,7 +16,7 @@
 
     {"path":"scripts/orchestration-transfer-capture.ts","digest":"7107a7dc69364236ebea29d3daa7fba149c735b245671eebf0e033c99293eab8","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
 
-    {"path":"scripts/orchestration-transfer-gate.mjs","digest":"f0809c17d88b7abbdbf1e88ab04f98bddebabd8c426db9891763cd76474ac7d5","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"}
+    {"path":"scripts/orchestration-transfer-gate.mjs","digest":"717c7650d88da22c743c77f16735428aebc6a2521c6d0a0c1547f6a02fadeb9a","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"}
   ],
 
   "checks": [
