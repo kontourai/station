@@ -138,7 +138,6 @@
     "scripts/__tests__/ios-local-release-preflight.test.ts": 1,
     "scripts/__tests__/ios-store-signing-config.test.ts": 3,
     "scripts/__tests__/knowledge-kit-import-gate.test.ts": 1,
-    "scripts/__tests__/literal-swap-gate.test.ts": 2,
     "scripts/__tests__/load-reliability.test.ts": 2,
     "scripts/__tests__/local-collaboration-lab.test.ts": 1,
     "scripts/__tests__/local-collaboration-station-config.test.ts": 1,
