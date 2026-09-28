@@ -146,7 +146,7 @@ export class NativeDeviceProofOperatorAuthority {
   }
 }
 
-export class NativeDeviceProofOperatorApprovalContext {
+class NativeDeviceProofOperatorApprovalContext {
   readonly operatorPrincipalId: string;
   readonly approvalId: string;
   readonly approvedAt: number;
@@ -251,7 +251,7 @@ function cloneBinding(stored: StoredBinding): NativeDeviceProofBinding {
 }
 
 /** RFC 7638 SHA-256 thumbprint over the canonical P-256 member set. */
-export function p256Thumbprint(jwk: NativeDeviceProofPublicJwk): string {
+function p256Thumbprint(jwk: NativeDeviceProofPublicJwk): string {
   const canonical = JSON.stringify({
     crv: jwk.crv,
     kty: jwk.kty,
@@ -261,7 +261,7 @@ export function p256Thumbprint(jwk: NativeDeviceProofPublicJwk): string {
   return createHash('sha256').update(canonical).digest('base64url');
 }
 
-export class NativeDeviceProofBindingStore {
+class NativeDeviceProofBindingStore {
   readonly #filePath: string;
   #bindings: StoredBinding[] | null;
 
