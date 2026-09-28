@@ -732,6 +732,22 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
       ).toBe(true);
       expect((await send()).setApprovalMode).toBeUndefined();
     });
+
+    test('#1796: the note is the Station’s own refusal, naming the device and the grant command', async () => {
+      startedSession();
+      const refusal =
+        'Full access was not applied. You asked for full access, but only this Station\'s operator can allow it, for device "Laptop CLI" (ffb80147). Ask the operator to add the approval:full-access scope to it: on the Station\'s host, run: station environment access scope ffb80147 --add approval:full-access.';
+      setOrchestrationApprovalMode.mockRejectedValueOnce(
+        Object.assign(new Error(refusal), {
+          code: 'approval-full-access-not-granted',
+        }),
+      );
+      const { pick } = renderComposer();
+      await pick('never');
+      expect(
+        (chat().ephemeralMessages ?? []).map((message) => message.content),
+      ).toContain(refusal);
+    });
   });
 
   test('a refused full access shows it needs a restart, and nothing is resent', async () => {
