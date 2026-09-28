@@ -101,12 +101,105 @@ export function setRuntimeAuthenticatedRequestPrincipal(
   request: Request,
   principal: RuntimeAuthenticatedRequestPrincipal,
 ): void {
+  // Mutual exclusion on one Request: binding a credential principal
+  // withdraws any native-device-proof principal (see #2893 seam).
+  nativeDeviceProofPrincipals.delete(request);
   authenticatedRequestPrincipals.set(request, Object.freeze({ ...principal }));
 }
 export function getRuntimeAuthenticatedRequestPrincipal(
   request: Request,
 ): RuntimeAuthenticatedRequestPrincipal | undefined {
   return authenticatedRequestPrincipals.get(request);
+}
+
+// ── RuntimeNativeDeviceProofPrincipal (#2893, inert foundation) ─────────────
+//
+// A SEPARATE server-minted principal for a proven native Device binding. It
+// is deliberately NOT a RuntimeAuthenticatedRequestPrincipal: it carries NO
+// `credential` string, no locality/mintKind, and no bearer/session source.
+// Its authority is the distinct `kind: 'native-device-proof'` discriminant,
+// so no credential-only helper can ever receive native authority by shape.
+
+export interface RuntimeNativeDeviceProofPrincipal {
+  /** Distinct authority/source discriminant; never a credential bearer. */
+  readonly kind: 'native-device-proof';
+  /** Server-resolved exact Device identity; never request supplied. */
+  readonly deviceId: string;
+  /** Server-resolved exact native binding identity. */
+  readonly bindingId: string;
+  /** The exact approved native surface this proof authorizes. */
+  readonly approvedSurface: string;
+  /**
+   * Server-owned current-authority recheck. Callers must treat any `false`
+   * (or a throw) as stale and fail closed; the binding is re-proved at the
+   * seam that minted this principal.
+   */
+  readonly isCurrent: () => boolean;
+}
+
+const nativeDeviceProofPrincipals = new WeakMap<
+  Request,
+  RuntimeNativeDeviceProofPrincipal
+>();
+
+export function setRuntimeNativeDeviceProofPrincipal(
+  request: Request,
+  principal: RuntimeNativeDeviceProofPrincipal,
+): void {
+  // Mutual exclusion on one Request: binding a native proof withdraws any
+  // credential principal and vice versa — a request never carries both.
+  authenticatedRequestPrincipals.delete(request);
+  nativeDeviceProofPrincipals.set(request, Object.freeze({ ...principal }));
+}
+
+export function getRuntimeNativeDeviceProofPrincipal(
+  request: Request,
+): RuntimeNativeDeviceProofPrincipal | undefined {
+  return nativeDeviceProofPrincipals.get(request);
+}
+
+/**
+ * Explicit trusted transfer for bounded Request replacement (the server
+ * substituting an equivalent Request object mid-pipeline). Copies ONLY the
+ * already-minted, server-owned frozen principal — never client headers,
+ * never a re-derivation — and removes it from the replaced Request so the
+ * old object cannot keep speaking for the binding. A structurally cloned
+ * Request never inherits anything: authority is WeakMap-keyed to the exact
+ * object, so a clone starts unauthenticated.
+ */
+export function transferRuntimeNativeDeviceProofPrincipal(
+  from: Request,
+  to: Request,
+): boolean {
+  const principal = nativeDeviceProofPrincipals.get(from);
+  if (!principal) return false;
+  nativeDeviceProofPrincipals.delete(from);
+  authenticatedRequestPrincipals.delete(to);
+  nativeDeviceProofPrincipals.set(to, principal);
+  return true;
+}
+
+/**
+ * Fail-closed currentness check. Absent principal, a `false` recheck, or a
+ * throwing recheck all mean "not current"; nothing here upgrades to true.
+ *
+ * Composition gap (deliberate, #2893): there is NO unified
+ * credential-or-native getter yet. `getRuntimeAuthenticatedRequestPrincipal`
+ * keeps returning only credential principals, so every existing
+ * credential-only helper (delegation resolution, scope checks, budget
+ * derivation, `isRuntimeRequestPrincipalCurrent`) refuses native authority
+ * by construction. When a unified getter is introduced it must be a typed
+ * discriminated union — it must NOT fabricate a credential string or a
+ * bearer descriptor for a native principal.
+ */
+export function isRuntimeNativeDeviceProofCurrent(request: Request): boolean {
+  const principal = nativeDeviceProofPrincipals.get(request);
+  if (!principal) return false;
+  try {
+    return principal.isCurrent() === true;
+  } catch {
+    return false;
+  }
 }
 
 /**
