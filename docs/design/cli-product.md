@@ -12,7 +12,10 @@ steps, and open questions below describe the original proposal. Current
 [bundle configuration](../../packages/cli/esbuild.config.mjs), and
 [portable installer](../../install.sh) have changed since those measurements.
 The CLI now declares a native keyring dependency as well as its optional
-esbuild peer; portable installs use the managed dependency runner. Read the
+esbuild peer. Source-release installs use the managed dependency runner;
+platform-v2 public manifests install prebuilt archives without a host build,
+using the archive's bundled Node.js. Installer-owned archives support
+`station upgrade` through their recorded installer and manifest URL. Read the
 [CLI reference](../reference/cli.md) for supported commands and prerequisites.
 
 ## The premise was wrong

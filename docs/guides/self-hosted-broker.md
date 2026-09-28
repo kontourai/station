@@ -131,6 +131,12 @@ the renderer does not supply trusted keyring identity. Profile removal and
 startup also have pending-cleanup hooks. These capabilities still do not select
 a native application route or carry protected application traffic.
 
+The separate [desktop account proof-key foundation](../design/native-capabilities.md#desktop-account-proof-key-foundation)
+uses its own keyring namespace, additionally bound to a Station and approved
+Device identity. It has no Tauri IPC or production sign-in caller yet. The
+broker's routing proof key and grant maintenance do not become account proof
+or account authority through that foundation.
+
 Host renewal records its renewal ID, expected expiry and exact body in private
 grant custody before sending the request. A lost reply reuses that intent with
 a fresh request proof. Profile/trust/grant identity is checked again before

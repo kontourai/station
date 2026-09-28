@@ -18,21 +18,26 @@ The [cask renderer](../../packaging/homebrew/README.md) requires a schema-v1
 manifest with a macOS artifact. Rendering a cask does not create a tap or install
 an app.
 
-There are two different payloads labelled schema v2 in the current code.
-`install.sh` accepts the older source-archive shape, with `artifacts.portable`
-naming `station-portable.tar.gz`. The manifest CLI now accepts the newer
-platform-array shape defined by
-[release-manifest.mjs](../../packages/shared/src/release-manifest.mjs), including
-Node version and launcher-protocol bounds. Its `assemble` command builds that
-payload from archive descriptors; `create` signs it. This newer payload is not
-accepted by `install.sh`, and neither v2 shape produces a Homebrew cask.
-The [manifest README](../../packaging/manifest/README.md) maps these consumers.
-[#2675](https://github.com/kontourai/station/issues/2675) owns the prebuilt-server
-delivery integration; the existence of the assembler is not publication proof.
+The platform-array schema v2 payload defined by
+[release-manifest.mjs](../../packages/shared/src/release-manifest.mjs) includes
+Node version and launcher-protocol bounds. The manifest CLI's `assemble`
+command builds it from archive descriptors; `create` signs it. On macOS and
+Linux, `install.sh` selects the matching host archive, verifies its size and
+digest, and installs it without a host build. The archive carries Node.js;
+manifest verification uses an adequate host Node.js, the installed archive's
+runtime, or a separately pinned official Node.js download.
+
+Schema v1 source archives remain supported for stable/preview and require
+the host toolchain. The former v2 `artifacts.portable` shape is no longer
+accepted. Only v1 can produce a Homebrew cask. The
+[manifest README](../../packaging/manifest/README.md) maps the consumers, and
+the [archive install contract](release-channel-ports.md#prebuilt-archives-and-source-releases)
+covers upgrade, rollback and service limits.
 
 The [portable Nightly publication workflow](nightly.md#portable-server-nightly-dry-run-until-the-owner-enables-it)
 uses this platform-array payload. It defaults to a dry run; its separately
-enabled publication path does not change the current installer limitation.
+enabled publication path and installer support are not receipts for a live
+public distribution.
 
 The [packaging workflow](../../.github/workflows/ecosystem-packaging.yml) is
 configured to run a macOS fixture dry-run: it generates ephemeral signing

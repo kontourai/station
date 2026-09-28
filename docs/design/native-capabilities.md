@@ -87,6 +87,30 @@ account/Device enrollment. See the [broker lifecycle contract](../guides/self-ho
 The static `native-platform:ratchet` blocks `@tauri-apps/api` imports and
 `__TAURI__`/`__SHARE_TEXT__` globals outside the platform adapter.
 
+### Desktop account proof-key foundation
+
+The [account proof-key vault](../../src-desktop/src/native_account_proof_key.rs)
+is included only for non-mobile builds. It is Rust-internal: no Tauri command,
+capability-report field, renderer adapter or production account-sign-in caller
+currently reaches it. It does not change the available connection or recovery
+actions.
+
+The vault uses a separate OS-keyring service and account namespace from the
+broker routing proof key. Its owner binds the app identifier, channel, client
+instance, Station and approved Device IDs. Restore and signing require an exact
+owner match and rederive the public JWK and thumbprint from the stored private
+key. Missing, corrupt or unavailable keys refuse those operations; there is no
+plaintext fallback.
+Create, restore, replace, revoke and ES256 signing remain explicit Rust methods.
+This is software-key custody: Rust holds decoded private bytes while signing.
+Owner construction validates identifiers; it does not establish Device approval
+or account authority, and the signer itself does not validate a request protocol.
+
+The source includes memory-backend tests and an opt-in macOS Keychain test.
+They were not run for this documentation review. IPC, account continuation,
+mobile custody and packaged/device behavior require separate integration and
+platform evidence.
+
 ### Pairing deep-link threat review (station#1957)
 
 The `tauri-plugin-deep-link` association uses the custom channel-specific scheme

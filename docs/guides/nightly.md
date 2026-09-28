@@ -88,10 +88,14 @@ confirms the pinned key table refuses that envelope. That is the whole run
 unless the owner gate is on; nothing is uploaded except short-lived run
 artifacts.
 
-This is the platform-array schema v2 manifest, which current `install.sh`
-does not accept. The fixed launcher that would consume these archives is
-also still pending. Publishing this manifest does not complete installer
-delivery; see the [manifest formats and consumers](../../packaging/manifest/README.md#formats-and-consumers).
+This is the platform-array schema v2 manifest. On macOS and Linux, `install.sh`
+selects the host's archive, verifies its signed size and digest, and installs
+it under `versions/<version>` with its bundled Node.js and a forwarding
+launcher. Set `STATION_CHANNEL=nightly` and
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` to an available signed Nightly manifest.
+Installer support does not establish that publication is enabled or that a
+release has been installed successfully; see the
+[archive install contract](release-channel-ports.md#prebuilt-archives-and-source-releases).
 
 The `publish` job is the only one with `contents: write` or a secret. It runs
 only when the repository variable `STATION_PORTABLE_NIGHTLY_PUBLISH` is exactly

@@ -15,8 +15,10 @@ override; do not use fixture overrides as a production trust configuration.
 
 Signature and hash checks establish an authorized signer and named bytes, not
 freshness or safe behavior. Existing-install version checks refuse ordinary
-downgrades and same-version byte replacement, but a new installation can still
-receive an older signed manifest; no maximum manifest age is enforced. The
+downgrades and same-version byte replacement within one layout unless an exact
+replacement is explicitly authorized. A same-version switch between source
+and prebuilt layouts is accepted without that flag. A new installation can
+still receive an older signed manifest; no maximum manifest age is enforced. The
 public-manifest path is opt-in, not evidence of a live public distribution.
 
 [ecosystem-manifest.mjs](../../scripts/ecosystem-manifest.mjs) owns manifest
@@ -31,14 +33,14 @@ installer run is established by this README.
 ## Formats and consumers
 
 The envelope's `schemaVersion: 1` is distinct from the signed payload's version.
-Do not select a consumer from the payload version number alone: two current
-formats use `schemaVersion: 2`.
+The current v2 payload uses a platform artifact array. The former v2 source-archive
+shape is no longer accepted by the installer or manifest CLI.
 
 | Signed payload | Producer or fixture | Current consumer |
 | --- | --- | --- |
 | v1: `artifacts.macos` and `artifacts.portable`, stable/preview | Manifest CLI `create`; ecosystem dry-run fixture | CLI `verify`/`cask`; `install.sh` selects `station-portable.tar.gz` |
-| Older v2: `artifacts.portable`, including Nightly | Installer test fixtures sign this shape directly | `install.sh`; current manifest CLI does not accept this shape |
-| Platform v2: `artifacts[]` with OS, architecture, format, size and digest; `nodeVersion`; `launcherProtocol` | CLI `assemble` writes the payload, then `create` signs it | CLI `verify` and the shared verifier; current `install.sh` refuses it |
+| Former v2: `artifacts.portable`, including Nightly | Historical installer fixtures | Refused by current `install.sh` and manifest CLI |
+| Platform v2: `artifacts[]` with OS, architecture, format, size and digest; `nodeVersion`; `launcherProtocol` | CLI `assemble` then `create`; owner-gated portable Nightly workflow | CLI `verify`, shared verifier, and macOS/Linux `install.sh` host selection; no cask rendering |
 
 [release-manifest.mjs](../../packages/shared/src/release-manifest.mjs) and
 [portable-server-targets.mjs](../../packages/shared/src/portable-server-targets.mjs)
@@ -48,10 +50,17 @@ beside its descriptor, it also checks those bytes. A descriptor without that
 archive is not a download/readback receipt.
 
 The [archive workflow](../../.github/workflows/portable-server-archives.yml)
-builds, smokes and uploads CI artifacts. It does not wire `assemble` output to
-a public manifest URL consumed by the shell installer. The current
-[ecosystem dry-run](../../scripts/exercise-ecosystem-packaging-dry-run.sh)
-uses v1 through a disposable local endpoint. An operator supplies the public
-URL or publication commands; no broken deployed release is established by the
-format mismatch alone. See
-[#2675](https://github.com/kontourai/station/issues/2675) for the integration work.
+builds, smokes and uploads CI artifacts. The separate
+[portable Nightly publication workflow](../../docs/guides/nightly.md#portable-server-nightly-dry-run-until-the-owner-enables-it)
+assembles v2 and can publish its signed rolling manifest only behind the owner
+gate. The installer requires an explicit public manifest URL.
+
+The [ecosystem dry-run](../../scripts/exercise-ecosystem-packaging-dry-run.sh)
+uses v1 through a disposable local endpoint. The separate
+[prebuilt installer smoke](../../scripts/smoke-install-prebuilt-archive.sh)
+uses two locally built preview archives and fixture signing keys to exercise
+install, start, upgrade and uninstall without Node.js on the installer's PATH.
+Its workflow covers Linux x64 and macOS arm64; these source definitions are
+not executed receipts or public-release proof. See the
+[archive install contract](../../docs/guides/release-channel-ports.md#prebuilt-archives-and-source-releases)
+for layout, runtime, upgrade and service boundaries.

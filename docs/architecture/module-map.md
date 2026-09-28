@@ -102,6 +102,17 @@ application-session client owns key/proof construction; a relay only carries the
 authenticated encrypted request/response stream. Provider hooks resolve private session
 references; no virtual response installs a browser cookie.
 
+The desktop [native account-proof key owner](../../src-desktop/src/native_account_proof_key.rs)
+is a separate foundation. It stores a software P-256 key through the existing
+OS keyring adapter, under an account-proof namespace distinct from broker
+routing keys. Its owner tuple names the app, channel, client instance, Station
+and approved Device; validating that tuple's shape does not establish actual
+Device approval. `lib.rs` includes the module on desktop, but registers no
+renderer IPC for it and has no production sign-in or request caller. It does
+not establish mobile custody or hardware-backed non-exportability. Follow
+[native capability boundaries](../design/native-capabilities.md) before wiring
+this owner into an application flow.
+
 **Intent and Interface.** The public `deployment-authentication` contract lets an
 operator supply a versioned authentication module at startup. Its factory receives the
 selected Station identity, public origin, fixed authentication base path and private

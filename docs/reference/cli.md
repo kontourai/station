@@ -284,6 +284,14 @@ The checksum-addressed releases live under `~/.station/installs/stable/releases`
 is the stable launcher. Runtime data remains isolated under
 `~/.station/instances/stable` and survives an ordinary uninstall.
 
+The separate `STATION_INSTALL_PUBLIC_MANIFEST_URL` path also accepts
+platform-v2 archives on macOS/Linux. Those install under
+`installs/<channel>/versions/<version>` and use bundled Node.js without a host
+build. Verification can download a pinned Node.js when neither the host nor
+an installed archive supplies one. See the
+[archive install contract](../guides/release-channel-ports.md#prebuilt-archives-and-source-releases)
+for prerequisites, retention and service limits.
+
 ```bash
 # Pin a release; rerun the ordinary command later to upgrade.
 STATION_VERSION=v0.2.0 \
@@ -2157,11 +2165,18 @@ station stop --home=/tmp/station-a
 In a source checkout, pull the latest code, reinstall dependencies, and rebuild.
 In a signed portable install, reuse the persisted release ring and delegate to
 the installer without a Git checkout or pre-stop action. Installed plugins are preserved.
-From a prebuilt server archive (`station-server-<os>-<arch>`), `upgrade`
-refuses and changes nothing: installing a newer archive is the installer's job
-(#2675). Until then, stop Station, extract the newer archive into its own
-directory, and start it from there; it finds the instances the old version
-started (see [Instance State Mechanism](#instance-state-mechanism)).
+For a prebuilt server archive (`station-server-<os>-<arch>`) installed by
+`install.sh` under `versions/<version>`, `upgrade` validates the install state,
+provenance, ownership marker and active link, then re-runs that version's
+installer. Public-manifest installs record the URL in schema-4 state; an
+explicit `STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. A supervising
+installed service blocks this upgrade.
+
+A loose extracted archive has no installer-owned layout and still refuses
+`upgrade` without changing anything. Install through `install.sh`, or stop
+Station, extract the newer archive into its own directory and start it there;
+it finds the old version's instance records (see
+[Instance State Mechanism](#instance-state-mechanism)).
 
 ```
 station upgrade

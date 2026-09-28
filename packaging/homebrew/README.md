@@ -14,7 +14,8 @@ Verification normally uses [pinned signing keys](../../config/release-manifest-k
 An explicit `--public-key` is a fixture/dry-run override, not the normal release
 trust policy. The current CLI's schema-v2 platform manifest cannot produce a
 cask. Its `artifacts` array describes server archives, not a macOS application
-artifact. The older installer also has a different payload labelled v2; see
+artifact. The former source-archive v2 payload is also refused by current
+installer and manifest consumers; see
 the [format/consumer table](../manifest/README.md#formats-and-consumers).
 
 This directory also keeps a [template](./Casks/station.rb.template) for review;

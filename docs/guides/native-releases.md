@@ -267,13 +267,16 @@ The workflow's smoke checks that archive through an isolated long-path home,
 without relying on a host Node executable. A declared matrix is not a current
 pass or published release.
 
-The new platform release-manifest contract and assembler describe those
-per-platform bytes. They are distinct from the source-archive formats currently
-accepted by `install.sh`: that script still selects `station-portable.tar.gz`,
-runs managed dependencies, and builds the release in its final location before
-activation. Do not advertise a toolchain-free installer merely because the
-archive builder or manifest tests pass. [#2675](https://github.com/kontourai/station/issues/2675)
-owns that delivery integration.
+The platform-array release manifest now selects these archives through
+`install.sh`'s explicit signed-public-manifest path. The installer verifies the
+host target, launcher protocol, signed size/hash and release identity, stages
+the bundled runtime under `versions/<version>`, then promotes the active link.
+It does not run dependencies or build that archive. The default authenticated
+GitHub path and schema-v1 public source manifests still install and build a source
+release under `releases/`. See the [consumer formats](../../packaging/manifest/README.md#formats-and-consumers)
+and [installation lifecycle](release-channel-ports.md) for prerequisites,
+upgrade and rollback behavior. Fixture signing and archive smoke results do not
+establish production publication, key custody or a user's installed outcome.
 
 ## Nightly fleet staging
 

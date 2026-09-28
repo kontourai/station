@@ -63,6 +63,13 @@ the **beta** channel. It uses a separate `~/.station/installs/beta` install root
 retired `STATION_CHANNEL=preview`; the installer refuses it. The exact channel
 identity, launcher, and port mapping are verified by the release installer.
 
+An operator can instead supply `STATION_INSTALL_PUBLIC_MANIFEST_URL` for a
+signed platform-v2 prebuilt archive. That macOS/Linux path uses bundled
+Node.js without building Station on the host; it may download a pinned Node.js
+to verify the first install. It requires a published manifest for the requested
+channel. See the [archive install guide](../guides/release-channel-ports.md#prebuilt-archives-and-source-releases)
+for this separate path and its upgrade and service limits.
+
 ## Choose A Model Connection Or Engine
 
 Two kinds of connection can power an agent. A **Model connection** is a local

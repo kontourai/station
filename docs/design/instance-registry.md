@@ -262,7 +262,9 @@ the checkout that launched it, recording that one checkout's server/UI PIDs so
 Prebuilt server archives instead put those per-instance lifecycle records in
 `<root>/state/<channel>/instances/`, outside the extracted version. The resolved
 home determines the root; service status and stop calls carry that same home.
-Archives share their shipped build and refuse an in-place build or upgrade.
+Archives share their shipped build and refuse an in-place build. An archive
+installed under the installer's `versions/` layout can upgrade through its
+recorded installer; a loose extracted archive still requires manual replacement.
 See [the CLI reference](../reference/cli.md#instance-state-mechanism) for root
 selection and manual archive replacement. This differs from the source-checkout
 mechanism without replacing the shared registry described here.

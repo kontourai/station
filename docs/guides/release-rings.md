@@ -60,6 +60,14 @@ not freshness. Existing-install downgrade guards do not prevent an old signed
 manifest from being offered to a fresh installation. Read the exact owner in
 [`install.sh`](../../install.sh) before changing that policy.
 
+This public path also accepts the platform-array v2 manifest for prebuilt
+server archives. It checks the selected host, launcher protocol, signed size
+and hash, and the archive's release identity before activation. Those archives
+use `versions/<version>` and their bundled Node runtime; schema-v1 source
+manifests use `releases/` and run dependencies/build steps. This does not change
+the default GitHub-attested source path described above. See the
+[manifest consumer table](../../packaging/manifest/README.md#formats-and-consumers).
+
 ## Publish a preview
 
 Release actions below require an authorized release handoff. Use a clean
@@ -127,6 +135,13 @@ same installer contract and does not silently switch rings or accept unsigned
 inputs. Failed startup attempts restoration of the prior link/state and runtime.
 A failed rollback is reported separately; it is not a guarantee that recovery
 will always succeed.
+
+An installer-owned prebuilt version carries its installer. Its schema-4 state
+also records the public manifest URL, which `station upgrade` reuses unless an
+explicit `STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. A manually
+extracted archive has no installer-owned upgrade target and still requires
+manual replacement. [Channel coexistence](release-channel-ports.md) describes
+the shared home/state and owned-file removal boundaries.
 
 For a failed draft, fix the source and use a new immutable tag. Do not move
 or reuse the failed tag. Retaining its draft, artifacts and receipts preserves

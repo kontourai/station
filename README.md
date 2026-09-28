@@ -106,6 +106,11 @@ for the beta ring, which uses `station-beta` and `http://localhost:28000`.
 [Getting started](docs/user/getting-started.md) covers channels, updates, and
 uninstall.
 
+The separate [signed prebuilt-archive path](docs/guides/release-channel-ports.md#prebuilt-archives-and-source-releases)
+uses an explicit public manifest URL and bundled Node.js on macOS/Linux,
+without a host build. It may download a pinned Node.js for initial verification;
+installer support does not establish availability of a published manifest.
+
 ### Self-host with Docker
 
 The repository ships a `Dockerfile` and `docker-compose.yml`. The UI, HTTP API,

@@ -48,8 +48,10 @@ run `STATION_CHANNEL=beta` instead.
 each installable ring to the runtime it installs as (`preview` installs as
 `beta`), whether it is a prerelease, and its launcher. `install.sh` must stay
 one standalone file, so `scripts/install-script-generated.mjs` projects that
-table (and the pinned signing keys from `config/release-manifest-keys.json`)
-into generated blocks; `npm run install-script:check` fails when they are
+table, the pinned signing keys from `config/release-manifest-keys.json`,
+portable targets from `packages/shared/src/portable-server-targets.mjs`, and
+Node.js pins from `config/portable-server-node-runtime.json` into generated
+blocks; `npm run install-script:check` fails when they are
 stale, and `node scripts/install-script-generated.mjs --sync` rewrites them.
 
 `STATION_CHANNEL=nightly` installs only from a signed public manifest
@@ -74,8 +76,11 @@ yet guard those channels.
 
 ## Prebuilt archives and source releases
 
-A signed public manifest (schema 2) names one prebuilt server archive per
-platform (`station-server-<os>-<arch>`). `install.sh` verifies the manifest
+A signed public manifest (schema 2) names prebuilt server archives by
+platform (`station-server-<os>-<arch>`). The shell installer supports macOS
+and Linux on x64 or arm64 and requires a matching tar.gz artifact and a
+compatible launcher-protocol range; the manifest's Windows zip is not a
+shell-installer target. `install.sh` verifies the manifest
 against the pinned keys, picks this host's archive, checks its size and
 sha256, its `.station-prebuilt-archive` marker and its `.station-release.json`
 provenance, and extracts it to
