@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
@@ -6,6 +9,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { BuiltinScheduler } from '../builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../monitor-task-supervisor.js';
+import { createSchedulerLedger } from '../scheduler-ledger.js';
 
 const sessions = new Map<string, CanonicalRuntimeEvent[]>();
 const cleanups: Array<() => void> = [];
@@ -368,51 +372,77 @@ describe('MonitorTaskTurnSupervisor', () => {
   });
 
   test('explicit monitor resolution releases the matching observer', async () => {
-    const onMonitorTerminal = vi.fn();
-    const trigger = {
-      triggerId: 'trigger-1',
-      monitorId: 'monitor-1',
-      task: { taskId: 'task-1', sessionId: 'session-1', turnId: 'turn-1' },
-      startedAt: '2026-01-01T00:00:00.000Z',
-      deadlineAt: '2026-01-01T00:01:00.000Z',
-      limits: { maxTurns: 1, maxTokens: 10 },
-    };
-    const ledger = {
-      listViews: () => ({
-        kind: 'available',
-        value: [
-          {
-            name: 'job',
-            monitor: {},
-            unattendedPrincipal: { jobId: 'monitor-1' },
-            monitorState: {},
-          },
-        ],
+    const root = mkdtempSync(join(tmpdir(), 'station-monitor-resolve-'));
+    const ledger = createSchedulerLedger({ directory: root });
+    // The scheduler's stop() below closes the ledger.
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    expect(
+      ledger.create({
+        name: 'watch',
+        schedule: { kind: 'every', everyMs: 60_000 },
+        prompt: 'observe',
+        enabled: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        monitor: {
+          kind: 'github-pull-request',
+          objective: 'review-ready',
+          target: 'https://github.com/kontourai/station/pull/4210',
+          projectId: 'personal',
+          agentId: 'station',
+        },
       }),
-      monitorTrigger: () => ({ kind: 'available', value: trigger }),
-      resolveIndeterminateMonitor: () => ({ kind: 'applied' }),
-      update: () => ({ kind: 'updated' }),
-    };
-    const fake = {
-      ledger,
-      options: {
-        readMonitorTerminals: async () => [
-          {
-            triggerId: 'trigger-1',
-            terminal: 'completed' as const,
-            usage: { turns: 1, tokens: 2, runtimeMs: 3 },
-          },
-        ],
-        onMonitorTerminal,
-      },
-      requireRead: (outcome: { value: unknown }) => outcome.value,
-      broadcast: vi.fn(),
-    };
-    await (BuiltinScheduler.prototype.resolveIndeterminateMonitor as any).call(
-      fake,
-      'job',
-      { triggerId: 'trigger-1', action: 'resolve' },
+    ).toEqual({ kind: 'created' });
+    const views = ledger.listViews();
+    if (views.kind !== 'available') throw new Error('expected scheduler view');
+    const monitorId = views.value[0]!.unattendedPrincipal!.jobId;
+    const reserved = ledger.reserveMonitorTrigger({
+      monitorId,
+      ownerId: 'personal',
+      fingerprint: 'revision-1',
+      budget: { maxTurns: 1, maxTokens: 100 },
+    });
+    if (reserved.kind !== 'dispatch') throw new Error('expected dispatch');
+    const task = { taskId: 'task-1', sessionId: 'session-1', turnId: 'turn-1' };
+    ledger.attachMonitorTask({ triggerId: reserved.triggerId, task });
+    const attached = ledger.monitorTrigger(reserved.triggerId);
+    if (attached.kind !== 'available' || !attached.value)
+      throw new Error('expected an attached trigger');
+
+    // The observer the runtime arms for this trigger reaches its turn fence.
+    const f = fixture();
+    f.supervisor.adopt(attached.value, new AbortController().signal, () => {});
+    f.publish(event('session-1', 'turn.started', 'turn-1'));
+    f.publish(
+      event('session-1', 'token-usage.updated', 'turn-1', { totalTokens: 2 }),
     );
-    expect(onMonitorTerminal).toHaveBeenCalledWith('trigger-1');
+    f.publish(event('session-1', 'turn.completed', 'turn-1'));
+    expect(f.admission()({ threadId: 'session-1' })).toMatchObject({
+      allowed: false,
+    });
+    ledger.settleMonitorTrigger({
+      triggerId: reserved.triggerId,
+      terminal: 'indeterminate',
+    });
+
+    // Wired as runtime-route-support wires the two.
+    const scheduler = new BuiltinScheduler({
+      ledger,
+      turnAdapter: { invoke: vi.fn() },
+      readMonitorTerminals: async (triggers) =>
+        triggers.map((trigger) => ({
+          triggerId: trigger.triggerId,
+          terminal: 'completed' as const,
+          usage: f.supervisor.receipt(trigger),
+        })),
+      onMonitorTerminal: (triggerId) => f.supervisor.release(triggerId),
+    });
+
+    await scheduler.resolveIndeterminateMonitor('watch', {
+      triggerId: reserved.triggerId,
+      action: 'resolve',
+    });
+
+    expect(f.admission()({ threadId: 'session-1' })).toEqual({ allowed: true });
+    await scheduler.stop();
   });
 });
