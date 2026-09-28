@@ -114,16 +114,17 @@ generation. They are stored separately and never appear in v1 offer pages.
 The Station connector exposes `pollNative()` only when a caller explicitly
 supplies a native offer adapter bound to one exact surface. Before that callback
 can allocate a peer, it checks the offer's Station key thumbprint and generation
-against current approved Station trust. The production Pion runtime does not
-register this adapter, and its ordinary `poll()` never reads native offers.
-Native signalling therefore does not enable application ingress, encrypted
-application traffic, or native UI onboarding. Several native installations can
-hold separate grants; connector fan-out across multiple native surfaces remains
-future work.
+against current approved Station trust. The production Pion runtime registers
+that adapter only when `nativeClient` configures the exact surface, and native
+offer polling has its own explicit opt-in. Ordinary browser `poll()` never reads
+native offers. This path can carry encrypted application traffic to Station's
+virtual ingress; it does not grant Device, account, or Project access or enable
+native UI onboarding on its own. Several native installations can hold separate
+grants; connector fan-out across multiple native surfaces remains future work.
 
 Connection offers use a caller-chosen client ID and nonce, expire after 30 seconds, and remain replay tombstones for five minutes. Each Station may hold 32 live offers and the broker 1024. Offer and answer SDP are capped at 128 KiB; the opaque Station proof uses its owning 4 KiB contract limit. A connection accepts one answer. Withdrawal and a newer routing generation invalidate pending work without changing Station signing-key trust. Lease renewal uses an explicit revision CAS.
 
-The service binds only to loopback. TLS termination, reverse-proxy hardening, public deployment, production connector lifecycle, and application transport remain later integration work under #1963.
+The broker service binds only to loopback. TLS termination, reverse-proxy hardening, public deployment, and production connector operations remain later integration work under #1963.
 
 ## Connector lifecycle library
 
