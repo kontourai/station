@@ -421,13 +421,13 @@ describe('knowledge-store routes', () => {
       expect(readFileSync(notePath, 'utf8')).toBe('# kept\n');
     });
 
-    test("deleting an unknown root id is a 500 (matches removeRoot's throw-on-unknown-id contract)", async () => {
+    test('deleting an unknown root id is a 404', async () => {
       const app = routesApp();
       const res = await app.request('/roots/root:does-not-exist', {
         method: 'DELETE',
       });
       const body = await readJson<{ success: boolean; error: string }>(res);
-      expect(res.status).toBe(500);
+      expect(res.status).toBe(404);
       expect(body.success).toBe(false);
       expect(body.error).toMatch(/not found/i);
     });
