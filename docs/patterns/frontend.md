@@ -132,18 +132,20 @@ that do not navigate may use the guard explicitly. See
 
 ## Styling and responsive behavior
 
-Use semantic variables, not a feature-local palette:
+Use Kontour UI's semantic `--k-*` tokens for new styles, following the
+[shared design rules](https://github.com/kontourai/ui/blob/main/DESIGN.md):
 
 ```css
 .feature-card {
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-primary);
+  background: var(--k-bg);
+  color: var(--k-text);
+  border: 1px solid var(--k-line);
 }
 ```
 
-These are Station aliases, not a second copy of Kontour UI's base tokens. The
-[theming guide](../guides/theming.md) explains their cascade. Static layout and
+The [theming guide](../guides/theming.md) explains the existing Station aliases
+and their cascade. Keep decisions marked OPEN in the shared design rules
+unresolved. Static layout and
 visual styling belong in CSS classes. Dynamic geometry and CSS custom-property
 values can legitimately use `style`; `ResponsiveDialogSurface` is an existing
 example. Do not ban its measured viewport/anchor values or replace them with

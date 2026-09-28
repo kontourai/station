@@ -10,7 +10,7 @@
       "scenario": "Create durable work",
       "evidence": "Running isolated Station with sample data and a sample display name. No Agent dispatched.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
+      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "sources": [
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -22,7 +22,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/views/ProjectPage.css",
@@ -56,7 +56,7 @@
       "scenario": "Save a shared revision",
       "evidence": "Running isolated Station; the document and revision were persisted. No external Agent or provider. The small editor and clipped heading are the current UI.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
+      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "sources": [
         {
           "path": "src-server/services/orchestration/project-task-room-runtime.ts",
@@ -72,7 +72,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -114,7 +114,7 @@
       "scenario": "Connections \u2192 Models",
       "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
+      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "sources": [
         {
           "path": "src-ui/src/components/SplitPaneLayout.css",
@@ -134,7 +134,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -180,7 +180,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -208,7 +208,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -242,7 +242,7 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "sources": [
         {
           "path": "src-server/routes/orchestration/attention.ts",
@@ -270,7 +270,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -303,7 +303,7 @@
       "scenario": "Connections \u2192 Models and Engines",
       "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
+      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "sources": [
         {
           "path": "src-ui/src/components/header/Header.tsx",
@@ -315,7 +315,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -359,7 +359,7 @@
       "scenario": "Knowledge Library \u2192 selected repository record",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
+      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -419,7 +419,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -440,7 +440,7 @@
       "scenario": "Knowledge Library \u2192 narrow layout",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "760ef873c95eacdf8e7fcebaf9f6bc4985964b76",
+      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "sources": [
         {
           "path": "examples/knowledge-library/layout.json",
@@ -500,7 +500,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/views/page-layout.css",

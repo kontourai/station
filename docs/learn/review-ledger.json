@@ -1087,7 +1087,7 @@
     {
       "path": ".veritas/README.md",
       "documentDigest": "b8ea13f37db44823b6a7e80373fe1e45d3bc8405c33245cfbcf5a5440e9f117f",
-      "sourceRevision": "ae89c0396a4e0b05b0848dcbfeee9eed29d188c4",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current repository Veritas integration and protected-policy/evidence boundaries. Full 87-line baseline read. Actual repository configuration, installed Veritas 1.7.4 public docs/schema, hook wiring and generated-path contracts inspected. Reviewed the approved documentation evidence activation and policy-change attestation; authority settings remain unchanged.",
@@ -1147,7 +1147,7 @@
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "4a29011e0a421978939d560c377a82d65d95fe006f4ed821a2bbab8171f80264"
+          "digest": "f4791f8fdcabb11311f6c6063fdc35b1a992d7ce0bd07fdbb095afb9f9eec549"
         },
         {
           "path": "package.json",
@@ -1275,7 +1275,8 @@
         "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
         "Landing review through d0d9d33f7: Advanced only the recorded reviewed upstream revision and named the bounded source deltas; retained historical evidence and coverage baseline.",
-        "Reviewed landing deltas through 111744681: Updated the reviewed upstream revision and bounded integration scope; retained historical measurements and unchanged coverage baseline. Tests pin the selector-only deadline environment and discovery allocation; evidence classes, typecheck lanes and blocking outcomes are unchanged. The planner supplies its five-minute budget to discovery and reports actual timeout/elapsed time; shard identity, receipt validation and aggregation still fail closed. Added the planning-budget constant pinned to the workflow fence; plan and receipt authority remain unchanged. Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence."
+        "Reviewed landing deltas through 111744681: Updated the reviewed upstream revision and bounded integration scope; retained historical measurements and unchanged coverage baseline. Tests pin the selector-only deadline environment and discovery allocation; evidence classes, typecheck lanes and blocking outcomes are unchanged. The planner supplies its five-minute budget to discovery and reports actual timeout/elapsed time; shard identity, receipt validation and aggregation still fail closed. Added the planning-budget constant pinned to the workflow fence; plan and receipt authority remain unchanged. Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
+        "Landing review through 64452b7f0: Updated only the recorded integration boundary to include the source-reviewed reasoning presentation change."
       ]
     },
     {
@@ -7042,7 +7043,7 @@
     {
       "path": "docs/design/collaborative-editor-pane.md",
       "documentDigest": "739f3891308a8a186d43d8fff78fe34ef4eac626e2c4b76559d6698948b5247f",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed controller contract and current Task caller review, preserving bounds, privacy, watch/follow and contradiction handling; distinguished retained pure controller from removed React renderer.",
@@ -7066,7 +7067,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.tsx",
@@ -7081,7 +7082,8 @@
         "Read the complete document and traced owning implementation, composition and current consumers.",
         "Executed six focused domain/controller/room-adapter files: 174 tests passed on the integrated worktree; no external provider or device.",
         "Reviewed integration deltas: Completed controller contract and current Task caller review, preserving bounds, privacy, watch/follow and contradiction handling; distinguished retained pure controller from removed React renderer. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+        "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -8501,7 +8503,7 @@
     {
       "path": "docs/design/placement.md",
       "documentDigest": "f4db53d55c6816b738ad7dfa00ab292849d561ecdc540629d034c68ab4523eea",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full documented-claim review of the 1408-line mixed current design and dated slice log. Traced shell/model/registry, per-device parser/writer/mirror, pane document adoption/reconciliation/admission, actual toolbar/chrome/chooser and sidebar callers, phone layer history and owner guards, Layout/Board renderer/action bindings, and chat/preview openers. Corrected URL no-op selection, retained duplicate records, mobile versus coarse-pointer controls, lone-pane move, current Browser Preview and Claude stop wiring, retired catalog and metadata reader claims. Historical measurements and device results remain classified, not re-executed.",
@@ -8677,7 +8679,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/layouts/index.tsx",
@@ -8795,7 +8797,8 @@
         "Executed initial placement focused12files:180PASS,2FAIL,1SKIP in52.15s. RegionToolbarControls geometry failed its explicit missing worktree Chromium prerequisite. RegionPaneHost.project first case timed out after5000ms waiting for initial lazy ambient Chat mount; remaining11cases in that file passed. Cause remains unknown (cold import timing is only a hypothesis).",
         "Executed after root-authorized prerequisite configuration: PLAYWRIGHT_BROWSERS_PATH=/Users/brian/Library/Caches/ms-playwright npm run test:focused -- src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx:34PASS/1SKIP in22.40s. Pinned Chromium1234/151.0.7922.34 ran geometry; skipped item is the intentional missing-prerequisite sentinel. No failed lazy-mount rerun.",
         "Veritas readiness veritas-1790535084936: exit0,0FAIL/0WARN; proof:repo-governance, lint:check and verification:policy:gate PASS on eleven changed files. Last subsequent edit only wrapped/corrected placement prose; parent final CI owns combined revision.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+        "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -9362,8 +9365,8 @@
     },
     {
       "path": "docs/design/session-tape-replay.md",
-      "documentDigest": "ea0862885ca10d1e69538090976167a8f61695436bd269f37955de874100f72a",
-      "sourceRevision": "ae89c0396a4e0b05b0848dcbfeee9eed29d188c4",
+      "documentDigest": "b07c33eb546dbbfe0b5a94a10977d9417b180202990d754160976d776c38f027",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
@@ -9440,6 +9443,18 @@
         {
           "path": "tests/chat-replay.spec.ts",
           "digest": "22a340eb879c7e716b037e94f47bd065ffff2aae0b826ab8faac417cc421c6f2"
+        },
+        {
+          "path": "src-ui/src/components/chat/ReasoningSection.tsx",
+          "digest": "01a6a616e89aea27b77f751c2326cb2b6d2ce9e7280f1c6c6334107d782e4d49"
+        },
+        {
+          "path": "src-ui/src/index.css",
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
+        },
+        {
+          "path": "src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx",
+          "digest": "fe78eb80ff222ddc8ee72bed4569cdbb531746c1b6feab859f8b4f1703634c52"
         }
       ],
       "checks": [
@@ -9447,7 +9462,8 @@
         "Original document bytes preserved exactly after removing the added reading-status banner.",
         "39 tape import/player/archive/render-invariant and mounted timeline tests passed across five files. Read browser matrix and actual adapter delivery owners.",
         "Landing delta 622565ef7: Codex reply matching does not alter turn/steer arguments, event folding, replay isolation or recorded tape limits. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed.",
-        "Reviewed landing deltas through 111744681: Opaque proxy/error pages are not terminal Station refusals; uncertain queued sends remain queued. Stored reasons use the formatter, but not every ephemeral notice strips schema keys. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result."
+        "Reviewed landing deltas through 111744681: Opaque proxy/error pages are not terminal Station refusals; uncertain queued sends remain queued. Stored reasons use the formatter, but not every ephemeral notice strips schema keys. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+        "Landing review through 64452b7f0:  Added the separate compact reasoning disclosure description. Disclosure state, word counting and user choice are unchanged; this is distinct from activity timers. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -11158,7 +11174,7 @@
     {
       "path": "docs/guides/code-quality.md",
       "documentDigest": "530dbc7372704bb4c2d5d858bf238190bbefb4fddcb4bb1db55492c7ea393beb",
-      "sourceRevision": "ae89c0396a4e0b05b0848dcbfeee9eed29d188c4",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Contributor quality and publication requirements with current hook composition. Full 316-line baseline read. Hook ordering, readiness selection, lane composition, route-helper adoption and actual raw-parameter route inspected. Requirements distinguished from execution proof; historical cost observations not remeasured. Follow-up: Push & Monitor delta only: separates merge-queue arm/confirm/stop from following task-required CI evidence to its outcome.",
@@ -11226,7 +11242,7 @@
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "4a29011e0a421978939d560c377a82d65d95fe006f4ed821a2bbab8171f80264"
+          "digest": "f4791f8fdcabb11311f6c6063fdc35b1a992d7ce0bd07fdbb095afb9f9eec549"
         },
         {
           "path": "package.json",
@@ -11353,7 +11369,8 @@
         "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
         "Landing review through d0d9d33f7: Advanced only the recorded reviewed upstream revision and named the bounded source deltas; retained historical evidence and coverage baseline.",
-        "Reviewed landing deltas through 111744681: Replaced the fixed discovery timeout with caller allocation, post-refinement remaining time, settlement reserve, standalone fallback and refusal behavior. Existing commands, evidence authority and lane ceilings are unchanged. Updated the reviewed upstream revision and bounded integration scope; retained historical measurements and unchanged coverage baseline. Tests pin the selector-only deadline environment and discovery allocation; evidence classes, typecheck lanes and blocking outcomes are unchanged. The planner supplies its five-minute budget to discovery and reports actual timeout/elapsed time; shard identity, receipt validation and aggregation still fail closed. Added the planning-budget constant pinned to the workflow fence; plan and receipt authority remain unchanged. Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence."
+        "Reviewed landing deltas through 111744681: Replaced the fixed discovery timeout with caller allocation, post-refinement remaining time, settlement reserve, standalone fallback and refusal behavior. Existing commands, evidence authority and lane ceilings are unchanged. Updated the reviewed upstream revision and bounded integration scope; retained historical measurements and unchanged coverage baseline. Tests pin the selector-only deadline environment and discovery allocation; evidence classes, typecheck lanes and blocking outcomes are unchanged. The planner supplies its five-minute budget to discovery and reports actual timeout/elapsed time; shard identity, receipt validation and aggregation still fail closed. Added the planning-budget constant pinned to the workflow fence; plan and receipt authority remain unchanged. Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
+        "Landing review through 64452b7f0: Updated only the recorded integration boundary to include the source-reviewed reasoning presentation change."
       ]
     },
     {
@@ -11418,7 +11435,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "25d49a8c7096204adb942779f17fbd43fa332b337d7f0c2dbaea9016bf1c315a",
-      "sourceRevision": "ae89c0396a4e0b05b0848dcbfeee9eed29d188c4",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11426,7 +11443,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "2103fa7c80ccf80c746668d27c02904050ded277df4d43d9ac56dc3a161e0bf9"
+          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -11798,7 +11815,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/lib/browserRelayEnrollmentController.ts",
@@ -11914,7 +11931,8 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
         "Landing delta 622565ef7: Independent delta review confirmed engine discovery, configuration/authentication and readiness requirements; probes now match their own string reply IDs exactly. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed.",
         "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
-        "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution. Application binding/open/read share the existing diagnostic host service: profile revision, approved trust and keyring grant are rechecked around I/O. Outputs are public binding/expiry / answer + opaque proof, not a DataChannel, proof verification, account sign-in or application traffic. Local refusals preserve supplied status/code through the existing current-target boundary. Routing, delegated authority, remote error provenance and task creation limits remain unchanged. Read the changed document in context; its purpose and prior evidence limits remain. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result."
+        "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution. Application binding/open/read share the existing diagnostic host service: profile revision, approved trust and keyring grant are rechecked around I/O. Outputs are public binding/expiry / answer + opaque proof, not a DataChannel, proof verification, account sign-in or application traffic. Local refusals preserve supplied status/code through the existing current-target boundary. Routing, delegated authority, remote error provenance and task creation limits remain unchanged. Read the changed document in context; its purpose and prior evidence limits remain. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+        "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -13187,7 +13205,7 @@
     {
       "path": "docs/guides/development.md",
       "documentDigest": "2a134b5439fab737a3b67358c34f8ab6de1f9aa66a9336805363fcdfc8847d20",
-      "sourceRevision": "ae89c0396a4e0b05b0848dcbfeee9eed29d188c4",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Checkout setup and contributor workflow, with normative boundaries routed to owners. Full 415-line baseline read. Dependency lifecycle, workspace/package contract, command ownership, verification paths and plugin workflow boundaries checked. No installs outside managed setup, plugin installation, runtime/service control, native build or publication performed.",
@@ -13251,7 +13269,7 @@
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "4a29011e0a421978939d560c377a82d65d95fe006f4ed821a2bbab8171f80264"
+          "digest": "f4791f8fdcabb11311f6c6063fdc35b1a992d7ce0bd07fdbb095afb9f9eec549"
         },
         {
           "path": "package.json",
@@ -13395,7 +13413,8 @@
         "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
         "Landing source delta through 61d497e88: Reviewed portable Nightly call bindings, dry-run default, publication ordering and tests. Documented signing prerequisites and platform-array v2/current-installer boundary. Container metadata still rejects Nightly; shared packaged metadata accepts it. Live GitHub environment policy, publication, five-platform builds and installer consumption are not newly verified. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
         "Landing review through d0d9d33f7: Installer input now triggers archive builds. Added missing documentation compiler and all four declared data inputs to both push/PR filters; the actual import/data coverage guard catches omissions. Advanced only the recorded reviewed upstream revision and named the bounded source deltas; retained historical evidence and coverage baseline. Golden vectors now also execute the real shell verifier with fixture keys and refused downloads; v1 source fallback and v2 platform semantics stay explicit. This is verifier evidence, not publication or installed runtime proof. Archives now include their executable install.sh for owned upgrades/removal; host-native build, bundled runtime and isolated archive layout retain their existing boundaries. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
-        "Reviewed landing deltas through 111744681: Updated the reviewed upstream revision and bounded integration scope; retained historical measurements and unchanged coverage baseline. Tests pin the selector-only deadline environment and discovery allocation; evidence classes, typecheck lanes and blocking outcomes are unchanged. The planner supplies its five-minute budget to discovery and reports actual timeout/elapsed time; shard identity, receipt validation and aggregation still fail closed. Added the planning-budget constant pinned to the workflow fence; plan and receipt authority remain unchanged. Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence."
+        "Reviewed landing deltas through 111744681: Updated the reviewed upstream revision and bounded integration scope; retained historical measurements and unchanged coverage baseline. Tests pin the selector-only deadline environment and discovery allocation; evidence classes, typecheck lanes and blocking outcomes are unchanged. The planner supplies its five-minute budget to discovery and reports actual timeout/elapsed time; shard identity, receipt validation and aggregation still fail closed. Added the planning-budget constant pinned to the workflow fence; plan and receipt authority remain unchanged. Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
+        "Landing review through 64452b7f0: Updated only the recorded integration boundary to include the source-reviewed reasoning presentation change."
       ]
     },
     {
@@ -14127,7 +14146,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14135,7 +14154,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "2103fa7c80ccf80c746668d27c02904050ded277df4d43d9ac56dc3a161e0bf9"
+          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -14243,7 +14262,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -14280,7 +14299,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
         "Clarified the external Kit directory as a pinned upstream link after the live reference gate correctly rejected it as an absent local path; meaning and caller claims unchanged.",
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
-        "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes."
+        "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
+        "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -17498,7 +17518,7 @@
     {
       "path": "docs/guides/responsive-ui.md",
       "documentDigest": "7dc31d3249538df67448f10b20fe89e1ba882aff7f10400818d33a6948916ba9",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed local Dialog and ResponsiveDialogSurface ownership, layers, focus/history/viewport behavior, mobile and dock predicates, inventory discovery and structural-check limits.",
@@ -17606,7 +17626,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -17645,7 +17665,8 @@
         "Reviewed source changes: One retained independent-review inspector is now an explicit unmounted exception; its surface proof is deferred. General responsive primitives and actual Review layout remain the current path. Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser.",
         "Reviewed source changes: StationHttpError moved with details support; common envelope helper adoption reviewed; captured requestAuthority and mutationAllowed behavior unchanged. Corrected success-shape validation wording. Root reviewed the corresponding diff and the affected current-document claims. Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims. PlatformSessionGate extracted unchanged conditional into platform/PlatformSessionGate.tsx with explicit API base prop; voice/default SDK composition unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
         "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+        "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -18169,7 +18190,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "7ff7d560117b98d655d52d28caee56c9f7735f06",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18177,7 +18198,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "2103fa7c80ccf80c746668d27c02904050ded277df4d43d9ac56dc3a161e0bf9"
+          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -18325,7 +18346,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/lib/starter-work-operation-store.ts",
@@ -18402,7 +18423,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused provider preview method; HTTP/MCP preview still belongs to SchedulerService with zone validation. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
-        "Landing delta 622565ef7: The reply-ID fix does not change independent continuation, completed-turn/source-home requirements, one-time correlations or approval inspection. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed."
+        "Landing delta 622565ef7: The reply-ID fix does not change independent continuation, completed-turn/source-home requirements, one-time correlations or approval inspection. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed.",
+        "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -18793,7 +18815,7 @@
     {
       "path": "docs/guides/testing.md",
       "documentDigest": "520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2",
-      "sourceRevision": "ae89c0396a4e0b05b0848dcbfeee9eed29d188c4",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
@@ -18853,7 +18875,7 @@
         },
         {
           "path": "docs/plans/documentation-code-audit.md",
-          "digest": "4a29011e0a421978939d560c377a82d65d95fe006f4ed821a2bbab8171f80264"
+          "digest": "f4791f8fdcabb11311f6c6063fdc35b1a992d7ce0bd07fdbb095afb9f9eec549"
         },
         {
           "path": "package.json",
@@ -19014,13 +19036,14 @@
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
         "Hosted Windows floor caught three missing directory-walk classifications. Registered the real learning-media repository scan in REPO_SCAN_SUITES; classified the pre-push and Knowledge identity walks only after tracing their temporary fixture roots. The detector is unchanged and an independent review confirmed the scope. A broader local selector group also hit the existing 30-second representative CLI fixture timeout; the unchanged direct CLI diagnostic completed its real focused target, and that timeout receipt is retained rather than relabeled as a pass.",
         "Landing review through d0d9d33f7: Advanced only the recorded reviewed upstream revision and named the bounded source deltas; retained historical evidence and coverage baseline. The added installer-test walk classification covers only its disposable install roots; the real-repository scan detector is unchanged.",
-        "Reviewed landing deltas through 111744681: Updated the reviewed upstream revision and bounded integration scope; retained historical measurements and unchanged coverage baseline. Tests pin the selector-only deadline environment and discovery allocation; evidence classes, typecheck lanes and blocking outcomes are unchanged. The planner supplies its five-minute budget to discovery and reports actual timeout/elapsed time; shard identity, receipt validation and aggregation still fail closed. Added the planning-budget constant pinned to the workflow fence; plan and receipt authority remain unchanged. Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Read the changed document in context; its purpose and prior evidence limits remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence."
+        "Reviewed landing deltas through 111744681: Updated the reviewed upstream revision and bounded integration scope; retained historical measurements and unchanged coverage baseline. Tests pin the selector-only deadline environment and discovery allocation; evidence classes, typecheck lanes and blocking outcomes are unchanged. The planner supplies its five-minute budget to discovery and reports actual timeout/elapsed time; shard identity, receipt validation and aggregation still fail closed. Added the planning-budget constant pinned to the workflow fence; plan and receipt authority remain unchanged. Only the selector receives the absolute deadline for its quarter-share discovery allocation; existing whole-lane deadline and required static checks remain. Read the changed document in context; its purpose and prior evidence limits remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
+        "Landing review through 64452b7f0: Updated only the recorded integration boundary to include the source-reviewed reasoning presentation change."
       ]
     },
     {
       "path": "docs/guides/theming.md",
-      "documentDigest": "2b47b057ea4e538d6a825f10f12bfb60758eafcde3db56e7d3995c900361155e",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "documentDigest": "67f8d52d1b32a9f4878139c033b30e6215d6a85ccc15b58aa70f5d1ef3eabec3",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed installed public UI exports, partial primitive adoption, Station aliases and channel overrides, device theme selection and accent contrast pairing.",
@@ -19128,7 +19151,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -19157,6 +19180,10 @@
         {
           "path": "src-ui/src/utils/logger.ts",
           "digest": "268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076"
+        },
+        {
+          "path": "src-ui/AGENTS.md",
+          "digest": "1861af0378a679a97a10955cf6f250ce58e073b68c4147d9d9c333de609d1aa8"
         }
       ],
       "checks": [
@@ -19167,7 +19194,8 @@
         "Reviewed source changes: One retained independent-review inspector is now an explicit unmounted exception; its surface proof is deferred. General responsive primitives and actual Review layout remain the current path. Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser.",
         "Reviewed source changes: StationHttpError moved with details support; common envelope helper adoption reviewed; captured requestAuthority and mutationAllowed behavior unchanged. Corrected success-shape validation wording. Root reviewed the corresponding diff and the affected current-document claims. Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims. PlatformSessionGate extracted unchanged conditional into platform/PlatformSessionGate.tsx with explicit API base prop; voice/default SDK composition unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
         "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+        "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reviewed the shared DESIGN.md through its canonical GitHub page because the pinned package predates its inclusion. Public --k-bg, --k-text and --k-line exist in the pinned token entry; no UI style or OPEN decision was changed by this documentation correction. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -19877,7 +19905,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -19885,7 +19913,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "2103fa7c80ccf80c746668d27c02904050ded277df4d43d9ac56dc3a161e0bf9"
+          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -20005,7 +20033,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -20091,7 +20119,8 @@
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
-        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes."
+        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
+        "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -20123,7 +20152,7 @@
     {
       "path": "docs/patterns/backend.md",
       "documentDigest": "bcae9c139d65732d7303df916b007009830c4e80bfe20601cf5f0b772c8f4952",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale flat paths, fictitious service recipes, unsafe casts and error matching with current route/domain/adapter owners. Retained the scheduler-specific block unchanged.",
@@ -20231,7 +20260,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -20270,13 +20299,14 @@
         "Reviewed source changes: One retained independent-review inspector is now an explicit unmounted exception; its surface proof is deferred. General responsive primitives and actual Review layout remain the current path. Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser.",
         "Reviewed source changes: StationHttpError moved with details support; common envelope helper adoption reviewed; captured requestAuthority and mutationAllowed behavior unchanged. Corrected success-shape validation wording. Root reviewed the corresponding diff and the affected current-document claims. Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims. PlatformSessionGate extracted unchanged conditional into platform/PlatformSessionGate.tsx with explicit API base prop; voice/default SDK composition unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
         "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+        "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
       "path": "docs/patterns/frontend.md",
-      "documentDigest": "c9ab186f206220afa048246db4cb0dfbbd68b3c3cc0b756ebdbc500198135206",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "documentDigest": "1b78efc57356ebb65549f9d1488d01371bf47adfb7939f06229268082b5d5523",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "policy",
       "state": "classified",
       "summary": "Full-read contributor patterns; replaced stale hooks, raw-fetch recipes and effectful queries with current query/context owners and small examples. Retained existing architecture, component-size, logging and verification conventions.",
@@ -20384,7 +20414,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/lib/accent-contrast.ts",
@@ -20413,6 +20443,10 @@
         {
           "path": "src-ui/src/utils/logger.ts",
           "digest": "268bafae97a21bd4af060d50ba5d121f2553376a22369440276cc60ee8108076"
+        },
+        {
+          "path": "src-ui/AGENTS.md",
+          "digest": "1861af0378a679a97a10955cf6f250ce58e073b68c4147d9d9c333de609d1aa8"
         }
       ],
       "checks": [
@@ -20423,7 +20457,8 @@
         "Reviewed source changes: One retained independent-review inspector is now an explicit unmounted exception; its surface proof is deferred. General responsive primitives and actual Review layout remain the current path. Removed a numeric legacy parser unreachable from the current closed registry: no number-kind setting has priorStorageKey. Existing persisted settings and migration claims remain; future numeric legacy keys would need a new parser.",
         "Reviewed source changes: StationHttpError moved with details support; common envelope helper adoption reviewed; captured requestAuthority and mutationAllowed behavior unchanged. Corrected success-shape validation wording. Root reviewed the corresponding diff and the affected current-document claims. Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims. PlatformSessionGate extracted unchanged conditional into platform/PlatformSessionGate.tsx with explicit API base prop; voice/default SDK composition unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
         "Reviewed integration deltas: scripts/responsive-surface-ratchet.mjs: Three discovery/validation helpers become private; executable CLI still calls the same inventory validation. No rendered-geometry guarantee inferred from that inventory. src-server/routes/agents/agents.ts: Create/update admission now requires the full-access grant when effective Agent defaults rise to never, including inherited Station defaults; unchanged effective never is not a raise. API explanation updated. src-ui/src/index.css: Removed unused header-nav selectors only; no production references remain. Captured browser scenes retain their styles; explicit media delta review accepted all8 original captures.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
+        "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reviewed the shared DESIGN.md through its canonical GitHub page because the pinned package predates its inclusion. Public --k-bg, --k-text and --k-line exist in the pinned token entry; no UI style or OPEN decision was changed by this documentation correction. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -20489,8 +20524,8 @@
     },
     {
       "path": "docs/plans/documentation-code-audit.md",
-      "documentDigest": "4a29011e0a421978939d560c377a82d65d95fe006f4ed821a2bbab8171f80264",
-      "sourceRevision": "ae89c0396a4e0b05b0848dcbfeee9eed29d188c4",
+      "documentDigest": "f4791f8fdcabb11311f6c6063fdc35b1a992d7ce0bd07fdbb095afb9f9eec549",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "policy",
       "state": "classified",
       "summary": "Completed source audit scope, executed verification limits, linked follow-up work and owner-approved documentation policy activation in this branch.",
@@ -20505,7 +20540,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
         "Landing review through d0d9d33f7:  Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained.",
-        "Reviewed landing deltas through 111744681:  Read the changed document in context; its purpose and prior evidence limits remain."
+        "Reviewed landing deltas through 111744681:  Read the changed document in context; its purpose and prior evidence limits remain.",
+        "Landing review through 64452b7f0: "
       ]
     },
     {
@@ -20712,7 +20748,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -20720,7 +20756,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "2103fa7c80ccf80c746668d27c02904050ded277df4d43d9ac56dc3a161e0bf9"
+          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -20764,7 +20800,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/views/AgentConnectionView.tsx",
@@ -20802,7 +20838,8 @@
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
-        "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes."
+        "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
+        "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -23080,7 +23117,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -23088,7 +23125,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "2103fa7c80ccf80c746668d27c02904050ded277df4d43d9ac56dc3a161e0bf9"
+          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -23120,7 +23157,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/views/TaskWorkspaceView.css",
@@ -23162,7 +23199,8 @@
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
-        "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes."
+        "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
+        "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -25827,7 +25865,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "ae89c0396a4e0b05b0848dcbfeee9eed29d188c4",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -25844,7 +25882,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "2103fa7c80ccf80c746668d27c02904050ded277df4d43d9ac56dc3a161e0bf9"
+          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -25956,7 +25994,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/pages/NotificationsPage.css",
@@ -26012,7 +26050,8 @@
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
         "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
-        "Reviewed landing deltas through 111744681: Engine-enable refusal text improves without changing successful creation or the captured UI layout. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result."
+        "Reviewed landing deltas through 111744681: Engine-enable refusal text improves without changing successful creation or the captured UI layout. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+        "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -26852,7 +26891,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -26860,7 +26899,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "2103fa7c80ccf80c746668d27c02904050ded277df4d43d9ac56dc3a161e0bf9"
+          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -26940,7 +26979,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         },
         {
           "path": "src-ui/src/views/page-layout.css",
@@ -26960,7 +26999,8 @@
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
-        "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes."
+        "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
+        "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {
@@ -29175,7 +29215,7 @@
     {
       "path": "src-desktop/icons/README.md",
       "documentDigest": "93c8c818dd83849cbbddde1804064669a0dc7cc2780cd6eb3d4c0e2b93b5b8dc",
-      "sourceRevision": "56531a1a0fd32add1182eb4e2af4bf4e8e9f58da",
+      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed generator, tracked prerequisites, channel overlays, Android main/debug copying, TestFlight init/apply/verify and Dev favicon caller claims. Corrected verifier scope to source-catalog bytes and one shipped loose-icon pixel comparison, not every compiled asset rendition. Alternative-init output still needs its own verification.",
@@ -29227,7 +29267,7 @@
         },
         {
           "path": "src-ui/src/index.css",
-          "digest": "6b8b105faa9def189d3a31e41e7f55faf5b21237a9563dae487caa53ad4a3476"
+          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
         }
       ],
       "checks": [
@@ -29240,7 +29280,8 @@
         "Frozen deltas 2317f4ed3, 73e3cdac8, ae8f5d44f and 1bf1a1e98 reviewed through registered IPC, actual renderer/startup/staging callers. Package docs-script additions and tracked learning PNG exception also reviewed; no native semantic impact.",
         "All remaining concrete claims and full-page consistency reviewed. This is source-reviewed documentation, not every branch of each named owner or physical/provider acceptance.",
         "Veritas readiness veritas-1790533833943 on the three-file native delta before final Doctor wording refinement: exit0, 0 FAIL/1 WARN. repo-governance and lint PASS. Optional verification-policy exit80: five product laws behavior/fault-injection PASS; mobile-context primary-actions behavior PASS but fault-injection structured Vitest observation timed out after25916ms (INFRASTRUCTURE_ERROR), not a product failure or passing rejection proof. No rerun; root owns combined CI.",
-        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution."
+        "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
+        "Landing review through 64452b7f0: Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
       ]
     },
     {

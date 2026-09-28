@@ -19,8 +19,11 @@ layout/motion tokens, then the package's fonts, token entry and React styles.
 Core chrome aliases such as `--bg-primary`, `--text-primary`, `--border-primary`
 and `--accent-primary` derive from `--k-*`; intermediate text/surface colors use
 local mixes. Functional status colors and layout, layer and motion tokens also
-remain Station-owned. New work should use the owning token instead of adding a
-feature-local color table.
+remain Station-owned. New UI styles use the shared `--k-*` tokens under the
+[canonical design and product-copy rules](https://github.com/kontourai/ui/blob/main/DESIGN.md).
+Keep its OPEN decisions unresolved. The aliases above remain useful when
+reading existing Station components; this guidance does not claim their
+migration is complete.
 
 Station does not currently select a package `theme-console`/`theme-flow`/
 `theme-survey`/`theme-surface` class. It consumes the base dark/light skin and

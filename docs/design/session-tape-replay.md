@@ -108,6 +108,10 @@ animation, and streamed answer text has a caret. Approval and transport
 recovery have explicit states. A timer measures observed waiting, never an
 estimate of completion.
 
+The separate [reasoning disclosure](../../src-ui/src/components/chat/ReasoningSection.tsx)
+uses a compact summary row. Expanding it shows the text beneath an indented
+rule, while its word count and the reader's open/closed choice remain available.
+
 Headless station-control tools that drive those operations over `/api/ui`
 are a follow-up on this schema.
 
