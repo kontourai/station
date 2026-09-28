@@ -13,7 +13,8 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation } from '@tanstack/react-query';
 import { apiErrorMessage } from '../api-core';
-import { ChatHttpError } from '../client/chatHttpError';
+import { StationHttpError } from '../client/api-error-message';
+import { ChatHttpError, isStationEnvelope } from '../client/chatHttpError';
 import {
   type DelegatedTaskHandle,
   type DelegatedTaskInterruptResult,
@@ -483,8 +484,16 @@ export async function dispatchOrchestrationCommand<T = unknown>(
     const message = apiErrorMessage(result, `HTTP ${response.status}`);
     // A stable refusal code (e.g. #2436's `approval-full-access-not-granted`)
     // is kept, so a caller can tell a refusal from a transport failure.
+    // Its `details` too (#1796's full-access refusal is rendered from them),
+    // on the field `StationHttpError` carries them in.
     throw typeof result.code === 'string'
-      ? new ChatHttpError(response.status, message, result.code, result.details)
+      ? new ChatHttpError(
+          new StationHttpError(response.status, message, {
+            code: result.code,
+            details: result.details ?? undefined,
+          }),
+          isStationEnvelope(result),
+        )
       : new Error(message);
   }
   return result.data as T;
