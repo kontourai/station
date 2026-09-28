@@ -1,0 +1,39 @@
+{
+  "path": "examples/station-sessions-mcp/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full server, renderer and guide read. Corrected canonical API/authentication and false-empty behavior; #2785 owns repair. No current working sessions-reader claim.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "document": {"digest":"1d7616d80d23c79a00e2be3e4dd103ea6b36443ec24363362cb366e1cea433dc","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+  "sources": [
+    {"path":"examples/station-sessions-mcp/__tests__/render.test.mjs","digest":"ac76e87a6491276619e11f19c772f535afa8dcb6244b52b566ee8238a080626e","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"examples/station-sessions-mcp/panel.mjs","digest":"0a573f986f83ab7240b5ee0b173958e71235bb3b93c77f74b60aaae052ebe35f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"examples/station-sessions-mcp/server.mjs","digest":"d4fb9811db1250a44018041f40fb80b8e07c809d41a16b6a5e14137be403e079","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"47d59128b55a1dadc59b00b7feb8aaee5d5c3c3729bd194e75681ddcd2d66a5f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"}
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
+
+    "Reviewed integration deltas: src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Integration source review through d72f79b08: #2904's runtime-routes changes are limited to the full-access refusal identity middleware and pairing revocation reports. The session-reading API, authentication and false-empty behaviour this example describes are untouched, and #2785 still owns the repair. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential to runtime-routes.ts so a verified but unadmitted credential gets 403; prose accurate: this reader sends no authentication header, so the 403 branch cannot fire (it requires a recognized credential), and the README's route, auth and false-empty warnings still hold. Source review is separate from executed test evidence."
+  ]
+}

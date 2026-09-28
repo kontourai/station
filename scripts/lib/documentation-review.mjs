@@ -27,6 +27,7 @@ const kinds = new Set([
 ]);
 const states = new Set(['classified', 'partial', 'source-reviewed']);
 const digestPattern = /^[a-f0-9]{64}$/;
+const revisionPattern = /^[a-f0-9]{40}$/;
 
 function requireText(value, label) {
   if (typeof value !== 'string' || !value.trim())
@@ -40,7 +41,7 @@ function validateRecord(record, tracked, reportMissing) {
     throw new Error(`Invalid review classification: ${record.path}`);
   if (
     !digestPattern.test(record.documentDigest) ||
-    !/^[a-f0-9]{40}$/.test(record.sourceRevision)
+    !revisionPattern.test(record.documentRevision)
   )
     throw new Error(`Invalid review identity: ${record.path}`);
   for (const field of ['summary', 'limits']) requireText(record[field], field);
@@ -56,7 +57,8 @@ function validateRecord(record, tracked, reportMissing) {
       !source.path ||
       (!reportMissing && !tracked.has(source.path)) ||
       sources.has(source.path) ||
-      !digestPattern.test(source.digest)
+      !digestPattern.test(source.digest) ||
+      !revisionPattern.test(source.revision)
     )
       throw new Error(
         `Invalid review source: ${record.path} -> ${source.path}`,
@@ -237,8 +239,10 @@ export async function compileDocumentationReviews(
   readSource,
   { requireFresh = false, reportMissing = false } = {},
 ) {
-  if (ledger?.version !== 1 || !Array.isArray(ledger.records))
-    throw new Error('Documentation review ledger requires version 1 records.');
+  if (ledger?.version !== 2 || !Array.isArray(ledger.records))
+    throw new Error(
+      'Documentation review ledger requires compiled version 2 records (scripts/lib/review-ledger-store.mjs).',
+    );
   const seen = new Set();
   const captured = new Map();
   const read = async (path) => {

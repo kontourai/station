@@ -1,0 +1,67 @@
+{
+  "path": "docs/design/knowledge-foundation.md",
+
+  "kind": "design",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete K2-K5 document as current architectural boundaries plus explicitly dated planning/rollout history. Traced store/transaction/index/migration/Settings/record/Neo4j callers; corrected width-only vector reuse, upsert versus rebuild, absent cutover, excerpt-only Ask and default scope. Historical pins and milestone prose remain history, not current interface or live acceptance.",
+
+  "limits": "Current claims are source-reviewed; dated milestone execution, real-home migration acceptance, every provider/mutation path and native or live Neo4j/model behavior are not independently requalified. Later physical-identity repair is reviewed as a bounded source delta, not newly executed historical acceptance.",
+
+  "document": {"digest":"dd4281c6171d870a4c31934c0dcb9d5a4e58be97514b77743bc3605111c83f1e","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+  "sources": [
+    {"path":"examples/meeting-notes/src/AskPane.tsx","digest":"867ef11f37ef7237eeaa64f788f572860e62e2ff2ea31692a093f38417b437f8","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"packages/cli/src/commands/knowledge.ts","digest":"ba93e50579bbe30506a5e85ee1f3d4f9baf6343e9992683967244f119c7b70f3","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"packages/contracts/src/knowledge-index.ts","digest":"d2d96be7dcdeceb41fa576d910ac9343c993c62c0f94796854eaa951bce7e3aa","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"packages/contracts/src/knowledge-store.ts","digest":"681a068bbd122d766068a39934873ff9bdf071033753317a380af8023a4335b3","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3cce37501a5cb2b8233624c5a831b9dbeed2fdecbfe9f24bb5716413ed060ac4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/knowledge-index/migrate-pre-index-knowledge.ts","digest":"f00bf506fff7fb1ef1ec2c846e50e3e81b451e24b415184b274b18f93a08ca51","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/knowledge-index/sqlite-vec-index-provider.ts","digest":"96507a6178eaf742a3b48ad4b00706f74c824356b864158308612a19687af0a6","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/knowledge-store/adapters/default-store.ts","digest":"003db4b89b4f5fb5238cfececcffdb33c36953e8922fc12ba941c1619d619cc6","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/knowledge-store/adapters/obsidian-store.ts","digest":"2ee5ba813b7ee62d61788b9bb28fc1a5d75999b401172db8563df3e30e60b5a8","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/knowledge-store/adapters/shared/file-transactions.ts","digest":"5505e0eb47ae0cc4eeefa829efa474a70ac0de4a438fd0f28d7e1855cf591c36","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/knowledge-store/conversation-root-bootstrap.ts","digest":"658683fe19a2d352c6ab3e9b7a18d96d8752fcc20c2808a08050f5062b4ab31c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/knowledge-store/knowledge-store-provider.ts","digest":"268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/knowledge-store/neo4j-connection.ts","digest":"711a8d553aa67488e4b32706fd75733ad88f5bb8ba3f8065e1177f4b96c560be","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/knowledge-store/neo4j-graph-provider.ts","digest":"74d9ecbd0e834b5d81d3bc0b20d8235606c729e23e2df7915b21c97ff6e5184e","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/knowledge-store/neo4j-graph-sync.ts","digest":"6af01817b91477890720443711c2a24de178f720ef6aba033fc73793043fa6d5","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/routes/knowledge/knowledge-index-routes.ts","digest":"ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/routes/knowledge/knowledge-record-routes.ts","digest":"7b5fc0fb012792ac218e8166c49f70a8311a0ba3a52a69faadda011dbc19d629","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/routes/knowledge/knowledge-store-routes.ts","digest":"e62792941e8de79239fa616cc6d265af4304e29b9978535533a26b9688b86265","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-service-bootstrap.ts","digest":"a78f60fbabf9c50eb01380d1aeee4d90583848b546547a23bcd70760ce026dbd","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/views/project-settings/KnowledgeSection.tsx","digest":"456b7dbbaf3232c9127c547ad6e8087b2f5947d75143ba66bec4a18a72b52744","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/views/settings/KnowledgeStoreSection.tsx","digest":"86ed63496236d8e90a726c519057c5e1c8879fdbfb3c2787e398f6a00b89af71","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+  ],
+
+  "checks": [
+    "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
+
+    "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
+
+    "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+
+    "Integration source review through e0314c727: neo4j-connection.ts deleted the queryNeo4jGraphView stub and the unused connection-type constant, and DELETE /api/knowledge/roots/:id now returns 404 for an unknown root. Added dated notes to the K2 planner note and the K5 landed record that the query stub was later deleted and fixed-query reads/sync live in the graph provider and sync modules. The other historical prose is preserved. Source review is separate from executed test evidence."
+  ]
+}

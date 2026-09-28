@@ -23,6 +23,7 @@ import {
 } from './lib/learning-media.mjs';
 import { createLearningSourceReader } from './lib/learning-source-reader.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { readReviewState } from './lib/review-ledger-store.mjs';
 
 export {
   learningHref,
@@ -109,11 +110,11 @@ export async function buildLearningGuide({
   const policy = check
     ? (freshness ?? resolveDocumentationFreshness({ root: inputRoot }))
     : undefined;
-  const media = sourceFiles.has(LEARNING_MEDIA_MANIFEST)
+  // One read of the ledger directory and capture manifest (#2936).
+  const reviewState = readReviewState(inputRoot);
+  const media = reviewState.media
     ? await compileLearningMedia(
-        JSON.parse(
-          (await captureSource(LEARNING_MEDIA_MANIFEST)).toString('utf8'),
-        ),
+        reviewState.media,
         sourceFiles,
         captureSource,
         {
@@ -183,9 +184,7 @@ export async function buildLearningGuide({
     }
   }
   const reviews = await compileDocumentationReviews(
-    JSON.parse(
-      (await captureSource('docs/learn/review-ledger.json')).toString('utf8'),
-    ),
+    reviewState.ledger,
     new Map(documents.map((doc) => [doc.path, doc.digest])),
     sourceFiles,
     captureSource,

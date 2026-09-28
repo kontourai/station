@@ -1,0 +1,147 @@
+{
+  "path": "docs/guides/product-law-authoring.md",
+
+  "kind": "policy",
+
+  "state": "source-reviewed",
+
+  "summary": "Normative authoring and interpretation of selected executable product laws. Full29-line baseline read. Traced manifest bounds, path dispositions, exact structured observation and timeout/infrastructure result classification; focused owner tests passed.",
+
+  "limits": "Small selected law set is not all-product semantic proof. No new law or protected policy activation.",
+
+  "document": {"digest":"e73cd5b9a92cfe8795d643d6c583b120b486366eea57f015ff412f35524336c6","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+  "sources": [
+    {"path":".github/workflows/ci.yml","digest":"092798d877aa8138f197a0edbd7547e876dc2e310b54b4e00598f8f48b3535b8","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":".github/workflows/container-smoke.yml","digest":"8f0d7908fbf4cf305a5fd10ae17bb174b45344f584f8d38fe0be3f422e260ced","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":".github/workflows/interactive-workspace-performance.yml","digest":"edcaa2f6d7a7ce1eeb4e7953ff65d78f7a6f609460dfedaf6976b727a04b7004","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":".github/workflows/security-analysis.yml","digest":"2aa93f7925004df1afecdb8cc1d15190315383816ac83125f0c61bd403c03575","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":".github/workflows/windows-vitest-diagnostic.yml","digest":"040f1a8683332740c89c7c9716f7f70370838e9d86441827913cc3db7786d527","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"config/product-laws.json","digest":"2a32cd190581bca72ed1076f901fd9a427022e2d381e964a777101c9c6de3114","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"packages/cli/src/commands/cloud-project-import.ts","digest":"0831594f687da39abbf2bc7655663d459b97de900728d0d03e7fa2e28b2c5543","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"packages/cli/src/commands/cloud.ts","digest":"7c50391b36b9c61736cc806b55296bed80d4c376921295ff406bdea000e9cd51","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"packages/contracts/src/workspace-home-role.ts","digest":"afdd6ec33526422a7a455cfc575cdd5d662277a8a5c356db6f5b2b564de038f4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"packages/sdk/src/client/delegations.ts","digest":"d316da0c8d0054c6276c7ee8bac14a30a25480dccb19f0814a6e5abbae69489c","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"packages/shared/src/workspace-package-io.ts","digest":"39be3f0a5c1621a8421073c2fbf80ac835d4dd2dfb71e1a41d943af4fdcf41d7","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"packages/shared/src/workspace-package.ts","digest":"a24525a792fa3d672e483a2ee6eceb0ea73d99b42ad540bb99db86eb9f39aa1d","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"pnpm-workspace.yaml","digest":"e101a202d035469d94011b568c05b558f02914e050a1fb94ff8639e68c721891","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/actionlint-gate.mjs","digest":"93b689c4bfc7f191022916b1fdfa99be0b94d5c4beb7ac805f3af3013aaf6bd4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/codeql-error-baseline.json","digest":"68f25eff8ac6a15bb324e169be219a0659eacc42a59c451699b171968bd62978","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/codeql-sarif-policy.mjs","digest":"19227477b52acfe22fe18feb777bf30c2163a40e51fda2ad0a834a1fdae86f32","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/container-smoke.sh","digest":"31c9b8355ff35b0a954415a5d11a2813a8f6c1c922c7cffeff11161302218234","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/dependency-advisory-policy.mjs","digest":"9dfdd2899708f23256aa01e6ac899438c80b0fecba5497c8fc25270d6a8f6ae8","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/lib/dependency-audit-diagnostics.mjs","digest":"c81447d6f6746f19a8a75c5937359850d74935dd43ed53d991ee90929404993a","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/lib/pnpm-advisory.mjs","digest":"d744934bbc925b7a8cf799b335864c0e8555d6b099de2acf6e6990ca5a580bc7","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/lib/product-laws.mjs","digest":"b7a549ca0025afb7f662b215e56aad007308b999a3700e0bd7e28464954cc275","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"scripts/product-law-gate.mjs","digest":"3611528993c47648caa7c64150902820410f1f330c235891396f4927033e4766","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/routes/environments/home-authority-routes.ts","digest":"64c1875089078327e3e74481923ecdec9ed1e6751e6b795b54ada44c7fca7ef4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/routes/orchestration/orchestration.ts","digest":"acf3dd6f7685963168df439a9dab7b8e27a29ddfe4f5cd2e6c82c251257b46c6","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/routes/spatial-board.ts","digest":"461e485ff2a4597e62552c2ae8c9067b9da58347c737be91f925afecf8bab5da","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/runtime/bootstrap/personal-home-authority-database.ts","digest":"8d7f81a7cef515dfff921152c74d03028409708395de6c280f2e013c70e84f7f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"47d59128b55a1dadc59b00b7feb8aaee5d5c3c3729bd194e75681ddcd2d66a5f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/delegation-attempt-claim-store.ts","digest":"50dcada7bbbd9f55739a41f024393046c3845e1979aae4113ca9e4eb57f94171","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/planned-home-admission-reconciliation.ts","digest":"b7f4f5da84fd564e60bf154c41e7270732d6a57046604e0ada5b9633a8fc1af4","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/planned-home-control-room-write-adapter.ts","digest":"dec0df930857ef8e7de10cbe5d4d8e4e3e604027a866355b020bda1711301f79","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/orchestration/project-task-room-history.ts","digest":"67647ae8dadce1e7d9af02128ec52782aa10d87cea0bc211144f1a3b7628f340","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/spatial-board/spatial-board-reference.ts","digest":"f3f49b82131fc679b5454d4d5f1cc9ffbe0afd41dfd1317336ac74c7f057d5a1","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/spatial-board/spatial-board-resolver.ts","digest":"cbcfdf257e846027371b77c11cb9ed41152358141078113deb65d1a6da93a399","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/services/spatial-board/spatial-board-store.ts","digest":"d5e9c1bf6380b16a83af74b7bcfb7fdf5c45a9f04068b78c394c7edf04394f4c","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-server/tools/station-control-delegation.ts","digest":"a0eba4071d97a2760ab8d356f6752d2b7b6a5a8f4df19dee468495e18a9bcb11","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-ui/src/views/HomeView.tsx","digest":"784bb154e907690bbbcfd6908698b4054098571514a437ae5476e35b0b50aa46","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-ui/src/views/home/HomeRolePane.tsx","digest":"f83ed5b379bbddc5ba8b876e7c8c1200c91b06a1b8bd5f7f5023a3569979270f","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-ui/src/workspace-panes/WorkspacePaneFrame.tsx","digest":"511e0ac91b3e0c2b744ffe1da6967e1741aa9d2d99f9daa10f39d1b2e78e8494","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-ui/src/workspace-panes/WorkspacePaneRouteView.tsx","digest":"a2e50ba67bfe92c4336f8accf96d3f3854e79527af839e95f6cd2ae2a6128207","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx","digest":"3dffbccd4597bbe4d0cc2eb7339a205fd21b73e5f1789c886e3ff73616588621","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+
+    {"path":"tests/container-self-host.spec.ts","digest":"35a9f2abca5519fa980137f32f8011bb6a88311f2bc3bacd3e9cca830f5379f6","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"}
+  ],
+
+  "checks": [
+    "focused: PASS99tests8files28.26s: CodeQL SARIF policy, pnpm advisory command, product laws, delegation attempts route, home-authority routes, cloud-project-import, spatial-board-resolver, documentation foundations",
+
+    "links: PASS397Markdown paths/anchors",
+
+    "references: PASS263maintained documents/entrypoints",
+
+    "veritas: PASS exit0/0failures/0warnings; governance/lint/verification-policy; protected hashes unchanged",
+
+    "Public projection routes to canonical generated reference and testing guide; raw implementation paths remain in this evidence record. Public hygiene passed after that correction.",
+
+    "Upstream source review: Reviewed all nine script deltas: shard command, install-script freshness in static raw, portable builder/smoke, native echo diagnostic and portable output cleanup. Existing named local/promotion commands remain; new tooling documented without publication claim.",
+
+    "Upstream source review: Reviewed plan/shard/statics/required aggregator, same-repository/fork conditions, success/receipt admission, smoke timeout and diagnostic versus verdict-bearing uploads; six-suite195PASS includes real workflow job-graph model and fast runner fixtures. Fixed affected current prose.",
+
+    "Upstream source review: Upstream delta extracts plugin event relay gate; Starter, fleet inference, Project/delegation and deployment composition discussed by these owned guides unchanged. Accepted ONLY for listed owned-document claims; broader plugin gate semantics reviewed elsewhere.",
+
+    "Upstream source review: Reviewed localRefusalOf and actual read/post callers: typed local refusal cause only for current target; remote codes not promoted to local authority. Delegation identity/claim/persistence explanations unchanged. This is a relevant-delta review, not all delegation behavior re-executed.",
+
+    "Upstream source review: Reviewed workflow policy delta for new CI parts, skip-tolerant status conditions, exact Intel pnpm fallback and isolated portable archive workflow upload. Existing policy descriptions retain structural-only proof limits; no claim of full hosted security qualification.",
+
+    "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
+
+    "Reviewed comment-only owner correction; emitted JavaScript is unchanged and the existing behavioral review scope is preserved.",
+
+    "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/tools/station-control-delegation.ts: Wires approvalPickReachesFullAccess into delegation; no transport, home-transfer, target activation or Project import authority added. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Reviewed landing deltas through 111744681: Local refusals preserve supplied status/code through the existing current-target boundary. Routing, delegated authority, remote error provenance and task creation limits remain unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Integration source review through e0314c727: the only input changes are the fast-checks zsh provisioning step in ci.yml and its actionlint-gate.mjs pin, plus the removal of the bearing/forage root dependencies. None of these touch product-law manifests or result classification, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 adds an optional `details` field to `DelegationApiError` in packages/sdk/src/client/delegations.ts. In runtime-routes it adds the full-access refusal identity middleware and revocation reports on the pairing scope and revoke routes. None of this touches the product-law manifest, path dispositions, observation or result classification the guide describes. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds the recognizeCredential hook to runtime-routes.ts; prose accurate: the product-law manifest, observation and result-classification rules don't depend on it. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c added DelegatedTaskDecision/lastDecision to the SDK delegations client and station-control-delegation.ts. The guide makes no claim about delegation snapshots; prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: a290454b4 (#2919) trims unused re-exports from builtinWorkspacePaneRegistry. The guide makes no claim about those exports; prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged.",
+
+    "2026-09-28 test-audit refresh: orchestration.ts only made orchestrationEventMatchesThread and parseResumeCursor module-private (thread filter and Last-Event-ID resume unchanged); claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence.",
+
+    "Merge of origin/main 062fad816 into the scoped-freshness branch: both sides refreshed this record for disjoint inputs. origin/main (#2906) changed only src-server/routes/orchestration/orchestration.ts, un-exporting orchestrationEventMatchesThread and parseResumeCursor (verified with git diff d0ca944c5 062fad816); the page names neither helper; this branch's notes cover its own inputs. Rebound to the merge commit, which contains every reviewed byte; prose unchanged."
+  ]
+}

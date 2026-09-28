@@ -13,10 +13,15 @@ import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 import { renderLearningDocument } from '../lib/learning-markdown.mjs';
 import { compileLearningMedia } from '../lib/learning-media.mjs';
 import { createLearningSourceReader } from '../lib/learning-source-reader.mjs';
+import { readReviewState } from '../lib/review-ledger-store.mjs';
 import {
   forbidAmbientFreshnessMode,
   JOB_ENV,
 } from './helpers/freshness-env.js';
+import {
+  writeLearningMedia,
+  writeReviewLedger,
+} from './helpers/review-ledger-fixture.js';
 
 forbidAmbientFreshnessMode();
 
@@ -34,12 +39,12 @@ const capture = {
   scenario: 'Task inspection',
   evidence: 'Controlled browser fixture; no provider execution.',
   capturedRevision: 'a'.repeat(40),
-  reviewedRevision: 'a'.repeat(40),
   documents: ['guide.md'],
   sources: [
     {
       path: 'code.ts',
       digest: createHash('sha256').update(source).digest('hex'),
+      revision: 'a'.repeat(40),
     },
   ],
 };
@@ -195,31 +200,21 @@ it('the real builder publishes immutable media bytes and its strict entry detect
   );
   const digest = (bytes: string) =>
     createHash('sha256').update(bytes).digest('hex');
-  write(
-    'docs/learn/review-ledger.json',
-    JSON.stringify({
-      version: 1,
-      records: [
-        {
-          path: 'guide.md',
-          documentDigest: digest(guide),
-          sourceRevision: 'a'.repeat(40),
-          kind: 'current',
-          state: 'source-reviewed',
-          summary: 'Checked the owner.',
-          limits: 'Fixture only.',
-          sources: [
-            { path: 'owner.ts', digest: digest('export const owner = 1;\n') },
-          ],
-          checks: ['Fixture evidence.'],
-        },
+  writeReviewLedger(root, [
+    {
+      path: 'guide.md',
+      documentDigest: digest(guide),
+      kind: 'current',
+      state: 'source-reviewed',
+      summary: 'Checked the owner.',
+      limits: 'Fixture only.',
+      sources: [
+        { path: 'owner.ts', digest: digest('export const owner = 1;\n') },
       ],
-    }),
-  );
-  write(
-    'docs/learn/media.json',
-    JSON.stringify({ version: 1, captures: [localCapture] }),
-  );
+      checks: ['Fixture evidence.'],
+    },
+  ]);
+  writeLearningMedia(root, [localCapture]);
   for (const asset of ['index.html', 'atlas.css', 'atlas.js'])
     write(`docs/learn/${asset}`, readFileSync(`docs/learn/${asset}`));
   const env = Object.fromEntries(
@@ -308,9 +303,8 @@ it('checks the actual capture manifest and recorded source bytes in the required
       .split('\0')
       .filter(Boolean),
   );
-  const manifest = JSON.parse(
-    reader.read('docs/learn/media.json').toString('utf8'),
-  );
+  // media.json metadata joined with each capture's review (#2936).
+  const { media: manifest } = readReviewState(process.cwd());
   // #2923: the same scoped/advisory/strict decision as the review ledger.
   const captures = await compileLearningMedia(
     manifest,

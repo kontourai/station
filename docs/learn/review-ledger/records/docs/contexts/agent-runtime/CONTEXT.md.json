@@ -1,0 +1,39 @@
+{
+  "path": "docs/contexts/agent-runtime/CONTEXT.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Agent identity and engine ownership; startup adoption policy; start-session vs turn boundary; Task/command/provider/event distinctions; lifecycle/continuation; capability delivery limitations.",
+
+  "limits": "Source/composition review; no live engine, native device, hosted application or external Flow journey.",
+
+  "document": {"digest":"65e814615ee79543753261e413d46c6eef26dd2ac6f8d664fc37daaa70908164","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":"src-server/domain/agent-registry.ts","digest":"b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/agents/runtime-agent-registry.ts","digest":"7cb6673e6d45f3636e1b4964e7830ebfa281611a38e3c69b117f15c74777f69e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-initialize.ts","digest":"93c4b8f2102f0b78a9ffe5e97bc8b96405a637b8e44d2f1808717a0411d0b903","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/conversation-lineage.ts","digest":"d0ef999a7e0d22a508f999f611ae44e673bed445c9f2bdda814e779c1d8f0aaf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/session-command-module.ts","digest":"a187447cec48eca40e8933bce7600c5e00baebfae55c4ecf2ca4ef5d70626622","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "331 focused tests across 24 files passed; local source/caller and persistence evidence.",
+
+    "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Integration source review through d72f79b08: #2904 wires isFullAccessGrantorCurrent in runtime-initialize, records clientOrigin on the startSession receipt, and adds grantor stamping and revocation reset in orchestration-service. The context's identity, adoption-policy, start-versus-turn, Task/command/receipt and delegation distinctions are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

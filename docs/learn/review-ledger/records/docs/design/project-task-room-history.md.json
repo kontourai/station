@@ -1,0 +1,41 @@
+{
+  "path": "docs/design/project-task-room-history.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed durable event projection, worker, route and history adapter review; corrected channel/principal disclosure and bounded JSON counting claims.",
+
+  "limits": "Reviewed the documented contract and actual callers, not every implementation branch. No new external engine, provider, cross-host, native/device or power-loss result. Historical test and issue receipts keep their original scope.",
+
+  "document": {"digest":"3f77bb159020d9d6bb2a5f9e8fbebd1326a5ff27a7ff0b960edae7cb2e1726cb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":"src-server/routes/orchestration/project-task-rooms.ts","digest":"d0196ce1fb343a0930c493bdd2ba266fb0783bb49c5805144d00b1f7180a4bc2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/__tests__/project-task-live-work-history-adapter.test.ts","digest":"c49b0801559536fc5fd6cdd58f0c3bd8ee7e3038750c1b27f3e088579d7c6bda","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/__tests__/project-task-room-runtime.test.ts","digest":"9a8770dbf7f04eda46f91dc786f075ec94f41137e1c377971d2b0ad4ddbdd5ef","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/event-store.ts","digest":"649f666609237b47427380fea53cc4194c92d24577128dec7a6d83769aa12872","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/project-task-room-history-worker.ts","digest":"6c8f8684aadb16162fdf999f692e82b554773e9edbf17d0b4b36a00aba0d1736","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/project-task-room-history.ts","digest":"67647ae8dadce1e7d9af02128ec52782aa10d87cea0bc211144f1a3b7628f340","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"0f1ead7c25dfa3a8217f9b31102762ac1e4ce5e8eaf7f7cdd5017a827c4d7cd5","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "Read the complete document and traced owning implementation, composition and current consumers.",
+
+    "Executed six focused domain/controller/room-adapter files: 174 tests passed on the integrated worktree; no external provider or device.",
+
+    "Reviewed integration deltas: Completed durable event projection, worker, route and history adapter review; corrected channel/principal disclosure and bounded JSON counting claims.",
+
+    "Integration source review through d72f79b08: #2904 adds EventStore queries for approval-mode decision actors, device-granted host starts, conversation titles and unattributed never decisions. It leaves the Project Task room event projection, worker, route and bounded JSON counting this document describes untouched. Prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: event-store.ts only deleted the caller-less readChatTurn; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

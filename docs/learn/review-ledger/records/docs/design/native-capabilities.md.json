@@ -1,0 +1,73 @@
+{
+  "path": "docs/design/native-capabilities.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed current capability, permission, platform-adapter and host-caller claims. Corrected extra typed host subscriptions, dev pairing schemes, distinct closed open-browser route, second-launch background exception and updater ownership. Added Desktop native-grant maintenance boundary while preserving disabled native application transport and dated external platform survey.",
+
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+
+  "document": {"digest":"3a02d05bd97995747fe2b0fca97a3917b11909cc0baa2f8a7695df920a8a2e90","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+  "sources": [
+    {"path":"scripts/native-platform-boundary.mjs","digest":"683fa02581626bf5dfdd57e45be7224aa4df112aaa341646233f0ef9254eb883","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-desktop/Cargo.toml","digest":"74e0f4e26dcd14a8d40422c9b7a8b0a1940728f04d3f6cfd1d5b020cb70f0b85","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-desktop/capabilities/default.json","digest":"b6ce0ba74944574562d08ddd8f02698a222840af0581bf093c662a70f07c9ab1","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-desktop/src/lib.rs","digest":"36834a67820b6d406efe19620c261120ddcdbc8277077a99cb2a2e1136555b6b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-desktop/src/local_access_watch.rs","digest":"4499c78676d1f7dd5a3b580ba2bf82dedd3ef14fb8cd8273fcd1b24fc23429be","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-desktop/src/native_relay_redemption.rs","digest":"94eec2b10dafa86bb2645a248faf442833f04605fe1216ecfa241bc86b921947","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-desktop/src/tray.rs","digest":"d8bd74ad3b9a20197b0ca221d33fa8558d9ce36b05167a5eb156796cfa2fa3c9","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/contexts/ApiBaseContext.tsx","digest":"3605f56290eb2b613aa26eb476a7801cba350dea1acd4736301a6afaaa8bdfe8","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/platform/native/__tests__/capability-report-dev-build.test.ts","digest":"010265df1d68cb57ca2889ad87871915ce48c85ec6ee09774baa48fac0ac2393","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/platform/native/__tests__/native-consent-broker-capability.test.ts","digest":"e562d7a7a64dc138b7d2dbccfcd6b1c7ea952b5d9bc8cc3a40461c96a93aa64d","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/platform/native/agentActivityRuntime.ts","digest":"4210ba8ce81ce9f54b210e25b908f209170f0dc56e478345c37dacf000812f0b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/platform/native/index.ts","digest":"d7767f1ca73f002d0c9a84257582cceb894515c519fe3a1c76e12993973c8dbf","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/platform/native/nativeRelayGrantRenewalAdapter.ts","digest":"f10ac7b4278a67648f946bc05c717da27f9fa59fced4576e1d0df41944657e49","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts","digest":"173870d9be71cb18fec95ffde4b9963edeedf8e911c3ee3453133dffadb08fce","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/platform/native/share.ts","digest":"8fe64933eb26db15da4ba9e587418ce15b43a4c29ff07d1c6c1e61b509aff6c8","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/platform/native/tauri.ts","digest":"b109e4dabde3780874e51d616a0d742bd47ef11b7897847a5933c922cb9ebeac","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/platform/native/types.ts","digest":"4ca1d8eb6b530c44755127f1a3dd62ac8c0241c41b1f9d8662336a79aaf29373","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-ui/src/platform/native/web.ts","digest":"a8e7cbeace083b8535cd4c7e0415deb04c81b6450c2503c68b0cc97d4e687b42","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-desktop/src/native_account_proof_key.rs","digest":"9bb638724bdcad82108f05ed4f72db251d6eed24e7853bbab95470c3b5877c76","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-desktop/src/native_relay_proof_key.rs","digest":"c702b8c3079399f04156eef2a27fee77e36930042ed8d2d7ebf18d65c0869318","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-desktop/src/native_relay_key_approval.rs","digest":"7d4ca6093164627811393110d4dc09aa30db8fdc47e28517af42e6cb66666f16","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+  ],
+
+  "checks": [
+    "REASONED: full document body read; current material claims traced to concrete owners and callers. Future requirements and dated receipts are not represented as executed current behavior.",
+
+    "EXECUTED: local Markdown paths/anchors415 PASS; public contract examples10 PASS; repository documentation hygiene PASS; two comment-only TypeScript programs print identically with comments removed; scoped Biome PASS.",
+
+    "No new provider/native/runtime journey and no repeated broad regression. Root owns combined ledger/reader freshness after integration.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing review through d0d9d33f7: Desktop-only module inclusion adds no IPC, startup call, mobile code or production account caller. Existing window, sidecar, routing, notification, recovery and store behavior is unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. macOS context checks: 10 checked, none skipped/failed; no native vault test, IPC or physical-device execution in this review.",
+
+    "Reviewed landing deltas through 111744681: Registers three desktop main-window application-signaling commands. This does not register the separate account-key vault, wire a normal application consumer, alter mobile startup or establish physical-device execution. Application binding/open/read share the existing diagnostic host service: profile revision, approved trust and keyring grant are rechecked around I/O. Outputs are public binding/expiry / answer + opaque proof, not a DataChannel, proof verification, account sign-in or application traffic. Read the changed document in context; its purpose and prior evidence limits remain.",
+
+    "Integration source review through e0314c727: lib.rs removed the dormant notification_watch_start/stop commands and their state, Cargo.toml reworded the rustls comment and a TLS-backend test was added, and ApiBaseContext dropped a comment. The document never listed those commands and its capability, permission and signaling claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

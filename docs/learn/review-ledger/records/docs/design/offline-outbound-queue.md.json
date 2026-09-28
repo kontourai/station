@@ -1,0 +1,35 @@
+{
+  "path": "docs/design/offline-outbound-queue.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Queue admission/exclusion policy with implementation notes and a bounded log-level exception.",
+
+  "limits": "Current queue/send ownership and dedicated log-level route/client were checked. The broad historical reconnect language does not authorize replay of possible effects; not a review of every configuration mutation or queue durability case.",
+
+  "document": {"digest":"f8f6a1469892804fdb6c546d5c1554601734f2eaff93883e4adb3deee049e106","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+  "sources": [
+    {"path":"packages/sdk/src/app-config.ts","digest":"5d9aaf8db98d943601e4faa56d3c984a2f2d4c0d13b643a129bdb416b9c21b5d","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/routes/system/config.ts","digest":"45bb6618c88a4128d7932840acee69f83b0eff5fbdbc151012ae1e4361a6c610","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/config/log-level-edit-service.ts","digest":"c1e9e5480814c05a959a885280798ee17d2718eb560c9dd14739a2f9295eae26","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/hooks/useActiveChatSessionMessaging.ts","digest":"6df9e0ec2c8f5e5a20309e67cf81f035a76e1a8ec98ac72fe3a03f5edca37253","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/lib/outboundQueue.ts","digest":"f5d6b23d36ce463a6f819530e4a4d5bc7c64efb376750829d8a24fb82f427d6c","revision":"fcd4407178cb5509ea47a958714603034fe20004"}
+  ],
+
+  "checks": [
+    "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
+
+    "Original document bytes preserved exactly after removing the added reading-status banner.",
+
+    "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
+
+    "Integration source review through d72f79b08: #2904 swaps the config route's full-access 403 body for fullAccessRefusal(); the log-level route is untouched. The send caller in useActiveChatSessionMessaging now treats a full-access refusal of a non-queued send as idle, restores the draft and offers an explicit 'Send without full access' action. A queued-dispatch refusal gets canned copy. The policy still holds: chat turns only are queued, configuration is excluded, log-level is the one bounded revisioned exception, and approvals are never queued. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

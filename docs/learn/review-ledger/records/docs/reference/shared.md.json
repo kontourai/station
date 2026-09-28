@@ -1,0 +1,157 @@
+{
+  "path": "docs/reference/shared.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed current documented-claim review, including compatibility declarations, legacy JSON readers, integration copier admission/rollback, build externals/containment/preparation, host lazy namespace publication and actual CLI/install callers. Reused earlier MCP/notification review after inspecting the only source delta (two package export additions). Clarified unchecked JSON/path inputs, Agent parse failures, specific credential-key rejection, skipped nondirectories, and page-level shared-runtime readiness. API/config review supplies adjacent provider/status/Project producer boundaries. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
+
+  "limits": "Selected documented contracts only, not every helper export or implementation branch. Syntax-only snippets are excerpts, not complete standalone programs. Existing parser/build tests use disposable fixtures and controlled dependency preparation. No real plugin install, registry or live MCP/provider/device outcome exercised. Earlier MCP and notification checks remain separately recorded; hashes are freshness checks, not semantic proof.",
+
+  "document": {"digest":"93e17afd59f1d73e1d564bb58ca851b847beb177e5484fba001ee3d6cbcb77f7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":"docs/design/mcp-ui-host.md","digest":"060ae4fc6877a186e8ea6d5073729e03f161dbe270b700f62741095560000195","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/cli/src/commands/build.ts","digest":"fe59b0aec5413bc16de44073be4669a2345d1a2c3ab0519f50b4dea615ce5b55","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/cli/src/dev/http.ts","digest":"3997773f71f58676ec9bfe8ccde2e408554fca263a75d5a2912ac526ef7b553a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/cli/src/dev/mcp.ts","digest":"5ffebccc4739694b146aff266b04501c1832d0b4f5e7791d5cd66a074f249683","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/agent.ts","digest":"09ccd526184f256ab9833dd6e46f417f4da565a825f3fd870f5621e017922e22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/auth.ts","digest":"999ef78ea6f5150965f80e9c8e8873a257e34bea9c563f533f7519693f52b92e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/catalog.ts","digest":"900d7d8a0807404f5e6ed1f17049edf1aedf4685906ec52f0bc5fb1a63f36264","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/config.ts","digest":"d7eb4b693fdae3966c9ec13321f50eb92c3da6c4bf6d62b9e7f9679b05f276f2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/knowledge.ts","digest":"09cf6a59b1cc49d059c14ad9081849d035d2b7bdf8061778d9808f4126b29986","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/layout.ts","digest":"d239a39ed06c9dcb103e89da3a86f4d358aa3261a7623b1c5a86eff69e897a43","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/notification.ts","digest":"8ab242f152839490894494f48fd701c6dfd2b5d13fcad3d439eeb83c17463156","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/plugin.ts","digest":"98607c85d86241ccf638de4d207ebb64285752092eb7a827e4304c75df409b95","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/project.ts","digest":"81c1da22c4d64208ecd8d5dad2259958b296272dfb2537ec6b514c271a55fb11","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/provider.ts","digest":"4385997b5f108761575c33e0aa5d53cfadab0b279221ef2405a982d6701a5e3d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/runtime.ts","digest":"7934961080fb33ddda1d4989b9a98d24cff3fcfc4ed9fd6debfffa986650ab22","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/scheduler.ts","digest":"8d2dc7aaeeca2b4ea4a0763109edb7f792fb29ce6f6f1817c5a3e721cdc2e4f3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/tool.ts","digest":"5333089345f6d5bc620294d7eda8ca8b6a8e9f4f559abc7fb100207b87e633e3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"f1e89d78c84ad0c285f88847ebd239b7ed688fb443de94e428652a8d796c837d","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/package.json","digest":"c15895373f108c3d6c2d434ee19eff4f29a8a71eeb4f3d652e786e317f3ed436","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/__tests__/build.test.ts","digest":"e7c2da46760a947ef17e70c50e4c244376e4b60f98802a4fd2f620764f08d4bf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/__tests__/parsers.test.ts","digest":"1790f0e30a102fcb8c8a7207be6e15f91d11c746ba5a5cff9938263d3692b827","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/__tests__/plugin-build.test.ts","digest":"54f606a55c186f8856656fb98a23e04388f44f61f111b9e59268a167baf1802b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/build.ts","digest":"381748ddf0f6cc406cd833c909ad15613a809df1440a6cea42187620f7208884","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/git.ts","digest":"e937710f53be37a50ec58616e6d987b390ee0273ae098a660de60411ae7cea77","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/index.ts","digest":"61ae87e4180d5ee0fd0176ef8cf4b2279efcb998e9b1c4f241cf1e70681daca8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/mcp-connection.ts","digest":"7820dc126d63a74fbb6b81f8c8ce080ac9d52af0fe3d80f55e882baf772d3a76","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/mcp-local-custody.ts","digest":"51e1b37ce259fce1012f968c4010c9075e7f9e4f43a13012497bc4057a1b2a66","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/mcp-ui-csp.ts","digest":"811062edc652c17556380fb3ed3776bda4d3f568e004225405f22528ddb3fc23","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/mcp.ts","digest":"721c238cb5184abd59b4798e32cd49c9de8fcbb057ad0abae86631a1998c1236","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/notification-envelope.ts","digest":"253001f7c412d7e9dcc67c2c5bca1491247801fc128b41d59b02256ee593ad7a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/parsers.ts","digest":"c239e53a4ef3706906a4511520e716f1282619f855d34d298c3bab3f4e8aac0f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/types.ts","digest":"fab18c926454048b1723c4e4575be8a5fba438473de42b420def9154a91d63a7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/agents/invoke-agent.ts","digest":"158a95a8af0b8a1f4480ad8ebaee68d569048c611f469ab78734c0d52cdd7cca","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/plugins/plugin-bundles.ts","digest":"1f1d61bad07cbd02ef056fd97e055ba034ca65d05dd39b32d8285ecad2df9afb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/auth.ts","digest":"f7edff4d6a502fdfa711486b7aab876db220f1410c85d75daa7a8f5c63f1bc71","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/system/system-status-routes.ts","digest":"0c52821e1938ae72876d26def0ee756db16f1cb2a33e9088bb4e1da8800e4f0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/mcp-apps-metadata.ts","digest":"67a048ee54d656d731f4cb3c3a4c3ac92e86472b453ebe5e04e782d0b48b2ae5","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/mcp-manager.ts","digest":"c6569ade67cb9b48930cac5ca09521ba0836161c462f7b5a7c684b6eb8db1d3c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/mcp-ui-frame-server.ts","digest":"eaf7b70c1248c4020af4fafd05c5e38c6e8fd03fd2955991965d0e94dd3cc77c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/mcp/mcp-ui-resolver.ts","digest":"b82399f787d6b71129684e5cb4fad8858846d5315d0c1077822ac1591199075e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/notifications/notification-service.ts","digest":"dc0df39c89f0e28181353f544f15467c528fb9685622077cca74b672d2857c19","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"2ffb49b139b202cc8dfe6b7819cda5111a4a8f3fa6299a5b66405a3adb802a9b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","digest":"732a76fa3772bbc163f0c9c5b8da98c530614a27acfaba1b93fbecb497f240b3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/components/notifications/NotificationEnvelopeControls.tsx","digest":"ff853e2dc442ce88ea5761e81385709536a024ee3beddb11317d7c1073050444","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"4b87c6951d37298e6497639e1cc45294fd1239f06d4c6caf9f5ed540eef5ca2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/core/pluginSharedRuntime.ts","digest":"041ac68827827014fd0f9d655efbf020879bde4cf0da8b99150e2a370c149833","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "Full original document text read; exact inspected and remaining scope retained in HANDOFF.md. Documentation-only change.",
+
+    "Real PluginWorkspacePaneSDKBoundary to SDKAdapter to SDKProvider fixture: 9 tests, exit 0, 4.52s; controlled surrounding providers and no network. Confirms observed default-host gaps, not desired feature support.",
+
+    "Focused existing checks: 91 tests across ConnectionStore, useConnectionStatus, integration-copy parsers and Agent resolver; 4 files, exit 0, 2.64s.",
+
+    "First-plugin guide manifest and entrypoint extracted verbatim: actual schema parser and buildPlugin production/dev controls exit 0; no dependency install or Station installation/activation.",
+
+    "153 TS/TSX/JS/JSON fences parse, exit 0; syntax only. Initial 8 SDK pseudo-signature/multiple-JSX parse failures were corrected or explicitly marked text; retained original failure receipt.",
+
+    "Local paths and rendered anchors validated in396 Markdown files, exit0. Repository/public hygiene and public contract examples exit0; public checks apply only to10 admitted documents, not semantic certification of these5 references.",
+
+    "Frozen staged-document readiness exit0,0 failures/0 warnings, veritas-1790478448046. Commit bdbb325a0c2b735e8b522f4bbcade27fecc46fe7 contains exactly the5 owned Markdown files; worktree clean.",
+
+    "Continuation2026-09-27:339 tests/11 files passed (24.56s), covering Muse adapter/serve, quota classifiers and connected delegation, supervision projection, watchdog/tracker/window, conversation stats and native-push routes; controlled fixtures, not live provider/device evidence.",
+
+    "Continuation2026-09-27:134 tests/4 files passed (4.64s), covering shared MCPv2/local-custody and notification envelope/service. Existing2099 notification fixture emitted TimeoutOverflowWarning; retained as diagnostic candidate, not ignored as proof of scheduler correctness.",
+
+    "Continuation2026-09-27:153 fence syntax checks and396 Markdown local links/anchors passed; frozen readiness veritas-1790515593355 passed0failures0warnings. Exactly2Markdown files committed; no runtime/shared-ledger/protected mutation.",
+
+    "Final helper tranche:27 tests/3 files PASS,3.67s. Expected containment-refusal fixture errors retained.",
+
+    "Final four-document bytes:407 Markdown paths/anchors PASS;154 reference/example syntax fences PASS;git diff --check PASS. Veritas1790527733697:0 failures0 warnings. Three owned documentation-only commits; no runtime edits or external writes.",
+
+    "Removed orphaned compatibility comment after source search confirmed the execution-mode normalization helper is absent; type declarations unchanged.",
+
+    "Source-reviewed policy-construction and host callers; synthetic intercepted Chromium probe is not live remote exfiltration or broad containment proof.",
+
+    "Reviewed integration deltas: Added bounded MCP policy distinction between scheme filtering and complete source-expression/containment validation; retained prior public API review. packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. packages/shared/src/mcp-ui-csp.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
+
+    "Integration source review through d1e0facc2: Unused formatMcpToolRef export removed; documented layout parsing/types remain. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: pnpm-lock.yaml dropped the bearing/forage root entries, and plugin install gained an excludeGitMetadata option that stages proposed installs without .git entries. The documented compatibility, copier, build and MCP contracts are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 adds `STATION_CONFINEMENT_GRANTOR_METADATA_KEY` ('stationConfinementGrantor') to packages/contracts/src/provider.ts and to `RESERVED_ORCHESTRATION_METADATA_KEYS`. The shared reference does not document provider.ts confinement or reserved metadata keys, and none of its compatibility, copier, build or host-namespace claims depend on them. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes getOpenFileMime and isAllowedOpenFilePath private in packages/cli/src/dev/http.ts. The open-file route still uses them, with the same behavior. The document does not name them as exports. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2881 adds the ./prebuilt-archive and ./service-launcher-protocol .ts subpaths to the packages/shared export map. #2914 stops re-exporting isDistinctFrameOrigin from MCPToolUIFrame and un-exports mcpUiToolCallDecision. The doc's 'mostly .ts with a few .mjs' export-map description and the mcp-ui-csp claims still hold; prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: mcp-manager.ts only made createRuntimeOAuthProvider module-private; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

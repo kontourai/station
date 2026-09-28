@@ -1,0 +1,61 @@
+{
+  "path": "examples/meeting-notes/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete README: capture/upload and raw create, requested compile schema and response field validation, separate compiled-record write and provenance link, pending-edit races, graph invalidation limit, default all-relevant-roots Ask scope and indexed excerpt/source distinction, disabled SDK live capture, and process-local Neo4j setup.",
+
+  "limits": "EXECUTED PASS: public plugin build and fixture-based capture/compile/Ask/graph tests. No live model, microphone, dual-adapter installed capture journey or Neo4j qualification; two live Neo4j tests skipped. Source-linked compilation does not verify input equality with the saved raw record.",
+
+  "document": {"digest":"4f67cb79e4530b1064be18d4b65050061d43bc5f03557069540a821e0b5b3772","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+  "sources": [
+    {"path":"examples/meeting-notes/layout.json","digest":"a30cb7494ebff601d146b46eec4f97f6a39f96787057a8c29a3be85a11b66fc5","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/meeting-notes/plugin.json","digest":"3b91025a95a598b29bf61a77e977cedd5c517df010d404f0dc21a499f0b79c06","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/meeting-notes/src/AskPane.tsx","digest":"867ef11f37ef7237eeaa64f788f572860e62e2ff2ea31692a093f38417b437f8","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/meeting-notes/src/CaptureModal.tsx","digest":"99620a534b8c7248d5d1024c67656d58904b29d8d9b4396d6d04e13f91308181","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/meeting-notes/src/GraphPane.tsx","digest":"0b484a80168add93868963e76abc8309f7e881e3aaf34dbb077cfca641799eb1","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/meeting-notes/src/compile.ts","digest":"56c94d0e932f550312ed2846ff0251befa2ae3ff71a3aae83a54d7503ec274b6","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"examples/meeting-notes/src/roots.ts","digest":"ff249d4ededbc13b8126aa7068fbc679f875be1d3bf5d6d4cf6d20450162db31","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"packages/sdk/src/api-agent-runtime.ts","digest":"f1e89d78c84ad0c285f88847ebd239b7ed688fb443de94e428652a8d796c837d","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3cce37501a5cb2b8233624c5a831b9dbeed2fdecbfe9f24bb5716413ed060ac4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"packages/sdk/src/components/KnowledgeRecall.css","digest":"c10eeb9534ec0df6147b1f2cae7ab5907ca25675abbf87727794aa15b89c5474","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"packages/sdk/src/components/KnowledgeRecall.tsx","digest":"d0742a663f4a68f786c1e1772cf37ee90a0265701f2996f8a0a6de2b4e092c12","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"packages/sdk/src/query-domains/knowledgeStores.ts","digest":"52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"packages/shared/src/knowledge-root-identity.ts","digest":"8c1dbadc429909b9b50dd25c273fb0dcdbddac3886adb49402b53e0ba96f3d9c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/knowledge-store/neo4j-connection.ts","digest":"711a8d553aa67488e4b32706fd75733ad88f5bb8ba3f8065e1177f4b96c560be","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/knowledge-store/neo4j-graph-sync.ts","digest":"6af01817b91477890720443711c2a24de178f720ef6aba033fc73793043fa6d5","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/routes/knowledge/knowledge-index-routes.ts","digest":"ed5a403488328a12aa935b4b5e820bfa1d95639d29e4481295e38dd85bba8c6c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/routes/knowledge/knowledge-record-routes.ts","digest":"7b5fc0fb012792ac218e8166c49f70a8311a0ba3a52a69faadda011dbc19d629","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"src-server/routes/knowledge/neo4j-graph-routes.ts","digest":"50f06b1cf7bea0e7d5b3345152294e796bf1a4a56fee10465a5473b5bd0daa15","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+  ],
+
+  "checks": [
+    "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
+
+    "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
+
+    "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+
+    "Integration source review through e0314c727: neo4j-connection.ts deleted the unused query stub and connection-type constant. The README's claims (process-local registration, TCP-only probe, graph routes without a production registration caller, env-guarded live tests) still hold, so the prose is accurate. Source review is separate from executed test evidence; no tests were run."
+  ]
+}

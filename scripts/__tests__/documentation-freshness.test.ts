@@ -1,6 +1,12 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
@@ -17,10 +23,24 @@ import {
   freshnessBlocks,
 } from '../lib/documentation-freshness.mjs';
 import {
+  captureReviewFile,
+  LEGACY_REVIEW_LEDGER,
+  REVIEW_LEDGER_DIR,
+  readReviewState,
+  readReviewStateAt,
+  recordFile,
+  serializeRecordFile,
+} from '../lib/review-ledger-store.mjs';
+import {
   forbidAmbientFreshnessMode,
   LEAKED_FRESHNESS_MODE,
   pinnedFreshnessEnv,
 } from './helpers/freshness-env.js';
+import {
+  type FixtureRecord,
+  writeLearningMedia,
+  writeReviewLedger,
+} from './helpers/review-ledger-fixture.js';
 
 const makeTempDir = trackTempDirs();
 const scripts = resolve(import.meta.dirname, '..');
@@ -30,45 +50,63 @@ const image = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF9sAAAAASUVORK5CYII=',
   'base64',
 );
-const LEDGER = 'docs/learn/review-ledger.json';
 const MEDIA = 'docs/learn/media.json';
 
-// Fixture Git commands must not inherit this checkout's Git location.
-const baseEnv = Object.fromEntries(
-  Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
-);
 // Every check below pins its mode; an unpinned read throws (#2934).
 forbidAmbientFreshnessMode();
+
+/**
+ * Fixture Git commands must not inherit this checkout's Git location. Built at
+ * call time, after the ambient mode is stubbed, so reusing it for a spawned
+ * check leaks the forbidden mode and fails on every host.
+ */
+const gitEnv = () =>
+  Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
+  );
 
 function git(root: string, args: string[]) {
   return execFileSync('git', args, {
     cwd: root,
-    env: baseEnv,
+    env: gitEnv(),
     encoding: 'utf8',
     windowsHide: true,
   }).trim();
 }
 
+const identity = [
+  '-c',
+  'user.name=Fixture',
+  '-c',
+  'user.email=fixture@example.invalid',
+  '-c',
+  'core.hooksPath=/dev/null',
+];
+
 function commit(root: string, message: string) {
   git(root, ['add', '-A']);
-  git(root, [
-    '-c',
-    'user.name=Fixture',
-    '-c',
-    'user.email=fixture@example.invalid',
-    '-c',
-    'core.hooksPath=/dev/null',
-    'commit',
-    '-qm',
-    message,
-  ]);
+  git(root, [...identity, 'commit', '-qm', message]);
+  return git(root, ['rev-parse', 'HEAD']);
 }
 
-function record(path: string, sources: [string, string][], doc: string) {
+/** `git merge` with the default driver and no custom configuration. */
+function merge(root: string, ref: string) {
+  return spawnSync('git', [...identity, 'merge', '--no-edit', ref], {
+    cwd: root,
+    env: gitEnv(),
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+}
+
+function record(
+  path: string,
+  sources: [string, string][],
+  doc: string,
+): FixtureRecord {
   return {
     path,
     documentDigest: hash(doc),
-    sourceRevision: 'a'.repeat(40),
     kind: 'current',
     state: 'source-reviewed',
     summary: 'Checked the caller.',
@@ -81,7 +119,13 @@ function record(path: string, sources: [string, string][], doc: string) {
   };
 }
 
-/** A main branch whose three records and one capture are fresh. */
+// src/c.ts and src/d.ts are cited only by docs/map.md, a shared page like the
+// module map. src/c.ts has room between its lines, so edits at either end
+// merge cleanly as source while their reviews must still meet.
+const SHARED_C =
+  'export const c1 = 1;\n// one\n// two\n// three\nexport const c2 = 1;\n';
+
+/** A main branch whose records and one capture are fresh and verifiable. */
 function fixture({ commitIt = true } = {}) {
   const root = makeTempDir('station-doc-freshness-');
   const write = (path: string, bytes: string | Buffer) => {
@@ -93,75 +137,93 @@ function fixture({ commitIt = true } = {}) {
     'docs/b.md': '# B\n',
     'docs/c.md': '# C cites A\n',
     'docs/d.md': '# D cites the capture manifest\n',
+    'docs/map.md': '# Map cites C and D\n',
     'src/a.ts': 'export const a = 1;\n',
     'src/b.ts': 'export const b = 1;\n',
+    'src/c.ts': SHARED_C,
+    'src/d.ts': 'export const d = 1;\n',
     'src/ui.ts': 'export const ui = 1;\n',
   };
   for (const [path, text] of Object.entries(files)) write(path, text);
   write('docs/learn/media/task.png', image);
-  const mediaText = `${JSON.stringify(
-    {
-      version: 1,
-      captures: [
-        {
-          path: 'docs/learn/media/task.png',
-          kind: 'image',
-          digest: hash(image),
-          alt: 'A task',
-          caption: 'A task.',
-          scenario: 'Task → detail',
-          evidence: 'Fixture capture.',
-          capturedRevision: 'a'.repeat(40),
-          reviewedRevision: 'a'.repeat(40),
-          documents: ['docs/a.md'],
-          sources: [{ path: 'src/ui.ts', digest: hash(files['src/ui.ts']) }],
-        },
+  const capture = {
+    path: 'docs/learn/media/task.png',
+    kind: 'image',
+    digest: hash(image),
+    alt: 'A task',
+    caption: 'A task.',
+    scenario: 'Task → detail',
+    evidence: 'Fixture capture.',
+    capturedRevision: 'a'.repeat(40),
+    documents: ['docs/a.md'],
+    sources: [{ path: 'src/ui.ts', digest: hash(files['src/ui.ts']) }],
+  };
+  const mediaText = writeLearningMedia(root, [capture]);
+  const records = [
+    record('docs/a.md', [['src/a.ts', files['src/a.ts']]], files['docs/a.md']),
+    record('docs/b.md', [['src/b.ts', files['src/b.ts']]], files['docs/b.md']),
+    record(
+      'docs/c.md',
+      [['docs/a.md', files['docs/a.md']]],
+      files['docs/c.md'],
+    ),
+    // A page that cites the capture manifest itself.
+    record('docs/d.md', [[MEDIA, mediaText]], files['docs/d.md']),
+    record(
+      'docs/map.md',
+      [
+        ['src/c.ts', files['src/c.ts']],
+        ['src/d.ts', files['src/d.ts']],
       ],
-    },
-    null,
-    2,
-  ).replace(
-    /[\u007f-\uffff]/g,
-    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
-  )}\n`;
-  write(MEDIA, mediaText);
-  write(
-    LEDGER,
-    `${JSON.stringify(
-      {
-        version: 1,
-        records: [
-          record(
-            'docs/a.md',
-            [['src/a.ts', files['src/a.ts']]],
-            files['docs/a.md'],
-          ),
-          record(
-            'docs/b.md',
-            [['src/b.ts', files['src/b.ts']]],
-            files['docs/b.md'],
-          ),
-          record(
-            'docs/c.md',
-            [['docs/a.md', files['docs/a.md']]],
-            files['docs/c.md'],
-          ),
-          // A page that cites the capture manifest itself.
-          record('docs/d.md', [[MEDIA, mediaText]], files['docs/d.md']),
-        ],
-      },
-      null,
-      2,
-    )}\n`,
-  );
+      files['docs/map.md'],
+    ),
+  ];
   git(root, ['init', '-q', '-b', 'main']);
-  if (commitIt) commit(root, 'fresh main');
+  if (!commitIt) {
+    writeReviewLedger(root, records);
+    return {
+      root,
+      write,
+      read: (p: string) => readFileSync(join(root, p), 'utf8'),
+    };
+  }
+  // Bind every record to the commit that holds its reviewed bytes, exactly as
+  // the record command does.
+  const content = commit(root, 'content');
+  writeReviewLedger(
+    root,
+    records.map((entry) => ({ ...entry, documentRevision: content })),
+  );
+  writeLearningMedia(root, [capture], content);
+  commit(root, 'fresh main');
   return {
     root,
+    content,
     write,
     read: (path: string) => readFileSync(join(root, path), 'utf8'),
   };
 }
+
+const compiled = (root: string, path: string) =>
+  readReviewState(root).ledger.records.find(
+    (entry: { path: string }) => entry.path === path,
+  );
+
+/** Hand-edit one record file, keeping the canonical layout. */
+function editRecord(root: string, path: string, edit: (data: any) => void) {
+  const file = join(root, recordFile(path));
+  const data = JSON.parse(readFileSync(file, 'utf8'));
+  edit(data);
+  writeFileSync(file, serializeRecordFile(data));
+}
+
+const notesFiles = (root: string) => {
+  try {
+    return readdirSync(join(root, REVIEW_LEDGER_DIR, 'notes')).sort();
+  } catch {
+    return [];
+  }
+};
 
 function run(
   root: string,
@@ -181,6 +243,7 @@ const check = (root: string, env: Record<string, string>) =>
 const record_ = (root: string, args: string[]) =>
   run(root, 'record-documentation-review.mjs', args);
 const scoped = { STATION_DOCS_FRESHNESS_BASE: 'main' };
+const strict = { STATION_DOCS_FRESHNESS: 'strict' };
 const queue = { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'merge_group' };
 const pullRequest = {
   GITHUB_ACTIONS: 'true',
@@ -193,7 +256,7 @@ describe('scoped documentation freshness (#2923)', () => {
     const f = fixture();
     git(f.root, ['switch', '-qc', 'pr-a']);
     f.write('src/a.ts', 'export const a = 2;\n');
-    commit(f.root, 'change a source');
+    const changedAt = commit(f.root, 'change a source');
     for (const env of [scoped, pullRequest]) {
       const refused = check(f.root, env);
       expect(refused.status).toBe(1);
@@ -208,9 +271,22 @@ describe('scoped documentation freshness (#2923)', () => {
     expect(recorded.stderr).toBe('');
     expect(recorded.status).toBe(0);
     expect(check(f.root, scoped).status).toBe(0);
-    const a = JSON.parse(f.read(LEDGER)).records[0];
-    expect(a.sourceRevision).toBe(git(f.root, ['rev-parse', 'HEAD']));
+    const a = compiled(f.root, 'docs/a.md');
+    // The changed source binds the commit holding its reviewed bytes; the
+    // unchanged document keeps its binding.
+    expect(a.sources).toEqual([
+      {
+        path: 'src/a.ts',
+        digest: hash('export const a = 2;\n'),
+        revision: changedAt,
+      },
+    ]);
+    expect(a.documentRevision).toBe(f.content);
     expect(a.checks.at(-1)).toBe('Checked the new value.');
+    expect(a.notes.at(-1)).toMatchObject({
+      note: 'Checked the new value.',
+      revision: changedAt,
+    });
   });
 
   it('never fails a change for staleness that another change introduced', () => {
@@ -252,16 +328,7 @@ describe('scoped documentation freshness (#2923)', () => {
       ['x', 'y'],
     ]) {
       git(f.root, ['switch', '-qC', `candidate-${first}-${second}`, first]);
-      git(f.root, [
-        '-c',
-        'user.name=Fixture',
-        '-c',
-        'user.email=fixture@example.invalid',
-        'merge',
-        '-q',
-        '--no-edit',
-        second,
-      ]);
+      expect(merge(f.root, second).status).toBe(0);
       const candidate = check(f.root, queue);
       expect(candidate.stderr).toContain('review docs/a.md; changed: src/a.ts');
       expect(candidate.stderr).toContain('review docs/b.md; changed: src/b.ts');
@@ -305,22 +372,13 @@ describe('scoped documentation freshness (#2923)', () => {
     expect(check(f.root, scoped).status).toBe(0);
     // The queue candidate combines both: B cites a file that no longer exists.
     git(f.root, ['switch', '-qc', 'candidate', 'g']);
-    git(f.root, [
-      '-c',
-      'user.name=Fixture',
-      '-c',
-      'user.email=fixture@example.invalid',
-      'merge',
-      '-q',
-      '--no-edit',
-      'h',
-    ]);
+    expect(merge(f.root, 'h').status).toBe(0);
     const queued = check(f.root, queue);
     expect(queued.stderr).toContain('review docs/b.md; changed: src/a.ts');
     expect(queued.stderr).not.toContain('Invalid review source');
     expect(queued.status).toBe(0);
     // Strict still refuses it, and so does a PR whose own diff causes it.
-    expect(check(f.root, { STATION_DOCS_FRESHNESS: 'strict' }).status).toBe(1);
+    expect(check(f.root, strict).status).toBe(1);
     git(f.root, ['switch', '-qc', 'own-delete', 'h']);
     git(f.root, ['rm', '-q', 'src/a.ts']);
     commit(f.root, 'delete a cited source without re-review');
@@ -332,9 +390,9 @@ describe('scoped documentation freshness (#2923)', () => {
   it('treats a hand-edited record as in scope even when its bytes are untouched', () => {
     const f = fixture();
     git(f.root, ['switch', '-qc', 'edit-record']);
-    const ledger = JSON.parse(f.read(LEDGER));
-    ledger.records[1].sources[0].digest = 'f'.repeat(64);
-    f.write(LEDGER, `${JSON.stringify(ledger, null, 2)}\n`);
+    editRecord(f.root, 'docs/b.md', (data) => {
+      data.sources[0].digest = 'f'.repeat(64);
+    });
     const result = check(f.root, scoped);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('review docs/b.md; changed: src/b.ts');
@@ -353,11 +411,11 @@ describe('scoped documentation freshness (#2923)', () => {
     expect(check(f.root, { STATION_DOCS_FRESHNESS: 'bogus' }).status).toBe(1);
   });
 
-  it('applies the same scope to learning captures, which the record command refreshes', () => {
+  it('applies the same scope to learning captures, whose review no longer rewrites media.json', () => {
     const f = fixture();
     git(f.root, ['switch', '-qc', 'ui']);
     f.write('src/ui.ts', 'export const ui = 2;\n');
-    commit(f.root, 'change captured UI');
+    const changedAt = commit(f.root, 'change captured UI');
     const refused = check(f.root, scoped);
     expect(refused.status).toBe(1);
     expect(refused.stderr).toContain(
@@ -370,49 +428,29 @@ describe('scoped documentation freshness (#2923)', () => {
       '--note',
       'The change does not alter the captured pixels.',
     ]);
+    expect(recorded.stderr).toBe('');
     expect(recorded.status).toBe(0);
-    // The command rewrote media.json, so the page citing it is a dependent.
-    expect(recorded.stdout).toContain(
-      'docs/d.md; changed: docs/learn/media.json',
-    );
-    const dependent = check(f.root, scoped);
-    expect(dependent.status).toBe(1);
-    expect(dependent.stderr).toContain(
-      'review docs/d.md; changed: docs/learn/media.json',
-    );
-    expect(
-      record_(f.root, ['docs/d.md', '--note', 'Manifest delta reviewed.'])
-        .status,
-    ).toBe(0);
-    expect(check(f.root, scoped).status).toBe(0);
-    const capture = JSON.parse(f.read(MEDIA)).captures[0];
-    expect(capture.reviewedRevision).toBe(git(f.root, ['rev-parse', 'HEAD']));
+    // #2936: the capture review lives in the ledger directory, so recording
+    // it leaves media.json and every page citing it untouched.
+    expect(f.read(MEDIA)).toBe(before);
+    expect(recorded.stdout).not.toContain('Still stale');
+    expect(check(f.root, strict).status).toBe(0);
+    const capture = readReviewState(f.root).media.captures[0];
+    expect(capture.sources).toEqual([
+      {
+        path: 'src/ui.ts',
+        digest: hash('export const ui = 2;\n'),
+        revision: changedAt,
+      },
+    ]);
     expect(capture.capturedRevision).toBe('a'.repeat(40));
     expect(capture.reviewNotes).toEqual([
       'The change does not alter the captured pixels.',
     ]);
-    // Only the refreshed lines change; the escaped arrow stays escaped.
     expect(f.read(MEDIA)).toContain('Task \\u2192 detail');
-    expect(before).toContain('Task \\u2192 detail');
-  });
-
-  it('digests a review citing media.json over the manifest bytes the same batch writes', () => {
-    const f = fixture();
-    git(f.root, ['switch', '-qc', 'ui']);
-    f.write('src/ui.ts', 'export const ui = 2;\n');
-    commit(f.root, 'change captured UI');
-    const batch = join(f.root, 'batch.json');
-    writeFileSync(
-      batch,
-      JSON.stringify([
-        { path: 'docs/d.md', note: 'Manifest delta reviewed.' },
-        { path: 'docs/learn/media/task.png', note: 'Pixels unchanged.' },
-      ]),
+    expect(f.read(captureReviewFile('docs/learn/media/task.png'))).toContain(
+      changedAt,
     );
-    const result = record_(f.root, ['--batch', batch]);
-    expect(result.status).toBe(0);
-    expect(result.stdout).not.toContain('Still stale');
-    expect(check(f.root, { STATION_DOCS_FRESHNESS: 'strict' }).status).toBe(0);
   });
 
   it('runs with the ambient mode forbidden, and spawned checks scrub every mode variable', () => {
@@ -424,6 +462,9 @@ describe('scoped documentation freshness (#2923)', () => {
     const child = pinnedFreshnessEnv();
     for (const key of DOCS_FRESHNESS_ENV_KEYS)
       expect(child).not.toHaveProperty(key);
+    // The fixture Git environment is built after the stub, so a spawn that
+    // reused it would inherit the forbidden mode instead of a clean one.
+    expect(gitEnv().STATION_DOCS_FRESHNESS).toBe(LEAKED_FRESHNESS_MODE);
     expect(DOCS_FRESHNESS_ENV_KEYS).toEqual([
       'STATION_DOCS_FRESHNESS',
       'STATION_DOCS_FRESHNESS_BASE',
@@ -473,13 +514,55 @@ describe('scoped documentation freshness (#2923)', () => {
       documentationFreshnessMode({ STATION_DOCS_FRESHNESS: 'off' }),
     ).toThrow('must be scoped, advisory or strict');
   });
+
+  it('requires a review note when a change drops a cited source it also modifies (D5)', () => {
+    const f = fixture();
+    git(f.root, ['switch', '-qc', 'escape']);
+    f.write('src/c.ts', SHARED_C.replace('c1 = 1', 'c1 = 2'));
+    commit(f.root, 'change a source of the shared page');
+    // Hand-delete the changed citation instead of re-reviewing the page.
+    editRecord(f.root, 'docs/map.md', (data) => {
+      data.sources = data.sources.filter(
+        (source: { path: string }) => source.path !== 'src/c.ts',
+      );
+    });
+    // The page's remaining bytes are fresh, so only the drop rule sees it.
+    expect(check(f.root, queue).stderr).not.toContain('docs/map.md');
+    const escaped = check(f.root, scoped);
+    expect(escaped.status).toBe(1);
+    expect(escaped.stderr).toContain(
+      'review docs/map.md; dropped cited sources this change modifies without a review note: src/c.ts',
+    );
+    // The record command's drop writes the note the rule asks for.
+    git(f.root, ['checkout', '--', REVIEW_LEDGER_DIR]);
+    const dropped = record_(f.root, [
+      'docs/map.md',
+      '--note',
+      'src/c.ts no longer supports this page.',
+      '--drop-source',
+      'src/c.ts',
+    ]);
+    expect(dropped.stderr).toBe('');
+    expect(dropped.status).toBe(0);
+    expect(check(f.root, scoped).status).toBe(0);
+    // Deleting the whole record while its page remains is refused outright.
+    commit(f.root, 'record the drop');
+    rmSync(join(f.root, recordFile('docs/map.md')));
+    const removed = check(f.root, scoped);
+    expect(removed.status).toBe(1);
+    expect(removed.stderr).toContain(
+      'review docs/map.md; record removed while this change modifies its cited sources: src/c.ts',
+    );
+  });
 });
 
-describe('docs:review:record (#2924)', () => {
-  it('binds the review to HEAD, recomputes digests, keeps unrelated lines and reports dependents', () => {
+describe('docs:review:record (#2924, #2936)', () => {
+  it('rebinds only the changed lines, adds one notes file and reports dependents', () => {
     const f = fixture();
     f.write('docs/a.md', '# A, revised\n');
-    const before = f.read(LEDGER);
+    const changedAt = commit(f.root, 'revise A');
+    const file = recordFile('docs/a.md');
+    const before = f.read(file);
     const result = record_(f.root, [
       'docs/a.md',
       '--note',
@@ -487,41 +570,39 @@ describe('docs:review:record (#2924)', () => {
     ]);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
-    const after = f.read(LEDGER);
-    const ledger = JSON.parse(after);
-    expect(ledger.records[0]).toMatchObject({
-      documentDigest: hash('# A, revised\n'),
-      sourceRevision: git(f.root, ['rev-parse', 'HEAD']),
-    });
-    // Only record A's lines changed: document digest, revision, the previous
-    // last check (which gains a comma) and the new note.
-    const changed = after
+    // Only the document binding line changed; the unchanged source keeps
+    // its line, so another branch refreshing it merges cleanly.
+    const changed = f
+      .read(file)
       .split('\n')
       .filter((line) => !before.split('\n').includes(line));
     expect(changed).toEqual([
-      `      "documentDigest": "${hash('# A, revised\n')}",`,
-      `      "sourceRevision": "${git(f.root, ['rev-parse', 'HEAD'])}",`,
-      '        "Fixture evidence.",',
-      '        "Re-read the page."',
+      `  "document": {"digest":"${hash('# A, revised\n')}","revision":"${changedAt}"},`,
     ]);
+    expect(notesFiles(f.root)).toHaveLength(1);
+    expect(result.stdout).toContain(
+      `in ${REVIEW_LEDGER_DIR}/notes/${notesFiles(f.root)[0]}`,
+    );
     // docs/c.md cites docs/a.md, whose accepted bytes just changed.
     expect(result.stdout).toContain('docs/c.md; changed: docs/a.md');
-    expect(
-      check(f.root, { STATION_DOCS_FRESHNESS: 'strict' }).stderr,
-    ).toContain('review docs/c.md');
+    expect(check(f.root, strict).stderr).toContain('review docs/c.md');
   });
 
-  it('refuses an empty note, an unknown path, an invalid revision and a bad drop without writing', () => {
+  it('refuses an empty note, an unknown path, fresh or uncommitted bytes and bad source edits without writing', () => {
     const f = fixture();
-    f.write('src/a.ts', 'export const a = 2;\n');
-    const before = f.read(LEDGER);
     f.write('src/untracked.ts', 'export const u = 1;\n');
+    const before = f.read(recordFile('docs/a.md'));
     for (const [args, reason] of [
       [['docs/a.md', '--note', '   '], 'Review note is empty: docs/a.md'],
       [['docs/a.md'], 'Review note is empty: docs/a.md'],
       [
         ['docs/missing.md', '--note', 'Reviewed.'],
         'No review record or capture for docs/missing.md',
+      ],
+      // (a) Nothing changed since the recorded review.
+      [
+        ['docs/a.md', '--note', 'Reviewed.'],
+        'Already fresh: docs/a.md; its recorded bytes are unchanged. Pass --rereview',
       ],
       [
         ['docs/a.md', '--note', 'Reviewed.', '--drop-source', 'src/nope.ts'],
@@ -546,13 +627,25 @@ describe('docs:review:record (#2924)', () => {
         ['docs/a.md', '--note', 'Reviewed.', '--drop-source', '--note'],
         '--drop-source requires a value',
       ],
+      [
+        ['--show-delta', 'docs/a.md', '--note', 'Reviewed.'],
+        '--show-delta reads the ledger and records nothing',
+      ],
     ] as const) {
       const refused = record_(f.root, [...args]);
       expect(refused.status, args.join(' ')).toBe(1);
       expect(refused.stderr).toMatch(/^docs:review:record: /);
       expect(refused.stderr).toContain(reason);
     }
-    expect(f.read(LEDGER)).toBe(before);
+    // A review binds a commit that contains the reviewed bytes.
+    f.write('src/a.ts', 'export const a = 2;\n');
+    const uncommitted = record_(f.root, ['docs/a.md', '--note', 'Reviewed.']);
+    expect(uncommitted.status).toBe(1);
+    expect(uncommitted.stderr).toContain(
+      'Reviewed bytes are not committed: src/a.ts',
+    );
+    expect(f.read(recordFile('docs/a.md'))).toBe(before);
+    expect(notesFiles(f.root)).toEqual([]);
 
     const unborn = fixture({ commitIt: false });
     git(unborn.root, ['add', '-A']);
@@ -561,11 +654,29 @@ describe('docs:review:record (#2924)', () => {
     expect(noHead.stderr).toContain('Cannot bind the review to HEAD');
   });
 
+  it('records a deliberate re-review of fresh bytes with --rereview and changes no binding', () => {
+    const f = fixture();
+    const before = f.read(recordFile('docs/a.md'));
+    const result = record_(f.root, [
+      'docs/a.md',
+      '--note',
+      'Re-read against the new caller.',
+      '--rereview',
+    ]);
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    expect(f.read(recordFile('docs/a.md'))).toBe(before);
+    expect(compiled(f.root, 'docs/a.md').checks.at(-1)).toBe(
+      'Re-read against the new caller.',
+    );
+  });
+
   it('applies a batch atomically and drops removed sources', () => {
     const f = fixture();
     f.write('src/a.ts', 'export const a = 2;\n');
     f.write('src/b.ts', 'export const b = 2;\n');
-    const before = f.read(LEDGER);
+    commit(f.root, 'change a and b');
+    const before = f.read(recordFile('docs/a.md'));
     const batch = join(f.root, 'batch.json');
     writeFileSync(
       batch,
@@ -575,7 +686,8 @@ describe('docs:review:record (#2924)', () => {
       ]),
     );
     expect(record_(f.root, ['--batch', batch]).status).toBe(1);
-    expect(f.read(LEDGER)).toBe(before);
+    expect(f.read(recordFile('docs/a.md'))).toBe(before);
+    expect(notesFiles(f.root)).toEqual([]);
     writeFileSync(
       batch,
       JSON.stringify([
@@ -590,13 +702,14 @@ describe('docs:review:record (#2924)', () => {
     );
     // docs/c.md is classified-only once its last source is dropped; the
     // fixture's source-reviewed state must keep a source, so relax it first.
-    const ledger = JSON.parse(before);
-    ledger.records[2].state = 'classified';
-    f.write(LEDGER, `${JSON.stringify(ledger, null, 2)}\n`);
+    editRecord(f.root, 'docs/c.md', (data) => {
+      data.state = 'classified';
+    });
     const result = record_(f.root, ['--batch', batch]);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
-    expect(JSON.parse(f.read(LEDGER)).records[2].sources).toEqual([]);
+    expect(notesFiles(f.root)).toHaveLength(1);
+    expect(compiled(f.root, 'docs/c.md').sources).toEqual([]);
     const added = record_(f.root, [
       'docs/b.md',
       '--note',
@@ -605,11 +718,285 @@ describe('docs:review:record (#2924)', () => {
       'src/ui.ts',
     ]);
     expect(added.status).toBe(0);
-    expect(JSON.parse(f.read(LEDGER)).records[1].sources).toEqual([
+    expect(
+      compiled(f.root, 'docs/b.md').sources.map(
+        ({ path, digest }: { path: string; digest: string }) => ({
+          path,
+          digest,
+        }),
+      ),
+    ).toEqual([
       { path: 'src/b.ts', digest: hash('export const b = 2;\n') },
       { path: 'src/ui.ts', digest: hash('export const ui = 1;\n') },
     ]);
-    expect(check(f.root, { STATION_DOCS_FRESHNESS: 'strict' }).status).toBe(0);
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
+  it('prints the Git delta of each stale input since its reviewed revision (--show-delta)', () => {
+    const f = fixture();
+    f.write('src/a.ts', 'export const a = 2;\n');
+    commit(f.root, 'change a');
+    const delta = record_(f.root, ['--show-delta', 'docs/a.md', 'docs/b.md']);
+    expect(delta.stderr).toBe('');
+    expect(delta.status).toBe(0);
+    expect(delta.stdout).toContain(
+      `== review docs/a.md: git diff ${f.content} HEAD -- src/a.ts`,
+    );
+    expect(delta.stdout).toContain('-export const a = 1;');
+    expect(delta.stdout).toContain('+export const a = 2;');
+    expect(delta.stdout).toContain('review docs/b.md is fresh.');
+    // Without paths it covers every stale entry and writes nothing.
+    const all = record_(f.root, ['--show-delta']);
+    expect(all.stdout).toContain('== review docs/a.md');
+    expect(all.stdout).not.toContain('docs/b.md');
+    expect(git(f.root, ['status', '--porcelain'])).toBe('');
+  });
+
+  it('flags a binding whose revision lacks its bytes and rebinds it on re-review', () => {
+    const f = fixture();
+    expect(record_(f.root, ['--verify-bindings']).status).toBe(0);
+    f.write('src/a.ts', 'export const a = 2;\n');
+    const changedAt = commit(f.root, 'change a');
+    // A record merged from two sides, or refreshed by hand: its digest names
+    // the current bytes but its revision still names the old commit.
+    editRecord(f.root, 'docs/a.md', (data) => {
+      data.sources[0].digest = hash('export const a = 2;\n');
+    });
+    commit(f.root, 'hand-merged record');
+    expect(check(f.root, strict).status).toBe(0);
+    const flagged = record_(f.root, ['--verify-bindings']);
+    expect(flagged.status).toBe(1);
+    expect(flagged.stdout).toContain(
+      `review docs/a.md -> src/a.ts @ ${f.content}: the revision holds different bytes`,
+    );
+    expect(
+      record_(f.root, ['docs/a.md', '--note', 'Reviewed.']).stderr,
+    ).toContain('Already fresh: docs/a.md');
+    const rebound = record_(f.root, [
+      'docs/a.md',
+      '--note',
+      'Re-reviewed the merged record.',
+      '--rereview',
+    ]);
+    expect(rebound.status).toBe(0);
+    expect(rebound.stdout).toContain(
+      'rebound to a revision that contains its bytes: src/a.ts',
+    );
+    expect(compiled(f.root, 'docs/a.md').sources[0].revision).toBe(changedAt);
+    expect(record_(f.root, ['--verify-bindings']).status).toBe(0);
+  });
+});
+
+describe('merge-queue-friendly review ledger layout (#2936)', () => {
+  /** Change `edits` on a new branch off `base`, commit, then record `reviews`. */
+  function branch(
+    f: ReturnType<typeof fixture>,
+    name: string,
+    base: string,
+    edits: Record<string, string>,
+    reviews: string[],
+  ) {
+    git(f.root, ['switch', '-qc', name, base]);
+    for (const [path, text] of Object.entries(edits)) f.write(path, text);
+    commit(f.root, `${name} changes`);
+    const batch = join(f.root, '.git', `${name}-batch.json`);
+    writeFileSync(
+      batch,
+      JSON.stringify(
+        reviews.map((path) => ({ path, note: `${name} reviewed ${path}.` })),
+      ),
+    );
+    const recorded = record_(f.root, ['--batch', batch]);
+    expect(recorded.stderr).toBe('');
+    expect(recorded.status).toBe(0);
+    commit(f.root, `${name} records`);
+    expect(check(f.root, scoped).status).toBe(0);
+  }
+
+  it('merges branches that refresh different sources of one record, or different records, with no conflict', () => {
+    const f = fixture();
+    const main = git(f.root, ['rev-parse', 'HEAD']);
+    // A and B refresh different sources of the shared page; C another record.
+    branch(f, 'a', main, { 'src/c.ts': SHARED_C.replace('c1 = 1', 'c1 = 2') }, [
+      'docs/map.md',
+    ]);
+    branch(f, 'b', main, { 'src/d.ts': 'export const d = 2;\n' }, [
+      'docs/map.md',
+    ]);
+    branch(f, 'c', main, { 'src/b.ts': 'export const b = 2;\n' }, [
+      'docs/b.md',
+    ]);
+    const pairs = [
+      ['a', 'b'],
+      ['b', 'a'],
+      ['a', 'c'],
+      ['b', 'c'],
+    ];
+    for (const [first, second] of pairs) {
+      git(f.root, ['switch', '-qC', `m-${first}-${second}`, first]);
+      const merged = merge(f.root, second);
+      expect(merged.status, `${first} + ${second}: ${merged.stdout}`).toBe(0);
+      expect(merged.stdout).not.toContain('CONFLICT');
+      expect(check(f.root, strict).status).toBe(0);
+    }
+    git(f.root, ['switch', '-qC', 'm-all', 'a']);
+    expect(merge(f.root, 'b').status).toBe(0);
+    expect(merge(f.root, 'c').status).toBe(0);
+    const result = check(f.root, strict);
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    // Both reviews and both bindings survive the merge.
+    const map = compiled(f.root, 'docs/map.md');
+    expect(map.checks.slice(-2).sort()).toEqual([
+      'a reviewed docs/map.md.',
+      'b reviewed docs/map.md.',
+    ]);
+    expect(map.sources.map(({ digest }: { digest: string }) => digest)).toEqual(
+      [
+        hash(SHARED_C.replace('c1 = 1', 'c1 = 2')),
+        hash('export const d = 2;\n'),
+      ],
+    );
+    expect(record_(f.root, ['--verify-bindings']).status).toBe(0);
+  });
+
+  it('merges two branches that review the same new bytes of a source, because both bind the commit holding them', () => {
+    const f = fixture();
+    // main moves a source without re-review; both branches catch up on it.
+    f.write('src/c.ts', SHARED_C.replace('c2 = 1', 'c2 = 2'));
+    const moved = commit(f.root, 'main moves src/c.ts');
+    branch(f, 'x', moved, { 'docs/b.md': '# B, x\n' }, [
+      'docs/map.md',
+      'docs/b.md',
+    ]);
+    branch(f, 'y', moved, { 'src/d.ts': 'export const d = 2;\n' }, [
+      'docs/map.md',
+    ]);
+    expect(compiled(f.root, 'docs/map.md').sources[0].revision).toBe(moved);
+    expect(merge(f.root, 'x').status).toBe(0);
+    expect(check(f.root, strict).status).toBe(0);
+  });
+
+  it('still conflicts, or fails the scoped check, when two branches review different bytes of the same source', () => {
+    const f = fixture();
+    const main = git(f.root, ['rev-parse', 'HEAD']);
+    // The two source edits are far apart, so the source itself merges.
+    branch(f, 'p', main, { 'src/c.ts': SHARED_C.replace('c1 = 1', 'c1 = 2') }, [
+      'docs/map.md',
+    ]);
+    branch(f, 'q', main, { 'src/c.ts': SHARED_C.replace('c2 = 1', 'c2 = 2') }, [
+      'docs/map.md',
+    ]);
+    const merged = merge(f.root, 'p');
+    expect(merged.status).toBe(1);
+    expect(merged.stdout).toContain(
+      `CONFLICT (content): Merge conflict in ${recordFile('docs/map.md')}`,
+    );
+    expect(merged.stdout).not.toContain('Merge conflict in src/c.ts');
+    // Taking one side's record leaves a review of bytes nobody reviewed,
+    // which this change's own scoped check refuses.
+    git(f.root, ['checkout', '--theirs', '--', recordFile('docs/map.md')]);
+    commit(f.root, 'resolve by taking one side');
+    const resolved = check(f.root, { STATION_DOCS_FRESHNESS_BASE: 'main' });
+    expect(resolved.status).toBe(1);
+    expect(resolved.stderr).toContain('review docs/map.md; changed: src/c.ts');
+  });
+
+  it('refuses a reformatted record, an edited note and a stray file in the ledger directory', () => {
+    const f = fixture();
+    expect(
+      record_(f.root, ['docs/a.md', '--note', 'Once.', '--rereview']).status,
+    ).toBe(0);
+    commit(f.root, 'note');
+    const [note] = notesFiles(f.root);
+    const noteFile = join(f.root, REVIEW_LEDGER_DIR, 'notes', note);
+    const recordPath = join(f.root, recordFile('docs/b.md'));
+    for (const [mutate, reason] of [
+      [
+        () =>
+          writeFileSync(
+            recordPath,
+            `${JSON.stringify(JSON.parse(readFileSync(recordPath, 'utf8')), null, 2)}\n`,
+          ),
+        `Review ledger file is not in its canonical layout: ${recordFile('docs/b.md')}`,
+      ],
+      [
+        () =>
+          writeFileSync(
+            noteFile,
+            readFileSync(noteFile, 'utf8').replace('Once.', 'Twice.'),
+          ),
+        'Review notes are append-only',
+      ],
+      [
+        () =>
+          writeFileSync(join(f.root, REVIEW_LEDGER_DIR, 'stray.json'), '{}\n'),
+        `Unexpected file in the review ledger: ${REVIEW_LEDGER_DIR}/stray.json`,
+      ],
+    ] as const) {
+      mutate();
+      const refused = check(f.root, strict);
+      expect(refused.status).toBe(1);
+      expect(refused.stderr).toContain(reason);
+      git(f.root, ['checkout', '--', REVIEW_LEDGER_DIR]);
+      rmSync(join(f.root, REVIEW_LEDGER_DIR, 'stray.json'), { force: true });
+      expect(check(f.root, strict).status).toBe(0);
+    }
+  });
+
+  it('reads the single-file layout from history, and the layout change alone puts no record in scope', () => {
+    const f = fixture();
+    const current = readReviewState(f.root);
+    // Rebuild the pre-#2936 layout from the same reviews.
+    const legacyLedger = {
+      version: 1,
+      records: current.ledger.records.map((entry: any) => ({
+        path: entry.path,
+        documentDigest: entry.documentDigest,
+        sourceRevision: entry.documentRevision,
+        kind: entry.kind,
+        state: entry.state,
+        summary: entry.summary,
+        limits: entry.limits,
+        sources: entry.sources.map(({ path, digest }: any) => ({
+          path,
+          digest,
+        })),
+        checks: entry.checks,
+      })),
+    };
+    const legacyMedia = {
+      version: 1,
+      captures: current.media.captures.map(
+        ({ sources, reviewNotes: _r, notes: _n, ...metadata }: any) => ({
+          ...metadata,
+          reviewedRevision: sources[0].revision,
+          sources: sources.map(({ path, digest }: any) => ({ path, digest })),
+        }),
+      ),
+    };
+    git(f.root, ['switch', '-qc', 'legacy-main', 'main']);
+    rmSync(join(f.root, REVIEW_LEDGER_DIR), { recursive: true });
+    f.write(LEGACY_REVIEW_LEDGER, `${JSON.stringify(legacyLedger, null, 2)}\n`);
+    f.write(MEDIA, `${JSON.stringify(legacyMedia, null, 2)}\n`);
+    // main also carries a stale record that no pull request owns.
+    f.write('src/b.ts', 'export const b = 2;\n');
+    const legacy = commit(f.root, 'legacy layout, B stale');
+    expect(readReviewStateAt(f.root, legacy)).toEqual({
+      ledger: { ...current.ledger, coverageBaseline: undefined },
+      media: current.media,
+    });
+    // The migration branch rewrites every ledger byte but no review.
+    git(f.root, ['switch', '-qc', 'migrate']);
+    git(f.root, ['rm', '-rq', LEGACY_REVIEW_LEDGER, MEDIA]);
+    git(f.root, ['checkout', 'main', '--', REVIEW_LEDGER_DIR, MEDIA]);
+    commit(f.root, 'migrate layout');
+    const migrated = check(f.root, {
+      STATION_DOCS_FRESHNESS_BASE: 'legacy-main',
+    });
+    expect(migrated.stderr).toContain('advisory');
+    expect(migrated.stderr).toContain('review docs/b.md; changed: src/b.ts');
+    expect(migrated.status).toBe(0);
   });
 });
 
@@ -617,7 +1004,7 @@ describe('Nightly freshness sweep (#2923)', () => {
   const stale = (count: number) =>
     Array.from({ length: count }, (_, index) => ({
       path: `docs/page-${index}.md`,
-      reviewSourceRevision: 'b'.repeat(40),
+      reviewedRevisions: { 'package.json': 'b'.repeat(40) },
       changedInputs: ['package.json'],
     }));
   const report = (count: number) =>
@@ -635,7 +1022,9 @@ describe('Nightly freshness sweep (#2923)', () => {
     expect(large.staleCount).toBe(2000);
     expect(large.body.length).toBeLessThanOrEqual(SWEEP_BODY_LIMIT);
     expect(large.body).toMatch(/_\d+ more entries omitted/);
-    expect(report(1).body).toContain('review `docs/page-0.md`');
+    expect(report(1).body).toContain(
+      '- [ ] review `docs/page-0.md`: `package.json` (reviewed bbbbbbbbbbbb)',
+    );
   });
 
   it('creates, updates, reopens and closes one tracking issue', () => {

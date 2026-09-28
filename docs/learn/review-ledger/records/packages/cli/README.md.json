@@ -1,0 +1,79 @@
+{
+  "path": "packages/cli/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete package README against distribution/CLI reference and actual setup, target selection and triage callers. Corrected hosted availability implication, model-service sharing, terminal-output redaction limits and Operate stream authentication.",
+
+  "limits": "No published tarball installation, real hosted pairing, OS keyring/service, external agent or destructive restore was executed. Mode flags are requests to an installed agent, not independent enforcement proof.",
+
+  "document": {"digest":"844966cbd66882d8e5ea0cf80fc00caed4f10183e6600ec8f77fcd3d9b268cc5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+  "sources": [
+    {"path":"docs/reference/cli.md","digest":"1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/bundle-externals.mjs","digest":"5a8122d158b0c5e2bc91e6bbed446b42461bf0da3f0c3c8c69178ebd8339ef85","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/package.json","digest":"3326cda44f10983039189724dbec68a663a5fa2eecb7ba4663a96a4eaedd4d91","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/checkpoints.ts","digest":"49a8d7d0a682a32133ccf024f47f4e4d1651036aa872b8f0b914032ddfdb19bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/core-api.ts","digest":"c6d8bf6197cceb12bdfa8962ca20785089c4fa0b6116968dd07e4f25a11a1c10","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/core.ts","digest":"0e18d32b586b3453b16f57669f84c0460a474889d71ebbd1c188774e12fe325b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/environment.ts","digest":"04c64d45b9fbe4a43b35611e86011b1bca94a36c4c6692f51a9c2d3790f72658","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/model-options.ts","digest":"e68be321336c9a6cccdd2e6fb30ce12921e8007106ec94e548f81218ba17120a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/session-client.ts","digest":"0328bc971c138d5a5d4f0077f4faa39d5450b0827035b7b8f9eb78fb700b4cd8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/setup-command.ts","digest":"fc821a03d73cef8a98a056f97a4224def873556737889359d5fa6cc53d60d7e2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/target-command.ts","digest":"fd308f3257b43fcce35e31beedc476be5e27db17cd257af61754eafd6be14ad4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/triage.ts","digest":"1a22f280a072e252978b006e6510300150d453b90ddd98f5caa655aa99ed9275","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/version.ts","digest":"2b95694dbea1ea07b95792aec2e0f2438b72dd296848a960bc67ecf35c588be0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/distribution.ts","digest":"6c36f09c162ba2cdc4a6cc98cb878ca5ac1be9177fbfe584340aee4b79c8b69b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"scripts/station-dev.mjs","digest":"97c0d7c3aad1150ee3fda38e45e3af87938fd24d8a424c1290ca944da293574b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"station","digest":"bb8adba630a450e835cfab89f27a3640bfd40664d3eb2223726b91c6e3786ebb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "Independent CLI caller review and final wording deltas accepted.",
+
+    "CLI implementation lane: 174 tests across 8 files passed; 51 help topics matched.",
+
+    "Independent admission probe: 11 cases passed; option/version and synthetic actual chat/SDK/SSE flow probes passed without network/provider calls.",
+
+    "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records.",
+
+    "Reviewed source changes: Uses shared envelopeDetailsMessage instead of duplicated formatter; reviewed CLI sentence semantics and inherited SDK refusal documentation. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Executed 42 setup, target and triage tests across three files; all passed. Complete CLI reference review independently traced command dispatch and documented families.",
+
+    "Reviewed integration deltas: packages/cli/src/commands/triage.ts: Replaces its unbounded Windows trust spawn wrapper with the shared bounded runner. Triage stdout passthrough, stored redaction, owner-only directory policy and draft-only behavior unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Updated prebuilt installer-owned upgrades and retained loose-archive/service refusals; unrelated command, API and triage contracts remain unchanged.",
+
+    "Integration source review through e0314c727: cli.md now documents installer-owned prebuilt archives, archive service units and packaged archive upgrade (#2867). The published CLI still refuses contributor verbs apart from `service status|start|stop`. Added a parenthetical that an install.sh prebuilt archive's own lifecycle CLI can also install a service and run upgrade. The rest is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904 adds `station environment access devices|scope|scopes` (environment.ts, device-access.ts, docs/reference/cli.md). distribution.ts `isHostEnvironmentInvocation` admits every `access` subcommand in the packaged CLI. cli.ts `describeCliError` now renders structured full-access refusals first, and `requestJson` keeps code, status and details on errors. The README's list of published local operations therefore left out the new verbs, so I added `devices|scope` to `environment access list|approve|deny`. The transport-failure, pairing and triage prose is still accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 makes contributorCommandMessage in packages/cli/src/distribution.ts private. Its behavior is unchanged, and the README's claims that contributor commands are checkout-only and about distribution do not name it. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 84d56b9a8: e1af43c2c added the 'Recorded versus acknowledged decisions' section to cli.md. The README's links to cli.md and its claims about timeouts, streams and published-CLI boundaries are unaffected; prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) extended the service and upgrade sections of docs/reference/cli.md (fixed launcher, stage-and-handoff upgrade, client-started update). The merged reference is coherent. The README's claims still hold: packaged service status|start|stop, and a prebuilt archive's own lifecycle CLI installing a service and running upgrade. Prose accurate. Source review is separate from executed test evidence."
+  ]
+}

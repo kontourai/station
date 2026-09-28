@@ -1,0 +1,55 @@
+{
+  "path": "examples/meeting-transcription/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete README: declared Pane/component entry, first supported voice-registry provider versus host preference, server placeholders, incremental/cumulative transcript handling, Station Agent chat handoff and lack of delivery acknowledgement, and no Knowledge record persistence. Documented a reproduced public-build containment gap.",
+
+  "limits": "EXECUTED FAIL: public plugin build refuses the runtime agent-identity import outside admitted build roots. Component tests passed with provider doubles; no installability, microphone/provider/model or transcript-delivery qualification. A bounded packaging backlog draft retains command, error, source revision and same-PR documentation acceptance.",
+
+  "document": {"digest":"06fb42eacb528cd10258b19e2edf0f7aa1ccdc267faaa8cdef40366280d20f1c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+  "sources": [
+    {"path":"examples/meeting-transcription/plugin.json","digest":"aa804e2b368ed0b54993478a6a83e5780e4146063b967bd19faaee79fd8970b3","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"examples/meeting-transcription/src/MeetingTranscriptionModal.tsx","digest":"a00e284e0e81c976cbbf077116d7ec2cde67a49b6cbe1edf916f81f522e37677","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"examples/meeting-transcription/src/MeetingTranscriptionPane.tsx","digest":"4624cbab6d47b6b4610f5ad0134f62cf14c2f34cb63cb47238a139fb6d382829","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"examples/meeting-transcription/src/index.ts","digest":"d0f5cf93772b18dc06617947af7c1e3822828b35901d9f0e8bfa46388a23400b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"examples/meeting-transcription/src/useRegisteredSTT.ts","digest":"a4f2e81f606513b245bf9dad512a92e07bf12c88fbdceed935b57f0c96050e0a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/hooks/operations.ts","digest":"02dbff5afebdbe657824c6718e11773b39a9f454062b43e6391c877fcf12d994","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/index.ts","digest":"2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/voice/registry.ts","digest":"62ce9013b0c9d5e935c88ae2912bf31768f58ef5f40409745df9676ebfb87408","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/voice/types.ts","digest":"dfd4391d896aab895738f531a6fb50be606e4ea4e27751806c9e90a3c83d3b41","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/build.ts","digest":"381748ddf0f6cc406cd833c909ad15613a809df1440a6cea42187620f7208884","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/useSTT.ts","digest":"07ef559ed6484e750a1d3be22e9f88e80ade4d2335b38f658d82461f6ce4208a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/hooks/useServerCapabilities.ts","digest":"31bb78d7241677e1d91ddf23b848f9dd9e43f6dd412bbf7537721faf8173a04c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/providers/voice/index.ts","digest":"4efdf7a405dbb2efdacbd3321169c86a63c97e6895a2466cf36ca5dc2cb47db2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
+
+    "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
+
+    "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+
+    "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) only adds requestServiceUpdateProgress and useServiceUpdateProgressQuery to the SDK root exports. The example's SDK packaging and chat claims are unaffected; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

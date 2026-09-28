@@ -1,0 +1,45 @@
+{
+  "path": "packaging/node-pty-prebuilds/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Current empty Linux prebuild channel, future admission and actual staging limits. Full baseline read; empty manifest/version and allowlist source-build paths, workflow/verifier, stageNodePtyPrebuild and pinned upstream install hook reviewed. Corrected false shipped-artifact and libc-fallback claims. Focused lifecycle tests passed; no actual Linux build or binary tested.",
+
+  "limits": "No native build, simulator/device, keychain, Linux artifact, transport/broker/provider, cloud or release execution. Source/fixture checks do not renew dated runtime/security evidence.",
+
+  "document": {"digest":"fa89e2fa1c7c2487af76d52b2be36878de9021dfe3c50831e51158da95820dfb","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+  "sources": [
+    {"path":".github/workflows/node-pty-prebuilds.yml","digest":"764daeea2e3e7ce837be3daa83c22ad249050a7e6571598380e6a9574e37dcfc","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"config/dependency-lifecycle-allowlist.json","digest":"7dea4c4aecb03064e3c978a4255221a2e8a222c68717c51e6178c0e615ef6ac3","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"packaging/node-pty-prebuilds/manifest.json","digest":"22b3c66570004f238adb60b2b34c830c9d285ac01f060de3d1195f8098b73254","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"scripts/__tests__/dependency-lifecycle.test.ts","digest":"b94c5e49462f77454aca7aaee0a34f29fd05b5d3b89839aaadbea6e922815d54","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"scripts/lib/dependency-lifecycle-policy.mjs","digest":"3221df34cc1ffaa99b9dedfcff8e2b1dce41baa44170464d2b8d3e88cd2894f4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"scripts/lib/elf-symbol-floor.mjs","digest":"7b51f6f692022736fc8b41161c1b6f47e2d31819ecc0df5fd637af55066eb73b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+
+    {"path":"scripts/verify-node-pty-prebuild.mjs","digest":"07e6c6f0e6ad7030c9017bf08f75f3437bbdee6a3fa069aa46cb34158d1e5157","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+  ],
+
+  "checks": [
+    "At the ancillary review revision,131focused dependency/desktop prerequisite checks passed. Browser-host baseline4FAIL→fixed4PASS; an independent guard-removal control produced1FAIL, exact restoration4PASS. Root repeated the four Node fixture tests after integration:4PASS. No native compilation or device operation.",
+
+    "Root upstream delta review: ELF floor reader extracted to elf-symbol-floor.mjs; no install-time libc selection was added.",
+
+    "Root upstream delta review: Removed unused npm resolver test; Linux prebuild compatibility claim remains source-only.",
+
+    "Preserved the full ancillary correction and the independently reviewed #2813 follow-up link.",
+
+    "Frozen upstream guide delta reviewed against current owners;236focused checks passed in that review. Prior semantic scope and unverified live/platform limits retained.",
+
+    "Integration source review through e0314c727: pnpm-lock.yaml removed only the @kontourai/bearing and @kontourai/forage importer entries, leaving node-pty resolution unchanged; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

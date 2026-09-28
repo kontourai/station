@@ -1,0 +1,49 @@
+{
+  "path": "docs/design/conduit-runtime-integration.md",
+
+  "kind": "design",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete Station-engine hook projection against actual VoltAgent and Strands callers, before/after-tool and completion forwarding, public Conduit adapter, capability classification, lockfile identity and generated conformance report. Clarified what the host-bound label and portable probes establish.",
+
+  "limits": "Executed focused hook/projection tests and generated-evidence parity. No real model provider, complete framework invocation/cancellation, external-engine policy delivery or live cross-framework behavioral equivalence qualification.",
+
+  "document": {"digest":"92b017dfab71e1bd1ed9c41545c8e5aab4373b8093c9246f80667d544a9f32f0","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+  "sources": [
+    {"path":"docs/conformance/station-runtime-conformance.json","digest":"cbc50694ef250065ab80f9b05865d59cbeef8a15177e6d805b9818c7550794d2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/generate-runtime-conformance.mjs","digest":"4f5197dcdd37c540f09d3938807e9ef5866472827429ee906ed56e6e8d8d0876","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/__tests__/voltagent-agent-hooks.test.ts","digest":"cd25a7bfc918e62b8f26078d5b0cdb506273b95464bb8d89222f1f3531128dc1","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/frameworks/__tests__/conduit-framework-adapter.test.ts","digest":"0f9bfbf0a991e7ea7966f2e44e1bb6bffd5cb975a4c414a7bc8a7f483888773c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/frameworks/conduit-framework-adapter.ts","digest":"0610d24cef08bfa87d0ddec5c833d359940bed07045ccbceea5f30725f4cf330","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/frameworks/strands-adapter.ts","digest":"46bbc874f00500f6a960b5913e831e24196de0f12283d2c48dfc2a4a675b8459","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/frameworks/strands-agent-hooks.ts","digest":"491f93e51fb022603ae2b45af1a350c9f758c3dc5c45823c8ff53e10269009df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"src-server/runtime/frameworks/voltagent-adapter.ts","digest":"fa8bf0806d17d96fb3154a6a60d72f720ea0a7d7e433321ae978a602e10a0be2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+  ],
+
+  "checks": [
+    "Source/caller review of all documented claims in this document on 2026-09-27, including explicit history/proposal boundaries; source baseline b79def9ceb04aa645bf565ee7d1b3e8cfba86b9a, prose revision e176f3a62b139043306d9e434f031d0a87ee1640.",
+
+    "EXECUTED: 660 tests passed across 30 focused files: Flow/Conduit 79, installation/trust 86, MCP 188, plugin development/permissions/registry 249, server modules/operational subscriptions 58. One Linux-only filesystem digest case skipped on this macOS host. These local fixtures do not qualify live providers or other platforms.",
+
+    "EXECUTED: conduit:conformance:check passed; docs:links:check validated 415 Markdown files; shared build comment emits identical JavaScript to its baseline.",
+
+    "Integration source review through d1e0facc2: Tests now call the real adapter capability/projection surface. Capabilities became a private immutable constant with the same availability values. Existing prose remains accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through e0314c727: package.json and pnpm-lock.yaml only removed the root bearing/forage dependencies. Conduit 0.7.1 and the VoltAgent/Strands lockfile identities are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}

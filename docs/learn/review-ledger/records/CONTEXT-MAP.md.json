@@ -1,0 +1,55 @@
+{
+  "path": "CONTEXT-MAP.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed the five responsibility areas and their relationships against the canonical context reviews and module callers. Flow attachment requires an explicit eligible definition; receipts, approvals and gate verdicts remain separate.",
+
+  "limits": "High-level architecture and ownership review, not independent live execution of every subsystem.",
+
+  "document": {"digest":"9097c818f99e320f6a2e110c3f8d36d0cc3523ac5890fd61d951e893e0fc67c2","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+  "sources": [
+    {"path":"docs/architecture/module-map.md","digest":"5f7f0c65c8562548d628e9854e4232d2a0160e3133f7bf326b452b3f3c615429","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","digest":"65e814615ee79543753261e413d46c6eef26dd2ac6f8d664fc37daaa70908164","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","digest":"976207569e04724170b807f2585f4b93359a37107399fd0f81072217384b153c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"docs/contexts/extension-ecosystem/CONTEXT.md","digest":"d4d785878952c344a498b0db6b9341f784b4bb290a4256bd6aea24bcecab0322","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","digest":"ecec943113be3307ec644a418883c4ea8a172cd156a57ba0bb58c8b21f3cd73b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","digest":"0dc5d09f1bee6c9c34b0013563a73c04f484f2ee36b4c4f29058696d71dfcadb","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"docs/glossary.md","digest":"e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/contracts/src/session-lifecycle.ts","digest":"defd4c1f3fd84f5b94d47f5a13c88ce75b92e3f2f7dc9c7ff9358f300e1795cf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/orchestration/flow-policy-sidecar.ts","digest":"437b48f82ba45cedac66ea4c8c933758226ad017ca957313fb9353b3a9abbe44","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "Read both complete entry points and followed their affected canonical owners; all 73 module sections have separately recorded claim reviews.",
+
+    "Reviewed full glossary correction: retired normalization, reserved Agent engine selection, optional Task experience limits and public engine routes. Context ownership relationships remain unchanged.",
+
+    "Reviewed integration deltas: docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained. docs/glossary.md: Reviewed plain-language scope edits and reserved Agent terminology; no capability or outcome was broadened.",
+
+    "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Added an explicitly unwired desktop account-proof foundation under DeploymentAuthentication; existing module identities, interfaces and reading routes are unchanged.",
+
+    "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged.",
+
+    "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: module-map.md and the extension-ecosystem/workspace-surfaces contexts removed the deleted CollaborativeEditorPane controller and PluginForegroundRuns entries in favor of ProjectTaskRoom. The five context links and relationship statements do not name either; prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence."
+  ]
+}

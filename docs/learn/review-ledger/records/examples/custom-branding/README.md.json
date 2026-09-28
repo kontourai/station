@@ -1,0 +1,37 @@
+{
+  "path": "examples/custom-branding/README.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full guide traced through actual manifest/factory, permission derivation, branding route, SDK mapper and sidebar; corrected copy-only installation, response envelope and universal UI claim.",
+
+  "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
+
+  "document": {"digest":"8b0a036925cd4ac47472cf977d0c434651fbf2747ae66e6f24e0aa65c799ed8d","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+  "sources": [
+    {"path":"examples/custom-branding/plugin.json","digest":"78690c5c0506027f8eae7ecb150cd2b9586d9cac9ce046e3c461e2ae037513c0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"examples/custom-branding/providers/branding.js","digest":"7b0fd06c670d3dab12816fdd35753e9e0b57cca586300558f43d2533a2747510","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/query-domains/systemRuntimeRequests.ts","digest":"38993404d9f1d33f62c0a2c160300997d939e823471520ecff90487926d23f5b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/plugins/plugin-config-routes.ts","digest":"42dda4eeb196c8b63c081f059822f9f56187b1da9d8f84ec4c09cacc3d95f5a4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/system/branding.ts","digest":"aba947eb8071ce00bc2cad724291c1da70d5a298262557cac29ef765495596ba","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"1f005f042138d70be5eddbfce2bd5df406c15f5b084cdad286c973a6df1916bf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/project-sidebar/ProjectSidebar.tsx","digest":"515dd447483a0ceaf679ce64ac253e6053466838b9a026fdb13f84d8a38d44a4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+
+    "Reviewed integration deltas: src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged.",
+
+    "Integration source review through 5731eba07: #2881 adds requestServiceUpdateProgress to systemRuntimeRequests.ts and a serviceUpdate {requestId} result to applyCoreUpdate. The branding request's data.name to appName mapping is unchanged; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

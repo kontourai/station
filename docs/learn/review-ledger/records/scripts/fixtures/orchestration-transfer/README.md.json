@@ -1,0 +1,27 @@
+{
+  "path": "scripts/fixtures/orchestration-transfer/README.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Retains the original traffic measurements and envelope rationale. The active budget still sets 64000-byte window/snapshot ceilings; the gate consumes budget.json and requires attribution for changed policy.",
+
+  "limits": "Initial 39-52 KB window, 0.9-1.7 KB snapshot, and roughly 1 MB live-turn observations were not reproduced. The historical calibration is not current performance evidence or authority to change ceilings.",
+
+  "document": {"digest":"d3f783333e53ae3480ac102ee43fef0ff4a59210030f4eb4e4d88781ab3a89f7","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+
+  "sources": [
+    {"path":"scripts/fixtures/orchestration-transfer/budget.json","digest":"47a0ff2379a93d58de745f0fdc26350e448ae31290eb87cdcd22ee0205d47f9b","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+
+    {"path":"scripts/orchestration-transfer-capture.ts","digest":"7107a7dc69364236ebea29d3daa7fba149c735b245671eebf0e033c99293eab8","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+
+    {"path":"scripts/orchestration-transfer-gate.mjs","digest":"f0809c17d88b7abbdbf1e88ab04f98bddebabd8c426db9891763cd76474ac7d5","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"}
+  ],
+
+  "checks": [
+    "Complete narrow-scope read; local routes, imports and named npm commands checked.",
+
+    "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained."
+  ]
+}

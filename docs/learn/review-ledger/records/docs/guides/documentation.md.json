@@ -1,0 +1,53 @@
+{
+  "path": "docs/guides/documentation.md",
+
+  "kind": "policy",
+
+  "state": "classified",
+
+  "summary": "Reviewed the audit, source-evidence, comment, editorial, and GitHub follow-through workflow.",
+
+  "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
+
+  "document": {"digest":"7327620f8699ed9e680682d66b7f5f336aa58d01305b38a541aa757c52c31d7c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+  "sources": [
+    {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".veritas/repo-standards/default.repo-standards.json","digest":"739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".veritas/attestations/HEAD","digest":"509a9ed1d454af138d096f874c8fe21ce9e76cb34982654b06a62778d622bb41","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/lib/documentation-freshness.mjs","digest":"b4fb7f73cf1556833f499f1d56ac16c16a9fd5b3f17ddff4eb3a6987b99a4541","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/check-documentation-freshness.mjs","digest":"3643bd457887af2c59144082a9561d69ce782f354d00f3603b9ead2669a6ae90","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/record-documentation-review.mjs","digest":"0d23eedab64fe0d697d30be4a20613ac905ddefdbb518867ba1fcfb59bf22ead","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/docs-freshness-sweep.mjs","digest":"d5f3ea0ca672310726bf691fef4906976aa5ad1b1fb8fb2c45e21a6c3f93c5a3","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":".github/workflows/docs-freshness-sweep.yml","digest":"fbcd659bb24451546b1f61500f3b0b0f26b497216e99f98244b1750a6d769ec4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/run-repo-scan-suites.mjs","digest":"06c1be69f439b1676b78bfe673c310f5abaf3c4a29ddfd25160ae5a36f684584","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"}
+  ],
+
+  "checks": [
+    "Independently reviewed anchor-check guidance, including local/current-revision scope, historical external links, parser behavior, and semantic-review limits.",
+
+    "Reviewed added guidance to inspect pinned dependency defaults; factory mocks do not establish persisted or emitted fields.",
+
+    "Added the implemented source-impact/catch-up workflow, separate edit/review identities and historical dependency-removal handling; independent actual CLI controls passed.",
+
+    "Final type repair independently reviewed: scripts typecheck passed (367 compiled files; existing 56 deferred), impact/media/browser selection passed 22 tests, and corrected native-element browser callbacks passed all seven reader tests. Earlier type and callback failures remain separate receipts.",
+
+    "Reviewed the owner-approved additive activation: documentation-truth is default and required evidence, and documentation-source-currentness remains Guide. Existing checks, authority, contributor routes and historical trial outcomes remain unchanged. Activation is in this audit branch, not a hosted deployment receipt.",
+
+    "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
+
+    "Added and reviewed the Keep reviews fresh section against scripts/lib/documentation-freshness.mjs (mode selection, merge-base scope, edited-entry rule, strict fallback), check-documentation-freshness.mjs, record-documentation-review.mjs (HEAD binding, refusals, capture refresh, dependents), docs-freshness-sweep.mjs and its workflow, and run-repo-scan-suites.mjs; the Veritas paragraph now says a touched stale record blocks. Slice guidance added (#2928). Executed documentation-freshness.test.ts.",
+
+    "Rewrote the mode list: the mode follows the event (ci:fast is advisory in merge_group), scoped includes deletions, advisory covers records whose document or source another change removed, and fork-smoke may fall back to strict without the upstream base. Checked against documentationFreshnessMode, checkDocumentationFreshness (reportMissing), record-documentation-review.mjs (captures first, manifest dependents, option-value refusal) and the title-based sweep lookup. Executed documentation-freshness.test.ts.",
+
+    "Reviewed: documentation-freshness.mjs gained DOCS_FRESHNESS_ENV_KEYS and withoutFreshnessEnv (the variables the mode is derived from, and a copy of an env without them); mode selection, scope and the blocking decision are unchanged. The Keep reviews fresh modes are unchanged."
+  ]
+}

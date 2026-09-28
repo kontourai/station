@@ -12,8 +12,14 @@ import {
   isLearningSourcePath,
 } from './lib/learning-source-reader.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import {
+  LEGACY_REVIEW_LEDGER,
+  REVIEW_LEDGER_DIR,
+  readGitObjects,
+  readReviewState,
+  readReviewStateAt,
+} from './lib/review-ledger-store.mjs';
 
-const ledgerPath = 'docs/learn/review-ledger.json';
 const sorted = (values) => [...new Set(values)].sort();
 
 function git(root, args) {
@@ -49,8 +55,10 @@ export function collectDocumentationChanges(root, base = 'origin/main') {
 }
 
 function validateLedger(ledger) {
-  if (ledger?.version !== 1 || !Array.isArray(ledger.records))
-    throw new Error('Documentation impact requires a version 1 review ledger.');
+  if (ledger?.version !== 2 || !Array.isArray(ledger.records))
+    throw new Error(
+      'Documentation impact requires a compiled version 2 review ledger.',
+    );
   const paths = new Set();
   for (const record of ledger.records) {
     if (
@@ -157,7 +165,8 @@ function ledgerRevisionsSince(root, base) {
       '--reverse',
       `${base}..HEAD`,
       '--',
-      ledgerPath,
+      LEGACY_REVIEW_LEDGER,
+      REVIEW_LEDGER_DIR,
     ])
       .split('\n')
       .filter(Boolean),
@@ -165,17 +174,11 @@ function ledgerRevisionsSince(root, base) {
   ];
 }
 
+/** Compiled ledgers at each ref, in either storage layout. */
 function historicalLedgers(root, refs) {
   return [...new Set(refs)].flatMap((ref) => {
-    const exists = git(root, [
-      'ls-tree',
-      '--name-only',
-      ref,
-      '--',
-      ledgerPath,
-    ]).trim();
-    if (!exists) return [];
-    const ledger = JSON.parse(git(root, ['show', `${ref}:${ledgerPath}`]));
+    const { ledger } = readReviewStateAt(root, ref);
+    if (!ledger) return [];
     validateLedger(ledger);
     return [ledger];
   });
@@ -191,7 +194,7 @@ export function readDocumentationImpact({
   const ledgers = mergeBase
     ? historicalLedgers(root, ledgerRevisionsSince(root, mergeBase))
     : [];
-  ledgers.push(JSON.parse(read(ledgerPath)));
+  ledgers.push(readReviewState(root).ledger);
   const [manual, catalog, modules, atlas] = STATION_DOCS_INPUT_PATHS.map(read);
   const topics = compileStationDocs(
     manual,
@@ -218,7 +221,7 @@ export function formatDocumentationImpact(report) {
           ),
           ...report.catchUp.staleReviews.map(
             (review) =>
-              `  ${review.path}: reviewed source ${review.reviewSourceRevision}${review.reviewRevisionAvailable ? '' : ' (commit unavailable locally; compare recorded hashes)'}; last committed page edit ${review.lastCommittedEdit ?? 'none'}; changed inputs: ${review.changedInputs.join(', ')}`,
+              `  ${review.path}: changed inputs (reviewed at): ${review.changedInputs.map((input) => `${input} (${review.reviewedRevisions[input]})`).join(', ')}${review.unavailableRevisions.length ? `; unavailable locally, compare recorded hashes: ${review.unavailableRevisions.join(', ')}` : ''}; last committed page edit ${review.lastCommittedEdit ?? 'none'}`,
           ),
           ...report.catchUp.removedDependencies.map(
             (entry) =>
@@ -258,7 +261,7 @@ export async function documentationCatchUp({
   base,
 } = {}) {
   const reader = createLearningSourceReader(root);
-  const ledger = JSON.parse(reader.read(ledgerPath).toString('utf8'));
+  const { ledger } = readReviewState(root);
   validateLedger(ledger);
   const coverageBase = base ?? ledger.coverageBaseline;
   if (
@@ -358,16 +361,26 @@ export async function documentationCatchUp({
         '--',
         record.path,
       ]).trim() || null;
-    let reviewRevisionAvailable = true;
-    try {
-      git(root, ['cat-file', '-e', `${record.sourceRevision}^{commit}`]);
-    } catch {
-      reviewRevisionAvailable = false;
-    }
+    // Each input carries the revision its reviewed bytes were bound to.
+    const reviewedRevisions = Object.fromEntries(
+      sorted(changed).map((input) => [
+        input,
+        input === record.path
+          ? record.documentRevision
+          : record.sources.find((source) => source.path === input)?.revision,
+      ]),
+    );
+    const revisions = [...new Set(Object.values(reviewedRevisions))];
+    const available = readGitObjects(
+      root,
+      revisions.map((revision) => `${revision}^{commit}`),
+    );
     reviews.push({
       path: record.path,
-      reviewRevisionAvailable,
-      reviewSourceRevision: record.sourceRevision,
+      reviewedRevisions,
+      unavailableRevisions: revisions.filter(
+        (_, index) => available[index] === undefined,
+      ),
       lastCommittedEdit: lastEdit,
       changedInputs: sorted(changed),
     });
@@ -401,7 +414,7 @@ export async function documentationCatchUp({
         generatedValidated.length -
         absentHistorical.length,
       limits:
-        'Ordinary review hashes compare recorded document/source bytes; this is not a semantic rescan. Generated validation and absent historical notes use the shared review compiler rules; generated validation is not human review of new release claims, and note absence is not publication proof. Last committed edit excludes working-tree edits. The review source revision plus recorded hashes identifies prior evidence, separately from the page edit commit. Unmapped changes are searched since coverageBase, including staged, unstaged and untracked files. Do not advance that baseline to hide unresolved coverage.',
+        'Ordinary review hashes compare recorded document/source bytes; this is not a semantic rescan. Generated validation and absent historical notes use the shared review compiler rules; generated validation is not human review of new release claims, and note absence is not publication proof. Last committed edit excludes working-tree edits. The recorded revision and hash of each input identify the reviewed bytes, separately from the page edit commit. Unmapped changes are searched since coverageBase, including staged, unstaged and untracked files. Do not advance that baseline to hide unresolved coverage.',
     },
   };
 }

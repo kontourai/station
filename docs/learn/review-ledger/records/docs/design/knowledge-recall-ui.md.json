@@ -1,0 +1,49 @@
+{
+  "path": "docs/design/knowledge-recall-ui.md",
+
+  "kind": "design",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed complete recall decision against SDK exports, canonical record queries, metadata-key revalidation, selection/link/provenance rendering and caller-owned graph/shell/Neo4j behavior. Updated Library composition to reflect its actual list plus scroll/focus shell; distinguished fixture and installed-browser evidence.",
+
+  "limits": "Executed shared/example tests and three Knowledge plugin builds; existing Playwright cases were inspected as regression ownership, not rerun as new proof. Actual Library browser receipt is snapshot-specific. No live model/embedding/Neo4j, native or authorization qualification.",
+
+  "document": {"digest":"6d02bb684296fcd35a2705e593fa6e8ac6b028dd1ef3e6c7552178fb2767abd4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+  "sources": [
+    {"path":"examples/knowledge-library/src/KnowledgeLibrary.tsx","digest":"54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"examples/knowledge-library/src/knowledge-library.css","digest":"1cc33286979d84d186c75d3921a1a616cb0f859a16a04333a8385882d39737b7","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"examples/meeting-notes/src/GraphPane.tsx","digest":"0b484a80168add93868963e76abc8309f7e881e3aaf34dbb077cfca641799eb1","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/client/knowledge.ts","digest":"3cce37501a5cb2b8233624c5a831b9dbeed2fdecbfe9f24bb5716413ed060ac4","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/components/KnowledgeRecall.css","digest":"c10eeb9534ec0df6147b1f2cae7ab5907ca25675abbf87727794aa15b89c5474","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/components/KnowledgeRecall.tsx","digest":"d0742a663f4a68f786c1e1772cf37ee90a0265701f2996f8a0a6de2b4e092c12","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/index.ts","digest":"2c9d603fdeb69769359996c64f36861d5de8c46c7d10095aa3d3487673879dee","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/src/query-domains/knowledgeStores.ts","digest":"52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/knowledge-root-identity.ts","digest":"8c1dbadc429909b9b50dd25c273fb0dcdbddac3886adb49402b53e0ba96f3d9c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"tests/knowledge-library.spec.ts","digest":"38c48e0ac475a44b9328dd836f2b3ed270575e232a096f79d387d51822661a45","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"tests/meeting-notes.spec.ts","digest":"a4fc102ab1a8b1b93d3aa37866bea8e35df914eae8e2d554511f39fcd120a9bd","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
+
+    "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
+
+    "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
+
+    "Integration source review through 5731eba07: #2881 adds the requestServiceUpdateProgress and useServiceUpdateProgressQuery exports to the SDK index. The knowledge-recall exports the design names are unchanged; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

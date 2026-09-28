@@ -1,0 +1,47 @@
+{
+  "path": "docs/design/local-bootstrap-token.md",
+
+  "kind": "historical",
+
+  "state": "classified",
+
+  "summary": "Retained launch design with current CLI, backend and browser owners. Banner corrects the global-token assumption to purpose-keyed capabilities and distinguishes the removed unauthenticated loopback floor.",
+
+  "limits": "No live CLI/browser launch, exhaustive origin/rate-limit/refusal/recovery audit, historical issue verification or complete threat-model review. Original body is retained, including its historical browser/referrer rationale.",
+
+  "document": {"digest":"1c09c0d1e43235c8ece3a068708be362214989ac73465926360dbf38d74dfb67","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+  "sources": [
+    {"path":"packages/cli/src/commands/lazy-start.ts","digest":"c371b8449a0b6f0f646db4c40c1f29b6a7eed31f6c9396a6b2bed9f5f12e06df","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/runtime/bootstrap/runtime-http.ts","digest":"dccdd54de750e9b1be7d24a3229c8f2808603ad20d54f5741877b88a167cd83e","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"47d59128b55a1dadc59b00b7feb8aaee5d5c3c3729bd194e75681ddcd2d66a5f","revision":"42491ca6bab31b1365b33e3190c171819881eb72"},
+
+    {"path":"src-ui/src/lib/local-ui-bootstrap.ts","digest":"4b838e0573edcd1b2ba55e7cd9a158e369ea2127a2bf2f0ab8ce898d6a4e901c","revision":"42491ca6bab31b1365b33e3190c171819881eb72"}
+  ],
+
+  "checks": [
+    "Full document read: 82 original lines; all original body bytes preserved.",
+
+    "Bounded current owner/caller source inspection; classification only, not a whole-document semantic review.",
+
+    "docs:index:check exit 0; docs:links:check exit 0 (395 Markdown files); docs:hygiene:repo exit 0; body-preservation check exit 0 (7 documents, 1032 original lines).",
+
+    "Veritas readiness exit 0, 0 failures/0 warnings; no runtime/provider/native/device experiments for this disposition.",
+
+    "Reviewed source deltas: Auth limiter code moved to contracts/http with identical authentication_rate_limited value; request admission behavior unchanged.",
+
+    "Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
+
+    "Reviewed integration deltas: src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Required merge-queue recovery through 421517851: HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through d72f79b08: #2904 adds three things to runtime-routes: a middleware that binds refusal identity per request, a resetFullAccessGrantedBy option, and the reset on device scope removal or revoke. Bootstrap-token and purpose-keyed capability handling and the removed unauthenticated loopback floor are unchanged. Banner prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) makes runtime-http.ts answer 403 insufficient_scope (keeping the browser session instead of dropping it) when routes' new recognizeCredential verifies a credential that admission refused; prose accurate: the design covers the mint/exchange ceremony, the local_grant_forbidden mint refusal and device-session cookie delivery, none of which changed. Source review is separate from executed test evidence."
+  ]
+}

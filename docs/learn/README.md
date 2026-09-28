@@ -8,7 +8,7 @@ module descriptions come from the existing [module map](../architecture/module-m
 ## Review status
 
 Each document has a visible review note. The
-[review ledger](review-ledger.json) distinguishes current explanations, dated
+[review ledger](review-ledger/) distinguishes current explanations, dated
 history, design, policy, release notes, generated records, and fixtures.
 Classification describes the document's purpose; it is not verification of its
 runtime claims. Unlisted documents remain unreviewed.

@@ -1,0 +1,95 @@
+{
+  "path": "docs/guides/build-your-first-plugin.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Full304-line original read. Source-reviewed package prerequisites, portable manifest/component/build example, CLI create/init/build/dev/install dispatch, legacy preview and proxy bounds, New plugin Project caller, preview/consent/reconciliation and trusted server-module distinction. Extracted manifest/entrypoint passed actual schema and production/dev build controls. Continuation clarifies that install.ts gates target.source: only automatic active-local/default loopback; explicit loopback API flags and saved localhost selections remain directory-refused.",
+
+  "limits": "Bounded to tutorial claims and examples. No fresh registry installation/publication, dependency-install execution, live dev listener/proxy egress, registry proof command rerun, actual plugin install/approval/reconciliation, server-module activation or provider execution. Server hook example checked against source contract, not executed as an installed extension. Existing tests/commands named by the guide are not claimed newly executed.",
+
+  "document": {"digest":"92cf393ead150dc61a14dce4523f4c84276ba419317bfff0df75784f984779db","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+  "sources": [
+    {"path":"config/plugin-scaffold-dependencies.json","digest":"e74f1f4028077bdd56e52057f43561d4cc4e790c42d8f600e04d1a1115f6da74","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/cli.ts","digest":"ecf39393a34edc99d05222a41947a1ba086cf8fc60bac7fe3cdd4651e825881a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/init.ts","digest":"fcb691b8cdbf28db96da3330c656f221d076ae85ddcafbb9948b7048190e4e53","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/dev/http.ts","digest":"3997773f71f58676ec9bfe8ccde2e408554fca263a75d5a2912ac526ef7b553a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/dev/security.ts","digest":"8731290a66b62df1bd415d9c233516d40d8f977a2dfc4009b1c0c321a952b32a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/dev/server.ts","digest":"c5b9e90a6057a165ae81bfcd251eb06dc1d23a2c7fa7399cb34918f72482979c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/cli/src/dev/watchers.ts","digest":"84d7e142a2ee88d419333d9464bccd8072f126d3746d0c3ae748fb7ae293b70c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/sdk/package.json","digest":"efcbeb1cf58acd8b9cab21a98044292b901b5fca14667336b77619454e36a761","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/package.json","digest":"c15895373f108c3d6c2d434ee19eff4f29a8a71eeb4f3d652e786e317f3ed436","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/agent-plugin-manifest.ts","digest":"a1b0dab918c8787193cc23e0f5362fc3ea5be6885440b56522314329974d55ba","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/build.ts","digest":"381748ddf0f6cc406cd833c909ad15613a809df1440a6cea42187620f7208884","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/plugin-scaffold.ts","digest":"47f077e8253eb468c8d28cc20f02a36dd78872e5670624b9e1580e01dba50b99","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/plugins/plugin-public-routes.ts","digest":"5d088d683e1fc60155100743cf2fb67a6df25ded4914307ba54883d1097f157e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/plugins/plugin-grant-reconciliation.ts","digest":"287d0f3a1185664279eba08e403d06e17dc5512dd6f974b3fc8de76022a31cb9","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/plugins/plugin-install-transaction.ts","digest":"2ffb49b139b202cc8dfe6b7819cda5111a4a8f3fa6299a5b66405a3adb802a9b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/plugins/plugin-manifest-loader.ts","digest":"ad125ed75cbb1bed948db758bded2ab2407b02f4f8b56bfbb6a03a0e80dad0df","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/plugins/plugin-permissions.ts","digest":"1f005f042138d70be5eddbfce2bd5df406c15f5b084cdad286c973a6df1916bf","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/plugins/plugin-public-server.ts","digest":"779654779ddbec3c1d2d2d54987779832ac18bbc2f3a2f491c1a90b46b6fe344","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/plugin-management/plugin-scaffold-client.ts","digest":"8a5d84320d2d6ebdf7d9816e53ea2ca6a3da741a7a0ebc1f491398e27da91f0b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/plugin-management/useNewPluginFlow.ts","digest":"040c46acb6fa4e528b703a75a29f92f6e07890b4534c2b1adef47ccff1a6150c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "Full original document text read; exact inspected and remaining scope retained in HANDOFF.md. Documentation-only change.",
+
+    "Real PluginWorkspacePaneSDKBoundary to SDKAdapter to SDKProvider fixture: 9 tests, exit 0, 4.52s; controlled surrounding providers and no network. Confirms observed default-host gaps, not desired feature support.",
+
+    "Focused existing checks: 91 tests across ConnectionStore, useConnectionStatus, integration-copy parsers and Agent resolver; 4 files, exit 0, 2.64s.",
+
+    "First-plugin guide manifest and entrypoint extracted verbatim: actual schema parser and buildPlugin production/dev controls exit 0; no dependency install or Station installation/activation.",
+
+    "153 TS/TSX/JS/JSON fences parse, exit 0; syntax only. Initial 8 SDK pseudo-signature/multiple-JSX parse failures were corrected or explicitly marked text; retained original failure receipt.",
+
+    "Local paths and rendered anchors validated in396 Markdown files, exit0. Repository/public hygiene and public contract examples exit0; public checks apply only to10 admitted documents, not semantic certification of these5 references.",
+
+    "Frozen staged-document readiness exit0,0 failures/0 warnings, veritas-1790478448046. Commit bdbb325a0c2b735e8b522f4bbcade27fecc46fe7 contains exactly the5 owned Markdown files; worktree clean.",
+
+    "Continuation:64tests across7SDK component/voice/context files, exit0,5.31s;4temporary mounted caller/mock-HTTP observations, exit0,5.75s. The two observed defects are not desired-feature passes.",
+
+    "Continuation:153fences syntax pass; local paths/anchors396documents pass; exactly2docs committed, no runtime changes.",
+
+    "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records.",
+
+    "Reviewed source changes: Added portable-server-targets and release-manifest Node mjs subpaths; mixed source export and Node-only helper documentation remains accurate. Root reviewed the corresponding diff and the affected current-document claims. Typed403 insufficient_scope now has its own Project-creation explanation before worktree-override fallback. No permission grant or change to plugin installation authority. Recursive dependencies now set stagedAsDependency true and pass fetchPluginSource dependency mode matching preview; consent and digest checks retained. Existing documented consent principle unchanged. Root reviewed the corresponding diff and the affected current-document claims.",
+
+    "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-ui/src/views/plugin-management/useNewPluginFlow.ts: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found.",
+
+    "Required merge-queue recovery through 421517851: package export maps add opt-in source subpaths; existing package/build and public-entry claims remain. Changed inputs reviewed: packages/sdk/package.json. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: plugin-install-transaction.ts added an excludeGitMetadata option so agent-proposed installs stage without `.git` (#2719/#2840). The tutorial's CLI install, consent and preview claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904's cli.ts change only routes describeCliError through explainFullAccessRefusal for the approval-full-access-not-granted code. Plugin create/init/build/dev/install dispatch and the install target-source gating are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through abfc7a889: #2864 makes the CLI installer (packages/cli/src/commands/install.ts) send the preview's optional gitMetadata back in its consent. The guide's local-path target rules and its HTTP preview/install outline still hold, and it points to the SDK consent example, which already carries gitMetadata. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 1cc8576b4 makes getOpenFileMime and isAllowedOpenFilePath in packages/cli/src/dev/http.ts private. Their behavior is unchanged, and the guide names neither function. The plugin dev preview and fetch-proxy bounds are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2881) shared package.json adds ./prebuilt-archive and ./service-launcher-protocol subpaths; the plugin guide's /build import and engine claims are unchanged; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

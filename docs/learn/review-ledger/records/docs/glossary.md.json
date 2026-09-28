@@ -1,0 +1,177 @@
+{
+  "path": "docs/glossary.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed all vocabulary sections against the complete module map, domain contracts and current callers. Corrected removed execution-mode normalization, reserved Agent engine ownership, optional Task experience availability and stale external source pointers. Naming rules are explicitly policy, not universal UI certification.",
+
+  "limits": "No new live broker/device/provider or host installation proof. Historical rationale and naming decisions retain their original scope.",
+
+  "document": {"digest":"e3bed51165fa98ac9335b24faf40ee0609ad0acd5f76390897f8cc5986cde968","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+  "sources": [
+    {"path":"docs/architecture/module-map.md","digest":"5f7f0c65c8562548d628e9854e4232d2a0160e3133f7bf326b452b3f3c615429","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"docs/reference/connect.md","digest":"e4977bfd6271262feec0f1ba01e6f313910bc4c88f30453136ae8c3757d3fd74","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"docs/reference/contracts.md","digest":"39945706aa08160f17fba22fc9bbb715899dd21b0661688c96ad6ebb8767a232","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/agent-identity.ts","digest":"d352f22b4698f100c1cc2a7466fd62556a6a69c03bffaf66e54c1bbdfc1410b7","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/engine-capability-matrix.ts","digest":"e6d2c0397a5894f2f2c8aa175e9a6cd240c8a4445269041c982019245c5cc102","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/engine-display.ts","digest":"89e4bd95f0504ebaea436c1fd9d269c67357940db877a7f285f6c33e942f9846","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/live-surface.ts","digest":"9ab3589350209f31981132c1bcf23fa2933172c8787e2ec11405e89c53187626","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/tool.ts","digest":"5333089345f6d5bc620294d7eda8ca8b6a8e9f4f559abc7fb100207b87e633e3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/workspace-browser-pane.ts","digest":"34bd5d3bd16a6ad3a807bc4d9c75ef6c5c77439a77e526b028b247b631e8972e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/contracts/src/workspace-browser-preview.ts","digest":"5a9d12cd0bd8c1c558438ba29a79c08c7445fb6e9b0f8f830e8838c08e039ef4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/sdk/src/mobile-device.ts","digest":"8a95583963c05768128e05741d41a577dd2c9d8ed02080e7df7f043fbe08e95a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"packages/shared/src/station-home-schema.ts","digest":"db4b3e2883079cf1f4aa55f10b955f42b767e580bbf5a51350c75f3c56d4e1db","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/domain/agent-registry.ts","digest":"b25558e066b73e96a09310d9d8a4bc8a0db41f893047a6f86035411ee0df3f50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/browser-agent.ts","digest":"eeb2e59964215e55e882e2fe2d501fbe5988b63ec6696158702f80d484a396e0","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/browser.ts","digest":"41d392687adbaf7f46855f51317c4c5cb9b89a8336285d298c7c3b4b3779479e","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/device-hosts.ts","digest":"d08de898aaac3c944cce5a761ad57076729977580b7604a794f3298c7a67cc87","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/device-toolchain.ts","digest":"08d79506db4c92504523c0aaab0ff7a3eb597c43921777572570cc6c51e71f2c","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/device-tools.ts","digest":"551a593d6c01602e182a6dfdabf7a33f1742d4c4b8fa05cea69a65abd5ee1bdf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/live-surface.ts","digest":"d953c8e93f75a4aba905d3cee172188ce6ba59bfc0d9b0ae7e32c537ad36b148","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/routes/mobile-device.ts","digest":"0a46281dcaaac36ce6d49fd9415619c58e663f874d4d8bb032822e3ae68fbe46","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"47d59128b55a1dadc59b00b7feb8aaee5d5c3c3729bd194e75681ddcd2d66a5f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-access.ts","digest":"c435162b9cf5941edce107cfdccb5a4e6a4a5293fd105a745112c48ce9ae7870","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-agent-authority.ts","digest":"e39f5e30689677a94ecff53ffc07a199aacdb10b3232de7fd7d8f3e74dc73daf","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-automation.ts","digest":"16984d31f600103935a5ff6243c96530ef4063a7299913bd2b2ff3f49b288b97","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-egress-proxy.ts","digest":"87d315f8362d7fd1a8f9c43f3086162459296fcf2e9de8d67967e0e60d09f9a8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-host.ts","digest":"1aec6b689ba058396d6e322e397544bd18ec5a4d0d93436c461f81cef5930f94","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-live-surfaces.ts","digest":"e736fed49dcd617de0a3df4e1dff3c4683fa07195a54006e06fd4d3ab008cca9","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-local-targets.ts","digest":"daaad43d17093496caf6d18ee8652bdcb9e6881f6c3b9b075407e72a29f33d83","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-project-settings.ts","digest":"6f859b2e2f10d566d211b79f1579ac107cee0a8400666dd865f47fab7c6e81e6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-service.ts","digest":"1e8e50c98e732f27fc432f325c4557568145b83b0700ba56f697e25aeba4ed0b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/browser-session-registry.ts","digest":"aa7f13f8330fa1e6424edfd4deaebc7eeacf9aaf953a3d6417f16e06f47c813a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/chromium-acquisition.ts","digest":"baf88b9cb2acba9f048f22ece81c8a32d1b28d874eace8a4f3826f2b866180e6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/chromium-screencast-producer.ts","digest":"b496e58cc00ce20d920bf321b322ff7349c0d26f50ac9c38b15c612d3eff6132","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/egress-policy.ts","digest":"34495e54686e0dc27fd187ba15a6780a4b7e8e1c3005086d84813a72f7dcdcde","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/hosts/chromium-server-host.ts","digest":"f90efc3ea17a6c029604bff6690e16a8c56538d483f493336c767032c81319b2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/station-listeners.ts","digest":"01013cfb92673531de5a87a4b5f2c61f495448d2f6dab108d05b852ead036ceb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/browser/url-policy.ts","digest":"46b720530e95bc19a15bb1bac8d9915f848e95d075fb64417b8ad6394b058d39","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/devices/device-access.ts","digest":"c76352871e23a808e20d299d3ab64ee8295c58eede99b2d4945c30a210b7ed96","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/devices/device-hub-endpoint.ts","digest":"1dbf954b4bd4debc8939c922d16979bf5836d3e578d1237c151ca1d649815feb","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/devices/device-live-surface-producer.ts","digest":"c35e2bc09ac26d82189824e5b69696ac0629f55d7fdd32ca645000a2708d7d77","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/devices/device-session-service.ts","digest":"b41c9489d014b8d4f8aa1eb9489e8a0f8f139690eaafaa800d58d485001e2cd2","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/devices/hosts/device-host-registry.ts","digest":"02bf7eaf810fea50c7dcf9a4980a02de4d754191ae2c8e0f045430329c24124f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/devices/toolchain/device-hub-connection.ts","digest":"0e554d7d3e49631f083d12ec1dc6e1fb498b949855cd052a1d60f87fdb1827c4","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/devices/toolchain/device-toolchain-service.ts","digest":"af178bd7d663a4464152aef24f4f24f1c43ace91bb278e505dc31af9142d1a50","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/live-surface/control-lease.ts","digest":"8a1fc82c8284746188810341e14ad5115fb4617b3c1882e0efce387411866c30","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/live-surface/producer.ts","digest":"9db8c439d2372b64dbe0b4e30d58ebd2e14fd0b59f4c0cdd7f5e2bbef7791e78","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/live-surface/registry.ts","digest":"7cc117bc738daa1289654b5d4461035b2dfdcc9ee4cfbd1a1168d3a3e0ac3b1a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/live-surface/surface-hub.ts","digest":"ad158328e100422c51aa1a33854c61ab67f33ca07d122dcebd88bc242e859103","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/services/mobile-device/mobile-device-host.ts","digest":"370a00a92efbadd03eb73855a99c95474ea4c785b40c5284f0f8db35f7d71c0a","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/tools/station-browser-mcp-server.ts","digest":"52c8ed2dbdf382a614021558ae9f91e5d52c2f157e264a4ae1c07b70d5ff4a66","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-server/tools/station-control-browser-tools.ts","digest":"c50e59f6e0ae041e64fbc426d041cbe1c9cc5ae3c6b094c38dc3524dded81a10","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/app-shell/destination-registry.ts","digest":"0ddaaa2c0afade98a0c86ddb3fdbd3eb028119a17784aabd86acac7362d4eeea","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/float-over-chat/FloatOverChatHost.tsx","digest":"04940cc69fb518109262a6e708705a9a84440a21d525a6050e5d93acafd9d05f","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/live-surface/LiveSurfaceCanvas.tsx","digest":"c95f60d25984934dd5cabdc4c60b8a18ea04dce42b2febc5454c116d13fa7648","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/live-surface/useLiveSurface.ts","digest":"82bba0686628972eee6b85375afe8e2a5e290885a85f319e75b5a4bd17129eba","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/TaskWorkspaceView.tsx","digest":"c1dc809b5cfe9e16e5daf7cad1af50fdc70675727dff9d6c8be351444b4f1bd8","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/views/task-experiences.ts","digest":"cdc6a0d8558b9167702d8b1f38b4be903e0035e1b41858329347e437c80195a3","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx","digest":"34078a33ec36354c4e0c9fbdf84cc1b69a17376d3cf8ada9f7a680e586d0a90b","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/DeviceWorkspacePane.tsx","digest":"4aa07d6ef893ccb521e25b764cae0c71f64e8b41f1459e7a03aa5f2eabeed092","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx","digest":"5563fac42a10e171e5085618108722b824d12507d957ff5adb8220d4eb957dea","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx","digest":"495d5542f14b7e2ca19ee9233bf52697d43a83ee3ffa58f139b1852c7ed20bd6","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx","digest":"56f72d3ecfd3eb9f540d05555c1efe98bc042052f28c8dd1be264997a3d3c7ce","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx","digest":"38212e51eb064086fa0b25178c31ead98d206d5fe3149c679382808211391906","revision":"0c1f436037261c43eeca3e079f5106948360c591"},
+
+    {"path":"src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts","digest":"bdbf8ac6ae21b903ed437c0bc0120c26cab003323a7b085e05556123bad92d5c","revision":"0c1f436037261c43eeca3e079f5106948360c591"}
+  ],
+
+  "checks": [
+    "Browser/Device source/caller review; 219 tests across eight files passed, historical bodies preserved.",
+
+    "Parent inspected key profile/access/egress and lifecycle callers; three source headers corrected with identical emitted JavaScript.",
+
+    "Reviewed source deltas: Reviewed comment correction; transpiled executable bytes unchanged.",
+
+    "Reviewed source changes: Reviewed plugin event relay extraction into createPluginEventRelayGate and its caller. Visibility read failures still deny/log; unrelated route mounts, request authority and event contracts are unchanged.",
+
+    "Final entry-point review followed the affected canonical module/contract owners; no matching hash or file count was used as semantic proof.",
+
+    "Reviewed integration deltas: Reviewed plain-language scope edits and reserved Agent terminology; no capability or outcome was broadened. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. docs/architecture/module-map.md: Added and independently reviewed the native grant renewal supervisor against renderer/host callers and tests; corrected retained revision lookup and seal-source composition, and MCP policy filtering limits. All prior module reviews retained. src-ui/src/app-shell/destination-registry.ts: Only the test-only ManagementDestinationId type export was made private; route catalog data and runtime resolution unchanged.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+
+    "Landing review through d0d9d33f7: Added an explicitly unwired desktop account-proof foundation under DeploymentAuthentication; existing module identities, interfaces and reading routes are unchanged.",
+
+    "Reviewed landing deltas through 111744681: Added the registered NativeApplicationSignaling interface with explicit unwired consumer/data/proof limits; clarified the normative depth definition. Existing module contracts are unchanged.",
+
+    "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md, docs/reference/connect.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
+
+    "Integration source review through e0314c727: module-map removed the CollaborativeEditorPane and PluginForegroundRuns entries, and contracts.md qualified plugin-foreground-work as unimplemented server-side. The glossary names neither, and its module-map#shared-live-surface anchor still resolves, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d72f79b08: #2904's runtime-routes changes are the full-access refusal identity middleware, which reads names from the pairing service's own records, and revocation reports on `/api/pairing/devices/:id` and its scope route. No vocabulary entry, including the Device and `/api/pairing/devices` naming, changes meaning. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential in runtime-routes.ts. As a result, an ordinary device refused on /api/pairing gets 403, not 401. The glossary names /api/pairing/devices only as vocabulary, and it points to runtime-routes.ts only as the live-surface composition owner. Neither reference makes a status claim. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through d9aea82e4: docs/reference/contracts.md changed only its Muse serve approval-resolution sentence (#2912 request.delivery acknowledgement). This document names neither Muse nor approval resolution, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports layout constants and helpers; behavior and the glossary's terms are unchanged and the glossary cites none of the removed exports; prose accurate. Source review is separate from executed test evidence.",
+
+    "2026-09-28 test-audit refresh: agent-registry.ts only removed the test-only beforeRename write hook, agentRegistrySourceSignature and saveAgentRegistry; updateAgentRegistry still persists through the same CAS saveRegistry after the schema check; claims unaffected: the page names none of these symbols and describes no removed behaviour. Source review only; no new executed evidence."
+  ]
+}

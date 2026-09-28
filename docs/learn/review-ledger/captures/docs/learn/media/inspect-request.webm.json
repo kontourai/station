@@ -1,0 +1,29 @@
+{
+  "path": "docs/learn/media/inspect-request.webm",
+
+  "sources": [
+    {"path":"src-server/routes/orchestration/attention.ts","digest":"13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-server/services/orchestration/orchestration-service.ts","digest":"618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/components/attention/RequestInspectionDialog.css","digest":"a1d787a1581edcd31fa4f208e9a50a899dc23e95ee93cf23720f94ec03a9e2da","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/components/attention/RequestInspectionDialog.tsx","digest":"22e170f6a032aec9ef353593a9b09207b2fb51d63d29b3b0a394494aa3d79acc","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/index.css","digest":"04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/pages/NotificationsPage.css","digest":"cdf0711c5fb4a0f9112aaad12dd8af43d6b6e55e5aefb33ad0463b858d8d62d5","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/pages/NotificationsPage.tsx","digest":"cb48a8c4c057c72ed970a8a7a8206472eb01fad019fe2b6b0da98d69bc464a28","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"fcd4407178cb5509ea47a958714603034fe20004"},
+
+    {"path":"tests/helpers/exact-request-backend.ts","digest":"ddfd358fd04c7274ce9e2522af61fc153e5b051fa4826b72792f3b8a05537fff","revision":"fcd4407178cb5509ea47a958714603034fe20004"}
+  ],
+
+  "reviewNotes": []
+}

@@ -10,37 +10,6 @@
       "scenario": "Create durable work",
       "evidence": "Running isolated Station with sample data and a sample display name. No Agent dispatched.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
-      "sources": [
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
-        },
-        {
-          "path": "src-ui/src/views/ProjectPage.css",
-          "digest": "804bf02dc7f00a0ac47bf5bf381d9f052a8e97a55083dfcd1649883d3f6154c3"
-        },
-        {
-          "path": "src-ui/src/views/ProjectPage.tsx",
-          "digest": "a5446401470207b9ba884ae50bfe57739fd2f2d7ea372f19ae36280106986c49"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        },
-        {
-          "path": "tests/helpers/live-station-task.ts",
-          "digest": "f8e8de76e6e499512e39b2eab7da91ebca7d8a98622981a1d6d3acb28ee74b9f"
-        }
-      ],
       "documents": [
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
@@ -56,49 +25,6 @@
       "scenario": "Save a shared revision",
       "evidence": "Running isolated Station; the document and revision were persisted. No external Agent or provider. The small editor and clipped heading are the current UI.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
-      "sources": [
-        {
-          "path": "src-server/services/orchestration/project-task-room-runtime.ts",
-          "digest": "0f1ead7c25dfa3a8217f9b31102762ac1e4ce5e8eaf7f7cdd5017a827c4d7cd5"
-        },
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
-        },
-        {
-          "path": "src-ui/src/views/TaskWorkspaceView.css",
-          "digest": "840e1c5e9fe66275729aa508628e29deeeaf42ab63af5789052038d159c46b59"
-        },
-        {
-          "path": "src-ui/src/views/TaskWorkspaceView.tsx",
-          "digest": "c1dc809b5cfe9e16e5daf7cad1af50fdc70675727dff9d6c8be351444b4f1bd8"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        },
-        {
-          "path": "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx",
-          "digest": "37939136798ca53c7328477bcb6b1e3a7fb8550c79effd535a8cec5cb5650152"
-        },
-        {
-          "path": "src-ui/src/workspace-panes/ProjectTaskRoomPresence.tsx",
-          "digest": "dc406fe2f30112e8baf9399d957551aefe38128232681c971e79fd8f4f581ced"
-        },
-        {
-          "path": "src-ui/src/workspace-panes/TaskRoomEditorPane.tsx",
-          "digest": "aa5a44f48f228e5de3b446ba60f9c5261587718c9d0863179aacb5e4c2ce5e0a"
-        }
-      ],
       "documents": [
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
@@ -114,57 +40,6 @@
       "scenario": "Connections \u2192 Models",
       "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
-      "sources": [
-        {
-          "path": "src-ui/src/components/SplitPaneLayout.css",
-          "digest": "4f894553a4fe3eaeb4824e4c23dfbe2206dd3df67260bf6a89795b2fe27216ac"
-        },
-        {
-          "path": "src-ui/src/components/SplitPaneLayout.tsx",
-          "digest": "6563e12d7bf8180dabeba03c6f9cc808521264ea5ad0bbd3ec5a71c7d66a685f"
-        },
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
-        },
-        {
-          "path": "src-ui/src/views/AgentConnectionView.tsx",
-          "digest": "6954fcdae1e5ade91f4f4f6078bc01b8c7a191726638734d1019471c26605f61"
-        },
-        {
-          "path": "src-ui/src/views/ConnectionsSectionFrame.tsx",
-          "digest": "78a8cef4a703a2eb9f0382386d738ecd1f0909a4b11a7219771ac0e92f2c7b6c"
-        },
-        {
-          "path": "src-ui/src/views/ProviderSettingsView.tsx",
-          "digest": "e04221808c7d92c450acb5d91c32ddae7dc103e981abbe9c900f4e867ce900bf"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        },
-        {
-          "path": "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
-          "digest": "bb5736723e42206a21c71edde5f2b0311dc00d8b2b7e4f16ddd5e9ca5a0925d6"
-        },
-        {
-          "path": "src-ui/src/views/provider-settings/ProviderStackOverview.tsx",
-          "digest": "5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208"
-        },
-        {
-          "path": "tests/connections-crud.spec.ts",
-          "digest": "b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5"
-        }
-      ],
       "documents": [
         "docs/guides/connections.md",
         "docs/learn/walkthroughs.md",
@@ -180,53 +55,6 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
-      "reviewedRevision": "fcd4407178cb5509ea47a958714603034fe20004",
-      "sources": [
-        {
-          "path": "src-server/routes/orchestration/attention.ts",
-          "digest": "13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07"
-        },
-        {
-          "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
-        },
-        {
-          "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
-          "digest": "a1d787a1581edcd31fa4f208e9a50a899dc23e95ee93cf23720f94ec03a9e2da"
-        },
-        {
-          "path": "src-ui/src/components/attention/RequestInspectionDialog.tsx",
-          "digest": "22e170f6a032aec9ef353593a9b09207b2fb51d63d29b3b0a394494aa3d79acc"
-        },
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
-        },
-        {
-          "path": "src-ui/src/pages/NotificationsPage.css",
-          "digest": "cdf0711c5fb4a0f9112aaad12dd8af43d6b6e55e5aefb33ad0463b858d8d62d5"
-        },
-        {
-          "path": "src-ui/src/pages/NotificationsPage.tsx",
-          "digest": "cb48a8c4c057c72ed970a8a7a8206472eb01fad019fe2b6b0da98d69bc464a28"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        },
-        {
-          "path": "tests/helpers/exact-request-backend.ts",
-          "digest": "ddfd358fd04c7274ce9e2522af61fc153e5b051fa4826b72792f3b8a05537fff"
-        }
-      ],
       "documents": [
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
@@ -242,53 +70,6 @@
       "scenario": "Notifications \u2192 Inspect request",
       "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "fcd4407178cb5509ea47a958714603034fe20004",
-      "sources": [
-        {
-          "path": "src-server/routes/orchestration/attention.ts",
-          "digest": "13aa257c345f3e3b4bd37e49e4399b83aac95315113c3386f64d1c17972b8c07"
-        },
-        {
-          "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
-        },
-        {
-          "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
-          "digest": "a1d787a1581edcd31fa4f208e9a50a899dc23e95ee93cf23720f94ec03a9e2da"
-        },
-        {
-          "path": "src-ui/src/components/attention/RequestInspectionDialog.tsx",
-          "digest": "22e170f6a032aec9ef353593a9b09207b2fb51d63d29b3b0a394494aa3d79acc"
-        },
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
-        },
-        {
-          "path": "src-ui/src/pages/NotificationsPage.css",
-          "digest": "cdf0711c5fb4a0f9112aaad12dd8af43d6b6e55e5aefb33ad0463b858d8d62d5"
-        },
-        {
-          "path": "src-ui/src/pages/NotificationsPage.tsx",
-          "digest": "cb48a8c4c057c72ed970a8a7a8206472eb01fad019fe2b6b0da98d69bc464a28"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        },
-        {
-          "path": "tests/helpers/exact-request-backend.ts",
-          "digest": "ddfd358fd04c7274ce9e2522af61fc153e5b051fa4826b72792f3b8a05537fff"
-        }
-      ],
       "documents": [
         "docs/user/getting-started.md",
         "docs/guides/starter-work.md"
@@ -303,49 +84,6 @@
       "scenario": "Connections \u2192 Models and Engines",
       "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
-      "sources": [
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
-        },
-        {
-          "path": "src-ui/src/views/AgentConnectionView.tsx",
-          "digest": "6954fcdae1e5ade91f4f4f6078bc01b8c7a191726638734d1019471c26605f61"
-        },
-        {
-          "path": "src-ui/src/views/ConnectionsSectionFrame.tsx",
-          "digest": "78a8cef4a703a2eb9f0382386d738ecd1f0909a4b11a7219771ac0e92f2c7b6c"
-        },
-        {
-          "path": "src-ui/src/views/ProviderSettingsView.tsx",
-          "digest": "e04221808c7d92c450acb5d91c32ddae7dc103e981abbe9c900f4e867ce900bf"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        },
-        {
-          "path": "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
-          "digest": "bb5736723e42206a21c71edde5f2b0311dc00d8b2b7e4f16ddd5e9ca5a0925d6"
-        },
-        {
-          "path": "src-ui/src/views/provider-settings/ProviderStackOverview.tsx",
-          "digest": "5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208"
-        },
-        {
-          "path": "tests/connections-crud.spec.ts",
-          "digest": "b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5"
-        }
-      ],
       "documents": [
         "docs/guides/connections.md"
       ]
@@ -359,73 +97,6 @@
       "scenario": "Knowledge Library \u2192 selected repository record",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
-      "sources": [
-        {
-          "path": "examples/knowledge-library/layout.json",
-          "digest": "9fd8a841ae7073614bee6c644c21e986ab63dd70cf355328a4703e6eb67884fa"
-        },
-        {
-          "path": "examples/knowledge-library/plugin.json",
-          "digest": "56bac5bbfb1463d997ae52f3c40d4d66eb02c97809539261cac0b1aabae01318"
-        },
-        {
-          "path": "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-          "digest": "54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca"
-        },
-        {
-          "path": "examples/knowledge-library/src/RootPicker.tsx",
-          "digest": "f33525957c47e6804d431ed809486c8de0827f344b9d814f4a24e877aeed7cfa"
-        },
-        {
-          "path": "examples/knowledge-library/src/index.tsx",
-          "digest": "0feb9269285b2d433e74ce230ebba9bfcae1547965dd96c17eda9f7f68dfed55"
-        },
-        {
-          "path": "examples/knowledge-library/src/knowledge-library.css",
-          "digest": "1cc33286979d84d186c75d3921a1a616cb0f859a16a04333a8385882d39737b7"
-        },
-        {
-          "path": "packages/sdk/src/client/knowledge.ts",
-          "digest": "3cce37501a5cb2b8233624c5a831b9dbeed2fdecbfe9f24bb5716413ed060ac4"
-        },
-        {
-          "path": "packages/sdk/src/components/KnowledgeRecall.css",
-          "digest": "c10eeb9534ec0df6147b1f2cae7ab5907ca25675abbf87727794aa15b89c5474"
-        },
-        {
-          "path": "packages/sdk/src/components/KnowledgeRecall.tsx",
-          "digest": "d0742a663f4a68f786c1e1772cf37ee90a0265701f2996f8a0a6de2b4e092c12"
-        },
-        {
-          "path": "packages/sdk/src/hooks/knowledge.ts",
-          "digest": "b023d3ffd71fa7483ecee0b01f9e60e4deb66964197f663e5ca74e634c7c2d53"
-        },
-        {
-          "path": "packages/sdk/src/query-domains/knowledgeStores.ts",
-          "digest": "52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6"
-        },
-        {
-          "path": "src-server/knowledge-store/knowledge-store-provider.ts",
-          "digest": "268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85"
-        },
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        }
-      ],
       "documents": [
         "docs/guides/knowledge.md",
         "examples/knowledge-library/README.md"
@@ -440,73 +111,6 @@
       "scenario": "Knowledge Library \u2192 narrow layout",
       "evidence": "Actual installed Knowledge Library example on isolated Station build f56c28a44. Fresh public SDK import verified 1149 canonical records/2089 links; no graph/detail API fixture. Plugin scroll fix bytes match commit 09a56847dd55476180b703c9dd5d0bf1e3ca67e0. Actual deep selection, keyboard return and next selection passed at 1440\u00d71000 and 390\u00d7844, no horizontal overflow. Only user.name changed to Sample User; no provider, embedding/index or native proof. Repository content is an explicitly derived snapshot at 606695861; matching source hashes are not semantic approval.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
-      "reviewedRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
-      "sources": [
-        {
-          "path": "examples/knowledge-library/layout.json",
-          "digest": "9fd8a841ae7073614bee6c644c21e986ab63dd70cf355328a4703e6eb67884fa"
-        },
-        {
-          "path": "examples/knowledge-library/plugin.json",
-          "digest": "56bac5bbfb1463d997ae52f3c40d4d66eb02c97809539261cac0b1aabae01318"
-        },
-        {
-          "path": "examples/knowledge-library/src/KnowledgeLibrary.tsx",
-          "digest": "54c0aa1a3d3e9dfe341ed67348a0ab96b1aca65e562dbe0080810f6b51f40cca"
-        },
-        {
-          "path": "examples/knowledge-library/src/RootPicker.tsx",
-          "digest": "f33525957c47e6804d431ed809486c8de0827f344b9d814f4a24e877aeed7cfa"
-        },
-        {
-          "path": "examples/knowledge-library/src/index.tsx",
-          "digest": "0feb9269285b2d433e74ce230ebba9bfcae1547965dd96c17eda9f7f68dfed55"
-        },
-        {
-          "path": "examples/knowledge-library/src/knowledge-library.css",
-          "digest": "1cc33286979d84d186c75d3921a1a616cb0f859a16a04333a8385882d39737b7"
-        },
-        {
-          "path": "packages/sdk/src/client/knowledge.ts",
-          "digest": "3cce37501a5cb2b8233624c5a831b9dbeed2fdecbfe9f24bb5716413ed060ac4"
-        },
-        {
-          "path": "packages/sdk/src/components/KnowledgeRecall.css",
-          "digest": "c10eeb9534ec0df6147b1f2cae7ab5907ca25675abbf87727794aa15b89c5474"
-        },
-        {
-          "path": "packages/sdk/src/components/KnowledgeRecall.tsx",
-          "digest": "d0742a663f4a68f786c1e1772cf37ee90a0265701f2996f8a0a6de2b4e092c12"
-        },
-        {
-          "path": "packages/sdk/src/hooks/knowledge.ts",
-          "digest": "b023d3ffd71fa7483ecee0b01f9e60e4deb66964197f663e5ca74e634c7c2d53"
-        },
-        {
-          "path": "packages/sdk/src/query-domains/knowledgeStores.ts",
-          "digest": "52d61ed41a6e407387005a60f4c0504016471de1c42eed9d22ec7146a98516d6"
-        },
-        {
-          "path": "src-server/knowledge-store/knowledge-store-provider.ts",
-          "digest": "268f67326c695832ef2a1577353ee6ece0a41218e7711dda87cc62a0ee814e85"
-        },
-        {
-          "path": "src-ui/src/components/header/Header.tsx",
-          "digest": "ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2"
-        },
-        {
-          "path": "src-ui/src/components/header/useHeaderViewModel.ts",
-          "digest": "589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061"
-        },
-        {
-          "path": "src-ui/src/index.css",
-          "digest": "04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995"
-        },
-        {
-          "path": "src-ui/src/views/page-layout.css",
-          "digest": "c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4"
-        }
-      ],
       "documents": [
         "docs/guides/knowledge.md",
         "examples/knowledge-library/README.md"

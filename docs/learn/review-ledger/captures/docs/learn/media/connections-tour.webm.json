@@ -1,0 +1,27 @@
+{
+  "path": "docs/learn/media/connections-tour.webm",
+
+  "sources": [
+    {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"src-ui/src/index.css","digest":"04cb2244bcc763fb50090fc1693987733ac76a2e538e6f03d1ada19aafc2f995","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"6954fcdae1e5ade91f4f4f6078bc01b8c7a191726638734d1019471c26605f61","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"src-ui/src/views/ConnectionsSectionFrame.tsx","digest":"78a8cef4a703a2eb9f0382386d738ecd1f0909a4b11a7219771ac0e92f2c7b6c","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"src-ui/src/views/ProviderSettingsView.tsx","digest":"e04221808c7d92c450acb5d91c32ddae7dc103e981abbe9c900f4e867ce900bf","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"bb5736723e42206a21c71edde5f2b0311dc00d8b2b7e4f16ddd5e9ca5a0925d6","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"src-ui/src/views/provider-settings/ProviderStackOverview.tsx","digest":"5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+
+    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"}
+  ],
+
+  "reviewNotes": []
+}

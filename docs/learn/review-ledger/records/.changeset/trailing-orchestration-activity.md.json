@@ -1,0 +1,17 @@
+{
+  "path": ".changeset/trailing-orchestration-activity.md",
+
+  "kind": "release-note",
+
+  "state": "classified",
+
+  "summary": "Release intent for the package versions named in this changeset.",
+
+  "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
+
+  "document": {"digest":"026cfc6177fe7bc822b864bda7a21740cfd00731493e972a93e583aaa1d26bea","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
+
+  "sources": [],
+
+  "checks": []
+}

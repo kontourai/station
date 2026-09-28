@@ -1,0 +1,51 @@
+{
+  "path": "docs/design/cloud-move.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed full preparation, template, enrollment and target-observation claim review through shared provider composition, CLI/SDK callers and SSH worker probe. Checked bounded non-atomic inventory, explicit false transfer/resume flags, AWS template resource/access/persistence choices and GCP inventory-only scope. Clarified existing deployment authentication versus unimplemented Cloud IAM enrollment and template credential passing.",
+
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+
+  "document": {"digest":"bcf23a8e52463894bf5f2f2c5ad69766b1d4c1be4e20e14a24369c4b6f52c69b","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+  "sources": [
+    {"path":"packages/cli/src/commands/cloud-target.ts","digest":"b0e28c9a4cdf50e53f48e0fc45ccbd1fa3f61611076ac7c57968e59a95757d94","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/cli/src/commands/cloud.ts","digest":"7c50391b36b9c61736cc806b55296bed80d4c376921295ff406bdea000e9cd51","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/sdk/src/__tests__/cloud-move.test.ts","digest":"288b8852a35038ad42f5407ff2936612314e5aad0465140c7d3f186c9da01ba3","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/sdk/src/client/cloud-move.ts","digest":"14f8572e29de010a25a513be4bfcf1fca1297e683b090b93f76a75cc215fb420","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/shared/src/__tests__/cloud-move.test.ts","digest":"8e6a7ce1c84b2fd2638a615d4c9297125103b1a9d680f82839af706fe093b588","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/shared/src/cloud-aws-ec2.ts","digest":"172a15fb14cb6478b96d9e4c67ae24a7f5bb4e4b62065fa521a0d9b32c6acf8c","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"packages/shared/src/cloud-move.ts","digest":"9c8c56f5c228b667fc13f583ae5b59117bd4026633984ac9fe7a27c0e1b5245a","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-desktop/src/ssh_launcher.rs","digest":"b687664310160032657179ad40dfff3ccac0cfa6d8735bcc9dc712d237f1457a","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-server/services/identity/deployment-authentication-service.ts","digest":"d71b6a106a14a8973a991fe44d08cf869c8ba299d516c6628a2e8d80b7c6fe9b","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-server/services/ssh/openssh-worker-probe.ts","digest":"9a90daa97daec7b37c3e45fbd5fd4572d9da16c12e0110d2cd839af297ea57f5","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-ui/src/views/connections-hub/AddMachineModal.tsx","digest":"61b56cb2a7c895a1c41884990c359a2ce790ef3d1f010308cdf56b0f86c26238","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"},
+
+    {"path":"src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx","digest":"afa116512df03572fe9b957466d284eac07497a659547f4d18c34b811706807f","revision":"6d98155720c76b78faef536ae90bfea543c8b28e"}
+  ],
+
+  "checks": [
+    "REASONED: full document body read; current material claims traced to concrete owners and callers. Future requirements and dated receipts are not represented as executed current behavior.",
+
+    "EXECUTED: local Markdown paths/anchors415 PASS; public contract examples10 PASS; repository documentation hygiene PASS; two comment-only TypeScript programs print identically with comments removed; scoped Biome PASS.",
+
+    "No new provider/native/runtime journey and no repeated broad regression. Root owns combined ledger/reader freshness after integration.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Required merge-queue recovery through 421517851: native account continuation is additive and separately admitted; existing browser/provider, Device and Project claims retain their documented scope. Changed inputs reviewed: src-server/services/identity/deployment-authentication-service.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical."
+  ]
+}

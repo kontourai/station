@@ -1,0 +1,65 @@
+{
+  "path": "docs/design/answer-share-permalinks.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Completed full documented-claim review from management/view callers through token store, owner reauthorization, rate budgets, content/channel arbitration and standalone UI. Corrected token-memory/reload limits, network-origin admission, restricted contextInjection, block clipping disclosure, fourteen projected fields and store downgrade pruning. Corrected two matching source comments without changing parsed programs.",
+
+  "limits": "Source review of this document’s stated contracts and actual callers, not an exhaustive audit of unclaimed implementation branches. No new external SDK/CLI compatibility, provider billing/sign-in, gateway/deployment, network-partition, independent-host, OS keyring/ACL, native/device, release, power-loss or cryptographic penetration qualification. Dated probes and prior test receipts remain historical evidence.",
+
+  "document": {"digest":"0c8f1a02dc1e1b0658d8a402d0e779a9abfeb197964e458e7148c3127adb10b0","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+  "sources": [
+    {"path":"packages/contracts/src/answer-share-channel.ts","digest":"0313c8b8740e8b0215b7313796f01f9ac1231cd40e93bd800a4610b2bd67535c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/contracts/src/environment-security.ts","digest":"2af32eed92258686d0d4b68d8a042093ccf5833fbf2cb91835abdba0e7481b65","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/contracts/src/turn-provenance.ts","digest":"7580bf4f0199a83b65236ab55eade23391f940fa0c206a58545f0b86f3570193","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"packages/shared/src/answer-share-projection.ts","digest":"38f572f674faf6b6939db1f1d56bd1c4c1fc65ee795d921d9a5d0d1f5246637e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/share/__tests__/answer-share-routes.test.ts","digest":"f37f5bf49991f45a2ebb92fef702daf2dcfb8ad38352bb56cb7322390850978a","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/routes/share/answer-share-routes.ts","digest":"de74fa89e8f9aa5d0770dc33fd1c0d9e95185c61c8a4bd23e94ab6070824a216","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/runtime/routes/runtime-routes.ts","digest":"47d59128b55a1dadc59b00b7feb8aaee5d5c3c3729bd194e75681ddcd2d66a5f","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/security/pairing-route-scopes.ts","digest":"c2ae9d87156a800fc13d11264cab62a69d5d57f2c603736a6b9d7d0f1a67770c","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/share/answer-share-service.ts","digest":"d333e854f9cecb3a4dbbbf53793187a45848c8be7a30bf1369e4d75b32d1dc82","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-server/services/share/answer-share-store.ts","digest":"94800bf2befb365c7534ad99d70c410f0ec3963ffc42b3d4b3c16e2a8acadd7e","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/components/chat/ShareAnswerButton.tsx","digest":"31619a6ca447e6a2f40821ecdddc1320bd189d8ae33c7bcf5e8884352af035cc","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/main.tsx","digest":"89fa3c2aec9ef7634da7610e614274452a70240089bbb2bd838f5349dfbe4828","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/utils/shareUiOrigin.ts","digest":"2678278a09bd74ba8d317c6d1d8f7ba13faef435e0a0844a6f4012105fc2210b","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/settings/AnswerSharesSection.tsx","digest":"b8a33e1a1087df366781d6097897e62b4baf6afb6e445e0ef612454009c44cf5","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/share/SharedAnswerView.tsx","digest":"c05e76750bbbea1e98f9fee1d8cafd06f1c76f16b0233d20b96e5be51c8ca8e8","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"},
+
+    {"path":"src-ui/src/views/share/share-token.ts","digest":"9c93a11f705be6716cbe97c78930b3e7dea44d4bcb46f5d17f93d91746a34d56","revision":"2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74"}
+  ],
+
+  "checks": [
+    "REASONED: full document body read; current material claims traced to concrete owners and callers. Future requirements and dated receipts are not represented as executed current behavior.",
+
+    "EXECUTED: local Markdown paths/anchors415 PASS; public contract examples10 PASS; repository documentation hygiene PASS; two comment-only TypeScript programs print identically with comments removed; scoped Biome PASS.",
+
+    "No new provider/native/runtime journey and no repeated broad regression. Root owns combined ledger/reader freshness after integration.",
+
+    "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
+
+    "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+
+    "Integration source review through d72f79b08: #2904 added PAIRING_SCOPE_DESCRIPTIONS, isPairingScopeGrantable (access:manage is never grantable to a paired device) and FullAccessRevocationReport to environment-security. runtime-routes gained full-access refusal identity binding and full-access reset responses on the device revoke and scope routes. The /api/shares access:manage gate, the authentication-before-scope order, the token store and the arbitration are untouched. The doc says presets omit access:manage and historical/default grants may carry it, which is consistent. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: cf43e14d0 adds the 403 insufficient_scope branch only when a credential is present and recognizeCredential accepts it. A credential-less loopback or SSH-forwarded /api/shares request still gets 401 authentication_required. The 'named authentication or scope refusal' wording and the access:manage ceilings shared with /api/pairing and /api/environments/peers are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 5731eba07: #2881 adds a GET /api/system/core-update/service-update inherited read leaf to pairing-route-scopes. The design's share-grant vs pairing-scope and /api/shares access:manage claims are unaffected; prose accurate. Source review is separate from executed test evidence."
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "path": "docs/reference/verification-receipts.md",
+
+  "kind": "current",
+
+  "state": "source-reviewed",
+
+  "summary": "Reviewed request identity, schema and semantic pass conditions, source drift, terminal reporting, artifact protection, handoff/orphan retention and CLI composition. Qualified inventory read errors and preview path disclosure.",
+
+  "limits": "Historical redaction sweep counts and release incidents are retained observations, not rerun measurements. Source/focused evidence does not establish a new full-regression or hosted promotion receipt.",
+
+  "document": {"digest":"40c0d99d7078ddf93c5b3a0ac777d239bea9e7653524db53b7444fc82c4155e1","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+  "sources": [
+    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"schemas/verification-receipt.schema.json","digest":"e55f778235daf8e47bee50ee85e5b81bb652037fe3710fcbf8db4cdbd71f4cb8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/classify-ci-change.mjs","digest":"bfe2eb23055b9149b644b1c81d3db2cc09b35a9ecd56d702653b38e77c2910ba","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/test-reliability.mjs","digest":"98e4353f73733faa96bfdc45a5df0df763bd66abf0b3d3554c6a17f7f6a349ad","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/verification-coordinator.mjs","digest":"e720935b978eb3e8aad4f3dc4c8391af36b01ed0583a3954b8cf0b5554a4e414","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/verification-receipt.mjs","digest":"c401880576b2d43560572ab2c02a7388eaa925926f5e358babfe9fc5985d49a6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/verification-redaction.mjs","digest":"f7214a9928f8d2dd90950efa8ab72f57df9915316851113a4a28cccebb1e3726","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/verification-reporter.mjs","digest":"095bb2104f3d08d17a3676660a2981ac6ad8e25b5e05e7af7ed0d47a9c3c8db2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/verification-retention-inventory.mjs","digest":"e54cb647b5a480255133a204369accd8a419ecc06d9a4a1183deb4fd998b016a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/verification-submission.mjs","digest":"ee6dbec0f6260801f7910e35b194c8fb9eb97ecd24f48e43b4d9231c988fa582","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/lib/verification-terminal-receipt.mjs","digest":"7b6bce34d4a9094469ba935c9c8f6287ce89b1e2d3839ea3741f13f454bc59c8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/run-changed-verification.mjs","digest":"2b8be667f2da430df0f58ebd4d475a665ab037bcc471073bebbeca0c8f6ccfae","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/run-verification.mjs","digest":"dbbf9cf12e8b59b8d87feab8c6e1510bb92b9d8b4f6241803c897ff6f929a60a","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"scripts/verification-lanes.mjs","digest":"3fb1be3bd88d1d5139983eaf770e8a5474ce6cc6ef304d4e008df63d0c143fef","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+  ],
+
+  "checks": [
+    "Traced status/submit-status read-only inventory, submit maintenance, explicit handoff-gc and orphan GC preview/delete modes. Independently checked current #1835 remains open with the documented redaction finding.",
+
+    "Executed 392 tests across receipt, lane, reporter, redaction and submission suites; all passed. This is focused evidence, not a full-regression receipt.",
+
+    "Landing delta f3954615e to 2400482c2 plus integrated corrections: Shard planning records actual related-discovery duration and its existing cap; no coverage or execution semantics weakened.",
+
+    "Reviewed landing deltas through 111744681: Discovery derives timeout after refinement, keeps a 30s reserve and 60s standalone fallback, refuses insufficient/invalid budgets, and removes the deadline from child environments. Malformed CLI environment is refused before a diagnostic; exhausted valid preparation records infrastructure failure. Read the changed document in context; its purpose and prior evidence limits remain. Verification group retained 328 passes / 1 representative-fixture timeout (109.53s). Production-fixture profile: 40.565s total, 2.259s selection + 14 tests, 38.306s setup/cleanup. After the test-only fence correction, 174 tests passed in 10.36s; this is not same-load speedup evidence.",
+
+    "Integration source review through e0314c727: package.json only removed the bearing/forage dependencies. The trust-reconcile-manifest entry and the package.json/lockfile digest inputs are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+
+    "Integration source review through 42491ca6b: 55cc03451 changes scripts/run-changed-verification.mjs. A product-law path now adds its law's observation and fault-injection Vitest suites to the selection instead of adding a ci-fast lane and setting escalated. Non-vitest-file evidence is refused. The doc makes no claim about how product laws are routed, and its receipt validation, terminal status and exit-3 provisional/deferred claims are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+
+    "Reviewed the package.json delta at 0457b3b6b: it adds the docs:freshness:check, docs:freshness:sweep and docs:review:record scripts and adds documentation-freshness.test.ts to docs:foundations:test. No claim in this document names those scripts or that list; its reviewed claims are unchanged."
+  ]
+}
