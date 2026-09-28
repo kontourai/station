@@ -111,7 +111,11 @@ describe('station delegate over HTTP', () => {
     | { provider?: string; capabilityDelivery?: Record<string, unknown> }
     | undefined;
   let statusDeliveryFixture:
-    | { provider?: string; capabilityDelivery?: Record<string, unknown> }
+    | {
+        provider?: string;
+        capabilityDelivery?: Record<string, unknown>;
+        lastDecision?: Record<string, unknown>;
+      }
     | undefined;
 
   beforeEach(async () => {
@@ -435,6 +439,9 @@ describe('station delegate over HTTP', () => {
               ? {
                   capabilityDelivery: statusDeliveryFixture.capabilityDelivery,
                 }
+              : {}),
+            ...(statusDeliveryFixture?.lastDecision
+              ? { lastDecision: statusDeliveryFixture.lastDecision }
               : {}),
             ...(record.pendingRequest
               ? { pendingRequest: record.pendingRequest }
@@ -2357,6 +2364,72 @@ describe('station delegate over HTTP', () => {
       expect(text).toContain(
         'prompt not delivered: engine has no system-prompt channel (opencode)',
       );
+    } finally {
+      statusDeliveryFixture = undefined;
+    }
+  });
+
+  /**
+   * #2880: the recorded decision and the engine's report about it render as
+   * separate facts, never stronger than the serving Station forwarded.
+   */
+  test.each([
+    [
+      { delivery: 'acknowledged', waitedMs: 42 },
+      'Decision on req-7: approved (recorded), acknowledged by the engine after 42 ms',
+    ],
+    [
+      { delivery: 'acknowledged', waitedMs: 1_500, engineStatus: 'denied' },
+      'Decision on req-7: approved (recorded), acknowledged by the engine after 2 s; the engine reported: denied',
+    ],
+    [
+      { delivery: 'awaiting-acknowledgement' },
+      'Decision on req-7: approved (recorded), not yet acknowledged by the engine',
+    ],
+    [
+      {
+        delivery: 'unacknowledged',
+        reason: 'no-acknowledgement',
+        waitedMs: 30_000,
+      },
+      'Decision on req-7: approved (recorded), not yet acknowledged by the engine after 30 s; Station has not re-sent it',
+    ],
+    [
+      { delivery: 'unacknowledged', reason: 'invalid-reply', waitedMs: 0 },
+      'Decision on req-7: approved (recorded), not sent: Station refused a reply the engine would not accept; the engine is still waiting',
+    ],
+    [
+      { delivery: 'in-process' },
+      "Decision on req-7: approved (recorded), consumed by Station's own engine",
+    ],
+    [
+      { delivery: 'not-reported' },
+      'Decision on req-7: approved (recorded); this engine does not report delivery',
+    ],
+  ])('human output: decision delivery %o (#2880)', async (delivery, line) => {
+    const { runCli } = await import('../cli.js');
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'decision delivery',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+    statusDeliveryFixture = {
+      lastDecision: { requestId: 'req-7', status: 'approved', ...delivery },
+    };
+    try {
+      await runCli([
+        'delegate',
+        'status',
+        created.data.taskId,
+        `--api-base=${apiBase}`,
+      ]);
+      expect(printedText().split('\n')).toContain(line);
     } finally {
       statusDeliveryFixture = undefined;
     }

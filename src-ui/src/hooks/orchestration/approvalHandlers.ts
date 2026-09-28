@@ -168,6 +168,28 @@ async function answerFromToast(
   }
 }
 
+/**
+ * #2880: the engine-side fate of a recorded decision. `unacknowledged` puts
+ * the request on the chat's list; a later `acknowledged` (late ack) takes it
+ * off, which clears the status note. The runtime.warning that accompanies an
+ * unacknowledged decision is shown by its own handler.
+ */
+export function handleRequestDeliveryEvent(
+  event: Extract<OrchestrationEvent, { method: 'request.delivery' }>,
+) {
+  const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+  if (!chat) return;
+  const others = (chat.unacknowledgedDecisions || []).filter(
+    (id) => id !== event.requestId,
+  );
+  activeChatsStore.updateChat(event.threadId, {
+    unacknowledgedDecisions:
+      event.outcome === 'unacknowledged'
+        ? [...others, event.requestId]
+        : others,
+  });
+}
+
 export function handleRequestResolvedEvent(
   event: Extract<OrchestrationEvent, { method: 'request.resolved' }>,
 ) {

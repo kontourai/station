@@ -1,7 +1,10 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import { createInterface } from 'node:readline';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  ApprovalStatus,
+  CanonicalRuntimeEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { findCliBinary, resolveAugmentedPathSync } from '../auth/cli-auth.js';
@@ -24,11 +27,21 @@ import {
   settleUnresolvedCodexToolCalls,
 } from './codex-adapter-notifications.js';
 import {
+  type AwaitingApprovalAcknowledgement,
   type CodexProcessLike,
   type CodexSessionRecord,
   type JsonRpcId,
   markCodexTurnTerminal,
 } from './codex-adapter-types.js';
+import {
+  CODEX_APPROVAL_ACK_WINDOW_MS,
+  CODEX_APPROVAL_ACKNOWLEDGEMENT,
+  CODEX_DECISION_REPLY_REFUSED_CODE,
+  CODEX_DECISION_UNACKNOWLEDGED_CODE,
+  jsonRpcIdKey,
+  readJsonRpcId,
+  refuseCodexApprovalReply,
+} from './codex-approval-delivery.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 
 type JsonRpcRequest = {
@@ -423,6 +436,157 @@ export class CodexAdapterTransport {
     );
   }
 
+  /**
+   * #2880: answer one approval Codex asked for and record the decision.
+   *
+   * `request.resolved` means "decision recorded" and is published whether or
+   * not the reply can be sent. A reply that fails Codex's decision
+   * vocabulary is refused and never written — Codex acknowledges even a
+   * reply it cannot parse, so this check is the only thing that keeps a
+   * malformed reply from reading as delivered — and is reported as
+   * `unacknowledged` (`invalid-reply`). A written reply is watched until
+   * Codex's `serverRequest/resolved` names it; nothing is ever re-sent.
+   */
+  replyToApproval(
+    record: CodexSessionRecord,
+    input: {
+      requestId: string;
+      rpcRequestId: JsonRpcId;
+      method: string;
+      result: unknown;
+      status: ApprovalStatus;
+    },
+  ): void {
+    const refusal = refuseCodexApprovalReply(input.method, input.result);
+    if (refusal === undefined) {
+      this.sendResponse(record, input.rpcRequestId, input.result);
+    }
+    const threadId = record.externalThreadId;
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'codex',
+      threadId,
+      createdAt: this.now().toISOString(),
+      requestId: input.requestId,
+      method: 'request.resolved',
+      status: input.status,
+      acknowledgement: CODEX_APPROVAL_ACKNOWLEDGEMENT,
+    });
+    if (refusal !== undefined) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId,
+        createdAt: this.now().toISOString(),
+        requestId: input.requestId,
+        method: 'request.delivery',
+        outcome: 'unacknowledged',
+        reason: 'invalid-reply',
+        waitedMs: 0,
+      });
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: CODEX_DECISION_REPLY_REFUSED_CODE,
+        message: `Station recorded the decision but did not send it to Codex, because ${refusal}. Codex is still waiting for an answer to this request.`,
+        details: { requestId: input.requestId },
+      });
+      return;
+    }
+    this.watchAcknowledgement(record, input.requestId, input.rpcRequestId);
+  }
+
+  private watchAcknowledgement(
+    record: CodexSessionRecord,
+    requestId: string,
+    rpcRequestId: JsonRpcId,
+  ): void {
+    record.awaitingAcknowledgements ??= new Map();
+    const watches = record.awaitingAcknowledgements;
+    const key = jsonRpcIdKey(rpcRequestId);
+    const entry: AwaitingApprovalAcknowledgement = {
+      requestId,
+      rpcRequestId,
+      sentAt: this.now().getTime(),
+      warned: false,
+    };
+    entry.timer = setTimeout(() => {
+      entry.timer = undefined;
+      if (record.stopped || watches.get(key) !== entry) return;
+      entry.warned = true;
+      const waitedMs = Math.max(0, this.now().getTime() - entry.sentAt);
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        requestId,
+        method: 'request.delivery',
+        outcome: 'unacknowledged',
+        reason: 'no-acknowledgement',
+        waitedMs,
+      });
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: CODEX_DECISION_UNACKNOWLEDGED_CODE,
+        message: `Codex has not yet acknowledged the decision on this request after ${Math.round(waitedMs / 1000)} s. The decision is recorded; Station has not re-sent it.`,
+        details: { requestId, waitedMs },
+      });
+    }, CODEX_APPROVAL_ACK_WINDOW_MS);
+    entry.timer.unref?.();
+    watches.set(key, entry);
+  }
+
+  /**
+   * #2880: Codex's `serverRequest/resolved` — the engine closed the request
+   * after Station's reply. Matched on the wire id's value AND type. An id
+   * Station is not watching (an auto-approved grant, a request Codex closed
+   * on its own) is ignored. A late acknowledgement still publishes
+   * `acknowledged`, which supersedes the earlier `unacknowledged`.
+   */
+  private acknowledgeServerRequest(
+    record: CodexSessionRecord,
+    params: unknown,
+  ): void {
+    const rpcRequestId = readJsonRpcId(
+      params && typeof params === 'object'
+        ? (params as { requestId?: unknown }).requestId
+        : undefined,
+    );
+    if (rpcRequestId === undefined) return;
+    const key = jsonRpcIdKey(rpcRequestId);
+    const entry = record.awaitingAcknowledgements?.get(key);
+    if (!entry) return;
+    record.awaitingAcknowledgements?.delete(key);
+    if (entry.timer) clearTimeout(entry.timer);
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: 'codex',
+      threadId: record.externalThreadId,
+      createdAt: this.now().toISOString(),
+      requestId: entry.requestId,
+      method: 'request.delivery',
+      outcome: 'acknowledged',
+      waitedMs: Math.max(0, this.now().getTime() - entry.sentAt),
+    });
+  }
+
+  private clearAcknowledgementWatches(record: CodexSessionRecord): void {
+    for (const entry of record.awaitingAcknowledgements?.values() ?? []) {
+      if (entry.timer) clearTimeout(entry.timer);
+    }
+    record.awaitingAcknowledgements?.clear();
+  }
+
   sendErrorResponse(
     record: CodexSessionRecord,
     requestId: JsonRpcId,
@@ -513,6 +677,7 @@ export class CodexAdapterTransport {
       return;
     }
     record.stopped = true;
+    this.clearAcknowledgementWatches(record);
 
     // Settle outstanding inbound approval requests before teardown so the
     // request event contract holds: every request.opened gets a matching
@@ -691,6 +856,12 @@ export class CodexAdapterTransport {
       ACCOUNT_SCOPED_NOTIFICATION_METHODS.has(notification.method) &&
       emittingRecord.stopped
     ) {
+      return;
+    }
+    // #2880: the reply was written to the EMITTING process's stdin, and wire
+    // ids are scoped to that process, so its acknowledgement matches there.
+    if (notification.method === 'serverRequest/resolved') {
+      this.acknowledgeServerRequest(emittingRecord, notification.params);
       return;
     }
     const threadId = extractThreadId(notification.params);

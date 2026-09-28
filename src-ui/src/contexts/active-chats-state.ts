@@ -509,6 +509,12 @@ export type ChatUIState = {
   defaultModelSource?: EffectiveModelSource;
   sessionAutoApprove?: string[];
   pendingApprovals?: string[];
+  /**
+   * #2880: recorded decisions the engine has reported NOT acknowledged
+   * (`request.delivery` `unacknowledged`). A later `acknowledged` for the
+   * same request removes it. Not persisted: live-stream state.
+   */
+  unacknowledgedDecisions?: string[];
   approvalToasts?: Map<string, string>;
   /**
    * why the last drain of `queuedMessages` failed, kept as a

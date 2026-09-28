@@ -22,7 +22,9 @@ vi.mock('../../../contexts/active-chats-store', () => ({
   activeChatsStore: { getChatForExecutionSession, updateChat },
 }));
 
-const { handleRequestOpenedEvent } = await import('../approvalHandlers');
+const { handleRequestOpenedEvent, handleRequestDeliveryEvent } = await import(
+  '../approvalHandlers'
+);
 const { resolveOrchestrationRequest, inspectAttentionRequest } = await import(
   '@kontourai/station-sdk'
 );
@@ -429,5 +431,46 @@ describe('#2344: the toast reports what happened to its answer', () => {
 
     expect(showToast).not.toHaveBeenCalled();
     expect(showToolApproval).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('handleRequestDeliveryEvent — recorded vs acknowledged (#2880)', () => {
+  function delivery(
+    outcome: 'acknowledged' | 'unacknowledged',
+    requestId: string,
+  ) {
+    return {
+      eventId: `evt-${outcome}`,
+      provider: 'codex',
+      threadId: 'thread-1',
+      createdAt: '2026-09-28T00:00:00.000Z',
+      method: 'request.delivery',
+      requestId,
+      outcome,
+      waitedMs: 30_000,
+    } as unknown as Parameters<typeof handleRequestDeliveryEvent>[0];
+  }
+
+  beforeEach(() => {
+    updateChat.mockClear();
+    getChatForExecutionSession.mockReset();
+  });
+
+  test('an unacknowledged decision is listed on the chat', () => {
+    getChatForExecutionSession.mockReturnValue({ unacknowledgedDecisions: [] });
+    handleRequestDeliveryEvent(delivery('unacknowledged', 'req-1'));
+    expect(updateChat).toHaveBeenCalledWith('thread-1', {
+      unacknowledgedDecisions: ['req-1'],
+    });
+  });
+
+  test('a late acknowledgement takes only that decision off the list', () => {
+    getChatForExecutionSession.mockReturnValue({
+      unacknowledgedDecisions: ['req-1', 'req-2'],
+    });
+    handleRequestDeliveryEvent(delivery('acknowledged', 'req-1'));
+    expect(updateChat).toHaveBeenCalledWith('thread-1', {
+      unacknowledgedDecisions: ['req-2'],
+    });
   });
 });

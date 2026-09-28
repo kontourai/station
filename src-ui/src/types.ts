@@ -354,6 +354,8 @@ export interface ChatSession {
   currentModeId?: string | null;
   planArtifact?: PlanArtifact | null;
   pendingApprovals?: string[];
+  /** See ChatUIState.unacknowledgedDecisions (#2880). */
+  unacknowledgedDecisions?: string[];
   isProcessingStep?: boolean;
   flowRun?: FlowRunBinding | null;
   /** See ChatUIState.activityHint — transient streaming-indicator hint. */

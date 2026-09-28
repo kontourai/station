@@ -105,6 +105,31 @@ by `requestId`.
 }
 ```
 
+The command records the decision: the adapter publishes `request.resolved`
+when Station records it, on every engine. Whether the engine then received it
+is a separate fact (#2880), declared per adapter as
+`approvalAcknowledgement` and stamped on each decision's `request.resolved`
+as `acknowledgement`:
+
+- `engine` (Codex, Muse): a later `request.delivery` event reports
+  `outcome: 'acknowledged'` when the engine closes the request after
+  Station's well-formed reply, or `outcome: 'unacknowledged'` with `reason:
+  'no-acknowledgement'` (none within the adapter's window; Station does not
+  re-send) or `'invalid-reply'` (Station refused a reply outside the
+  engine's decision vocabulary and never sent it). A late `acknowledged`
+  supersedes an earlier `unacknowledged`. "Acknowledged" never means the
+  engine applied the decision as given; Muse's `engineStatus` carries the
+  engine's own outcome.
+- `in-process` (Station's own engine): consumed in-process; no delivery
+  event follows.
+- `none` (Claude Code, ACP): the protocol has no acknowledgement, so
+  delivery is not reported.
+
+An open request in the attention inbox closes on `request.resolved`, so an
+answered request leaves the inbox when the decision is recorded; an
+unacknowledged decision surfaces as a `runtime.warning` on its session, not
+as a reopened request.
+
 ### Other command types
 
 Three more command types exist on the same union but are outside this doc's session-lifecycle

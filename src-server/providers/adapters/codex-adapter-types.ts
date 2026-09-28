@@ -68,6 +68,21 @@ export interface PendingApprovalRequest {
   toolName?: string;
 }
 
+/**
+ * #2880: a decision Station wrote to Codex and is waiting to see
+ * acknowledged (`serverRequest/resolved` naming `rpcRequestId`).
+ */
+export interface AwaitingApprovalAcknowledgement {
+  /** Station's canonical request id (the one events carry). */
+  requestId: string;
+  rpcRequestId: JsonRpcId;
+  /** `Date.now()`-style milliseconds when the reply was written. */
+  sentAt: number;
+  timer?: ReturnType<typeof setTimeout>;
+  /** An `unacknowledged` has been published; a late ack supersedes it. */
+  warned: boolean;
+}
+
 export interface CodexSessionRecord {
   externalThreadId: string;
   codexThreadId: string;
@@ -84,6 +99,13 @@ export interface CodexSessionRecord {
    * auto-accepts later calls without re-prompting. Dies with the session.
    */
   approvedTools: Set<string>;
+  /**
+   * #2880: replies written and not yet acknowledged, keyed by
+   * `jsonRpcIdKey(rpcRequestId)` so the wire id's type is part of the match.
+   * Optional so hand-built fixtures stay valid; created on first use.
+   * Cleared when the session stops.
+   */
+  awaitingAcknowledgements?: Map<string, AwaitingApprovalAcknowledgement>;
   /**
    * #2559: the sandbox the thread runs in, from `thread/start`,
    * `thread/resume` or `thread/fork`'s own report, updated whenever a turn

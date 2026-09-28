@@ -1196,6 +1196,96 @@ export function delegatedTaskReason(
   return fixed ? { code: kind, detail: fixed } : undefined;
 }
 
+/**
+ * #2880: the latest decision recorded on a delegated task and what its engine
+ * has reported since. `status` is the recorded decision; `delivery` is kept
+ * separate from it on purpose:
+ *
+ * - `awaiting-acknowledgement`: the engine acknowledges decisions and has not
+ *   yet (normally for well under a second);
+ * - `acknowledged`: the engine closed the request after Station's
+ *   well-formed reply. It is not proof the decision was applied as given;
+ *   `engineStatus` carries the engine's own outcome when it reports one;
+ * - `unacknowledged`: `reason` says whether no acknowledgement arrived
+ *   within the adapter's window (Station did not re-send) or Station refused
+ *   to send a reply that failed the engine's decision vocabulary;
+ * - `in-process`: Station's own engine consumed it;
+ * - `not-reported`: the engine's protocol reports no delivery (Claude, ACP),
+ *   or the decision predates delivery reporting.
+ */
+export interface DelegatedTaskDecision {
+  requestId: string;
+  status: string;
+  delivery:
+    | 'awaiting-acknowledgement'
+    | 'acknowledged'
+    | 'unacknowledged'
+    | 'in-process'
+    | 'not-reported';
+  reason?: 'no-acknowledgement' | 'invalid-reply';
+  engineStatus?: string;
+  waitedMs?: number;
+}
+
+/** #2880: fold the latest recorded decision and its delivery from events. */
+export function delegatedLastDecision(
+  events: ReadonlyArray<Record<string, unknown>>,
+): DelegatedTaskDecision | undefined {
+  let resolvedIndex = -1;
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index];
+    if (
+      event.method === 'request.resolved' &&
+      typeof event.requestId === 'string'
+    ) {
+      resolvedIndex = index;
+      break;
+    }
+  }
+  if (resolvedIndex < 0) return undefined;
+  const resolved = events[resolvedIndex];
+  const requestId = resolved.requestId as string;
+  const status = optionalString(resolved.status, 32) ?? 'resolved';
+  if (resolved.acknowledgement === 'in-process') {
+    return { requestId, status, delivery: 'in-process' };
+  }
+  if (resolved.acknowledgement !== 'engine') {
+    return { requestId, status, delivery: 'not-reported' };
+  }
+  // The latest delivery observation wins: a late `acknowledged` supersedes
+  // an earlier `unacknowledged` for the same request.
+  for (let index = events.length - 1; index > resolvedIndex; index--) {
+    const event = events[index];
+    if (event.method !== 'request.delivery' || event.requestId !== requestId)
+      continue;
+    const waitedMs = optionalNumber(event.waitedMs);
+    const timing = waitedMs !== undefined ? { waitedMs } : {};
+    if (event.outcome === 'acknowledged') {
+      const engineStatus = optionalString(event.engineStatus, 32);
+      return {
+        requestId,
+        status,
+        delivery: 'acknowledged',
+        ...timing,
+        ...(engineStatus ? { engineStatus } : {}),
+      };
+    }
+    if (event.outcome === 'unacknowledged') {
+      return {
+        requestId,
+        status,
+        delivery: 'unacknowledged',
+        reason:
+          event.reason === 'invalid-reply'
+            ? 'invalid-reply'
+            : 'no-acknowledgement',
+        ...timing,
+      };
+    }
+  }
+  return { requestId, status, delivery: 'awaiting-acknowledgement' };
+}
+
 export interface DelegatedTaskSnapshot {
   /** Durable selector for continuation; `taskId` is retained for compatibility. */
   conversationId: string;
@@ -1227,6 +1317,8 @@ export interface DelegatedTaskSnapshot {
   capabilityDelivery?: DelegatedCapabilityDelivery;
   eventCount: number;
   lastEvent?: { method: string; createdAt?: string };
+  /** #2880: the latest recorded decision and its delivery, if any. */
+  lastDecision?: DelegatedTaskDecision;
   /**
    * #2269: effective supervision for the CURRENT turn, forwarded — never
    * re-derived — from the serving Station's own facts (the owning adapter's
@@ -3250,6 +3342,10 @@ export function snapshotFor(options: {
     ...(isSessionTransitionReason(session.transitionReason)
       ? { transitionReason: session.transitionReason }
       : {}),
+    ...(() => {
+      const lastDecision = delegatedLastDecision(events);
+      return lastDecision ? { lastDecision } : {};
+    })(),
     ...(pendingRequest
       ? {
           pendingRequest: {
@@ -3440,6 +3536,22 @@ export function projectDelegatedTaskEvent(
         status: optionalString(event.status, 32) ?? 'resolved',
         ...(optionalString(event.requestId)
           ? { requestId: optionalString(event.requestId) }
+          : {}),
+      };
+    case 'request.delivery':
+      // #2880: the engine-side fate of a recorded decision, kept apart from
+      // the decision itself.
+      return {
+        ...common,
+        kind: 'request',
+        status:
+          event.outcome === 'acknowledged' ? 'acknowledged' : 'unacknowledged',
+        ...(optionalString(event.requestId)
+          ? { requestId: optionalString(event.requestId) }
+          : {}),
+        ...(event.reason === 'invalid-reply' ||
+        event.reason === 'no-acknowledgement'
+          ? { reason: event.reason }
           : {}),
       };
     case 'runtime.error': {

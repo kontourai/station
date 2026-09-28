@@ -104,6 +104,7 @@ import {
   codexTurnAlreadyTerminal,
   markCodexTurnTerminal,
 } from './codex-adapter-types.js';
+import { CODEX_APPROVAL_ACKNOWLEDGEMENT } from './codex-approval-delivery.js';
 import {
   codexSandboxModeOfPolicy,
   mapCodexKnobsToApprovalMode,
@@ -677,6 +678,8 @@ export class CodexAdapter implements ProviderAdapterShape {
   readonly adoptionLifecycle = 'reported' as const;
   readonly provider = 'codex' as const;
   readonly metadata = {
+    // #2880: Codex's `serverRequest/resolved` acknowledges the request closed.
+    approvalAcknowledgement: CODEX_APPROVAL_ACKNOWLEDGEMENT,
     displayName: 'Codex',
     description: 'Codex app-server runtime over the local Codex CLI.',
     capabilities: [
@@ -2590,7 +2593,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       // interrupt RPC succeeded. A rejected RPC used to throw past this, and
       // the approvals stayed pending — a late "Allow <tool> for this session"
       // then minted a grant for a call that never ran.
-      this.cancelPendingApprovals(record, threadId);
+      this.cancelPendingApprovals(record);
     }
 
     // `targetTurnId` really was interrupted — that fact does not depend on
@@ -2737,24 +2740,18 @@ export class CodexAdapter implements ProviderAdapterShape {
    * (`request.resolved`), so no later answer lands on a dead request and no
    * session grant is minted for it.
    */
-  private cancelPendingApprovals(
-    record: CodexSessionRecord,
-    threadId: string,
-  ): void {
+  private cancelPendingApprovals(record: CodexSessionRecord): void {
     for (const [requestId, pending] of record.pendingApprovals) {
       const outcome = resolveApprovalOutcome(
         pending.method,
         pending.payload,
         'cancel',
       );
-      this.transport.sendResponse(record, pending.rpcRequestId, outcome.result);
-      this.transport.publish({
-        eventId: crypto.randomUUID(),
-        provider: this.provider,
-        threadId,
-        createdAt: this.now().toISOString(),
+      this.transport.replyToApproval(record, {
         requestId,
-        method: 'request.resolved',
+        rpcRequestId: pending.rpcRequestId,
+        method: pending.method,
+        result: outcome.result,
         status: mapApprovalResolutionStatus(outcome.decision),
       });
     }
@@ -2790,15 +2787,11 @@ export class CodexAdapter implements ProviderAdapterShape {
     ) {
       record.approvedTools.add(pending.toolName);
     }
-    this.transport.sendResponse(record, pending.rpcRequestId, outcome.result);
-
-    this.transport.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId,
-      createdAt: this.now().toISOString(),
+    this.transport.replyToApproval(record, {
       requestId,
-      method: 'request.resolved',
+      rpcRequestId: pending.rpcRequestId,
+      method: pending.method,
+      result: outcome.result,
       status: mapApprovalResolutionStatus(outcome.decision),
     });
   }

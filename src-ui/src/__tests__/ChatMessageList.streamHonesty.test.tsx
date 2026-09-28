@@ -341,6 +341,38 @@ describe('station#3300 — settled turn stays settled on resume', () => {
     expect(label).not.toContain('approval');
   });
 
+  test('#2880: a running turn with an unacknowledged decision says so, as not yet', () => {
+    renderList(
+      managedSession({
+        orchestrationStatus: 'running',
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-2',
+        status: 'idle',
+        pendingApprovals: [],
+        unacknowledgedDecisions: ['req-1'],
+      }),
+    );
+    expect(
+      screen.getByTestId('streaming-message').getAttribute('data-status-label'),
+    ).toBe('Decision recorded, not yet acknowledged by the engine');
+  });
+
+  test('#2880: a running turn with every decision acknowledged carries no label', () => {
+    renderList(
+      managedSession({
+        orchestrationStatus: 'running',
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-2',
+        status: 'idle',
+        pendingApprovals: [],
+        unacknowledgedDecisions: [],
+      }),
+    );
+    expect(
+      screen.getByTestId('streaming-message').getAttribute('data-status-label'),
+    ).toBe('');
+  });
+
   test('a non-managed session keeps the session-level derivation', () => {
     // Direct-path chats never see turn events; their only liveness signal is
     // the session-level flags, unchanged by archive#3300.

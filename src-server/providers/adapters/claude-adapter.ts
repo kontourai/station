@@ -1008,6 +1008,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   readonly provider = 'claude' as const;
   readonly adoptionLifecycle = 'reported' as const;
   readonly metadata = {
+    // #2880: the protocol has no acknowledgement of a decision; delivery is
+    // not reported.
+    approvalAcknowledgement: 'none' as const,
     displayName: 'Claude Code',
     description: 'Claude Code integration with approvals and reasoning events.',
     capabilities: [
@@ -2049,6 +2052,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           : decision === 'decline'
             ? 'denied'
             : 'cancelled',
+      acknowledgement: this.metadata.approvalAcknowledgement,
     });
   }
 
