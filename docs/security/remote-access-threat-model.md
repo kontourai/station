@@ -275,6 +275,34 @@ default to full access rather than Standard:
   the host before any credential is issued, exactly as with any other
   pairing request.
 
+Beyond the presets, the operator adds elevated scopes to an already-paired
+device, never at pairing: in the desktop app (**Paired devices** → the device
+→ **Change access**) or on the Station host with `station environment access
+scope <device> --add|--remove|--set <scope>` (#1796). Both use
+`POST /api/pairing/devices/:id/scope`, which only the operator credential
+reaches; the CLI verbs additionally refuse any non-loopback target before
+reading a credential, so a paired remote CLI cannot run them, and there is no
+remote operator authentication. `access:manage` is not grantable this way.
+Each change is sent with the scope it replaces (`expectedScope`) and a
+concurrent change returns 409 `scope_changed` instead of being overwritten;
+the change drops the device's live terminal and voice leases. One such scope,
+`approval:full-access`, is the only way a device may choose approval mode
+`never`. Its refusal (403 `approval-full-access-not-granted`) names the
+device, the refusing Station and the operator's grant command, derived from
+the request's verified credential; it discloses no credential and grants
+nothing. Removing the scope, or revoking the device, refuses the device's
+next full-access request and resets the full access it had already granted:
+each conversation it put at full access gets a new Ask decision attributed to
+the operator. Attribution is exact, from the server-derived actor on the
+decision or beside the start's `host` stamp. The sessions its grant unconfined
+run confined again, because the stamp is checked against the grant at every
+turn start and respawn. A running turn finishes; the next one is confined and
+asks. The exception is a running engine with no decision standing: it keeps
+its start posture until it restarts, and it is listed. Full access from the
+operator, another device, or an Agent or Station default on someone else's
+session is listed and left alone. So are live sessions started before
+grantors were recorded (at most 50, with the total).
+
 Enforcement is a single route -> required-scope table
 (`src-server/security/pairing-route-scopes.ts`) consulted by one piece of
 middleware, never scattered per-handler checks. Every authenticated HTTP route

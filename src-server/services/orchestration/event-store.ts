@@ -4996,20 +4996,30 @@ export class EventStore {
    * indexed lookup per thread (`thread_id, method, sequence`), then the
    * newest by global sequence; a conversation has a handful of sessions.
    */
-  latestApprovalModeDecision(
-    threadIds: readonly string[],
-  ):
-    | { threadId: string; approvalMode: unknown; globalSequence: number }
+  latestApprovalModeDecision(threadIds: readonly string[]):
+    | {
+        threadId: string;
+        approvalMode: unknown;
+        globalSequence: number;
+        /** #1796: who recorded it (`clientOrigin.actor`); absent on older events. */
+        actor?: unknown;
+      }
     | undefined {
     const statement = this.db.prepare(
-      `SELECT thread_id, json_extract(payload, '$.approvalMode') AS approval_mode, global_sequence
+      `SELECT thread_id, json_extract(payload, '$.approvalMode') AS approval_mode, global_sequence,
+              json_extract(payload, '$.clientOrigin.actor') AS actor
        FROM orchestration_events
        WHERE thread_id = ? AND method = 'session.approval-mode-set'
        ORDER BY sequence DESC
        LIMIT 1`,
     );
     let latest:
-      | { threadId: string; approvalMode: unknown; globalSequence: number }
+      | {
+          threadId: string;
+          approvalMode: unknown;
+          globalSequence: number;
+          actor?: unknown;
+        }
       | undefined;
     for (const threadId of new Set(threadIds)) {
       const row = statement.get(threadId) as
@@ -5017,6 +5027,7 @@ export class EventStore {
             thread_id: string;
             approval_mode: unknown;
             global_sequence: number;
+            actor: string | null;
           }
         | undefined;
       if (!row) continue;
@@ -5025,10 +5036,83 @@ export class EventStore {
           threadId: row.thread_id,
           approvalMode: row.approval_mode,
           globalSequence: row.global_sequence,
+          ...(typeof row.actor === 'string'
+            ? { actor: parseJsonOrUndefined(row.actor) }
+            : {}),
         };
       }
     }
     return latest;
+  }
+
+  /**
+   * #1796: the threads on which paired device `deviceId` recorded an
+   * approval-mode decision (its server-derived `clientOrigin.actor`).
+   */
+  approvalModeDecisionThreadsByDevice(deviceId: string): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT DISTINCT thread_id FROM orchestration_events
+           WHERE method = 'session.approval-mode-set'
+             AND json_extract(payload, '$.clientOrigin.actor.kind') = 'device'
+             AND json_extract(payload, '$.clientOrigin.actor.deviceId') = ?`,
+        )
+        .all(deviceId) as { thread_id: string }[]
+    ).map((row) => row.thread_id);
+  }
+
+  /**
+   * #1796: the threads whose `host` start stamp paired device `deviceId`
+   * granted (`stationConfinementGrantor` beside the stamp). Reads only
+   * `session.started` events, through the method index.
+   */
+  hostStartThreadsGrantedByDevice(deviceId: string): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT DISTINCT thread_id FROM orchestration_events
+           WHERE method = 'session.started'
+             AND json_extract(payload, '$.metadata.stationConfinement') = 'host'
+             AND json_extract(payload, '$.metadata.stationConfinementGrantor.kind') = 'device'
+             AND json_extract(payload, '$.metadata.stationConfinementGrantor.deviceId') = ?`,
+        )
+        .all(deviceId) as { thread_id: string }[]
+    ).map((row) => row.thread_id);
+  }
+
+  /**
+   * #1796: a conversation's title for the revocation report: the first of
+   * `threadIds` (the conversation id, then its sessions) that has one.
+   */
+  conversationTitle(threadIds: readonly string[]): string | undefined {
+    const statement = this.db.prepare(
+      `SELECT title FROM orchestration_conversation_history WHERE thread_id = ?`,
+    );
+    for (const threadId of new Set(threadIds)) {
+      const row = statement.get(threadId) as
+        | { title: string | null }
+        | undefined;
+      if (typeof row?.title === 'string' && row.title.trim()) return row.title;
+    }
+    return undefined;
+  }
+
+  /**
+   * #1796: threads holding a `never` decision whose recorder is not known
+   * (recorded before decisions carried `clientOrigin`).
+   */
+  unattributedFullAccessDecisionThreads(): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT DISTINCT thread_id FROM orchestration_events
+           WHERE method = 'session.approval-mode-set'
+             AND json_extract(payload, '$.approvalMode') = 'never'
+             AND json_extract(payload, '$.clientOrigin.actor.kind') IS NULL`,
+        )
+        .all() as { thread_id: string }[]
+    ).map((row) => row.thread_id);
   }
 
   latestEventForSessionState(
@@ -12562,4 +12646,12 @@ function mapCommandReceiptRow(
     createdAt: row.created_at,
     ...(clientOrigin ? { clientOrigin } : {}),
   };
+}
+
+function parseJsonOrUndefined(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
 }

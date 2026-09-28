@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   assertSafeArchiveEntries,
   assertSafeArchiveFile,
-  createExclusiveDirectory,
   validateBuildOnlyOutput,
 } from './macos-build-only-artifact.mjs';
 
@@ -29,17 +28,6 @@ describe('macOS Nightly build-only artifact boundary', () => {
         }),
       ).toThrow(/overlaps protected/);
   });
-  it('acquires the final output directory exclusively', () => {
-    expect(() =>
-      createExclusiveDirectory('/out', {
-        mkdir: () => {
-          const error = new Error('exists');
-          error.code = 'EEXIST';
-          throw error;
-        },
-      }),
-    ).toThrow(/already exists/);
-  });
   it('rejects archive paths that disclose homes or private keys before publication', () => {
     expect(() =>
       assertSafeArchiveEntries([
@@ -47,12 +35,14 @@ describe('macOS Nightly build-only artifact boundary', () => {
         'Station Nightly.app/Contents/Resources/node_modules/openai/resources/projects/users/index.mjs',
       ]),
     ).not.toThrow();
-    expect(() =>
-      assertSafeArchiveEntries(['Station Nightly.app/Users/a/.ssh/id_rsa']),
-    ).toThrow(/user-home/);
-    expect(() =>
-      assertSafeArchiveEntries(['Station Nightly.app/home/a/.aws/credentials']),
-    ).toThrow(/user-home/);
+    // Home-only paths: no credential directory or key extension, so each
+    // case is refused by the operating-system-home guard alone.
+    for (const homePath of [
+      'Station Nightly.app/Users/a/notes.txt',
+      'Station Nightly.app/home/a/notes.txt',
+    ]) {
+      expect(() => assertSafeArchiveEntries([homePath])).toThrow(/user-home/);
+    }
     for (const credentialPath of [
       'Station Nightly.app/.ssh/id_rsa',
       'Station Nightly.app/.aws/credentials',

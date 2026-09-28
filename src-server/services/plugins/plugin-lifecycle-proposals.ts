@@ -442,6 +442,30 @@ export class PluginLifecycleProposalService {
     );
   }
 
+  /**
+   * Whether an open install proposal asks for exactly `source`, compared the
+   * way completion compares it (#2719). The install routes stage such a
+   * source without its git metadata: the folder came from someone other
+   * than the operator, so its `.git` is not the operator's repository. Any
+   * author counts, because a proposal for a folder already proposed is
+   * deduplicated into the first one whoever made it.
+   */
+  hasOpenInstallProposal(source: string): boolean {
+    const wanted = target({ kind: 'install', source });
+    let open: PluginLifecycleProposal[];
+    try {
+      open = this.listOpen();
+    } catch (error) {
+      // Fails closed: without the store, whether this source was proposed is
+      // unknown. Name the file to repair, relative to the Station home.
+      throw new Error(
+        `Plugin proposals are unreadable (${PLUGIN_LIFECYCLE_PROPOSALS_FILE} in the Station home), so Station cannot tell whether this source was proposed. Repair or remove that file, then retry.`,
+        { cause: error },
+      );
+    }
+    return open.some((proposal) => target(proposal) === wanted);
+  }
+
   get(id: string): PluginLifecycleProposal | null {
     return this.read().proposals.find((proposal) => proposal.id === id) ?? null;
   }

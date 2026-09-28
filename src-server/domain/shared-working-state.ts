@@ -1041,6 +1041,9 @@ export class SharedWorkingState extends LiveWorkingStatePort {
 /**
  * Composition seam: persistence/transport keeps `recovery` private and gives
  * editor/UI callers only `live`. The ports share one convergence authority.
+ * No production caller composes recovery yet (production builds the live-only
+ * `SharedWorkingState`); see "Ordering and outcomes" in
+ * docs/design/shared-working-state.md.
  */
 export function createSharedWorkingState(
   options: SharedWorkingStateOptions,

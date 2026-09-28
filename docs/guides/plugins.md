@@ -1035,6 +1035,18 @@ directory's own repository (its `.git`). A plugin without one reports no git
 details and has no git update source, even when the Station home sits inside
 another git checkout.
 
+A local folder that an open install proposal names (one an agent asked for)
+is copied with every `.git` entry left out, at any depth, and a proposed local
+git repository is refused. The preview reports `gitMetadata: "excluded"` in
+that case, and the install's `consent` sends it back, so both stage the same
+bytes. Such a plugin has no git update source; reinstall it from its folder to
+update it. Station remembers that folder (in `plugin-source-staging.json` in
+the Station home), so every later preview and install of it leaves its git
+metadata out too, after the proposal is completed or dismissed and after an
+uninstall. To get git updates for it, install from the repository's remote
+URL instead. An install from your own path, which no proposal has named,
+keeps its `.git`.
+
 ### What Happens on Install
 
 1. Source is cloned (git) or copied (local path) to a temp directory

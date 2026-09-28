@@ -194,6 +194,7 @@ function sidecarStatus(
 let identityBody: () => unknown;
 let identityMode: 'auto' | 'queue';
 let identityFailure: number | undefined;
+let probeIdentityBody: (() => unknown) | undefined;
 let identityCalls: Array<{ url: string; signal: AbortSignal | null }>;
 let transportCalls: string[];
 let identityQueue: Array<{
@@ -227,6 +228,7 @@ async function renderHarness({
   authorize = true,
   identity = DEFAULT_IDENTITY,
   identityFailure: failureStatus = undefined,
+  probeIdentity = undefined,
   queueIdentity = false,
   profileOverrides = {},
   coreUpdate = () => ({ updateAvailable: false }),
@@ -236,6 +238,12 @@ async function renderHarness({
   authorize?: boolean;
   identity?: () => unknown;
   identityFailure?: number;
+  /**
+   * Answers the health probe's liveness identity read separately, so a
+   * connection can reach `connected` while the correlation's own identity
+   * read fails or is incomplete.
+   */
+  probeIdentity?: () => unknown;
   queueIdentity?: boolean;
   profileOverrides?: Partial<typeof DESKTOP_PROFILE>;
   coreUpdate?: () => unknown;
@@ -243,6 +251,7 @@ async function renderHarness({
   identityBody = identity;
   identityMode = queueIdentity ? 'queue' : 'auto';
   identityFailure = failureStatus;
+  probeIdentityBody = probeIdentity;
   identityCalls = [];
   transportCalls = [];
   identityQueue = [];
@@ -324,6 +333,26 @@ async function waitIdentitySettled() {
   await waitFor(() => expect(context?.identitySettled).toBe(true));
 }
 
+/**
+ * Automatic source-check attempts, counted at the query rather than the
+ * transport: on a managed-loopback sidecar with no saved profile the request
+ * leaves through a native path this harness does not record, so an empty
+ * `transportCalls` there cannot tell a held check from a fired one.
+ */
+function coreUpdateAttempts(queryClient: QueryClient): number {
+  return queryClient
+    .getQueryCache()
+    .findAll({ queryKey: ['core-update-check'] })
+    .reduce(
+      (attempts, query) =>
+        attempts +
+        query.state.dataUpdateCount +
+        query.state.errorUpdateCount +
+        (query.state.fetchStatus === 'fetching' ? 1 : 0),
+      0,
+    );
+}
+
 /** Release queued identity responses one at a time until health connects. */
 async function drainProbeUntilConnected(body: () => unknown) {
   identityBody = body;
@@ -375,6 +404,11 @@ describe('ConnectedServerUpdates', () => {
           init as { authorityGuard?: () => void } | undefined
         )?.authorityGuard;
         authorityGuard?.();
+        const livenessProbe = (init as { livenessProbe?: boolean } | undefined)
+          ?.livenessProbe;
+        if (livenessProbe && probeIdentityBody) {
+          return Response.json(probeIdentityBody());
+        }
         if (identityFailure !== undefined) {
           return new Response('identity unavailable', {
             status: identityFailure,
@@ -570,7 +604,7 @@ describe('ConnectedServerUpdates', () => {
   });
 
   it('resolves unresolved and keeps the card silent about method when identity is incomplete', async () => {
-    await renderHarness({
+    const { queryClient } = await renderHarness({
       bundledStatus: sidecarStatus(),
       identity: () => ({ instanceId: 'desktop-sidecar-stable' }),
     });
@@ -582,13 +616,13 @@ describe('ConnectedServerUpdates', () => {
     expect(
       screen.queryByText('Built-in server — updated with this desktop app.'),
     ).toBeNull();
-    expect(
-      transportCalls.filter((url) => url.includes('/api/system/core-update')),
-    ).toHaveLength(0);
+    // Incomplete identity is not ready: wait out a late automatic check.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(coreUpdateAttempts(queryClient)).toBe(0);
   });
 
   it('keeps the source check off when the identity request fails for an established-shaped sidecar', async () => {
-    await renderHarness({
+    const { queryClient } = await renderHarness({
       bundledStatus: sidecarStatus(),
       identityFailure: 503,
     });
@@ -603,10 +637,46 @@ describe('ConnectedServerUpdates', () => {
     // An identity error is settled but not ready: the automatic source check
     // must stay off against a server the correlation could not name.
     await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(
-      transportCalls.filter((url) => url.includes('/api/system/core-update')),
-    ).toHaveLength(0);
+    expect(coreUpdateAttempts(queryClient)).toBe(0);
   });
+
+  it.each([
+    { name: 'fails', identityFailure: 503, identity: undefined },
+    {
+      name: 'is incomplete',
+      identityFailure: undefined,
+      identity: () => ({ instanceId: 'remote-instance' }),
+    },
+  ])(
+    'keeps the source check off for a resolved paired server when identity $name',
+    async ({ identityFailure: failure, identity }) => {
+      // A paired connection claims no native owner and has no pending native
+      // observation, so identity success is the only conjunct holding the
+      // automatic check here.
+      const { queryClient } = await renderHarness({
+        store: PAIRED_STORE,
+        profileOverrides: { supervisesBundledServer: false },
+        identityFailure: failure,
+        identity,
+        probeIdentity: () =>
+          identityResponseFor({
+            instanceId: 'remote-instance',
+            bootId: 'remote-boot',
+          }),
+      });
+      await waitConnected();
+      await waitIdentitySettled();
+      expect(context?.identityReady).toBe(false);
+      expect(context?.claimedOwnerUnresolved).toBe(false);
+      expect(context?.nativeObservationPending).toBe(false);
+      expect(context?.reachability).toBe('connected');
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(coreUpdateAttempts(queryClient)).toBe(0);
+      expect(
+        transportCalls.filter((url) => url.includes('/api/system/core-update')),
+      ).toHaveLength(0);
+    },
+  );
 
   it('holds the source check until the native observation arrives, then renders the built-in copy', async () => {
     // Mount with a saved local owner already answering (identity settles)
@@ -760,12 +830,13 @@ describe('ConnectedServerUpdates', () => {
     });
     await waitConnected();
     await waitIdentitySettled();
-    expect(
-      screen.queryByText('Built-in server — updated with this desktop app.'),
-    ).toBeNull();
+    // Settle on the presentation first so the absence is not read mid-probe.
     expect(
       await screen.findByText('Server on station.example.test:8444.'),
     ).toBeTruthy();
+    expect(
+      screen.queryByText('Built-in server — updated with this desktop app.'),
+    ).toBeNull();
   });
 
   it('never renders the built-in copy on a mobile shell', async () => {
@@ -789,12 +860,13 @@ describe('ConnectedServerUpdates', () => {
     });
     await waitConnected();
     await waitIdentitySettled();
-    expect(
-      screen.queryByText('Built-in server — updated with this desktop app.'),
-    ).toBeNull();
+    // Settle on the presentation first so the absence is not read mid-probe.
     expect(
       await screen.findByText('Server on station.example.test:8444.'),
     ).toBeTruthy();
+    expect(
+      screen.queryByText('Built-in server — updated with this desktop app.'),
+    ).toBeNull();
   });
 
   it('isolates selection A→B→A: a late A response cannot label B nor repopulate any cache', async () => {

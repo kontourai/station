@@ -1,5 +1,6 @@
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
+import { resolveClientOriginForRequest } from '../security/runtime-request-security.js';
 import type { SessionOwnerStamp } from '../services/orchestration/session-owner-attribution.js';
 import {
   StarterRegistry,
@@ -263,12 +264,14 @@ export function createStarterWorkRoutes(
               // is `host` only for a request that may grant full access.
               fullAccessGrantForRequest(c),
               options.ownerForRequest(c),
+              resolveClientOriginForRequest(c.req.raw),
             )
           : starterId === 'start-task'
             ? await registry.launchStartTask(
                 body,
                 fullAccessGrantForRequest(c),
                 options.ownerForRequest(c),
+                resolveClientOriginForRequest(c.req.raw),
               )
             : starterId === 'run-scheduled-check'
               ? await registry.launchScheduledCheck(body)

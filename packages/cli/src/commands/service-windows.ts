@@ -8,6 +8,12 @@ import type {
   ServiceRegistration,
 } from './service.js';
 import {
+  renderServiceCommand,
+  type ServiceCodeLocation,
+  serviceCodeLocationOf,
+  serviceExecutionFiles,
+} from './service-command.js';
+import {
   assertWindowsPathsTrusted,
   encodePowerShellCommand,
   ensureWindowsDirectoriesTrusted,
@@ -15,11 +21,9 @@ import {
   windowsSystemUtilityPath,
 } from './windows-path-trust.js';
 
-interface InstallDependencies {
+interface InstallDependencies extends ServiceCodeLocation {
   fs: ServiceFs;
   lifecycle: ServiceLifecycleArgs;
-  nodePath: string;
-  repoPath: string;
   run: CommandRunner;
   sleep?: (milliseconds: number) => void;
   hardenWindowsPaths?: typeof hardenWindowsPathsTrusted;
@@ -94,46 +98,20 @@ function logPath(lifecycle: ServiceLifecycleArgs, instanceId: string): string {
   return win32.join(lifecycle.baseDir, 'logs', `${instanceId}-service.log`);
 }
 
-function manifestCommandTargets(manifest: {
-  nodePath: string;
-  repoPath: string;
-}) {
-  const files = [
-    {
-      kind: 'file' as const,
-      path: manifest.nodePath,
-      policy: 'execution-safe' as const,
-    },
-    {
-      kind: 'file' as const,
-      path: win32.join(
-        manifest.repoPath,
-        'node_modules',
-        'tsx',
-        'dist',
-        'cli.mjs',
-      ),
-      policy: 'execution-safe' as const,
-    },
-    {
-      kind: 'file' as const,
-      path: win32.join(manifest.repoPath, 'scripts', 'station-cli.ts'),
-      policy: 'execution-safe' as const,
-    },
-  ];
-  return files.flatMap((file) => [
+function manifestCommandTargets(manifest: ServiceCodeLocation) {
+  return serviceExecutionFiles(manifest, win32).flatMap((path) => [
     {
       kind: 'directory' as const,
-      path: win32.dirname(file.path),
+      path: win32.dirname(path),
       policy: 'execution-safe' as const,
     },
-    file,
+    { kind: 'file' as const, path, policy: 'execution-safe' as const },
   ]);
 }
 
 /** Recheck control and command paths at the actual Task Scheduler boundary. */
 export function assertWindowsServiceExecutionTrusted(
-  manifest: { nodePath: string; repoPath: string; unitPath: string },
+  manifest: ServiceCodeLocation & { unitPath: string },
   lifecycle: ServiceLifecycleArgs,
   run: CommandRunner,
 ): void {
@@ -150,40 +128,31 @@ function commandInterpreter(): string {
   return windowsSystemUtilityPath('cmd');
 }
 
-export function renderWindowsServiceCommand(input: {
-  instanceId: string;
-  lifecycle: ServiceLifecycleArgs;
-  nodePath: string;
-  repoPath: string;
-}): string {
+export function renderWindowsServiceCommand(
+  input: ServiceCodeLocation & {
+    instanceId: string;
+    lifecycle: ServiceLifecycleArgs;
+  },
+): string {
   const stationRoot = input.lifecycle.stationRoot ?? '';
   if (/["%\r\n]/.test(stationRoot)) {
     throw new Error('STATION_ROOT contains an unsafe Windows command value');
   }
-  const args = [
-    input.nodePath,
-    win32.join(input.repoPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
-    win32.join(input.repoPath, 'scripts', 'station-cli.ts'),
-    'service',
-    'run',
-    `--instance=${input.instanceId}`,
-    `--base=${input.lifecycle.baseDir}`,
-    `--port=${input.lifecycle.serverPort}`,
-    `--ui-port=${input.lifecycle.uiPort}`,
-    `--host=${input.lifecycle.host ?? '127.0.0.1'}`,
-    ...(input.lifecycle.features
-      ? [`--features=${input.lifecycle.features}`]
-      : []),
-    ...(input.lifecycle.allowedOrigins ?? []).map(
-      (origin) => `--allowed-origin=${origin}`,
-    ),
-  ];
+  const command = renderServiceCommand(
+    input,
+    input.instanceId,
+    input.lifecycle,
+    win32,
+  );
   const log = logPath(input.lifecycle, input.instanceId);
   return [
     '@echo off',
     `set "STATION_ROOT=${stationRoot}"`,
-    `cd /d ${quoteWindowsArgument(input.repoPath)} || exit /b 1`,
-    `${args.map(quoteWindowsArgument).join(' ')} >> ${quoteWindowsArgument(log)} 2>&1`,
+    // The marker launchd and systemd units set too (#2675 correction 10):
+    // the server refuses in-app updates under a service manager.
+    'set "STATION_SERVICE_MANAGED=1"',
+    `cd /d ${quoteWindowsArgument(command.workingDirectory)} || exit /b 1`,
+    `${command.argv.map(quoteWindowsArgument).join(' ')} >> ${quoteWindowsArgument(log)} 2>&1`,
     '',
   ].join('\r\n');
 }
@@ -623,7 +592,8 @@ export function installWindowsService(
   instanceId: string,
   dependencies: InstallDependencies,
 ): ServiceInstallResult {
-  const { fs, lifecycle, nodePath, repoPath, run } = dependencies;
+  const { fs, lifecycle, run } = dependencies;
+  const location = serviceCodeLocationOf(dependencies);
   const hardenPaths =
     dependencies.hardenWindowsPaths ?? hardenWindowsPathsTrusted;
   const registration = windowsRegistration(instanceId, lifecycle);
@@ -633,10 +603,7 @@ export function installWindowsService(
   const serviceDir = win32.dirname(wrapperPath);
   const logDir = win32.dirname(log);
   ensureWindowsDirectoriesTrusted(run, [lifecycle.baseDir, serviceDir, logDir]);
-  assertWindowsPathsTrusted(
-    run,
-    manifestCommandTargets({ nodePath, repoPath }),
-  );
+  assertWindowsPathsTrusted(run, manifestCommandTargets(location));
   const existing = windowsServiceStatus(registration, { fs, run });
   if (typeof existing.error === 'string') {
     throw new Error(
@@ -675,10 +642,9 @@ export function installWindowsService(
     fs.mkdirSync(logDir, { mode: 0o700, recursive: true });
     fs.mkdirSync(serviceDir, { mode: 0o700, recursive: true });
     const content = renderWindowsServiceCommand({
+      ...location,
       instanceId,
       lifecycle,
-      nodePath,
-      repoPath,
     });
     fs.writeFileSync(wrapperPath, content, { mode: 0o600 });
     fs.chmodSync(wrapperPath, 0o600);
@@ -691,7 +657,7 @@ export function installWindowsService(
     // This is immediately before registration: the scheduler must never be
     // handed a wrapper or command path whose ACL changed after preparation.
     assertWindowsServiceExecutionTrusted(
-      { nodePath, repoPath, unitPath: wrapperPath },
+      { ...location, unitPath: wrapperPath },
       lifecycle,
       run,
     );
@@ -717,11 +683,7 @@ export function installWindowsService(
     // change. Recheck the full control/execution boundary immediately before
     // asking Task Scheduler to execute the wrapper.
     assertWindowsServiceExecutionTrusted(
-      {
-        nodePath,
-        repoPath,
-        unitPath: wrapperPath,
-      },
+      { ...location, unitPath: wrapperPath },
       lifecycle,
       run,
     );
@@ -744,9 +706,8 @@ export function installWindowsService(
     host: lifecycle.host ?? '127.0.0.1',
     installedAt: '',
     instanceId,
-    nodePath,
+    ...location,
     platform: 'win32',
-    repoPath,
     serverPort: lifecycle.serverPort,
     taskName,
     uiPort: lifecycle.uiPort,

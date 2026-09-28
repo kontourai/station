@@ -17565,6 +17565,66 @@ describe('OrchestrationService', () => {
     },
   );
 
+  test.each([
+    ['a device grant records that device beside the host stamp', true],
+    ['a grant naming no grantor is refused, and nothing is adopted', false],
+  ] as const)('#1796 H1: %s', async (_label, named) => {
+    const tag = named ? 'named' : 'anonymous';
+    const sourceThreadId = `external:claude:grantor-${tag}`;
+    const projectRoot = join(tmp, `grantor-project-${tag}`);
+    mkdirSync(projectRoot, { recursive: true });
+    configuredProjects.push({
+      slug: `grantor-project-${tag}`,
+      workingDirectory: projectRoot,
+    });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: sourceThreadId,
+      status: 'ready',
+      cwd: projectRoot,
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: `vendor-grantor-${tag}`,
+        affinity: { kind: 'test', ref: 'fixture' },
+      },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    const adopt = service.dispatch(
+      { type: 'adoptSession', sourceThreadId },
+      {
+        fullAccessGrant: fullAccessGrantForTesting(
+          named ? { kind: 'device', deviceId: 'device-1' } : null,
+        ),
+      },
+    );
+    if (!named) {
+      await expect(adopt).rejects.toThrow(/must name who granted it/);
+      expect(claude.adoptSession).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            adoptedFromThreadId: sourceThreadId,
+          }),
+        }),
+        expect.anything(),
+      );
+      return;
+    }
+    await adopt;
+    expect(claude.adoptSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        confinement: 'host',
+        metadata: expect.objectContaining({
+          adoptedFromThreadId: sourceThreadId,
+          stationConfinement: 'host',
+          stationConfinementGrantor: { kind: 'device', deviceId: 'device-1' },
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
   test('adopts an attached source into a new writable child without mutating the source', async () => {
     const sourceThreadId = 'external:claude:source';
     const projectRoot = join(tmp, 'project');

@@ -1560,6 +1560,39 @@ describe('TaskGraphService', () => {
     },
   );
 
+  test('#1796: the session start carries the dispatching request’s origin', async () => {
+    const dispatch = vi.fn().mockResolvedValue({
+      provider: 'codex',
+      threadId: 'task-runtime-1',
+      status: 'ready',
+      createdAt: '2026-05-03T00:00:00.000Z',
+      updatedAt: '2026-05-03T00:00:00.000Z',
+    });
+    const service = createTempService({
+      orchestrationService: { dispatch, seedSessionRecord: vi.fn() },
+    });
+    const task = await service.createTask({
+      projectId: 'project-alpha',
+      title: 'Start runtime',
+    });
+    const clientOrigin = {
+      version: 1,
+      actor: { kind: 'device', deviceId: 'device-1' },
+      reported: { version: 1, surface: 'unknown', build: null },
+    } as const;
+    const outcome = await composeTaskDispatcher(service).dispatch(task.id, {
+      runtimeConfig: { provider: 'codex' },
+      ownerUserId: 'test-owner',
+      fullAccessGrant: null,
+      clientOrigin,
+    });
+    expect(outcome.kind).toBe('dispatched');
+    expect(
+      (dispatch.mock.calls[0]?.[1] as { clientOrigin?: unknown } | undefined)
+        ?.clientOrigin,
+    ).toEqual(clientOrigin);
+  });
+
   describe('station#189 S4: metadata.taskSlug at builder-session start', () => {
     async function dispatchWithSidecar(options: {
       workItemRef?: string;

@@ -3062,6 +3062,11 @@ async function installPluginFromSourceUnderContext(
      * preview that produced its approval staged it.
      */
     stagedAsDependency?: boolean;
+    /**
+     * The source is a proposed install (#2719): staged with every `.git`
+     * entry left out, as the preview that produced its approval staged it.
+     */
+    excludeGitMetadata?: boolean;
   },
 ): Promise<InstalledPluginResult> {
   const {
@@ -3100,6 +3105,7 @@ async function installPluginFromSourceUnderContext(
 
   const result = await fetchPluginSource(source, pluginsDir, logger, {
     dependency: options?.stagedAsDependency === true,
+    excludeGitMetadata: options?.excludeGitMetadata === true,
   });
   if ('error' in result) {
     throw new Error(result.error);

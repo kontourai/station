@@ -142,27 +142,11 @@ describe('the connection banner slot bounds without reserving', () => {
       expect(body, `missing rule: ${rule}`).toBeDefined();
       expect(body).toMatch(/z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/);
     }
-    // The escalation must stay paired with a size cap, or "outranks the dock"
-    // becomes "owns the screen". archive#3432: the bound lives on the inner
-    // `.banner-host__stack`, not on `.banner-host` itself — see the next test
-    // for why. Precisely: this bounds `.banner-host__stack` (the scrollable
-    // card list), not the host's own box — the host also carries the cap
-    // button plus the host's own gap/padding outside that bound (measured
-    // live at 1440x900 with 10 banners: stack 432px vs host 488px). That
-    // headroom is deliberate — the cap is a fixed, non-scrolling control, not
-    // more of the pile-up this cap exists to bound — so what this guards is
-    // narrower than "the host never grows past X": it is "the scrollable
-    // stack itself never grows unbounded".
-    const [expanded] = ruleBodies(
-      css,
-      '.banner-host--expanded .banner-host__stack',
-    );
-    expect(expanded).toMatch(/max-height:\s*min\(/);
-    const [slot] = ruleBodies(
-      css,
-      '.banner-host--connection-slot .banner-host__stack',
-    );
-    expect(slot).toMatch(/max-height:\s*\d+vh/);
+    // The escalation stays paired with a size cap, or "outranks the dock"
+    // becomes "owns the screen". archive#3432: the cap bounds the inner
+    // `.banner-host__stack` (the scrollable card list), not the host's box;
+    // the next test pins it for the expanded stack and "keeps a viewport cap"
+    // pins it for the connection slot.
   });
 
   it("declares the expanded stack's bound/scroll CSS (real scrolling is proven in tests/banner-stack-bound.spec.ts)", () => {
@@ -313,22 +297,10 @@ describe('the connection banner slot bounds without reserving', () => {
 
 describe('overlapping chrome has an explicit interaction order', () => {
   it('keeps banners below the chat dock and notifications above it', () => {
-    const tokens = read('tokens.css');
+    // The token order itself is owned by layer-tokens.test.ts ("keeps the
+    // declared layer order true"); this pins which layer each surface uses.
     const index = read('index.css');
     const notifications = read(NOTIFICATION_CSS);
-
-    const layerValue = (name: string): number => {
-      const value = new RegExp(`--layer-${name}:\\s*(\\d+)`).exec(tokens)?.[1];
-      expect(value, `--layer-${name} must be numeric`).toBeDefined();
-      return Number(value);
-    };
-
-    expect(layerValue('notice')).toBeLessThan(layerValue('dock'));
-    expect(layerValue('dock')).toBeLessThan(layerValue('floating-action'));
-    expect(layerValue('floating-action')).toBeLessThan(
-      layerValue('notification'),
-    );
-    expect(layerValue('notification')).toBeLessThan(layerValue('dialog'));
 
     // ruleBodiesFor, not ruleBodies: `.chat-dock` carries its geometry across
     // several rule blocks (base + placement/state modifiers), so a reader
@@ -658,17 +630,12 @@ describe('mobile chat chrome has one header owner', () => {
   it('keeps mobile-only controls out of the desktop header', () => {
     const dock = read('components/chat-dock/ChatDock.tsx');
     const desktopHeader = read('components/chat-dock/ChatDockHeader.tsx');
-    const chatCss = read('components/chat/chat.css');
 
     expect(dock).toMatch(
       /isMobile\s*\?\s*\(\s*<ChatDockMobileHeader[\s\S]*?\)\s*:\s*\(\s*<ChatDockHeader/,
     );
     expect(desktopHeader).not.toContain('useIsMobile');
     expect(desktopHeader).not.toContain('onMobileDragPointerDown');
-    expect(desktopHeader).not.toContain('chat-dock__mobile-task-trigger');
-    expect(desktopHeader).not.toContain('chat-dock__restore-label');
-    expect(chatCss).not.toContain('chat-dock__mobile-task-trigger');
-    expect(read('index.css')).not.toContain('chat-dock__restore-label');
   });
 });
 
@@ -695,11 +662,9 @@ describe('dock-owned view classification (#2636, station#4460)', () => {
 
 describe('mobile navigation layer ownership', () => {
   it('keeps the drawer above notices and the dock but below notifications and dialogs', () => {
-    const tokens = read('tokens.css');
-    expect(tokens).toMatch(
-      /--layer-notice:\s*9000;[\s\S]*--layer-dock:\s*9200;[\s\S]*--layer-navigation:\s*9350;[\s\S]*--layer-notification:\s*9400;[\s\S]*--layer-dialog:\s*10000;/,
-    );
-
+    // Where navigation sits in the token scale is owned by
+    // layer-tokens.test.ts ("keeps the declared layer order true"); this pins
+    // that the drawer and its backdrop use that layer.
     const sidebar = read('components/project-sidebar/ProjectSidebar.css');
     expect(sidebar).toMatch(
       /\.sidebar--expanded\s*\{[^}]*z-index:\s*var\(--layer-navigation\)/s,

@@ -63,7 +63,8 @@
     "./local-accounts": "./src/client/local-accounts.ts",
     "./authority-observation": "./src/client/authority-observation.ts",
     "./application-session": "./src/client/application-session.ts",
-    "./relay-enrollment": "./src/client/relay-enrollment.ts"
+    "./relay-enrollment": "./src/client/relay-enrollment.ts",
+    "./application-session-native": "./src/client/application-session-native.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",
