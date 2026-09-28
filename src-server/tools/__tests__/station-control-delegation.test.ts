@@ -9,6 +9,7 @@ import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type {
   ProviderAdapterMetadata,
@@ -4432,5 +4433,163 @@ describe('#2324 a delegated task event carries a provider-triggered turn’s tri
         ...trigger,
       }),
     ).not.toHaveProperty('trigger');
+  });
+});
+
+/**
+ * #2708 A-3a: `getAgent` now keeps a refusal's `code`, and the delegate
+ * route relays a typed code it finds on the error (`delegationRefusal`, the
+ * receiver-refusal mapping). Only the current Station's Agent is read here
+ * (a peer target forwards before resolution); its refusal rides as a
+ * `LocalStationRefusal` cause, which only the station-control tools read,
+ * never as the error's `code`.
+ */
+describe('delegation Agent and Project reads keep a refusal code off the route', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fetchMock.mockReset();
+  });
+
+  const REFUSAL = {
+    success: false,
+    code: 'delegation_depth_exceeded',
+    error: 'Delegation depth exceeded.',
+  };
+
+  test('this Station’s coded Agent refusal rides as a LocalStationRefusal cause', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`)
+        return json({ environmentId: 'environment-current' });
+      if (url === `${CURRENT_API}/api/agents/reviewer`)
+        return json(REFUSAL, 403);
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const { LocalStationRefusal } = await import(
+      '../station-control-shared.js'
+    );
+
+    const error = await delegateTask(
+      { prompt: 'Local work', target: currentTarget() },
+      localService() as never,
+    ).catch((caught: unknown) => caught);
+
+    expect((error as { code?: unknown }).code).toBeUndefined();
+    expect((error as Error).message).toBe('Delegation depth exceeded.');
+    const cause = (error as Error).cause;
+    expect(cause).toBeInstanceOf(LocalStationRefusal);
+    expect(cause).toMatchObject({ refusalCode: 'delegation_depth_exceeded' });
+  });
+
+  test('this Station’s coded Project refusal rides as a LocalStationRefusal cause', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`)
+        return json({ environmentId: 'environment-current' });
+      if (url === `${CURRENT_API}/api/agents/reviewer`)
+        return json({
+          success: true,
+          data: { slug: 'reviewer', name: 'Reviewer', available: true },
+        });
+      if (url === `${CURRENT_API}/api/projects/workspace`)
+        return json(REFUSAL, 403);
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const { LocalStationRefusal } = await import(
+      '../station-control-shared.js'
+    );
+
+    const error = await delegateTask(
+      {
+        prompt: 'Local work',
+        target: {
+          ...currentTarget(),
+          workspace: { kind: 'project', projectSlug: 'workspace' },
+        },
+      },
+      localService() as never,
+    ).catch((caught: unknown) => caught);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${CURRENT_API}/api/projects/workspace`,
+      expect.anything(),
+    );
+    expect((error as { code?: unknown }).code).toBeUndefined();
+    expect((error as Error).message).toBe('Delegation depth exceeded.');
+    expect((error as Error).cause).toBeInstanceOf(LocalStationRefusal);
+  });
+});
+
+/**
+ * #2708: the one place a delegation read decides whether a refusal's code is
+ * this Station's. Both the Agent and the Project read go through it; only a
+ * `current` target keeps the code, and only as a cause.
+ */
+describe('readRelayingLocalRefusal', () => {
+  let readRelayingLocalRefusal: typeof import('../station-control-delegation.js').readRelayingLocalRefusal;
+  let LocalStationRefusal: typeof import('../station-control-shared.js').LocalStationRefusal;
+  beforeEach(async () => {
+    ({ readRelayingLocalRefusal } = await import(
+      '../station-control-delegation.js'
+    ));
+    ({ LocalStationRefusal } = await import('../station-control-shared.js'));
+  });
+
+  const refusal = () =>
+    new StationHttpError(403, 'Delegation depth exceeded.', {
+      code: 'delegation_depth_exceeded',
+    });
+  const failed = (kind: string, error: unknown) =>
+    readRelayingLocalRefusal({ kind }, async () => {
+      throw error;
+    }).catch((caught: unknown) => caught as Error);
+
+  test('this Station’s coded refusal rides as a cause, never as code', async () => {
+    const error = await failed('current', refusal());
+
+    expect(error).not.toBeInstanceOf(StationHttpError);
+    expect((error as { code?: unknown }).code).toBeUndefined();
+    expect(error.message).toBe('Delegation depth exceeded.');
+    expect(error.cause).toBeInstanceOf(LocalStationRefusal);
+    expect(error.cause).toMatchObject({
+      refusalCode: 'delegation_depth_exceeded',
+    });
+  });
+
+  test.each(['peer', 'ssh'])(
+    'a %s Station’s coded refusal keeps its words and loses its code',
+    async (kind) => {
+      const error = await failed(kind, refusal());
+
+      expect((error as { code?: unknown }).code).toBeUndefined();
+      expect(error.message).toBe('Delegation depth exceeded.');
+      expect(error.cause).toBeUndefined();
+    },
+  );
+
+  test('a refusal without a code carries no cause', async () => {
+    const error = await failed('current', new StationHttpError(404, 'gone'));
+
+    expect(error.message).toBe('gone');
+    expect(error.cause).toBeUndefined();
+  });
+
+  test('a failure that is not a refusal passes through unchanged', async () => {
+    const transport = new TypeError('fetch failed');
+
+    expect(await failed('current', transport)).toBe(transport);
+  });
+
+  test('an answer passes through', async () => {
+    await expect(
+      readRelayingLocalRefusal({ kind: 'peer' }, async () => 42),
+    ).resolves.toBe(42);
   });
 });

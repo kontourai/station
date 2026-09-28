@@ -1258,10 +1258,6 @@
     display: block;
   }
 }
-.schedule__detail-artifact-btn {
-  font-size: 0.75rem;
-  padding: 0.35rem 0.75rem;
-}
 .schedule__log-status--ok {
   color: var(--success-text);
 }

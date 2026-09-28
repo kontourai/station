@@ -17,9 +17,12 @@ mod local_access_watch;
 mod login_shell;
 #[cfg(not(mobile))]
 mod notification_feed;
-mod notification_watch;
 // Foundation only: this module owns native proof-key custody and signing but
 // is intentionally not registered as renderer IPC or wired to app traffic.
+// Host account proof-key custody. Separate keyring namespace from the relay
+// routing proof key; no Tauri IPC is registered for it yet.
+#[cfg(not(mobile))]
+pub(crate) mod native_account_proof_key;
 #[cfg(not(mobile))]
 mod native_relay_key_approval;
 #[cfg(not(mobile))]
@@ -6830,91 +6833,6 @@ fn station_local_self_provision_blocking(
     reprovision()
 }
 
-/// Start delivering notifications from the host rather than the webview.
-///
-/// The web layer already sees every notification over SSE, but that stream is
-/// suspended with the webview when the app is backgrounded, and SSE events are
-/// not replayed — so notifications raised while the user was elsewhere were
-/// lost, not delayed. Device testing showed exactly that. This poller runs in
-/// the host process, which keeps going while the webview is paused.
-///
-/// **Dormant: nothing calls this — see #943.** Android freezes the whole cached
-/// process when the app is backgrounded, so this thread stops there too; the
-/// foreground service that would prevent that is blocked by tauri#11609; and
-/// native Rust cannot resolve DNS on Android at all. Registered so the seam
-/// exists for push (#917) — see docs/design/notification-delivery.md.
-///
-/// `async` deliberately: a plain `fn` command is `ExecutionContext::Blocking`,
-/// which Tauri runs on the **main thread**. The first poll below can take up to
-/// the request timeout, and blocking the main thread that long on Android is an
-/// ANR, not a pause.
-#[tauri::command]
-async fn notification_watch_start(
-    app: AppHandle,
-    url: String,
-    credential: String,
-) -> Result<(), String> {
-    if url.trim().is_empty() || credential.trim().is_empty() {
-        return Err("url and credential are required".to_string());
-    }
-    let watch = app.state::<notification_watch::NotificationWatch>();
-    let stop = watch.restart();
-    let handle = app.clone();
-
-    // Poll once before returning, and hand any failure back to the caller.
-    //
-    // The loop below has to swallow errors — offline, asleep, a rotated
-    // credential all recover on the next tick — but swallowing *every* error
-    // meant a watch that failed 100% of its polls looked exactly like a
-    // working one. That is how a build with no TLS backend compiled in, unable
-    // to reach any HTTPS Station, reported success and stayed silent. A watch
-    // that cannot do its first poll is a configuration problem, not a blip, so
-    // it is reported rather than retried into the void.
-    //
-    // On the blocking pool: `poll_once` is synchronous IO, so awaiting it
-    // directly would tie up an async worker for the whole request timeout.
-    let probe_url = url.clone();
-    let probe_credential = credential.clone();
-    let seen = tauri::async_runtime::spawn_blocking(move || {
-        let mut seen = std::collections::HashSet::new();
-        notification_watch::poll_once(&probe_url, &probe_credential, &mut seen).map(|_| seen)
-    })
-    .await
-    .map_err(|error| format!("notification watch probe did not run: {error}"))?
-    .map_err(|error| format!("notification watch could not reach the Station: {error}"))?;
-
-    std::thread::spawn(move || {
-        use tauri_plugin_notification::NotificationExt;
-        // Carries the primed set from the synchronous poll above, so history
-        // is not dumped into the tray on the first tick.
-        let mut seen = seen;
-        while !stop.load(std::sync::atomic::Ordering::SeqCst) {
-            std::thread::sleep(notification_watch::poll_interval());
-            match notification_watch::poll_once(&url, &credential, &mut seen) {
-                Ok(fresh) => {
-                    for (title, body) in fresh {
-                        let mut builder = handle.notification().builder().title(title);
-                        if let Some(body) = body {
-                            builder = builder.body(body);
-                        }
-                        // A failed post must not end the watch.
-                        let _ = builder.show();
-                    }
-                }
-                Err(error) => {
-                    // Transient by assumption — the first poll already proved
-                    // the endpoint and credential work. The next tick
-                    // recovers, so this stays at debug rather than warn.
-                    log::debug!("Station notification watch poll failed (will retry): {error}");
-                }
-            }
-        }
-    });
-
-    log::info!("Station notification watch started");
-    Ok(())
-}
-
 /// The persisted id of this desktop installation, for the delivery surface
 /// `local:desktop-<id>` (#2587). See `desktop_installation`.
 #[cfg(not(mobile))]
@@ -6925,12 +6843,6 @@ fn desktop_installation_id(app: AppHandle) -> Result<String, String> {
         .app_config_dir()
         .map_err(|error| format!("resolve the desktop config directory: {error}"))?;
     desktop_installation::read_or_create(&dir)
-}
-
-#[tauri::command]
-fn notification_watch_stop(app: AppHandle) {
-    app.state::<notification_watch::NotificationWatch>().stop();
-    log::info!("Station notification watch stopped");
 }
 
 #[tauri::command]
@@ -11062,8 +10974,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         // Native OS dialogs for the consent broker (station#3677 PR 3): the
         // approval surface must be chrome webview JS cannot script.
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_deep_link::init())
-        .manage(notification_watch::NotificationWatch::default());
+        .plugin(tauri_plugin_deep_link::init());
     // Mobile-only haptic feedback (station#1954). Capability report marks
     // haptics unsupported off-mobile so the webview never calls it there.
     #[cfg(mobile)]
@@ -11118,6 +11029,9 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_relay_redemption::station_native_relay_diagnostic_binding,
         native_relay_redemption::station_native_relay_signal_diagnostic_open,
         native_relay_redemption::station_native_relay_signal_diagnostic_read,
+        native_relay_redemption::station_native_relay_application_binding,
+        native_relay_redemption::station_native_relay_application_open,
+        native_relay_redemption::station_native_relay_application_read,
         relay_grant_vault::relay_client_grant_store,
         relay_grant_vault::relay_client_grant_revoke,
         relay_grant_vault::relay_client_grant_metadata,
@@ -11135,8 +11049,6 @@ If a stable instance is running, this launch will focus its window and exit.",
         station_native_pairing_exchange_cancel,
         station_profile_store_read,
         station_profile_store_write,
-        notification_watch_start,
-        notification_watch_stop,
         desktop_installation_id,
         notification_feed::notification_feed_native_consumer,
         notification_feed::notification_feed_adopt_cursor,
@@ -11175,9 +11087,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         station_native_pairing_exchange,
         station_native_pairing_exchange_cancel,
         station_profile_store_read,
-        station_profile_store_write,
-        notification_watch_start,
-        notification_watch_stop
+        station_profile_store_write
     ]);
 
     builder
@@ -17849,6 +17759,38 @@ mod tests {
         assert!(!native_header_allowlisted("cookie"));
         assert!(!native_header_allowlisted("x-station-device-id"));
         assert!(NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT < NATIVE_HTTP_GLOBAL_REQUEST_LIMIT);
+    }
+
+    #[test]
+    fn native_http_agent_can_actually_speak_tls() {
+        // A Station is normally reached over HTTPS (a Tailscale-served host).
+        // ureq is declared with default-features off, and without a TLS
+        // backend every such request fails with "TLS required, but transport
+        // is unsecured". That shipped once and only turned up on a device, so
+        // pin the `rustls` feature through the agent every native request uses.
+        //
+        // A real listener is needed: ureq connects before it negotiates, so a
+        // closed port fails with connection-refused and never reaches the TLS
+        // layer at all. Nothing is served — the handshake is expected to fail;
+        // what matters is *how*.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a local listener");
+        let port = listener.local_addr().expect("listener address").port();
+        std::thread::spawn(move || {
+            // Accept and drop, so the client gets a connection to negotiate on.
+            let _ = listener.accept();
+        });
+
+        let error = match native_http_agent()
+            .get(&format!("https://127.0.0.1:{port}/notifications"))
+            .call()
+        {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("nothing is served here, so this cannot succeed"),
+        };
+        assert!(
+            !error.contains("TLS required"),
+            "ureq has no TLS backend compiled in: {error}"
+        );
     }
 
     #[test]

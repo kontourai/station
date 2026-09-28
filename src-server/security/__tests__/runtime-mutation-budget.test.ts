@@ -2,7 +2,6 @@ import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contr
 import { describe, expect, it } from 'vitest';
 import {
   classifyMutationRoute,
-  DOCUMENTED_SSE_READ_SURFACES,
   deriveBudgetPrincipal,
   RuntimeMutationBudget,
 } from '../runtime-request-security.js';
@@ -59,22 +58,16 @@ describe('classifyMutationRoute', () => {
     );
   });
 
-  it('DOCUMENTED_SSE_READ_SURFACES pins every GET SSE read surface (documentary, not a gate)', () => {
-    // Unlike STREAMING_MUTATION_PREFIXES (which the classifier consults to pick
-    // the streaming rate bucket), this list is documentary only — GETs are
-    // unbudgeted by the non-mutation rule, not by membership here. The two
-    // assertions below are load-bearing: toEqual catches a silent deletion, and
-    // the POST loop proves documenting a read does NOT exempt a mutating verb
-    // on the same path (the exact mistake a family-level exemption would make).
-    expect(DOCUMENTED_SSE_READ_SURFACES).toEqual([
-      '/events',
-      '/api/orchestration/events',
-      '/monitoring/events',
-      '/scheduler/events',
-    ]);
-    for (const path of DOCUMENTED_SSE_READ_SURFACES) {
-      expect(classifyMutationRoute('POST', path)).toBe('standard');
-    }
+  it.each([
+    '/events',
+    '/api/orchestration/events',
+    '/monitoring/events',
+    '/scheduler/events',
+  ])('the SSE read surface %s is unbudgeted only for GET', (path) => {
+    // GETs are unbudgeted by the non-mutation rule, not by a path exemption,
+    // so a mutating verb on the same path is still budgeted.
+    expect(classifyMutationRoute('GET', path)).toBe('unbudgeted');
+    expect(classifyMutationRoute('POST', path)).toBe('standard');
   });
 
   it('scheduler and monitoring families are NOT exempted — only their GET SSE leaf is unbudgeted', () => {
@@ -215,8 +208,9 @@ describe('RuntimeMutationBudget', () => {
 
     it('unbudgeted class is never rate-limited', () => {
       const b = makeBudget();
+      // Past the standard ceiling of 3: counting these into any bucket trips it.
+      for (let i = 0; i < 5; i++) b.recordMutation('user-a', 'unbudgeted');
       expect(b.retryAfterSeconds('user-a', 'unbudgeted')).toBeUndefined();
-      b.recordMutation('user-a', 'unbudgeted'); // no-op
       expect(b.retryAfterSeconds('user-a', 'standard')).toBeUndefined();
     });
   });
@@ -232,25 +226,26 @@ describe('RuntimeMutationBudget', () => {
   });
 
   describe('LRU eviction', () => {
-    it('evicts the least-recently-used principal at capacity', () => {
+    function fillWithUser0AtCeiling() {
       const b = makeBudget();
-      // maxBudgetPrincipals is 4. Fill to 4 distinct principals.
-      for (let i = 0; i < 4; i++) b.recordMutation(`user-${i}`, 'standard');
-      // One more evicts the oldest (user-0).
-      b.recordMutation('user-4', 'standard');
-      // user-0's budget was evicted — recording again starts fresh.
-      b.recordMutation('user-0', 'standard');
-      expect(b.retryAfterSeconds('user-0', 'standard')).toBeUndefined();
-    });
-  });
+      // user-0 reaches the standard ceiling of 3, then three more principals
+      // fill maxBudgetPrincipals (4), leaving user-0 least recently used.
+      for (let i = 0; i < 3; i++) b.recordMutation('user-0', 'standard');
+      for (let i = 1; i < 4; i++) b.recordMutation(`user-${i}`, 'standard');
+      return b;
+    }
 
-  describe('clearBudget', () => {
-    it('removes a principal from the rate map', () => {
-      const b = makeBudget();
-      for (let i = 0; i < 3; i++) b.recordMutation('user-a', 'standard');
-      expect(b.retryAfterSeconds('user-a', 'standard')).toBe(10);
-      b.clearBudget('user-a');
-      expect(b.retryAfterSeconds('user-a', 'standard')).toBeUndefined();
+    it('keeps a principal at the ceiling while the map is within capacity', () => {
+      expect(
+        fillWithUser0AtCeiling().retryAfterSeconds('user-0', 'standard'),
+      ).toBe(10);
+    });
+
+    it('evicts the least-recently-used principal at capacity', () => {
+      const b = fillWithUser0AtCeiling();
+      // A fifth principal evicts user-0, dropping its exhausted budget.
+      b.recordMutation('user-4', 'standard');
+      expect(b.retryAfterSeconds('user-0', 'standard')).toBeUndefined();
     });
   });
 
@@ -264,13 +259,6 @@ describe('RuntimeMutationBudget', () => {
   // ~1.5 MB phone screenshot passes the UI picker and the attachment
   // validator, then 413s on the internal relay hop.
   describe('streaming ceiling derives from the attachment contract (station#1885)', () => {
-    it('the default streaming ceiling accommodates the maximum attachment command body', () => {
-      const defaultBudget = new RuntimeMutationBudget();
-      expect(defaultBudget.bodyByteCeiling('streaming')).toBeGreaterThanOrEqual(
-        CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES,
-      );
-    });
-
     it('a caller can still set a tighter ceiling, but the default never undercuts the contract', () => {
       // An explicit caller-provided ceiling is respected (test harnesses and
       // any future deployment that wants a different bound)...

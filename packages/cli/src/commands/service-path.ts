@@ -24,7 +24,17 @@ const SERVICE_PATH_MARKER = '__STATION_SERVICE_PATH__';
 export function collectServicePathCandidates(
   run: CommandRunner,
   fs: ServiceFs,
-  options: { timeoutMs?: number } = {},
+  options: {
+    /**
+     * The unit's Node.js directory as the unit spells it, when that is not
+     * this process's resolved one: an installer-owned archive names
+     * `<installRoot>/current/runtime/bin` so its PATH follows upgrades.
+     * Sanitized through its resolved path like every entry, then kept in
+     * this spelling.
+     */
+    nodeDir?: string;
+    timeoutMs?: number;
+  } = {},
 ): ServicePathCandidates {
   const shell = process.env.SHELL || '/bin/sh';
   const result = run(
@@ -49,7 +59,7 @@ export function collectServicePathCandidates(
           new RegExp(`${SERVICE_PATH_MARKER}(.*)${SERVICE_PATH_MARKER}`),
         )
       : null;
-  const nodeDir = dirname(fs.realpathSync(process.execPath));
+  const nodeDir = options.nodeDir ?? dirname(fs.realpathSync(process.execPath));
   const candidates = [
     nodeDir,
     ...(match?.[1] ?? process.env.PATH ?? '').split(':'),
@@ -62,7 +72,26 @@ export function collectServicePathCandidates(
     lstatSync: fs.lstatSync,
     realpathSync: fs.realpathSync,
   });
-  return { accepted: sanitized.accepted, loginShell: Boolean(match), nodeDir };
+  if (options.nodeDir === undefined) {
+    return {
+      accepted: sanitized.accepted,
+      loginShell: Boolean(match),
+      nodeDir,
+    };
+  }
+  let resolvedNodeDir: string | undefined;
+  try {
+    resolvedNodeDir = fs.realpathSync(nodeDir);
+  } catch {
+    // Unresolvable: sanitizePath rejected it too, so it is simply absent.
+  }
+  return {
+    accepted: sanitized.accepted.map((dir) =>
+      dir === resolvedNodeDir ? nodeDir : dir,
+    ),
+    loginShell: Boolean(match),
+    nodeDir,
+  };
 }
 
 /**
@@ -189,7 +218,7 @@ function readLaunchdUnitPath(
  */
 export function inspectServicePathDrift(
   registration: ServiceRegistration,
-  dependencies: { fs: ServiceFs; run: CommandRunner },
+  dependencies: { fs: ServiceFs; nodeDir?: string; run: CommandRunner },
 ): ServicePathDrift | null {
   if (registration.platform === 'win32') return null;
   let unitPath: string | undefined;
@@ -209,6 +238,7 @@ export function inspectServicePathDrift(
   let current: ServicePathCandidates;
   try {
     current = collectServicePathCandidates(dependencies.run, dependencies.fs, {
+      nodeDir: dependencies.nodeDir,
       timeoutMs: STATUS_LOGIN_SHELL_TIMEOUT_MS,
     });
   } catch (error) {

@@ -16,7 +16,10 @@ import {
   REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA,
   readWorkflowDocuments,
 } from '../actionlint-gate.mjs';
-import { FAST_CHECKS_SHARD_COUNT } from '../lib/fast-checks-shards.mjs';
+import {
+  FAST_CHECKS_PLAN_BUDGET_MS,
+  FAST_CHECKS_SHARD_COUNT,
+} from '../lib/fast-checks-shards.mjs';
 import { readPnpmLockfile } from '../lib/pnpm-lockfile.mjs';
 import {
   failureDigest,
@@ -1845,6 +1848,19 @@ describe('CI verification workflow contracts', () => {
     ) as { scripts: Record<string, string> };
     expect(pkg.scripts['fast-checks:shard']).toBe(
       'node scripts/fast-checks-shard.mjs',
+    );
+  });
+
+  it('pins the plan step fence to the budget discovery derives from (#2855)', () => {
+    type Step = { name?: string; 'timeout-minutes'?: number };
+    const jobs = (
+      load(workflow('ci.yml')) as { jobs: Record<string, { steps: Step[] }> }
+    ).jobs;
+    const step = jobs['fast-checks-plan'].steps.find(
+      (candidate) => candidate.name === 'Plan the affected-test selection',
+    );
+    expect((step?.['timeout-minutes'] ?? 0) * 60_000).toBe(
+      FAST_CHECKS_PLAN_BUDGET_MS,
     );
   });
 

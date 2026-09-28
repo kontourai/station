@@ -85,9 +85,6 @@
 //! (`station://notification-open`, then `take_notification_open_link`). The
 //! link is accepted only as an in-app path; anything else opens the app
 //! where it was. No URL is ever opened outside the app.
-//!
-//! The legacy `notification_watch.rs` is not revived: it posts raw titles and
-//! ignores envelopes, `hideContent`, quiet hours and mutes.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};

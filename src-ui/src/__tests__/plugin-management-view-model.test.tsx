@@ -754,6 +754,50 @@ describe('usePluginManagementViewModel', () => {
     });
   });
 
+  // A trusted grant asks before it goes; the others revoke at once. This
+  // drives the caller, not the `revokeNeedsConfirmation` helper.
+  test('asks before revoking a trusted grant and revokes nothing until confirmed', () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    act(() =>
+      result.current.requestRevokePermission(
+        'plugin-a',
+        { permission: 'shell.exec', tier: 'trusted' },
+        'Run shell commands',
+      ),
+    );
+
+    expect(result.current.revokeConfirm).toEqual({
+      pluginName: 'plugin-a',
+      permission: 'shell.exec',
+      label: 'Run shell commands',
+    });
+    expect(mocks.revokePermission).not.toHaveBeenCalled();
+  });
+
+  test.each(['passive', 'active'] as const)(
+    'revokes a %s grant without asking',
+    async (tier) => {
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      act(() =>
+        result.current.requestRevokePermission(
+          'plugin-a',
+          { permission: 'network.fetch', tier },
+          'Make network requests',
+        ),
+      );
+
+      await waitFor(() =>
+        expect(mocks.revokePermission).toHaveBeenCalledWith({
+          name: 'plugin-a',
+          permissions: ['network.fetch'],
+        }),
+      );
+      expect(result.current.revokeConfirm).toBeNull();
+    },
+  );
+
   /**
    * archive#4288. Everything below drives the real sequence: preview, then
    * decide, then — only then — install. The preview payload is what the
@@ -1027,6 +1071,22 @@ describe('usePluginManagementViewModel', () => {
     expect(
       mocks.requestInstallConsent.mock.invocationCallOrder[0],
     ).toBeLessThan(mocks.installMutate.mock.invocationCallOrder[0]);
+  });
+
+  test('carries a preview that excluded git metadata back as part of the approval (#2719)', async () => {
+    mocks.requestInstallConsent.mockResolvedValue(true);
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await primePreview(result, { ...PREVIEW, gitMetadata: 'excluded' });
+
+    await act(async () => {
+      await result.current.install([]);
+    });
+
+    expect(mocks.installMutate).toHaveBeenCalledTimes(1);
+    expect(mocks.installMutate.mock.calls[0][0].consent).toMatchObject({
+      contentDigest: 'sha256:reviewed',
+      gitMetadata: 'excluded',
+    });
   });
 
   test('names dependency permissions in the decision and carries their byte-bound approval', async () => {

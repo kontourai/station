@@ -33,9 +33,9 @@ import { Empty, SkeletonBlock } from './state';
  */
 export const TEXT_PREVIEW_CHAR_LIMIT = 200_000;
 
-export type FilePreviewKind = 'pdf' | 'markdown' | 'json' | 'text' | 'none';
+type FilePreviewKind = 'pdf' | 'markdown' | 'json' | 'text' | 'none';
 
-export function filePreviewKind(mediaType: string): FilePreviewKind {
+function filePreviewKind(mediaType: string): FilePreviewKind {
   const type = mediaType.toLowerCase().split(';')[0].trim();
   if (type === 'application/pdf') return 'pdf';
   if (type === 'text/markdown') return 'markdown';

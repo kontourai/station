@@ -264,7 +264,7 @@ export async function readChainedReceipts<TSealed extends ChainedReceipt>(
   return { receipts: parsed.slice(-limit).reverse(), totalRecords, verdict };
 }
 
-export function verifyChain<TSealed extends ChainedReceipt>(input: {
+function verifyChain<TSealed extends ChainedReceipt>(input: {
   parsed: TSealed[];
   firstScannedIndex: number;
   totalRecords: number;
