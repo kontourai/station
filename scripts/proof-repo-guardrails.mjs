@@ -3376,7 +3376,6 @@ for (const requiredHelper of [
   'export const DEFAULT_SYSTEM_PROMPT',
   'export async function loadAppConfigFile',
   'export async function saveAppConfigFile',
-  'export async function updateAppConfigFile',
   'function assertSafeAppConfig',
 ]) {
   if (!domainConfigLoaderApp.includes(requiredHelper)) {

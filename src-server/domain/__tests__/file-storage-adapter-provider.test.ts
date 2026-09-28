@@ -1,4 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -37,6 +43,60 @@ describe('FileStorageAdapter provider updates', () => {
 
   afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
+  });
+
+  test('rejects a provider config larger than the persisted input budget', () => {
+    const configDir = join(directory, 'config');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, 'providers.json'),
+      JSON.stringify([{ id: 'x'.repeat(2 * 1024 * 1024) }]),
+      'utf8',
+    );
+
+    expect(() =>
+      new FileStorageAdapter(directory).listProviderConnections(),
+    ).toThrow('provider config exceeds the byte limit');
+  });
+
+  test('projects plugin identity and tab count into layout metadata', () => {
+    const layoutsDir = join(directory, 'projects', 'demo', 'layouts');
+    mkdirSync(layoutsDir, { recursive: true });
+    writeFileSync(
+      join(directory, 'projects', 'demo', 'project.json'),
+      JSON.stringify({
+        id: 'project-1',
+        slug: 'demo',
+        name: 'Demo',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }),
+      'utf8',
+    );
+    writeFileSync(
+      join(layoutsDir, 'coding.json'),
+      JSON.stringify({
+        id: 'layout-1',
+        projectSlug: 'demo',
+        type: 'chat',
+        name: 'Coding',
+        slug: 'coding',
+        config: {
+          plugin: 'coding-starter',
+          tabs: [{ id: 'workspace' }, { id: 'diff' }],
+        },
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }),
+      'utf8',
+    );
+
+    expect(new FileStorageAdapter(directory).listLayouts('demo')).toEqual([
+      expect.objectContaining({
+        plugin: 'coding-starter',
+        tabCount: 2,
+      }),
+    ]);
   });
 
   test('serializes concurrent provider updates without losing either edit', async () => {

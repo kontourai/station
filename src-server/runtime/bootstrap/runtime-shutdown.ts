@@ -78,7 +78,7 @@ export async function shutdownRuntimeServices({
    * and the ordering rule for a caller that DELETES the watched tree lives on
    * `whenWatcherClosed`, not on `dispose` — and the adoption's registry half
    * does not reach the loader at all
-   * (`saveAgentRegistry` takes only `getProjectHomeDir()` and writes through
+   * (`updateAgentRegistry` takes only `getProjectHomeDir()` and writes through
    * the module-level `saveRegistry`). What the loader IS is the write handle
    * for the other half: `materializeEngineAgent` and `materializeStationAgent`
    * go through it. Disposing the component a live caller is still writing

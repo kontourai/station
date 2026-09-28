@@ -134,9 +134,6 @@ byte-identical UTF-8 text and exact revision equality.
 It also proves deferred-state revision/resync integrity, both live→trusted and
 trusted→live dependency directions, separate recovery capability ownership,
 lone-surrogate rejection, deferred count/byte limits, and 20k-atom restore.
-`shared-working-state-benchmark.test.ts` is a small 100-operation fixture that
-reports the apply duration and serialized snapshot/delta byte sizes without a
-host-dependent pass/fail time ceiling.
 
 The Module emits `station.shared_working_state.operations` with bounded
 `operation` (`apply|resync|compact`) and outcome attributes. It records protocol
