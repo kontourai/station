@@ -90,7 +90,7 @@ describe('STATION_RESERVED_PLUGIN_IDENTITIES', () => {
     // are stated relative to `declaredLiteralFirstSegments()`, and its only
     // self-guard is `size >= 2` plus two named segments — so a regex that
     // stopped matching half of them would leave both green against a
-    // constant that had lost the same four. This assertion is the one fact
+    // constant that had lost the same half. This assertion is the one fact
     // in the file that does not depend on the scan working.
     //
     // `visibility` arrived the way this pin exists to
