@@ -680,7 +680,6 @@
     "src-server/services/plugins/__tests__/plugin-content-integrity-async.test.ts": 1,
     "src-server/services/plugins/__tests__/plugin-content-integrity.test.ts": 1,
     "src-server/services/plugins/__tests__/plugin-draft-build-process.test.ts": 1,
-    "src-server/services/plugins/__tests__/plugin-foreground-runs.test.ts": 2,
     "src-server/services/plugins/__tests__/plugin-install-consent.test.ts": 2,
     "src-server/services/plugins/__tests__/plugin-install-transaction.test.ts": 126,
     "src-server/services/plugins/__tests__/plugin-installation-generation-fence.test.ts": 2,
