@@ -31,7 +31,6 @@
     "packages/cli/src/__tests__/lifecycle.test.ts": 34,
     "packages/cli/src/__tests__/local-self-auth.test.ts": 2,
     "packages/cli/src/__tests__/platform.test.ts": 2,
-    "packages/cli/src/__tests__/portability-spec.test.ts": 5,
     "packages/cli/src/__tests__/portability.test.ts": 5,
     "packages/cli/src/__tests__/profile-lock-owner-birth.test.ts": 1,
     "packages/cli/src/__tests__/profile-resolution.test.ts": 2,

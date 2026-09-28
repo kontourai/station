@@ -1,4 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type {
+  TaskReferenceInput as ContractTaskReferenceInput,
+  TaskWorkspaceBinding as ContractTaskWorkspaceBinding,
+} from '@kontourai/station-contracts/task-graph';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  expectTypeOf,
+  it,
+  vi,
+} from 'vitest';
 
 const reactQueryMocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
@@ -311,89 +323,53 @@ describe('taskGraph SDK domain', () => {
     );
   });
 
-  it('exports Task workspace and reference types', () => {
-    const workspace: TaskWorkspaceBinding = {
-      workingDirectory: '/workspace/task-1',
-      branch: 'feature/task-1',
-    };
-    const reference: TaskReferenceInput = {
-      kind: 'external',
-      targetId: 'flow:run-1',
-    };
-
-    expect(workspace.branch).toBe('feature/task-1');
-    expect(reference.kind).toBe('external');
+  it('republishes the contract Task workspace and reference types from the root barrel', () => {
+    // Compile-time pin, enforced by typecheck:sdk; nothing here runs.
+    expectTypeOf<TaskReferenceInput>().toEqualTypeOf<ContractTaskReferenceInput>();
+    expectTypeOf<TaskWorkspaceBinding>().toEqualTypeOf<ContractTaskWorkspaceBinding>();
   });
 
-  it('invalidates only the submitted Task detail, graph, and answer projection after reference creation', async () => {
-    const mutation = useCreateTaskReferenceMutation() as {
-      onSuccess?: (
-        data: unknown,
-        variables: { taskId: string },
-      ) => void | Promise<void>;
-    };
+  it.each([
+    ['useCreateTaskReferenceMutation', useCreateTaskReferenceMutation],
+    [
+      'useAttachTaskUserInputReferenceMutation',
+      useAttachTaskUserInputReferenceMutation,
+    ],
+  ])(
+    '%s invalidates only the submitted Task list, detail, graph, and reference projections',
+    async (_name, useReferenceMutation) => {
+      const mutation = (useReferenceMutation as () => unknown)() as {
+        onSuccess?: (
+          data: unknown,
+          variables: { taskId: string },
+        ) => void | Promise<void>;
+      };
 
-    await mutation.onSuccess?.({ id: 'link-1' }, { taskId: 'task-a' });
+      await mutation.onSuccess?.({ id: 'link-1' }, { taskId: 'task-a' });
 
-    expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(1, {
-      queryKey: ['tasks', 'all'],
-      exact: true,
-    });
-    expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(2, {
-      queryKey: ['task', 'task-a'],
-      exact: true,
-    });
-    expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(3, {
-      queryKey: ['task-graph', 'task-a'],
-      exact: true,
-    });
-    expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(4, {
-      queryKey: ['task-turn-references', 'task-a'],
-      exact: true,
-    });
-    expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(5, {
-      queryKey: ['task-user-input-references', 'task-a'],
-      exact: true,
-    });
-    expect(reactQueryMocks.invalidateQueries).not.toHaveBeenCalledWith({
-      queryKey: ['task', 'task-b'],
-    });
-    expect(reactQueryMocks.invalidateQueries).not.toHaveBeenCalledWith({
-      queryKey: ['task-graph', 'task-b'],
-    });
-  });
-
-  it('keeps the typed user-input attach mutation on the same exact success invalidation scope', async () => {
-    const mutation = useAttachTaskUserInputReferenceMutation() as {
-      onSuccess?: (
-        data: unknown,
-        variables: { taskId: string },
-      ) => void | Promise<void>;
-    };
-
-    await mutation.onSuccess?.({ id: 'input-link' }, { taskId: 'task-a' });
-
-    expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(1, {
-      queryKey: ['tasks', 'all'],
-      exact: true,
-    });
-    expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(2, {
-      queryKey: ['task', 'task-a'],
-      exact: true,
-    });
-    expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(3, {
-      queryKey: ['task-graph', 'task-a'],
-      exact: true,
-    });
-    expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(4, {
-      queryKey: ['task-turn-references', 'task-a'],
-      exact: true,
-    });
-    expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(5, {
-      queryKey: ['task-user-input-references', 'task-a'],
-      exact: true,
-    });
-  });
+      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(1, {
+        queryKey: ['tasks', 'all'],
+        exact: true,
+      });
+      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(2, {
+        queryKey: ['task', 'task-a'],
+        exact: true,
+      });
+      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(3, {
+        queryKey: ['task-graph', 'task-a'],
+        exact: true,
+      });
+      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(4, {
+        queryKey: ['task-turn-references', 'task-a'],
+        exact: true,
+      });
+      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(5, {
+        queryKey: ['task-user-input-references', 'task-a'],
+        exact: true,
+      });
+      expect(reactQueryMocks.invalidateQueries).toHaveBeenCalledTimes(5);
+    },
+  );
 
   it('dispatches tasks and reads relation graph surfaces', async () => {
     mockJsonResponse({

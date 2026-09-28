@@ -6,10 +6,12 @@ vi.mock('../api', () => ({
 
 import { COOPERATIVE_STOP_BUDGET_MS } from '@kontourai/station-contracts/orchestration';
 import { ChatHttpError } from '../client/chatHttpError';
+import { StationRequestTimeoutError } from '../client/http';
 import {
   cleanupTerminalProcess,
   dispatchOrchestrationCommand,
   dispatchOrchestrationCommandWithReceipt,
+  fetchDelegationOptions,
   fetchLoadedOrchestrationSessions,
   fetchOrchestrationCommandReceipt,
   fetchOrchestrationCommandReceipts,
@@ -311,9 +313,61 @@ describe('chatRuntimeOrchestration', () => {
         }),
     );
 
+    const explicit = await interruptOrchestrationTurn({
+      threadId: 'thread-hang',
+      timeoutMs: 5,
+    }).catch((error: unknown) => error);
+    expect(explicit).toBeInstanceOf(StationRequestTimeoutError);
+    expect(explicit).toMatchObject({ timeoutMs: 5 });
+
+    // Without a caller deadline the Stop budget applies. Shorten only the
+    // real timer so the default budget is observed on the timeout error; a
+    // request with no deadline at all fails here instead of hanging the test.
+    vi.mocked(fetch).mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          const signal = (init as RequestInit | undefined)?.signal;
+          signal?.addEventListener('abort', () =>
+            reject(new Error('aborted by deadline')),
+          );
+          setTimeout(() => reject(new Error('no client deadline')), 500);
+        }),
+    );
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, 'timeout')
+      .mockImplementation(() => realTimeout(5));
+    try {
+      const defaulted = await interruptOrchestrationTurn({
+        threadId: 'thread-hang',
+      }).catch((error: unknown) => error);
+      expect(defaulted).toBeInstanceOf(StationRequestTimeoutError);
+      expect(defaulted).toMatchObject({ timeoutMs: STOP_REQUEST_BUDGET_MS });
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
+  it('discovers delegation options without posting the apiBase', async () => {
+    const options = {
+      environment: { id: 'env-media', name: 'Media', kind: 'ssh' },
+      targets: [],
+    };
+    mockJsonResponse({ success: true, data: options });
+
     await expect(
-      interruptOrchestrationTurn({ threadId: 'thread-hang', timeoutMs: 5 }),
-    ).rejects.toThrow();
+      fetchDelegationOptions({
+        apiBase: 'http://station.test',
+        environmentId: 'env-media',
+      }),
+    ).resolves.toEqual(options);
+    expect(fetch).toHaveBeenCalledWith(
+      'http://station.test/api/orchestration/delegations/options',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ environmentId: 'env-media' }),
+      }),
+    );
   });
 
   it('interrupts a delegated task through its task-scoped control route', async () => {

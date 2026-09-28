@@ -500,7 +500,7 @@ describe('changed verification selection', () => {
       expect.arrayContaining([
         'packages/contracts/src/__tests__/workspace-pane.test.ts',
         'packages/sdk/src/__tests__/workspacePaneConformance.test.ts',
-        'packages/sdk/src/__tests__/workspace-pane-browser-bundle.test.ts',
+        'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
       ]),
     );
   });
@@ -859,7 +859,7 @@ describe('changed verification selection', () => {
       expect.arrayContaining([
         'packages/contracts/src/__tests__/workspace-file-preview.test.ts',
         'packages/sdk/src/__tests__/workspace-file-preview-query.integration.test.tsx',
-        'packages/sdk/src/__tests__/workspace-file-preview-browser-bundle.test.ts',
+        'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
       ]),
     );
   });
@@ -931,7 +931,7 @@ describe('changed verification selection', () => {
     ]) {
       const selection = selectChangedVerification([path]);
       expect(selection.tests.map((entry) => entry.path)).toContain(
-        'packages/sdk/src/__tests__/workspace-pane-browser-bundle.test.ts',
+        'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
       );
     }
   });
