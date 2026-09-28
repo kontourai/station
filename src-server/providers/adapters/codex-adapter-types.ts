@@ -93,9 +93,9 @@ export interface CodexSessionRecord {
   pendingApprovals: Map<string, PendingApprovalRequest>;
   /**
    * Tool-level session grants from `acceptForSession` (mirrors
-   * claude-adapter/station-agent-adapter `approvedTools`). The Codex wire
-   * responses for `commandExecution`/`fileChange`/elicitation carry no
-   * session scope, so Station remembers the tool name itself and
+   * claude-adapter/station-agent-adapter `approvedTools`). Station's own
+   * grant, on top of the decision Codex is sent: Station remembers the
+   * tool name itself and
    * auto-accepts later calls without re-prompting. Dies with the session.
    */
   approvedTools: Set<string>;
