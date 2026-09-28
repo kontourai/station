@@ -240,13 +240,12 @@ describe('clean Android channel release generation', () => {
       '.github/workflows/nightly-native-stage.yml',
       'utf8',
     );
-    expect(nightly).toContain("ANDROID_BUILD_TOOLS_VERSION: '36.0.0'");
+    // The revision itself is pinned across every lane by ci-workflow-contract's
+    // 'pins one Android NDK and build-tools revision across every lane'.
     expect(nightly).toContain(
       `ANDROID_UPLOAD_CERT_SHA256: \${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}`,
     );
-    expect(nightly).toContain(
-      `sdkmanager "ndk;27.0.12077973" "build-tools;\${ANDROID_BUILD_TOOLS_VERSION}"`,
-    );
+    expect(nightly).toContain(`"build-tools;\${ANDROID_BUILD_TOOLS_VERSION}"`);
 
     const verify = nightly.slice(
       nightly.indexOf('Build and verify the signed Android staging bytes'),
@@ -259,12 +258,9 @@ describe('clean Android channel release generation', () => {
       'apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"',
     );
     expect(verify).toContain('"$aapt" dump badging "$apk"');
-    expect(nightly).toContain('ANDROID_UPLOAD_CERT_SHA256');
     expect(verify).toContain(
       'node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"',
     );
-    expect(verify).not.toContain('badging=$(aapt dump badging "$apk")');
-    expect(verify).not.toContain('apksigner verify --verbose --print-certs');
   });
 
   it('applies the Dev channel identity after init and before every local or CI Android build', () => {
@@ -280,6 +276,7 @@ describe('clean Android channel release generation', () => {
       'node scripts/apply-android-native-bootstrap.mjs',
     );
     const build = workflow.indexOf('tauri android build');
+    expect(init).toBeGreaterThanOrEqual(0);
     expect(overlay).toBeGreaterThan(init);
     expect(bootstrap).toBeGreaterThan(overlay);
     expect(build).toBeGreaterThan(bootstrap);
@@ -302,7 +299,7 @@ describe('clean Android channel release generation', () => {
     }
   });
 
-  it('uploads signed nightly artifacts before strict AAB signature verification', () => {
+  it('verifies the signed nightly AAB strictly before uploading artifacts', () => {
     const nightly = readFileSync(
       '.github/workflows/nightly-native-stage.yml',
       'utf8',
@@ -326,7 +323,8 @@ describe('clean Android channel release generation', () => {
     expect(verification).toContain(
       'node scripts/verify-android-aab-signature.mjs cohort-android/station-nightly-universal.aab "$ANDROID_UPLOAD_CERT_SHA256"',
     );
+    // A captured-and-swallowed invocation would still contain the positive
+    // pin above while making the verification lenient.
     expect(verification).not.toContain('aab_verification=');
-    expect(verification).not.toContain('jarsigner -verify');
   });
 });

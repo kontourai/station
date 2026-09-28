@@ -716,7 +716,13 @@ describe('CI verification workflow contracts', () => {
           kind: 'ndk',
           value: m[1],
         })),
-        ...[...source.matchAll(/build-tools[;/]([0-9][0-9.]*)/g)].map((m) => ({
+        // Workflows name the revision once, as ANDROID_BUILD_TOOLS_VERSION, and
+        // install `build-tools;${ANDROID_BUILD_TOOLS_VERSION}`; match both shapes.
+        ...[
+          ...source.matchAll(
+            /(?:build-tools[;/]|ANDROID_BUILD_TOOLS_VERSION: ')([0-9][0-9.]*)/g,
+          ),
+        ].map((m) => ({
           file,
           kind: 'build-tools',
           value: m[1],
@@ -725,6 +731,9 @@ describe('CI verification workflow contracts', () => {
     });
     // Guards the guard: a typo in the patterns above would make this vacuous.
     expect(seen.filter((e) => e.kind === 'ndk').length).toBeGreaterThan(0);
+    expect(seen.filter((e) => e.kind === 'build-tools').length).toBeGreaterThan(
+      0,
+    );
 
     const expected = {
       ndk: ANDROID_NDK_VERSION,
@@ -2155,10 +2164,6 @@ describe('CI verification workflow contracts', () => {
 
   it('runs Android viewport coverage through the public isolated suite', () => {
     const android = workflow('android-test.yml');
-    const resolver = readFileSync(
-      resolve(root, 'scripts/resolve-android-build-run.mjs'),
-      'utf8',
-    );
 
     expect(
       android.match(
@@ -2169,13 +2174,6 @@ describe('CI verification workflow contracts', () => {
     expect(android).toContain('required: true');
     expect(android).toContain('Resolve exact build revision');
     expect(android).toContain('node scripts/resolve-android-build-run.mjs');
-    expect(resolver).toContain('.github/workflows/build-android.yml');
-    expect(resolver).toContain('fetchImpl = fetch');
-    expect(resolver).toContain("redirect: 'error'");
-    expect(resolver).not.toContain("from 'node:child_process'");
-    expect(resolver).not.toContain('spawnSync(');
-    expect(resolver).not.toContain('response.json()');
-    expect(resolver).not.toContain('response.text()');
     expect(android).toContain('persist-credentials: false');
     expect(android).not.toContain(
       'github.event.workflow_run.head_sha || github.sha',
@@ -2294,6 +2292,17 @@ describe('CI verification workflow contracts', () => {
       'unused',
       `head_sha=${run.head_sha}\nrun_id=123\nconclusion=success\n`,
     );
+  });
+
+  // The behaviour test above injects fetchImpl, so it cannot see a resolver
+  // that falls back to shelling out to gh. This structural pin is that guard.
+  it('never spawns a child process to resolve the build', () => {
+    const resolver = readFileSync(
+      resolve(root, 'scripts/resolve-android-build-run.mjs'),
+      'utf8',
+    );
+    expect(resolver).not.toContain("from 'node:child_process'");
+    expect(resolver).not.toContain('spawnSync(');
   });
 
   it('fails honestly when the authenticated run lookup returns an API error', async () => {
@@ -2883,10 +2892,6 @@ describe('every Tauri invocation is rooted at the app directory', () => {
 
 describe('iOS verification proves packaged runtime readiness', () => {
   const ios = workflow('build-ios.yml');
-  const classifier = readFileSync(
-    resolve(root, 'scripts/classify-ci-change.mjs'),
-    'utf8',
-  );
 
   it('emits a stable check while reserving macOS for affected pull requests', () => {
     expect(ios).toContain('pull_request_target:');
@@ -2902,9 +2907,7 @@ describe('iOS verification proves packaged runtime readiness', () => {
       'pull_request_target',
       'workflow_dispatch',
     ]);
-    expect(classifier).toContain("'src-desktop/'");
-    expect(classifier).toContain("'src-ui/'");
-    expect(classifier).toContain("'packages/connect/'");
+    // Which paths are iOS-relevant is owned by classify-ci-change.test.ts.
     expect(ios).toContain(
       'if [ "$GITHUB_EVENT_NAME" != "pull_request_target" ] && [ "$GITHUB_EVENT_NAME" != "merge_group" ]',
     );

@@ -24,7 +24,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const APK_BUILD_MANIFEST_ENTRY = 'assets/station-build.json';
-export const AAB_BUILD_MANIFEST_ENTRY = `base/${APK_BUILD_MANIFEST_ENTRY}`;
+const AAB_BUILD_MANIFEST_ENTRY = `base/${APK_BUILD_MANIFEST_ENTRY}`;
 
 const FULL_GIT_SHA = /^[0-9a-f]{40}$/i;
 

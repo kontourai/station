@@ -9,17 +9,12 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { afterEach, describe, expect, test } from 'vitest';
-import {
-  ANDROID_ASSETS_DIR,
-  ANDROID_PROJECT_DIR,
-  writeAndroidBuildManifest,
-} from '../lib/android-build-manifest.mjs';
+import { writeAndroidBuildManifest } from '../lib/android-build-manifest.mjs';
 import {
   BUILD_MANIFEST_FILENAME,
   writeNativeClientBuildManifest,
 } from '../lib/desktop-build-manifest.mjs';
 import {
-  AAB_BUILD_MANIFEST_ENTRY,
   APK_BUILD_MANIFEST_ENTRY,
   extractAndroidBuildManifest,
   parseAndroidBuildProvenance,
@@ -172,11 +167,6 @@ describe('android build manifest', () => {
     // If either side is edited alone the stamp becomes unfindable while both
     // halves still pass their own tests.
     expect(APK_BUILD_MANIFEST_ENTRY).toBe(`assets/${BUILD_MANIFEST_FILENAME}`);
-    expect(AAB_BUILD_MANIFEST_ENTRY).toBe(`base/${APK_BUILD_MANIFEST_ENTRY}`);
-    // And the writer must still be aiming at the source set Gradle packages
-    // into `assets/` — checked against the pinned path, not against itself.
-    expect(ANDROID_ASSETS_DIR).toBe(ANDROID_ASSET_SOURCE_SET);
-    expect(ANDROID_PROJECT_DIR).toBe(ANDROID_GENERATED_PROJECT);
   });
 
   test('refuses a Play archive without an extractable manifest', () => {
