@@ -50,6 +50,8 @@ export interface SelfHostedBrokerRuntimeOptions {
   heartbeatMs: number;
   renewMs: number;
   pollMs: number;
+  /** Native offers require explicit runtime composition, not method detection. */
+  nativeOfferPolling?: boolean;
   withdrawTimeoutMs?: number;
   operationSettleMs?: number;
   retryDelayMs?: number;
@@ -116,6 +118,8 @@ export class SelfHostedBrokerRuntime {
         throw new Error('broker_runtime_bound_invalid');
     if (options.application.signal.aborted)
       throw new Error('broker_runtime_application_unavailable');
+    if (options.nativeOfferPolling && !options.connector.pollNative)
+      throw new Error('broker_runtime_native_offer_adapter_required');
     this.#withdrawTimeoutMs =
       options.withdrawTimeoutMs ?? DEFAULT_WITHDRAW_TIMEOUT_MS;
     this.#operationSettleMs =
@@ -338,7 +342,7 @@ export class SelfHostedBrokerRuntime {
           () => this.options.connector.poll(this.#abort.signal),
           knownExpiry,
         );
-        if (this.options.connector.pollNative)
+        if (this.options.nativeOfferPolling)
           await this.#pollLaneWithRecovery(
             () => this.options.connector.pollNative!(this.#abort.signal),
             knownExpiry,

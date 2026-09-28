@@ -629,6 +629,7 @@ export function createSelfHostedBrokerPionRuntime(
     heartbeatMs,
     renewMs,
     pollMs,
+    nativeOfferPolling: nativeAdapter !== undefined,
     observeStatus: input.observeStatus,
   });
 }
