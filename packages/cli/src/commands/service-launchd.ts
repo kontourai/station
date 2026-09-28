@@ -6,12 +6,15 @@ import type {
   ServiceLifecycleArgs,
   ServiceRegistration,
 } from './service.js';
+import {
+  renderServiceCommand,
+  type ServiceCodeLocation,
+  serviceCodeLocationOf,
+} from './service-command.js';
 
-interface InstallDependencies {
+interface InstallDependencies extends ServiceCodeLocation {
   fs: ServiceFs;
   lifecycle: ServiceLifecycleArgs;
-  nodePath: string;
-  repoPath: string;
   run: CommandRunner;
   servicePath: string;
   monotonicNow?: () => number;
@@ -47,32 +50,19 @@ function xml(value: string): string {
     .replaceAll("'", '&apos;');
 }
 
-export function renderLaunchdPlist(input: {
-  instanceId: string;
-  label: string;
-  lifecycle: ServiceLifecycleArgs;
-  nodePath: string;
-  repoPath: string;
-  servicePath: string;
-}): string {
-  const args = [
-    input.nodePath,
-    join(input.repoPath, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
-    join(input.repoPath, 'scripts', 'station-cli.ts'),
-    'service',
-    'run',
-    `--instance=${input.instanceId}`,
-    `--base=${input.lifecycle.baseDir}`,
-    `--port=${input.lifecycle.serverPort}`,
-    `--ui-port=${input.lifecycle.uiPort}`,
-    `--host=${input.lifecycle.host ?? '127.0.0.1'}`,
-    ...(input.lifecycle.features
-      ? [`--features=${input.lifecycle.features}`]
-      : []),
-    ...(input.lifecycle.allowedOrigins ?? []).map(
-      (origin) => `--allowed-origin=${origin}`,
-    ),
-  ];
+export function renderLaunchdPlist(
+  input: ServiceCodeLocation & {
+    instanceId: string;
+    label: string;
+    lifecycle: ServiceLifecycleArgs;
+    servicePath: string;
+  },
+): string {
+  const command = renderServiceCommand(
+    input,
+    input.instanceId,
+    input.lifecycle,
+  );
   const logDir = join(input.lifecycle.baseDir, 'logs');
   // launchd.plist(5): Standard/unset remains throttled; only Interactive
   // lifts resource limits. This user-facing service must remain responsive.
@@ -83,9 +73,9 @@ export function renderLaunchdPlist(input: {
 <dict>
   <key>Label</key><string>${xml(input.label)}</string>
   <key>ProgramArguments</key>
-  <array>${args.map((arg) => `\n    <string>${xml(arg)}</string>`).join('')}
+  <array>${command.argv.map((arg) => `\n    <string>${xml(arg)}</string>`).join('')}
   </array>
-  <key>WorkingDirectory</key><string>${xml(input.repoPath)}</string>
+  <key>WorkingDirectory</key><string>${xml(command.workingDirectory)}</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>${xml(input.servicePath)}</string>
@@ -267,7 +257,8 @@ export function installLaunchd(
   instanceId: string,
   dependencies: InstallDependencies,
 ): ServiceInstallResult {
-  const { fs, lifecycle, nodePath, repoPath, run, servicePath } = dependencies;
+  const { fs, lifecycle, run, servicePath } = dependencies;
+  const location = serviceCodeLocationOf(dependencies);
   const uid = process.getuid?.();
   if (uid === undefined)
     throw new Error('launchd installation requires a user id');
@@ -276,11 +267,10 @@ export function installLaunchd(
   const unitPath = registration.unitPath;
   const tempPath = join(lifecycle.baseDir, 'service', `${label}.plist.tmp`);
   const content = renderLaunchdPlist({
+    ...location,
     instanceId,
     label,
     lifecycle,
-    nodePath,
-    repoPath,
     servicePath,
   });
   const logDir = join(lifecycle.baseDir, 'logs');
@@ -395,9 +385,8 @@ export function installLaunchd(
     installedAt: '',
     instanceId,
     label,
-    nodePath,
+    ...location,
     platform: 'darwin',
-    repoPath,
     serverPort: lifecycle.serverPort,
     uiPort: lifecycle.uiPort,
     unitPath,

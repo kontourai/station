@@ -18,6 +18,7 @@ import {
   stop,
 } from './lifecycle.js';
 import type { ServiceLifecycleArgs } from './service.js';
+import { SERVICE_SHUTDOWN_DEADLINE_MS } from './service-command.js';
 
 export interface SupervisorDependencies {
   desktopCompanion?: { check: () => void };
@@ -51,7 +52,6 @@ export interface SupervisorDependencies {
 }
 
 const CHECK_INTERVAL_MS = 5_000;
-const SHUTDOWN_DEADLINE_MS = 60_000;
 
 /**
  * Steady-state identity probes answer in single-digit milliseconds on an idle
@@ -294,10 +294,10 @@ export async function superviseService(
     if (timer) clearTimeout(timer);
     const forceExitTimer = setTimer(() => {
       console.error(
-        `Station service shutdown exceeded ${SHUTDOWN_DEADLINE_MS / 1000}s; forcing exit`,
+        `Station service shutdown exceeded ${SERVICE_SHUTDOWN_DEADLINE_MS / 1000}s; forcing exit`,
       );
       exit(1);
-    }, SHUTDOWN_DEADLINE_MS);
+    }, SERVICE_SHUTDOWN_DEADLINE_MS);
     // Timers from the production seam are NodeJS.Timeouts; deterministic test
     // seams may return a number, which intentionally has no unref method.
     if (
