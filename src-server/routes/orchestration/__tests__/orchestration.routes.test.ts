@@ -6109,8 +6109,10 @@ describe('Orchestration Routes', () => {
       });
       expect(res.status).toBe(200);
 
+      // Read to caught-up so a replay decision fails on the assertion below
+      // instead of waiting out the test timeout for a snapshot never sent.
       const payload = await readStreamUntil(res.body!, (text) =>
-        text.includes('event: orchestration:snapshot'),
+        text.includes('event: orchestration:caughtUp'),
       );
       expect(payload).toContain('event: orchestration:snapshot');
     });
