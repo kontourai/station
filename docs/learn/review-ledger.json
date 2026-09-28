@@ -2530,7 +2530,7 @@
         },
         {
           "path": "docs/reference/session-api.md",
-          "digest": "9682fc55f0f8d89811a1c467cf86b9872abfdd37a3483734bd18a90df98c680e"
+          "digest": "b18516a68bb8c237fad827a8f60847431e2e80a81293f41d93f0302d38bde982"
         },
         {
           "path": "packages/cli/src/commands/session-client.ts",
@@ -2538,7 +2538,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/runtime/bootstrap/station-features.ts",
@@ -2557,7 +2557,8 @@
         "Landing delta 622565ef7: The updated Session API remains the current successor; added wire-ID details do not change the historical cutover classification or ADR rationale. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed.",
         "Reviewed landing deltas through 111744681: Added the actual queued-send and Agent-handoff recovery behavior; API receipt, uncertain-outcome and no-blind-resubmission contracts remain unchanged. Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Integration source review through d72f79b08: in useActiveChatSessionMessaging, #2904 only changes how a full-access refusal is handled: idle state, restored draft, structured refusal card and an explicit resend without full access. The status note pointing to ADR 0014, and its split between the superseded flag mechanism and the retained orchestration decisions, are unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c added the recorded-vs-acknowledged section to session-api.md. The ADR's claim that approvals ride request.opened/request.resolved still holds (request.resolved is still published on every engine); prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c added the recorded-vs-acknowledged section to session-api.md. The ADR's claim that approvals ride request.opened/request.resolved still holds (request.resolved is still published on every engine); prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: its source session-api.md changed only in the respondToRequest paragraph on what acceptForSession grants and records. The ADR's retained decisions (orchestration routing, private adapters, no migration) do not mention request answers; classification unchanged."
       ]
     },
     {
@@ -2628,7 +2629,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         }
       ],
       "checks": [
@@ -2636,7 +2637,8 @@
         "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
         "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
-        "Integration source review through d72f79b08: #2904 added the ApprovalFullAccessRefusalDetails and requester types, a sanitizer and a details parser to contracts/orchestration.ts, and the full-access reset logic to orchestration-service. Nothing changes read-time answerability decoration, open-request projection or the dispatch-authority separation that the status note routes readers to. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 added the ApprovalFullAccessRefusalDetails and requester types, a sanitizer and a details parser to contracts/orchestration.ts, and the full-access reset logic to orchestration-service. Nothing changes read-time answerability decoration, open-request projection or the dispatch-authority separation that the status note routes readers to. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. The ADR decides that answerability is a read-time decoration and that respondToRequest enforcement is unchanged by it; the respond path still checks the same answerability before any adapter effect. Classification unchanged."
       ]
     },
     {
@@ -3064,7 +3066,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/runtime/routes/runtime-routes.ts",
@@ -3246,7 +3248,8 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through d72f79b08: in runtime-routes, #2904 adds an app-wide middleware that binds full-access refusal identity (environment id and paired device name) and makes the device scope and revoke routes return revocation reports. SSE, Last-Event-ID replay and the live-surface routes are unchanged, so the reading note and design constraints hold. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only a recognizeCredential identity hook to the runtime-routes.ts security options, used for 403 versus 401 on unadmitted credentials. It touches no SSE, Last-Event-ID, replay or live-surface route. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports DEVICE_TOOLS_DOCK_MIN_WIDTH, deviceToolsLayout and the DEVICE_PLACEHOLDER_ASPECT/deviceCornerRadius re-export; the ADR names none of them and its transport claims are untouched; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2919) DeviceWorkspacePane.tsx only unexports DEVICE_TOOLS_DOCK_MIN_WIDTH, deviceToolsLayout and the DEVICE_PLACEHOLDER_ASPECT/deviceCornerRadius re-export; the ADR names none of them and its transport claims are untouched; prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915 on d0ca944c5: orchestration-service.ts and routes/orchestration/orchestration.ts (#2915, owner decision): the command route marks its respondToRequest dispatch with approvalModeAuthority (the route and session authorization a setApprovalMode Auto pick needs); with it, an acceptForSession answer whose grant (toolRequestSessionGrantFromPayload over the open request.opened, read with the standing posture decision before the answer is sent) is edit-mode records an auto session.approval-mode-set after the adapter has taken the answer, through recordApprovalModeDecision based on that earlier decision, so a decision recorded meanwhile refuses it; never over a standing auto or never. The delegated respond path and the approval inbox record nothing, and the inbox card omits the auto-accept action. This document's claims do not depend on how a session answer is recorded or on the approval posture it sets; prose accurate."
       ]
     },
     {
@@ -3549,7 +3552,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/runtime/agents/agent-engine-classification.ts",
@@ -3617,7 +3620,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/plugins/plugin-install-transaction.ts",
@@ -3665,7 +3668,8 @@
         "Integration source review through e0314c727: telemetry.ts inlined resolveOtelResourceAttributes and removed its injection seam without changing the exported attributes or endpoint-gated startup. plugin-install-transaction.ts added git-metadata exclusion for agent-proposed installs (#2719). The overview's optional OTel and plugin boundary claims remain accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 wires the live full-access grantor check (runtime-initialize) and adds refusal-identity middleware plus device-revocation reset wiring (runtime-routes). resetFullAccessGrantedBy now records a new Ask approval-mode decision in orchestration-service. The overview's diagrams and its claims on durable versus live events, the dispatch receipt, and approval and authority separation still hold. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes contributorCommandMessage module-private in packages/cli/src/distribution.ts, and cf43e14d0 (#2731) adds recognizeCredential (runtime-routes.ts) plus a 403 insufficient_scope answer for a live but unadmitted credential (runtime-http.ts); prose accurate: distribution.ts still defines the published-CLI versus checkout boundary, and the HTTP-composition and credential/scope admission descriptions don't name a refusal status. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) SDK index adds requestServiceUpdateProgress/useServiceUpdateProgressQuery and shared package.json adds ./prebuilt-archive and ./service-launcher-protocol subpaths; the doc defers the surface to package exports and explicit subpaths; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) SDK index adds requestServiceUpdateProgress/useServiceUpdateProgressQuery and shared package.json adds ./prebuilt-archive and ./service-launcher-protocol subpaths; the doc defers the surface to package exports and explicit subpaths; prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. The overview names OrchestrationService as the coordinator of sessions and approvals at diagram level; no claim covers answer scope or posture recording. Prose accurate."
       ]
     },
     {
@@ -3779,7 +3783,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/runtime/bootstrap/runtime-service-bootstrap.ts",
@@ -3803,7 +3807,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/session-command-module.ts",
@@ -3843,7 +3847,8 @@
         "Integration source review through d72f79b08: #2904 added cli.md's access devices/scope/scopes entries and config.md's defaultApprovalMode row. It added the clientOrigin on startSession receipts in session-command-module, and the confinement grantor, grantor-current stamp read and resetFullAccessGrantedBy in orchestration-service. The Session command row (execute with accepted/rejected/failed/indeterminate outcomes, composed by OrchestrationService) still holds. The config.md-linked guardrails, quick-prompt and date-format limits are untouched. The composition line counts are stated 'at the baseline', and the CLI distribution row makes no per-command claim. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes contributorCommandMessage non-exported in packages/cli/src/distribution.ts. Command admission by bundle marker and named local exceptions is unchanged, so the CLI distribution row still holds. The runtime-routes.ts line count is explicitly qualified as 'at the baseline' and stays a historical figure. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c added a 'Recorded versus acknowledged decisions' section (lastDecision delivery values) to cli.md. It does not address the stale pendingRequest retention the review tracks as #2741, and nothing else in the cited CLI reference claims changed; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) docs/reference/cli.md changes only its service section (fixed launcher, self-update, Check for server updates); the doc links cli.md only as the command-availability reference; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) docs/reference/cli.md changes only its service section (fixed launcher, self-update, Check for server updates); the doc links cli.md only as the command-availability reference; prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its one approval mention is a dated review finding about an orchestration approval at a pinned revision; the finding and its owners are unaffected. Prose accurate."
       ]
     },
     {
@@ -4361,7 +4366,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/orchestration/project-task-rooms.ts",
@@ -4881,7 +4886,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/planned-home-admission-reconciliation.ts",
@@ -5594,7 +5599,8 @@
         "Integration source review through d72f79b08: #2904 stamps a grantor (stationConfinementGrantor) beside host starts and adoptions, records the starter's clientOrigin on the startSession receipt, passes the request's server-derived origin through Task dispatch (TaskGraphService) and Starter Work launches, wires isFullAccessGrantorCurrent in runtime-initialize, adds EventStore approval-actor queries and the device revoke/scope reset in runtime-routes, and turns a full-access refusal into an idle chat with the draft restored in useActiveChatSessionMessaging. The module sections that depend on these inputs are SessionCommandModule receipt/outcome semantics, AdoptionLedger, StarterWorkRegistry, TaskDispatcher/TaskGraph and OutboundDispatchModule, and #2904 changes none of their claims; the Starter origin is server-derived, not supplied by the client. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 adds a branch to runtime-http.ts. After admission fails, a credential that recognizeCredential accepts gets 403 insufficient_scope. runtime-routes.ts wires recognizeCredential to environmentSecurityService.verifyCredential. The DeploymentAuthentication section only says that runtime-http.ts composes account authentication before personal-device admission, and it makes no claim about the refusal status. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds 'request.delivery' to UI_FOLDED_ORCHESTRATION_METHODS in replay/observe.ts and gives StationAgentAdapter approvalAcknowledgement 'in-process' on request.resolved. The map claims only that the replay observer can report unbound extension tuples, and that still holds. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: #2881 adds a separate station.home-update-backup/v1 schema to station-home-archive.ts, with createStationHomeUpdateBackup/restoreStationHomeUpdateBackup. It omits external registry paths, records symlinks and uses 250,000-file/1 TiB caps. It also adds the service launcher env passthrough in lifecycle.ts and service status 'update' lines plus an internal update-home action in service.ts. #2914 drops the coordinator's line-count ratchets and keeps only the no-import-back check. The startup-readiness test refactor, the pairing-scope leaf and the UI export narrowing change no claims. Corrected the StationHomeArchive purpose to disclose the separate update-backup schema and scope the traversal and caps to home backup. Corrected 'Size/import ratchets' to an import-direction check. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: #2881 adds a separate station.home-update-backup/v1 schema to station-home-archive.ts, with createStationHomeUpdateBackup/restoreStationHomeUpdateBackup. It omits external registry paths, records symlinks and uses 250,000-file/1 TiB caps. It also adds the service launcher env passthrough in lifecycle.ts and service status 'update' lines plus an internal update-home action in service.ts. #2914 drops the coordinator's line-count ratchets and keeps only the no-import-back check. The startup-readiness test refactor, the pairing-scope leaf and the UI export narrowing change no claims. Corrected the StationHomeArchive purpose to disclose the separate update-backup schema and scope the traversal and caps to home backup. Corrected 'Size/import ratchets' to an import-direction check. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its approval mentions are Device/pairing approval and module ownership; the OrchestrationService section's ownership (commands, receipts, projection) is unchanged by a new step inside respondToRequest. Prose accurate."
       ]
     },
     {
@@ -5628,9 +5634,9 @@
       "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
       "kind": "current",
       "state": "source-reviewed",
-      "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical.",
+      "summary": "Reviewed current source and pinned dependency contract separately from historical Claude2.1.224/SDK0.3.224 probes. Traced managed beforeToolCall, runtime-bound Claude PreToolUse/canUseTool, ACP requestPermission and self-reported identity/coverage, external unattended early return, matrix/UI/tripwire, and shared preview reader through live toast and durable request presentation. Corrected universal preview and equivalent-ACP-gap claims; unknown unsupported delivery does not imply tool blocking. Retained dated experiment rationale as historical. Follow-up (#2915/#2916): added the session-grant scope section (tool, edit-mode with its mode sync, read-folder/folder, none), traced from the shared toolRequestSessionGrant through the Claude adapter's canUseTool/respondToRequest and the toast, inline card and inbox card.",
       "limits": "No live Claude/ACP/Codex/Muse or permission/security probe. Old2.1.224/0.3.224 observations were not reproduced against the current0.3.261 lockfile. Installed SDK declarations and bundled settings resolver establish option defaults, not actual trust/permission precedence or memory/MCP discovery on a deployment. Fixture callbacks and AST tripwire do not prove live enforcement.",
-      "documentDigest": "00bd21c28838d6c4d231bd7e191c39b95442afcbedc42e8ef1dad88f06d19434",
+      "documentDigest": "b1d22a280e97defb54848bc6ff84506700bbb768354c0355914c838520a14e76",
       "sources": [
         {
           "path": "package.json",
@@ -5642,15 +5648,19 @@
         },
         {
           "path": "packages/shared/src/__tests__/tool-request-preview.test.ts",
-          "digest": "1b0f008e1a62b9354ebde7d252238d0123631a2624d0490d0996c25c162e4755"
+          "digest": "ab251cd862e821122d30655014fe205ea95b77c09ce8cc33771c0112cad755a2"
         },
         {
           "path": "packages/shared/src/redaction.ts",
           "digest": "ddce9bcf50fe2f19b9922149fefa5b34a490396d8b05ea6d2218786e972d9479"
         },
         {
+          "path": "packages/shared/src/runtime-event-projection.ts",
+          "digest": "8e04a445a5b6f9c0d88e247c94f1bd641bf7b72ec9f98122de45fb00c79a5114"
+        },
+        {
           "path": "packages/shared/src/tool-request-preview.ts",
-          "digest": "9b0d50b2a12103f2e8cf95f97707b88af83ff72ce420dd8c6176eb3f514a2cc8"
+          "digest": "212871aeccc7f8a6d63b6f39eb757fedacd8a23bc4964da157023cc83fcd43d6"
         },
         {
           "path": "pnpm-lock.yaml",
@@ -5658,7 +5668,7 @@
         },
         {
           "path": "src-server/providers/__tests__/claude-adapter.test.ts",
-          "digest": "b34b2c9f1367a54577331ed96ad07fed64463274dfa8ae21a135ce21667f4f06"
+          "digest": "49b2a9eea768060e47dc729bcfd0ffd1fa1878e898ea97b23218080f761c8463"
         },
         {
           "path": "src-server/providers/__tests__/tool-policy-delivery-tripwire.test.ts",
@@ -5669,8 +5679,12 @@
           "digest": "ad929d0e31f1e4cfc35f133e3a4f01148484011df967afe246f01145b935e292"
         },
         {
+          "path": "src-server/providers/adapters/claude-adapter-events.ts",
+          "digest": "62628f377e3b3ec1ed3bb134c58ab9cfd1aaf287508fdc9a3c559c1efe8d5ad7"
+        },
+        {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
         },
         {
           "path": "src-server/providers/adapters/claude-approval-mode.ts",
@@ -5693,6 +5707,10 @@
           "digest": "c53f7ddcd9f98e70c6a3ad0085fa0cbc2d4e2cb7e7ac0885c80f6a8728248e41"
         },
         {
+          "path": "src-server/services/approvals/approval-inbox.ts",
+          "digest": "86f6654861290a3c6a7cd303bfe9a339e2ee1275f1dc9fd67c23c0cab275bbba"
+        },
+        {
           "path": "src-server/services/orchestration/request-presentation.ts",
           "digest": "cb4c34c14ebbe7e4e65968c9f22e83938a7ccce7859ab7c59604cbe8ce68f108"
         },
@@ -5701,12 +5719,20 @@
           "digest": "d74ef9adc51a198ae125997d3dea412a24af03f1e427e10c43c97d526c21cbab"
         },
         {
+          "path": "src-ui/src/components/chat/ToolCallDisplay.tsx",
+          "digest": "230994803c6e56636bdf11aee4dc3417f9c7da83242c99a1c4a68b2fdd8184f7"
+        },
+        {
           "path": "src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts",
-          "digest": "14539d3339e37bbe5b206fa83b4e91d77200114f05a6bba099c0b4b22e3e3127"
+          "digest": "0e6a762e1734c75da7403861f9c9febaedd09362b33c3742f11dde870351a93f"
         },
         {
           "path": "src-ui/src/hooks/orchestration/approvalHandlers.ts",
-          "digest": "484017a4b2e02c040795a36dc0d98a9637197fafbee3ff40062e4dc3999d320e"
+          "digest": "dd3775a8ec887b2b11144930863cf3946f702539335e842f162aba656abcf1e7"
+        },
+        {
+          "path": "src-ui/src/hooks/orchestration/pendingRequestRows.ts",
+          "digest": "691d037a29e146735899831f4857fcf614f78fb2df4c5b09e238a4b3eaa77142"
         }
       ],
       "checks": [
@@ -5715,7 +5741,8 @@
         "Final four-document bytes:407 Markdown paths/anchors PASS;154 reference/example syntax fences PASS;git diff --check PASS. Veritas1790527733697:0 failures0 warnings. Three owned documentation-only commits; no runtime edits or external writes.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: claude-adapter.ts dropped the unused stdio `mintStationControlCallerToken` fallback and its test, and package.json/pnpm-lock removed only @kontourai/bearing and @kontourai/forage (Agent SDK still 0.3.261). The explicit mcpServers/strictMcpConfig, PreToolUse and delivery claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata and stamps acknowledgement on request.resolved in the claude and acp adapters, and adds handleRequestDeliveryEvent plus the toast copy 'this request is no longer open.' in approvalHandlers.ts (tests updated). None of this touches the tool-request preview readers, the pre-tool seams or the Ask-mode permission path the document describes. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata and stamps acknowledgement on request.resolved in the claude and acp adapters, and adds handleRequestDeliveryEvent plus the toast copy 'this request is no longer open.' in approvalHandlers.ts (tests updated). None of this touches the tool-request preview readers, the pre-tool seams or the Ask-mode permission path the document describes. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915/#2916 on d0ca944c5: one shared computation, toolRequestSessionGrant (tool-request-preview.ts), decides what acceptForSession grants: tool (the only case that mints a Station tool grant), edit-mode (a plain Edit/Write/MultiEdit/NotebookEdit ask outside plan mode and full access; forwards only the engine's acceptEdits setMode; 'Auto-accept file edits for this session'), read-folder/folder (an escalation or any Read/Glob/Grep/LSP ask; directory suggestions only) or none (recorded as accept). The Claude adapter auto-allows a granted tool only for a tool grant, sets a forwarded setMode as both requested and reported mode, and applies a turn's posture only when it differs from its last request. The orchestration service, on a command-route answer (approvalModeAuthority), records auto for an edit-mode answer after the engine took it, unless any decision was recorded meanwhile or Auto/full access stands; other paths (delegated respond, inbox) send a one-call accept, and the inbox card omits the option. Rewrote the grant-scope paragraphs to match. Engine shapes were read from the Claude Code 2.1.261 binary bundled with the lockfile's Agent SDK 0.3.261, not from a live run. Fixture tests through the real adapter, the projection, the command and notification routes; no provider dispatched."
       ]
     },
     {
@@ -5745,7 +5772,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/session-command-module.ts",
@@ -5756,7 +5783,8 @@
         "331 focused tests across 24 files passed; local source/caller and persistence evidence.",
         "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
-        "Integration source review through d72f79b08: #2904 wires isFullAccessGrantorCurrent in runtime-initialize, records clientOrigin on the startSession receipt, and adds grantor stamping and revocation reset in orchestration-service. The context's identity, adoption-policy, start-versus-turn, Task/command/receipt and delegation distinctions are unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 wires isFullAccessGrantorCurrent in runtime-initialize, records clientOrigin on the startSession receipt, and adds grantor stamping and revocation reset in orchestration-service. The context's identity, adoption-policy, start-versus-turn, Task/command/receipt and delegation distinctions are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It defines delegation as carrying approval policy and the start-session/turn boundary; neither definition changes. Prose accurate."
       ]
     },
     {
@@ -5846,7 +5874,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/session-command-module.ts",
@@ -5874,7 +5902,8 @@
         "Integration source review through e0314c727: service.ts now records an archive or source kind and the install root in service manifests and resolves the service code location (#2867); plugin install gained excludeGitMetadata for proposed installs. The context's receipt, review and gate vocabulary depends on neither, so it is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 adds event-store queries that read the actor recorded on approval-mode decisions, find host starts by device grantor, look up conversation titles and find unattributed never-decisions. The `startSession` receipt now records `clientOrigin`, approval decisions can carry a `revocation` reason, and runtime-routes returns revocation reports. The glossary definitions of receipt, approval, review and gate, and the distinction between receipt and proof, do not change. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds the recognizeCredential hook in runtime-routes.ts (identity without admission, for a 403 answer); prose accurate: the receipt/governance definitions don't depend on HTTP refusal status. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds the service update-home action, a launcher install step and a service-update status line to service.ts. None of that bears on the evidence-governance glossary terms, which do not describe service commands; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds the service update-home action, a launcher install step and a service-update status line to service.ts. None of that bears on the evidence-governance glossary terms, which do not describe service commands; prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its approval terms are gate-deviation vocabulary, not engine request answers. Prose accurate."
       ]
     },
     {
@@ -6037,7 +6066,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/session-command-module.ts",
@@ -6065,7 +6094,8 @@
         "Integration source review through e0314c727: service.ts gained archive service units (#2867), and plugin-install-transaction.ts gained excludeGitMetadata staging for proposed installs (#2840). Neither changes the storage, scheduling, notification, telemetry or governance definitions, which remain accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 added reads to event-store for approval-decision actors and start-confinement grantors, used by resetFullAccessGrantedBy. The startSession receipt now records clientOrigin, orchestration-service gained full-access reset logic, and runtime-routes gained the revocation and refusal wiring. The glossary definitions (receipts versus evaluated proof, notification versus approval request, scheduled-job outputs) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only a recognizeCredential identity hook to runtime-routes.ts. No storage, scheduling, notification, telemetry, review or governance definition in the document is affected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds launcher install, a hidden update-home action and status `update` rendering. This context names no CLI service or upgrade behavior (its owner table covers server services); prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) service.ts adds launcher install, a hidden update-home action and status `update` rendering. This context names no CLI service or upgrade behavior (its owner table covers server services); prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It defines a notification/approval request as a user decision; the inbox card still carries that request and its Allow Once/Deny actions. Prose accurate."
       ]
     },
     {
@@ -6370,7 +6400,7 @@
     },
     {
       "path": "docs/design/approval-posture-server-ordered.md",
-      "documentDigest": "4e28b164d3c0aff9892a2d5b8419199098f7d708eb35b1b99c74bf7d87429fa6",
+      "documentDigest": "6767409c3bf2e0638d516e4870763553e274985dda6bdebcc05c7bb57505be54",
       "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
       "kind": "design",
       "state": "classified",
@@ -6387,14 +6417,15 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         }
       ],
       "checks": [
         "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
         "Reviewed integration deltas: Reviewed frozen upstream Default/full-access additions against runtime provider resolution, Agent write routes, orchestration pick checks and confinement callers. Existing dated design classification remains; removed obsolete unchanged-bytes claim. src-server/services/orchestration/approval-posture.ts: Effective-default resolution handles Project Default that reaches never/full-access on host, requiring the existing grant. Recorded Default still follows later Project default edits as the accepted residual; no assertion of immutable future policy. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/security/coding-authority.ts: Adds typed full_access_not_granted refusal with403 identity; no new authority or scope.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
-        "Integration source review through d72f79b08: #2904 adds grantor-bearing FullAccessGrant with UnattributedFullAccessGrantError (coding-authority), decision actor and threadId plus fullAccessDefaultSource (approval-posture), and resetFullAccessGrantedBy, live grantor re-confinement and the grantor-stamp respawn carry-forward (orchestration-service). Main's merged prose on the structured refusal, granting and revoking, and revocation reset matches the code, including: the reset outcomes; the unattributed host-start cap of 50 plus a total; sanitized titles (256 characters); resetFullAccess re-runs; and an idempotent DELETE on an already revoked device, since revokeDevice returns without error when revokedAt is already set. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 adds grantor-bearing FullAccessGrant with UnattributedFullAccessGrantError (coding-authority), decision actor and threadId plus fullAccessDefaultSource (approval-posture), and resetFullAccessGrantedBy, live grantor re-confinement and the grantor-stamp respawn carry-forward (orchestration-service). Main's merged prose on the structured refusal, granting and revoking, and revocation reset matches the code, including: the reset outcomes; the unattributed host-start cap of 50 plus a total; sanitized titles (256 characters); resetFullAccess re-runs; and an idempotent DELETE on an already revoked device, since revokeDevice returns without error when revokedAt is already set. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915 on d0ca944c5: rewrote the dated 'Later addition' bullet in section 4.8 to match the code: command-route authority, the pre-answer basis plus the unchanged-decision check (the compare-and-set alone admits Auto over a newer never), and the one-call accept on the delegated and inbox paths. The rest stays implementation history; classification unchanged."
       ]
     },
     {
@@ -6898,7 +6929,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/paired-home-transfer-authority.ts",
@@ -6976,7 +7007,8 @@
         "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through d72f79b08: #2904 added scope descriptions and the revocation report type to environment-security. The runtime-routes changes are a middleware that binds full-access refusal identity, plus revoke and scope-change responses that include the full-access reset. It added deviceHoldsScope to device-pairing-service and the approval-posture grantor and reset logic to orchestration-service. None of these touch the home-authority channel/transfer routes, the transfer-scoped credentials, the SQLite decision guards, the room seals or the session-start/task-dispatch barriers. The new access:manage description ('held only by older default grants') matches the doc's historical-scope wording. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential to runtime-routes.ts. As a result, an ordinary Device credential on operator-only peer registration now gets 403 insufficient_scope at ingress instead of 401 (home-authority-routes.test.ts updated). This is consistent with the document's 403-for-insufficient-authority mapping. It does not change the operator-only offer/registration path or the other route statuses. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential to runtime-routes.ts. As a result, an ordinary Device credential on operator-only peer registration now gets 403 insufficient_scope at ingress instead of 401 (home-authority-routes.test.ts updated). This is consistent with the document's 403-for-insufficient-authority mapping. It does not change the operator-only offer/registration path or the other route statuses. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its approval mentions are pairing owner approval for channel homes; unrelated to engine request answers. Prose accurate."
       ]
     },
     {
@@ -6998,7 +7030,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
@@ -7015,7 +7047,8 @@
         "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Reviewed landing deltas through 111744681: Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
-        "Integration source review through d72f79b08: #2904 adds the refusal-details contract, parser and sanitizer to contracts orchestration.ts. In useActiveChatSessionMessaging, a full-access refusal now returns the chat to idle with the draft restored, a FullAccessRefusalCard, and an explicit 'Send without full access' action. The policy's public HTTP entry points, composer layout and navigation claims do not describe the refusal path and remain correct. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 adds the refusal-details contract, parser and sanitizer to contracts orchestration.ts. In useActiveChatSessionMessaging, a full-access refusal now returns the chat to idle with the draft restored, a FullAccessRefusalCard, and an explicit 'Send without full access' action. The policy's public HTTP entry points, composer layout and navigation claims do not describe the refusal path and remain correct. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915 on d0ca944c5: orchestration-service.ts and routes/orchestration/orchestration.ts (#2915, owner decision): the command route marks its respondToRequest dispatch with approvalModeAuthority (the route and session authorization a setApprovalMode Auto pick needs); with it, an acceptForSession answer whose grant (toolRequestSessionGrantFromPayload over the open request.opened, read with the standing posture decision before the answer is sent) is edit-mode records an auto session.approval-mode-set after the adapter has taken the answer, through recordApprovalModeDecision based on that earlier decision, so a decision recorded meanwhile refuses it; never over a standing auto or never. The delegated respond path and the approval inbox record nothing, and the inbox card omits the auto-accept action. The respond-to-permission-request row (POST /api/orchestration/commands respondToRequest) still holds; the approval-mode control claims are unaffected. Prose accurate."
       ]
     },
     {
@@ -7341,7 +7374,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
         },
         {
           "path": "src-server/providers/adapters/claude-skills-materialization.ts",
@@ -7409,7 +7442,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-ui/src/components/first-run/FirstRunFlow.tsx",
@@ -7446,7 +7479,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: claude-adapter.ts removed the unused stdio `mintStationControlCallerToken` fallback and kept in-process station-control. The document makes no stdio caller-token claim for Claude, and its spawn-environment, ACP station-control header-token and capability-matrix statements remain accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904's orchestration-service changes cover the full-access grantor: it refuses unattributed grants in prepareStart and in adoption, records the grantor metadata beside host stamps, applies a stamp whose device grantor is no longer current as workspace, and resets full access on revocation. The documented spawn environment, app-home profile selection, source-affinity resumes, first-run persistence and ACP/skills passthrough are untouched. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 changed Claude/Codex adapter approval acknowledgement and Codex transport reply/acknowledgement handling only. spawnCodexProcess, env layering and app-home wiring are untouched; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 changed Claude/Codex adapter approval acknowledgement and Codex transport reply/acknowledgement handling only. spawnCodexProcess, env layering and app-home wiring are untouched; prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its app-home claim (appHome reported on the start's session.configured) still holds: the adapter's mode report is a sparse session.configured like the CLI init's, and firstStartedMetadataOfThread reads the start. Prose accurate."
       ]
     },
     {
@@ -7580,7 +7614,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/recovery-ledger.ts",
@@ -7606,7 +7640,8 @@
         "Required merge-queue recovery through 421517851: reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/architecture/module-map.md. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: module-map removed the CollaborativeEditorPane and PluginForegroundRuns entries. The document's recovery-ledger/credential anchor still resolves, and it references neither removed module, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 added read-only EventStore queries: latestApprovalModeDecision now also returns the actor, plus approvalModeDecisionThreadsByDevice, hostStartThreadsGrantedByDevice, conversationTitle and unattributedFullAccessDecisionThreads. attached-session-adoption now takes an AdoptionConfinement {stamp, grantor} and writes the grantor metadata. orchestration-service uses both for the revocation reset. Adoption still commits through AdoptionLedger with the receipt coupling unchanged. The doc explicitly does not claim every EventStore method has moved, so the new query methods fit its dispositions, and the RecoveryLedger/credential claims are untouched. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It covers EventStore extraction and durable turn/recovery owners; the new decision is an ordinary session.approval-mode-set append through the existing path. Prose accurate."
       ]
     },
     {
@@ -8589,7 +8624,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/turn-provenance-sidecar.ts",
@@ -8601,7 +8636,8 @@
         "No new behavior tests for purpose banners and prose corrections; aggregate links/index/MCP/readiness own documentation verification.",
         "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
-        "Integration source review through d72f79b08: #2904 added about 400 lines to orchestration-service, including resetFullAccessGrantedBy, the live isFullAccessGrantorCurrent option and grantor stamping in starts. The document's two maps and their line numbers are explicitly dated snapshots, and its current-source route still points at the live service, so no current claim is contradicted. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 added about 400 lines to orchestration-service, including resetFullAccessGrantedBy, the live isFullAccessGrantorCurrent option and grantor stamping in starts. The document's two maps and their line numbers are explicitly dated snapshots, and its current-source route still points at the live service, so no current claim is contradicted. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its line-numbered dispatch and approval-inbox call maps are dated history; the respondToRequest arm gained one read and one record call, which does not change the recorded decomposition. Classification unchanged."
       ]
     },
     {
@@ -9288,7 +9324,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/projects/project-resource-resolver.ts",
@@ -9306,7 +9342,8 @@
         "Relevant frozen upstream source deltas independently reviewed; classification scope and historical/runtime evidence limits retained.",
         "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
-        "Integration source review through d72f79b08: #2904 added confinement-grantor, approval-decision and revocation code to orchestration-service. resolveStartSessionCwd, resolveAdoptionProject and the project-identity resolver behavior are unchanged. The orchestration-service line references sit in the dated migration inventory the doc marks as historical; import additions shifted them, but they are not current-state claims. Design classification stands. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 added confinement-grantor, approval-decision and revocation code to orchestration-service. resolveStartSessionCwd, resolveAdoptionProject and the project-identity resolver behavior are unchanged. The orchestration-service line references sit in the dated migration inventory the doc marks as historical; import additions shifted them, but they are not current-state claims. Design classification stands. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It covers portable identity and receiver-owned offers; the respond path's portable admission recheck is unchanged and runs before the new steps. Classification unchanged."
       ]
     },
     {
@@ -9573,7 +9610,7 @@
         },
         {
           "path": "src-ui/src/contexts/active-chats-state.ts",
-          "digest": "31149a87a81d9820f8bdeabb64de4da57c922d10144152117c03d48e400a2f12"
+          "digest": "c516313992221258d93e42c79e982dae296afe29658b4d387b17d4c486ec284e"
         },
         {
           "path": "src-ui/src/hooks/orchestration/eventHandlers.ts",
@@ -9650,7 +9687,8 @@
         "Integration source review through e0314c727: the page's own edits add the ReasoningSection disclosure and move the promotion backlog to #2899. Checked against ReasoningSection.tsx (summary row with word count, user-open/user-closed intent) and index.css (indented left-border body), and against the removal of EXTENSION_NOTIFICATION_PROMOTIONS from source (#2900). #2899's live state was not fetched because of the GitHub API rate limit; its reference comes from the #2900 commit. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: in active-chats-state.ts, #2904 only adds an optional fullAccessRefusal field to EphemeralMessage, rendered by FullAccessRefusalCard. Tape limits, replay registration and persistence exclusion, fold and effect fences, and fork identity are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added Codex approvalAcknowledgement and replyToApproval, an unacknowledgedDecisions ChatUIState field, and request.delivery dispatch in eventHandlers.ts. The replay coverage, redaction and steer-mechanism claims are unaffected; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: a290454b4 (#2919) makes createEphemeralMessageState take a required conversationId instead of falling back to chat.conversationId. Replay isolation (no conversationId copied from the source, not durable, effect no-ops) is unchanged; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: a290454b4 (#2919) makes createEphemeralMessageState take a required conversationId instead of falling back to chat.conversationId. Replay isolation (no conversationId copied from the source, not durable, effect no-ops) is unchanged; prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915/#2916 on d0ca944c5: active-chats-state.ts gained only the optional approvalSessionGrant field on the chat content part (what a session answer to the bound request grants: tool, edit-mode, read-folder, folder or none). Tape limits, replay, fold and DOM claims do not depend on it; prose accurate."
       ]
     },
     {
@@ -10423,7 +10461,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/services/acp/acp-probe.ts",
@@ -10441,7 +10479,8 @@
         "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through e0314c727: extension-notification-bindings.ts deleted the unused EXTENSION_NOTIFICATION_PROMOTIONS and EVIDENCE_GAPS tables and the reset helper, and moved the unobserved _kiro gap into a comment. The bound tuples, including _kiro.dev/error/rate_limit with acp.turn-error-cause, are unchanged, and the guide never described the removed tables, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds approvalAcknowledgement 'none' to AcpAdapter metadata and stamps it on request.resolved. ACP emits no request.delivery. The guide's request.opened/request.resolved row, its pointer to runtime-events as the shape source, and the requestPermission to allow_once/reject_once flow are all still accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds approvalAcknowledgement 'none' to AcpAdapter metadata and stamps it on request.resolved. ACP emits no request.delivery. The guide's request.opened/request.resolved row, its pointer to runtime-events as the shape source, and the requestPermission to allow_once/reject_once flow are all still accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915 on d0ca944c5: orchestration-service.ts and routes/orchestration/orchestration.ts (#2915, owner decision): the command route marks its respondToRequest dispatch with approvalModeAuthority (the route and session authorization a setApprovalMode Auto pick needs); with it, an acceptForSession answer whose grant (toolRequestSessionGrantFromPayload over the open request.opened, read with the standing posture decision before the answer is sent) is edit-mode records an auto session.approval-mode-set after the adapter has taken the answer, through recordApprovalModeDecision based on that earlier decision, so a decision recorded meanwhile refuses it; never over a standing auto or never. The delegated respond path and the approval inbox record nothing, and the inbox card omits the auto-accept action. This document's claims do not depend on how a session answer is recorded or on the approval posture it sets; prose accurate."
       ]
     },
     {
@@ -10507,7 +10546,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -10563,7 +10602,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/system/system-status-routes.ts",
@@ -10667,7 +10706,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/session-command-module.ts",
@@ -10767,7 +10806,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: ClaudeAdapter lost its unused stdio mintStationControlCallerToken fallback, native-engine adoption inlined its suppression helper with the same behavior, runtime-startup made two helpers non-exported, and ApiBaseContext dropped a comment. None of the guide's claims depend on these, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 wires isFullAccessGrantorCurrent into OrchestrationService in runtime-initialize. ApprovalPosture now exposes each decision's threadId and actor, plus fullAccessDefaultSource. Attached-session adoption stamps a host grantor beside the host confinement stamp. The startSession receipt now records clientOrigin, and orchestration-service adds resetFullAccessGrantedBy. These are session approval-mode and confinement mechanics. The guide's Agent configuration, autoApprove/unattendedAutoApprove, tool approval flow, lifecycle and Inbox claims do not depend on them. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata to the acp, claude and codex adapters, adds Codex replyToApproval and serverRequest/resolved acknowledgement watching in codex-adapter-transport.ts, and adds lastDecision/earlierUnacknowledgedDecisions to delegation snapshots in station-control-delegation.ts. 7cd4892e5 routes Codex cancel and answer replies through replyToApproval and replaces the unknown-request error with 'This Codex approval request is not open.' The guide's Station-engine approval flow, autoApprove patterns and external-engine delivery limits are unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata to the acp, claude and codex adapters, adds Codex replyToApproval and serverRequest/resolved acknowledgement watching in codex-adapter-transport.ts, and adds lastDecision/earlierUnacknowledgedDecisions to delegation snapshots in station-control-delegation.ts. 7cd4892e5 routes Codex cancel and answer replies through replyToApproval and replaces the unknown-request error with 'This Codex approval request is not open.' The guide's Station-engine approval flow, autoApprove patterns and external-engine delivery limits are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its Tool Approval Flow section describes the Station-engine route and points orchestration clients at respondToRequest; it does not describe Claude session grants or posture recording. Prose accurate."
       ]
     },
     {
@@ -11671,7 +11711,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
+          "digest": "9f33af47e095a19cfac27de49b5502a71bb1b1410c510dbf83956dcb8c5cb534"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -11791,7 +11831,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -11843,7 +11883,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/system/relay-enrollment-routes.ts",
@@ -11983,7 +12023,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/terminal/terminal-ws-server.ts",
@@ -12167,7 +12207,9 @@
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) makes runtime-http.ts answer 403 insufficient_scope, not 401, to a recognized but unadmitted credential, through the new optional recognizeCredential hook in runtime-request-security.ts. The guide's pairing-scope, loopback terminal/voice and CLI refusal claims state no 401 or 403 outcome for this case, and they remain true. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds approvalAcknowledgement metadata to the ACP, Claude and Codex adapters and adds Codex replyToApproval and acknowledgement watching in codex-adapter-transport. It also adds lastDecision folding in station-control-delegation. 7cd4892e5 touches only codex-adapter-events, which is not an input here. The guide makes no claim about engine approval delivery or delegation status, and its Engine and connection configuration prose is unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds one inherited /api/system read leaf, GET /api/system/core-update/service-update, in pairing-route-scopes.ts. The guide's pairing-scope description (read/operate/access scopes, and Origin checks as separate from scope) is unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds one inherited /api/system read leaf, GET /api/system/core-update/service-update, in pairing-route-scopes.ts. The guide's pairing-scope description (read/operate/access scopes, and Origin checks as separate from scope) is unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its approval mentions are Station signing-key and route approval; nothing describes engine request answers. Prose accurate."
       ]
     },
     {
@@ -12288,7 +12330,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -12378,7 +12420,8 @@
         "Integration source review through d72f79b08: #2904 added an optional `details` field to DelegationApiError, as a fourth constructor parameter and a field unwrapped from the envelope. runtime-routes changes are the full-access refusal identity and the device revoke/scope reset, not the delegation attempt lookup. The lookup route, grant re-resolution, fixed 503, closed projection, lookupDelegationAttempt and the 1024 capacity bound are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only the recognizeCredential gate wiring in runtime-routes.ts. The delegation claim route schema, lookup, reservation and dedup paths are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c adds the DelegatedTaskDecision type and the lastDecision/earlierUnacknowledgedDecisions snapshot fields in packages/sdk delegations.ts and station-control-delegation.ts. The attemptId claim, the lookup route and the claim state meanings are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx drops unused isCanonicalBuiltin*/builtinWorkspacePaneRendererPresence re-exports. The guide's receiver claim/lookup claims do not depend on them; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx drops unused isCanonicalBuiltin*/builtinWorkspacePaneRendererPresence re-exports. The guide's receiver claim/lookup claims do not depend on them; prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915 on d0ca944c5: orchestration-service.ts and routes/orchestration/orchestration.ts (#2915, owner decision): the command route marks its respondToRequest dispatch with approvalModeAuthority (the route and session authorization a setApprovalMode Auto pick needs); with it, an acceptForSession answer whose grant (toolRequestSessionGrantFromPayload over the open request.opened, read with the standing posture decision before the answer is sent) is edit-mode records an auto session.approval-mode-set after the adapter has taken the answer, through recordApprovalModeDecision based on that earlier decision, so a decision recorded meanwhile refuses it; never over a standing auto or never. The delegated respond path and the approval inbox record nothing, and the inbox card omits the auto-accept action. This document's claims do not depend on how a session answer is recorded or on the approval posture it sets; prose accurate."
       ]
     },
     {
@@ -14145,7 +14188,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -14296,7 +14339,8 @@
         "Integration source review through d72f79b08: #2904 added PAIRING_SCOPE_DESCRIPTIONS to the environment-security contracts. Its home:transfer entry says moving homes and resuming agents are not available yet, which matches the guide's statement that the transfer and resume flags are false. The same file gained FullAccessRevocationReport. DelegationApiError now keeps the envelope's details. device-pairing-service gained deviceHoldsScope, and runtime-routes added revocation reports to the device scope and revoke routes. The pairing/binding, admission journal, control-session and receipt claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds recognizeCredential wiring in runtime-routes.ts, which changes only the outer device-gate status for recognized but unadmitted credentials. The guide's 403 for denied caller authority comes from the controller's own routes. Its pairing, admission and control-session claims are unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds the DelegatedTaskDecision type and the lastDecision and earlierUnacknowledgedDecisions snapshot fields to the SDK delegations client and to station-control-delegation. The guide's home-transfer and delegation-credential claims do not depend on delegation decision reporting. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: a290454b4 (#2919) only dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry.tsx. The guide makes no claim about them. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: a290454b4 (#2919) only dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry.tsx. The guide makes no claim about them. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915 on d0ca944c5: orchestration-service.ts and routes/orchestration/orchestration.ts (#2915, owner decision): the command route marks its respondToRequest dispatch with approvalModeAuthority (the route and session authorization a setApprovalMode Auto pick needs); with it, an acceptForSession answer whose grant (toolRequestSessionGrantFromPayload over the open request.opened, read with the standing posture decision before the answer is sent) is edit-mode records an auto session.approval-mode-set after the adapter has taken the answer, through recordApprovalModeDecision based on that earlier decision, so a decision recorded meanwhile refuses it; never over a standing auto or never. The delegated respond path and the approval inbox record nothing, and the inbox card omits the auto-accept action. This document's claims do not depend on how a session answer is recorded or on the approval posture it sets; prose accurate."
       ]
     },
     {
@@ -14453,7 +14497,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
+          "digest": "9f33af47e095a19cfac27de49b5502a71bb1b1410c510dbf83956dcb8c5cb534"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -14601,7 +14645,8 @@
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through e0314c727: neo4j-connection.ts dropped the unused queryNeo4jGraphView stub and connection-type constant but keeps registerNeo4jGraphViewConnection and Neo4jGraphViewConnectionConfig; DELETE /roots/:id now returns 404 'Knowledge root not found' before the conversation-root 403. The guide cites only the retained registration surface and makes no root-delete claim, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected."
       ]
     },
     {
@@ -16832,7 +16877,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -16922,7 +16967,8 @@
         "Integration source review through d72f79b08: #2904 adds `details` to DelegationEnvelope and DelegationApiError in the SDK, and full-access refusal and revocation wiring to runtime-routes. Neither touches the CI runner labels, listener partition or routing policy this plan describes. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only recognizeCredential security wiring in runtime-routes.ts. The guide's claims cover runner labels, workflows and capacity routing, and nothing in this delta affects them. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c adds decision-delivery snapshot fields in packages/sdk delegations.ts and station-control-delegation.ts. The document covers CI runner labels and makes no claim about delegation code, so these inputs look unrelated to its prose. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx drops unused re-exports of canonical descriptor predicates; the doc cites none of them; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx drops unused re-exports of canonical descriptor predicates; the doc cites none of them; prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915 on d0ca944c5: orchestration-service.ts and routes/orchestration/orchestration.ts (#2915, owner decision): the command route marks its respondToRequest dispatch with approvalModeAuthority (the route and session authorization a setApprovalMode Auto pick needs); with it, an acceptForSession answer whose grant (toolRequestSessionGrantFromPayload over the open request.opened, read with the standing posture decision before the answer is sent) is edit-mode records an auto session.approval-mode-set after the adapter has taken the answer, through recordApprovalModeDecision based on that earlier decision, so a decision recorded meanwhile refuses it; never over a standing auto or never. The delegated respond path and the approval inbox record nothing, and the inbox card omits the auto-accept action. This document's claims do not depend on how a session answer is recorded or on the approval posture it sets; prose accurate."
       ]
     },
     {
@@ -17032,7 +17078,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -17123,7 +17169,8 @@
         "Integration source review through d72f79b08: #2904 adds an optional `details` field to `DelegationApiError` in packages/sdk/src/client/delegations.ts. In runtime-routes it adds the full-access refusal identity middleware and revocation reports on the pairing scope and revoke routes. None of this touches the product-law manifest, path dispositions, observation or result classification the guide describes. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds the recognizeCredential hook to runtime-routes.ts; prose accurate: the product-law manifest, observation and result-classification rules don't depend on it. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c added DelegatedTaskDecision/lastDecision to the SDK delegations client and station-control-delegation.ts. The guide makes no claim about delegation snapshots; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: a290454b4 (#2919) trims unused re-exports from builtinWorkspacePaneRegistry. The guide makes no claim about those exports; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: a290454b4 (#2919) trims unused re-exports from builtinWorkspacePaneRegistry. The guide makes no claim about those exports; prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915 on d0ca944c5: orchestration-service.ts and routes/orchestration/orchestration.ts (#2915, owner decision): the command route marks its respondToRequest dispatch with approvalModeAuthority (the route and session authorization a setApprovalMode Auto pick needs); with it, an acceptForSession answer whose grant (toolRequestSessionGrantFromPayload over the open request.opened, read with the standing posture decision before the answer is sent) is edit-mode records an auto session.approval-mode-set after the adapter has taken the answer, through recordApprovalModeDecision based on that earlier decision, so a decision recorded meanwhile refuses it; never over a standing auto or never. The delegated respond path and the approval inbox record nothing, and the inbox card omits the auto-accept action. This document's claims do not depend on how a session answer is recorded or on the approval posture it sets; prose accurate."
       ]
     },
     {
@@ -17774,7 +17821,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -17864,7 +17911,8 @@
         "Integration source review through d72f79b08: #2904 added an optional details field to DelegationApiError in sdk delegations.ts, and runtime-routes gained refusal-identity middleware and device-revocation reset wiring. No files moved, so the directory layout, ownership conventions and routing links are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds five lines (recognizeCredential) inside runtime-routes.ts. No directory, file location or routing convention changed. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds decision-delivery types and fields to the SDK delegations.ts and to station-control-delegation.ts. No package or directory moved, and the layout table is unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: a290454b4 (#2919) only dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry.tsx. The file and its role are unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: a290454b4 (#2919) only dropped unused canonical-descriptor re-exports from builtinWorkspacePaneRegistry.tsx. The file and its role are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915 on d0ca944c5: orchestration-service.ts and routes/orchestration/orchestration.ts (#2915, owner decision): the command route marks its respondToRequest dispatch with approvalModeAuthority (the route and session authorization a setApprovalMode Auto pick needs); with it, an acceptForSession answer whose grant (toolRequestSessionGrantFromPayload over the open request.opened, read with the standing posture decision before the answer is sent) is edit-mode records an auto session.approval-mode-set after the adapter has taken the answer, through recordApprovalModeDecision based on that earlier decision, so a decision recorded meanwhile refuses it; never over a standing auto or never. The delegated respond path and the approval inbox record nothing, and the inbox card omits the auto-accept action. This document's claims do not depend on how a session answer is recorded or on the approval posture it sets; prose accurate."
       ]
     },
     {
@@ -18084,7 +18132,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -18128,7 +18176,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/system/system-status-routes.ts",
@@ -18208,7 +18256,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/tools/station-control-catalog-tools.ts",
@@ -18319,7 +18367,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: ClaudeAdapter dropped the unused stdio mintStationControlCallerToken fallback and keeps only the in-process credential and its revocation. Native-engine adoption folded its detection helper back in with the same suppression conjunction, runtime-startup un-exported two helpers, and ApiBaseContext lost a comment. The guide's credential, attestation and root-context rules still match, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 records the actor and thread on approval-posture decisions and adds `fullAccessDefaultSource`. orchestration-service stamps the grantor and refuses anonymous grants. runtime-initialize wires `isFullAccessGrantorCurrent`, so a `host` stamp whose device grantor lost `approval:full-access` applies as workspace. The station-control dispatch scope reads `sessionRunsHost` 'as its next turn reads it', so the guide's 'cannot reach a conversation that runs unconfined (host)' still holds. The delegation, posture and approval-model claims are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added approvalAcknowledgement metadata to the adapters and Codex acknowledgement watching, and added lastDecision/earlierUnacknowledgedDecisions plus request.delivery projection in station-control-delegation.ts. Nothing changed the respond_to_task_request or dispatch-authority rules the guide describes; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added approvalAcknowledgement metadata to the adapters and Codex acknowledgement watching, and added lastDecision/earlierUnacknowledgedDecisions plus request.delivery projection in station-control-delegation.ts. Nothing changed the respond_to_task_request or dispatch-authority rules the guide describes; prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It lists respond_to_task_request for an open approval or permission request from a delegated worker; that still answers the request, now as a one-call accept for an edit-mode session answer, which the guide's wording does not contradict. Prose accurate."
       ]
     },
     {
@@ -18572,7 +18621,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
+          "digest": "9f33af47e095a19cfac27de49b5502a71bb1b1410c510dbf83956dcb8c5cb534"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -18600,7 +18649,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
@@ -18632,7 +18681,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/project-task-room-runtime.ts",
@@ -18804,7 +18853,9 @@
         "Integration source review through d72f79b08: #2904 threads the request's server-derived `clientOrigin` through the starter-work route, `StarterRegistry.launchStartTask` and continue launches, and `StarterSessionOwner` into dispatch and adoption receipts; a new test shows the body's origin is ignored. Adoption now stamps the full-access grantor, and `prepareStart` refuses a grant that names no grantor. The `startSession` receipt records `clientOrigin`. None of this changes the guide's readiness, one-time dispatch fence, continuation, inspection or Scheduler claims, and the guide makes no full-access claims. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only recognizeCredential gate wiring in runtime-routes.ts. The Starter Work routes, readiness, dispatch fences, inspection and Scheduler owners are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata to the claude and codex adapters. 7cd4892e5 routes Codex approval replies and interrupt cancels through transport.replyToApproval and changes the unknown-request error copy. Neither touches how Claude or Codex continue an attached Session (independent children, Codex starting from the latest completed turn). Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement metadata to the claude and codex adapters. 7cd4892e5 routes Codex approval replies and interrupt cancels through transport.replyToApproval and changes the unknown-request error copy. Neither touches how Claude or Codex continue an attached Session (independent children, Codex starting from the latest completed turn). Prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its inspect-approval flow opens a request without deciding it; the answer path's new steps are not reached. Prose accurate."
       ]
     },
     {
@@ -19873,7 +19924,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -19963,7 +20014,8 @@
         "Integration source review through d72f79b08: #2904 added `details` to DelegationApiError and changed runtime-routes in unrelated areas: full-access refusal identity middleware and the device revoke/scope reset responses. The Work Board registry, Pane error boundary, Home eligibility and resolved-reference routes are untouched. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds only a recognizeCredential identity hook to runtime-routes.ts. Work Board rendering, Home eligibility and reference-storage boundaries are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c added DelegatedTaskDecision/lastDecision to the SDK delegations client and station-control-delegation.ts. The Work Board boundary claims do not depend on it; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx removes unused canonical-descriptor re-exports only. It is still the built-in registry that selects the trusted Work Board renderer; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2919) builtinWorkspacePaneRegistry.tsx removes unused canonical-descriptor re-exports only. It is still the built-in registry that selects the trusted Work Board renderer; prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915 on d0ca944c5: orchestration-service.ts and routes/orchestration/orchestration.ts (#2915, owner decision): the command route marks its respondToRequest dispatch with approvalModeAuthority (the route and session authorization a setApprovalMode Auto pick needs); with it, an acceptForSession answer whose grant (toolRequestSessionGrantFromPayload over the open request.opened, read with the standing posture decision before the answer is sent) is edit-mode records an auto session.approval-mode-set after the adapter has taken the answer, through recordApprovalModeDecision based on that earlier decision, so a decision recorded meanwhile refuses it; never over a standing auto or never. The delegated respond path and the approval inbox record nothing, and the inbox card omits the auto-accept action. This document's claims do not depend on how a session answer is recorded or on the approval posture it sets; prose accurate."
       ]
     },
     {
@@ -20085,7 +20137,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/spatial-board.ts",
@@ -20180,7 +20232,8 @@
         "Integration source review through d72f79b08: #2904 makes requestJson in core-api.ts attach status, code and details to its thrown error without changing the message. DelegationApiError now keeps details, and runtime-routes gained the full-access refusal and revocation wiring. The import-project caller semantics are unchanged: slug precheck, local verification, one create plus readback, no silent retry, and an unconfirmed-registration report. So are the package and verification limits. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 adds recognizeCredential wiring in runtime-routes.ts, which changes the status for a recognized but unadmitted credential from 401 to 403. The guide's envelope, snapshot, import and authentication-owner claims do not depend on the refusal status. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds decision-delivery types and fields to the SDK delegations.ts and to station-control-delegation.ts. The guide's package boundaries and cloud-move or CLI delegation claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: #2919 trims unused isCanonicalBuiltin*/builtinWorkspacePaneRendererPresence re-exports from builtinWorkspacePaneRegistry. The guide does not reference those exports; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: #2919 trims unused isCanonicalBuiltin*/builtinWorkspacePaneRendererPresence re-exports from builtinWorkspacePaneRegistry. The guide does not reference those exports; prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915 on d0ca944c5: orchestration-service.ts and routes/orchestration/orchestration.ts (#2915, owner decision): the command route marks its respondToRequest dispatch with approvalModeAuthority (the route and session authorization a setApprovalMode Auto pick needs); with it, an acceptForSession answer whose grant (toolRequestSessionGrantFromPayload over the open request.opened, read with the standing posture decision before the answer is sent) is edit-mode records an auto session.approval-mode-set after the adapter has taken the answer, through recordApprovalModeDecision based on that earlier decision, so a decision recorded meanwhile refuses it; never over a standing auto or never. The delegated respond path and the approval inbox record nothing, and the inbox card omits the auto-accept action. This document's claims do not depend on how a session answer is recorded or on the approval posture it sets; prose accurate."
       ]
     },
     {
@@ -20330,7 +20383,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
+          "digest": "9f33af47e095a19cfac27de49b5502a71bb1b1410c510dbf83956dcb8c5cb534"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -20418,7 +20471,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/project-task-room-runtime.ts",
@@ -20539,7 +20592,9 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through d72f79b08: #2904's orchestration-service changes cover the full-access grantor, the grantor-current confinement check and the revocation reset. The Project/Task, Connections, request-inspection and Knowledge Library scenes and their captions are unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. The request-inspection scene shows a request opened and closed without a decision, so the answer path's new steps are not reached. Prose accurate."
       ]
     },
     {
@@ -21191,7 +21246,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
+          "digest": "9f33af47e095a19cfac27de49b5502a71bb1b1410c510dbf83956dcb8c5cb534"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21275,7 +21330,8 @@
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
-        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected."
       ]
     },
     {
@@ -21603,7 +21659,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/orchestration/runs.ts",
@@ -21831,7 +21887,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/orchestration-session-state.ts",
@@ -22006,7 +22062,8 @@
         "Integration source review through abfc7a889: #2864's plugin-install-routes.ts now also strips git metadata from any source recorded in plugin-source-staging.json. Preview reports gitMetadata: excluded for it, the install records the source before writing anything, and the install returns 409 consent.reason git-metadata for a recorded source approved from a preview that kept git metadata. An unreadable record fails closed. Corrected the preview paragraph, which described only the open-proposal case, and the install 409 sentence, which now covers previously stripped installs. Not reviewed here: docs/design/plugin-installation-lifecycle.md has the same proposal-only framing but is outside this record set. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 changes one case. An ordinary paired-device credential that authorizeCredential refuses on /api/pairing, including POST /api/pairing/requests/:id/confirm without access:approve, now gets 403 insufficient_scope instead of 401. The section on binding a paired device to its verified person already says insufficient authority returns 403, so it is now matched on this path too. No other route claims depend on the refusal status. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds the request.delivery event and the acknowledgement field to runtime-events, adds ACP approvalAcknowledgement 'none', and adds delegation lastDecision. It changes only a comment in useToolApproval (already-settled now covers requests closed by the engine, cancelled or expired). The /tool-approval routing, /events payload-vocabulary pointer, continuation-caller and ACP model-apply claims are unchanged by the delta. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) install-provenance.ts adds installKind 'archive'; system-update-routes.ts branches GET/POST /api/system/core-update on archives (signed-manifest releaseCheck, applyMethod service-update/station-upgrade/reinstall, installKind archive-service; POST queues an update request and returns 202 with serviceUpdate.requestId or 409/500) and adds GET /api/system/core-update/service-update; pairing scopes add that read leaf; SDK exports requestServiceUpdateProgress/useServiceUpdateProgressQuery; lifecycle.ts forwards STATION_SERVICE_LAUNCHER only to the supervised server; ChatDock only un-exports a helper (#2919). Corrected the Check/Apply Core App Update sections, which listed only source/desktop/unknown provenance: they now cover the archive branch, the 202 service-update request, its 409 refusals and the service-update progress route. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) install-provenance.ts adds installKind 'archive'; system-update-routes.ts branches GET/POST /api/system/core-update on archives (signed-manifest releaseCheck, applyMethod service-update/station-upgrade/reinstall, installKind archive-service; POST queues an update request and returns 202 with serviceUpdate.requestId or 409/500) and adds GET /api/system/core-update/service-update; pairing scopes add that read leaf; SDK exports requestServiceUpdateProgress/useServiceUpdateProgressQuery; lifecycle.ts forwards STATION_SERVICE_LAUNCHER only to the supervised server; ChatDock only un-exports a helper (#2919). Corrected the Check/Apply Core App Update sections, which listed only source/desktop/unknown provenance: they now cover the archive branch, the 202 service-update request, its 409 refusals and the service-update progress route. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its request routes (inspect-approval, attention, the respond command) keep their shapes and status codes; only what an edit-mode acceptForSession grants changed, which session-api.md documents. Prose accurate."
       ]
     },
     {
@@ -22531,7 +22588,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/system/config.ts",
@@ -22639,7 +22696,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/scheduling/builtin-scheduler-execution.ts",
@@ -22703,7 +22760,8 @@
         "Integration source review through d72f79b08: #2904 makes the config route answer a refused full-access Station default with the structured fullAccessRefusal body, and main added a `defaultApprovalMode` row. Checked that row against config.ts (mayGrantFullAccess, checked only when a write raises the default to `never`), approval-authority.ts and full-access-refusal.ts. Corrected the row: the grant can come from any authenticated caller whose granted scope carries approval:full-access, not only a device, and the refusal names a device and the host grant command only when a paired device made the request. Other inputs (device-pairing deviceHoldsScope, event-store, orchestration reset, runtime wiring) do not affect the page's other claims. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds an optional RuntimeHttpSecurityOptions.recognizeCredential, wired to verifyCredential in runtime-routes. With it, the runtime-http gate answers 403 insufficient_scope, not 401, for a live credential that route admission refuses. The document's auth claims are the 403 approval-full-access-not-granted write refusal, home-possession locality minting and the diagnostics pairing-scope tier. None of them depends on the 401-versus-403 gate outcome. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds a chat-stream-status notice to ChatDockBody for unacknowledged or not-sent decisions. It adds no setting and changes no attachment re-send behavior. The chat-dock claims in config.md (attachment re-send refusal) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read leaf to pairing-route-scopes. a290454b4 (#2919) makes ChatDock's agentIdentityFromSession private. Neither changes the config fields, the diagnostics-logs scope tier or the chat-dock re-send claims; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds the GET /api/system/core-update/service-update read leaf to pairing-route-scopes. a290454b4 (#2919) makes ChatDock's agentIdentityFromSession private. Neither changes the config fields, the diagnostics-logs scope tier or the chat-dock re-send claims; prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. defaultApprovalMode still applies at session start below the chat's recorded pick, which a command-route edit-mode answer can now record. Prose accurate."
       ]
     },
     {
@@ -23066,7 +23124,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/pull-requests/__tests__/conversation-pull-request-links.test.ts",
@@ -23106,7 +23164,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/orchestration-session-state.ts",
@@ -23162,7 +23220,8 @@
         "Integration source review through e0314c727: the page's merged edit says the plugin-foreground-work subpath is published ahead of a server implementation and Station does not admit or list plugin foreground runs. That matches the deletion of plugin-foreground-runs.ts and the RunService/runs-route `plugin` source, and the subpath still exists in packages/contracts. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 added exports to the orchestration subpath: ApprovalFullAccessRequester, ApprovalFullAccessRefusalDetails, parseApprovalFullAccessRefusalDetails and the sanitize helpers. It added an optional `revocation` to SessionApprovalModeSetEvent in runtime-events. The delegate CLI now prints explainFullAccessRefusal for that code, while exit codes 2/3 and the status formatting are unchanged. orchestration-service gained the confinement grantor and revocation reset. No new export subpath was added. The module-ownership rows and the documented supervision, quota, delegation-status and native-push claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) makes muse-serve-session publish request.resolved (acknowledgement 'engine') when Station records a decision, and Muse's approval/resolved now publishes request.delivery acknowledged with engineStatus. It also adds the ApprovalAcknowledgement and RequestDeliveryEvent contracts and adds lastDecision and earlierUnacknowledgedDecisions to DelegatedTaskSnapshot and to the CLI status formatter. Corrected the Muse serve sentence that said approvals are 'resolved from Muse's own approval/resolved': a decision Station records now resolves on record and is acknowledged through request.delivery, and only requests Muse closes before Station decides still resolve from approval/resolved. The expiry, stall-watchdog and supervision/reason/transitionReason surface prose is still accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) system-status.ts adds the public ServiceUpdatePhase/ServiceUpdateProgress contract read by GET /api/system/core-update/service-update. install-provenance.ts adds an 'archive' install kind resolved via shared prebuilt-archive. Existing claims about DevicePresentation, the identity triple and UpdateProvenanceIssue are unchanged. Corrected the owned-shapes paragraph to name ServiceUpdateProgress and its phase. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) system-status.ts adds the public ServiceUpdatePhase/ServiceUpdateProgress contract read by GET /api/system/core-update/service-update. install-provenance.ts adds an 'archive' install kind resolved via shared prebuilt-archive. Existing claims about DevicePresentation, the identity triple and UpdateProvenanceIssue are unchanged. Corrected the owned-shapes paragraph to name ServiceUpdateProgress and its phase. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It lists the attention request-reference exports and approval-mode contract types; no contract type changed (the grant helpers are in station-shared). Prose accurate."
       ]
     },
     {
@@ -23355,7 +23414,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/usage-telemetry-service.ts",
@@ -23389,7 +23448,8 @@
         "Integration source review through e0314c727: telemetry.ts inlined resolveOtelResourceAttributes with the same installation-hash/os.type attributes and the same endpoint gate. lifecycle.ts changed only packaged-upgrade service checks, and ApiBaseContext.tsx dropped a comment. The OTLP, STATION_API_BASE and telemetry-key rows remain accurate. Source review is separate from executed test evidence; the recorded 111 passing tests were not rerun.",
         "Integration source review through d72f79b08: #2904's runtime-initialize, runtime-routes and orchestration-service changes add full-access grantor wiring, refusal identity binding and device revocation reset. They add or change no environment variable or resolver precedence. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: cf43e14d0 (#2731) adds an auth-refusal branch in runtime-http.ts configureRuntimeSecurity and recognizeCredential in runtime-routes.ts; prose accurate: ALLOWED_ORIGINS and the other runtime-http.ts citations concern origin admission, which did not change. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) lifecycle.ts forwards the internal STATION_SERVICE_LAUNCHER only to the supervised server and strips it from the UI child; the doc says it does not list internal launcher variables and lists no STATION_SERVICE_* entries; the listed lifecycle.ts-sourced rows are unchanged; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) lifecycle.ts forwards the internal STATION_SERVICE_LAUNCHER only to the supervised server and strips it from the UI child; the doc says it does not list internal launcher variables and lists no STATION_SERVICE_* entries; the listed lifecycle.ts-sourced rows are unchanged; prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. No environment variable is added or read by the change. Prose accurate."
       ]
     },
     {
@@ -23613,7 +23673,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
+          "digest": "9f33af47e095a19cfac27de49b5502a71bb1b1410c510dbf83956dcb8c5cb534"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -23691,7 +23751,8 @@
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through d72f79b08: #2904 makes TaskGraphService pass the dispatching request's clientOrigin to the start (for the receipt) alongside fullAccessGrant and ownerAttribution. The browser assertions (private control to real TaskDispatcher-seeded Session association, Agent edit, links, restart) and the seeded-versus-external distinction are unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected."
       ]
     },
     {
@@ -24197,7 +24258,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/orchestration/tasks.ts",
@@ -24353,7 +24414,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/orchestration-session-state.ts",
@@ -24690,16 +24751,17 @@
         "Integration source review through abfc7a889: #2864's plugin-install-routes.ts reports and requires gitMetadata: excluded both for an open-proposal source and for one Station previously installed without its git metadata (recorded in plugin-source-staging.json). Corrected the install consent paragraph and the usePluginPreviewMutation description, which covered only the open-proposal case. The mutate example already echoes preview.gitMetadata. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 removes the ambient boot helpers fetchBootPayload, seedBootPayload and fetchAndSeedBootPayload from packages/sdk/src/boot.ts, and makes the matching comment edits in client/agents.ts and cli/src/dev/http.ts. Main also rewrote the boot paragraph in this doc; the merge kept the branch's version (around line 859). That version already says the boot module is internal and not in the package export map, names only fetchBootPayloadAt and seedBootPayloadGuarded (both still exported), and no longer mentions the removed ambient helper, so the merged text is consistent and has no duplicate. cf43e14d0 adds recognizeCredential, so a live but unadmitted credential now gets 403 insufficient_scope instead of 401. usePairedDevicesQuery still says an authorization failure is a query error, and the knowledge-route 401/403 split is unchanged. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c added approvalAcknowledgement 'in-process' to StationAgentAdapter, and conversationOpenPatch now also clears unacknowledgedDecisions alongside the other local approval state. That is consistent with the doc's statement that predecessor local approval state is not carried over; prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: 3ab09593d (#2881) adds archive/archive-service installKind, the station-upgrade/service-update applyMethod values, releaseCheck, serviceUpdate, requestServiceUpdateProgress and useServiceUpdateProgressQuery (root exports), and the service-update pairing leaf. The parser now checks installKind and releaseCheck against known values and still passes applyMethod through unchecked. a290454b4 (#2919) only removes internal UI exports. Main's merged paragraph fits the branch text: it has no duplicate and does not bring back the /queries subpath claim. Corrected the stale sentence that said installKind and applyMethod both pass through without enum validation; it now says installKind and releaseCheck are checked (an unknown value is left out) and applyMethod is still unchecked. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: 3ab09593d (#2881) adds archive/archive-service installKind, the station-upgrade/service-update applyMethod values, releaseCheck, serviceUpdate, requestServiceUpdateProgress and useServiceUpdateProgressQuery (root exports), and the service-update pairing leaf. The parser now checks installKind and releaseCheck against known values and still passes applyMethod through unchecked. a290454b4 (#2919) only removes internal UI exports. Main's merged paragraph fits the branch text: it has no duplicate and does not bring back the /queries subpath claim. Corrected the stale sentence that said installKind and applyMethod both pass through without enum validation; it now says installKind and releaseCheck are checked (an unknown value is left out) and applyMethod is still unchecked. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its respondToRequest example and error-shape claims are unchanged: the SDK client posts the same command, which the route now marks with approval-mode authority. Prose accurate."
       ]
     },
     {
       "path": "docs/reference/session-api.md",
-      "documentDigest": "9682fc55f0f8d89811a1c467cf86b9872abfdd37a3483734bd18a90df98c680e",
+      "documentDigest": "b18516a68bb8c237fad827a8f60847431e2e80a81293f41d93f0302d38bde982",
       "sourceRevision": "d9aea82e4b47472834f0aaafaf34579ba122b60a",
       "kind": "current",
       "state": "source-reviewed",
-      "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection.",
+      "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection. Follow-up (#2915/#2916): respondToRequest now states what acceptForSession grants in a Claude Session, including the session.configured mode report after an edit-mode answer.",
       "limits": "Source and fixture evidence do not establish installed native CLI compatibility, a live engine turn, physical UI behavior, or hosted deployment. No version-specific native fork qualification is claimed.",
       "sources": [
         {
@@ -24712,7 +24774,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
@@ -24728,7 +24790,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/services/flow/survey-flow-review-service.ts",
@@ -24825,7 +24887,8 @@
         "Reviewed landing deltas through 111744681:  Read the changed document in context; its purpose and prior evidence limits remain.",
         "Integration source review through e0314c727: claude-adapter.ts removed the unused mintStationControlCallerToken stdio fallback, so revocation now covers only the in-process credential. The reference does not describe that fallback, and its foreground, receipt, history and authority claims remain accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 makes attached-session-adoption stamp the grant's grantor beside `host` confinement. session-command-module adds `clientOrigin` to the `startSession` receipt. In useActiveChatSessionMessaging, a full-access-refused send now returns the chat to idle with the draft restored and a structured refusal card. The documented command set, setApprovalMode basis, adoption idempotency, receipt envelope fields and retry guidance are unchanged. startSession is not in the documented envelope's command list, and the documented shape never listed clientOrigin. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added the recorded-vs-acknowledged respondToRequest paragraph (approvalAcknowledgement engine/in-process/none, request.delivery, closed-by-engine), added approvalAcknowledgement metadata and acknowledgement stamping to the Codex/Claude/ACP adapters, routed Codex replies through transport.replyToApproval, and moved the rpc-id test fakes into codex-adapter-wire-harness.ts. The auto-merged main paragraph sits coherently after the branch's #562 wire-ID text. The rpc-id suite still covers accept/decline, session grants, interrupt cancellation (#2316) and unsupported requests over a simulated FakeCodexProcess stream; prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c/7cd4892e5 added the recorded-vs-acknowledged respondToRequest paragraph (approvalAcknowledgement engine/in-process/none, request.delivery, closed-by-engine), added approvalAcknowledgement metadata and acknowledgement stamping to the Codex/Claude/ACP adapters, routed Codex replies through transport.replyToApproval, and moved the rpc-id test fakes into codex-adapter-wire-harness.ts. The auto-merged main paragraph sits coherently after the branch's #562 wire-ID text. The rpc-id suite still covers accept/decline, session grants, interrupt cancellation (#2316) and unsupported requests over a simulated FakeCodexProcess stream; prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915/#2916 on d0ca944c5: the respondToRequest paragraph states what acceptForSession grants in a Claude Session, that a command-route edit-mode answer records Auto unless a decision was recorded meanwhile or Auto/full access stands, and that the delegated respond route and the inbox send it as accept. The setApprovalMode, acknowledgement and inbox-closing claims are unaffected. Fixture tests only; no provider dispatched."
       ]
     },
     {
@@ -25245,7 +25308,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/orchestration-session-state.ts",
@@ -25345,7 +25408,8 @@
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata to acp-adapter.ts. The document's statements about ACP as an external-engine protocol and about approval policy boundaries are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) made mcpUiToolCallDecision private and removed the isDistinctFrameOrigin re-export from MCPToolUIFrame.tsx without changing behavior. The sandboxed-frame and mcp-tool-ui renderer claims still hold. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: the regenerated MCP content changes only the StationHomeArchive and verification-coordinator module topics, carrying reviewed module-map corrections. The manual's catalog and credential-free claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through e464b7065: station-docs-mcp-server.test.ts drops the PERMITTED installation statement for the deleted PluginForegroundRuns topic (#2900); the remaining permission and architecture statements are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through e464b7065: station-docs-mcp-server.test.ts drops the PERMITTED installation statement for the deleted PluginForegroundRuns topic (#2900); the remaining permission and architecture statements are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Its approval-policy and plugin-approval topics stay at their explanatory scope and do not describe session answers. Prose accurate."
       ]
     },
     {
@@ -25423,7 +25487,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/persisted-random-identifier.ts",
@@ -25447,7 +25511,8 @@
         "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-        "Integration source review through d72f79b08: #2904's orchestration-service changes cover approval-posture confinement, the grantor and the revocation reset, with no telemetry emission, activation, precedence, queue or shutdown changes. The documented caller order and generated inventory still hold. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904's orchestration-service changes cover approval-posture confinement, the grantor and the revocation reset, with no telemetry emission, activation, precedence, queue or shutdown changes. The documented caller order and generated inventory still hold. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. No telemetry instrument, attribute or queue is added. Prose accurate."
       ]
     },
     {
@@ -26382,7 +26447,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/services/orchestration/session-command-module.ts",
@@ -26401,7 +26466,8 @@
         "Integration source review through e0314c727: module-map.md replaced CollaborativeEditorPane with ProjectTaskRoom and dropped PluginForegroundRuns. The concepts guide neither links module-map nor mentions those modules, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904's session-command-module change only adds the starter's clientOrigin to the startSession receipt. The guide's continued-turn identity, engine choice, receipt and startup-network claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes parseTsxVersion in packages/cli/src/commands/lifecycle-doctor.ts module-private. The change only removes an export: doctor output is unchanged. The guide's `station doctor` and terminal-readiness claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through 2ef40ae83: docs/architecture/module-map.md changed only its StationHomeArchive purpose (the separate update-backup schema) and its verification-coordinator import-direction wording. This document references neither section, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Integration source review for #2915 on d0ca944c5: orchestration-service.ts and routes/orchestration/orchestration.ts (#2915, owner decision): the command route marks its respondToRequest dispatch with approvalModeAuthority (the route and session authorization a setApprovalMode Auto pick needs); with it, an acceptForSession answer whose grant (toolRequestSessionGrantFromPayload over the open request.opened, read with the standing posture decision before the answer is sent) is edit-mode records an auto session.approval-mode-set after the adapter has taken the answer, through recordApprovalModeDecision based on that earlier decision, so a decision recorded meanwhile refuses it; never over a standing auto or never. The delegated respond path and the approval inbox record nothing, and the inbox card omits the auto-accept action. This document's claims do not depend on how a session answer is recorded or on the approval posture it sets; prose accurate."
       ]
     },
     {
@@ -26434,7 +26500,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
+          "digest": "9f33af47e095a19cfac27de49b5502a71bb1b1410c510dbf83956dcb8c5cb534"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -26482,7 +26548,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-ui/src/components/attention/RequestInspectionDialog.css",
@@ -26608,7 +26674,9 @@
         "Integration source review through d72f79b08: #2904 changes useChatInput's refused queued full-access pick to add a structured refusal notice ('pick-not-applied') in place of the fixed note, and adds grantor and revocation logic to orchestration-service. The guide makes no full-access refusal claim; its first-run, file-mention, conversation-picker and approval-inspection claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 (#2907) makes parseTsxVersion module-private in packages/cli/src/commands/lifecycle-doctor.ts without changing its behavior; prose accurate: the `./station doctor` guidance is unchanged. Source review is separate from executed test evidence.",
-        "Integration source review through 5731eba07: #2881 makes a same-channel installer rerun for a launcher-run archive service stage the version and hand off to the launcher, which trials it and rolls back on failure. It also adds the service launcher env passthrough in lifecycle.ts. #2914 makes isPortableDraftShortcut in ChatInputArea non-exported. 'Run the installer again in the same channel to update safely' remains true. Archive upgrade and service details are deferred to release-channel-ports.md, which is not in this group. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 5731eba07: #2881 makes a same-channel installer rerun for a launcher-run archive service stage the version and hand off to the launcher, which trials it and rolls back on failure. It also adds the service launcher env passthrough in lifecycle.ts. #2914 makes isPortableDraftShortcut in ChatInputArea non-exported. 'Run the installer again in the same channel to update safely' remains true. Archive upgrade and service details are deferred to release-channel-ports.md, which is not in this group. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It tells users to choose Approve once or Deny after reviewing a request; both actions behave as before. Prose accurate."
       ]
     },
     {
@@ -26789,7 +26857,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/runtime/routes/runtime-routes.ts",
@@ -26809,7 +26877,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/services/orchestration/workspace-identity.ts",
@@ -26831,7 +26899,8 @@
         "Reviewed integration deltas: src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/runtime/routes/runtime-routes.ts: Reviewed real callbacks: Project default environment logic moved into its existing factory unchanged; unused memoize re-export removed; Agent writes read current Station default approval; station-control command targets now resolve exact thread ownership/Project and host posture. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
         "Integration source review through d72f79b08: in cli.ts, #2904 only routes describeCliError through explainFullAccessRefusal first. runtime-routes and orchestration-service gained the full-access refusal, revocation and reset logic. None of these touch checkpoint capture, restore preview and refusal, or the `station checkpoints restore` authentication and preview gaps the page describes. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 42491ca6b: cf43e14d0 adds recognizeCredential in runtime-routes.ts, which changes the status for a recognized but unadmitted credential from 401 to 403. The checkpoint capture, preview and CLI authentication-gap claims do not depend on that status. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 42491ca6b: cf43e14d0 adds recognizeCredential in runtime-routes.ts, which changes the status for a recognized but unadmitted credential from 401 to 403. The checkpoint capture, preview and CLI authentication-gap claims do not depend on that status. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. Checkpoint capture and restore do not touch request answers or the approval posture. Prose accurate."
       ]
     },
     {
@@ -27474,7 +27543,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
+          "digest": "9f33af47e095a19cfac27de49b5502a71bb1b1410c510dbf83956dcb8c5cb534"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -27576,7 +27645,8 @@
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
-        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915 on d0ca944c5: docs/learn/media.json changed only the two inspect-request captures: their orchestration-service.ts source digest, re-stamped after review (they show a request inspected and closed without a decision; the service change is on the answer path), and their reviewedRevision, set to the base commit d0ca944c5 this review cites. This document's claims are unaffected."
       ]
     },
     {
@@ -28137,7 +28207,7 @@
         },
         {
           "path": "src-server/providers/adapters/claude-adapter.ts",
-          "digest": "8c2e64cf114d77a4abed03c0a4614f146c0fe43841829db0354fd366c116c69c"
+          "digest": "0772f558e4ff4af8adb075bbb672dc1b5e09314bfac6d08be9e57816bd556317"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
@@ -28181,7 +28251,7 @@
         },
         {
           "path": "src-server/routes/orchestration/orchestration.ts",
-          "digest": "224ffd999ff8bc00a2d847f74b068875c6c930bc73de5e5e2617e3edf66067de"
+          "digest": "57dffc8e47f9937f751d070d42bbdc843f1c12123f98fc0c75607f7cac0cc550"
         },
         {
           "path": "src-server/routes/system/system-status-routes.ts",
@@ -28261,7 +28331,7 @@
         },
         {
           "path": "src-server/services/orchestration/orchestration-service.ts",
-          "digest": "618f943f6d3d3f058ee976cfed175bda3fae7d9ff754c98c79a4f4696513f14d"
+          "digest": "ca96c2ff1197557b5b350e9579d034e5edb4ed1e48ce4b7ca7602dc3512274c2"
         },
         {
           "path": "src-server/tools/station-control-catalog-tools.ts",
@@ -28372,7 +28442,8 @@
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: claude-adapter dropped the stdio `mintStationControlCallerToken` fallback and kept in-process station-control. native-engine-adoption and runtime-startup un-exported or inlined helpers with the same behavior. ApiBaseContext removed a legacy notification_watch comment. The README describes a Station-engine Agent's allowlist, approvals and dispatch authority, which these changes do not affect. Source review is separate from executed test evidence.",
         "Integration source review through d72f79b08: #2904 adds decision actor attribution and fullAccessDefaultSource to approval-posture, grantor stamping and revocation reset to orchestration-service, and grantor-check wiring to runtime-initialize. The README's auto-approved metadata reads, approval and caller-authority limits, dispatch authority and 'no unattended grants' claims are unchanged. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 84d56b9a8: e1af43c2c and 7cd4892e5 change approval acknowledgement reporting in the acp, claude and codex adapters and the codex transport, and add decision-delivery fields to delegation snapshots. The README's claims (the auto-approve allowlist, approval still required for delegation, dispatch authority, no delegation JSON field) are unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through 84d56b9a8: e1af43c2c and 7cd4892e5 change approval acknowledgement reporting in the acp, claude and codex adapters and the codex transport, and add decision-delivery fields to delegation snapshots. The README's claims (the auto-approve allowlist, approval still required for delegation, dispatch authority, no delegation JSON field) are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration review for #2915/#2916 on d0ca944c5: The code change: session answers (respondToRequest) compute a shared session grant; an edit-mode answer records an auto approval-mode decision only through the command route (and only if no decision was recorded meanwhile) and is otherwise sent as a one-call accept; the Claude adapter keeps a requested mode apart from the engine-reported mode. It states four metadata reads are auto-approved and the rest remain subject to approval and the caller's authority; still true. Prose accurate."
       ]
     },
     {

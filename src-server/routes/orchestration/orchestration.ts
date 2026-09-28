@@ -4125,6 +4125,12 @@ export function createOrchestrationRoutes(
           ...(command.type === 'adoptSession' && fullAccessGrant
             ? { fullAccessGrant }
             : {}),
+          // #2915: this route's authorization is the one `setApprovalMode`
+          // uses (an Auto pick needs nothing beyond it), so an answer sent
+          // here may record the Auto posture an edit-mode answer implies.
+          ...(command.type === 'respondToRequest'
+            ? { approvalModeAuthority: true as const }
+            : {}),
           ...(command.type === 'respondToRequest' &&
           command.expectedRequestEventId !== undefined
             ? {

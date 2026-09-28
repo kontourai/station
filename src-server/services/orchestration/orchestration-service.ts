@@ -106,6 +106,7 @@ import {
 import type { SessionBuilderRunView } from '@kontourai/station-contracts/workflow';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
+import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
@@ -225,7 +226,11 @@ import {
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
 import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
-import { ApprovalPosture, approvalKnobSupported } from './approval-posture.js';
+import {
+  ApprovalPosture,
+  type ApprovalPostureDecision,
+  approvalKnobSupported,
+} from './approval-posture.js';
 import {
   type AdoptionConfinement,
   AttachedSessionAdoption,
@@ -5776,6 +5781,15 @@ export class OrchestrationService {
       ownerAttribution?: StartOwnerAttribution;
       /** #2493: see `SessionCommandContext.fullAccessGrant`. */
       fullAccessGrant?: FullAccessGrant | null;
+      /**
+       * #2915: set only by a caller that already holds `setApprovalMode`
+       * authority on this session. The orchestration command route sets it
+       * for `respondToRequest`, which passed the same route and session
+       * authorization an Auto pick needs there. An edit-mode session answer
+       * records Auto only with it; from any other path it is a one-call
+       * `accept`.
+       */
+      approvalModeAuthority?: true;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -7273,6 +7287,24 @@ export class OrchestrationService {
               }
             }
           }
+          // #2915: read before the answer resolves the request. An
+          // "Auto-accept file edits for this session" answer lasts until the
+          // user changes mode only because it records Auto, which needs
+          // `setApprovalMode` authority. Without it (the delegated respond
+          // path, the approval inbox) the answer is a one-call `accept`, so
+          // the engine is never switched to acceptEdits with no decision to
+          // undo it. With it, the standing decision is kept: any decision
+          // recorded while the engine takes the answer wins.
+          const editModeAnswer = this.isEditModeSessionAnswer(
+            command,
+            adapter.provider,
+          )
+            ? context?.approvalModeAuthority === true
+              ? { standing: this.approvalPosture.decision(command.threadId) }
+              : 'downgrade'
+            : undefined;
+          const decision =
+            editModeAnswer === 'downgrade' ? 'accept' : command.decision;
           // #2344: an adapter that records the decision itself (the Station
           // agent's ApprovalRegistry) attributes the approving device, as the
           // old `/tool-approval` path did. Passed only when there is one, so
@@ -7281,15 +7313,22 @@ export class OrchestrationService {
             ? adapter.respondToRequest(
                 command.threadId,
                 command.requestId,
-                command.decision,
+                decision,
                 { clientOrigin: context.clientOrigin },
               )
             : adapter.respondToRequest(
                 command.threadId,
                 command.requestId,
-                command.decision,
+                decision,
               ));
           this.assertAdapterCurrentAfterCommand(adapter);
+          if (editModeAnswer && editModeAnswer !== 'downgrade')
+            this.recordEditModeAutoPosture(
+              command.threadId,
+              adapter.provider,
+              editModeAnswer.standing,
+              context,
+            );
           this.persistReceipt(receipt);
           return { receipt, result: undefined };
         }
@@ -8496,6 +8535,78 @@ export class OrchestrationService {
       this.sessionReadModel.get(threadId)?.provider ??
       this.options.eventStore?.readSessionByThread(threadId)?.provider
     );
+  }
+
+  /**
+   * #2915 (owner decision): an "Auto-accept file edits for this session"
+   * answer lasts until the user changes mode. Whether this answer is one: a
+   * session answer whose grant (`toolRequestSessionGrantFromPayload`, the
+   * computation the approval surfaces and the Claude adapter use) is
+   * `edit-mode`, read from the request as it stands before it is answered.
+   */
+  private isEditModeSessionAnswer(
+    command: {
+      threadId: string;
+      requestId: string;
+      decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+    },
+    provider: EngineId,
+  ): boolean {
+    if (command.decision !== 'acceptForSession') return false;
+    if (!approvalKnobSupported(provider)) return false;
+    let current: ReturnType<EventStore['readCurrentRequestEvent']> | undefined;
+    try {
+      current = this.options.eventStore?.readCurrentRequestEvent(
+        command.threadId,
+        command.requestId,
+      );
+    } catch {
+      return false;
+    }
+    if (current?.state !== 'found') return false;
+    const opened = current.event.payload;
+    return (
+      opened.method === 'request.opened' &&
+      toolRequestSessionGrantFromPayload(opened.payload) === 'edit-mode'
+    );
+  }
+
+  /**
+   * #2915 (owner decision): once the engine has taken an edit-mode answer,
+   * record an `auto` posture decision for the conversation exactly as a
+   * composer pick of Auto would, so the chip, later turns and their metadata
+   * agree with the engine and picking Ask ends it. Only a caller holding
+   * `setApprovalMode` authority gets here (`approvalModeAuthority`). A
+   * standing `auto` or `never` is left alone (the answer never tightens a
+   * posture). `standing` was read before the answer was sent. Any decision
+   * recorded since (Ask, Auto or full access) wins: nothing is recorded, and
+   * the next turn re-applies it.
+   */
+  private recordEditModeAutoPosture(
+    threadId: string,
+    provider: EngineId,
+    standing: ApprovalPostureDecision | undefined,
+    context:
+      | { clientOrigin?: ClientOrigin; principal?: PrincipalRef }
+      | undefined,
+  ): void {
+    if (standing?.approvalMode === 'auto' || standing?.approvalMode === 'never')
+      return;
+    // The compare-and-set admits a pick at least as strict as a newer
+    // decision (Auto over a newer full access), so a newer decision of any
+    // kind is checked here, in the same synchronous step as the append.
+    if (
+      this.approvalPosture.decision(threadId)?.sequence !== standing?.sequence
+    )
+      return;
+    this.recordApprovalModeDecision({
+      threadId,
+      provider,
+      approvalMode: 'auto',
+      basedOnSequence: standing?.sequence ?? null,
+      ...(context?.clientOrigin ? { clientOrigin: context.clientOrigin } : {}),
+      ...(context?.principal ? { principal: context.principal } : {}),
+    });
   }
 
   /**
