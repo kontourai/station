@@ -3540,6 +3540,14 @@ partial; the response says which content could not be supplied.
 See the [SDK client](../../packages/sdk/src/client/pull-request-review.ts) and
 [forge review adapter](../../src-server/services/pull-requests/pull-request-review.ts).
 
+`usePullRequestMergeabilityQuery(provider, host, owner, repo, project, config)`
+reads a repository's open pull requests narrowed to `PullRequestBranchMergeability`.
+Its key, `pullRequestMergeabilityQueryKey`, names the project and repository and
+no Session, so every observer of one repository shares one cache entry. It
+resolves the checkout from the project alone. `QueryConfig.refetchOnWindowFocus`
+opts one read back into refetching a stale answer when the window returns;
+Station's client default leaves it off.
+
 ## Conversation pull-request links
 
 `@kontourai/station-sdk/conversation-pull-request-links` reads, links, and
