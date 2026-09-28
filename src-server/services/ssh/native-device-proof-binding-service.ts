@@ -6,12 +6,14 @@ import {
 } from 'node:crypto';
 import {
   closeSync,
-  existsSync,
+  constants,
   fchmodSync,
   fsyncSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -26,6 +28,8 @@ import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 const BINDINGS_SCHEMA_VERSION = 1 as const;
 const BINDINGS_FILE = 'native-device-proof-bindings.json';
 const PRIVATE_FILE_MODE = 0o600;
+const MAX_BINDINGS = 4096;
+const MAX_STORE_BYTES = 1024 * 1024;
 const CLIENT_INSTANCE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BASE64URL_32_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -119,9 +123,10 @@ const OPERATOR_AUTHORITY_TOKEN = Symbol(
 );
 
 /**
- * Capability that mints operator approval contexts. It is handed only to the
- * trusted operator seam; a saved profile, broker route grant, account
- * session, or legacy Device bearer never confers one.
+ * In-process approval context factory for a future trusted operator seam.
+ * The factory checks the operator principal ID and rejects raw request data;
+ * it does not authenticate a caller. The route must verify a current operator
+ * credential and an explicit approval action before calling this method.
  */
 export class NativeDeviceProofOperatorAuthority {
   approve(input: {
@@ -182,17 +187,60 @@ interface BindingStoreFile {
 }
 
 function isValidStoredJwk(value: unknown): value is NativeDeviceProofPublicJwk {
-  if (typeof value !== 'object' || value === null) return false;
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return false;
   const jwk = value as Record<string, unknown>;
-  return (
-    jwk.kty === 'EC' &&
-    jwk.crv === 'P-256' &&
-    typeof jwk.x === 'string' &&
-    BASE64URL_32_PATTERN.test(jwk.x) &&
-    typeof jwk.y === 'string' &&
-    BASE64URL_32_PATTERN.test(jwk.y) &&
-    !('d' in jwk)
-  );
+  if (
+    Object.keys(jwk).sort().join(',') !== 'crv,kty,x,y' ||
+    !(
+      jwk.kty === 'EC' &&
+      jwk.crv === 'P-256' &&
+      typeof jwk.x === 'string' &&
+      BASE64URL_32_PATTERN.test(jwk.x) &&
+      typeof jwk.y === 'string' &&
+      BASE64URL_32_PATTERN.test(jwk.y)
+    )
+  )
+    return false;
+  try {
+    const exported = createPublicKey({ key: jwk, format: 'jwk' }).export({
+      format: 'jwk',
+    }) as {
+      kty?: string;
+      crv?: string;
+      x?: string;
+      y?: string;
+    };
+    return (
+      exported.kty === 'EC' &&
+      exported.crv === 'P-256' &&
+      exported.x === jwk.x &&
+      exported.y === jwk.y
+    );
+  } catch {
+    return false;
+  }
+}
+
+function privateSidecarStatus(path: string): 'missing' | 'valid' {
+  let status: ReturnType<typeof lstatSync>;
+  try {
+    status = lstatSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'missing';
+    throw new NativeDeviceProofBindingError('store_unavailable');
+  }
+  if (
+    !status.isFile() ||
+    status.isSymbolicLink() ||
+    status.nlink !== 1 ||
+    status.size > MAX_STORE_BYTES ||
+    (process.platform !== 'win32' &&
+      ((status.mode & 0o777) !== PRIVATE_FILE_MODE ||
+        status.uid !== process.getuid?.()))
+  )
+    throw new NativeDeviceProofBindingError('store_unavailable');
+  return 'valid';
 }
 
 function cloneBinding(stored: StoredBinding): NativeDeviceProofBinding {
@@ -225,7 +273,7 @@ export class NativeDeviceProofBindingStore {
   /** Strict load: corruption and version drift fail closed, never to empty. */
   load(): StoredBinding[] {
     if (this.#bindings) return this.#bindings;
-    if (!existsSync(this.#filePath)) {
+    if (privateSidecarStatus(this.#filePath) === 'missing') {
       this.#bindings = [];
       return this.#bindings;
     }
@@ -238,15 +286,29 @@ export class NativeDeviceProofBindingStore {
     if (
       typeof parsed !== 'object' ||
       parsed === null ||
+      Array.isArray(parsed) ||
+      Object.keys(parsed).sort().join(',') !== 'bindings,schemaVersion' ||
       (parsed as BindingStoreFile).schemaVersion !== BINDINGS_SCHEMA_VERSION ||
-      !Array.isArray((parsed as BindingStoreFile).bindings)
+      !Array.isArray((parsed as BindingStoreFile).bindings) ||
+      (parsed as BindingStoreFile).bindings.length > MAX_BINDINGS
     ) {
       throw new NativeDeviceProofBindingError('store_unavailable');
     }
     const bindings: StoredBinding[] = [];
+    const activePairs = new Set<string>();
+    const bindingIds = new Set<string>();
     for (const raw of (parsed as BindingStoreFile).bindings) {
       if (!this.#isValidStoredBinding(raw)) {
         throw new NativeDeviceProofBindingError('store_unavailable');
+      }
+      if (bindingIds.has(raw.bindingId))
+        throw new NativeDeviceProofBindingError('store_unavailable');
+      bindingIds.add(raw.bindingId);
+      if (raw.state === 'active') {
+        const pair = JSON.stringify([raw.deviceId, raw.clientInstanceId]);
+        if (activePairs.has(pair))
+          throw new NativeDeviceProofBindingError('store_unavailable');
+        activePairs.add(pair);
       }
       bindings.push(raw);
     }
@@ -255,44 +317,83 @@ export class NativeDeviceProofBindingStore {
   }
 
   persist(bindings: StoredBinding[]): void {
-    this.#bindings = bindings;
+    if (bindings.length > MAX_BINDINGS)
+      throw new NativeDeviceProofBindingError('store_unavailable');
     const file: BindingStoreFile = {
       schemaVersion: BINDINGS_SCHEMA_VERSION,
       bindings,
     };
     const body = `${JSON.stringify(file, null, 2)}\n`;
+    if (Buffer.byteLength(body) > MAX_STORE_BYTES)
+      throw new NativeDeviceProofBindingError('store_unavailable');
     mkdirSync(dirname(this.#filePath), { recursive: true, mode: 0o700 });
+    const parent = lstatSync(dirname(this.#filePath));
+    if (
+      !parent.isDirectory() ||
+      parent.isSymbolicLink() ||
+      (process.platform !== 'win32' &&
+        ((parent.mode & 0o777) !== 0o700 || parent.uid !== process.getuid?.()))
+    )
+      throw new NativeDeviceProofBindingError('store_unavailable');
+    // Refuse an unsafe existing target before publishing a replacement.
+    privateSidecarStatus(this.#filePath);
     const tempPath = `${this.#filePath}.${randomUUID()}.tmp`;
-    const fd = openSync(tempPath, 'w', PRIVATE_FILE_MODE);
+    let fd: number | undefined;
     try {
+      fd = openSync(
+        tempPath,
+        constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
+        PRIVATE_FILE_MODE,
+      );
       writeFileSync(fd, body);
       fsyncSync(fd);
-      fchmodSync(fd, PRIVATE_FILE_MODE);
-    } finally {
+      if (process.platform !== 'win32') fchmodSync(fd, PRIVATE_FILE_MODE);
       closeSync(fd);
+      fd = undefined;
+      renameFileSyncRetrying(tempPath, this.#filePath);
+      this.#bindings = bindings;
+    } finally {
+      if (fd !== undefined) closeSync(fd);
+      rmSync(tempPath, { force: true });
     }
-    renameFileSyncRetrying(tempPath, this.#filePath);
   }
 
   #isValidStoredBinding(raw: unknown): raw is StoredBinding {
-    if (typeof raw !== 'object' || raw === null) return false;
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw))
+      return false;
     const b = raw as Record<string, unknown>;
     return (
+      Object.keys(b).sort().join(',') ===
+        (b.state === 'active'
+          ? 'approvedAt,approvedBy,bindingId,clientInstanceId,createdAt,deviceId,deviceProof,deviceScopeAtApproval,state,stationId'
+          : 'approvedAt,approvedBy,bindingId,clientInstanceId,createdAt,deviceId,deviceProof,deviceScopeAtApproval,revocationReason,revokedAt,state,stationId') &&
       typeof b.bindingId === 'string' &&
       BINDING_ID_PATTERN.test(b.bindingId) &&
+      typeof b.deviceProof === 'object' &&
+      b.deviceProof !== null &&
+      !Array.isArray(b.deviceProof) &&
+      Object.keys(b.deviceProof).sort().join(',') === 'jwk,thumbprint' &&
       isValidStoredJwk((b.deviceProof as { jwk?: unknown } | undefined)?.jwk) &&
       typeof (b.deviceProof as { thumbprint?: unknown }).thumbprint ===
         'string' &&
+      (b.deviceProof as { thumbprint: string }).thumbprint ===
+        p256Thumbprint(
+          (b.deviceProof as { jwk: NativeDeviceProofPublicJwk }).jwk,
+        ) &&
       typeof b.deviceId === 'string' &&
       typeof b.stationId === 'string' &&
       typeof b.clientInstanceId === 'string' &&
       CLIENT_INSTANCE_ID_PATTERN.test(b.clientInstanceId) &&
-      typeof b.createdAt === 'number' &&
-      typeof b.approvedAt === 'number' &&
-      typeof b.approvedBy === 'string' &&
+      Number.isSafeInteger(b.createdAt) &&
+      Number.isSafeInteger(b.approvedAt) &&
+      b.approvedBy === LOCAL_OPERATOR_PRINCIPAL_ID &&
       typeof b.deviceScopeAtApproval === 'string' &&
+      parsePairingScope(b.deviceScopeAtApproval) !== null &&
       (b.state === 'active' || b.state === 'revoked') &&
-      (b.state === 'active' || typeof b.revokedAt === 'number')
+      (b.state === 'active' ||
+        (Number.isSafeInteger(b.revokedAt) &&
+          (b.revocationReason === 'operator-revoked' ||
+            b.revocationReason === 'replaced')))
     );
   }
 }
@@ -315,9 +416,9 @@ export class NativeDeviceProofBindingService {
   /**
    * Create (or replace) the native Device proof binding for one client
    * instance on an already-approved Device grant. Requires an explicit
-   * operator approval context minted by {@link NativeDeviceProofOperatorAuthority};
-   * every other authority path — profile, broker route, account session,
-   * legacy Device bearer — has no way to produce one.
+   * operator approval context minted by {@link NativeDeviceProofOperatorAuthority}.
+   * The future route must establish that authority independently of a saved
+   * profile, broker route grant, account session, or legacy Device bearer.
    */
   createBinding(input: {
     deviceId: string;
@@ -338,7 +439,7 @@ export class NativeDeviceProofBindingService {
     if (typeof stationId !== 'string' || stationId.length === 0) {
       throw new NativeDeviceProofBindingError('station_unavailable');
     }
-    const bindings = this.#store.load();
+    const bindings = structuredClone(this.#store.load());
     const now = this.#now();
     for (const existing of bindings) {
       if (
@@ -378,7 +479,7 @@ export class NativeDeviceProofBindingService {
       throw new NativeDeviceProofBindingError('invalid_operator_approval');
     }
     input.approval.consume();
-    const bindings = this.#store.load();
+    const bindings = structuredClone(this.#store.load());
     const now = this.#now();
     const revoked: NativeDeviceProofBinding[] = [];
     for (const existing of bindings) {

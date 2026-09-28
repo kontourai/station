@@ -3,7 +3,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -149,6 +151,104 @@ describe('native device proof binding service (station#2893)', () => {
     );
     expect(current.device.id).toBe(deviceId);
     expect(current.device.scope).toBe(DEFAULT_GRANT_PAIRING_SCOPE);
+  });
+
+  test('a failed replacement write leaves the last committed binding current', () => {
+    const { homeDir, pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const first = bindingService.createBinding({
+      deviceId,
+      clientInstanceId: CLIENT_INSTANCE_ID,
+      jwk: p256PublicJwk(),
+      approval: mintApproval(),
+    });
+    const path = join(homeDir, 'security', BINDINGS_FILE);
+    const backup = join(homeDir, 'security', 'binding-backup.json');
+    renameSync(path, backup);
+    mkdirSync(path);
+    try {
+      expect(() =>
+        bindingService.createBinding({
+          deviceId,
+          clientInstanceId: CLIENT_INSTANCE_ID,
+          jwk: p256PublicJwk(),
+          approval: mintApproval(),
+        }),
+      ).toThrow();
+    } finally {
+      rmSync(path, { recursive: true });
+      renameSync(backup, path);
+    }
+    expect(
+      bindingService.requireCurrentBinding({
+        deviceId,
+        clientInstanceId: CLIENT_INSTANCE_ID,
+      }).binding.bindingId,
+    ).toBe(first.bindingId);
+  });
+
+  test('reopen refuses a symlinked sidecar even when its target is valid', () => {
+    const { homeDir, pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    bindingService.createBinding({
+      deviceId,
+      clientInstanceId: CLIENT_INSTANCE_ID,
+      jwk: p256PublicJwk(),
+      approval: mintApproval(),
+    });
+    const path = join(homeDir, 'security', BINDINGS_FILE);
+    const backup = join(homeDir, 'sidecar-target.json');
+    renameSync(path, backup);
+    symlinkSync(backup, path);
+    expect(() =>
+      new NativeDeviceProofBindingService({
+        homeDir,
+        pairing,
+      }).requireCurrentBinding({
+        deviceId,
+        clientInstanceId: CLIENT_INSTANCE_ID,
+      }),
+    ).toThrow('store_unavailable');
+  });
+
+  test('reopen refuses a substituted thumbprint or two active bindings for one Device and client', () => {
+    const { homeDir, pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    bindingService.createBinding({
+      deviceId,
+      clientInstanceId: CLIENT_INSTANCE_ID,
+      jwk: p256PublicJwk(),
+      approval: mintApproval(),
+    });
+    const path = join(homeDir, 'security', BINDINGS_FILE);
+    const original = JSON.parse(readFileSync(path, 'utf8'));
+    const tampered = structuredClone(original);
+    tampered.bindings[0].deviceProof.thumbprint = 'A'.repeat(43);
+    writeFileSync(path, JSON.stringify(tampered));
+    expect(() =>
+      new NativeDeviceProofBindingService({
+        homeDir,
+        pairing,
+      }).requireCurrentBinding({
+        deviceId,
+        clientInstanceId: CLIENT_INSTANCE_ID,
+      }),
+    ).toThrow('store_unavailable');
+    const duplicated = structuredClone(original);
+    duplicated.bindings.push({
+      ...duplicated.bindings[0],
+      bindingId: randomUUID(),
+    });
+    writeFileSync(path, JSON.stringify(duplicated));
+    expect(() =>
+      new NativeDeviceProofBindingService({
+        homeDir,
+        pairing,
+      }).requireCurrentBinding({
+        deviceId,
+        clientInstanceId: CLIENT_INSTANCE_ID,
+      }),
+    ).toThrow('store_unavailable');
   });
 
   test('revoke fails closed on later queries and refuses double revoke', () => {
@@ -413,7 +513,7 @@ describe('native device proof binding service (station#2893)', () => {
     ).toBeNull();
   });
 
-  test('operator approval cannot be bypassed through the service API', () => {
+  test('raw request data cannot stand in for an operator approval context', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const forged = {
