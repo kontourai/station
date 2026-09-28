@@ -54,6 +54,74 @@ the saved route cannot serve as an ordinary connection or CLI default yet.
 See [Connections](connections.md) for route storage, key approval, and the
 remaining native transport boundary.
 
+### What a paired device may do, and full access
+
+A paired device holds scopes: `orchestration:read`, `orchestration:operate`,
+`terminal:operate`, and the elevated ones the operator adds to an
+already-paired device (`station environment access scopes` lists them all with
+their meanings). The operator changes them per device on the Station's own
+host:
+
+```bash
+station environment access devices
+station environment access scope <device> --add approval:full-access
+station environment access scope <device> --remove approval:full-access
+```
+
+or, in the Station desktop app on that host, from the Station name (top
+right) → **Paired devices** → the device → **Change access**.
+
+**Full access** (`approval:full-access`) is the scope that lets a device put a
+chat, or an Agent's default, at approval mode `never`: the agent runs with no
+sandbox and no approval prompts, as the operator. A device without it that
+asks for full access is refused (`approval-full-access-not-granted`). The
+refusal names the device (its short id, and its name shown as plain text),
+the Station that refused, and the exact command above, and it separates what
+the caller asked for from what only the operator can grant. In a chat the
+message is not sent and the chat is not marked failed: the draft returns to
+the composer, with an explicit choice to send it at the chat's current mode. An Agent never gets full access through any
+grant; a person has to choose it. Nothing is retried at another approval mode.
+
+Removing the scope, whether with `--remove`, `--set` or in the desktop app,
+takes back the full access that device had already given (owner decision,
+#1796). Revoking the whole device does the same. For every conversation the
+device had put at full access (its own full-access decision, its Auto
+decision on a session it had unconfined, or a session it started at full
+access), Station records a new decision of **Ask**, attributed to the
+operator's revocation. Nothing is deleted from the conversation's history.
+
+The sessions its grant had unconfined also run confined again (inside the
+workspace), because Station checks the grant each time it hands the engine a
+posture. That happens at every turn while a decision stands, and at the
+session's next start. A turn already running finishes. The next turn is
+confined and asks. The command lists these conversations as re-confined.
+
+One case waits: a running session with no decision standing, at full access
+only because of its Agent's or the Station's default. Station re-applies no
+posture on a turn of such a session, so it stays unconfined until its engine
+restarts. It is listed as "still unconfined".
+
+Some conversations stay at full access, and the command lists them without
+changing them:
+
+- a full-access decision the operator or another device made;
+- another person's session whose full access comes only from its Agent's or
+  the Station's default;
+- a decision recorded before Station kept track of who made it;
+- a live session started at full access before Station recorded who granted
+  it ("unattributed host start"). At most 50 of these are listed, with the
+  total.
+
+The scope command prints both lists, and the desktop app shows the same after
+the change.
+
+Only the operator in person or a paired device can give a session full access
+when it starts. A caller that may choose full access but is neither (for
+example an account session that holds the scope) now starts its new sessions
+confined. They run at full access only if a full-access decision is recorded
+for the conversation, and that decision's actor is recorded as unknown, not
+as a device, so revoking a device does not reset it.
+
 ## Relationship table
 
 | | Direction | Trust model | What it unlocks | Persistence |

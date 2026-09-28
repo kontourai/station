@@ -484,6 +484,32 @@ describe('StarterRegistry', () => {
     expect(dispatch.mock.calls[0]?.[1].ownerUserId).toBe('owner-1');
   });
 
+  it('#1796: the dispatch carries the server-derived origin, never one the body sent', async () => {
+    const { registry, dispatch } = await fixture();
+    const serverOrigin = {
+      version: 1,
+      actor: { kind: 'device', deviceId: 'device-1' },
+      reported: { version: 1, surface: 'unknown', build: null },
+    } as const;
+    await registry.launchStartTask(
+      {
+        starterId: 'start-task',
+        operationId: 'launch-origin',
+        task: { projectId: 'project-1', title: 'First task' },
+        dispatch: {
+          clientOrigin: {
+            ...serverOrigin,
+            actor: { kind: 'operator' },
+          },
+        } as never,
+      },
+      null,
+      { ownerUserId: 'owner-1' },
+      serverOrigin,
+    );
+    expect(dispatch.mock.calls[0]?.[1].clientOrigin).toEqual(serverOrigin);
+  });
+
   it('preserves indeterminate dispatch without an automatic retry', async () => {
     const { registry, dispatch } = await fixture();
     dispatch.mockResolvedValueOnce({

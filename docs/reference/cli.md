@@ -2058,6 +2058,9 @@ station environment offer [--tailscale] [--tailscale-serve-port=<port>]
 station environment access list [--api-base=<loopback-url>|--station=<name>]
 station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
 station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
+station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
+station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
+station environment access scopes [--json]
 station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
 station environment hosts [--api-base=<url>]
 station environment list [--api-base=<url>]
@@ -2113,6 +2116,28 @@ station environment peers remove <environment-id>
   `STATION_HOME=<home> --api-base=<loopback-url>` for it instead
   (station#4515). `approve`/`deny` accept either id printed by `access list`
   — the request id or the offer id — or `--latest`.
+- `access devices`/`scope`/`scopes` manage what each paired device may do, on
+  the same host-only operator channel (#1796). `access devices` lists the live
+  paired devices with id, name, last seen and scopes. `access scope` adds,
+  removes or sets scopes on one device, named by its id, a unique id prefix,
+  or its exact name (an ambiguous prefix or name is refused). Every scope is
+  checked against the real vocabulary, `access:manage` is never grantable to a
+  device, the new scope is computed from the device's current one and sent
+  with the scope it replaces, so a change another operator made meanwhile is
+  refused rather than overwritten (rerun to apply yours). `--dry-run` prints
+  before and after without changing anything. `access scopes` lists every
+  scope with its meaning. Full access is one scope among them:
+  `station environment access scope <device> --add approval:full-access`
+  lets that device put a chat, or an Agent's default, at full access;
+  `--remove approval:full-access` takes it back, and resets to Ask every
+  conversation that device had put at full access (a running turn finishes
+  first). The command prints what it reset and what stays at full access
+  for another reason (the operator's or another device's decision, an Agent or
+  Station default, or a session with no recorded grantor). If that reset
+  failed, running `--remove approval:full-access` again on the device re-runs
+  it; re-running changes nothing already reset. A paired remote CLI cannot run
+  these verbs: they refuse a non-loopback target before reading any
+  credential.
 - `environment peers` manages the **outbound** peer-credential store: the
   credentials this Station presents when it delegates to another Station, as
   opposed to the inbound device credentials `access`/pairing issues. `peers add`
