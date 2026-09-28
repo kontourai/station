@@ -581,7 +581,7 @@ describe('plugin CLI API authority', () => {
   });
 
   test('does not fall back to direct filesystem mutation when Station is down', async () => {
-    const home = mkdtempSync(join(TEST_TEMP_ROOT, 'home-'));
+    const home = join(TEST_TEMP_ROOT, 'station-down-home');
     const pluginDir = join(home, 'plugins', 'demo');
     mkdirSync(pluginDir, { recursive: true });
     writeFileSync(
