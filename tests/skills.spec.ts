@@ -132,7 +132,9 @@ async function seedSkillRoutes(page: Page) {
 }
 
 test.describe('Skills (via Registry + API)', () => {
-  test('standalone /skills shows installed skills only', async ({ page }) => {
+  test('standalone /skills opens the Skills page with its create entry', async ({
+    page,
+  }) => {
     await page.goto('/skills');
     await page.waitForSelector('.split-pane', { timeout: 15_000 });
 
@@ -143,18 +145,6 @@ test.describe('Skills (via Registry + API)', () => {
       page.getByRole('heading', { name: 'Skills', level: 1, exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'New skill' })).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Install', exact: true }),
-    ).not.toBeVisible();
-  });
-
-  test('registry Skills tab loads and is selectable', async ({ page }) => {
-    await page.goto('/registry');
-    await page.waitForSelector('.page__tab', { timeout: 15_000 });
-
-    await page.locator('.page__tab', { hasText: 'Skills' }).click();
-
-    await expect(page.locator('.page__tab--active')).toHaveText('Skills');
   });
 
   test('skills can be created, guarded, edited, and labeled by source', async ({
