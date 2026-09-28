@@ -694,6 +694,7 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'scripts/__tests__/dogfood-evidence-retention.test.ts',
   'scripts/__tests__/gate-scope.test.ts',
   'scripts/__tests__/ios-agent-activity-assets.test.ts',
+  'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/module-entry.scan.test.ts',
   'scripts/__tests__/product-docs-source-links.test.ts',
   // Copies the whole tracked tree and runs the repo-governance lane CLI on it.

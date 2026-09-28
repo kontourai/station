@@ -18637,7 +18637,7 @@
     {
       "path": "docs/guides/testing.md",
       "documentDigest": "448b9fe89cc9b69b0359f6a024b196bf4f5a1a45b5387d54e8dba4aae9141849",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "sourceRevision": "c3da3fc177a0756c95efb28caa786cdd24a8cfb3",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
@@ -18802,6 +18802,14 @@
         {
           "path": "scripts/__tests__/prepush-typecheck.test.ts",
           "digest": "c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650"
+        },
+        {
+          "path": "scripts/test-impact-manifest.mjs",
+          "digest": "942822c2085254fd195334aa4ab234adec7a805d4d3c29f3e447e9f67d6d57ed"
+        },
+        {
+          "path": "scripts/__tests__/path-read-pin-boundary.test.ts",
+          "digest": "1c2068b6c79847fb6aaa62cc510bd362906afa6481cc13273643e5ec2c28c597"
         }
       ],
       "checks": [
@@ -18823,7 +18831,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Reviewed incoming direct documentation statics and removal of docs-only whole-diff deferral; required Veritas still owns the full docs aggregate. Updated current contributor guidance and generated schedule; existing trial timings retain their historical scope. Reviewed incoming test changes at their real callers: consolidated or stronger assertions preserve documented behavior. Source inspection does not renew executed-test receipts. Reviewed changed canonical prose, incoming removal of the unmounted Reviews tab, public evidence limits and dated generated deployment additions where applicable. Unchanged linked claims need no token prose edit.",
         "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
         "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
-        "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution."
+        "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+        "Hosted Windows floor caught three missing directory-walk classifications. Registered the real learning-media repository scan in REPO_SCAN_SUITES; classified the pre-push and Knowledge identity walks only after tracing their temporary fixture roots. The detector is unchanged and an independent review confirmed the scope. A broader local selector group also hit the existing 30-second representative CLI fixture timeout; the unchanged direct CLI diagnostic completed its real focused target, and that timeout receipt is retained rather than relabeled as a pass."
       ]
     },
     {
