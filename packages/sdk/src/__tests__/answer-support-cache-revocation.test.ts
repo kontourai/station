@@ -136,6 +136,97 @@ describe('answer-support full Task cache revocation', () => {
   );
 });
 
+describe('answer-support mounted observer withholding', () => {
+  // A seeded observer refetches; every render is recorded so a single
+  // committed render that hands back the stale rows is caught. The fetch is
+  // held open so the refetching render commits before the response lands.
+  async function refetchThrough(failure: Response, settlesInError: boolean) {
+    let release: (response: Response) => void = () => undefined;
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ success: true, data: [{ id: 'bundle-a' }] }),
+          { status: 200 },
+        ),
+      )
+      .mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = resolve;
+          }),
+      );
+    vi.stubGlobal('fetch', fetch);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client }, children);
+    const renders: Array<{
+      status: string;
+      isFetching: boolean;
+      data: unknown;
+    }> = [];
+    const observer = renderHook(
+      () => {
+        const query = useAnswerSupportBundlesQuery(taskId, referenceA);
+        renders.push({
+          status: query.status,
+          isFetching: query.isFetching,
+          data: query.data,
+        });
+        return query;
+      },
+      { wrapper },
+    );
+    await waitFor(() =>
+      expect(observer.result.current.data).toEqual([{ id: 'bundle-a' }]),
+    );
+    const seen = renders.length;
+
+    void observer.result.current.refetch();
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(renders.slice(seen).some((r) => r.isFetching)).toBe(true),
+    );
+    await act(async () => release(failure));
+    // An authority loss evicts the entry, so the observer restarts on a fresh
+    // query instead of settling in an error render.
+    if (settlesInError)
+      await waitFor(() =>
+        expect(renders.slice(seen).some((r) => r.status === 'error')).toBe(
+          true,
+        ),
+      );
+    return { after: renders.slice(seen), client };
+  }
+
+  it('withholds stale rows while a seeded observer refetches', async () => {
+    const { after } = await refetchThrough(
+      failure(404, 'Answer support unavailable'),
+      false,
+    );
+    for (const render of after.filter((r) => r.isFetching))
+      expect(render.data).toBeUndefined();
+  });
+
+  it('withholds stale rows in the error render of a non-authority failure', async () => {
+    const { after, client } = await refetchThrough(
+      failure(500, 'Internal error'),
+      true,
+    );
+    // A 500 is not an authority loss, so nothing evicts the entry: the cache
+    // still holds the rows and only the observer gate keeps them unrendered.
+    expect(
+      client.getQueryData(
+        answerSupportQueries.bundles(taskId, referenceA).queryKey,
+      ),
+    ).toEqual([{ id: 'bundle-a' }]);
+    for (const render of after.filter((r) => r.status === 'error'))
+      expect(render.data).toBeUndefined();
+  });
+});
+
 function protectedKeys() {
   return [
     answerSupportQueries.cards(taskId).queryKey,
