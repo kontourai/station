@@ -12,13 +12,37 @@ import {
   type SafeToolResultProjection as SafeToolResult,
   SafeToolResultProjection,
 } from '@kontourai/thread';
+import { envelopeError, type StationHttpError } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 
 export class TaskToolResultRequestError extends Error {
-  constructor(readonly status: number) {
+  readonly status: number;
+  /**
+   * The refusal's machine `code` and `Retry-After`, when Station answered
+   * (#2708). The message stays generic on purpose: nothing the route sent
+   * about protected content crosses this seam.
+   */
+  readonly code?: string;
+  readonly retryAfterMs?: number;
+
+  /** `0` when no response was observed; else the envelope helper's error. */
+  constructor(answer: number | StationHttpError) {
     super('Tool result unavailable');
     this.name = 'TaskToolResultRequestError';
+    this.status = typeof answer === 'number' ? answer : answer.status;
+    if (typeof answer !== 'number') {
+      if (answer.code !== undefined) this.code = answer.code;
+      if (answer.retryAfterMs !== undefined)
+        this.retryAfterMs = answer.retryAfterMs;
+    }
   }
+}
+
+/** The observed answer, withholding everything the route said but its code. */
+function answered(response: Response, body?: unknown): StationHttpError {
+  return envelopeError(response, body, 'Tool result unavailable', {
+    message: 'Tool result unavailable',
+  });
 }
 type Envelope = { success: boolean; data?: unknown };
 export type TaskToolResultProjection =
@@ -88,12 +112,12 @@ async function unwrap<T>(
   try {
     body = (await response.json()) as Envelope;
   } catch {
-    throw new TaskToolResultRequestError(response.status);
+    throw new TaskToolResultRequestError(answered(response));
   }
   const data =
     body?.success === true && body.data !== undefined ? parse(body.data) : null;
   if (!response.ok || !data)
-    throw new TaskToolResultRequestError(response.status);
+    throw new TaskToolResultRequestError(answered(response, body));
   return data;
 }
 async function protectedRead<T>(

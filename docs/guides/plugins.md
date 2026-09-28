@@ -283,6 +283,24 @@ Two constraints govern what can appear in a manifest, both enforced by tests:
 - **`build` is rejected.** `buildPlugin` refuses any manifest declaring a host
   shell build. Ship a prebuilt bundle or use a Station-supported entrypoint.
 
+Entry `source` values (plugins and `tools`) are confined by
+`JsonManifestRegistryProvider` in
+`src-server/providers/registries/json-manifest-registry.ts`:
+
+- **A local manifest's sources are plain directories inside the registry
+  root**, which is the parent of the manifest's directory. That is why the
+  bundled catalogs can name `../minimal-layout`. Relative and absolute paths
+  are both checked after following symlinks.
+- **Git sources must be remote URLs** (`https://`, `ssh://`, or
+  `git@host:path`). A local source whose path ends in `.git`, contains `#`, or
+  holds a `.git` entry (a working checkout) is refused, as is a `file:` URL.
+  Both `.git` checks cover every spelling a filesystem may read as `.git`
+  (case, trailing dots, `git~1`, and code points HFS+ ignores).
+- **A hosted manifest never names local paths.** A relative source resolves as
+  a URL on the manifest's host.
+
+A refused entry stays listed without a source, and installing it reports why.
+
 ### Install and use a bundled layout
 
 Registry is the discovery and installation surface; **Plugins** is the
@@ -889,9 +907,16 @@ Plugins can declare dependencies on other plugins. The server resolves and insta
 ```
 
 - If `source` is provided and the dependency isn't installed, it's cloned and installed automatically
-- Relative dependency sources resolve from the declaring local plugin directory
-  but must remain inside its physical sibling package root; traversal and
-  symlinked ancestors are refused
+- Local dependency sources, relative or absolute, resolve from the declaring
+  local plugin directory and must stay inside its sibling package root (the
+  directory holding the declaring plugin, judged through its real path).
+  Traversal and symbolic links below that root are refused
+- A local dependency is copied as a plain directory, never cloned, and every
+  `.git` entry in it is left out, so a sibling that is its own git checkout
+  still works. A declared path ending in `.git` or containing `#` is refused:
+  name a git dependency by its remote URL (`https://…` or `git@host:path`)
+- A plugin fetched from a remote source may declare only remote dependency
+  sources, and so may each of its remote dependencies
 - If no `source`, the server tries the configured registry
 - Dependencies are resolved recursively (cycle detection included)
 - `station plugin preview <source>` shows dependency resolution status, exact content digest, and dependency-specific permissions before install
@@ -1004,6 +1029,19 @@ DELETE /api/plugins/:name
 # Check for updates across all plugins
 GET /api/plugins/check-updates
 ```
+
+Update, update checks, git details, and the changelog read only the plugin
+directory's own repository (its `.git`). A plugin without one reports no git
+details and has no git update source, even when the Station home sits inside
+another git checkout.
+
+A local folder that an open install proposal names (one an agent asked for)
+is copied with every `.git` entry left out, at any depth, and a proposed local
+git repository is refused. The preview reports `gitMetadata: "excluded"` in
+that case, and the install's `consent` sends it back, so both stage the same
+bytes. Such a plugin has no git update source; reinstall it from its folder to
+update it. An install from your own path, with no proposal naming it, keeps
+its `.git`.
 
 ### What Happens on Install
 

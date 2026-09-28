@@ -1,10 +1,8 @@
 // Core (framework-agnostic)
 
 export {
-  bindHostTunnelAccess,
   createDirectHttpAccessMethod,
   createHostTunnelAccessMethod,
-  requiresHostAdapter,
 } from './core/accessMethods';
 
 export type {
@@ -74,10 +72,8 @@ export {
   connectionFailureCopy,
   createAccessEndpoint,
   endpointId,
-  FAILURE_COPY_REASONS,
   inferEndpointKind,
   rankCompatibleEndpoints,
-  selectCompatibleEndpoint,
 } from './core/environmentProfiles';
 export { HEALTH_PROBE_TIMEOUT_MS } from './core/healthProbe';
 export {
@@ -126,10 +122,8 @@ export { completePendingPairing } from './core/pendingPairingCompletionLoader';
 // (`npm run ui-bundle:budget`) even though nothing in the eager path ever
 // referenced it. See `./core/knownEnvironmentRegistry.ts` for the module.
 export {
-  type CredentialVaultBackend,
   defaultCredentialStorage,
   defaultStorage,
-  HydratedCredentialStorage,
   LocalStorageAdapter,
   RejectingCredentialStorage,
   SessionStorageAdapter,
@@ -154,7 +148,6 @@ export type {
   HostTunnelAccessMethod,
   InjectedConnection,
   InjectedConnectionStatus,
-  ResolvedHostTunnelAccess,
   SavedConnection,
   SavedStationEdit,
   SavedStationRemoval,

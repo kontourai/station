@@ -22,9 +22,33 @@ Serving points at the same database and provisions nothing:
 
 `init` publishes the private credential bundle before committing its hashes to SQLite. A retry reuses only an exact existing bundle for the same scope and routing generation. A conflicting or older routing generation refuses. `serve` never provisions or rotates credentials.
 
+One broker database can hold multiple independently scoped Stations. Run `init`
+once for each Station, using a separate owner-only init file and a separate
+owner-only credentials file for each one; keep the `databasePath` identical
+and give each provision record its own Station ID, enrollment ID, routing
+generation, and approved browser Origin. Each init file still contains exactly
+one provision record. For example, make private `station-a/init.json` and
+`station-b/init.json` files with the same database path and different
+`credentialsPath` and `provision` values, then run:
+
+```sh
+npm run broker:self-hosted -- init /srv/station-broker/station-a/init.json
+npm run broker:self-hosted -- init /srv/station-broker/station-b/init.json
+npm run broker:self-hosted -- serve /srv/station-broker/serve.json
+```
+
+The two credential bundles remain separate and each operator command is bound
+to the exact scope named in its own config. A credential for Station A cannot
+read or mutate Station B's lease. `serve` uses the shared database and does
+not need either Station's credentials. Keep all config and credential
+directories owner-only; do not put both Stations' secrets in a shared bundle.
+This local CLI flow proves database and credential scoping, not public
+deployment, multi-operator administration, remote reachability, or backup and
+restore.
+
 Connector and routing credentials are separate 256-bit secrets. Every request must match the credential direction, Station, enrollment, routing generation, and configured Origin. Browser preflight admits only an active configured Origin and the three required headers. Provisioning leaves a Station `offline`; an authenticated connector registration makes the current routing generation `online` for 30 seconds. `online` describes recent connector registration, not application readiness or permission. Registration is the presence heartbeat; lease renewal is separate. A composed supervisor must refresh both.
 
-This tranche provisions one operator-owned routing credential for one Station and browser Origin. It is not per-Device enrollment or revocation, does not bootstrap an account, and does not complete routine fresh-client onboarding. The connector and optional Pion runtime below consume this routing scope. The broker cannot mint or replace independently approved connection-signing trust.
+Each `init` invocation provisions one operator-owned routing credential for one Station and browser Origin. Multiple invocations may use the same broker database as described above. This is not per-Device enrollment or revocation, does not bootstrap an account, and does not complete routine fresh-client onboarding. The connector and optional Pion runtime below consume each routing scope. The broker cannot mint or replace independently approved connection-signing trust.
 
 ## Native routing grant foundation (v2)
 
@@ -216,6 +240,31 @@ origin policy, Device grants and account-provider configuration must separately
 admit the browser. No CORS, membership or authentication permission is added by
 the connector. `maxPeers` and `maxPeerLifetimeMs` are independently optional with
 the defaults shown; heartbeat, renewal and offer polling use 5s, 10s and 1s.
+
+An operator may additionally opt in one exact native v2 client surface by adding
+this field to the connector file:
+
+```json
+{
+  "nativeClient": {
+    "kind": "station-native",
+    "appIdentifier": "io.example.station",
+    "channel": "stable",
+    "clientInstanceId": "8b9c86cf-e65a-4aad-983b-82bb03960ad1",
+    "keyThumbprint": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "maxPeers": 4
+  }
+}
+```
+
+Use the actual approved client identity and proof-key thumbprint; the sample is
+not a credential. The native peer limit defaults to four and is capped at 32.
+Without `nativeClient`, Station does not poll or answer native application
+offers. With it, the connector answers only that surface under its current
+Station signing trust. This opt-in does not issue the native routing grant,
+approve a Device, authenticate a person or grant Project access. A packaged
+native client journey still requires the host-owned grant and account wiring
+described above; this source configuration alone is not onboarding.
 
 The config, credential bundle and certificate/key files must be bounded regular
 files in private owner-held directories, with no symlinks or hardlinks. The

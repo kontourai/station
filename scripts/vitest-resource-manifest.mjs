@@ -122,6 +122,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Runs the real portable-archive smoke against a fake archive whose start fails.
+  'scripts/__tests__/portable-smoke-diagnostics.test.ts',
+  // Copies the tracked tree and runs the repo-governance lane CLI twice (clean and violating).
+  'scripts/__tests__/proof-family-route-error-egress.test.ts',
   // Real CLI prerequisite probes, a loopback listener, and the SQLite runtime owner.
   'src-server/tools/__tests__/station-control-delegation.provider-quota-connected.test.ts',
   // Creates FIFOs with mkfifo to prove plugin validation refuses them without blocking.
@@ -193,6 +197,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Type-only child_process import; the macro's spawn boundary is simulated
   // with streams, so this adds no real child launches or timing assertion.
   'scripts/__tests__/run-connected-agent-tests.test.ts',
+  // Owns a real detached process group with a delayed sidecar-like descendant
+  // to prove shell cleanup waits for descendants before removing its root.
+  'scripts/__tests__/tauri-shell-fixture-cleanup.test.ts',
   // Real peer EventStores share one disposable SQLite home and survive owner death.
   'src-server/services/plugins/__tests__/package-mcp-admission.test.ts',
   'src-server/services/plugins/__tests__/plugin-tree-v2-compatibility.test.ts',
@@ -209,12 +216,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Builds two tiny real repositories to prove CLI artifact provenance ignores
   // hostile inherited Git routing and sees a staged dirty index.
   'packages/cli/src/__tests__/build-metadata.test.ts',
-  // Builds throwaway Git repositories and runs the gate as a child process, so
-  // the real exit status is what the assertions read; process ownership is the
-  // behavior under test, not a helper.
-  'scripts/__tests__/literal-swap-gate.test.ts',
-  // Same shape: throwaway Git repositories, and the real-time wait gate run
-  // as a child process so its exit status (0/1/2) is what is asserted.
+  // Builds throwaway Git repositories and runs the real-time wait gate as a
+  // child process, so its exit status (0/1/2) is what the assertions read.
   'scripts/__tests__/test-realtime-wait-gate.test.ts',
   // station#1648: runs the Playwright install script as a child process behind
   // a fake `npx` on PATH, because the exit status and the argv it really
@@ -246,6 +249,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Two bounded, short-lived Node probes prove per-process stdio caller
   // separation while sharing one fixture internal credential; no real services.
   'src-server/tools/__tests__/station-control-caller-binding.process.test.ts',
+  // #2377: one bounded Node child runs the stdio entry's credential install
+  // and the stdio tools' own REST helper against an in-process guard, proving
+  // a real pooled child reaches reads only; no real services.
+  'src-server/security/__tests__/station-control-authority-pooled-child.process.test.ts',
   // station#4457 drives the registry bridge's stdin/stdout entry point through
   // bounded single-shot Node children to prove exact success/refusal protocol
   // envelopes; every child exits after its one requested operation.
@@ -275,6 +282,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2923: imports commands/service.ts, whose production command probe
   // uses spawnSync; the direct-import detector cannot see that child seam.
   'packages/cli/src/__tests__/service.test.ts',
+  // station#2689: builds a real git checkout fixture (git init/commit/rev-parse)
+  // and drives the real lifecycle stamp check, which runs `git rev-parse HEAD`.
+  'packages/cli/src/__tests__/service-build-stamp.test.ts',
+  // station#2689: drives runCli through commands/service.ts (spawnSync seam,
+  // as service.test.ts) for every source-checkout service entry point.
+  'packages/cli/src/__tests__/service-dev-home-entry-points.test.ts',
   // station#2928: the offline ConfigLoader path writes a real Station home
   // through the mutation-identity boundary, not an in-memory config double.
   'packages/cli/src/__tests__/config.test.ts',
@@ -297,6 +310,16 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Drives the changed-verification CLI through spawnSync against a real
   // fixture worktree to prove its dependency and selection behavior.
   'scripts/__tests__/changed-verification.test.ts',
+  // #2709: drives the sharded fast-checks CLI (plan identity via `git
+  // rev-parse`, the aggregator's exit status) as child processes against
+  // throwaway Git repositories, and plans one real selection through related
+  // discovery, which is itself a Vitest child. Single-shot spawns, no
+  // wall-clock assertion.
+  'scripts/__tests__/fast-checks-shard-cli.test.ts',
+  // #2709 re-land: runs the aggregator's real base-controlled bash/jq step
+  // from ci.yml against simulated job results. Single-shot spawns, no
+  // wall-clock assertion.
+  'scripts/__tests__/ci-fast-checks-job-graph.test.ts',
   // Builds a disposable diverged Git graph and runs real Git commands to
   // distinguish candidate-only changes from base-only and direct-push ranges.
   'scripts/__tests__/classify-ci-change.test.ts',
@@ -321,9 +344,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // read. Both are the contract — the reporter must never fail a job it only
   // reports on — and neither is observable from an imported function.
   'scripts/__tests__/verification-gate-summary.test.ts',
-  // #3208: same shape one gate over — runs each static gate it lists as a real
-  // child process, so the list cannot name a script that no longer resolves.
+  // archive#3208: same shape one gate over — parses each static gate it lists in a
+  // real child process, so the list cannot name a script that no longer
+  // resolves, and runs the guard's own CLI against stub gates.
   'scripts/__tests__/prepush-static-gates.test.ts',
+  // Runs the lazy-boundary ratchet against this repository as one bounded
+  // single-shot node child.
+  'scripts/__tests__/lazy-boundary-ratchet.test.ts',
   // station 2026-08-28: same shape again — the commit-subject gate's CLI and
   // its .githooks/commit-msg wrapper run as bounded single-shot children so
   // the refusal path's exit STATUS is proven, not just the pure validator;
@@ -349,6 +376,29 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and its EXIT STATUS are proven, not just its pure decision functions.
   // Bounded single-shot children per case.
   'scripts/__tests__/test-temp-dir-ratchet.test.ts',
+  // #2176: its real-tree half, split out for the repo-scans job; same
+  // `git ls-files`/child-process shape as the file above.
+  'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // Runs the type-laundering gate as a real child process from a checkout
+  // path containing a space (known-bad and clean control) so the entry check
+  // that made it a silent no-op is proven, not just the scanner. Two bounded
+  // single-shot children.
+  'scripts/__tests__/type-laundering-gate.process.test.ts',
+  // #2176: spawns the repo-scans runner through a symlink (`--list`, no
+  // Vitest child) to prove its entrypoint guard reaches the runner.
+  'scripts/__tests__/run-repo-scan-suites.test.ts',
+  // #2682: runs real `node` entry points from temp paths with a space, a `%`
+  // and a symlink to prove `invokedDirectly` reaches the script body.
+  // Bounded single-shot children per case.
+  'scripts/__tests__/module-entry.test.ts',
+  // #2682: runs the real a11y ratchet (one Biome lint over the tree) as a
+  // child process with an empty PATH to prove it needs no npx shim.
+  'scripts/__tests__/a11y-ratchet.test.ts',
+  // #2682: asks the real fallow CLI (`<subcommand> --help`, no writes) to
+  // accept each baseline invocation as built.
+  'scripts/__tests__/fallow-baseline.test.ts',
+  // #2682: the real-tree half — one `git ls-files` over scripts/ and ops/.
+  'scripts/__tests__/module-entry.scan.test.ts',
   // station#1137: same shape again — the crypto.randomUUID guard is driven as
   // a real child process against throwaway git repositories so its `FAIL:`
   // sentence and its EXIT STATUS are proven, not just its pure decision
@@ -388,10 +438,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // point as one bounded single-shot node child; everything else in the file
   // exercises pure decision composition.
   'scripts/__tests__/gate-for.test.ts',
-  // station#2543: proves the instruction-topology gate's build-output skip
-  // holds when the gate module runs as a real child process, not just
-  // in-process — one bounded single-shot node child per fixture root.
-  'scripts/__tests__/agent-instructions-gate.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
   'scripts/__tests__/e2e-manifest.test.ts',
@@ -414,6 +460,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // throwaway git repository to prove its base snapshot lands in the Station
   // temp root rather than the system temp directory.
   'scripts/__tests__/fallow-base-cache.test.ts',
+  // Runs `install-script-generated.mjs --check` as a child against this
+  // checkout and a stale scratch copy, so the gate's exit status is proven.
+  'scripts/__tests__/install-script-generated.test.ts',
   // #90 lane C: launches a REAL installed Chrome/Edge (headless, pipe CDP,
   // its own temporary profile and loopback fixture servers) to prove the
   // server browser host's enforcement end to end: scheme blocking, download
@@ -465,12 +514,20 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2513: runs the ensure script once as a child process to prove a
   // refusal is a non-zero exit that leaves the spec untouched.
   'scripts/__tests__/ensure-ios-agent-activity-extension.test.ts',
+  // #2590: runs the exported-entitlements check once as a child process to
+  // prove the Notification Service Extension's refusal is a non-zero exit.
+  'scripts/__tests__/ios-exported-entitlements.test.ts',
   // station#3549: drives a single `git grep -l` through `execFileSync` to
   // discover every file that calls `adapter.startSession(` — the same "real
   // git, not a fixture" shape as gate-scope.test.ts above. Fix-forward: this
   // file landed via #3609 without a resource classification, which the
   // manifest gate itself requires for any direct child_process importer.
   'src-server/services/orchestration/__tests__/engine-start-seam.test.ts',
+  // #2707: builds the SDK barrel import graph from the real repository through
+  // `git ls-files` and `git grep -l` (via scripts/lib/sdk-barrel-selection.mjs)
+  // — the same enumeration the changed lane uses, so the oracle is what git
+  // reports, not a fixture. Three bounded single-shot children, once per file.
+  'scripts/__tests__/sdk-barrel-selection.repo.test.ts',
   // station#3615: deliberately mock-free — points the REAL claude/codex CLIs
   // at an empty config home to prove the signed-out exit-1 mapping, because
   // the mocked suite is exactly what let that conflation ship. Bounded
@@ -481,6 +538,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2822: shells out to the packaging dry-run and the publish
   // boundary script, so it spawns children like its install-script sibling.
   'scripts/__tests__/ecosystem-manifest.test.ts',
+  // #2675: runs the manifest signer CLI (sign, verify, assemble) as bounded
+  // single-shot children for each golden vector.
+  'scripts/__tests__/release-manifest-vectors.test.ts',
+  // #2675 slice E: drives the manifest signer and the Nightly publication
+  // helper CLIs as bounded single-shot children (dry-run sign and verify).
+  'scripts/__tests__/portable-nightly-publish-workflow.test.ts',
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',
@@ -517,11 +580,18 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture so launch-readiness retries are proven by its real exit status.
   'scripts/__tests__/nightly-android-install.test.ts',
   'scripts/__tests__/ios-store-signing-config.test.ts',
+  // Runs the TestFlight workflow's Live Activity resolve step through bash
+  // (which calls node) for each channel, so the enabled mapping is proven by
+  // executing the step rather than by matching its text.
+  'scripts/__tests__/testflight-live-activity-workflow.test.ts',
   // Runs the macOS Nightly build-only installer through a hermetic fixture
   // home and fake toolchain to prove owned staging/lock cleanup on failure.
   'ops/nightly/macos-build-only-cleanup.test.mjs',
   'ops/nightly/macos-build-only-artifact.test.mjs',
   'ops/nightly/macos-embedded-signing.test.mjs',
+  // Runs the signing-identity CLI as a child process so the installer's
+  // designated-requirement transition refusal is proven by its exit status.
+  'ops/nightly/macos-signing-identity.test.mjs',
   // Uses a real short-lived child that ignores SIGTERM so the notarization
   // runner proves its owned timeout escalation without relying on a mock.
   'ops/release/macos-notarized-artifacts.test.mjs',
@@ -593,6 +663,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // because the scan is `git grep` over TRACKED files and a fixture written
   // to a loose directory would prove nothing about what runs in CI.
   'scripts/__tests__/content-integrity-gate.test.ts',
+  // The excluded-names gate is `git grep` over TRACKED files too, so its test
+  // commits fixtures into throwaway repos and runs the gate as a child
+  // process to assert the real exit status. Single-shot spawns, no
+  // wall-clock assertions.
+  'scripts/__tests__/excluded-names-gate.test.ts',
+  // #2176: its real-tree half, split out for the repo-scans job; same
+  // `git ls-files`/child-process shape as the file above.
+  'scripts/__tests__/content-integrity-gate.scan.test.ts',
   // station#1792: drives the newly fixed ci:fast static entry against real
   // tracked NUL/clean fixture repositories. The child is single-shot and has
   // no wall-clock assertion, but still belongs in the bounded spawn pool.
@@ -638,6 +716,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // child process" shape as builder-delivery-viewer-import-gate.test.ts and
   // prepush-static-gates.test.ts above.
   'scripts/__tests__/test-import-existence-gate.test.ts',
+  // #2176: its real-tree half, split out for the repo-scans job; same
+  // `git ls-files`/child-process shape as the file above.
+  'scripts/__tests__/test-import-existence-gate.scan.test.ts',
   // #2333: runs the test-path import gate as a real child process against
   // throwaway git repos (known-bad fixtures and false-positive controls) and
   // against this repository, same shape as the entry above.
@@ -710,6 +791,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2928: retains the durable ConfigLoader/registry adoption seam;
   // production's default CLI detection reaches child_process transitively.
   'src-server/runtime/bootstrap/__tests__/native-engine-adoption.test.ts',
+  // #2663: real lookup against a temp HOME — may spawn a fake `$SHELL -ic`,
+  // and launches a fake `muse` through the production MuseAdapter spawn.
+  'src-server/runtime/bootstrap/__tests__/native-engine-adoption.path-resolution.process.test.ts',
   // station#3218: builds the store-integrity probe exactly as
   // `esbuild.config.mjs` does and runs that bundle as a REAL child against
   // real corrupt bytes, so its 0/1/2/3 exit contract is proven by an actual
@@ -876,6 +960,18 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/chatFeedback.geometry.test.tsx',
   // #2260: owns Chromium for actual mobile close-target geometry and hit testing.
   'src-ui/src/__tests__/ProjectSidebarHeader.mobileCloseGeometry.test.tsx',
+  // archive#3331: owns Chromium touch emulation for the sidebar reorder
+  // handle's coarse-pointer visibility, size and hit testing.
+  'src-ui/src/__tests__/ProjectSidebarReorder.coarseGeometry.test.tsx',
+  // #2062: owns Chromium touch emulation for the Boards row menu trigger's
+  // visibility, size, hit testing and clearance from the open menu.
+  'src-ui/src/__tests__/ProjectSidebarBoards.coarseGeometry.test.tsx',
+  // Owns Chromium to measure the legacy action-row wrap and touch-target
+  // floor against the real index.css cascade at a phone viewport.
+  'src-ui/src/__tests__/legacy-action-row.touch-target.test.ts',
+  // #90 D9: owns Chromium to measure the float pill's cascade-resolved
+  // control sizes at rest, hovered, focused and pressed.
+  'src-ui/src/float-over-chat/__tests__/FloatOverChat.touch-target.test.tsx',
   'src-ui/src/__tests__/ImportedConversationPane.test.tsx',
   // station#4474 H1 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to measure real cascade-resolved
@@ -949,6 +1045,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // is right that nothing here can see a `playwright-core` spawn, so an
   // omission is silent until the run is slow or flaky.
   'src-ui/src/__tests__/SplitPaneLayout.railName.overflow.test.tsx',
+  // Chromium hit-testing of the framed mobile detail sheet between a fixed
+  // toolbar and dock.
+  'src-ui/src/__tests__/SplitPaneLayout.mobileSheet-geometry.test.tsx',
   // #1536 F (round 3): same shape again — launches a real Chromium to read the
   // Layout menu's RESOLVED row/group borders. A text scan could not: the first
   // fix tied on specificity with a rule 90 lines below it and lost on source
@@ -975,6 +1074,19 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // declares. jsdom computes no layout and would report the pre-fix
   // edge-to-edge frame and the fixed one identically.
   'src-ui/src/workspace-panes/__tests__/WorkspacePaneRouteView.frame.test.tsx',
+  // #917: launches a real Chromium to measure whether the region fieldset
+  // holds its toggles' width in an over-full phone toolbar. jsdom computes no
+  // layout, and a rule-text check cannot see a cascade override.
+  'src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx',
+  // Same shape: launches a real Chromium to measure the setup-import
+  // stepper's heading action at the 640px breakpoint.
+  'src-ui/src/components/setup/__tests__/ExistingSetupImportStepper.test.tsx',
+  // #765 C1 and the collapsed bottom dock: both render the real region host in
+  // jsdom, then launch a real Chromium to lay that DOM out against index.css —
+  // whether the dock body scrolls inside the shell, and whether a collapsed
+  // bottom dock is its bar alone. A rule-text scan could not see an override.
+  'src-ui/src/app-shell/__tests__/ActivityRegionShell.dock-body.test.tsx',
+  'src-ui/src/app-shell/__tests__/CollapsedRegionDockBody.test.tsx',
   // Runs the full-regression phase driver CLI and real npm children, including
   // one it must kill at a deadline.
   'scripts/__tests__/run-full-regression-phases.test.ts',

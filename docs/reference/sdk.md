@@ -1182,6 +1182,37 @@ account cookies, proof verification or membership logic. See the
 [application-session protocol](../guides/deployment-authentication.md#application-sessions-over-virtual-transports)
 for expiry, origin, replay and revocation behavior.
 
+### Native Station account continuation (opt-in)
+
+`@kontourai/station-sdk/application-session-native` is the opt-in native v1
+account-continuation client for Station's own native installation surface. It
+consumes the `station.application-session-native/v1` contract and a
+**caller-supplied encrypted application-channel transport**
+(`NativeApplicationSessionTransportV1`); the client itself never opens an HTTP
+connection, never touches cookies, and never holds a broker bearer. The account
+proof key must be an **independent** non-extractable P-256 key from
+`createApplicationSessionKey()` — never the native broker route proof key. The
+caller owns the trust snapshot: exact Station ID, canonical HTTPS Station
+audience (or loopback HTTP for a local fixture), full approved native surface,
+and the approved Device ID; the
+snapshot is re-read before every operation and any mismatch (Station, audience,
+surface, device, key thumbprint, expiry, replayed challenge, reused JTI) fails
+closed.
+Exchange proofs sign the exact JSON serialization of provider credentials that
+Station forwards to the configured provider; request
+proofs bind method, path, audience, surface, device, continuation nonce and
+credential hash with a one-use JTI. Provider, Device, and Project authority
+remain separate: the continuation is not a bearer or Device grant, and this
+client implements no provider/Device/Project authority.
+
+```ts
+import { NativeApplicationSessionClient } from '@kontourai/station-sdk/application-session-native';
+
+const accounts = new NativeApplicationSessionClient(encryptedTransport, () => trustedSnapshot, key);
+const continuation = await accounts.exchange({ username, password });
+const headers = await accounts.headers(continuation, { method: 'GET', path: '/api/example' });
+```
+
 ### Fresh relay enrollment proof helpers
 
 `@kontourai/station-sdk/relay-enrollment` exposes `createRelayEnrollmentKey`,
@@ -2387,6 +2418,86 @@ Creates a layout context for use in layout plugins. Used internally by `LayoutPr
 
 ---
 
+## Refused requests
+
+`StationHttpError` (exported from `@kontourai/station-sdk` and
+`@kontourai/station-sdk/client`) is the error a refused Station request
+throws. Branch on its fields, never on the message text:
+
+```ts
+class StationHttpError extends Error {
+  readonly status: number;        // the observed HTTP status
+  readonly code?: string;         // the envelope's machine code
+  readonly details?: unknown;     // the envelope's `details`, as sent
+  readonly retryAfterMs?: number; // `Retry-After`, delta-seconds only
+}
+```
+
+Today every field is carried by the integration, review and workspace pane
+host action fetchers (built on `readEnvelopeOrThrow`), and by the scheduler,
+skills, knowledge, secret-binding, conversation, orchestration, plugin,
+Project (every fetcher built on `unwrapProjectResponse`), Agent, execution
+and Task output fetchers. The conversation, orchestration, Project and Agent
+fetchers used to throw a plain `Error` for a `200` carrying
+`{ success: false }`; that is now a `StationHttpError` with status `200` too. `respondToRequest`'s error still carries the failure
+`receipt`. `readEnvelopeOrThrow(response)`
+throws this error for a non-2xx response or for a body that is not
+`success: true`. A body that is not JSON keeps its status on a non-2xx; on a
+2xx it is a protocol failure and throws a plain `Error`. Other fetchers still
+throw their own errors — some a `StationHttpError` without `details`, some a
+plain `Error` or a family-specific subclass — and move onto the same fields
+in later releases, keeping their subclasses (#2708).
+
+Family subclasses are `StationHttpError`s too. The scheduler's
+`SchedulerResponseError` and its run errors (`SchedulerRunIndeterminateError`,
+`SchedulerRunFailedError`, `SchedulerRunRefusedError`) are built from the
+error the envelope helper made of the response, so they keep its status,
+`details` and `Retry-After`; a run error's `code` stays its own fixed value.
+`PluginCollectionHttpError` is built the same way: it keeps the envelope's
+`code` on the error and on its `envelope`, and keeps the refusal's `details`
+and `Retry-After`. `ChatHttpError`, thrown by the execution fetchers, now
+extends `StationHttpError`; `serverMessage` still holds the route's sentence,
+`stationEnvelope` is `false` when the body was not Station's answer (a proxy's
+HTML page keeps its status but proves nothing Station decided), and `ForegroundMessageIndeterminateError` keeps its `detail` and fixed
+`code`. Both still accept their positional constructor.
+`ProjectTaskRoomProtocolError` keeps the refusal's `status`, `code`, `details`
+and `Retry-After` when Station refused the request, and none of them for a
+malformed room response.
+
+Some fetchers withhold what a protected route said. `getInputReplyContext`
+throws a `StationHttpError`, and the Task and Session reference reads throw
+`TaskToolResultRequestError`, `TaskUserInputReferenceRequestError`,
+`TaskBasisRequestError`, `SessionOutputsRequestError` and
+`SessionInventoryRequestError` (plain `Error` subclasses). Each keeps the
+observed `status`, `code` and `retryAfterMs` under a fixed generic message,
+without `details`. A status of `0` on the reference errors means no response
+was observed.
+
+- `status` is the status the response actually carried. A route that answers
+  `200` with `{ success: false }` produces a `StationHttpError` whose status
+  is `200`, so a status check such as `status === 404` stays exact.
+- `code` is the top-level `code`, else the object `error`'s own `code`
+  (the runtime's `{"error":{"code":"authentication_required"}}`). A blank or
+  non-string code is absent.
+- `details` is present when the body carried one. For a validation refusal it
+  is `{ formErrors, fieldErrors }`.
+- The message is a summary — a string `error`, the object `error`'s
+  `message`, then its `code`, the top-level `message`, then the fetcher's
+  fallback — followed by the validation sentences, each named by its field:
+  `Validation failed: command Required, name Required`. The Station CLI prints
+  the same sentence. That form is for CLI and agent readers; field keys are
+  not copy.
+- To show a refusal to a person, read `details` with
+  `envelopeReasons(details)` from `@kontourai/station-sdk/client`: the
+  server's reason sentences, form-level first, each once, without keys.
+  `envelopeDetailsMessage(details)` returns the field-qualified part alone
+  (`command Required, name Required`), or `undefined`; the CLI builds its
+  message from it.
+- `apiErrorMessage(body, fallback)` and `envelopeErrorMessage(body,
+  fallback)` return the shown form for a body a caller has already parsed:
+  the reasons when there are any, else the summary. Their callers throw a
+  plain `Error` that keeps only this text.
+
 ## Utilities
 
 ### `ListenerManager`
@@ -2822,17 +2933,22 @@ backup manifest contents.
 
 `requestCoreUpdateStatus(apiBase?, signal?)` validates `GET
 /api/system/core-update` responses instead of casting them. Alongside the
-existing fields, `CoreUpdateStatus` carries four optional diagnostics:
+existing fields, `CoreUpdateStatus` carries five optional diagnostics:
 `serverIdentity` (the answering server's identity triple, from
 `@kontourai/station-contracts/system-status`), `provenanceIssue`
 (`'missing' | 'invalid-stamp'`, the typed reason the server's install
 provenance resolver minted), `technicalDetail` (the provenance detail or
 caught comparison diagnostic — filesystem paths live here, not in
-`message`), and `selfUpdateUnavailableReason` (why a desktop bundle refuses
-git-based self-update). The parser rejects a non-boolean `updateAvailable`
+`message`), `selfUpdateUnavailableReason` (why the server refuses to apply an
+update to itself, as text: a desktop bundle's self-update eligibility, or a
+source checkout running under a supervisor — the installed service or another
+supervising process), and
+`selfUpdateUnavailableCode` (the same refusal as a code: `'service-managed'`
+for the installed launchd/systemd service, `'supervised'` when only a
+supervisor PID is present). The parser rejects a non-boolean `updateAvailable`
 and malformed supplied counts, normalizes a malformed identity or an unknown
-provenance code to unavailable (`null` — an unknown code never reads as
-`'missing'`), accepts responses from older servers that omit the new fields
+provenance or refusal code to unavailable (`null` — an unknown code never
+reads as a specific one; the refusal text still accompanies it), accepts responses from older servers that omit the new fields
 entirely, and never infers `applyMethod` from `updateAvailable`. A non-ok
 HTTP status throws a `StationHttpError` before the body can read as success;
 a genuine `error` field still throws a plain `Error` with the server's

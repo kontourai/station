@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   deriveConfigHomeAffinity,
   resolveConfigHomeAffinity,
@@ -77,13 +78,12 @@ import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   __resetStationControlMcpTokensForTests,
-  mintStationControlStdioCallerToken,
+  mintStationControlMcpToken,
   revokeStationControlMcpToken,
   verifyStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
-import { STATION_CONTROL_CALLER_TOKEN_ENV } from '../../tools/station-control-shared.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
 import {
@@ -5211,7 +5211,6 @@ describe('ClaudeAdapter', () => {
       const createInProcessStationControl = vi.fn(() => instance);
       const adapter = new ClaudeAdapter({
         createInProcessStationControl,
-        mintStationControlCallerToken: () => 'must-not-be-used',
         revokeStationControlCallerToken: vi.fn(),
       });
       await adapter.startSession({
@@ -5349,11 +5348,7 @@ describe('ClaudeAdapter', () => {
     test('Station #90 lane D: a session whose station-control id is not the canonical built-in mints nothing', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const createInProcessStationControl = vi.fn();
-      const mintStationControlCallerToken = vi.fn(() => 'token');
-      const adapter = new ClaudeAdapter({
-        createInProcessStationControl,
-        mintStationControlCallerToken,
-      });
+      const adapter = new ClaudeAdapter({ createInProcessStationControl });
       await adapter.startSession({
         provider: 'claude',
         threadId: 'thread-impostor',
@@ -5370,7 +5365,6 @@ describe('ClaudeAdapter', () => {
         },
       });
       expect(createInProcessStationControl).not.toHaveBeenCalled();
-      expect(mintStationControlCallerToken).not.toHaveBeenCalled();
     });
 
     test('Station #90 lane D: stopSession revokes the credential even when no session record exists', async () => {
@@ -5389,9 +5383,11 @@ describe('ClaudeAdapter', () => {
       });
       let minted: string | undefined;
       const adapter = new ClaudeAdapter({
-        mintStationControlCallerToken: (threadId) => {
-          minted = mintStationControlStdioCallerToken(threadId);
-          return minted;
+        // The in-process channel production composes: creating the server
+        // mints the session's credential before query() runs.
+        createInProcessStationControl: (threadId) => {
+          minted = mintStationControlMcpToken(threadId, 'sdk-in-process').token;
+          return { connect: vi.fn(), close: vi.fn() };
         },
         revokeStationControlCallerToken: (threadId) =>
           revokeStationControlMcpToken(threadId),
@@ -5405,51 +5401,6 @@ describe('ClaudeAdapter', () => {
       ).rejects.toThrow('sdk refused options');
       expect(typeof minted).toBe('string');
       expect(verifyStationControlMcpToken(minted)).toBeUndefined();
-    });
-
-    test('Station #90 lane D: the stdio fallback child carries a per-session caller credential and its tenant, and stopSession revokes it', async () => {
-      __resetStationControlMcpTokensForTests();
-      mockQuery.mockReturnValue(createMockQuery([]));
-      const adapter = new ClaudeAdapter({
-        mintStationControlCallerToken: (threadId, tenant) =>
-          mintStationControlStdioCallerToken(threadId, tenant),
-        revokeStationControlCallerToken: (threadId) =>
-          revokeStationControlMcpToken(threadId),
-      });
-
-      await adapter.startSession({
-        provider: 'claude',
-        threadId: 'thread-caller-credential',
-        tenantExecutionContext: {
-          tenantId: 'alpha' as never,
-          source: 'request',
-        },
-        agent: { slug: 'my-agent', toolServers: stationControlToolServers },
-      });
-
-      const queryArgs = mockQuery.mock.calls[0][0] as {
-        options: {
-          mcpServers: Record<string, { env?: Record<string, string> }>;
-        };
-      };
-      const token =
-        queryArgs.options.mcpServers['station-control'].env?.[
-          STATION_CONTROL_CALLER_TOKEN_ENV
-        ];
-      expect(typeof token).toBe('string');
-      expect(verifyStationControlMcpToken(token)).toEqual({
-        sessionId: 'thread-caller-credential',
-        tenantExecutionContext: { tenantId: 'alpha', source: 'request' },
-      });
-      // The child's REST calls keep the tenant the token was minted for.
-      expect(
-        queryArgs.options.mcpServers['station-control'].env
-          ?.STATION_INTERNAL_TENANT,
-      ).toBe('alpha');
-      expect(queryArgs.options.mcpServers['third-party'].env).toBeUndefined();
-
-      await adapter.stopSession('thread-caller-credential');
-      expect(verifyStationControlMcpToken(token)).toBeUndefined();
     });
 
     test('reports an invalid HTTP tool server and still starts the session', async () => {
@@ -5661,6 +5612,87 @@ describe('ClaudeAdapter', () => {
       await iterator.next(); // session.started
       const configured = await iterator.next();
       expect(configured.value.metadata.appHome).toBe('global');
+    });
+  });
+
+  describe('connection env reaches the claude-auth readiness check', () => {
+    const makeTempDir = trackTempDirs();
+    let home: string;
+
+    // An isolated home with no ambient credentials: nothing on this host can
+    // make the negative control pass or the positive case pass by accident.
+    beforeEach(() => {
+      home = makeTempDir('station-claude-readiness-auth-');
+      vi.stubEnv('HOME', home);
+      vi.stubEnv('USERPROFILE', home);
+      vi.stubEnv('ANTHROPIC_API_KEY', undefined);
+      vi.stubEnv('ANTHROPIC_AUTH_TOKEN', undefined);
+      vi.stubEnv('CLAUDE_CONFIG_DIR', undefined);
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    // Drives the adapter's own readiness derivation and evaluates the auth
+    // detector it handed the shared prerequisite builder.
+    async function readinessAuthState(
+      connectionEnv: Record<string, string> | undefined,
+    ) {
+      mockBuildCliRuntimePrerequisites.mockResolvedValue([]);
+      const adapter = new ClaudeAdapter({
+        getConnectionEnv: async () => connectionEnv,
+        readBundledVersion: () => '2.1.224',
+      });
+      await adapter.getPrerequisites?.();
+      const detectAuthState =
+        mockBuildCliRuntimePrerequisites.mock.calls.at(-1)?.[0].detectAuthState;
+      return detectAuthState();
+    }
+
+    test('a proxy token in the connection env counts as authenticated', async () => {
+      await expect(
+        readinessAuthState({
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          ANTHROPIC_AUTH_TOKEN: 'cliproxy-local',
+          ANTHROPIC_API_KEY: '',
+        }),
+      ).resolves.toBe('authenticated');
+    });
+
+    test('without a connection env the same host is unauthenticated', async () => {
+      await expect(readinessAuthState(undefined)).resolves.toBe(
+        'unauthenticated',
+      );
+    });
+
+    test('an empty-string key in the connection env masks the inherited one', async () => {
+      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ambient');
+      await expect(readinessAuthState(undefined)).resolves.toBe(
+        'authenticated',
+      );
+      await expect(
+        readinessAuthState({
+          ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318',
+          ANTHROPIC_API_KEY: '',
+        }),
+      ).resolves.toBe('unauthenticated');
+    });
+
+    test('configHome is where readiness looks for the credentials file', async () => {
+      const configHome = join(home, 'claude-proxy');
+      mkdirSync(configHome, { recursive: true });
+      writeFileSync(
+        join(configHome, '.credentials.json'),
+        JSON.stringify({ claudeAiOauth: { accessToken: 'oauth-token' } }),
+      );
+      await expect(
+        readinessAuthState({ CLAUDE_CONFIG_DIR: configHome }),
+      ).resolves.toBe('authenticated');
+      // The same credentials outside the configured home are not found.
+      await expect(readinessAuthState(undefined)).resolves.toBe(
+        'unauthenticated',
+      );
     });
   });
 

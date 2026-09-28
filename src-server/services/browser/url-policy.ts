@@ -7,9 +7,8 @@
  * fails closed. Credentials embedded in a URL are refused rather than
  * stripped, so the caller learns their input was not what got loaded.
  *
- * Bare hosts are normalized the way t3code's `packages/shared/src/preview.ts`
- * does it (MIT, © 2026 T3 Tools Inc.): a loopback host becomes `http://`,
- * anything else `https://`.
+ * A bare host gets a scheme: a loopback host becomes `http://` (local dev
+ * servers rarely serve TLS), anything else `https://`.
  *
  * This module is pure. The same predicate ({@link isAllowedBrowserUrl}) runs
  * on already-parsed URLs reported by the browser (in-page navigations), so

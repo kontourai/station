@@ -28,14 +28,10 @@ import './DeviceHostsPanel.css';
  * another Mac or Linux machine reached over SSH, shown in the same Device
  * pane.
  *
- * Adapted in shape from t3code's device host settings
- * (apps/web/src/components/settings/DeviceHostsSettings.tsx and
- * DeviceHostEditor.tsx; MIT License, Copyright (c) 2026 T3 Tools Inc.):
- * a list with add/edit/remove and a per-host "Test connection" that shows
- * each step. Station differs: no key file is ever entered (the operator's
- * own ssh agent and config sign in), an unknown host key is a typed stop the
- * operator resolves in a terminal, and installing the hub there is an
- * explicit consent.
+ * A list with add/edit/remove and a per-host "Test connection" that shows
+ * each step. No key file is ever entered (the operator's own ssh agent and
+ * config sign in), an unknown host key is a typed stop the operator resolves
+ * in a terminal, and installing the hub there is an explicit consent.
  */
 
 const STEP_LABEL: Record<DeviceHostCheckStep['id'], string> = {

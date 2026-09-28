@@ -15,6 +15,7 @@ import {
   readSimulatorEntitlementSection,
   simulatorAgentActivityEntitlements,
   simulatorEntitlements,
+  simulatorExtensionEntitlements,
   verifyIosSimulator,
 } from '../ios-simulator-build.mjs';
 
@@ -173,6 +174,61 @@ test('preparation gives the Live Activity extension the development identity and
   });
 });
 
+test('preparation gives the Notification Service Extension the development identity and only the shared group (#2590)', () => {
+  const { root, apple } = fixture();
+  const extension = (type = 'app-extension') => ({
+    type,
+    platform: 'iOS',
+    settings: {
+      base: { STATION_APP_BUNDLE_IDENTIFIER: 'io.kontourai.station' },
+    },
+  });
+  const project = {
+    targets: {
+      station_iOS: {
+        type: 'application',
+        platform: 'iOS',
+        settings: { base: {} },
+      },
+      StationAgentActivity: extension(),
+      StationNotificationService: extension(),
+    },
+  };
+  writeFileSync(join(apple, 'project.yml'), YAML.stringify(project));
+  prepareIosSimulator({ root, run: vi.fn(() => '') });
+  const prepared = YAML.parse(readFileSync(join(apple, 'project.yml'), 'utf8'));
+  const base = prepared.targets.StationNotificationService.settings.base;
+  expect(base.STATION_APP_BUNDLE_IDENTIFIER).toBe(id);
+  expect(base['OTHER_LDFLAGS[sdk=iphonesimulator*]'].at(-1)).toBe(
+    '"$(PROJECT_DIR)/station_iOS/StationNotificationServiceSimulator.entitlements"',
+  );
+  const written = readFileSync(
+    join(apple, 'station_iOS/StationNotificationServiceSimulator.entitlements'),
+    'utf8',
+  );
+  expect(written).toContain(`<string>${id}.NotificationService</string>`);
+  expect(written).toContain(
+    `<array><string>${id}.agentactivity</string></array>`,
+  );
+  expect(simulatorExtensionEntitlements(id, 'NotificationService')).toEqual({
+    'application-identifier': `${id}.NotificationService`,
+    'keychain-access-groups': [`${id}.agentactivity`],
+  });
+  // A target of the wrong kind is refused, not prepared.
+  writeFileSync(
+    join(apple, 'project.yml'),
+    YAML.stringify({
+      targets: {
+        ...project.targets,
+        StationNotificationService: extension('framework'),
+      },
+    }),
+  );
+  expect(() => prepareIosSimulator({ root, run: vi.fn(() => '') })).toThrow(
+    'Expected the Notification Service app-extension target.',
+  );
+});
+
 test('a stable identifier cannot receive development simulator preparation', () => {
   expect(() => simulatorEntitlements('io.kontourai.station')).toThrow();
 });
@@ -199,9 +255,15 @@ function sectionedExecutable(path: string, entitlements: Entitlements) {
  */
 function archivedFixture({
   widget,
+  notificationService,
   appEntitlements,
 }: {
   widget?: {
+    info?: Record<string, unknown>;
+    entitlements?: Entitlements;
+  };
+  /** Adds PlugIns/StationNotificationService.appex the same way (#2590). */
+  notificationService?: {
     info?: Record<string, unknown>;
     entitlements?: Entitlements;
   };
@@ -216,7 +278,10 @@ function archivedFixture({
   const appSection = sectionedExecutable(
     executable,
     appEntitlements ??
-      simulatorEntitlements(id, { agentActivity: widget !== undefined }),
+      simulatorEntitlements(id, {
+        agentActivity:
+          widget !== undefined || notificationService !== undefined,
+      }),
   );
   sections.set(executable, appSection);
   const appex = join(app, 'PlugIns/StationAgentActivity.appex');
@@ -237,6 +302,24 @@ function archivedFixture({
       ),
     );
   }
+  const nse = join(app, 'PlugIns/StationNotificationService.appex');
+  const nseExpected = simulatorExtensionEntitlements(id, 'NotificationService');
+  const nseInfo = {
+    CFBundleIdentifier: nseExpected['application-identifier'],
+    CFBundleExecutable: 'StationNotificationService',
+    ...notificationService?.info,
+  };
+  if (notificationService) {
+    mkdirSync(nse, { recursive: true });
+    const nseExecutable = join(nse, 'StationNotificationService');
+    sections.set(
+      nseExecutable,
+      sectionedExecutable(
+        nseExecutable,
+        notificationService.entitlements ?? nseExpected,
+      ),
+    );
+  }
   const info = {
     CFBundleIdentifier: id,
     CFBundleExecutable: 'Station Dev',
@@ -254,6 +337,8 @@ function archivedFixture({
       return JSON.stringify(info);
     if (command === 'plutil' && args.at(-1) === join(appex, 'Info.plist'))
       return JSON.stringify(widgetInfo);
+    if (command === 'plutil' && args.at(-1) === join(nse, 'Info.plist'))
+      return JSON.stringify(nseInfo);
     if (command === 'plutil') {
       // The verifier copied one section out; answer with what it encodes.
       const bytes = readFileSync(args.at(-1)!);
@@ -276,6 +361,7 @@ function archivedFixture({
     archive,
     app,
     appex,
+    nse,
     executable,
     xml: appSection.xml,
     commands: appSection.commands,
@@ -304,6 +390,61 @@ test('verification checks an embedded Live Activity extension and seals it befor
     ['--force', '--sign', '-', '--identifier', `${id}.AgentActivity`, f.appex],
     ['--force', '--sign', '-', '--identifier', id, f.app],
     ['--verify', '--strict', f.app],
+  ]);
+});
+
+test('verification checks both extensions and seals each before the app (#2590)', () => {
+  const f = archivedFixture({ widget: {}, notificationService: {} });
+  expect(verifyIosSimulator(f.archive, { root: f.root, run: f.run })).toBe(
+    f.app,
+  );
+  expect(f.run).toHaveBeenCalledWith('xcrun', [
+    'otool',
+    '-l',
+    join(f.nse, 'StationNotificationService'),
+  ]);
+  expect(codesignCalls(f.run).map(([, args]) => args)).toEqual([
+    ['--force', '--sign', '-', '--identifier', `${id}.AgentActivity`, f.appex],
+    [
+      '--force',
+      '--sign',
+      '-',
+      '--identifier',
+      `${id}.NotificationService`,
+      f.nse,
+    ],
+    ['--force', '--sign', '-', '--identifier', id, f.app],
+    ['--verify', '--strict', f.app],
+  ]);
+});
+
+test('verification refuses a Notification Service Extension outside the identity or with more than the shared group', () => {
+  const foreign = archivedFixture({
+    widget: {},
+    notificationService: {
+      info: { CFBundleIdentifier: 'io.kontourai.station.NotificationService' },
+    },
+  });
+  expect(() =>
+    verifyIosSimulator(foreign.archive, {
+      root: foreign.root,
+      run: foreign.run,
+    }),
+  ).toThrow('The Notification Service extension does not extend');
+  const wider = archivedFixture({
+    widget: {},
+    notificationService: {
+      entitlements: {
+        'application-identifier': `${id}.NotificationService`,
+        'keychain-access-groups': [id, `${id}.agentactivity`],
+      },
+    },
+  });
+  expect(() =>
+    verifyIosSimulator(wider.archive, { root: wider.root, run: wider.run }),
+  ).toThrow('Notification Service extension is missing its shared keychain');
+  expect(codesignCalls(wider.run).map(([, args]) => args.at(-1))).toEqual([
+    wider.appex,
   ]);
 });
 

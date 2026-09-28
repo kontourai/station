@@ -11,13 +11,18 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { execGitSync } from '../../../utils/git-exec.js';
 import {
   computePluginContentDigest,
   PluginContentLockCycleError,
   pluginContentDigest,
   withPluginContentLock,
 } from '../plugin-content-integrity.js';
-import { installPluginDependency } from '../plugin-source.js';
+import {
+  getPluginGitInfo,
+  installPluginDependency,
+  resolvePluginDependencySource,
+} from '../plugin-source.js';
 
 const cleanupDirs: string[] = [];
 
@@ -215,6 +220,47 @@ describe('installPluginDependency', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('did not materialize');
+  });
+
+  test('holds a registry-installed dependency to remote-only dependencies of its own', async () => {
+    const root = createRoot();
+    const pluginsDir = join(root, 'plugins');
+    // A local plugin the registry-installed tree names by absolute path.
+    const leafSource = writePluginSource(root, 'leaf-source', {
+      name: 'leaf-dep',
+      version: '1.0.0',
+    });
+    const { buildPlugin, logger } = deps();
+    // The provider installs the tree itself and exposes no source for it.
+    const getAgentRegistryProvider = vi.fn(() => ({
+      install: vi.fn(async () => {
+        writePluginSource(pluginsDir, 'registry-dep', {
+          name: 'registry-dep',
+          version: '1.0.0',
+          dependencies: [{ id: 'leaf-dep', source: leafSource }],
+        });
+        return { message: 'ok', success: true };
+      }),
+    }));
+
+    const result = await installPluginDependency(
+      { id: 'registry-dep' },
+      pluginsDir,
+      getAgentRegistryProvider as any,
+      buildPlugin,
+      logger,
+      new Set(),
+      new Set(),
+      undefined,
+      undefined,
+      root,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(
+      /names a local source under a remote parent source/,
+    );
+    expect(existsSync(join(pluginsDir, 'leaf-dep'))).toBe(false);
   });
 
   test('rejects registry success when the installed manifest name does not match the dependency id', async () => {
@@ -881,5 +927,100 @@ describe('installPluginDependency reports the trees it created', () => {
     expect([...created]).toEqual(['leaf-dep']);
     expect(existsSync(join(pluginsDir, 'leaf-dep', 'plugin.json'))).toBe(true);
     expect(existsSync(join(pluginsDir, 'parent-dep'))).toBe(false);
+  });
+});
+
+describe('resolvePluginDependencySource', () => {
+  test.each([
+    ['an HFS+-ignorable .git suffix', 'shared.g\u200cit'],
+    ['a trailing-ignorable .git suffix', 'shared.git\ufeff'],
+    ['the NTFS short name of .git', 'git~1'],
+    ['an upper-case .GIT name', '.GIT'],
+  ])('refuses %s as a local dependency', (_label, name) => {
+    const root = createRoot();
+    const parent = join(root, 'parent');
+    mkdirSync(join(root, name), { recursive: true });
+    expect(() =>
+      resolvePluginDependencySource(
+        { id: 'shared-dep', source: `../${name}` },
+        parent,
+      ),
+    ).toThrow(/local source must be a plain directory/);
+  });
+
+  test('accepts a plain sibling directory (positive control)', () => {
+    const root = createRoot();
+    const parent = join(root, 'parent');
+    mkdirSync(join(root, 'shared-dep'), { recursive: true });
+    expect(
+      resolvePluginDependencySource(
+        { id: 'shared-dep', source: '../shared-dep' },
+        parent,
+      ).source,
+    ).toBe(join(root, 'shared-dep'));
+  });
+});
+
+describe('getPluginGitInfo', () => {
+  function enclosingCheckout(): string {
+    const root = createRoot();
+    execGitSync(['init', '-b', 'main'], { cwd: root });
+    execGitSync(
+      ['remote', 'add', 'origin', 'https://git.example.test/enclosing.git'],
+      { cwd: root },
+    );
+    writeFileSync(join(root, 'file.txt'), 'enclosing');
+    execGitSync(['add', '-A'], { cwd: root });
+    execGitSync(
+      [
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        'commit',
+        '-m',
+        'enclosing',
+      ],
+      { cwd: root },
+    );
+    return root;
+  }
+  const logger = { debug: vi.fn() } as any;
+
+  test('reports only the plugin root’s own repository, never an enclosing checkout', async () => {
+    const root = enclosingCheckout();
+    const plugin = writePluginSource(root, 'plugin', { name: 'plugin' });
+    // An unusable `.git` (an empty directory) of the plugin's own.
+    mkdirSync(join(plugin, '.git'));
+    await expect(getPluginGitInfo(plugin, logger)).resolves.toBeUndefined();
+    const plain = writePluginSource(root, 'plain', { name: 'plain' });
+    await expect(getPluginGitInfo(plain, logger)).resolves.toBeUndefined();
+  });
+
+  test('reports the plugin root’s own repository (positive control)', async () => {
+    const root = enclosingCheckout();
+    const plugin = writePluginSource(root, 'plugin', { name: 'plugin' });
+    execGitSync(['init', '-b', 'trunk'], { cwd: plugin });
+    execGitSync(
+      ['remote', 'add', 'origin', 'https://git.example.test/plugin.git'],
+      { cwd: plugin },
+    );
+    execGitSync(['add', '-A'], { cwd: plugin });
+    execGitSync(
+      [
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        'commit',
+        '-m',
+        'plugin',
+      ],
+      { cwd: plugin },
+    );
+    await expect(getPluginGitInfo(plugin, logger)).resolves.toMatchObject({
+      branch: 'trunk',
+      remote: 'https://git.example.test/plugin.git',
+    });
   });
 });

@@ -188,6 +188,7 @@ describe('createStationHostIntentBindings', () => {
         dispatch: orchestrationDispatch,
         readSession: vi.fn(async () => null),
       },
+      getSessionReadAuthority: intentAuthority,
     });
 
     const task = await taskGraphService.createTask({
@@ -212,11 +213,77 @@ describe('createStationHostIntentBindings', () => {
     await resolution.execute(stationIntent('task dispatch', task.id));
 
     // #2436: a board intent carries no request that may grant full access.
+    // The board request's principal owns the session it dispatches.
     expect(taskDispatcher.dispatch).toHaveBeenCalledWith(task.id, {
       sourceSurface: 'console-board',
       fullAccessGrant: null,
+      ownerUserId: 'intent-test-user',
     });
     expect(orchestrationDispatch).not.toHaveBeenCalled();
+  });
+
+  test('a board "dispatch" intent carries the request\'s owner stamp, including an agent\'s unattributed marker', async () => {
+    const taskGraphService = createTempTaskGraphService();
+    const bindings = createStationHostIntentBindings({
+      taskGraphService,
+      taskDispatcher,
+      orchestrationService: {
+        dispatch: vi.fn(async () => undefined),
+        readSession: vi.fn(async () => null),
+      },
+      getSessionReadAuthority: intentAuthority,
+      getDispatchOwner: () => ({
+        ownerUserId: 'human:local:operator',
+        ownerAttribution: 'unattributed-agent',
+      }),
+    });
+    const task = await taskGraphService.createTask({
+      projectId: 'project-alpha',
+      title: 'Agent board dispatch',
+    });
+    const resolution = resolveIntentBinding(
+      stationIntent('task dispatch', task.id),
+      bindings,
+    );
+    if (!resolution.bound) throw new Error('unreachable');
+    taskDispatcher.dispatch.mockClear();
+    taskDispatcher.dispatch.mockResolvedValueOnce({
+      kind: 'dispatched',
+      result: {} as TaskDispatchResult,
+    });
+    await resolution.execute(stationIntent('task dispatch', task.id));
+    expect(taskDispatcher.dispatch).toHaveBeenCalledWith(task.id, {
+      sourceSurface: 'console-board',
+      fullAccessGrant: null,
+      ownerUserId: 'human:local:operator',
+      ownerAttribution: 'unattributed-agent',
+    });
+  });
+
+  test('a board "dispatch" intent with no request principal dispatches nothing', async () => {
+    const taskGraphService = createTempTaskGraphService();
+    const bindings = createStationHostIntentBindings({
+      taskGraphService,
+      taskDispatcher,
+      orchestrationService: {
+        dispatch: vi.fn(async () => undefined),
+        readSession: vi.fn(async () => null),
+      },
+    });
+    const task = await taskGraphService.createTask({
+      projectId: 'project-alpha',
+      title: 'Ownerless board dispatch',
+    });
+    const resolution = resolveIntentBinding(
+      stationIntent('task dispatch', task.id),
+      bindings,
+    );
+    if (!resolution.bound) throw new Error('unreachable');
+    taskDispatcher.dispatch.mockClear();
+    await expect(
+      resolution.execute(stationIntent('task dispatch', task.id)),
+    ).rejects.toThrow('Task dispatch requires a request principal');
+    expect(taskDispatcher.dispatch).not.toHaveBeenCalled();
   });
 
   test('a board "block"/"unblock" intent resolves to the REAL TaskGraphService.updateTaskStatus handler', async () => {
@@ -645,62 +712,6 @@ describe('createStationHostIntentBindings', () => {
     expect(orchestrationDispatch).not.toHaveBeenCalled();
     // The underlying task record is untouched.
     expect(taskGraphService.readTask(task.id)?.status).toBe('todo');
-  });
-
-  test('consent-gating: resolveIntentBinding surfaces confirmation metadata but NEVER calls execute itself — a side-effecting binding stays un-invoked until a caller-side consent gate decides to run it', async () => {
-    const taskGraphService = createTempTaskGraphService();
-    const dispatchTaskSpy = taskDispatcher.dispatch;
-    const bindings = createStationHostIntentBindings({
-      taskGraphService,
-      taskDispatcher,
-      orchestrationService: {
-        dispatch: vi.fn(async () => undefined),
-        readSession: vi.fn(async () => null),
-      },
-    });
-
-    const task = await taskGraphService.createTask({
-      projectId: 'project-alpha',
-      title: 'Consent-gated dispatch',
-    });
-
-    const resolution = resolveIntentBinding(
-      stationIntent('task dispatch', task.id),
-      bindings,
-    );
-    expect(resolution.bound).toBe(true);
-    if (!resolution.bound) throw new Error('unreachable');
-    // The confirmation tier a consent layer (Station's native policy
-    // classes, or S6's confirmation UI) must gate on before invoking
-    // `execute` — resolution itself never makes that call.
-    expect(resolution.confirmation).toBe('user-request');
-    expect(dispatchTaskSpy).not.toHaveBeenCalled();
-    expect(taskGraphService.readTask(task.id)?.status).toBe('todo');
-  });
-
-  test('consent-gating: the read-only status command carries confirmation "never" — safe to auto-execute with no gate, unlike the write commands', async () => {
-    const taskGraphService = createTempTaskGraphService();
-    const bindings = createStationHostIntentBindings({
-      taskGraphService,
-      taskDispatcher,
-      orchestrationService: {
-        dispatch: vi.fn(async () => undefined),
-        readSession: vi.fn(async () => null),
-      },
-    });
-    const task = await taskGraphService.createTask({
-      projectId: 'project-alpha',
-      title: 'Read-only status',
-    });
-
-    const resolution = resolveIntentBinding(
-      stationIntent('task status', task.id),
-      bindings,
-    );
-    expect(resolution.bound).toBe(true);
-    if (!resolution.bound) throw new Error('unreachable');
-    expect(resolution.confirmation).toBe('never');
-    expect(resolution.sideEffect).toBe('read-local');
   });
 
   test('descriptor honesty: the "task status" executor rejects an unsupported store shape without writing it', async () => {

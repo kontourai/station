@@ -133,15 +133,6 @@ describe('connectionIndicatorState', () => {
         }),
       ).toBe('connected');
     });
-
-    it('is a no-op when omitted, so existing callers are unaffected', () => {
-      expect(
-        connectionIndicatorState({
-          status: 'error',
-          reason: 'authentication-failed',
-        }),
-      ).toBe('needs-credential');
-    });
   });
 
   // station#4512 review (M8) — a SECOND door to the same state:

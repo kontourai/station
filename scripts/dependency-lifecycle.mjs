@@ -34,6 +34,7 @@ import {
   validateAllowlist,
   verifyArtifact,
 } from './lib/dependency-lifecycle-policy.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import { resolveNpmCli } from './lib/npm-cli.mjs';
 import {
   readPnpmLockfileImporters,
@@ -103,12 +104,6 @@ function checkedFile(path, description) {
     throw new Error(`cannot resolve ${description} as a local file`);
   return path;
 }
-
-// Re-exported so this module's existing importers and tests keep their entry
-// point while the implementation lives in one shared place (#1093). It was
-// the only correct npm resolution in the repo; four other call sites spawned
-// a bare `npm` and broke on Windows.
-export { resolveNpmCli };
 
 // spawnSync owns the documented argv0 contract; keep ordinary execFileSync
 // behavior when no distinct invocation name is needed.
@@ -758,7 +753,7 @@ function usage() {
   );
 }
 
-if (process.argv[1]?.endsWith('dependency-lifecycle.mjs')) {
+if (invokedDirectly(import.meta.url)) {
   const operation = process.argv[2];
   try {
     if (operation === 'check') check();

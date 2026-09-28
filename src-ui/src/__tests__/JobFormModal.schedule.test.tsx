@@ -262,9 +262,17 @@ describe('JobFormModal schedule compatibility', () => {
         }),
       ),
     ).toBe('Every 2 hours');
-    expect(
-      formatSchedule({ kind: 'at', timeMs: Date.UTC(2030, 0, 2, 3, 4) }),
-    ).not.toContain('[object Object]');
+    // `toLocaleString` output depends on the runner's locale and zone, so
+    // assert locale-independent invariants. Mid-June keeps the year 2030 in
+    // every zone.
+    const once = formatSchedule({
+      kind: 'at',
+      timeMs: Date.UTC(2030, 5, 15, 12, 0),
+    });
+    expect(once).toMatch(/^Once at /);
+    expect(once).toContain('2030');
+    expect(once).not.toContain('Invalid Date');
+    expect(once).not.toContain('[object Object]');
   });
 
   test('renders a duplicate-name conflict without closing the dialog', () => {
@@ -281,6 +289,42 @@ describe('JobFormModal schedule compatibility', () => {
       "Job 'daily-report' already exists",
     );
     expect(screen.getByRole('dialog', { name: 'Add Job' })).toBeTruthy();
+  });
+
+  // #2708: the scheduler fetcher's refusal carries `details`; the form shows
+  // the server's reason, not "Validation failed: prompt …".
+  test('a validation refusal shows the server reason, not the field key', async () => {
+    const { createJob } = await import('@kontourai/station-sdk/client');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Validation failed',
+            details: {
+              formErrors: [],
+              fieldErrors: { prompt: ['A job needs a prompt.'] },
+            },
+          }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    mutationState.addError = await createJob('http://localhost', {
+      name: 'daily-report',
+      prompt: '',
+    } as never).catch((caught: unknown) => caught);
+    vi.unstubAllGlobals();
+
+    render(
+      <JobFormModal
+        prefill={{ name: 'daily-report', prompt: '' }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('alert').textContent).toBe('A job needs a prompt.');
   });
 
   test('defaults a new job to weekdays 8:00 AM local, not every minute', () => {

@@ -1,7 +1,3 @@
-// Adapted from T3 Code (https://github.com/pingdotgg/t3code,
-// apps/mobile/modules/t3-agent-notifications), MIT License,
-// Copyright (c) 2026 T3 Tools Inc.
-
 package io.kontourai.station.agentactivity
 
 import android.app.AlarmManager
@@ -28,267 +24,345 @@ private const val EXTRA_REGISTRATION = "io.kontourai.station.agentactivity.REGIS
 internal const val EXTRA_TAP = "io.kontourai.station.agentactivity.TAP"
 
 /**
- * Runs in a process FCM may have just started: no MainActivity, no WebView,
- * no Rust runtime. Everything below must work from a bare Context.
+ * FCM entry point. FCM may start the process just for this, so there is no
+ * MainActivity, WebView or Rust runtime: [AgentNotifications] works from a
+ * bare Context.
  */
 class AgentMessagingService : FirebaseMessagingService() {
   override fun onMessageReceived(remoteMessage: RemoteMessage) {
-    if (remoteMessage.data["station_kind"] == AGENT_ACTIVITY_KIND) {
-      AgentNotifications.receive(this, remoteMessage.data)
+    val data = remoteMessage.data
+    when (data["station_kind"]) {
+      AGENT_ACTIVITY_KIND -> AgentNotifications.receive(this, data)
+      STATION_NOTIFICATION_KIND -> StationNotifications.receive(this, data)
     }
   }
 }
 
-class AgentActivityDismissReceiver : BroadcastReceiver() {
+/** A broadcast that names one registration, sent by a card's delete intent or expiry alarm. */
+abstract class RegistrationBroadcastReceiver : BroadcastReceiver() {
+  protected abstract fun handle(context: Context, registrationId: String)
+
   override fun onReceive(context: Context, intent: Intent) {
-    intent.getStringExtra(EXTRA_REGISTRATION)?.let { AgentNotifications.dismiss(context, it) }
+    val registrationId = intent.getStringExtra(EXTRA_REGISTRATION) ?: return
+    handle(context, registrationId)
   }
 }
 
-class AgentActivityExpiryReceiver : BroadcastReceiver() {
-  override fun onReceive(context: Context, intent: Intent) {
-    intent.getStringExtra(EXTRA_REGISTRATION)?.let { AgentNotifications.expire(context, it) }
-  }
+class AgentActivityDismissReceiver : RegistrationBroadcastReceiver() {
+  override fun handle(context: Context, registrationId: String) = AgentNotifications.dismiss(context, registrationId)
+}
+
+class AgentActivityExpiryReceiver : RegistrationBroadcastReceiver() {
+  override fun handle(context: Context, registrationId: String) = AgentNotifications.expire(context, registrationId)
 }
 
 /**
- * Renders agent-activity pushes natively, so delivery never waits on the
- * WebView. A phone can be paired with several Stations; each registration
- * has its own card and its own replay state, so one Station can never
- * overwrite or dismiss another's.
+ * The two notification channels. Android keys a channel (and the user's
+ * settings for it) by id, so the ids must not change; the names may.
+ */
+private enum class Channel(
+  val id: String,
+  val title: String,
+  val importance: Int,
+  val priority: Int,
+  val defaults: Int
+) {
+  ALERTS(
+    "agent-alerts",
+    "Agent alerts",
+    NotificationManager.IMPORTANCE_HIGH,
+    NotificationCompat.PRIORITY_HIGH,
+    Notification.DEFAULT_ALL
+  ),
+  ACTIVITY(
+    "agent-activity",
+    "Ongoing agent activity",
+    NotificationManager.IMPORTANCE_LOW,
+    NotificationCompat.PRIORITY_LOW,
+    0
+  ),
+}
+
+/**
+ * Posts agent-activity pushes as native notifications, so nothing waits on
+ * the WebView. A phone may be paired with several Stations; every
+ * registration keeps its own card, alert tag and replay state, so one
+ * Station can never overwrite or clear another's.
+ *
+ * Storage (file and key names are on-disk state and must stay stable): the
+ * `station-agent-activity` preferences file holds the set of registration
+ * ids and the tap ledger; `station-agent-activity.<registrationId>` holds one
+ * registration's keys and card memory.
  */
 object AgentNotifications {
-  private const val INDEX_STORE = "station-agent-activity"
-  private const val ACTIVITY_CHANNEL = "agent-activity"
-  private const val ALERT_CHANNEL = "agent-alerts"
-  private const val ACTIVITY_TAG = "station-agent-activity"
+  private const val STORE = "station-agent-activity"
+  private const val KEY_REGISTRATIONS = "registrations"
+  private const val KEY_TAPS = "taps"
+  private const val KEY_STATION_ID = "stationId"
+  private const val KEY_STATION_KEY = "stationKey"
+  private const val KEY_PAYLOAD_KEY = "payloadKey"
+  private const val KEY_ONGOING = "ongoing"
+  private const val KEY_DISMISSED = "dismissed"
+  private const val KEY_LAST_UPDATE = "lastUpdate"
+  private const val KEY_LAST_ACTIVE = "lastActive"
+  private const val KEY_SEEN_ALERTS = "seenAlerts"
+  private const val KEY_EXPIRES_AT = "expiresAt"
+
+  private const val CARD_TAG = "station-agent-activity"
   private const val ALERT_TAG = "station-agent-alert"
-  private const val ACTIVITY_ID = 73001
-  private const val RUNNING_LIFETIME_MS = 2 * 60 * 60 * 1000L
-  private const val MAX_LIFETIME_MS = 24 * 60 * 60 * 1000L
-  private const val SEEN_ALERT_HISTORY = 64
+  private const val CARD_NOTIFICATION_ID = 73001
+  private const val ALERT_TITLE_CHARS = 120
+  /** Room for a grouped alert: five thread titles of up to 120 characters, plus separators. */
+  private const val ALERT_BODY_CHARS = 608
+  /** The pseudo-registration `preview` renders under. */
   private const val PREVIEW = "preview"
-  private const val TAP_LEDGER = "taps"
 
-  private fun index(context: Context): SharedPreferences =
-    context.getSharedPreferences(INDEX_STORE, Context.MODE_PRIVATE)
+  // ---- storage ----
 
-  private fun registrationIds(context: Context): Set<String> =
-    index(context).getStringSet("registrations", emptySet()).orEmpty()
+  private fun indexStore(context: Context): SharedPreferences =
+    context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
 
-  // registrationId is validated as base64url, so it is safe in a file name.
-  private fun state(context: Context, registrationId: String): SharedPreferences =
-    context.getSharedPreferences("$INDEX_STORE.$registrationId", Context.MODE_PRIVATE)
+  /**
+   * One registration's preferences. Registration ids are validated base64url,
+   * so they are safe in a file name. StationNotifications keeps its replay
+   * state here too.
+   */
+  internal fun state(context: Context, registrationId: String): SharedPreferences =
+    context.getSharedPreferences("$STORE.$registrationId", Context.MODE_PRIVATE)
 
-  private fun registration(context: Context, registrationId: String): Registration? {
-    if (registrationId !in registrationIds(context)) return null
-    val prefs = state(context, registrationId)
-    val stationId = prefs.getString("stationId", null) ?: return null
-    val stationKey = prefs.getString("stationKey", null) ?: return null
-    val payloadKey = prefs.getString("payloadKey", null) ?: return null
-    return Registration(registrationId, stationId, stationKey, payloadKey)
+  private fun knownIds(context: Context): Set<String> =
+    indexStore(context).getStringSet(KEY_REGISTRATIONS, emptySet()).orEmpty()
+
+  private fun writeIds(context: Context, ids: Set<String>) {
+    indexStore(context).edit().putStringSet(KEY_REGISTRATIONS, ids).apply()
   }
 
-  @Synchronized
-  fun configure(
-    context: Context,
-    registration: Registration,
-    ongoingEnabled: Boolean
-  ) {
-    // The same Station re-registering (new install, registration rotated)
-    // replaces its previous registration rather than leaving a second card.
-    // Both id and key must match: a Station id alone is only a claim, and
-    // another Station reporting it must not be able to evict this one.
-    registrationIds(context)
-      .filter {
-        it != registration.id &&
-          state(context, it).getString("stationId", null) == registration.stationId &&
-          state(context, it).getString("stationKey", null) == registration.stationKey
-      }
-      .forEach { remove(context, it) }
+  private fun storedStationId(context: Context, registrationId: String): String? =
+    state(context, registrationId).getString(KEY_STATION_ID, null)
 
-    val prefs = state(context, registration.id)
-    if (prefs.getString("stationKey", null) != registration.stationKey) {
-      // A different key means different replay history; start clean.
-      cancelActivity(context, registration.id)
-      prefs.edit().clear().apply()
+  /** The stored registration for [registrationId], or null when this phone does not know it. */
+  internal fun registration(context: Context, registrationId: String): Registration? {
+    if (registrationId !in knownIds(context)) return null
+    val store = state(context, registrationId)
+    return Registration(
+      registrationId,
+      store.getString(KEY_STATION_ID, null) ?: return null,
+      store.getString(KEY_STATION_KEY, null) ?: return null,
+      store.getString(KEY_PAYLOAD_KEY, null) ?: return null
+    )
+  }
+
+  private fun loadTaps(context: Context): TapLedger = TapLedger.parse(indexStore(context).getString(KEY_TAPS, null))
+
+  /**
+   * Written with commit(), not apply(): a redeemed nonce has to be off disk
+   * before the process can die, or a restored launch intent could spend it
+   * a second time.
+   */
+  private fun storeTaps(context: Context, ledger: TapLedger) {
+    indexStore(context).edit().putString(KEY_TAPS, ledger.serialize()).commit()
+  }
+
+  // ---- registrations ----
+
+  @Synchronized
+  fun configure(context: Context, registration: Registration, ongoingEnabled: Boolean) {
+    // A Station that registers again (reinstall, rotated registration)
+    // replaces its old registration instead of gaining a second card. It
+    // takes both the Station id and its key to match: an id on its own is
+    // just a claim, and a different Station quoting it must not evict this one.
+    val superseded = knownIds(context).filter { otherId ->
+      otherId != registration.id &&
+        state(context, otherId).let { other ->
+          other.getString(KEY_STATION_ID, null) == registration.stationId &&
+            other.getString(KEY_STATION_KEY, null) == registration.stationKey
+        }
     }
-    val wasEnabled = prefs.getBoolean("ongoing", false)
-    prefs.edit()
-      .putString("stationId", registration.stationId)
-      .putString("stationKey", registration.stationKey)
-      .putString("payloadKey", registration.payloadKey)
-      .putBoolean("ongoing", ongoingEnabled)
-      .apply()
-    if (ongoingEnabled && !wasEnabled) prefs.edit().putBoolean("dismissed", false).apply()
-    if (!ongoingEnabled) cancelActivity(context, registration.id)
-    index(context).edit().putStringSet("registrations", registrationIds(context) + registration.id).apply()
-    channels(context)
+    superseded.forEach { forget(context, it) }
+
+    val store = state(context, registration.id)
+    // A new key means a new replay history: start this registration over.
+    val rekeyed = store.getString(KEY_STATION_KEY, null) != registration.stationKey
+    if (rekeyed) cancelCard(context, registration.id)
+    val wasOngoing = !rekeyed && store.getBoolean(KEY_ONGOING, false)
+    store.edit().apply {
+      if (rekeyed) clear()
+      putString(KEY_STATION_ID, registration.stationId)
+      putString(KEY_STATION_KEY, registration.stationKey)
+      putString(KEY_PAYLOAD_KEY, registration.payloadKey)
+      putBoolean(KEY_ONGOING, ongoingEnabled)
+      // Turning ongoing cards back on shows the current run again.
+      if (ongoingEnabled && !wasOngoing) putBoolean(KEY_DISMISSED, false)
+    }.apply()
+    if (!ongoingEnabled) cancelCard(context, registration.id)
+    writeIds(context, knownIds(context) + registration.id)
+    ensureChannels(context)
   }
 
   /**
-   * Removes one registration, or every registration when [registrationId] is
-   * null, and reports whether any registration remains. Only known ids are
-   * touched: an unknown id must not create a preferences file.
+   * Forgets [registrationId], or every registration when it is null, and
+   * returns whether any registration is left. An id this phone does not know
+   * is ignored, so it never creates a preferences file.
    */
   @Synchronized
   fun clear(context: Context, registrationId: String? = null): Boolean {
-    if (registrationId == null) {
-      registrationIds(context).forEach { remove(context, it) }
-      // Also sweeps the preview card and any card an earlier version posted
-      // under an unsuffixed tag.
-      val manager = manager(context)
-      manager.activeNotifications
-        .filter { it.tag?.startsWith(ACTIVITY_TAG) == true || it.tag?.startsWith(ALERT_TAG) == true }
-        .forEach { manager.cancel(it.tag, it.id) }
-    } else if (registrationId in registrationIds(context)) {
-      remove(context, registrationId)
+    when {
+      registrationId == null -> {
+        knownIds(context).forEach { forget(context, it) }
+        // Also takes down the preview card and cards an older build posted
+        // under a tag without the registration suffix.
+        val manager = notificationManager(context)
+        for (posted in manager.activeNotifications) {
+          val tag = posted.tag ?: continue
+          val ours = tag.startsWith(CARD_TAG) || tag.startsWith(ALERT_TAG) ||
+            StationNotifications.isStationNotificationTag(tag)
+          if (ours) manager.cancel(tag, posted.id)
+        }
+      }
+      registrationId in knownIds(context) -> forget(context, registrationId)
     }
-    return registrationIds(context).isNotEmpty()
+    return knownIds(context).isNotEmpty()
   }
 
-  private fun remove(context: Context, registrationId: String) {
-    // Index first: a crash after this leaves an orphan file, never an index
-    // entry without data that would keep the push token alive.
-    index(context).edit().putStringSet("registrations", registrationIds(context) - registrationId).apply()
-    cancelActivity(context, registrationId)
-    val manager = manager(context)
-    manager.activeNotifications.filter { it.tag == alertTag(registrationId) }
-      .forEach { manager.cancel(it.tag, it.id) }
+  private fun forget(context: Context, registrationId: String) {
+    // Drop the index entry first. Dying after that leaves at worst an
+    // orphaned file, never an index entry with no data behind it (which
+    // would keep the push token registered).
+    writeIds(context, knownIds(context) - registrationId)
+    cancelCard(context, registrationId)
+    val manager = notificationManager(context)
+    val alerts = alertTag(registrationId)
+    val notificationPrefix = StationNotifications.tagPrefix(registrationId)
+    for (posted in manager.activeNotifications) {
+      val tag = posted.tag ?: continue
+      if (tag == alerts || tag.startsWith(notificationPrefix)) manager.cancel(tag, posted.id)
+    }
     state(context, registrationId).edit().clear().commit()
-    context.deleteSharedPreferences("$INDEX_STORE.$registrationId")
+    context.deleteSharedPreferences("$STORE.$registrationId")
   }
 
-  /** True once `configure` stored a registration here; says nothing about the Station's side. */
-  fun isConfigured(context: Context): Boolean = registrationIds(context).isNotEmpty()
+  /** True once `configure` stored a registration; says nothing about the Station's side. */
+  fun isConfigured(context: Context): Boolean = knownIds(context).isNotEmpty()
 
-  private fun knowsStation(context: Context, stationId: String): Boolean =
-    registrationIds(context).any { state(context, it).getString("stationId", null) == stationId }
-
-  private fun taps(context: Context) = TapLedger.parse(index(context).getString(TAP_LEDGER, null))
-
-  // commit, not apply: a redeemed nonce must be gone on disk before the
-  // process can die, or a restored launch intent could redeem it again.
-  private fun saveTaps(context: Context, ledger: TapLedger) {
-    index(context).edit().putString(TAP_LEDGER, ledger.serialize()).commit()
-  }
-
-  private fun newNonce(): String {
-    val bytes = ByteArray(16)
-    java.security.SecureRandom().nextBytes(bytes)
-    return bytes.joinToString("") { "%02x".format(it) }
-  }
+  // ---- taps ----
 
   /**
-   * The route a card or alert tap opens, redeeming its nonce: null for a
-   * nonce this phone did not issue, already redeemed (a launch intent Android
-   * restored after process death, or replayed from Recents), expired, or for a
-   * Station this phone no longer registers. Redeeming re-arms the same
-   * notification with a fresh nonce, so tapping the same card again works.
+   * Redeems a card or alert tap and returns the session it opens. Null when
+   * the nonce was not issued here, was already spent (Android restoring a
+   * launch intent after process death, or Recents replaying it), has
+   * expired, or belongs to a Station this phone no longer knows. Redeeming
+   * re-arms the same notification with a new nonce, so the card keeps
+   * working on the next tap.
    */
   @Synchronized
   fun redeemTap(context: Context, nonce: String?): SessionRoute? {
-    val now = System.currentTimeMillis()
-    val redeemed = taps(context).redeem(nonce, now, newNonce()) ?: return null
-    saveTaps(context, redeemed.ledger)
-    val reissued = redeemed.reissued
-    // Re-arm only a PendingIntent that still exists; FLAG_UPDATE_CURRENT then
-    // swaps its extras in place, which the posted notification holds.
-    val intent = tapIntent(context, reissued.identity)
-    if (intent != null &&
-      PendingIntent.getActivity(
-        context,
-        reissued.requestCode,
-        intent,
-        PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-      ) != null
-    ) {
-      PendingIntent.getActivity(
-        context,
-        reissued.requestCode,
-        intent.putExtra(EXTRA_TAP, reissued.nonce),
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-      )
-    }
-    return redeemed.route.takeIf { knowsStation(context, it.stationId) }
+    val redeemed = loadTaps(context).redeem(nonce, System.currentTimeMillis(), randomNonce()) ?: return null
+    storeTaps(context, redeemed.ledger)
+    rearm(context, redeemed.reissued)
+    val route = redeemed.route
+    val stationKnown = knownIds(context).any { storedStationId(context, it) == route.stationId }
+    return if (stationKnown) route else null
   }
+
+  /**
+   * Puts [tap]'s fresh nonce into the PendingIntent its notification holds.
+   * Only an intent that still exists is touched (FLAG_NO_CREATE probe);
+   * FLAG_UPDATE_CURRENT then swaps the extras in place.
+   */
+  private fun rearm(context: Context, tap: IssuedTap) {
+    val intent = launchIntent(context, tap.identity) ?: return
+    PendingIntent.getActivity(
+      context,
+      tap.requestCode,
+      intent,
+      PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+    ) ?: return
+    PendingIntent.getActivity(
+      context,
+      tap.requestCode,
+      intent.putExtra(EXTRA_TAP, tap.nonce),
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+  }
+
+  private fun randomNonce(): String {
+    val bytes = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
+    val hex = StringBuilder(32)
+    for (byte in bytes) hex.append(String.format("%02x", byte))
+    return hex.toString()
+  }
+
+  // ---- card lifecycle ----
 
   @Synchronized
   fun dismiss(context: Context, registrationId: String) {
     if (registrationId == PREVIEW) {
-      cancelActivity(context, PREVIEW)
+      cancelCard(context, PREVIEW)
       return
     }
-    if (registrationId !in registrationIds(context)) return
-    state(context, registrationId).edit().putBoolean("dismissed", true).apply()
-    cancelActivity(context, registrationId)
+    if (registrationId !in knownIds(context)) return
+    state(context, registrationId).edit().putBoolean(KEY_DISMISSED, true).apply()
+    cancelCard(context, registrationId)
   }
 
   @Synchronized
   fun expire(context: Context, registrationId: String, now: Long = System.currentTimeMillis()) {
-    val expiresAt = state(context, registrationId).getLong("expiresAt", 0)
-    // An alarm dispatched for an earlier run must not remove a newer run's card.
-    if (expiresAt in 1..now) cancelActivity(context, registrationId)
+    val expiresAt = state(context, registrationId).getLong(KEY_EXPIRES_AT, 0)
+    // An alarm set for an earlier run must not take down a later run's card.
+    if (expiresAt > 0 && expiresAt <= now) cancelCard(context, registrationId)
   }
 
   @Synchronized
   fun receive(context: Context, data: Map<String, String>) {
     val registration = data["device_id"]?.let { registration(context, it) } ?: return
-    // Cards arrive sealed; one that does not open with this registration's key
-    // did not come from its Station.
+    // Cards travel sealed. One that does not open with this registration's
+    // key was not written by its Station.
     val card = openPush(registration, data) ?: return
     val updatedAt = card["updated_at"]?.toLongOrNull() ?: return
-    if (!acceptsPush(registration, card) || !isFresh(updatedAt, System.currentTimeMillis())) return
+    if (!acceptsPush(registration, card)) return
+    if (!isFresh(updatedAt, System.currentTimeMillis())) return
     if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
-    val prefs = state(context, registration.id)
-    channels(context)
-    showAlert(context, registration.id, prefs, card, sessionRoute(registration, card, RouteSource.ALERT))
-    updateActivity(
-      context,
-      registration.id,
-      prefs,
-      card,
-      updatedAt,
-      sessionRoute(registration, card, RouteSource.ACTIVITY)
-    )
+    val store = state(context, registration.id)
+    ensureChannels(context)
+    handleAlert(context, registration.id, store, card, sessionRoute(registration, card, RouteSource.ALERT))
+    handleCard(context, registration.id, store, card, updatedAt, sessionRoute(registration, card, RouteSource.ACTIVITY))
   }
 
   /**
-   * Renders a payload without the registration, freshness and foreground
-   * checks. Device verification only: it is not in the default permission set.
+   * Posts a payload as-is, skipping registration, freshness and foreground
+   * checks. For verifying rendering on a device; not in the default
+   * permission set. With no registration there is no verified Station, so
+   * nothing it posts opens a session.
    */
   @Synchronized
   fun preview(context: Context, data: Map<String, String>) {
-    channels(context)
-    // A preview has no registration, so no verified Station to route to.
-    data["alert_id"]?.let { postAlert(context, PREVIEW, data, it, null) }
-    showActivity(context, PREVIEW, data, data["active"] == "true", RUNNING_LIFETIME_MS, null)
+    ensureChannels(context)
+    val alertId = data["alert_id"]
+    if (alertId != null) postAlert(context, PREVIEW, data, alertId, null)
+    postCard(context, PREVIEW, data, data["active"] == "true", RUNNING_LIFETIME_MS, null)
   }
 
-  private fun activityTag(registrationId: String) = "$ACTIVITY_TAG:$registrationId"
+  private fun cardTag(registrationId: String) = "$CARD_TAG:$registrationId"
   private fun alertTag(registrationId: String) = "$ALERT_TAG:$registrationId"
 
-  private fun showAlert(
+  private fun appInForeground(): Boolean =
+    ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+
+  private fun handleAlert(
     context: Context,
     registrationId: String,
-    prefs: SharedPreferences,
-    data: Map<String, String>,
+    store: SharedPreferences,
+    card: Map<String, String>,
     route: SessionRoute?
   ) {
-    // Delivery retries carry the same alert id. Keep a bounded, ordered
-    // history so a retry of alert A after alert B is still recognised.
-    val alertId = data["alert_id"] ?: return
-    val seen = prefs.getString("seenAlerts", null)?.split('\n').orEmpty()
-    if (alertId in seen) return
-    // The open app shows its own in-app notice. Record the alert either way,
-    // so a retry cannot surface it after the app is backgrounded.
-    if (!ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-      postAlert(context, registrationId, data, alertId, route)
-    }
-    prefs.edit().putString(
-      "seenAlerts",
-      (seen.takeLast(SEEN_ALERT_HISTORY - 1) + alertId).joinToString("\n")
-    ).apply()
+    val alertId = card["alert_id"] ?: return
+    // A retry repeats the alert id; the bounded history catches it even
+    // after other alerts arrived in between.
+    val history = rememberAlert(store.getString(KEY_SEEN_ALERTS, null), alertId) ?: return
+    // With the app open its own in-app notice covers this. The id is still
+    // recorded, so a retry cannot surface it once the app is backgrounded.
+    if (!appInForeground()) postAlert(context, registrationId, card, alertId, route)
+    store.edit().putString(KEY_SEEN_ALERTS, history).apply()
   }
 
   private fun postAlert(
@@ -298,67 +372,71 @@ object AgentNotifications {
     alertId: String,
     route: SessionRoute?
   ) {
-    val title = data["alert_title"].orEmpty().take(120)
-    // Grouped alerts list up to five 120-character thread titles.
-    val body = data["alert_body"].orEmpty().take(608)
-    val id = alertId.hashCode()
-    val notification = base(context, ALERT_CHANNEL)
-      .setSmallIcon(R.drawable.agent_activity_mark)
-      .setContentTitle(title).setContentText(body)
-      .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-      .setAutoCancel(true)
-      .setContentIntent(openApp(context, id, "alert:$registrationId:$alertId", route))
-      .build()
-    manager(context).notify(alertTag(registrationId), id, notification)
+    val title = (data["alert_title"] ?: "").take(ALERT_TITLE_CHARS)
+    val body = (data["alert_body"] ?: "").take(ALERT_BODY_CHARS)
+    val notificationId = alertId.hashCode()
+    val opens = openApp(context, notificationId, "alert:$registrationId:$alertId", route)
+    val builder = newBuilder(context, Channel.ALERTS)
+    builder.setSmallIcon(R.drawable.agent_activity_mark)
+    builder.setContentTitle(title)
+    builder.setContentText(body)
+    builder.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+    builder.setAutoCancel(true)
+    builder.setContentIntent(opens)
+    notificationManager(context).notify(alertTag(registrationId), notificationId, builder.build())
   }
 
-  private fun updateActivity(
+  private fun handleCard(
     context: Context,
     registrationId: String,
-    prefs: SharedPreferences,
-    data: Map<String, String>,
+    store: SharedPreferences,
+    card: Map<String, String>,
     updatedAt: Long,
     route: SessionRoute?
   ) {
-    // Drop reordered status updates without dropping an unrelated alert.
-    if (updatedAt < prefs.getLong("lastUpdate", 0)) return
-    prefs.edit().putLong("lastUpdate", updatedAt).apply()
-    val active = data["active"] == "true"
-    // Absolute expiry: a replay must not extend a finished card, or make an
-    // abandoned host look active indefinitely.
-    val expiresAt = data["activity_expires_at"]?.toLongOrNull()
-      ?: if (active) updatedAt + RUNNING_LIFETIME_MS else 0L
-    val remainingMs = (expiresAt - System.currentTimeMillis()).coerceAtMost(MAX_LIFETIME_MS)
-    val wasActive = prefs.getBoolean("lastActive", false)
-    prefs.edit().putBoolean("lastActive", active).apply()
-    if (remainingMs <= 0 || !prefs.getBoolean("ongoing", false)) {
-      cancelActivity(context, registrationId)
-      prefs.edit().putBoolean("dismissed", false).apply()
-      return
-    }
-    // Dismissing a run includes its finished card. A new run arms it again;
-    // replays of the finished state stay dismissed.
-    if (active && !wasActive) prefs.edit().putBoolean("dismissed", false).apply()
-    if (!prefs.getBoolean("dismissed", false)) {
-      showActivity(context, registrationId, data, active, remainingMs, route)
+    val active = card["active"] == "true"
+    val memory = CardMemory(
+      lastUpdate = store.getLong(KEY_LAST_UPDATE, 0),
+      lastActive = store.getBoolean(KEY_LAST_ACTIVE, false),
+      dismissed = store.getBoolean(KEY_DISMISSED, false),
+      ongoingEnabled = store.getBoolean(KEY_ONGOING, false)
+    )
+    val step = planCard(memory, updatedAt, active, card["activity_expires_at"], System.currentTimeMillis())
+    // A reordered status update is dropped here; its alert was already handled.
+    if (step is CardStep.Stale) return
+    store.edit().putLong(KEY_LAST_UPDATE, updatedAt).putBoolean(KEY_LAST_ACTIVE, active).apply()
+    when (step) {
+      is CardStep.Post -> {
+        store.edit().putBoolean(KEY_DISMISSED, false).apply()
+        postCard(context, registrationId, card, active, step.remainingMs, route)
+      }
+      CardStep.Remove -> {
+        cancelCard(context, registrationId)
+        store.edit().putBoolean(KEY_DISMISSED, false).apply()
+      }
+      CardStep.KeepDismissed, CardStep.Stale -> Unit
     }
   }
 
-  private fun registrationIntent(context: Context, receiver: Class<*>, registrationId: String): PendingIntent =
-    PendingIntent.getBroadcast(
+  /**
+   * A broadcast PendingIntent addressed to one registration. The request
+   * code differs per registration so one card's dismiss intent cannot
+   * overwrite another's; because hash codes can collide and PendingIntent
+   * identity ignores extras, the data URI is what really keeps them apart.
+   */
+  private fun registrationBroadcast(context: Context, receiver: Class<*>, registrationId: String): PendingIntent {
+    val intent = Intent(context, receiver)
+      .setData(Uri.fromParts("station-registration", registrationId, null))
+      .putExtra(EXTRA_REGISTRATION, registrationId)
+    return PendingIntent.getBroadcast(
       context,
-      // Request codes must differ per registration, or one card's dismiss
-      // action would be overwritten by another's.
       registrationId.hashCode(),
-      // PendingIntent identity ignores extras, and hashCode values collide:
-      // the data URI keeps each registration's intent distinct.
-      Intent(context, receiver)
-        .setData(Uri.fromParts("station-registration", registrationId, null))
-        .putExtra(EXTRA_REGISTRATION, registrationId),
+      intent,
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
+  }
 
-  private fun showActivity(
+  private fun postCard(
     context: Context,
     registrationId: String,
     data: Map<String, String>,
@@ -366,111 +444,110 @@ object AgentNotifications {
     remainingMs: Long,
     route: SessionRoute?
   ) {
-    val dismissIntent = registrationIntent(context, AgentActivityDismissReceiver::class.java, registrationId)
     val model = ActivityModel(data, active)
-    // One PendingIntent per registration's card, updated in place: a tap (or
-    // the action button) always opens the session the current row 0 names.
-    val open = openApp(context, registrationId.hashCode(), "activity:$registrationId", route)
-    val builder = base(context, ACTIVITY_CHANNEL)
-      .setOngoing(active).setOnlyAlertOnce(true).setSilent(true)
-      .setTimeoutAfter(remainingMs)
-      // Live Updates must stay uncolorized to qualify for promotion.
-      .setColorized(false)
-      .setRequestPromotedOngoing(active)
-      .setShortCriticalText(model.chip)
-      .setContentIntent(open)
-      .setDeleteIntent(dismissIntent)
+    val onDismiss = registrationBroadcast(context, AgentActivityDismissReceiver::class.java, registrationId)
+    // One PendingIntent per registration's card, updated in place, so a tap
+    // (or the primary button) opens whatever session row 0 names right now.
+    val opens = openApp(context, registrationId.hashCode(), "activity:$registrationId", route)
+    val builder = newBuilder(context, Channel.ACTIVITY)
+    builder.setOngoing(active)
+    builder.setOnlyAlertOnce(true)
+    builder.setSilent(true)
+    builder.setTimeoutAfter(remainingMs)
+    // A colorized notification does not qualify for Live Update promotion.
+    builder.setColorized(false)
+    builder.setRequestPromotedOngoing(active)
+    builder.setShortCriticalText(model.chip)
+    builder.setContentIntent(opens)
+    builder.setDeleteIntent(onDismiss)
     model.applyTo(builder, context)
-    // A finished card is not ongoing: it swipes away and a tap opens the app,
-    // so buttons would only repeat that.
-    val action = model.action
-    if (action != null) {
-      if (open != null) builder.addAction(0, action, open)
-      builder.addAction(0, "Dismiss", dismissIntent)
+    // Buttons only on a live card: a finished card swipes away and its tap
+    // already opens the app.
+    model.action?.let { primary ->
+      if (opens != null) builder.addAction(0, primary, opens)
+      builder.addAction(0, "Dismiss", onDismiss)
     }
-    manager(context).notify(activityTag(registrationId), ACTIVITY_ID, builder.build())
+    notificationManager(context).notify(cardTag(registrationId), CARD_NOTIFICATION_ID, builder.build())
+
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O && registrationId != PREVIEW) {
-      // Notification timeouts arrived in API 26. One inexact alarm expires
-      // the card on Android 7 even after the process exits, with no
-      // exact-alarm permission, foreground service or periodic work.
+      // setTimeoutAfter needs API 26. On Android 7 a single inexact alarm
+      // takes the card down, even after the process is gone, without an
+      // exact-alarm permission, a foreground service or periodic work.
       val expiresAt = System.currentTimeMillis() + remainingMs
-      state(context, registrationId).edit().putLong("expiresAt", expiresAt).apply()
-      context.getSystemService(AlarmManager::class.java).setAndAllowWhileIdle(
+      state(context, registrationId).edit().putLong(KEY_EXPIRES_AT, expiresAt).apply()
+      val alarms = context.getSystemService(AlarmManager::class.java)
+      alarms.setAndAllowWhileIdle(
         AlarmManager.RTC_WAKEUP,
         expiresAt,
-        registrationIntent(context, AgentActivityExpiryReceiver::class.java, registrationId)
+        registrationBroadcast(context, AgentActivityExpiryReceiver::class.java, registrationId)
       )
     }
   }
 
-  private fun cancelActivity(context: Context, registrationId: String) {
-    manager(context).cancel(activityTag(registrationId), ACTIVITY_ID)
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-      context.getSystemService(AlarmManager::class.java)
-        .cancel(registrationIntent(context, AgentActivityExpiryReceiver::class.java, registrationId))
-      state(context, registrationId).edit().remove("expiresAt").apply()
-    }
+  private fun cancelCard(context: Context, registrationId: String) {
+    notificationManager(context).cancel(cardTag(registrationId), CARD_NOTIFICATION_ID)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) return
+    val alarms = context.getSystemService(AlarmManager::class.java)
+    alarms.cancel(registrationBroadcast(context, AgentActivityExpiryReceiver::class.java, registrationId))
+    state(context, registrationId).edit().remove(KEY_EXPIRES_AT).apply()
   }
 
-  private fun manager(context: Context) = context.getSystemService(NotificationManager::class.java)
+  private fun notificationManager(context: Context): NotificationManager =
+    context.getSystemService(NotificationManager::class.java)
 
-  private fun channels(context: Context) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      manager(context).createNotificationChannels(
-        listOf(
-          NotificationChannel(ALERT_CHANNEL, "Agent alerts", NotificationManager.IMPORTANCE_HIGH),
-          NotificationChannel(ACTIVITY_CHANNEL, "Ongoing agent activity", NotificationManager.IMPORTANCE_LOW),
-        )
-      )
-    }
+  private fun ensureChannels(context: Context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    val channels = Channel.entries.map { NotificationChannel(it.id, it.title, it.importance) }
+    notificationManager(context).createNotificationChannels(channels)
   }
 
-  private fun base(context: Context, channel: String): NotificationCompat.Builder {
-    val alert = channel == ALERT_CHANNEL
-    return NotificationCompat.Builder(context, channel)
-      .setPriority(if (alert) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_LOW)
-      .setDefaults(if (alert) Notification.DEFAULT_ALL else 0)
+  private fun newBuilder(context: Context, channel: Channel): NotificationCompat.Builder =
+    NotificationCompat.Builder(context, channel.id)
+      .setPriority(channel.priority)
+      .setDefaults(channel.defaults)
       .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
       .setShowWhen(false)
-  }
 
   /**
-   * Opens the app: at the session [route] names when there is one
-   * (AgentActivityPlugin redeems the tap and hands the route to the web
-   * layer, which validates it again and navigates), otherwise where it was.
+   * The PendingIntent a card or alert tap fires. It opens the app, at the
+   * session [route] names when there is one: AgentActivityPlugin redeems
+   * the tap and passes the route to the web layer, which checks it again
+   * before navigating. Without a route the app opens where it was.
    *
-   * The intent carries only a tap nonce, never the route: the route stays in
+   * Only a tap nonce rides on the intent. The route itself stays in
    * app-private storage ([TapLedger]), so extras another app puts on the
-   * exported launcher activity open nothing, and a redeemed nonce cannot be
-   * replayed. No data URI or action is added, which the deep-link plugin
-   * would read as a pairing link.
+   * exported launcher activity open nothing, and a spent nonce cannot be
+   * replayed. No data URI or action is set, because the deep-link plugin
+   * would take either for a pairing link.
    *
-   * PendingIntent identity ignores extras. [id] (the request code) and, from
-   * API 29, [identity] keep one card's or alert's intent from being replaced
-   * by another's; FLAG_UPDATE_CURRENT then replaces the extras of the SAME
-   * notification's intent, so an updated card carries only its newest nonce
-   * and a card that stops naming a session stops carrying one.
+   * PendingIntent identity ignores extras: [requestCode] and, from API 29,
+   * the intent identifier built from [identity] keep one notification's
+   * intent separate from another's. FLAG_UPDATE_CURRENT then replaces the
+   * extras of the same notification's intent, so an updated card carries
+   * only its latest nonce, and a card that stops naming a session stops
+   * carrying one.
    */
-  private fun openApp(context: Context, id: Int, identity: String, route: SessionRoute?): PendingIntent? {
-    val intent = tapIntent(context, identity) ?: return null
+  internal fun openApp(context: Context, requestCode: Int, identity: String, route: SessionRoute?): PendingIntent? {
+    val intent = launchIntent(context, identity) ?: return null
     val now = System.currentTimeMillis()
-    if (route != null) {
-      val nonce = newNonce()
-      saveTaps(context, taps(context).issue(identity, id, route, nonce, now))
-      intent.putExtra(EXTRA_TAP, nonce)
+    val ledger = loadTaps(context)
+    if (route == null) {
+      storeTaps(context, ledger.forget(identity, now))
     } else {
-      saveTaps(context, taps(context).forget(identity, now))
+      val nonce = randomNonce()
+      storeTaps(context, ledger.issue(identity, requestCode, route, nonce, now))
+      intent.putExtra(EXTRA_TAP, nonce)
     }
     return PendingIntent.getActivity(
       context,
-      id,
+      requestCode,
       intent,
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
   }
 
-  /** The launch intent a card or alert tap starts, before its nonce. */
-  private fun tapIntent(context: Context, identity: String): Intent? {
+  /** The app's launch intent for a tap on [identity], before any nonce is added. */
+  private fun launchIntent(context: Context, identity: String): Intent? {
     val intent = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return null
     intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) intent.identifier = "station-agent-activity:$identity"

@@ -1,11 +1,18 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
@@ -282,6 +289,17 @@ async function replayCodexCollabPrefix(
 ): Promise<void> {
   const messages = codexCaptureServerMessagesBeforeClientInterrupt(capture);
   let index = 0;
+  // The capture's client numbered its requests 1, 2, 3; Station sends string
+  // ids and Codex echoes an id with its type (#562). Replay each captured
+  // result as the reply to the request Station actually has in flight.
+  const replyToPending = (message: Record<string, unknown>) => {
+    const record = (adapter as any).transport.requireSession(threadId);
+    const pendingIds = [
+      ...(record.pendingRpcRequests as Map<string, unknown>).keys(),
+    ];
+    expect(pendingIds).toHaveLength(1);
+    writeServerMessage(adapter, threadId, { ...message, id: pendingIds[0] });
+  };
   const replayNotificationsUntilNextResult = () => {
     while (
       index < messages.length &&
@@ -300,17 +318,17 @@ async function replayCodexCollabPrefix(
   });
   await flushIo();
   replayNotificationsUntilNextResult();
-  writeServerMessage(adapter, threadId, messages[index++]); // initialize result
+  replyToPending(messages[index++]); // initialize result
   await flushIo();
   replayNotificationsUntilNextResult();
-  writeServerMessage(adapter, threadId, messages[index++]); // thread/start result
+  replyToPending(messages[index++]); // thread/start result
   await withTimeout(startSessionPromise, 'startSession (replay)');
   await flushIo();
 
   const sendTurnPromise = adapter.sendTurn({ threadId, input: 'go' });
   await flushIo();
   replayNotificationsUntilNextResult();
-  writeServerMessage(adapter, threadId, messages[index++]); // turn/start result
+  replyToPending(messages[index++]); // turn/start result
   await withTimeout(sendTurnPromise, 'sendTurn (replay)');
   await flushIo();
 
@@ -1818,6 +1836,81 @@ describe('CodexAdapter', () => {
       events.filter((event) => event.method === 'turn.aborted'),
     ).toHaveLength(1);
   });
+
+  // archive#3473: a turn that reaches its own terminal while turn/interrupt
+  // is still out keeps that terminal; the interrupt's confirmation must not
+  // follow it with a contradictory turn.aborted.
+  test.each([
+    { status: 'completed', terminal: 'turn.completed' },
+    { status: 'failed', terminal: 'runtime.error' },
+  ])(
+    'a turn/completed ($status) that lands while turn/interrupt is in flight is the only terminal',
+    async ({ status, terminal }) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const threadId = 'thread-interrupt-race';
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const startSessionPromise = adapter.startSession({
+        provider: 'codex',
+        threadId,
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '2',
+        result: { thread: { id: 'codex-thread-race' }, model: 'gpt-5-codex' },
+      });
+      await withTimeout(startSessionPromise, 'startSession');
+      const sendTurnPromise = adapter.sendTurn({ threadId, input: 'go' });
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        id: '3',
+        result: { turn: { id: 'turn-1' } },
+      });
+      await withTimeout(sendTurnPromise, 'sendTurn');
+      await flushIo();
+
+      const interruptPromise = adapter.interruptTurn(threadId, 'turn-1');
+      await flushIo();
+      writeServerMessage(adapter, threadId, {
+        method: 'turn/completed',
+        params: {
+          threadId: 'codex-thread-race',
+          turn: {
+            id: 'turn-1',
+            status,
+            items: [],
+            error: status === 'failed' ? { message: 'x' } : null,
+          },
+        },
+      });
+      await flushIo();
+      writeServerMessage(adapter, threadId, { id: '4', result: {} });
+      await withTimeout(interruptPromise, 'interruptTurn');
+
+      const events = await drainEvents(iterator);
+      expect(
+        events
+          .filter(
+            (event) =>
+              event.turnId === 'turn-1' &&
+              ['turn.completed', 'turn.aborted', 'runtime.error'].includes(
+                event.method,
+              ),
+          )
+          .map((event) => event.method),
+      ).toEqual([terminal]);
+      await adapter.stopAll();
+    },
+  );
 
   test('steerTurn sends app-server turn/steer on the open turn', async () => {
     processHandle = new FakeCodexProcess();
@@ -3637,6 +3730,74 @@ describe('CodexAdapter', () => {
         }),
       ]),
     );
+  });
+
+  describe('the login probe runs under the connection env', () => {
+    const makeTempDir = trackTempDirs();
+    let globalHome: string;
+    let probedEnvs: Array<Record<string, string> | undefined>;
+
+    // Stands in for `codex login status`: it reports on whichever CODEX_HOME
+    // it is launched with, exactly as the real CLI does. The global home is
+    // an empty temp dir, so no credentials on this host can leak in.
+    const runCommand = async (
+      _command: string,
+      args: string[],
+      _signal?: AbortSignal,
+      envOverlay?: Record<string, string>,
+    ) => {
+      if (args[0] === '--version') {
+        return { stdout: 'codex-cli 0.0.0', stderr: '', code: 0 };
+      }
+      probedEnvs.push(envOverlay);
+      const codexHome = envOverlay?.CODEX_HOME ?? globalHome;
+      return existsSync(join(codexHome, 'auth.json'))
+        ? { stdout: 'Logged in using ChatGPT', stderr: '', code: 0 }
+        : { stdout: '', stderr: 'Not logged in', code: 1 };
+    };
+
+    const loginStatus = async (
+      connectionEnv: Record<string, string> | undefined,
+    ) => {
+      const adapter = new CodexAdapter({
+        findBinary: () => '/test/bin/codex',
+        runCommand,
+        getConnectionEnv: async () => connectionEnv,
+      });
+      const prerequisites = await adapter.getPrerequisites();
+      return prerequisites.find((entry) => entry.id === 'codex-auth')?.status;
+    };
+
+    test('configHome (CODEX_HOME) is the account readiness reports on', async () => {
+      const root = makeTempDir('station-codex-readiness-auth-');
+      globalHome = join(root, 'global');
+      mkdirSync(globalHome);
+      const configHome = join(root, 'codex-proxy');
+      mkdirSync(configHome);
+      writeFileSync(
+        join(configHome, 'auth.json'),
+        JSON.stringify({ OPENAI_API_KEY: 'sk-proxy' }),
+      );
+      probedEnvs = [];
+
+      await expect(
+        loginStatus({
+          CODEX_HOME: configHome,
+          OPENAI_BASE_URL: 'http://127.0.0.1:8318',
+        }),
+      ).resolves.toBe('installed');
+      expect(probedEnvs).toEqual([
+        { CODEX_HOME: configHome, OPENAI_BASE_URL: 'http://127.0.0.1:8318' },
+      ]);
+
+      // Negative control: the same host without the connection env. The
+      // probe must receive no overlay at all, so a regression that always
+      // hands it one (even an empty one) is caught here.
+      probedEnvs = [];
+      await expect(loginStatus(undefined)).resolves.toBe('missing');
+      expect(probedEnvs).toHaveLength(1);
+      expect(probedEnvs[0]).toBeUndefined();
+    });
   });
 
   test('lists models from Codex app-server model/list', async () => {

@@ -159,6 +159,9 @@ afterEach(async () => {
   httpServers = [];
 });
 
+/** The delegating principal: it owns, and reads, every task session here. */
+const OWNER = 'human:test:delegator';
+
 describe('delegation provider-plan quota connected projection (#2265)', () => {
   let tmp: string;
   let fakeHome: string;
@@ -257,7 +260,6 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
       eventStore,
       adoptionLedger: eventStore.createAdoptionLedger(),
       sessionOwnerCacheMaxEntries: 2,
-      ownerlessSessionAccess: 'single-user-compat',
       flowRunService: new FlowRunService(),
       listProjects: () => [],
       agentPolicyService: new AgentPolicyService({
@@ -299,6 +301,7 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
     const handle = await delegateTask(
       {
         prompt: 'do the thing',
+        userId: OWNER,
         target: {
           environment: { kind: 'current' },
           agent: agentId('opencode-agent'),
@@ -358,9 +361,9 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
         logger: { debug: vi.fn() },
         getUserId: () => 'brian',
         observeDelegatedTask: (input: { taskId: string }) =>
-          observeDelegatedTask(input, service),
+          observeDelegatedTask({ ...input, userId: OWNER }, service),
         observeDelegatedTaskEvents: (input: { taskId: string }) =>
-          observeDelegatedTaskEvents(input, service),
+          observeDelegatedTaskEvents({ ...input, userId: OWNER }, service),
       }),
     );
 
@@ -495,6 +498,7 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
     const handle = await delegateTask(
       {
         prompt: 'control run',
+        userId: OWNER,
         target: {
           environment: { kind: 'current' },
           agent: agentId('opencode-agent'),
@@ -526,9 +530,9 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
       logger: { debug: vi.fn() },
       getUserId: () => 'brian',
       observeDelegatedTask: (input: { taskId: string }) =>
-        observeDelegatedTask(input, service),
+        observeDelegatedTask({ ...input, userId: OWNER }, service),
       observeDelegatedTaskEvents: (input: { taskId: string }) =>
-        observeDelegatedTaskEvents(input, service),
+        observeDelegatedTaskEvents({ ...input, userId: OWNER }, service),
     });
     const res = await app.request(
       `/delegations/${encodeURIComponent(handle.taskId)}`,

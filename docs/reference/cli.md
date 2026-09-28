@@ -206,7 +206,7 @@ Flags skip the prompt and name the path directly:
 | Flag | Effect when nothing is running |
 |------|--------------------------------|
 | `--inline` | Start inline in this terminal |
-| `--service` | Install and start a background service |
+| `--service` | Install and start a background service (from a source checkout, the checkout's development instance; see [`service`](#service)) |
 | `--temp-home` | Start against a throwaway temp home |
 | `--port=<n>` / `--ui-port=<n>` | Ports for the started instance |
 | `--consent-port=<n>` | Consent-listener port (default: server port + 3, station#3677) |
@@ -535,7 +535,10 @@ station setup import detect|preview|review-targets|apply|receipt|rollback [targe
 ```
 
 Local setup is checkout-only because it installs Station under launchd,
-systemd, or Windows Task Scheduler before creating the default Station. A
+systemd, or Windows Task Scheduler before creating the default Station.
+Without `--instance` or `--base` it installs the checkout's development
+instance in its home (see [`service`](#service)), and the saved Station
+records that same instance, home, and ports. A
 failed install saves no Station. Existing setup can select an unpaired
 Station deliberately or reuse the ordinary pairing pipeline with `--pair`.
 Hosted setup pairs with `https://station.kontourai.io` and selects it only after
@@ -1654,6 +1657,52 @@ override only that runtime leaf; shared saved-Station metadata remains under
 `STATION_ROOT`. `--temp-home` is rejected because a service needs a durable
 home. Every backend is per-user and requires no elevation.
 
+From a source checkout (the development channel), a service installed
+without `--instance` and without `--home`, `--base`, or `STATION_HOME` is
+the checkout's development instance: it is named with the checkout's
+development instance id and runs in that instance's home and on its ports.
+This covers `station service install`, `station setup local`, the launcher's
+`--service` flag, and its "Install and start a background service" choice.
+If that home already holds a service installed from this checkout (for
+example a `default` service from an earlier `setup local`), flagless commands
+address that service instead and say so; if it holds several, they refuse and
+list them so you can pass `--instance`.
+An explicit `--instance=<name>` other than that id, with no explicit home,
+is refused: `--instance=<dev id>` names the service after its home,
+`--instance=<name> --base=<dev home>` keeps an existing service where it is,
+and `--instance=<name> --home=<dir>` gives it its own durable home.
+
+Before registering, a source-checkout install checks the build stamp
+(`dist-server/station-build.json`, or `dist-server-<instance>/` for a named
+instance), which `station build` writes and `npm run build` does not. When the
+stamp is missing or records a sha other than the checkout's `HEAD`, install
+rebuilds first, as it does for a stale bundle, and refuses, naming
+`station build`, only if the stamp still does not match. If git cannot read
+`HEAD`, a missing stamp is refused without building, because the build could
+not write one. `station service run` rebuilds on the same conditions. Packaged
+installs (no `.git`) are not checked.
+
+What the unit runs depends on where `service install` runs from. A source
+checkout's unit runs its `scripts/station-cli.ts` through `tsx` with the
+installing Node.js, from the checkout's physical path. A prebuilt archive's
+unit runs `bin/station.mjs` with the archive's bundled Node.js; for the
+version `install.sh` made active, it runs them through
+`<install root>/current` (and puts `current/runtime/bin` on its `PATH`), so an
+upgrade switches `current` and restarts the unit without rewriting it. The
+service manifest records which (`kind`: `source` or `archive`) and, for such
+an archive, its `installRoot`; the installer and `station upgrade` recognize
+the service by that root. Installing a service from another version under
+`<install root>/versions/` is refused, because the installer may remove it.
+The unit keeps the ports it was installed with: an installer run that names
+another port explicitly refuses rather than ignoring it. A registered unit
+that is not running (stopped, or waiting to be restarted after a crash) is
+stopped for the switch and left stopped, and the installer starts no separate
+Station beside it; `service start` starts it on the new version. Every unit
+sets `STATION_SERVICE_MANAGED=1`, and systemd waits 75 seconds
+(`TimeoutStopSec`) for `service run`'s 60-second shutdown before it kills the
+unit. A unit installed by an earlier version keeps `TimeoutStopSec=30` until
+`station service install` is run again.
+
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse
 proxy such as `tailscale serve`, where the server itself only sees
@@ -1675,6 +1724,34 @@ origins on an `origins` line.
 `service status` reports the OS unit, lifecycle instance/processes, and both
 server/UI identity endpoints. `--json` emits the same data for automation. An
 installed but inactive or unreachable service exits non-zero.
+
+The unit's `PATH` is captured once, at install, from your login shell
+(`$SHELL -l`) plus the Node and system directories. A directory added to your
+profile later, or a Nix/home-manager generation that has since moved on, does
+not reach the service until it is reinstalled. For a managed install on macOS
+or Linux, `service status` (and the status `start`/`stop` print) re-reads your
+login-shell `PATH` and compares it with the `PATH` in the installed unit file
+on a `service PATH` line:
+
+- `current`: the unit carries exactly the directories, in the same order, that
+  a reinstall would capture now.
+- `drifted`: lists directories missing from the unit, directories no longer
+  captured, and the first difference when the shared directories are in a
+  different order (order decides which same-named binary wins). The reinstall
+  command follows, printed once even when scheduling is also stale, or an
+  explanation when no faithful command can be given.
+- `unknown`: the unit could not be read or sets no `PATH`, or your login shell
+  did not report its `PATH` within 5 seconds; nothing is compared.
+
+`--json` carries the same result as `servicePath`:
+`{ status, missing, stale, reordered?, reason? }`, where `reordered` is
+`{ position, unit, current }` with `position` counted from 0 within the shared
+directories. Drift is advice and does not change `healthy` or the exit code.
+The comparison reads the unit file Station wrote, not systemd drop-ins or the
+loaded job, and uses the environment of the shell that runs `status`. A
+reinstall command is prefixed with `STATION_ROOT=…` when the registration's
+recorded root differs from the one a shell without `STATION_ROOT` would
+derive.
 
 `service start` and `service stop` require the private service manifest that
 `service install` creates; they never infer a service registration from a
@@ -2019,6 +2096,17 @@ station stop --home=/tmp/station-a
 In a source checkout, pull the latest code, reinstall dependencies, and rebuild.
 In a signed portable install, reuse the persisted release ring and delegate to
 the installer without a Git checkout or pre-stop action. Installed plugins are preserved.
+From a prebuilt server archive that `install.sh` installed (the version
+`<install root>/current` names), `upgrade` re-runs that version's installer
+with the recorded release manifest. A Station user service installed from
+that archive does not block it: the installer stops the service, switches
+`current`, and starts the service again, and if the service does not come back
+answering as the new release it restores the previous version and restarts
+the service on it. Any other installed service still blocks the upgrade, as
+in a source checkout. From any other copy of a prebuilt archive, `upgrade`
+refuses and changes nothing: stop Station, extract the newer archive into its
+own directory, and start it from there; it finds the instances the old
+version started (see [Instance State Mechanism](#instance-state-mechanism)).
 
 ```
 station upgrade
@@ -2212,6 +2300,13 @@ Station manifest with its installed package version. A mismatch or missing
 installation is a fail-level check with an `npm install` repair suggestion.
 Optional tools and whether chat and External-agent paths are ready are checked
 separately.
+
+Run from a prebuilt server archive, doctor reports the Node.js the archive
+ships (`Node.js — v24.x (bundled: <archive>/runtime/...)`, a warn when some
+other Node.js is running it) and a `Prebuilt archive` line with the release
+ref, sha, ring, channel and lifecycle-state directory. It skips the npm, tsx,
+Rust and `@kontourai/*` pin checks and the toolchain fix commands: an archive
+cannot build itself and ships no source manifest.
 
 The `Terminal PTY (node-pty)` check reports whether the `node-pty` native
 module loads from the checkout. When it does not — typically a Linux host that
@@ -2463,7 +2558,9 @@ station registry plugins install <id> [--api-base=<url>]
 station registry plugins uninstall <id> [--api-base=<url>]
 ```
 
-Without a URL argument, fetches and displays the registry. The URL is read from
+Without a URL argument, fetches and displays the registry. It does not report
+installed state: the running Station owns that, and
+`station registry plugins list` shows it. The URL is read from
 `<STATION_HOME>/config/app.json` (`registryUrl` field). A legacy
 `<STATION_HOME>/config.json` value is read only to migrate it into the owned
 file.
@@ -2700,10 +2797,13 @@ When `station start` launches the server and UI processes, it writes per-instanc
 
 During rollout, Station still recognizes the prior `<cwd>/.station.pids` file when present and migrates away from it as new-format state is written.
 
-The CLI requires `.station/instances` to be an owned, non-symlinked directory with mode `0700`; if it isn't (e.g. a checkout that predates this check, or a directory created with a looser umask), `station start`/`station build` fails with `Unsafe Station instance-state directory (expected owned mode 0700): <path>`. Fix it with:
+A prebuilt server archive keeps this state outside itself, in `<root>/state/<channel>/instances/` of the Station root the instance's home belongs to. The root follows from the path of the home the command resolved, however it was given (`--home`, `--base`, `STATION_HOME` or the default), and from nothing else: a home at `<root>/instances/...` belongs to `<root>`, which makes the default `~/.station` (`%USERPROFILE%\.station` on Windows); any other home, including a `--temp-home`, is its own root and holds its state, which goes when the home is removed. `STATION_ROOT` does not move it. So `STATION_HOME=/srv/st station start` and `station stop --home=/srv/st` read the same records, and a start from a non-default home prints its stop command with `--home`. A bare `station stop` searches the root of the home a bare command targets (`STATION_HOME` or the default). An archive's port-conflict and shared-home checks likewise see only instances recorded in the same root; a port another root's instance holds still fails the bind. The archive can therefore be read-only, and every extracted version of one channel shares the records: the next version's `station stop` finds what the previous one started. For the same reason an archive's implicit instance id (no `--instance`, non-default home or ports) hashes the channel, home and ports rather than the archive's directory. Source checkouts are unchanged.
+
+The CLI requires the instance-state directory (`.station/instances` in a checkout, `<root>/state/<channel>/instances` for an archive) to be an owned, non-symlinked directory with mode `0700`; if it isn't (e.g. a checkout that predates this check, or a directory created with a looser umask), `station start`/`station build` fails with `Unsafe Station instance-state directory (expected owned mode 0700): <path>`. Fix it with `chmod 700` on the path the error names, for example:
 
 ```bash
-chmod 700 .station/instances
+chmod 700 .station/instances                    # checkout
+chmod 700 ~/.station/state/stable/instances     # stable archive, default home
 ```
 
 **Not the same thing as `<STATION_HOME>/instances.json`.** That is a

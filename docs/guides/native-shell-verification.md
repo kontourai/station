@@ -33,17 +33,34 @@ device, TestFlight, or App Store package. The command prints the resulting
 
 ## What can run today
 
+For the native relay-key approval ceremony on macOS, run the explicit shell
+lane from a disposable worktree:
+
+```sh
+npm run test:tauri-shell -- --build --lane=native-relay-key-approval
+```
+
+The lane starts an isolated Desktop home and loopback broker, uses the real
+WebView and macOS Keychain, receives a Station-signed candidate, enters the
+operator's comparison code and full key ID, then approves and revokes the
+public trust record. It removes only its generated Keychain accounts and
+fixture home. The lane is opt-in because it needs an unlocked user Keychain;
+the default shell sweep still runs its existing two lanes. This proves the
+pre-grant key ceremony on that macOS debug bundle. It does not prove a Pion
+application route, account/Device continuation, a second person or machine,
+release packaging, or hosted deployment.
+
 Run the changed selector first, then the exact focused checks it selects:
 
 ```sh
 npm run test:changed -- --base=origin/main --explain
-npm run test:focused -- scripts/__tests__/startup-readiness-static.test.ts src-ui/src/platform/native/__tests__/startupReadiness.test.ts
+npm run test:focused -- scripts/__tests__/startup-readiness-static.test.ts
 npm run verify:desktop-rust
 ```
 
 The static test pins release-channel hidden-window configuration and the one
-native reveal authority. The UI test proves the renderer retries an exact
-generation and refuses an owned sidecar with no valid ticket. The Rust lane
+native reveal authority. The renderer does not commit startup readiness; the
+native shell requests that commit itself. The Rust lane
 proves pure readiness and sidecar-supervisor transitions, including stale
 generation, deadline, retry, service recovery-surface recommit, and the
 four automatic respawns before the fifth counted exit is terminal. None launches

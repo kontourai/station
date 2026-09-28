@@ -34,7 +34,7 @@ const deps = () => ({
   },
   runs: { readRun: vi.fn() },
   reviews: { read: vi.fn(), listAll: vi.fn() },
-  authority: sessionReadAuthorityFromRequest('u', undefined, undefined),
+  authority: () => sessionReadAuthorityFromRequest('u', undefined, undefined),
 });
 
 describe('starter owner adapter', () => {
@@ -116,6 +116,18 @@ describe('starter owner adapter', () => {
     expect(d.reviews.read).toHaveBeenCalledWith('newer', 'bravo');
   });
 
+  test('with no request authority a scheduler receipt resolves missing and reads no run', async () => {
+    const d = { ...deps(), authority: () => undefined };
+    await expect(
+      createStarterOwnerAdapter(d).resolve({
+        kind: 'receipt',
+        owner: 'scheduler-run',
+        id: 'schedule:run-1',
+      }),
+    ).resolves.toEqual({ state: 'missing' });
+    expect(d.runs.readRun).not.toHaveBeenCalled();
+  });
+
   test('requires a scheduler-owned run for a scheduler receipt', async () => {
     const d = deps();
     d.runs.readRun.mockResolvedValue({ source: 'orchestration' });
@@ -126,7 +138,10 @@ describe('starter owner adapter', () => {
         id: 'schedule:run-1',
       }),
     ).resolves.toEqual({ state: 'stale' });
-    expect(d.runs.readRun).toHaveBeenCalledWith('schedule:run-1', d.authority);
+    expect(d.runs.readRun).toHaveBeenCalledWith(
+      'schedule:run-1',
+      d.authority(),
+    );
   });
 
   test.each([

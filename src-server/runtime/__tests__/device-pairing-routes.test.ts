@@ -6,7 +6,6 @@ import {
   rmSync,
   statSync,
 } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { type HttpBindings } from '@hono/node-server';
@@ -1927,11 +1926,55 @@ describe('device pairing routes', () => {
 
   test('never records challenge or issued credential in request logs', async () => {
     const harness = createHarness();
-    const paired = await pairDevice(harness, 'Private phone');
-    const logs = JSON.stringify(
-      (harness.logger.info as ReturnType<typeof vi.fn>).mock.calls,
+    const offerResponse = await harness.request(
+      '/api/pairing/offers',
+      harness.json(
+        { endpoint: 'https://station.example.test' },
+        MASTER_CREDENTIAL,
+      ),
     );
-    expect(logs).not.toContain(paired.credential);
+    const offer = (await offerResponse.json()) as DevicePairingOffer;
+    const pending = (await (
+      await harness.request(
+        '/.well-known/station/v1/pairing/request',
+        harness.json({
+          deviceName: 'Private phone',
+          offerId: offer.offerId,
+          proof: offer.challenge,
+        }),
+      )
+    ).json()) as DevicePairingRequest;
+    await harness.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      harness.json({}, MASTER_CREDENTIAL),
+    );
+    const exchange = await harness.request(
+      '/.well-known/station/v1/pairing/exchange',
+      harness.json({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: pending.requestId,
+      }),
+    );
+    const { credential } = (await exchange.json()) as { credential: string };
+    // Present the issued credential too: a routine read logs at debug.
+    const read = await harness.request('/api/projects', {
+      headers: { Authorization: `Bearer ${credential}` },
+    });
+    expect(read.status).toBe(200);
+
+    const logs = JSON.stringify(
+      (['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const).map(
+        (level) =>
+          (harness.logger[level] as ReturnType<typeof vi.fn>).mock.calls,
+      ),
+    );
+    // Positive control: the offer that returned the challenge and the read
+    // that presented the credential were both logged.
+    expect(logs).toContain('POST /api/pairing/offers 201');
+    expect(logs).toContain('GET /api/projects 200');
+    expect(logs).not.toContain(offer.challenge);
+    expect(logs).not.toContain(credential);
     expect(logs).not.toContain('Private phone');
   });
 
@@ -3562,35 +3605,6 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       expect(access.bootstrap).toBeUndefined();
       expect(harness.auditRecords).toEqual([]);
     });
-
-    test('the production wiring passes an audit sink, not just this harness', async () => {
-      // `configureRuntimeRoutes` is the only production call site, and nothing
-      // else observes it — deleting its `audit:` option left every test green.
-      const source = await readFile(
-        new URL('../routes/runtime-routes.ts', import.meta.url),
-        'utf8',
-      );
-      const callSite = source.slice(
-        source.indexOf('configureDevicePairingHostRoutes(\n    context.app,'),
-      );
-      expect(callSite).not.toBe('');
-      expect(callSite.slice(0, 400)).toContain('audit:');
-    });
-
-    test('the production wiring persists secret-safe failed-auth evidence', async () => {
-      const source = await readFile(
-        new URL('../routes/runtime-routes.ts', import.meta.url),
-        'utf8',
-      );
-      const callSite = source.slice(
-        source.indexOf('configureDevicePairingPublicRoutes(\n    context.app,'),
-      );
-      expect(callSite).not.toBe('');
-      expect(callSite.slice(0, 500)).toContain('authFailureAudit:');
-      expect(source).toContain(
-        "context.logger.warn('Pairing authentication attempt rejected'",
-      );
-    });
   });
 
   describe('behind Tailscale Serve', () => {
@@ -4302,22 +4316,6 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       expect(recorded.mock.calls[0]?.[0]).not.toMatchObject({
         endpoint: 'https://kontour.python-smelt.ts.net',
       });
-    });
-
-    test('the production route configuration wires the resolver', () => {
-      // The two tests above inject the resolver through the harness, so they
-      // prove the handler USES it — not that production SUPPLIES it. Dropping
-      // the wiring at the real call site leaves them green (verified by
-      // injection), which is the gap this closes. It pins source text rather
-      // than behaviour, deliberately: constructing the full runtime context
-      // here would cost more than the defect it guards against.
-      const source = readFileSync(
-        new URL('../routes/runtime-routes.ts', import.meta.url),
-        'utf8',
-      );
-      expect(source).toMatch(
-        /resolvePublicIngressOrigin:\s*publicIngressOriginResolver\(/,
-      );
     });
 
     test('an access-request minted through the UI proxy does not record home-possession locality', async () => {

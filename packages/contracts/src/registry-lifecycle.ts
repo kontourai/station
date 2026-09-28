@@ -13,19 +13,3 @@ export interface RegistryLifecycleRecord {
   availableVersion?: string;
   source?: string;
 }
-
-export function canInstallRegistryItem(
-  record: Pick<RegistryLifecycleRecord, 'state'>,
-): boolean {
-  return record.state === 'installable' || record.state === 'update_available';
-}
-
-export function canRemoveRegistryItem(
-  record: Pick<RegistryLifecycleRecord, 'state'>,
-): boolean {
-  return (
-    record.state === 'installed' ||
-    record.state === 'disabled' ||
-    record.state === 'update_available'
-  );
-}

@@ -3,86 +3,118 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
- * station#1815. `detectCliOnPath` is the only place adoption touches the host,
- * and until now it accepted neither cancellation nor a ceiling — which is why
- * shutdown's only options were to hang on a probe or to stop waiting and
- * release the home while the probe (and the registry write behind it) was
- * still running.
+ * station#1815 / #2663. `detectCliOnPath` is the only place adoption touches
+ * the host. Since #2663 it answers with `findCliBinaryAsync` — the resolution
+ * the engine spawns use — instead of a process-PATH-only `which`.
  *
- * The locator child is mocked here deliberately. What has to be proven at
- * this seam is that the caller's cancellation and ceiling REACH
- * `execFile` — that a probe nobody is waiting for is never even started, and
- * that a caller who passes nothing keeps exactly the unbounded behaviour it
- * had. Node's own kill-on-abort is its documented contract, not this
- * function's, and asserting it here would mean a spawned child and a
- * constant wall-clock bound of the kind `vitest-resource-manifest.mjs`
- * warns against.
+ * The lookup is mocked here deliberately. What has to be proven at this seam
+ * is the answer mapping and that the caller's cancellation and ceiling are
+ * honoured: a probe nobody is waiting for is never even started, a pending
+ * one stops being waited for, and a caller who passes nothing keeps an
+ * unbounded wait. The real lookup against a real HOME is proven in
+ * `native-engine-adoption.path-resolution.process.test.ts`.
  */
-const child = vi.hoisted(() => ({
-  execFile: vi.fn(
-    (
-      _file: string,
-      _args: string[],
-      _options: Record<string, unknown>,
-      callback: (error: Error | null, stdout: string) => void,
-    ) => {
-      callback(null, '/usr/local/bin/claude\n');
-      return {} as unknown;
-    },
+const auth = vi.hoisted(() => ({
+  // The sync read of what is known now. Null by default, so every case below
+  // except the one about it exercises the awaited lookup.
+  findCliBinary: vi.fn((_command: string): string | null => null),
+  findCliBinaryAsync: vi.fn(
+    async (_command: string): Promise<string | null> =>
+      '/home/u/.local/bin/muse',
   ),
 }));
 
-vi.mock('node:child_process', () => ({ execFile: child.execFile }));
+vi.mock('../../providers/auth/cli-auth.js', () => ({
+  findCliBinary: auth.findCliBinary,
+  findCliBinaryAsync: auth.findCliBinaryAsync,
+}));
 
 const { detectCliOnPath } = await import('../cli-detection.js');
 
-function lastOptions(): Record<string, unknown> {
-  const call = child.execFile.mock.calls.at(-1);
-  if (!call) throw new Error('the locator was never invoked');
-  return call[2];
+/** A lookup that settles only when the test says so. */
+function pendingLookup(): (value: string | null) => void {
+  let settle: (value: string | null) => void = () => {};
+  auth.findCliBinaryAsync.mockImplementationOnce(
+    () =>
+      new Promise<string | null>((resolve) => {
+        settle = resolve;
+      }),
+  );
+  return (value) => settle(value);
 }
 
 beforeEach(() => {
-  child.execFile.mockClear();
+  auth.findCliBinaryAsync.mockClear();
+  auth.findCliBinary.mockClear();
+  vi.useRealTimers();
 });
 
 describe('detectCliOnPath', () => {
-  test('reports an installation only for a locator that printed a path', async () => {
-    await expect(detectCliOnPath('claude')).resolves.toBe(true);
+  test('reports an installation exactly when the shared resolver finds a binary', async () => {
+    await expect(detectCliOnPath('muse')).resolves.toBe(true);
+    expect(auth.findCliBinaryAsync).toHaveBeenCalledWith('muse');
 
-    child.execFile.mockImplementationOnce((_f, _a, _o, callback) => {
-      // A locator exiting 0 with no path — a shell-wrapper edge case, and not
-      // an installation.
-      callback(null, '   \n');
-      return {} as unknown;
-    });
-    await expect(detectCliOnPath('claude')).resolves.toBe(false);
+    auth.findCliBinaryAsync.mockResolvedValueOnce(null);
+    await expect(detectCliOnPath('muse')).resolves.toBe(false);
 
-    child.execFile.mockImplementationOnce((_f, _a, _o, callback) => {
-      callback(new Error('exit 1'), '');
-      return {} as unknown;
-    });
-    await expect(detectCliOnPath('claude')).resolves.toBe(false);
+    auth.findCliBinaryAsync.mockRejectedValueOnce(new Error('boom'));
+    await expect(detectCliOnPath('muse')).resolves.toBe(false);
+  });
+
+  test('answers a hit already known without awaiting the login-shell lookup', async () => {
+    // #2663 review: the awaited lookup waits on the `$SHELL -ic` capture
+    // before searching, so a CLI on the process PATH read as absent to a
+    // caller whose budget ran out first.
+    auth.findCliBinary.mockReturnValueOnce('/usr/bin/codex');
+
+    await expect(detectCliOnPath('codex', { timeoutMs: 2_000 })).resolves.toBe(
+      true,
+    );
+    expect(auth.findCliBinary).toHaveBeenCalledWith('codex');
+    expect(auth.findCliBinaryAsync).not.toHaveBeenCalled();
   });
 
   test('leaves an optionless caller exactly as unbounded as it was', async () => {
-    await detectCliOnPath('claude');
-    // `timeout: 0` is Node's own "no ceiling"; anything else here would turn
-    // a slow host into "not installed" on `/api/system/status`, which never
-    // asked for a ceiling.
-    expect(lastOptions()).toMatchObject({ signal: undefined, timeout: 0 });
+    vi.useFakeTimers();
+    const settle = pendingLookup();
+    let answer: boolean | undefined;
+    const probe = detectCliOnPath('claude').then((value) => {
+      answer = value;
+    });
+    // Far past any ceiling a caller could have meant: still waiting.
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(answer).toBeUndefined();
+    settle('/usr/local/bin/claude');
+    await probe;
+    expect(answer).toBe(true);
   });
 
-  test('forwards the caller cancellation and ceiling to the locator', async () => {
+  test('stops waiting at the ceiling and answers false', async () => {
+    vi.useFakeTimers();
+    const settle = pendingLookup();
+    let answer: boolean | undefined;
+    const probe = detectCliOnPath('codex', { timeoutMs: 10_000 }).then(
+      (value) => {
+        answer = value;
+      },
+    );
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(answer).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    await probe;
+    expect(answer).toBe(false);
+    // A late answer changes nothing for a caller that has been answered.
+    settle('/usr/local/bin/codex');
+    expect(answer).toBe(false);
+  });
+
+  test('stops waiting when the caller aborts mid-probe', async () => {
+    const settle = pendingLookup();
     const controller = new AbortController();
-    await detectCliOnPath('codex', {
-      signal: controller.signal,
-      timeoutMs: 10_000,
-    });
-    expect(lastOptions()).toMatchObject({
-      signal: controller.signal,
-      timeout: 10_000,
-    });
+    const probe = detectCliOnPath('codex', { signal: controller.signal });
+    controller.abort();
+    await expect(probe).resolves.toBe(false);
+    settle('/usr/local/bin/codex');
   });
 
   test('never starts a locator for a caller that has already given up', async () => {
@@ -93,13 +125,12 @@ describe('detectCliOnPath', () => {
       signal: controller.signal,
     });
 
-    // Asserted before the answer, deliberately. "Resolved false" would also
-    // hold for a locator that ran and was killed — the mock here does not
-    // honour a signal, so only this assertion discriminates. `execFile` with
-    // an aborted signal still creates the child before killing it, and the
-    // caller of an aborted probe is a runtime that has already begun tearing
-    // its home down.
-    expect(child.execFile).not.toHaveBeenCalled();
+    // Asserted before the answer, deliberately: "resolved false" would also
+    // hold for a lookup that ran. The first lookup in a process is what
+    // spawns the shared `$SHELL -ic` PATH capture, and the caller of an
+    // aborted probe is a runtime that has already begun tearing down.
+    expect(auth.findCliBinaryAsync).not.toHaveBeenCalled();
+    expect(auth.findCliBinary).not.toHaveBeenCalled();
     expect(detected).toBe(false);
   });
 });

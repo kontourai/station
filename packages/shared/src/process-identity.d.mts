@@ -3,7 +3,6 @@ export const WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS: number;
 /** @deprecated Use WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS. */
 export const WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS: number;
 export const WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS: number;
-export const WINDOWS_OWN_PROCESS_BIRTH_ATTEMPTS: number;
 export const WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS: number;
 export const WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS: number;
 export type ExactProcessIdentity = { pid: number; start: string };
@@ -21,6 +20,15 @@ export type ProcessIdentityDependencies = {
   now?: () => number;
   retryDelayMs?: number;
   deadlineMs?: number;
+  /**
+   * Windows probe shell; absent means the absolute Windows PowerShell, and
+   * `pwsh.exe` means PowerShell 7 at its standard install path, else PATH.
+   */
+  windowsShell?: string;
+  /** Environment used to resolve the Windows PowerShell paths. */
+  env?: NodeJS.ProcessEnv;
+  /** existsSync-shaped seam for PowerShell 7's standard install path. */
+  fileExists?: (path: string) => boolean;
   /** execFileSync-shaped seam; #1669 added it to the impl but not here. */
   exec?: (
     file: string,
@@ -32,6 +40,18 @@ export function lookupProcessBirthFingerprint(
   pid: number,
   dependencies?: ProcessIdentityDependencies,
 ): string | null;
+export type OwnProcessBirthProbeSchedule = {
+  retryDelayMs: number;
+  attempts: Array<{ timeoutMs: number; windowsShell: string | undefined }>;
+};
+export function ownProcessBirthProbeSchedule(
+  platform?: NodeJS.Platform,
+): OwnProcessBirthProbeSchedule;
+export function describeRecentProcessBirthProbeFailures(pid: number): string;
+export function describeProcessBirthProbe(
+  platform?: NodeJS.Platform,
+  env?: NodeJS.ProcessEnv,
+): string;
 export const PROCESS_BIRTH_FINGERPRINT_CACHE_TTL_MS: number;
 export type ProcessIdentityAsyncDependencies = Omit<
   ProcessIdentityDependencies,

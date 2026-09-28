@@ -65,6 +65,21 @@ describe('CaptureModal', () => {
       'mn-save-transcript',
     ) as HTMLButtonElement;
     expect(saveButton.disabled).toBe(true);
+
+    fireEvent.change(screen.getByTestId('mn-transcript'), {
+      target: { value: 'Alice: hi' },
+    });
+    expect(saveButton.disabled).toBe(true);
+
+    fireEvent.change(screen.getByTestId('mn-root-select'), {
+      target: { value: 'root:personal' },
+    });
+    expect(saveButton.disabled).toBe(false);
+
+    fireEvent.change(screen.getByTestId('mn-transcript'), {
+      target: { value: '   ' },
+    });
+    expect(saveButton.disabled).toBe(true);
   });
 
   test('captures a raw record, then compiles a linked record with provenance', async () => {

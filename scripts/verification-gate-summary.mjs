@@ -32,8 +32,8 @@ import {
   openSync,
   readSync,
 } from 'node:fs';
-import { pathToFileURL } from 'node:url';
 import { ANSI_SEQUENCE } from './lib/ansi-escape.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 /**
  * The gate's JSON verdict is the LAST document on stdout and is itself bounded
@@ -541,10 +541,7 @@ export function main(argv, { log = console.log, warn = console.error } = {}) {
   return 0;
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (invokedDirectly(import.meta.url)) {
   // Never mask the gate: any failure inside this reporter is reported and the
   // process still exits 0, because the gate step's own status is the verdict.
   try {

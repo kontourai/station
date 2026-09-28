@@ -8,7 +8,8 @@
 //! docs/design/notification-delivery.md for why every keep-the-process-alive
 //! approach failed there. iOS: APNs starts and updates the Live Activity and
 //! the widget extension (`src-desktop/ios/StationAgentActivity`) opens the
-//! sealed card; the Swift plugin (`ios/`) only registers identity. The iOS
+//! sealed card; the Swift plugin (`ios/`) only registers identity and hands
+//! over push tokens (including the app's APNs device token for alerts). The iOS
 //! half is compiled only when STATION_IOS_LIVE_ACTIVITY=1 (see build.rs).
 //!
 //! There are no Rust command handlers. On mobile, Tauri forwards an
@@ -20,6 +21,11 @@ use tauri::{
     plugin::{Builder, TauriPlugin},
     Runtime,
 };
+
+/// Whether this build carries the iOS native half (STATION_IOS_LIVE_ACTIVITY=1).
+/// The cfg is set by this crate's build script only, so the app reads it here
+/// to report `remote-push` honestly.
+pub const IOS_LIVE_ACTIVITY_BUILT: bool = cfg!(all(target_os = "ios", station_ios_live_activity));
 
 #[cfg(target_os = "android")]
 const PLUGIN_IDENTIFIER: &str = "io.kontourai.station.agentactivity";

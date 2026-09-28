@@ -279,26 +279,6 @@ test.describe('Android — Mobile Layout', () => {
     expect(layout?.right).toBeLessThanOrEqual(layout?.viewportWidth ?? 0);
   });
 
-  test('safe area CSS variables are defined in stylesheet', async ({
-    page,
-  }) => {
-    await page.goto('/');
-    await page.waitForTimeout(1500);
-    const hasSafeVar = await page.evaluate(() => {
-      for (const sheet of document.styleSheets) {
-        try {
-          for (const rule of sheet.cssRules) {
-            if (rule.cssText?.includes('--safe-top')) return true;
-          }
-        } catch {
-          /* cross-origin sheets */
-        }
-      }
-      return false;
-    });
-    expect(hasSafeVar).toBe(true);
-  });
-
   test('viewport meta includes viewport-fit=cover', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(500);
@@ -311,46 +291,6 @@ test.describe('Android — Mobile Layout', () => {
     expect(content).toContain('viewport-fit=cover');
   });
 
-  test('hamburger + Station logo visible in toolbar on mobile', async ({
-    page,
-  }) => {
-    await page.goto('/');
-    await page.waitForTimeout(2000);
-    const toggle = page.locator('.app-toolbar__sidebar-toggle');
-    const brand = page.locator('.app-toolbar__brand');
-    if ((await toggle.count()) > 0) {
-      await expect(toggle).toBeVisible();
-      await expect(brand).toBeVisible();
-      const brandText = await brand.textContent();
-      expect(brandText).toContain('Station');
-    }
-  });
-
-  test('hamburger opens sidebar drawer', async ({ page }) => {
-    await page.goto('/settings');
-    await dismissSetupLauncher(page);
-    const toggle = page.locator('.app-toolbar__sidebar-toggle');
-    await expect(toggle).toBeVisible();
-
-    await toggle.click();
-    const sidebar = page.locator('.sidebar--expanded');
-    await expect(sidebar).toBeVisible();
-  });
-
-  test('sidebar drawer has navigation items', async ({ page }) => {
-    await page.goto('/settings');
-    // The first-run setup launcher's backdrop covers the toolbar and swallows
-    // this click. Dismiss it first, as the other specs in this suite do —
-    // whether it had rendered yet is what made these two intermittently red.
-    await dismissSetupLauncher(page);
-    const toggle = page.locator('.app-toolbar__sidebar-toggle');
-    await expect(toggle).toBeVisible();
-
-    await toggle.click();
-    const navBtns = page.locator('.sidebar__nav-btn');
-    await expect(navBtns.first()).toBeVisible();
-  });
-
   test('sidebar drawer is named navigation with contained, restorable focus', async ({
     page,
   }) => {
@@ -359,6 +299,13 @@ test.describe('Android — Mobile Layout', () => {
     await dismissSetupLauncher(page);
     const toggle = page.getByRole('button', { name: 'Toggle menu' });
     await expect(toggle).toBeVisible();
+    // The toolbar brand only shows on phones (index.css hides it on desktop),
+    // beside the toggle that replaces the desktop nav.
+    const brand = page
+      .locator('.app-toolbar')
+      .getByRole('link', { name: 'Station home' });
+    await expect(brand).toBeVisible();
+    await expect(brand).toHaveText('Station');
     await toggle.focus();
     await toggle.press('Enter');
 
@@ -366,6 +313,7 @@ test.describe('Android — Mobile Layout', () => {
       name: 'Mobile navigation',
     });
     await expect(navigation).toBeVisible();
+    await expect(navigation.locator('.sidebar__nav-btn').first()).toBeVisible();
     expect(await navigation.ariaSnapshot()).toContain(
       '- navigation "Mobile navigation"',
     );
@@ -385,69 +333,54 @@ test.describe('Android — Mobile Layout', () => {
     await expect(toggle).toBeFocused();
   });
 
-  test('header nav is hidden on mobile', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(2000);
-    const nav = page.locator('.header-nav');
-    if ((await nav.count()) > 0) {
-      const isVisible = await nav.evaluate(
-        (el) => getComputedStyle(el).display !== 'none',
-      );
-      expect(isVisible).toBe(false);
-    }
-  });
-
   test('no visible interactive element has touch target smaller than 44px', async ({
     page,
   }) => {
     await page.goto('/');
-    await page.waitForTimeout(2000);
-    const tooSmall = await page.evaluate(() => {
+    // Anchor on the rendered shell: an unrendered page has no controls, so
+    // it would sweep clean.
+    await expect(page.locator('.app-toolbar')).toBeVisible({ timeout: 15_000 });
+    await dismissSetupLauncher(page);
+    const { candidates, tooSmall } = await page.evaluate(() => {
       const buttons = Array.from(
         document.querySelectorAll(
           'button, a[href], [role="button"], input, select, textarea',
         ),
       );
-      return buttons
-        .filter((el) => {
-          const rect = el.getBoundingClientRect();
-          const style = getComputedStyle(el);
-          if (rect.width === 0 || rect.height === 0) return false;
-          if (
-            style.display === 'none' ||
-            style.visibility === 'hidden' ||
-            style.opacity === '0'
-          )
-            return false;
-          const parent = el.closest(
-            '.sidebar--collapsed, .header-nav, [style*="display: none"]',
-          );
-          if (parent) return false;
-          if (rect.bottom < 0 || rect.top > window.innerHeight) return false;
-          if (rect.right < 0 || rect.left > window.innerWidth) return false;
-          return rect.width < 44 || rect.height < 44;
-        })
-        .map((el) => {
-          const rect = el.getBoundingClientRect();
-          return `${el.tagName}.${el.className.toString().slice(0, 50)} ${rect.width.toFixed(0)}x${rect.height.toFixed(0)}`;
-        })
-        .slice(0, 20);
+      const visible = buttons.filter((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        if (rect.width === 0 || rect.height === 0) return false;
+        if (
+          style.display === 'none' ||
+          style.visibility === 'hidden' ||
+          style.opacity === '0'
+        )
+          return false;
+        const parent = el.closest(
+          '.sidebar--collapsed, [style*="display: none"]',
+        );
+        if (parent) return false;
+        if (rect.bottom < 0 || rect.top > window.innerHeight) return false;
+        if (rect.right < 0 || rect.left > window.innerWidth) return false;
+        return true;
+      });
+      return {
+        candidates: visible.length,
+        tooSmall: visible
+          .filter((el) => {
+            const rect = el.getBoundingClientRect();
+            return rect.width < 44 || rect.height < 44;
+          })
+          .map((el) => {
+            const rect = el.getBoundingClientRect();
+            return `${el.tagName}.${el.className.toString().slice(0, 50)} ${rect.width.toFixed(0)}x${rect.height.toFixed(0)}`;
+          })
+          .slice(0, 20),
+      };
     });
-    if (tooSmall.length > 0)
-      console.warn('Touch targets under 44px:', tooSmall);
+    expect(candidates).toBeGreaterThan(0);
     expect(tooSmall).toHaveLength(0);
-  });
-
-  test('chat dock respects safe area', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(1500);
-    const dock = page.locator('.chat-dock');
-    if ((await dock.count()) > 0) {
-      const pb = await dock.evaluate(
-        (el) => getComputedStyle(el).paddingBottom,
-      );
-      expect(pb).toBeTruthy();
-    }
   });
 
   test('sidebar footer is anchored to the viewport bottom and decoupled from chat-dock-height', async ({

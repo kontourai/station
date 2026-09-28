@@ -1,19 +1,7 @@
-import * as crypto from 'node:crypto';
 import { once } from 'node:events';
-import * as fs from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { createServer as createHttpServer } from 'node:http';
 import { createServer as createTcpServer, type Server, Socket } from 'node:net';
-import { networkInterfaces, tmpdir } from 'node:os';
-import * as path from 'node:path';
-import { serve } from '@hono/node-server';
-import { Hono } from 'hono';
+import { networkInterfaces } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  UI_MIME_TYPES,
-  UI_PROXY_BACKEND_PREFIXES,
-  uiRequestHandler,
-} from '../../../packages/cli/src/commands/lifecycle.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
 import { TerminalWebSocketServer } from '../../services/terminal/terminal-ws-server.js';
 
@@ -72,7 +60,7 @@ async function close(server: {
   );
 }
 
-describe('explicit Station listener host isolation', () => {
+describe('explicit Station WebSocket listener host isolation', () => {
   const cleanup: Array<() => Promise<void>> = [];
 
   afterEach(async () => {
@@ -88,7 +76,10 @@ describe('explicit Station listener host isolation', () => {
     if (failure) throw failure.reason;
   });
 
-  it('binds API, terminal, voice, and UI to loopback and refuses a control-proven non-loopback route', async () => {
+  // Covers the listeners Station binds itself from a caller-supplied host. The
+  // API and UI sockets are bound by @hono/node-server and the CLI's own
+  // `listen`; this file does not resolve the production host for any of them.
+  it('terminal and voice honour an explicit loopback host and refuse a control-proven non-loopback route', async () => {
     const control = createTcpServer();
     const controlPort = await listen(control, '0.0.0.0');
     cleanup.push(() => close(control));
@@ -102,17 +93,6 @@ describe('explicit Station listener host isolation', () => {
       probativeAddresses.length,
       'A wildcard control listener must prove at least one non-loopback route before isolation assertions are meaningful',
     ).toBeGreaterThan(0);
-
-    const app = new Hono().get('/api/system/status', (c) =>
-      c.json({ ready: true }),
-    );
-    const apiServer = serve({ fetch: app.fetch, hostname: LOOPBACK, port: 0 });
-    if (!apiServer.listening) await once(apiServer, 'listening');
-    const apiAddress = apiServer.address();
-    if (!apiAddress || typeof apiAddress === 'string') {
-      throw new Error('API listener did not report an assigned TCP port');
-    }
-    cleanup.push(() => close(apiServer));
 
     const terminal = new TerminalWebSocketServer({
       subscribe: () => () => {},
@@ -142,30 +122,9 @@ describe('explicit Station listener host isolation', () => {
     }
     cleanup.push(() => close(voiceWss));
 
-    const uiDir = await mkdtemp(path.join(tmpdir(), 'station-ui-listener-'));
-    await writeFile(path.join(uiDir, 'index.html'), '<head></head>Station');
-    cleanup.push(() => rm(uiDir, { recursive: true, force: true }));
-    const uiServer = createHttpServer(
-      uiRequestHandler({
-        backendPrefixes: UI_PROXY_BACKEND_PREFIXES,
-        crypto,
-        dir: uiDir,
-        fs,
-        http: await import('node:http'),
-        inject: '',
-        mime: UI_MIME_TYPES,
-        path,
-        upstreamPort: apiAddress.port,
-      }),
-    );
-    const uiPort = await listen(uiServer, LOOPBACK);
-    cleanup.push(() => close(uiServer));
-
     const listeners = [
-      ['api', apiAddress.port],
       ['terminal', terminalAddress.port],
       ['voice', voiceAddress.port],
-      ['ui', uiPort],
     ] as const;
     for (const [name, port] of listeners) {
       expect(await connect(LOOPBACK, port), `${name} loopback readiness`).toBe(

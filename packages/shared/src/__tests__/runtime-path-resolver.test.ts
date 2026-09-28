@@ -198,6 +198,9 @@ describe('Station root runtime path resolver', () => {
       join(root, 'config', 'profiles'),
       join(root, 'cache'),
       join(root, 'installs'),
+      // #2675: CLI lifecycle state for prebuilt archives, root-owned.
+      join(root, 'state'),
+      join(root, 'state', 'stable'),
       join(root, 'instances'),
       join(root, 'instances', 'dev'),
       join(root, 'instances', 'stable', 'nested'),
@@ -251,6 +254,7 @@ describe('Station root runtime path resolver', () => {
       'config',
       'cache',
       'installs',
+      'state',
       'instances',
       'instances/dev',
     ]) {

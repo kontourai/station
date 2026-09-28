@@ -38,6 +38,7 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import type { ProviderAdapterMetadata } from '../../../providers/adapter-shape.js';
+import type { FullAccessGrant } from '../../../security/coding-authority.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import {
   type ExecutionSessionBinding,
@@ -176,7 +177,6 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     }),
     resolveStationDefaultApprovalMode: async () => stationDefault,
     logger: { debug: vi.fn(), warn: vi.fn() },
-    ownerlessSessionAccess: 'single-user-compat',
   });
   const deps: ExecutionTargetExecutionDependencies = {
     resolveEnvironmentAccess: async () => ({
@@ -250,6 +250,8 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     model?: { options?: Record<string, unknown> };
     setApprovalMode?: ApprovalMode;
     setApprovalModeBasedOn?: number | null;
+    /** The route's grant, forwarded as the production composition does. */
+    fullAccessGrant?: FullAccessGrant | null;
   }) =>
     executeForegroundMessage(
       {
@@ -268,6 +270,9 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
               setApprovalModeBasedOn: input.setApprovalModeBasedOn,
             }
           : {}),
+        ...(input.fullAccessGrant
+          ? { fullAccessGrant: input.fullAccessGrant }
+          : {}),
         userId: OWNER,
       },
       deps,
@@ -278,7 +283,13 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     getUserId: () => OWNER,
     executeForegroundMessage: (input) => execute(input),
     continueForegroundMessage: (input) =>
-      execute({ message: input.message, conversationId: input.conversationId }),
+      execute({
+        message: input.message,
+        conversationId: input.conversationId,
+        ...(input.fullAccessGrant
+          ? { fullAccessGrant: input.fullAccessGrant }
+          : {}),
+      }),
   });
   const app = new Hono();
   // Every device in these probes acts as the operator in person (the

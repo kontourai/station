@@ -19,6 +19,7 @@ import {
   type ReviewReviewerDeclaration,
   type ReviewRoutingBinding,
 } from '@kontourai/station-contracts/review-evidence';
+import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { reviewEvidenceId } from './review-evidence-identity.js';
 
 /**
@@ -80,6 +81,8 @@ interface ResolvedReviewReviewer extends ReviewReviewerDeclaration {
 interface ReviewExecutionContext {
   requestedBy: { actorId: string; displayName?: string };
   userId?: string;
+  /** See `SessionOwnerStamp`: an unverified agent's review acts for no one. */
+  ownerAttribution?: StartOwnerAttribution;
   tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext;
 }
 

@@ -414,33 +414,3 @@ export function useOpenPullRequestInRegion():
   );
   return model ? open : null;
 }
-
-/** The two instance-keyed openers, bound to the mounted region model (#2049). */
-export function useOpenPaneInRegion(): {
-  openPullRequest: (
-    key: WorkspacePullRequestPaneKey,
-    projectId: string | null,
-    options?: OpenInRegionOptions,
-  ) => OpenInRegionOutcome | { ok: false; reason: OpenPaneRefusal };
-  openFilePreview: (
-    request: OpenFilePreviewRequest,
-    options?: OpenInRegionOptions,
-  ) => OpenInRegionOutcome | { ok: false; reason: OpenPaneRefusal };
-} {
-  const model = useRegionModel();
-  return {
-    openPullRequest: useCallback(
-      (
-        key: WorkspacePullRequestPaneKey,
-        projectId: string | null,
-        options?: OpenInRegionOptions,
-      ) => openPullRequestInRegion(model, key, projectId, options),
-      [model],
-    ),
-    openFilePreview: useCallback(
-      (request: OpenFilePreviewRequest, options?: OpenInRegionOptions) =>
-        openFilePreviewInRegion(model, request, options),
-      [model],
-    ),
-  };
-}

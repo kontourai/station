@@ -430,6 +430,12 @@ describe('ProjectLiveWorkSection', () => {
     render(<ProjectLiveWorkSection slug="station" />);
     fireEvent.click(screen.getByRole('button', { name: 'All activity' }));
     expect(mocks.showSurface).toHaveBeenCalledWith('activity');
+    // The retired surface name (archive#3280) renders no second affordance.
+    expect(
+      screen.queryAllByRole('button', {
+        name: /\b(?:view|open|all)\s+sessions\b/i,
+      }),
+    ).toEqual([]);
   });
 
   test('matches only published task-room presence and exposes separate accessible actions', () => {

@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { ErrorState, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
-import { errorText } from '../../utils/errorText';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { AccessPanelView } from './AccessPanelView';
 
 export function AccessSection({
@@ -49,7 +49,7 @@ function AccessPanel({
     try {
       await change({ kind: 'enable', localProjectId: projectId });
     } catch (cause) {
-      setEnableError(errorText(cause));
+      setEnableError(userFacingErrorMessage(cause));
     }
   }
 
@@ -72,7 +72,7 @@ function AccessPanel({
         ) : (
           <ErrorState
             title="Project access is unavailable"
-            description={errorText(query.error)}
+            description={userFacingErrorMessage(query.error)}
           />
         )}
         {query.error instanceof StationHttpError &&

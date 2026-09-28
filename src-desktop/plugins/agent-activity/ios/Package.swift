@@ -24,6 +24,30 @@ var targets: [Target] = [
     name: "StationAgentActivitySharedTests",
     dependencies: ["StationAgentActivityShared"],
     path: "Tests/StationAgentActivitySharedTests"),
+  // The app's APNs device token for alert pushes (#2589): Foundation and the
+  // Objective-C runtime only, so it is tested on macOS too. App-only: the
+  // widget extension does not compile it.
+  .target(
+    name: "StationAgentActivityAlerts",
+    dependencies: ["StationAgentActivityShared"],
+    path: "Sources/StationAgentActivityAlerts"),
+  .testTarget(
+    name: "StationAgentActivityAlertsTests",
+    dependencies: ["StationAgentActivityAlerts", "StationAgentActivityShared"],
+    path: "Tests/StationAgentActivityAlertsTests"),
+  // What the Notification Service Extension (#2590) does with an alert push:
+  // open the sealed notification and hand iOS it or the fixed text, once.
+  // Foundation and UserNotifications only, so it is tested on macOS too. The
+  // extension target compiles these sources with the shared ones it needs;
+  // neither the app nor the widget compiles them.
+  .target(
+    name: "StationNotificationServiceCore",
+    dependencies: ["StationAgentActivityShared"],
+    path: "Sources/StationNotificationServiceCore"),
+  .testTarget(
+    name: "StationNotificationServiceCoreTests",
+    dependencies: ["StationNotificationServiceCore", "StationAgentActivityShared"],
+    path: "Tests/StationNotificationServiceCoreTests"),
 ]
 
 if !hostTestsOnly {
@@ -31,12 +55,14 @@ if !hostTestsOnly {
     .library(
       name: "tauri-plugin-station-agent-activity",
       type: .static,
-      targets: ["tauri-plugin-station-agent-activity", "StationAgentActivityShared"]))
+      targets: [
+        "tauri-plugin-station-agent-activity", "StationAgentActivityShared", "StationAgentActivityAlerts",
+      ]))
   dependencies.append(.package(name: "Tauri", path: "../.tauri/tauri-api"))
   targets.append(
     .target(
       name: "tauri-plugin-station-agent-activity",
-      dependencies: [.byName(name: "Tauri"), "StationAgentActivityShared"],
+      dependencies: [.byName(name: "Tauri"), "StationAgentActivityShared", "StationAgentActivityAlerts"],
       path: "Sources/StationAgentActivityPlugin"))
 }
 

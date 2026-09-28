@@ -16,10 +16,8 @@
  *      interface `ConnectionStore` already uses, so a Node/CLI-backed
  *      adapter is a drop-in, not a rewrite. Today only the browser side is
  *      actually wired (`LocalStorageAdapter`, `./storage`, used by the
- *      Connections hub); a Node adapter exists (`NodeFileStorageAdapter`,
- *      `./nodeStorage`) and is tested, but nothing in `packages/cli`
- *      constructs a registry with it yet — see that file's own doc comment
- *      for the current, honest state of that gap.
+ *      Connections hub); nothing in `packages/cli` constructs a registry
+ *      yet.
  *
  * The identity-merge logic below (`attachEnvironmentDescriptor`) mirrors
  * `ConnectionStore.reconcileHandshake`'s shape (stable-environment-wins,
@@ -98,23 +96,6 @@ export function createKnownEnvironment(
     source: input.source,
     endpoints: [createEndpoint(input.httpBaseUrl, input.kind ?? 'direct', now)],
     createdAt: now,
-    updatedAt: now,
-  };
-}
-
-/** Adds `endpoint` to `environment`, deduping by `httpBaseUrl`. */
-export function addEndpoint(
-  environment: KnownEnvironment,
-  endpoint: AccessEndpoint,
-  now = Date.now(),
-): KnownEnvironment {
-  const exists = environment.endpoints.some(
-    (candidate) => candidate.httpBaseUrl === endpoint.httpBaseUrl,
-  );
-  if (exists) return environment;
-  return {
-    ...environment,
-    endpoints: [...environment.endpoints, endpoint],
     updatedAt: now,
   };
 }

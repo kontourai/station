@@ -128,16 +128,6 @@ describe('exemptions name themselves', () => {
     }
   });
 
-  it("exempts this repo's hand-written lowercase merge subjects", () => {
-    const subject =
-      'merge origin/main (union spec fixtures; entry JS ceiling to merged-tree measured 305957)';
-    const verdict = validateSubject(subject);
-    expect(verdict.ok, subject).toBe(true);
-    expect(verdict.exemption).toBe(
-      "merge commit (this repo's hand-written style)",
-    );
-  });
-
   it("exempts the repo's real lowercase merge population (measured 25/25 in the last 3000)", () => {
     // Measured 2026-08-28: every lowercase-merge subject in the last 3000
     // commits is a genuine merge (parent count >= 2) — bare `merge main`,

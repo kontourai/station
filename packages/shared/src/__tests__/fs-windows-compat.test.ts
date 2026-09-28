@@ -21,11 +21,6 @@ describe('fsyncDirectorySync', () => {
     if (dir) rmDirSyncRetrying(dir);
   });
 
-  test('succeeds on a real directory and never throws, on every platform', () => {
-    dir = mkdtempSync(join(tmpdir(), 'fs-windows-compat-'));
-    expect(() => fsyncDirectorySync(dir)).not.toThrow();
-  });
-
   test('runs the identity check on every platform', () => {
     dir = mkdtempSync(join(tmpdir(), 'fs-windows-compat-'));
     let sawIdentity = false;

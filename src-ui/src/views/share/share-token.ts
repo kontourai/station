@@ -47,11 +47,6 @@ export function captureShareToken(): string | undefined {
   return fromFragment ?? captured;
 }
 
-/** The token this page loaded with, if it had one. */
-export function capturedShareToken(): string | undefined {
-  return captured;
-}
-
 /**
  * Restores the fragment and reloads. The only supported way to reload this
  * page: a bare `location.reload` after {@link captureShareToken} has run

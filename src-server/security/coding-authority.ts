@@ -146,6 +146,19 @@ export function isFullAccessGrant(value: unknown): value is FullAccessGrant {
 }
 
 /**
+ * #2377 slice C1: a seam that records an approval pick itself (the
+ * foreground executor, which alone knows the pick's thread) refuses one that
+ * resolves to full access without the request's grant. The routes answer it
+ * with the same 403 as `refuseUngrantedFullAccess`.
+ */
+export class FullAccessNotGrantedError extends Error {
+  constructor() {
+    super('This request may not give an agent full access.');
+    this.name = 'FullAccessNotGrantedError';
+  }
+}
+
+/**
  * TEST-ONLY. A grant for unit tests of the seams that enforce one. Throws
  * outside the test runner, so production code cannot mint a grant without
  * a request.

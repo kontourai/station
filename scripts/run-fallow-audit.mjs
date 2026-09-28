@@ -7,7 +7,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inventoryCodeHealthFiles } from './code-health-inventory.mjs';
 import { createFallowReview } from './fallow-review-status.mjs';
@@ -15,6 +15,7 @@ import {
   fallowChildEnvironment,
   prepareFallowRun,
 } from './lib/fallow-base-cache.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   captureOwnedProcessOutput,
   executeOwnedCommand,
@@ -262,10 +263,7 @@ export async function runFallowAudit(root, scope = 'changed') {
   return { artifactPath: relative(root, artifactPath), ...artifact };
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   const args = process.argv.slice(2);
   if (args.some((arg) => arg !== '--whole-tree')) {
     console.error('usage: run-fallow-audit.mjs [--whole-tree]');

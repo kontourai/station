@@ -140,6 +140,35 @@ test('one decision sends expected event and shows its returned receipt', async (
   expect(await screen.findByText('Decision accepted.')).toBeTruthy();
   expect(screen.getByText('receipt-a')).toBeTruthy();
 });
+// #2708: a refused decision shows the server's reason from the error the REAL
+// `respondToRequest` throws for the commands route's validation body, not
+// "Validation failed: …" with the schema key.
+test('a refused decision shows the server reason, not the field key', async () => {
+  const fetch = vi.fn(async (_url: unknown, init?: RequestInit) =>
+    init?.method === 'POST'
+      ? new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Validation failed',
+            details: {
+              formErrors: [],
+              fieldErrors: {
+                expectedRequestEventId: ['Expected a request event id.'],
+              },
+            },
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        )
+      : response(open),
+  );
+  vi.stubGlobal('fetch', fetch);
+  mount();
+  fireEvent.click(await screen.findByRole('button', { name: 'Approve once' }));
+
+  await screen.findByText("Couldn't confirm the decision");
+  expect(screen.getByText('Expected a request event id.')).toBeTruthy();
+  expect(screen.queryByText(/Validation failed/)).toBeNull();
+});
 test('authority revocation withholds late read data and decisions', async () => {
   let resolve!: (value: Response) => void;
   vi.stubGlobal(

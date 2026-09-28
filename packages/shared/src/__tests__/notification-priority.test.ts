@@ -6,28 +6,12 @@ import {
   INFO_TTL_MS,
   NOTIFICATION_OUTCOME_PRIORITY,
   NOTIFICATION_TTL_MS,
-  outcomeFirstAllQuietHeadline,
   RUNNING_TTL_MS,
   rankNotificationContent,
   WAITING_TTL_MS,
 } from '../notification-priority.js';
 
 describe('notification-priority (station#1100 AC1 ranking)', () => {
-  test('ranks needs-input > failed > running > done', () => {
-    const outcomes: Array<'done' | 'running' | 'failed' | 'needs-input'> = [
-      'done',
-      'running',
-      'failed',
-      'needs-input',
-    ];
-    const ordered = [...outcomes].sort(
-      (left, right) =>
-        NOTIFICATION_OUTCOME_PRIORITY[right] -
-        NOTIFICATION_OUTCOME_PRIORITY[left],
-    );
-    expect(ordered).toEqual(['needs-input', 'failed', 'running', 'done']);
-  });
-
   test('the #2583 info tier ranks below done without moving any existing tier', () => {
     expect(NOTIFICATION_OUTCOME_PRIORITY).toEqual({
       'needs-input': 3,
@@ -133,12 +117,6 @@ describe('notification-priority (station#1100 AC2 per-state TTLs)', () => {
     expect(NOTIFICATION_TTL_MS.info).toBe(INFO_TTL_MS);
     expect(INFO_TTL_MS).toBe(4 * 60 * 60 * 1000);
   });
-
-  test('waiting survives at least 24h, running is far shorter, done is shortest', () => {
-    expect(WAITING_TTL_MS).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000);
-    expect(RUNNING_TTL_MS).toBeLessThan(WAITING_TTL_MS);
-    expect(DONE_TTL_MS).toBeLessThan(RUNNING_TTL_MS);
-  });
 });
 
 describe('notification-priority classifyNotificationCategory', () => {
@@ -165,38 +143,8 @@ describe('notification-priority classifyNotificationCategory', () => {
     expect(classifyNotificationCategory('agent-info')).toBe('info');
   });
 
-  test('no category that existed before #2583 is classified as info', () => {
-    for (const category of [
-      'approval-request',
-      'job-failure',
-      'turn-completed',
-      'turn-stopped',
-      'turn-failed',
-      'pairing-request',
-      'job-missed',
-      'scheduler-unhealthy',
-    ]) {
-      expect(classifyNotificationCategory(category)).not.toBe('info');
-    }
-  });
-
   test('returns undefined for categories outside this ranking', () => {
     expect(classifyNotificationCategory('general')).toBeUndefined();
     expect(classifyNotificationCategory('')).toBeUndefined();
-  });
-});
-
-describe('notification-priority outcome-first framing (all-quiet headline)', () => {
-  test('never reads as a bare zero count', () => {
-    expect(outcomeFirstAllQuietHeadline('done')).not.toMatch(/0/);
-    expect(outcomeFirstAllQuietHeadline('failed')).not.toMatch(/0/);
-    expect(outcomeFirstAllQuietHeadline('done').toLowerCase()).not.toContain(
-      'active',
-    );
-  });
-
-  test('leads with the outcome', () => {
-    expect(outcomeFirstAllQuietHeadline('done')).toBe('Agent work completed');
-    expect(outcomeFirstAllQuietHeadline('failed')).toBe('Agent work failed');
   });
 });

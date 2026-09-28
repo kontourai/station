@@ -9,6 +9,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { Button } from '../Button';
 import { Empty, ErrorState, SkeletonBlock, SkeletonList } from '../state';
 
@@ -107,7 +108,7 @@ export function KitCatalog() {
         )
       : false;
   const createLayout = useCreateProjectLayoutMutation({
-    onError: (error) => setMessage(error.message),
+    onError: (error) => setMessage(userFacingErrorMessage(error)),
     onSuccess: (layout, variables) => {
       setMessage(`Added ${layout.name} to ${variables.projectSlug}.`);
       setLayout(variables.projectSlug, layout.slug);

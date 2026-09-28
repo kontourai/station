@@ -10,6 +10,8 @@ export interface BrokerConnectorLifecycle {
   register(signal: AbortSignal): Promise<unknown>;
   renew(signal: AbortSignal): Promise<unknown>;
   poll(signal: AbortSignal): Promise<unknown>;
+  /** Explicit opt-in native-v2 lane; absent means native offers are never polled. */
+  pollNative?(signal: AbortSignal): Promise<unknown>;
   withdraw(signal: AbortSignal): Promise<void>;
 }
 export type SelfHostedBrokerStatusState =
@@ -48,6 +50,8 @@ export interface SelfHostedBrokerRuntimeOptions {
   heartbeatMs: number;
   renewMs: number;
   pollMs: number;
+  /** Native offers require explicit runtime composition, not method detection. */
+  nativeOfferPolling?: boolean;
   withdrawTimeoutMs?: number;
   operationSettleMs?: number;
   retryDelayMs?: number;
@@ -114,6 +118,8 @@ export class SelfHostedBrokerRuntime {
         throw new Error('broker_runtime_bound_invalid');
     if (options.application.signal.aborted)
       throw new Error('broker_runtime_application_unavailable');
+    if (options.nativeOfferPolling && !options.connector.pollNative)
+      throw new Error('broker_runtime_native_offer_adapter_required');
     this.#withdrawTimeoutMs =
       options.withdrawTimeoutMs ?? DEFAULT_WITHDRAW_TIMEOUT_MS;
     this.#operationSettleMs =
@@ -328,30 +334,45 @@ export class SelfHostedBrokerRuntime {
     ) {
       const now = Date.now();
       if (now >= poll) {
-        let attempts = 0;
-        while (true) {
-          try {
-            await this.#joinAbortable(
-              this.options.connector.poll(this.#abort.signal),
-              'broker_runtime_poll_unsettled',
-            );
-            break;
-          } catch (error) {
-            if (this.#abort.signal.aborted) throw error;
-            if (!(error instanceof BrokerOfferReadTransientError)) throw error;
-            this.#reportReconnecting('offer_poll', 'transient_offer_read');
-            attempts++;
-            const expiry = knownExpiry();
-            if (expiry === undefined && attempts >= 3) throw error;
-            await this.#retryWait(attempts, expiry);
-          }
-        }
+        // Browser offers first, then the opt-in native lane within the same
+        // bounded tick. Each lane drains through its own transient-recovery
+        // loop, and the connector serializes both on one admission slot, so
+        // neither starves the other.
+        await this.#pollLaneWithRecovery(
+          () => this.options.connector.poll(this.#abort.signal),
+          knownExpiry,
+        );
+        if (this.options.nativeOfferPolling)
+          await this.#pollLaneWithRecovery(
+            () => this.options.connector.pollNative!(this.#abort.signal),
+            knownExpiry,
+          );
         this.#reportRecovered('offer_poll');
         poll = Date.now() + this.options.pollMs;
       }
       if (this.#abort.signal.aborted || this.options.application.signal.aborted)
         break;
       await this.#sleep(this.options.pollMs);
+    }
+  }
+  async #pollLaneWithRecovery(
+    lane: () => Promise<unknown>,
+    knownExpiry: () => number | undefined,
+  ) {
+    let attempts = 0;
+    while (true) {
+      try {
+        await this.#joinAbortable(lane(), 'broker_runtime_poll_unsettled');
+        break;
+      } catch (error) {
+        if (this.#abort.signal.aborted) throw error;
+        if (!(error instanceof BrokerOfferReadTransientError)) throw error;
+        this.#reportReconnecting('offer_poll', 'transient_offer_read');
+        attempts++;
+        const expiry = knownExpiry();
+        if (expiry === undefined && attempts >= 3) throw error;
+        await this.#retryWait(attempts, expiry);
+      }
     }
   }
   shutdown() {

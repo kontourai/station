@@ -748,14 +748,6 @@ interface OrchestrationServiceOptions {
   validateRecoveredTenantExecutionContext?: (
     context: TenantExecutionContext | undefined,
   ) => TenantExecutionContext | undefined;
-  /**
-   * Explicit bridge for installations that still have pre-ownership sessions.
-   * Multi-user hosts must leave this at the secure default (`deny`) and
-   * migrate or quarantine ownerless rows before exposing them.
-   */
-  ownerlessSessionAccess?: 'deny' | 'single-user-compat';
-  /** Exact legacy OS-alias owner for the local-home principal migration only. */
-  legacyPersonalOwner?: string;
   personalConversationAccess?: PersonalConversationAccess;
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
@@ -1888,12 +1880,6 @@ export class OrchestrationService {
               options.validateRecoveredTenantExecutionContext,
           }
         : {}),
-      ...(options.ownerlessSessionAccess !== undefined
-        ? { ownerlessSessionAccess: options.ownerlessSessionAccess }
-        : {}),
-      ...(options.legacyPersonalOwner !== undefined
-        ? { legacyPersonalOwner: options.legacyPersonalOwner }
-        : {}),
       ...(options.sessionOwnerCacheMaxEntries !== undefined
         ? { sessionOwnerCacheMaxEntries: options.sessionOwnerCacheMaxEntries }
         : {}),
@@ -2293,8 +2279,6 @@ export class OrchestrationService {
           this.observeAnswerability(threadId, provider, observedAt),
         readConversationActivity: (conversationId) =>
           this.conversationActivity?.readConversation(conversationId),
-        ownerlessPersonalAccess:
-          options.ownerlessSessionAccess === 'single-user-compat',
       });
     }
     // ConversationLineage captures `turnDeduplicator` and
@@ -4032,13 +4016,51 @@ export class OrchestrationService {
   firstStartedMetadataOfThread(
     threadId: string,
   ): Record<string, unknown> | undefined {
+    return this.firstStartedRecordOfThread(threadId)?.metadata;
+  }
+
+  /**
+   * #2377 slice C2a: whether Station recorded a start for this session, so a
+   * station-control call that names it is a follow-up, not a new session.
+   */
+  hasSessionStartRecord(threadId: string): boolean {
+    return this.firstStartedRecordOfThread(threadId) !== undefined;
+  }
+
+  /**
+   * #2377 slice C2a: the owner the session's start recorded
+   * (`metadata.userId`), the owner every session read and command compares
+   * against. Unlike `resolveSessionActingPrincipal`, a session an agent
+   * started unattributed still names its owner here: it acts for no one,
+   * but it belongs to that person.
+   */
+  sessionRecordedOwnerId(threadId: string): string | undefined {
+    return this.sessionAuthz.sessionOwnerUserId(threadId);
+  }
+
+  /**
+   * #2601: the engine (`provider`) of the SAME record
+   * `firstStartedMetadataOfThread` reads, so a caller's Agent-less identity
+   * and its metadata can never come from two different events.
+   */
+  firstStartedEngineOfThread(threadId: string): string | undefined {
+    return this.firstStartedRecordOfThread(threadId)?.provider;
+  }
+
+  private firstStartedRecordOfThread(
+    threadId: string,
+  ): { metadata: Record<string, unknown>; provider?: string } | undefined {
     const store = this.options.eventStore;
     for (const method of ['session.started', 'session.configured'] as const) {
-      const payload = store?.firstEventByMethod(threadId, method)?.payload as
-        | { metadata?: unknown }
-        | undefined;
+      const event = store?.firstEventByMethod(threadId, method);
+      const payload = event?.payload as { metadata?: unknown } | undefined;
       if (payload?.metadata && typeof payload.metadata === 'object')
-        return payload.metadata as Record<string, unknown>;
+        return {
+          metadata: payload.metadata as Record<string, unknown>,
+          ...(typeof event?.provider === 'string'
+            ? { provider: event.provider }
+            : {}),
+        };
     }
     return undefined;
   }
@@ -4770,14 +4792,19 @@ export class OrchestrationService {
    * authorization: `canUserReadSession` stays the final check.
    */
   attachmentCandidateOwnerIds(authority: SessionReadAuthority): string[] {
+    return this.readableSessionOwnerIds(authority);
+  }
+
+  /**
+   * The owner principals whose sessions `authority` may read: its own id,
+   * plus (personal mode) every owner of the personal conversation account
+   * it belongs to. The same set transcript search binds.
+   */
+  readableSessionOwnerIds(authority: SessionReadAuthority): string[] {
     this.initialize();
     const constraint = this.sessionAuthz.transcriptOwnerConstraint(authority);
     return [
-      ...new Set([
-        constraint.ownerUserId,
-        ...(constraint.ownerUserIds ?? []),
-        ...(constraint.legacyOwnerUserId ? [constraint.legacyOwnerUserId] : []),
-      ]),
+      ...new Set([constraint.ownerUserId, ...(constraint.ownerUserIds ?? [])]),
     ];
   }
 
@@ -7747,6 +7774,16 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * Owner-cache invalidation for an ownership-shaped event published outside
+   * `projectAndPublishEvent` (the attached-session envelope).
+   */
+  invalidateSessionOwner(threadId: string): void {
+    if (this.sessionAuthz.invalidateSessionOwner(threadId)) {
+      sessionOwnerCacheOps.add(1, { outcome: 'invalidated' });
+    }
+  }
+
   seedSessionRecord(input: {
     threadId: string;
     provider: EngineId;
@@ -7754,9 +7791,39 @@ export class OrchestrationService {
     status?: ProviderSession['status'];
     controlMode?: ProviderSession['controlMode'];
     attachedSource?: ProviderSession['attachedSource'];
+    /**
+     * The principal the seeded session belongs to. A session with no
+     * recorded owner is readable by no caller, so a seeded row that a person
+     * should open records its owner in an ownership-shaped event, exactly as
+     * a started session does.
+     */
+    ownerUserId?: string;
+    /** See `SessionOwnerStamp`: an unverified start acts for no one. */
+    ownerAttribution?: StartOwnerAttribution;
   }): ProviderSession {
     this.initialize();
     const now = new Date().toISOString();
+    if (input.ownerUserId !== undefined) {
+      this.projectAndPublishEvent({
+        eventId: `session-seeded:${input.threadId}`,
+        provider: input.provider,
+        threadId: input.threadId,
+        createdAt: now,
+        method: 'session.started',
+        sessionId: input.threadId,
+        initialState: 'created',
+        metadata: {
+          userId: input.ownerUserId,
+          ...sessionOwnerAttributionMetadata(
+            effectiveOwnerAttribution({
+              ...(input.ownerAttribution
+                ? { ownerAttribution: input.ownerAttribution }
+                : {}),
+            }),
+          ),
+        },
+      } as CanonicalRuntimeEvent);
+    }
     const session: ProviderSession = {
       provider: input.provider,
       threadId: input.threadId,
@@ -8467,6 +8534,45 @@ export class OrchestrationService {
   }
 
   /**
+   * #2377 slice C1: whether `threadId` runs unconfined (`host`): its start
+   * stamp or a recorded `never`, exactly as its next turn reads it
+   * (`ApprovalPosture.standingConfinement`).
+   */
+  sessionRunsHost(threadId: string): boolean {
+    return (
+      this.approvalPosture.standingConfinement(
+        threadId,
+        this.readStartConfinementStamp(threadId),
+      ) === 'host'
+    );
+  }
+
+  /**
+   * #2377 slice C1: whether recording `pick` on `threadId` would run any
+   * engine of its conversation at full access
+   * (`ApprovalPosture.pickReachesFullAccess`), reading each session's start
+   * stamp and Agent the way a turn does (`agentSlug` stands in for a thread
+   * with no session yet).
+   */
+  async approvalPickReachesFullAccess(input: {
+    threadId: string;
+    pick: ApprovalMode;
+    agentSlug?: string;
+  }): Promise<boolean> {
+    return this.approvalPosture.pickReachesFullAccess({
+      ...input,
+      startOf: (threadId) => {
+        const agentSlug =
+          this.readLatestSessionStartMetadata(threadId)?.agentSlug;
+        return {
+          stamp: this.readStartConfinementStamp(threadId),
+          ...(typeof agentSlug === 'string' ? { agentSlug } : {}),
+        };
+      },
+    });
+  }
+
+  /**
    * #2436: a (re)spawn's start input in the conversation's posture, for the
    * paths that start an engine without `prepareStart`: a dormant session's
    * respawn and a credential-profile restart.
@@ -8688,8 +8794,12 @@ export class OrchestrationService {
    * session is deliberately excluded from ordinary user-facing inventories.
    * Read the event-store marker as well as the live Set so restart cannot
    * turn an ephemeral webhook session back into a listed conversation.
+   *
+   * Public for the notification writers (#2589): an ephemeral session is not
+   * in `listSessionReadModel`, so it is never on the agent-activity card, and
+   * its notifications must not be marked as the card's to announce.
    */
-  private isEphemeralSession(threadId: string): boolean {
+  isEphemeralSession(threadId: string): boolean {
     if (this.ephemeralSessionThreads.has(threadId)) return true;
     if (this.sessionReadModel.get(threadId)?.ephemeral === true) return true;
     if (this.options.eventStore?.readSessionByThread(threadId)?.ephemeral)
@@ -9002,20 +9112,11 @@ export class OrchestrationService {
     // in practice every adapter-sourced event (consumeAdapterEvents ->
     // projectAndPublishEvent) plus this service's other same-path internal
     // publishes. It is NOT the only place a `session.started`/
-    // `session.configured` event can reach the event bus: two other paths
-    // publish independently of this function and are NOT covered by this
-    // invalidation —
-    //   - AttachedSessionFollowService.appendAndPublish (used for the
-    //     read-only-attached envelope built by attachedSessionEnvelope())
-    // The attached-session path is safe TODAY only because it never sets
-    // `metadata.userId`
-    // on a `session.started`/`session.configured` event, so
-    // sessionOwnerUserId() never resolves (and therefore never caches) an
-    // owner from them in the first place — see the cross-reference comments
-    // at each site. This is a structural gap, not a proof: if either path
-    // is ever changed to stamp `metadata.userId`, it must also route
-    // through (or replicate) this invalidation, or a cached owner could go
-    // stale silently.
+    // `session.configured` event can reach the event bus:
+    // AttachedSessionFollowService.appendAndPublish publishes the
+    // read-only-attached envelope (which records the local operator as
+    // owner) independently of this function, and replicates this
+    // invalidation through `invalidateSessionOwner()` below.
     if (
       (projectedEvent.method === 'session.started' ||
         projectedEvent.method === 'session.configured') &&

@@ -85,9 +85,6 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.8)
-      '@kontourai/bearing':
-        specifier: ^0.2.0
-        version: 0.2.0(playwright@1.63.0)
       '@kontourai/conduit':
         specifier: 0.7.1
         version: 0.7.1
@@ -118,9 +115,6 @@ importers:
       '@kontourai/flow-agents':
         specifier: 6.4.0
         version: 6.4.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.6.5)
-      '@kontourai/forage':
-        specifier: ^0.7.0
-        version: 0.7.0(playwright@1.63.0)
       '@kontourai/relay':
         specifier: 0.6.0
         version: 0.6.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))

@@ -76,7 +76,8 @@ export function isSessionUnanswerable(
 
 /**
  * The thread id an approval notification names, or `undefined` when the
- * notification is not orchestration-backed.
+ * notification is not orchestration-backed. The caller treats an empty id
+ * as no id.
  *
  * The scope boundary is the same one `attention-projection.ts` draws
  * server-side (`isNotificationSessionUnanswerable`): only
@@ -86,15 +87,11 @@ export function isSessionUnanswerable(
  * `POST /api/notifications` have nothing to join to, and inventing a join
  * for them would be the fuzzy-match this repo's honesty bar forbids.
  */
-export function notificationThreadId(
-  notification: Notification,
-): string | undefined {
+function notificationThreadId(notification: Notification): string | undefined {
   const metadata = notification.metadata ?? {};
   if (metadata.requestKind !== 'orchestration') return undefined;
   const threadId = metadata.threadId;
-  return typeof threadId === 'string' && threadId.length > 0
-    ? threadId
-    : undefined;
+  return typeof threadId === 'string' ? threadId : undefined;
 }
 
 /**

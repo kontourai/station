@@ -196,7 +196,6 @@ let enginePickerTitleOverride: string | null = null;
 import {
   FirstRunHomeChapter,
   firstRunStepCounterLabel,
-  planFirstRunChapterSteps,
 } from '../FirstRunHomeChapter';
 import { firstRunStore } from '../first-run-store';
 
@@ -1096,21 +1095,6 @@ describe('leaving during personalization save', () => {
  * escaped the wizard.
  */
 describe('the engine-role screen is a counted step of the run', () => {
-  test('plans it only when the role is unanswered', () => {
-    expect(
-      planFirstRunChapterSteps({
-        disclosureOutstanding: true,
-        engineRoleUnanswered: true,
-      }),
-    ).toEqual(['disclosure', 'engines', 'engine-role', 'about-you']);
-    expect(
-      planFirstRunChapterSteps({
-        disclosureOutstanding: false,
-        engineRoleUnanswered: false,
-      }),
-    ).toEqual(['engines', 'about-you']);
-  });
-
   test('says nothing rather than "Step 0 of N" for a step this run is not showing', () => {
     expect(
       firstRunStepCounterLabel(['engines', 'about-you'], 'engine-role'),

@@ -1,6 +1,6 @@
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   afterAll,
   afterEach,
@@ -200,10 +200,6 @@ async function loadCliWithLifecycleMocks() {
     createPlugin: vi.fn(),
     init: vi.fn(),
   }));
-  vi.doMock('../commands/install-registry.js', () => ({
-    recordRegistryInstall: vi.fn(),
-    resolveRegistryPluginSource: vi.fn(),
-  }));
   vi.doMock('../commands/install.js', () => ({
     info: vi.fn(),
     install: vi.fn(),
@@ -246,6 +242,14 @@ describe('runCli', () => {
           serverPort: 28141,
           uiPort: 28000,
         }),
+      );
+
+      expect(lifecycle.upgrade).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ignoreUnknownServiceState: false }),
+      );
+      await runCli(['upgrade', '--ignore-service-state']);
+      expect(lifecycle.upgrade).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ignoreUnknownServiceState: true }),
       );
 
       process.env.STATION_SERVER_PORT = '29141';
@@ -704,7 +708,6 @@ describe('runCli', () => {
       init: vi.fn(),
     }));
     vi.doMock('../commands/import.js', () => ({ importConfig: vi.fn() }));
-    vi.doMock('../commands/install-registry.js', () => ({}));
     vi.doMock('../commands/install.js', () => ({
       info: vi.fn(),
       install: vi.fn(),
@@ -752,10 +755,6 @@ describe('runCli', () => {
       init: vi.fn(),
     }));
     vi.doMock('../commands/import.js', () => ({ importConfig: vi.fn() }));
-    vi.doMock('../commands/install-registry.js', () => ({
-      recordRegistryInstall: vi.fn(),
-      resolveRegistryPluginSource: vi.fn(),
-    }));
     vi.doMock('../commands/install.js', () => ({
       info: vi.fn(),
       install: vi.fn(),
@@ -851,10 +850,6 @@ describe('runCli', () => {
     vi.doMock('../commands/init.js', () => ({
       createPlugin: vi.fn(),
       init: vi.fn(),
-    }));
-    vi.doMock('../commands/install-registry.js', () => ({
-      recordRegistryInstall: vi.fn(),
-      resolveRegistryPluginSource: vi.fn(),
     }));
     vi.doMock('../commands/install.js', () => ({
       info: vi.fn(),
@@ -1091,6 +1086,7 @@ describe('runCli', () => {
       baseDir: ENV_HOME,
       instanceName: undefined,
       serverPort: undefined,
+      stateHome: ENV_HOME,
       uiPort: undefined,
     });
   });
@@ -1101,12 +1097,27 @@ describe('runCli', () => {
 
     await runCli(['stop', '--instance=smoke-a']);
 
+    // The home still locates a prebuilt archive's records (#2675); it just
+    // does not narrow which instance matches.
     expect(lifecycle.stop).toHaveBeenCalledWith({
       baseDir: undefined,
       instanceName: 'smoke-a',
       serverPort: undefined,
+      stateHome: ENV_HOME,
       uiPort: undefined,
     });
+  });
+
+  test('passes an explicit --home to stop as the home whose records it reads', async () => {
+    process.env.STATION_HOME = ENV_HOME;
+    const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
+    const flagHome = join(dirname(ENV_HOME), 'flag-home');
+
+    await runCli(['stop', `--home=${flagHome}`, '--instance=smoke-a']);
+
+    expect(lifecycle.stop).toHaveBeenCalledWith(
+      expect.objectContaining({ instanceName: 'smoke-a', stateHome: flagHome }),
+    );
   });
 
   test('dispatches core resource commands through the shared core command handler', async () => {
@@ -1122,10 +1133,6 @@ describe('runCli', () => {
     vi.doMock('../commands/init.js', () => ({
       createPlugin: vi.fn(),
       init: vi.fn(),
-    }));
-    vi.doMock('../commands/install-registry.js', () => ({
-      recordRegistryInstall: vi.fn(),
-      resolveRegistryPluginSource: vi.fn(),
     }));
     vi.doMock('../commands/install.js', () => ({
       info: vi.fn(),
@@ -1346,10 +1353,6 @@ describe('runCli', () => {
         createPlugin: vi.fn(),
         init: vi.fn(),
       }));
-      vi.doMock('../commands/install-registry.js', () => ({
-        recordRegistryInstall: vi.fn(),
-        resolveRegistryPluginSource: vi.fn(),
-      }));
       vi.doMock('../commands/install.js', () => ({
         info: vi.fn(),
         install: vi.fn(),
@@ -1395,10 +1398,6 @@ describe('runCli', () => {
       vi.doMock('../commands/init.js', () => ({
         createPlugin: vi.fn(),
         init: vi.fn(),
-      }));
-      vi.doMock('../commands/install-registry.js', () => ({
-        recordRegistryInstall: vi.fn(),
-        resolveRegistryPluginSource: vi.fn(),
       }));
       vi.doMock('../commands/install.js', () => ({
         info: vi.fn(),

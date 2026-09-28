@@ -26,11 +26,4 @@ describe('E2E browser bootstrap wiring', () => {
     expect(uiCrud).toContain('authenticatedRequest.delete');
     expect(uiCrud).not.toContain('page.evaluate');
   });
-
-  test('plugin preview retains the runner-provided authenticated profile', () => {
-    const source = readFileSync('tests/plugin-preview.spec.ts', 'utf8');
-
-    expect(source).not.toContain("station-connect-connections-active', 'c1'");
-    expect(source).not.toContain("id: 'c1'");
-  });
 });

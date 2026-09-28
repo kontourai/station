@@ -156,7 +156,7 @@ function equalOrDescendant(path: string, parent: string): boolean {
   );
 }
 
-function sameRuntimePath(left: string, right: string): boolean {
+export function sameRuntimePath(left: string, right: string): boolean {
   return equalOrDescendant(left, right) && equalOrDescendant(right, left);
 }
 
@@ -197,6 +197,7 @@ export function admitStationRuntimeHome(
     'config',
     'cache',
     'installs',
+    'state',
     'instances',
     join('instances', 'dev'),
   ]) {
@@ -248,7 +249,9 @@ export function admitStationRuntimeHome(
       'it is the shared Station root or an ancestor of that root',
     );
   }
-  for (const protectedName of ['config', 'cache', 'installs']) {
+  // `state` holds CLI lifecycle state for prebuilt archive installs (#2675):
+  // root-owned, like `installs`, and never a runtime home.
+  for (const protectedName of ['config', 'cache', 'installs', 'state']) {
     const canonicalProtected = canonicalPathThroughExistingAncestor(
       join(lexicalRoot, protectedName),
     );

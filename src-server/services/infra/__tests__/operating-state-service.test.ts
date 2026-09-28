@@ -21,9 +21,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 const { WorkflowSidecarService } = await import(
   '../../evidence/workflow-sidecar-service.js'
 );
-const { OperatingStateService, qualifiedWorkflowProcessId } = await import(
-  '../operating-state-service.js'
-);
+const { OperatingStateService } = await import('../operating-state-service.js');
 
 const logger = { debug: vi.fn(), warn: vi.fn() };
 
@@ -111,7 +109,7 @@ describe('OperatingStateService', () => {
     const state = service.deriveOperatingState(cwd, 'demo');
     expect(state.processes).toHaveLength(1);
     const process = state.processes?.[0];
-    expect(process?.id).toBe(qualifiedWorkflowProcessId('demo', 'demo-task'));
+    expect(process?.id).toBe('station:repo:demo:demo-task');
     expect(process?.status).toBe('blocked');
     expect(process?.blockedReason).toBe('waiting on CI');
     expect(process?.label).toBe('demo-task');
@@ -128,12 +126,8 @@ describe('OperatingStateService', () => {
     const byId = new Map(
       (state.processes ?? []).map((process) => [process.id, process]),
     );
-    expect(byId.get(qualifiedWorkflowProcessId('demo', 'task-a'))?.status).toBe(
-      'running',
-    );
-    expect(byId.get(qualifiedWorkflowProcessId('demo', 'task-b'))?.status).toBe(
-      'completed',
-    );
+    expect(byId.get('station:repo:demo:task-a')?.status).toBe('running');
+    expect(byId.get('station:repo:demo:task-b')?.status).toBe('completed');
   });
 
   test('malformed-workflow skip: a corrupt sidecar is skipped, valid siblings still fold', () => {
@@ -142,9 +136,7 @@ describe('OperatingStateService', () => {
 
     const state = service.deriveOperatingState(cwd, 'demo');
     expect(state.processes).toHaveLength(1);
-    expect(state.processes?.[0]?.id).toBe(
-      qualifiedWorkflowProcessId('demo', 'good-task'),
-    );
+    expect(state.processes?.[0]?.id).toBe('station:repo:demo:good-task');
   });
 
   test('two projects with the same task slug never collide (scope-qualified ids)', () => {
@@ -154,7 +146,7 @@ describe('OperatingStateService', () => {
 
     expect(stateA.processes?.[0]?.id).not.toBe(stateB.processes?.[0]?.id);
     expect(stateA.processes?.[0]?.id).toBe(
-      qualifiedWorkflowProcessId('project-a', 'shared-slug'),
+      'station:repo:project-a:shared-slug',
     );
   });
 });
@@ -253,12 +245,12 @@ describe('OperatingStateService — trust.bundle critique detection (roadmap #75
     const byId = new Map(
       (state.processes ?? []).map((process) => [process.id, process]),
     );
-    expect(
-      byId.get(qualifiedWorkflowProcessId('demo', 'bad-bundle-task'))?.status,
-    ).toBe('running');
-    expect(
-      byId.get(qualifiedWorkflowProcessId('demo', 'good-task'))?.status,
-    ).toBe('review_pending');
+    expect(byId.get('station:repo:demo:bad-bundle-task')?.status).toBe(
+      'running',
+    );
+    expect(byId.get('station:repo:demo:good-task')?.status).toBe(
+      'review_pending',
+    );
     expect(logger.warn).toHaveBeenCalledWith(
       'Skipping unreadable workflow trust.bundle',
       expect.objectContaining({ taskSlug: 'bad-bundle-task' }),
@@ -324,23 +316,5 @@ describe('OperatingStateService — trust.bundle critique detection (roadmap #75
 
     const state = service.deriveOperatingState(cwd, 'demo');
     expect(state.processes?.[0]?.status).toBe('completed');
-  });
-});
-
-describe('qualifiedWorkflowProcessId / taskSlugFromQualifiedProcessId round-trip', () => {
-  test('recovers the exact task slug for the matching scope', async () => {
-    const { taskSlugFromQualifiedProcessId } = await import(
-      '../operating-state-service.js'
-    );
-    const id = qualifiedWorkflowProcessId('demo', 'my-task-slug');
-    expect(taskSlugFromQualifiedProcessId(id, 'demo')).toBe('my-task-slug');
-  });
-
-  test('fails closed for a different scope id', async () => {
-    const { taskSlugFromQualifiedProcessId } = await import(
-      '../operating-state-service.js'
-    );
-    const id = qualifiedWorkflowProcessId('demo', 'my-task-slug');
-    expect(taskSlugFromQualifiedProcessId(id, 'other-project')).toBeUndefined();
   });
 });

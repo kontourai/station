@@ -98,9 +98,17 @@ export async function startLabRelay(
   directory,
   mode = 'forward',
   transport = 'tcp',
+  options = {},
 ) {
   if (!['tcp', 'udp'].includes(transport))
     throw new Error('Unsupported lab relay transport');
+  const lifetimeMs = options.lifetimeMs ?? 120_000;
+  if (
+    !Number.isSafeInteger(lifetimeMs) ||
+    lifetimeMs < 1_000 ||
+    lifetimeMs > 600_000
+  )
+    throw new Error('Invalid lab relay lifetime');
   const readyPath = join(directory, 'ready.json');
   const { execution, capture } = own(
     process.execPath,
@@ -114,6 +122,7 @@ export async function startLabRelay(
       String(targetPort),
       directory,
       mode,
+      String(lifetimeMs),
     ],
     directory,
   );

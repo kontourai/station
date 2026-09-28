@@ -19,7 +19,6 @@ import {
   classifyLifecycleExit,
   type LifecycleIdentity,
   readLifecycleEvents,
-  resolveProcessBirthFingerprint,
   type StopIntent,
 } from '../lifecycle-events.js';
 import {
@@ -335,7 +334,9 @@ describe('lifecycle event journal', () => {
         { ...identity, type: 'started', timestamp: new Date().toISOString() },
         { lockOptions: { birthFingerprint: () => null } },
       ),
-    ).toThrow('birth fingerprint is required');
+    ).toThrow(
+      /birth fingerprint is required for lock ownership: injected birth fingerprint returned no start time for pid \d+/,
+    );
     expect(readdirSync(root)).toEqual([]);
   });
 
@@ -598,54 +599,19 @@ describe('lifecycle event journal', () => {
   });
 });
 
-describe('resolveProcessBirthFingerprint (#1057 load resilience)', () => {
-  it('retries a spuriously failed lookup for a live process', () => {
-    const lookup = vi
-      .fn<(pid: number) => string | null>()
-      .mockReturnValueOnce(null)
-      .mockReturnValueOnce(null)
-      .mockReturnValueOnce('birth-x');
-    const alive = vi.fn(() => true);
-    expect(resolveProcessBirthFingerprint(1234, { lookup, alive })).toBe(
-      'birth-x',
-    );
-    expect(lookup).toHaveBeenCalledTimes(3);
-  });
-
-  it('a dead process short-circuits to null without retries (stale-lock reclaim semantics)', () => {
-    const lookup = vi.fn(() => null);
-    const alive = vi.fn(() => false);
-    expect(resolveProcessBirthFingerprint(1234, { lookup, alive })).toBeNull();
-    expect(lookup).toHaveBeenCalledTimes(1);
-  });
-
-  it('a live process with persistently failing lookups exhausts attempts and returns null', () => {
-    const lookup = vi.fn(() => null);
-    const alive = vi.fn(() => true);
-    expect(
-      resolveProcessBirthFingerprint(1234, { lookup, alive, attempts: 3 }),
-    ).toBeNull();
-    expect(lookup).toHaveBeenCalledTimes(3);
-  });
-});
-
-describe('resolveProcessBirthFingerprint default wiring', () => {
-  it('resolves a real fingerprint for the current process', () => {
-    const birth = resolveProcessBirthFingerprint(process.pid);
-    expect(birth).toBeTruthy();
-    expect(typeof birth).toBe('string');
-  });
-});
-
 describe('exact Windows process identity', () => {
   it('preserves the shared Windows CIM fingerprint as a round-trip UTC ISO value', () => {
     const legacyIso = '2025-08-03T00:00:00.0000000Z';
     const exec = vi.fn(() => `${legacyIso}\n`);
-    expect(lookupProcessBirthFingerprint(42, { platform: 'win32', exec })).toBe(
-      legacyIso,
-    );
+    expect(
+      lookupProcessBirthFingerprint(42, {
+        platform: 'win32',
+        exec,
+        env: { SystemRoot: 'C:\\Windows' },
+      }),
+    ).toBe(legacyIso);
     expect(exec).toHaveBeenCalledWith(
-      'powershell.exe',
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
       expect.arrayContaining([
         '-Command',
         expect.stringContaining(

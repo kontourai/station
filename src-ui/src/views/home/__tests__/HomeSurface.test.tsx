@@ -13,6 +13,10 @@ vi.mock('../../../contexts/useShowSurface', () => ({
 
 import { HomeSurface } from '../HomeSurface';
 
+// The surface name the Activity rename retired (archive#3280), in the
+// affordance positions it used to occupy.
+const LEGACY_SURFACE_LABEL = /\b(?:view|open|all)\s+sessions\b/i;
+
 const NOW = Date.now();
 const min = (n: number) => NOW - n * 60_000;
 
@@ -283,14 +287,18 @@ describe('HomeSurface composition', () => {
     ).toBeTruthy();
   });
 
-  test('a failed load offers a retry rather than counting nothing', () => {
+  test('a failed load sends the reader to Activity rather than counting nothing', () => {
     const { model: m } = renderHome({ workItems: [], workError: true });
     expect(screen.getByText('Recent work unavailable')).toBeTruthy();
     // No counts at all: a caption for lanes that are not on the page would
     // print four zeroes over an error.
     expect(document.querySelector('.home-pulse__stats')).toBeNull();
     screen.getByRole('button', { name: 'Open Activity' }).click();
+    expect(showSurface).toHaveBeenCalledWith('activity');
     expect(m.retryWork).not.toHaveBeenCalled();
+    expect(
+      screen.queryAllByRole('button', { name: LEGACY_SURFACE_LABEL }),
+    ).toEqual([]);
   });
 
   test('an empty list renders neither counts nor a chart', () => {
@@ -318,6 +326,11 @@ describe('HomeSurface: what is clickable', () => {
     // nothing routes (#928 — there is no Activity route left to route to).
     expect(showSurface).toHaveBeenCalledWith('activity');
     expect(onNavigate).not.toHaveBeenCalled();
+    // Activity is the surface's only name here: no retired "Sessions"
+    // affordance renders beside the right one.
+    expect(
+      screen.queryAllByRole('button', { name: LEGACY_SURFACE_LABEL }),
+    ).toEqual([]);
   });
 
   test('a chart bar opens the newest item in that bucket', () => {

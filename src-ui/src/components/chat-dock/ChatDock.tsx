@@ -78,6 +78,7 @@ import {
   UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
 } from '../../lib/projectChatEvents';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   type EffectiveModelSource,
   isSessionWorkActive,
@@ -2231,6 +2232,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   : undefined,
                 onOpenProfile: () => navigate('/profile'),
                 onOpenAppSettings: () => navigate('/settings'),
+                // Mobile parity for the desktop More menu's clipboard rows —
+                // the sheet is a coarse device's only home for these IDs.
+                copyActions,
                 sessionInventory:
                   !conversationOpenRecovery &&
                   inventoryExecutionId &&
@@ -3069,7 +3073,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 pending: false,
                 error:
                   error instanceof Error
-                    ? error.message
+                    ? userFacingErrorMessage(error)
                     : 'Could not create the fork. Try again.',
               });
             } finally {

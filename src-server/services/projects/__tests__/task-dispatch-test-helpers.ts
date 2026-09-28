@@ -31,6 +31,7 @@ export async function dispatchTaskForTest(
   return unwrapDispatch(
     await composeTestTaskDispatcher(service).dispatch(taskId, {
       ...input,
+      ownerUserId: 'test-owner',
       fullAccessGrant: null,
     }),
   );

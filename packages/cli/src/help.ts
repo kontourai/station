@@ -262,6 +262,15 @@ const VERBS: Record<string, VerbSpec> = {
     group: 'Lifecycle',
     summary: 'Pull latest + rebuild (keeps plugins)',
     usage: ['station upgrade'],
+    detail: [
+      'Refuses while an installed Station service supervises this Station:',
+      'stop it with `station service stop`, upgrade, then `station service start`.',
+      '',
+      'Options:',
+      "  --ignore-service-state  Proceed when an installed service's running",
+      '                          state cannot be determined (never when it is',
+      '                          reported running)',
+    ],
   },
   service: {
     group: 'Lifecycle',

@@ -4,15 +4,16 @@ const COMMANDS: &[&str] = &[
     "clear",
     "preview",
     "push_token",
+    "alert_token",
     "open_live_update_settings",
     "take_launch_route",
     "register_listener",
     "remove_listener",
 ];
 
-/// The iOS side is built only when enabled, so every iOS build stays
-/// unchanged until the push-enabled signing it needs exists (#2513 slice D).
-/// Enabling takes two halves together: STATION_IOS_LIVE_ACTIVITY=1 builds
+/// The iOS side is built only when enabled: the TestFlight delivery enables it
+/// for Beta and Nightly (#2513 slice D), and every other iOS build (local,
+/// simulator, Stable) stays without it. Enabling takes two halves together: STATION_IOS_LIVE_ACTIVITY=1 builds
 /// this Swift plugin, and scripts/ensure-ios-agent-activity-extension.mjs
 /// adds the Live Activity widget extension, its embed and the app's keychain
 /// groups to the rendered gen/apple spec. The committed spec carries neither,

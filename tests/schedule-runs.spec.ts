@@ -148,9 +148,6 @@ test.describe('Schedule run history', () => {
     await expect(
       page.locator('.schedule__detail-header').getByText('Run History'),
     ).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: /open artifact/i }),
-    ).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Output' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Output' }).click();

@@ -60,6 +60,7 @@
 //      list easy to extend.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 // ---------------------------------------------------------------------------
 // Check 1: no bare confirm()/prompt() or window.confirm()/window.prompt()
@@ -69,12 +70,12 @@ import { readFileSync } from 'node:fs';
 // immediately followed by `(`, with nothing word-like (or `.`/`$`) directly
 // before it. Never matches `onConfirm(`, `confirmLabel`, `ConfirmModal`,
 // `PromptModal`, `showConfirm(`, or `someObj.confirm(`.
-export const BARE_CONFIRM_PROMPT_PATTERN = /(?<![\w.$])(confirm|prompt)\(/g;
+const BARE_CONFIRM_PROMPT_PATTERN = /(?<![\w.$])(confirm|prompt)\(/g;
 
 // Matches `window.confirm(`/`window.prompt(` explicitly — the leading `.`
 // before `confirm`/`prompt` means the bare pattern above never matches
 // these, so they need their own pattern.
-export const WINDOW_CONFIRM_PROMPT_PATTERN = /\bwindow\.(confirm|prompt)\(/g;
+const WINDOW_CONFIRM_PROMPT_PATTERN = /\bwindow\.(confirm|prompt)\(/g;
 
 function lineNumberAt(content, index) {
   let line = 1;
@@ -130,6 +131,7 @@ export const KNOWN_DIRTY_STATE_EDITORS = [
   'src-ui/src/views/ProjectSettingsView.tsx',
   'src-ui/src/views/SkillsView.tsx',
   'src-ui/src/views/agent-editor/useAgentsViewModel.ts',
+  'src-ui/src/views/agent-editor/AgentEditorWorkflows.tsx',
   'src-ui/src/views/KnowledgeConnectionView.tsx',
   'src-ui/src/views/AgentConnectionView.tsx',
   'src-ui/src/views/ProviderSettingsView.tsx',
@@ -141,12 +143,12 @@ export const KNOWN_DIRTY_STATE_EDITORS = [
 // design (see file header) — every entry must be a reasoned exception, and
 // stale entries (no longer matching any current heuristic finding) fail the
 // gate just like an un-triaged finding does.
-export const KNOWN_NON_EDITOR_EXCLUSIONS = [];
+const KNOWN_NON_EDITOR_EXCLUSIONS = [];
 
-export const USE_UNSAVED_GUARD_IMPORT_PATTERN =
+const USE_UNSAVED_GUARD_IMPORT_PATTERN =
   /import\s*\{[^}]*\buseUnsavedGuard\b[^}]*\}\s*from\s*['"][^'"]*useUnsavedGuard['"]/;
 
-export const DIRTY_STATE_DECLARATION_PATTERN =
+const DIRTY_STATE_DECLARATION_PATTERN =
   /\bconst\s*\[?\s*(dirty|isDirty|hasChanges|hasUnsavedChanges)\b/;
 
 /**
@@ -345,6 +347,6 @@ function main() {
   process.exit(failed ? 1 : 0);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

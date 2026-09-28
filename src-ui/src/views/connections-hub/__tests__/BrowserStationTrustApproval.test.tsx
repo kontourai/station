@@ -11,23 +11,21 @@ const mocks = vi.hoisted(() => ({
   close: vi.fn(),
 }));
 
-vi.mock('@kontourai/station-connect/connection-trust', () => ({
-  openDeviceConnectionTrustStore: async () => ({
-    read: mocks.read,
-    approve: mocks.approve,
-    revoke: mocks.revoke,
-    close: mocks.close,
+vi.mock(
+  '@kontourai/station-connect/connection-trust',
+  async (importOriginal) => ({
+    // The real `stationRelayRouteTrustStatus` runs; only the device store is faked.
+    ...(await importOriginal<
+      typeof import('@kontourai/station-connect/connection-trust')
+    >()),
+    openDeviceConnectionTrustStore: async () => ({
+      read: mocks.read,
+      approve: mocks.approve,
+      revoke: mocks.revoke,
+      close: mocks.close,
+    }),
   }),
-  stationRelayRouteTrustStatus: (
-    record: { trust: { enrollmentId: string } } | null,
-    candidate: { enrollmentId: string },
-  ) =>
-    !record
-      ? 'untrusted'
-      : record.trust.enrollmentId === candidate.enrollmentId
-        ? 'approved'
-        : 'mismatch',
-}));
+);
 
 vi.mock('@kontourai/station-shared/connection-proof', () => ({
   copyStationConnectionTrust: (value: unknown) => {
@@ -36,6 +34,9 @@ vi.mock('@kontourai/station-shared/connection-proof', () => ({
   },
   stationConnectionSigningKeyId: async (trust: { signingKey: { x: string } }) =>
     trust.signingKey.x,
+  stationConnectionKeyConfirmationCode: async () => '0123456789ABCDEF',
+  formatStationConnectionKeyConfirmationCode: (code: string) =>
+    `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}-${code.slice(12)}`,
 }));
 
 import { BrowserStationTrustApproval } from '../BrowserStationTrustApproval';
@@ -78,7 +79,7 @@ function enterReport(value: string) {
 function confirmComparison() {
   fireEvent.click(
     screen.getByLabelText(
-      /I compared this full key ID with the Station operator/,
+      /I compared the confirmation code and full key ID with the Station operator/,
     ),
   );
 }
@@ -110,6 +111,7 @@ describe('browser Station signing-key approval', () => {
     enterReport(report());
 
     expect(await screen.findByText(KEY_ID)).toBeTruthy();
+    expect(await screen.findByText('0123-4567-89AB-CDEF')).toBeTruthy();
     const approve = screen.getByRole('button', { name: 'Approve Station key' });
     expect((approve as HTMLButtonElement).disabled).toBe(true);
     expect(mocks.approve).not.toHaveBeenCalled();
@@ -195,7 +197,7 @@ describe('browser Station signing-key approval', () => {
     expect(
       (
         screen.getByLabelText(
-          /I compared this full key ID with the Station operator/,
+          /I compared the confirmation code and full key ID with the Station operator/,
         ) as HTMLInputElement
       ).checked,
     ).toBe(false);

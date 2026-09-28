@@ -22,11 +22,14 @@ function installLongTaskObserverFixture() {
     ) {
       callback = (entries) => next({ getEntries: () => entries });
     }
-    observe() {}
+    observe(options: unknown) {
+      fixture.observeOptions = options;
+    }
     disconnect() {}
   }
   (globalThis as any).PerformanceObserver = FakePerformanceObserver;
-  return {
+  const fixture = {
+    observeOptions: undefined as unknown,
     emit(entries: readonly { startTime: number; duration: number }[]) {
       callback?.(entries);
     },
@@ -34,6 +37,7 @@ function installLongTaskObserverFixture() {
       (globalThis as any).PerformanceObserver = original;
     },
   };
+  return fixture;
 }
 
 describe('foreground work journal', () => {
@@ -69,26 +73,7 @@ describe('foreground work journal', () => {
 
   it('attributes one Long Task to the latest render mark inside input, dedupes it, and never duplicates it on close', () => {
     let time = 0;
-    let callback:
-      | ((entries: readonly { startTime: number; duration: number }[]) => void)
-      | undefined;
-    let observeOptions: unknown;
-    const original = (globalThis as any).PerformanceObserver;
-    class FakePerformanceObserver {
-      static supportedEntryTypes = ['longtask'];
-      constructor(
-        next: (list: {
-          getEntries(): readonly { startTime: number; duration: number }[];
-        }) => void,
-      ) {
-        callback = (entries) => next({ getEntries: () => entries });
-      }
-      observe(options: unknown) {
-        observeOptions = options;
-      }
-      disconnect() {}
-    }
-    (globalThis as any).PerformanceObserver = FakePerformanceObserver;
+    const observer = installLongTaskObserverFixture();
     try {
       const journal = createForegroundWorkJournal({ now: () => time });
       const outer = journal.begin(attribution);
@@ -102,11 +87,14 @@ describe('foreground work journal', () => {
         },
         5,
       );
-      callback?.([{ startTime: 10, duration: 73 }]);
-      callback?.([{ startTime: 10, duration: 73 }]);
+      observer.emit([{ startTime: 10, duration: 73 }]);
+      observer.emit([{ startTime: 10, duration: 73 }]);
       time = 100;
       outer();
-      expect(observeOptions).toEqual({ type: 'longtask', buffered: false });
+      expect(observer.observeOptions).toEqual({
+        type: 'longtask',
+        buffered: false,
+      });
       expect(journal.snapshot()).toMatchObject({
         collector: 'browser-longtask',
         incidents: [
@@ -119,7 +107,7 @@ describe('foreground work journal', () => {
         aggregate: { count: 1, totalDurationMs: 73, maxDurationMs: 73 },
       });
     } finally {
-      (globalThis as any).PerformanceObserver = original;
+      observer.restore();
     }
   });
 
@@ -174,25 +162,7 @@ describe('foreground work journal', () => {
     'attributes a Long Task to its %s completion instead of its preceding start',
     (_name, completion) => {
       let time = 10;
-      let callback:
-        | ((
-            entries: readonly { startTime: number; duration: number }[],
-          ) => void)
-        | undefined;
-      const original = (globalThis as any).PerformanceObserver;
-      class FakePerformanceObserver {
-        static supportedEntryTypes = ['longtask'];
-        constructor(
-          next: (list: {
-            getEntries(): readonly { startTime: number; duration: number }[];
-          }) => void,
-        ) {
-          callback = (entries) => next({ getEntries: () => entries });
-        }
-        observe() {}
-        disconnect() {}
-      }
-      (globalThis as any).PerformanceObserver = FakePerformanceObserver;
+      const observer = installLongTaskObserverFixture();
       try {
         const journal = createForegroundWorkJournal({ now: () => time });
         journal.mark(
@@ -212,7 +182,7 @@ describe('foreground work journal', () => {
           pane: 'task-editor',
         });
         journal.mark(completion, 60, 'completion');
-        callback?.([{ startTime: 10, duration: 70 }]);
+        observer.emit([{ startTime: 10, duration: 70 }]);
         time = 80;
         finish();
         expect(journal.snapshot().incidents).toEqual([
@@ -223,7 +193,7 @@ describe('foreground work journal', () => {
           }),
         ]);
       } finally {
-        (globalThis as any).PerformanceObserver = original;
+        observer.restore();
       }
     },
   );
@@ -416,17 +386,42 @@ describe('foreground work journal', () => {
   });
 
   it('rejects hostile attribution extras and bounds invalid, fractional, and oversized capacities', () => {
-    const rejected = createForegroundWorkJournal({
-      capacity: Number.NaN,
-      observeLongTasks: false,
-    });
-    rejected.begin({ ...attribution, taskId: 'task-99' } as any)();
-    rejected.mark({ ...attribution, path: '/private/work' } as any, 0);
-    rejected.recordManualStall(60);
-    expect(JSON.stringify(rejected.snapshot())).not.toMatch(
-      /task-99|\/private\/work/,
-    );
-    expect(rejected.snapshot().incidents).toEqual([]);
+    const journal = (capacity?: number) =>
+      createForegroundWorkJournal({
+        capacity,
+        now: () => 0,
+        observeLongTasks: false,
+      });
+    // Positive control: a valid begin() held open across the stall owns it.
+    const accepted = journal();
+    const acceptedFinish = accepted.begin(attribution);
+    accepted.recordManualStall(60);
+    acceptedFinish();
+    expect(accepted.snapshot().incidents).toHaveLength(1);
+
+    const begun = journal();
+    const hostileFinish = begun.begin({
+      ...attribution,
+      taskId: 'task-99',
+    } as any);
+    begun.recordManualStall(60);
+    hostileFinish();
+    const marked = journal();
+    marked.mark({ ...attribution, path: '/private/work' } as any, 0);
+    marked.recordManualStall(60);
+    for (const rejected of [begun, marked]) {
+      expect(rejected.snapshot().incidents).toEqual([]);
+      expect(JSON.stringify(rejected.snapshot())).not.toMatch(
+        /task-99|\/private\/work/,
+      );
+    }
+
+    const invalid = journal(Number.NaN);
+    const invalidFinish = invalid.begin(attribution);
+    for (let index = 0; index < 70; index += 1)
+      invalid.recordManualStall(60 + index);
+    invalidFinish();
+    expect(invalid.snapshot().incidents).toHaveLength(64);
 
     const bounded = createForegroundWorkJournal({
       capacity: 1000,

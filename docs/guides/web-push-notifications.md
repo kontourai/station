@@ -48,7 +48,26 @@ paired phone gets a push, and tapping it lands on the attention inbox
   subscribes to `NOTIFICATION_DELIVERED`, resolves the audience (the owner's
   personal-family devices, or the devices that can read the session for an
   agent notification), applies the delivery policy (focus, quiet hours,
-  per-device minimum urgency, mutes) and hands the channel its targets. The
+  per-device minimum urgency, mutes) and hands the channel its targets.
+  Focus quiets the person's other surfaces only while the focused document
+  itself holds a live event stream
+  (`src-server/runtime/routes/client-stream-presence.ts`, #2620). That is
+  checked per document for a paired device too — the local browser UI signs
+  in as one — so another live tab of the same browser cannot vouch for a
+  focused tab whose stream is gone. A focused document whose stream closed,
+  or whose keepalive writes stopped succeeding for 90 s, quiets nothing. A
+  half-open socket can keep those writes "succeeding". A tab that has
+  actually gone away stops reporting focus, so it stops quieting the phone
+  within the 120 s focus lease (`FOCUS_LEASE_MS`). A tab that is still
+  open and reporting focus while its `/events` socket is half-open is not
+  bounded that way: its keepalive writes can keep "succeeding" until TCP
+  gives up, which can take minutes, and the `/events` client sets no
+  stall timeout to reconnect sooner. Stream
+  leases are capped (32 documents per device, 32 operator tabs, 256
+  device streams overall); a
+  document past the cap is never live, so it never quiets anything. A live
+  focused document skips `info`/`done` elsewhere and only delays
+  `attention`/`failed`, which still reach the phone if unread. The
   channel carries only categories the attention-ranked outcome model
   classifies (`classifyNotificationCategory`,
   `@kontourai/station-shared/notification-priority`), sends a generic title
@@ -86,11 +105,6 @@ paired phone gets a push, and tapping it lands on the attention inbox
     falling back to the generic attention inbox (`/notifications`, the
     fallback the manual checklist below still exercises) when metadata
     doesn't carry enough to resolve one.
-  - **All-quiet framing**: `outcomeFirstAllQuietHeadline` produces an
-    outcome-first headline ("Agent work completed" / "Agent work failed"),
-    never a bare zero count like "0 active agents". No summary/badge surface
-    in the product reads it yet — it exists as a tested, reusable composer,
-    disclosed rather than silently wired into a surface that doesn't exist.
 - **Client**: `usePushNotifications` (`src-ui/src/hooks/usePushNotifications.ts`)
   registers `public/sw.js`, requests permission, subscribes, and POSTs the
   subscription. A `403 device_pairing_required` response — or the

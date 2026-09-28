@@ -36,6 +36,7 @@ import {
   bridgeFixtureReasons,
   deriveBridgeFixtureEvidence,
 } from './lib/interactive-workspace-production-bridge.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 installNodeHttpCompatibility();
 
@@ -1451,10 +1452,7 @@ function render(report) {
   return `${lines.join('\n')}\n`;
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   try {
     const { options, report } = runInteractiveWorkspacePerformance(
       process.argv.slice(2),

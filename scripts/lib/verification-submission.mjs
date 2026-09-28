@@ -14,6 +14,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { probeExactProcessIdentity } from '../../packages/shared/src/process-identity.mjs';
 import { CANONICAL_COMPLETION_LANE } from '../verification-lanes.mjs';
+import { invokedDirectly } from './module-entry.mjs';
 import {
   assertVerificationToolchain,
   collectVerificationProvenance,
@@ -1229,7 +1230,7 @@ function parseWorkerInvocation(args) {
   return { directory, launchToken };
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
+if (invokedDirectly(import.meta.url))
   void main().catch((error) => {
     console.error(errorText(error));
     process.exitCode = 2;

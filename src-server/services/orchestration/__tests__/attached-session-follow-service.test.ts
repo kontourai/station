@@ -9,8 +9,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AttachedSessionSource } from '../../../providers/sessions/attached-session-source.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import {
   type AttachedProjectRoot,
   AttachedSessionFollowService,
@@ -19,9 +21,10 @@ import {
   resolveAttachedSessionPollInterval,
 } from '../attached-session-follow-service.js';
 import { EventBus } from '../event-bus.js';
-import { EventStore } from '../event-store.js';
+import { EventStore, EventStoreIngressError } from '../event-store.js';
 import type { SessionAnswerabilityObservation } from '../open-requests.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
+import { SessionAuthorization } from '../session-authorization.js';
 
 /**
  * The process-local half of the answerability decoration
@@ -56,6 +59,7 @@ const metrics = vi.hoisted(() => ({
   attachedSessionScanDuration: { record: vi.fn() },
   attachedSessionEventsImported: { add: vi.fn() },
   attachedSessionProjectAttribution: { add: vi.fn() },
+  sessionOwnerCacheOps: { add: vi.fn() },
 }));
 
 vi.mock('../../../telemetry/metrics.js', () => metrics);
@@ -496,6 +500,300 @@ describe('AttachedSessionFollowService', () => {
         workingDirectory: realpathSync(nested),
       });
     });
+  });
+
+  // An attached transcript comes from this host's own engine homes: its
+  // session belongs to the local operator. With no recorded owner it would be
+  // readable by no caller, so it could never be opened or continued.
+  test("records the local operator as the attached session's owner and drops a cached owner before publishing", async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        events: [event('event-1')],
+        cursor: 20,
+      }),
+    };
+    const order: string[] = [];
+    eventBus.subscribe(({ data }) => {
+      const published = data?.event as { method?: string } | undefined;
+      order.push(`emit:${published?.method}`);
+    });
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      invalidateSessionOwner: (threadId) =>
+        order.push(`invalidate:${threadId}`),
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+
+    await service.pollNow();
+
+    expect(store.findSessionOwnerUserId(session.threadId)).toBe(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+    );
+    // The owner cache is dropped for each ownership-shaped event BEFORE a
+    // subscriber can re-derive ownership from it.
+    expect(order).toEqual([
+      `invalidate:${session.threadId}`,
+      'emit:session.started',
+      `invalidate:${session.threadId}`,
+      'emit:session.configured',
+      'emit:content.text-delta',
+    ]);
+
+    // Readable through the ordinary owner policy: the operator, and a
+    // member of the operator's personal account; never anyone else.
+    const authz = new SessionAuthorization({
+      eventStore: store,
+      personalConversationAccess: {
+        canRead: (requester, owner) =>
+          requester === 'human:device:phone' &&
+          owner === LOCAL_OPERATOR_PRINCIPAL_ID,
+        ownerIds: () => undefined,
+      },
+    });
+    const as = (userId: string) =>
+      sessionReadAuthorityFromRequest(userId, undefined, undefined);
+    expect(
+      authz.canReadSession(session.threadId, as(LOCAL_OPERATOR_PRINCIPAL_ID)),
+    ).toBe(true);
+    expect(
+      authz.canReadSession(session.threadId, as('human:device:phone')),
+    ).toBe(true);
+    expect(authz.canReadSession(session.threadId, as('stranger'))).toBe(false);
+  });
+
+  // An attached session enveloped before owners were recorded keeps its
+  // envelope (same ids, no userId) because its attribution never changes, so
+  // the upgraded follower must record the owner on its own or the session
+  // stays unreadable while still being followed.
+  test('records the operator as owner of a session enveloped before owners were recorded, exactly once', async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi.fn().mockResolvedValue({
+        outcome: 'ok',
+        events: [event('event-1')],
+        cursor: 20,
+      }),
+    };
+    const listProjects = () => [
+      { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+    ];
+    // The pre-upgrade follower: identical envelope ids, no owner.
+    const append = store.appendEventIfAbsent.bind(store);
+    const legacyAppend = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation((stored) => {
+        // The pre-upgrade follower never wrote an owner record at all.
+        if (
+          (stored as { eventId?: string }).eventId?.startsWith(
+            'attached-owner:',
+          )
+        )
+          return undefined;
+        const metadata = (stored as { metadata?: Record<string, unknown> })
+          .metadata;
+        if (!metadata) return append(stored);
+        const { userId: _dropped, ...rest } = metadata;
+        return append({ ...stored, metadata: rest } as never);
+      });
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects,
+    }).pollNow();
+    legacyAppend.mockRestore();
+    expect(store.findSessionOwnerUserId(session.threadId)).toBeUndefined();
+    const envelopeIds = store
+      .listEvents(session.threadId)
+      .map((item) => item.id);
+
+    const invalidated: string[] = [];
+    const upgraded = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      invalidateSessionOwner: (threadId) => invalidated.push(threadId),
+      listProjects,
+    });
+    await upgraded.pollNow();
+    await upgraded.pollNow();
+
+    expect(store.findSessionOwnerUserId(session.threadId)).toBe(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+    );
+    // The envelope was not rewritten; one owner record was added, once.
+    const after = store.listEvents(session.threadId).map((item) => item.id);
+    expect(after.filter((id) => !envelopeIds.includes(id))).toEqual([
+      `attached-owner:${session.threadId}`,
+    ]);
+    expect(invalidated).toEqual([session.threadId]);
+    const authz = new SessionAuthorization({ eventStore: store });
+    expect(
+      authz.canReadSession(
+        session.threadId,
+        sessionReadAuthorityFromRequest(
+          LOCAL_OPERATOR_PRINCIPAL_ID,
+          undefined,
+          undefined,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  // A refused owner write (a deterministic ingress error, skipped so the tail
+  // stays alive) must not mark the owner recorded: the next poll retries.
+  test('retries the owner record on the next poll when the store refused it', async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi.fn().mockResolvedValue({ outcome: 'ok', events: [], cursor: 0 }),
+    };
+    const listProjects = () => [
+      { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+    ];
+    // Pre-owner envelope, as the pre-upgrade follower wrote it.
+    const append = store.appendEventIfAbsent.bind(store);
+    const legacy = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation((stored) => {
+        // The pre-upgrade follower never wrote an owner record at all.
+        if (
+          (stored as { eventId?: string }).eventId?.startsWith(
+            'attached-owner:',
+          )
+        )
+          return undefined;
+        const metadata = (stored as { metadata?: Record<string, unknown> })
+          .metadata;
+        if (!metadata) return append(stored);
+        const { userId: _dropped, ...rest } = metadata;
+        return append({ ...stored, metadata: rest } as never);
+      });
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects,
+    }).pollNow();
+    legacy.mockRestore();
+
+    let refusals = 0;
+    const refusing = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation((stored) => {
+        if (
+          (stored as { eventId?: string }).eventId?.startsWith(
+            'attached-owner:',
+          ) &&
+          refusals++ === 0
+        ) {
+          throw new EventStoreIngressError('simulated refusal');
+        }
+        return append(stored);
+      });
+    const warn = vi.fn();
+    const upgraded = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      logger: { warn },
+      listProjects,
+    });
+    await upgraded.pollNow();
+    expect(store.findSessionOwnerUserId(session.threadId)).toBeUndefined();
+    await upgraded.pollNow();
+    refusing.mockRestore();
+    expect(refusals).toBe(2);
+    expect(store.findSessionOwnerUserId(session.threadId)).toBe(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+    );
+  });
+
+  // A deterministic refusal keeps being retried, but is logged once per
+  // thread rather than once per poll.
+  test('logs a persistently refused owner record once, while retrying every poll', async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi.fn().mockResolvedValue({ outcome: 'ok', events: [], cursor: 0 }),
+    };
+    const listProjects = () => [
+      { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+    ];
+    const append = store.appendEventIfAbsent.bind(store);
+    const legacy = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation((stored) => {
+        if (
+          (stored as { eventId?: string }).eventId?.startsWith(
+            'attached-owner:',
+          )
+        )
+          return undefined;
+        const metadata = (stored as { metadata?: Record<string, unknown> })
+          .metadata;
+        if (!metadata) return append(stored);
+        const { userId: _dropped, ...rest } = metadata;
+        return append({ ...stored, metadata: rest } as never);
+      });
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects,
+    }).pollNow();
+    legacy.mockRestore();
+
+    let attempts = 0;
+    const refusing = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation((stored) => {
+        if (
+          (stored as { eventId?: string }).eventId?.startsWith(
+            'attached-owner:',
+          )
+        ) {
+          attempts += 1;
+          throw new EventStoreIngressError('always refused');
+        }
+        return append(stored);
+      });
+    const warn = vi.fn();
+    const follower = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      logger: { warn },
+      listProjects,
+    });
+    for (let poll = 0; poll < 3; poll++) await follower.pollNow();
+    refusing.mockRestore();
+    expect(attempts).toBe(3);
+    expect(
+      warn.mock.calls.filter(([message]) =>
+        String(message).startsWith('Attached-session owner record'),
+      ),
+    ).toHaveLength(1);
   });
 
   test('matches the longest canonical project root and publishes each canonical event once', async () => {
@@ -959,8 +1257,12 @@ describe('AttachedSessionFollowService', () => {
         { slug: 'beta', workingDirectory: app() },
       ]).pollNow();
 
-      // The stored log already says exactly this. Nothing to correct.
-      expect(store.listEvents(session.threadId)).toHaveLength(seeded);
+      // The stored log already says exactly this: the attribution is not
+      // re-stamped. The only addition is the owner record this pre-owner
+      // envelope lacks, which expresses no attribution of its own.
+      const events = store.listEvents(session.threadId);
+      expect(events).toHaveLength(seeded + 1);
+      expect(events.at(-1)?.id).toBe(`attached-owner:${session.threadId}`);
       expect(summarize().projectSlug).toBe('beta');
     });
 

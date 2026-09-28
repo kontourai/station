@@ -20,7 +20,10 @@ import {
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
 import { RegionModelProvider, useRegionModel } from '../RegionModelContext';
-import { useOpenPaneInRegion } from '../useOpenInRegion';
+import {
+  useOpenFilePreviewInRegion,
+  useOpenPullRequestInRegion,
+} from '../useOpenInRegion';
 
 const PR = {
   host: 'github.com',
@@ -32,15 +35,24 @@ const PR_ID = 'pr:github.com/kontourai/station#2049';
 const PROJECT = { projectId: 'project-uuid', projectSlug: 'station' };
 
 let model: ReturnType<typeof useRegionModel> | null = null;
-let panes: ReturnType<typeof useOpenPaneInRegion> | null = null;
+/** The production openers a region-hosted pane reads, once a model is mounted. */
+type RegionOpeners = {
+  openPullRequest: NonNullable<ReturnType<typeof useOpenPullRequestInRegion>>;
+  openFilePreview: NonNullable<ReturnType<typeof useOpenFilePreviewInRegion>>;
+};
+let panes: RegionOpeners | null = null;
 
 function Probe() {
   const value = useRegionModel();
-  const openers = useOpenPaneInRegion();
+  const openPullRequest = useOpenPullRequestInRegion();
+  const openFilePreview = useOpenFilePreviewInRegion();
   useEffect(() => {
     model = value;
-    panes = openers;
-  }, [value, openers]);
+    panes =
+      openPullRequest && openFilePreview
+        ? { openPullRequest, openFilePreview }
+        : null;
+  }, [value, openPullRequest, openFilePreview]);
   return null;
 }
 

@@ -60,13 +60,6 @@ export function closeSessionInventoryOccurrence(hostId?: string) {
   occurrences.delete(hostId);
   notify(hostId);
 }
-export function readSessionInventoryOccurrence(hostId?: string) {
-  return hostId
-    ? occurrences.get(hostId)
-    : occurrences.size === 1
-      ? occurrences.values().next().value
-      : undefined;
-}
 /**
  * Open the host's inventory, or leave it — the one implementation of the
  * inventory control's own verb, so a caller does not have to hold the

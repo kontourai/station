@@ -1,42 +1,36 @@
 import { describe, expect, test } from 'vitest';
-import {
-  mapStrandsStreamEvent,
-  normalizeStrandsToolOutput,
-} from '../strands-stream-events.js';
+import { mapStrandsStreamEvent } from '../strands-stream-events.js';
 
-describe('normalizeStrandsToolOutput', () => {
+// Strands wraps a FunctionTool return as content blocks; the tool-result chunk
+// carries the same raw output shape the VoltAgent path emits, so the shared UI
+// handler (extractUIBlocks) finds a render_component `uiBlock`.
+describe('mapStrandsStreamEvent tool-result output normalization', () => {
+  const toolResultOutput = (content: unknown) => {
+    const chunk = mapStrandsStreamEvent({
+      type: 'toolResultEvent',
+      result: { toolUseId: 'call-1', content },
+    } as never);
+    expect(chunk?.type).toBe('tool-result');
+    return chunk?.type === 'tool-result' ? chunk.output : undefined;
+  };
+
   test('unwraps a lone JsonBlock to its raw object (so uiBlock is findable)', () => {
-    // Strands wraps a FunctionTool object return as [{ json: <return> }].
     expect(
-      normalizeStrandsToolOutput([
-        { json: { uiBlock: { type: 'card', title: 'Hi' } } },
+      toolResultOutput([
+        { json: { uiBlock: { type: 'card', title: 'Strands' } } },
       ]),
-    ).toEqual({ uiBlock: { type: 'card', title: 'Hi' } });
+    ).toEqual({ uiBlock: { type: 'card', title: 'Strands' } });
   });
 
   test('unwraps the $value envelope used for primitive/array returns', () => {
-    expect(normalizeStrandsToolOutput([{ json: { $value: 42 } }])).toBe(42);
+    expect(toolResultOutput([{ json: { $value: 42 } }])).toBe(42);
   });
 
   test('leaves text content and multi-block content as-is', () => {
     const text = [{ text: 'denied' }];
-    expect(normalizeStrandsToolOutput(text)).toBe(text);
+    expect(toolResultOutput(text)).toBe(text);
     const multi = [{ json: { a: 1 } }, { text: 'x' }];
-    expect(normalizeStrandsToolOutput(multi)).toBe(multi);
-  });
-
-  test('a Strands-wrapped render_component result becomes extractable', () => {
-    const tool = mapStrandsStreamEvent({
-      type: 'toolResultEvent',
-      result: {
-        toolUseId: 'call-1',
-        content: [{ json: { uiBlock: { type: 'card', title: 'Strands' } } }],
-      },
-    } as never);
-    expect(tool).toMatchObject({
-      type: 'tool-result',
-      output: { uiBlock: { type: 'card', title: 'Strands' } },
-    });
+    expect(toolResultOutput(multi)).toBe(multi);
   });
 });
 

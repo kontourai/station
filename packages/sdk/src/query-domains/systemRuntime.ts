@@ -11,6 +11,7 @@ import type {
   DevicePresentation,
   ExternalEngineReadinessProjection,
   HomeRecoveryDisclosure,
+  SelfUpdateUnavailableCode,
   SystemRuntimeIdentity,
   UpdateProvenanceIssue,
 } from '@kontourai/station-contracts/system-status';
@@ -290,11 +291,18 @@ export interface CoreUpdateStatus {
    */
   technicalDetail?: string | null;
   /**
-   * For a desktop bundle: why git-based self-update refuses this install,
-   * straight from the server's eligibility resolver. Null when eligible or
-   * not a bundle.
+   * Why this server refuses to apply an update to itself, as human text: for
+   * a desktop bundle, straight from the server's eligibility resolver; for a
+   * source checkout under the installed service, the stop/upgrade/start
+   * remedy. Null when applying is not refused (or on older servers). Any
+   * non-null value closes the apply offer.
    */
   selfUpdateUnavailableReason?: string | null;
+  /**
+   * The same refusal as a code a client can branch on. Null when there is no
+   * refusal, on older servers, and for a code this SDK does not know.
+   */
+  selfUpdateUnavailableCode?: SelfUpdateUnavailableCode | null;
 }
 
 /** Correlates an accepted git-pull restart with its detached watchdog. */

@@ -38,6 +38,7 @@ import {
   mcpNegotiations,
 } from '../../telemetry/metrics.js';
 import { createChildDelegationContext } from '../agents/delegation.js';
+import { attestDelegationContext } from '../agents/delegation-attestation.js';
 import {
   currentTenantExecutionContext,
   isHostedTenantExecutionRequired,
@@ -902,13 +903,22 @@ export function wrapDelegationAwareTools(
           }
         }
         if (controlName === 'send_message' || controlName === 'delegate_task') {
+          // #2601: only this runtime vouches for a context; a model-written
+          // attestation never survives to the route.
+          delete nextArgs._delegationAttestation;
           if (parentConversationId) {
-            nextArgs._delegation = createChildDelegationContext({
+            const delegation = createChildDelegationContext({
               agentSlug: options.agentSlug,
               conversationId: parentConversationId,
               spec: options.spec,
               current: execOptions?.delegation,
             });
+            nextArgs._delegation = delegation;
+            // The pooled station-control child carries no per-session
+            // caller, so the route keeps this context only because it is
+            // attested (`delegation-attestation.ts`).
+            nextArgs._delegationAttestation =
+              attestDelegationContext(delegation);
             if (controlName === 'delegate_task') {
               nextArgs.parentTaskId = parentConversationId;
             }

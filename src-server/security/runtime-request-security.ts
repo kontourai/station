@@ -615,6 +615,30 @@ export function bindRuntimeLocalOperator(
   return local;
 }
 
+/**
+ * #2377 slice B: the per-boot internal token carries home-possession because
+ * Station minted it for its own process, so every consumer of
+ * {@link isBoundRuntimeLocalOperator} and of the principal's `locality`
+ * (unredacted logs, the operator-only Project and membership gates, the
+ * orchestration principal resolver's local-operator path) read any internal
+ * request as the operator. A station-control tool call is an agent acting for
+ * its session's owner, not the operator in person, so the station-control
+ * authority guard withdraws that fact for every internal request except
+ * Station's own server code and a bound operator caller. It re-stamps the
+ * principal without `locality` and re-binds the local-operator flags from
+ * it, at the one write point, so every consumer moves together.
+ *
+ * A no-op for anything but an internal principal: a real credential's
+ * locality is a mint-time fact about that credential and is never withdrawn.
+ */
+export function withdrawInternalHomePossession(request: Request): void {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  if (principal?.kind !== 'internal') return;
+  const { locality: _withdrawn, ...withoutLocality } = principal;
+  setRuntimeAuthenticatedRequestPrincipal(request, withoutLocality);
+  bindRuntimeLocalOperator(request);
+}
+
 /** Bound by the auth boundary; absent means redact (fail closed). */
 export function isBoundRuntimeLocalOperator(request: Request): boolean {
   return boundLocalOperator.get(request) === true;
@@ -824,30 +848,13 @@ const STREAMING_MUTATION_PREFIXES: readonly string[] = [
 ];
 
 /**
- * Authenticated read routes that stream a long-lived SSE response. These are
- * GETs, so they are `'unbudgeted'` purely because a GET is never a mutation
- * (no body, no mutation-rate accounting) — NOT because they appear here. The
- * classifier never consults this constant: unlike its sibling
- * `STREAMING_MUTATION_PREFIXES`, which gates the streaming rate bucket, this
- * list is documentary only. It exists so the unbudgeted SSE read surface stays
- * a reviewed, enumerable decision — and so the per-entry test can pin that
- * documenting a read does NOT exempt a mutating verb on the same path.
- */
-export const DOCUMENTED_SSE_READ_SURFACES: readonly string[] = [
-  '/events', // createEventRoutes — the primary SSE event stream
-  '/api/orchestration/events', // createOrchestrationRoutes — orchestration SSE
-  '/monitoring/events', // createMonitoringRoutes — live agent monitoring SSE
-  '/scheduler/events', // createSchedulerRoutes — scheduler job output SSE
-];
-
-/**
  * Classifies a request for mutation-budget purposes.
  *
  * - `'unbudgeted'` — GET/HEAD/OPTIONS, or a public route. No body-size check,
- *   no rate check. This is where every SSE read surface lands; the
- *   {@link DOCUMENTED_SSE_READ_SURFACES} list above records each one
- *   explicitly (documentary — the classifier never consults it; GETs are
- *   unbudgeted by the non-mutation rule above).
+ *   no rate check. Every SSE read surface (`GET /events`,
+ *   `GET /api/orchestration/events`, `GET /monitoring/events`,
+ *   `GET /scheduler/events`) lands here by the non-mutation rule alone; no
+ *   path is exempted, so a mutating verb on the same path is still budgeted.
  * - `'streaming'` — a mutating verb on an enumerated streaming surface. Gets
  *   its own rate bucket; body-size ceiling still applies.
  * - `'standard'` — every other mutating verb on a protected route. Body-size +
@@ -1116,10 +1123,6 @@ export class RuntimeMutationBudget {
       expiresAt: now + this.#windowMs,
     };
     this.#entries.set(principalKey, fresh);
-  }
-
-  clearBudget(principalKey: string): void {
-    this.#entries.delete(principalKey);
   }
 
   #prune(now: number): void {

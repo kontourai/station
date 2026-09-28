@@ -96,6 +96,12 @@ export interface PreviewData {
    */
   contentDigest?: string;
   /**
+   * `excluded`: the server staged this source without its git metadata (an
+   * open install proposal names it, #2719). Sent back with the approval so
+   * the install stages the same bytes.
+   */
+  gitMetadata?: 'excluded';
+  /**
    * What installing this source would require, DERIVED by the server from the
    * staged manifest. The UI never computes it; it renders it and sends the
    * answer back.

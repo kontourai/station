@@ -11,7 +11,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { checkChangesets } from '../check-changesets.mjs';
+import { CHANGED_DEADLINE_ENV as SELECTOR_DEADLINE_ENV } from '../run-changed-verification.mjs';
 import {
+  CHANGED_DEADLINE_ENV,
   CHANGESET_STATUS_FAST_COMMAND,
   CI_FAST_INFRASTRUCTURE_EXIT_CODE,
   CI_FAST_NESTED_INFRASTRUCTURE_CAUSE,
@@ -21,9 +23,12 @@ import {
   classifyCiFastCommandResult,
   describeCiFastCommand,
   FAST_FEEDBACK_TIMEOUT_MS,
+  FAST_SCOPE_ENV,
+  FAST_SELECTOR_DISCOVERY_SHARE,
   FAST_STATIC_COMMANDS,
   FAST_STATIC_RESERVE_MS,
   fastBase,
+  fastScope,
   formatCiFastElapsedSeconds,
   runCiFast,
   runCiFastCli,
@@ -41,15 +46,24 @@ afterEach(() => {
   contentGateRepos.clear();
 });
 
+/** The copied gate imports its entry guard from scripts/lib (#2682). */
+function copyEntryGuard(dir: string): void {
+  copyFileSync(
+    join(process.cwd(), 'scripts', 'lib', 'module-entry.mjs'),
+    join(dir, 'scripts', 'lib', 'module-entry.mjs'),
+  );
+}
+
 function contentGateRepo(source: string): string {
   const dir = mkdtempSync(join(tmpdir(), 'station-ci-fast-content-gate-'));
   contentGateRepos.add(dir);
-  mkdirSync(join(dir, 'scripts'), { recursive: true });
+  mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
   mkdirSync(join(dir, 'src-server'), { recursive: true });
   copyFileSync(
     join(process.cwd(), 'scripts', 'content-integrity-gate.mjs'),
     join(dir, 'scripts', 'content-integrity-gate.mjs'),
   );
+  copyEntryGuard(dir);
   writeFileSync(
     join(dir, 'package.json'),
     JSON.stringify({
@@ -124,6 +138,70 @@ describe('bounded ci:fast runner', () => {
     ]);
   });
 
+  it('hands only the selector the end of its allowance (#2855)', () => {
+    const calls: Array<{ args: string[]; env?: Record<string, string> }> = [];
+    runCiFast({
+      cwd: '/fixture',
+      env: { STATION_CI_FAST_BASE: 'base-sha' },
+      now: () => 1_000,
+      execute(_command, args, { env }) {
+        calls.push({ args, env });
+        return 0;
+      },
+    });
+    // 900s lane - 220s static reserve = the selector's 680s allowance, of
+    // which related discovery may use a pinned quarter: 170s.
+    expect(calls[0].env).toEqual({
+      STATION_CI_FAST_BASE: 'base-sha',
+      [CHANGED_DEADLINE_ENV]: String(1_000 + 170_000),
+    });
+    expect(FAST_FEEDBACK_TIMEOUT_MS - FAST_STATIC_RESERVE_MS).toBe(680_000);
+    expect(FAST_SELECTOR_DISCOVERY_SHARE).toBe(0.25);
+    for (const call of calls.slice(1)) expect(call.env).toBeUndefined();
+    // The runner restates the name it cannot import; pin the two equal.
+    expect(CHANGED_DEADLINE_ENV).toBe(SELECTOR_DEADLINE_ENV);
+  });
+
+  it('drops only the selector when scoped to statics (#2709), and refuses any other scope', () => {
+    const calls: Array<{ command: string; args: string[]; timeout: number }> =
+      [];
+    const status = runCiFast({
+      cwd: '/fixture',
+      env: { STATION_CI_FAST_BASE: 'base-sha', [FAST_SCOPE_ENV]: 'statics' },
+      now: () => 1_000,
+      execute(command, args, { timeout }) {
+        calls.push({ command, args, timeout });
+        return 0;
+      },
+    });
+    expect(status).toBe(0);
+    // Every static invariant, in order, each with the whole budget: the
+    // selector's reserve applies only to the selector itself.
+    expect(calls).toEqual(
+      FAST_STATIC_COMMANDS.map(([command, args]) => ({
+        command,
+        args,
+        timeout: FAST_FEEDBACK_TIMEOUT_MS,
+      })),
+    );
+    expect(fastScope({})).toBe('all');
+    expect(fastScope({ [FAST_SCOPE_ENV]: '' })).toBe('all');
+    for (const scope of ['static', 'STATICS', 'selection', 'all'])
+      expect(() => fastScope({ [FAST_SCOPE_ENV]: scope }), scope).toThrow(
+        `${FAST_SCOPE_ENV} must be unset or 'statics'`,
+      );
+    expect(
+      runCiFastCli({
+        run: () =>
+          runCiFast({
+            env: { [FAST_SCOPE_ENV]: 'selection' },
+            execute: () => 0,
+          }),
+        error: () => {},
+      }),
+    ).toBe(2);
+  });
+
   it('pins a small static invariant allowlist with no broad static or full Vitest lane', () => {
     expect(FAST_STATIC_COMMANDS).toEqual([
       [process.execPath, ['scripts/node-runtime-contract.mjs']],
@@ -135,10 +213,17 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'channel-ports:check']],
       ['npm', ['run', 'gate:workflows']],
       ['npm', ['run', 'content:integrity']],
+      ['npm', ['run', 'content:excluded-names']],
       // CLI help ↔ docs/reference/cli.md parity: a help topic without a
       // reference heading must red the PR lane, not the nightly (the `open`
       // verb shipped green and failed Nightly a day later).
       ['npm', ['run', 'docs:cli-parity:check']],
+      ['npm', ['run', 'docs:reference:gate']],
+      ['npm', ['run', 'docs:links:check']],
+      // Docs-only edits these reject must red fast-checks, not the queue.
+      ['npm', ['run', 'docs:public:hygiene']],
+      ['npm', ['run', 'docs:issue-lifecycle:check']],
+      ['npm', ['run', 'docs:public:contract-examples']],
       // The git-ignored Basis MCP app bundles are generated, not checked:
       // nothing is tracked, so the only freshness question is "does the
       // generator succeed on this tree", and the typecheck aggregate below
@@ -390,11 +475,12 @@ describe('Changesets workspace validation through ci:fast', () => {
       contentGateRepos.add(dir);
       mkdirSync(join(dir, 'packages', 'published'), { recursive: true });
       mkdirSync(join(dir, '.changeset'));
-      mkdirSync(join(dir, 'scripts'));
+      mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
       copyFileSync(
         join(process.cwd(), 'scripts', 'check-changesets.mjs'),
         join(dir, 'scripts', 'check-changesets.mjs'),
       );
+      copyEntryGuard(dir);
       writeFileSync(
         join(dir, 'package.json'),
         JSON.stringify({

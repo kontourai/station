@@ -91,7 +91,11 @@ Time-window pruning must use observed event timestamps, not ingest filenames.
 Collapsed payloads should construct their bodies only after expansion. Browser
 geometry requires the real component, styles, and normal user actions; CSS-text
 checks cannot prove that a target is visible or clickable. Helpers used only by
-tests cannot establish that their intended caller still exists.
+tests cannot establish that their intended caller still exists. Each contract
+has one primary test owner at the strongest boundary; a second layer needs its
+own distinct risk, such as a transport or lifecycle failure the owner cannot
+reach. Prefer extending a table-driven case or shared fixture over adding a
+near-duplicate test.
 
 The fixture guard rejects the narrow `if (stored) { expect(...) }` pattern when
 `stored` is a localStorage observation and there is no alternative assertion.
@@ -274,6 +278,13 @@ npm run test:e2e:product -- --spec=tests/foo.spec.ts --grep='delegated work'  # 
 npm run test:connected-agents         # focused connected-agents server suite
 ```
 
+New or materially changed test files state their measured wall cost in the
+pull request (the `test:focused` duration line is the receipt). A file that
+needs seconds must name the contract no cheaper layer proves; prefer splitting
+by owner boundary over widening a slow file. Weighted capacity planning and
+the resource manifest stay the scheduling authority — this disclosure is
+review evidence, not a separate budget system.
+
 ### Pre-push orchestration transfer gate
 
 `.githooks/pre-push` runs `scripts/check-prepush-orchestration-transfer.mjs`
@@ -343,7 +354,9 @@ screenshot bucket replaces stale green evidence truthfully. CI artifacts cannot
 modify a checkout themselves: run `npm run sync:e2e:latest` (or pass
 `-- --run-id <id>` / `-- --status <conclusion>`) to download and validate the
 latest compatible completed CI Extended artifact. Never paste the directory's
-image bytes or broad logs into agent context.
+image bytes or broad logs into agent context. For a change that alters rendered
+UI, inspected before/after screenshots belong in the pull request body itself;
+CI artifacts, logs, or local files alone do not establish a visual claim.
 
 The Windows portable floor is deliberately not named or treated as
 `test:full`. It combines the physically proven pre-push tier with the portable
@@ -999,6 +1012,15 @@ and fix it at source rather than requeueing until green. If the same failure
 appears on unrelated candidates, main itself is red, so fix main first. Flaky
 tests go through the quarantine policy below.
 
+Queue operations have three standing rules. Never `gh pr update-branch` a
+bot-owned pull request (dependency or release automation): your push replaces
+the bot as the triggering actor and breaks author-scoped exemptions, so let the
+bot rebase or re-cut instead. Before re-arming after a red candidate, confirm
+the queue candidate's tree (`potentialMergeCommit`) actually contains the pushed
+change; arming within seconds of a push can build the previous candidate. A
+`DIRTY` merge state with a clean `git merge origin/main` is GitHub's recompute,
+not a real conflict: merge, re-verify, push, and arm again.
+
 ### Real-time waits in tests
 
 A test that waits a fixed amount of real time and then asserts passes on an
@@ -1052,7 +1074,12 @@ escape valve: `QUARANTINED_VITEST_FILES` in `scripts/vitest-resource-manifest.mj
 commit* both passed and failed it. A test that fails every time is a defect to
 fix or revert, never a quarantine entry. Diagnose first; quarantine is for the
 window between a diagnosed flake and its fix, not for a red lane nobody has
-read.
+read. Reproduce in the failing shard's file order first, then the file alone:
+an order-only failure is shared-state leakage from an earlier file, not a
+property of the failing test. `npm run test:prepush:repeat` supplies the
+twenty-attempt pass-rate receipt for an isolation A/B, and on a shared host the
+[shared-host flake triage](../strategy/multi-agent-delivery-protocol.md#4-shared-host-flake-triage-before-diagnosing-anything)
+ladder comes before any diagnosis of the test itself.
 
 **What it does.** The merge-queue shards pass `--exclude-quarantined`, which
 drops the listed files from every queue corpus group. Nightly's canonical
@@ -1515,7 +1542,26 @@ invariants must state the product decision and replacement behavioral evidence
 in the PR; changing an assertion solely to match an implementation is not that
 justification.
 
-The required `fast-checks` job executes critical browser smoke before merge.
+The required `fast-checks` check is an aggregator (#2709). `fast-checks-plan`
+computes the affected-test selection once; `fast-checks-shard` runs it as four
+deterministic round-robin slices, each inside the fifteen-minute budget and
+each writing a receipt (an empty slice passes explicitly with an `empty`
+receipt); `fast-checks-statics` runs `ci:fast` with
+`STATION_CI_FAST_SCOPE=statics` plus the browser smoke, performance smoke and
+UI bundle budget. `fast-checks` fails unless every part job succeeded and
+the `aggregate` command of `scripts/fast-checks-shard.mjs` proves each shard ran exactly its
+slice of that plan; a skipped or cancelled part, a missing receipt, or a
+receipt for another plan or head fails it. A deferred selection (the
+selector's exit 3) is reported and passes, as it does in unsharded `ci:fast`.
+Local `npm run ci:fast` and fork-smoke still run the whole lane unsharded.
+Transitionally, a pull request branched before the sharded lane (no
+`scripts/fast-checks-shard.mjs`) runs its whole unsharded `ci:fast` in
+`fast-checks-plan` instead, its shards skip, and `fast-checks` requires that
+job and `fast-checks-statics`; its statics therefore run twice. That path is
+removed once open pull requests have merged `main`.
+
+The required `fast-checks` check covers critical browser smoke before merge,
+through `fast-checks-statics`.
 The required repository-governance evidence rejects moving that suite into an
 optional/manual dependency or swallowing its result. Product-law observations
 use named structured results: missing, skipped, or unavailable evidence is not

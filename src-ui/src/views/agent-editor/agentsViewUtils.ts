@@ -16,6 +16,7 @@ import { classifyManagedModelBinding } from '@kontourai/station-contracts/manage
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { Tool } from '../../types';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { connectionStatusLabel } from '../../utils/execution';
 import type { AgentFormData } from './types';
 
@@ -65,11 +66,11 @@ type AgentLike = {
 };
 
 /**
- * Every persisted Agent field is deliberately classified before copying.
- * `satisfies Record<keyof AgentSpec,...>` turns a new contract field into a
- * compile failure until its copy policy is explicitly chosen.
+ * Every persisted Agent field is deliberately classified before copying: a
+ * new contract field fails to compile until its copy policy is chosen. It is
+ * a compile-time check only; `cloneableAgentFields` below is the copy.
  */
-export const AGENT_SPEC_COPY_CLASSIFICATION = {
+({
   name: 'clone',
   prompt: 'clone',
   description: 'clone',
@@ -87,7 +88,7 @@ export const AGENT_SPEC_COPY_CLASSIFICATION = {
   commands: 'exclude',
   ui: 'exclude',
   provenance: 'exclude',
-} as const satisfies Record<keyof AgentSpec, 'clone' | 'exclude'>;
+}) satisfies Record<keyof AgentSpec, 'clone' | 'exclude'>;
 
 export function createEmptyAgentForm(
   defaultRuntimeConnectionId = '',
@@ -101,7 +102,13 @@ export function createEmptyAgentForm(
     region: '',
     guardrails: null,
     maxSteps: '',
-    tools: { mcpServers: [], available: [], autoApprove: [], browser: true },
+    tools: {
+      mcpServers: [],
+      available: [],
+      autoApprove: [],
+      unattendedAutoApprove: [],
+      browser: true,
+    },
     toolsOriginal: undefined,
     execution: {
       agentConnectionId: defaultRuntimeConnectionId,
@@ -147,6 +154,9 @@ export function formFromAgent(agent: AgentLike): AgentFormData {
       mcpServers: agent.toolsConfig?.mcpServers || [],
       available: agent.toolsConfig?.available || [],
       autoApprove: agent.toolsConfig?.autoApprove || [],
+      // #2613: carried through, not yet editable here (#2658). Modelled so a
+      // save writes back exactly what was loaded; absent stays absent.
+      unattendedAutoApprove: agent.toolsConfig?.unattendedAutoApprove || [],
       browser: agent.toolsConfig?.browser !== false,
     },
     toolsOriginal: agent.toolsConfig,
@@ -173,8 +183,9 @@ export function formFromAgent(agent: AgentLike): AgentFormData {
 
 /**
  * The one safe copy projection. It intentionally omits identity, ownership,
- * provenance, delegation, commands, UI metadata, credentials, and tool
- * environment values; a copied Agent starts with its own defaults for those.
+ * provenance, delegation, commands, UI metadata, credentials, tool
+ * environment values, and the unattended tool opt-in; a copied Agent starts
+ * with its own defaults for those.
  */
 export function cloneableAgentFields(agent: AgentLike): Partial<AgentFormData> {
   return {
@@ -197,6 +208,10 @@ export function cloneableAgentFields(agent: AgentLike): Partial<AgentFormData> {
       mcpServers: [...(agent.toolsConfig?.mcpServers || [])],
       available: [...(agent.toolsConfig?.available || [])],
       autoApprove: [...(agent.toolsConfig?.autoApprove || [])],
+      // #2613: a copy starts without the source's unattended opt-in. It is a
+      // standing grant to run with nobody present, and the editor cannot
+      // show it yet (#2658), so a copy must not inherit it unseen.
+      unattendedAutoApprove: [],
       browser: agent.toolsConfig?.browser !== false,
     },
     execution: {
@@ -305,6 +320,7 @@ function buildToolsPayload(
   put('mcpServers', form.tools.mcpServers);
   put('available', form.tools.available);
   put('autoApprove', form.tools.autoApprove);
+  put('unattendedAutoApprove', form.tools.unattendedAutoApprove);
   // #90 D14: the browser tools are on unless switched off, so only an
   // explicit `false` (or a value the agent already had) is written.
   if (form.tools.browser === false) next.browser = false;
@@ -380,7 +396,9 @@ export function agentSaveErrorMessage(error: unknown): string {
   ) {
     return STATION_ENGINE_SETTING_SAVE_MESSAGE;
   }
-  return error instanceof Error ? error.message : 'Could not save this Agent.';
+  return error instanceof Error
+    ? userFacingErrorMessage(error)
+    : 'Could not save this Agent.';
 }
 
 export function buildAgentPayload(

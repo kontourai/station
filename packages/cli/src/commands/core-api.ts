@@ -4,6 +4,7 @@ import type { AuthenticatedFetchInit } from '@kontourai/station-sdk/client';
 import {
   authenticatedFetch,
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+  envelopeDetailsMessage,
   getClientRequestTimeout,
   setClientCredentialResolver,
   setClientOriginResolver,
@@ -58,47 +59,6 @@ type JsonEnvelope<T> = {
    */
   details?: unknown;
 };
-
-/**
- * station#2871: the server answers a schema rejection with
- * `{ error: 'Validation failed', details: <zod flatten()> }`, and the CLI used
- * to surface only the summary. "Validation failed" names neither the field nor
- * the rule, so a caller who mistyped an id had to go read the schema to find
- * out what was wrong. The reason the server already computed is the useful
- * half; carry it.
- *
- * Deliberately formatting-only — this never decides whether a request failed,
- * only what the user is told about a failure that already happened.
- */
-export function describeValidationDetails(details: unknown): string | null {
-  if (!details || typeof details !== 'object') return null;
-  const flattened = details as {
-    formErrors?: unknown;
-    fieldErrors?: unknown;
-  };
-  const parts: string[] = [];
-
-  const fieldErrors = flattened.fieldErrors;
-  if (fieldErrors && typeof fieldErrors === 'object') {
-    for (const [field, messages] of Object.entries(
-      fieldErrors as Record<string, unknown>,
-    )) {
-      const reasons = Array.isArray(messages)
-        ? messages.filter((m): m is string => typeof m === 'string' && m !== '')
-        : [];
-      if (reasons.length > 0) parts.push(`${field} ${reasons.join('; ')}`);
-    }
-  }
-
-  const formErrors = Array.isArray(flattened.formErrors)
-    ? flattened.formErrors.filter(
-        (m): m is string => typeof m === 'string' && m !== '',
-      )
-    : [];
-  parts.push(...formErrors);
-
-  return parts.length > 0 ? parts.join(', ') : null;
-}
 
 /** Format an API diagnostic without losing structured server errors. */
 export function describeApiError(value: unknown, fallback: string): string {
@@ -501,7 +461,10 @@ export async function requestJson<T>(
       payload.error ?? payload.message,
       `Request failed with HTTP ${response.status}`,
     );
-    const fields = describeValidationDetails(payload.details);
+    // station#2871: "Validation failed" alone names neither the field nor
+    // the rule. The SDK's field-qualified rendering is the one every client
+    // shares (#2708), so the CLI and the SDK print the same sentence.
+    const fields = envelopeDetailsMessage(payload.details);
     throw new Error(fields ? `${summary}: ${fields}` : summary);
   }
 

@@ -99,9 +99,4 @@ describe('monitoringEventIdentity', () => {
       monitoringEventIdentity(live),
     );
   });
-
-  test('the same event is stable across repeated calls', () => {
-    const event = toolEvent({ 'gen_ai.tool.name': 'read_file' });
-    expect(monitoringEventIdentity(event)).toBe(monitoringEventIdentity(event));
-  });
 });

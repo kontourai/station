@@ -20,6 +20,7 @@ import {
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type { ConnectionRecoveryIntent } from '@kontourai/station-contracts/connection-recovery';
 import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestration';
 import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
@@ -133,10 +134,7 @@ import {
   OrchestrationService as RawOrchestrationService,
 } from '../orchestration-service.js';
 import { recoverOrchestrationSessions } from '../orchestration-session-state.js';
-import {
-  anyPersonalOrchestrationStreamPresenceSubject,
-  OrchestrationStreamPresence,
-} from '../orchestration-stream-presence.js';
+import { OrchestrationStreamPresence } from '../orchestration-stream-presence.js';
 import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import {
@@ -1038,6 +1036,39 @@ describe('OrchestrationService', () => {
         projectIdSource: 'slug-lookup',
       });
     });
+
+    test('#2601 L3: the started engine comes from the SAME record as the started metadata', () => {
+      // A metadata-less `session.started` is skipped for the metadata, so its
+      // provider must be skipped too: a caller's Agent-less identity (its
+      // engine) and its `adoptedFromThreadId` never come from two events.
+      const now = new Date().toISOString();
+      eventStore.appendEvent({
+        provider: 'codex',
+        threadId: 'split-record-session',
+        eventId: 'evt-split-started',
+        createdAt: now,
+        method: 'session.started',
+        sessionId: 'split-record-session',
+      } as CanonicalRuntimeEvent);
+      eventStore.appendEvent({
+        provider: 'claude',
+        threadId: 'split-record-session',
+        eventId: 'evt-split-configured',
+        createdAt: now,
+        method: 'session.configured',
+        sessionId: 'split-record-session',
+        metadata: { adoptedFromThreadId: 'thread-attached-1' },
+      } as CanonicalRuntimeEvent);
+      expect(
+        service.firstStartedMetadataOfThread('split-record-session'),
+      ).toEqual({ adoptedFromThreadId: 'thread-attached-1' });
+      expect(service.firstStartedEngineOfThread('split-record-session')).toBe(
+        'claude',
+      );
+      expect(
+        service.firstStartedEngineOfThread('no-such-session'),
+      ).toBeUndefined();
+    });
   });
 
   test('respondToRequest hands the answering device to the adapter (#2344)', async () => {
@@ -1531,6 +1562,135 @@ describe('OrchestrationService', () => {
     ).toEqual({ kind: 'bound' });
   });
 
+  // A dispatched Task's session belongs to the principal that dispatched it,
+  // on both the engine-start path and the default seeded (`task-dispatch`)
+  // path. This suite's service denies ownerless reads, so a session with no
+  // recorded owner would be invisible to the dispatcher itself.
+  test.each([
+    ['an engine start', 'claude'],
+    ['the default seeded dispatch', undefined],
+  ] as const)(
+    'a Task session started by %s records its dispatcher as owner',
+    async (_label, provider) => {
+      const root = join(tmp, `owned-dispatch-${provider ?? 'seeded'}`);
+      mkdirSync(root, { recursive: true });
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: tmp,
+            createdAt: '2026-09-05T00:00:00.000Z',
+            updatedAt: '2026-09-05T00:00:00.000Z',
+          }),
+        },
+      });
+      const task = await graph.createTask({
+        projectId: 'owned-project',
+        title: 'Owned dispatch',
+        agentId: 'codex',
+      });
+      const dispatcher = composeTaskDispatcher(graph, {
+        orchestrationService: service,
+      });
+      const dispatched = await dispatcher.dispatch(task.id, {
+        ownerUserId: 'human:device:phone',
+        fullAccessGrant: null,
+        ...(provider ? { runtimeConfig: { provider, cwd: tmp } } : {}),
+      });
+      expect(dispatched.kind).toBe('dispatched');
+      const sessionId = graph.readTaskView(task.id)!.sessionId!;
+      if (provider) {
+        // An engine records the owner from its start metadata in the
+        // `session.started` it publishes (this suite's fake engine publishes
+        // nothing), so the start must carry it.
+        expect(claude.startSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            threadId: sessionId,
+            metadata: expect.objectContaining({ userId: 'human:device:phone' }),
+          }),
+        );
+        return;
+      }
+      expect(eventStore.findSessionOwnerUserId(sessionId)).toBe(
+        'human:device:phone',
+      );
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('human:device:phone'),
+        ),
+      ).toBe(true);
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('stranger'),
+        ),
+      ).toBe(false);
+    },
+  );
+
+  // B2: an unverified agent's (or an external sender's) dispatch is the
+  // operator's to read but acts for no one, on both dispatch paths.
+  test.each([
+    ['an engine start', 'claude'],
+    ['the default seeded dispatch', undefined],
+  ] as const)(
+    'an unattributed Task session started by %s is readable by its owner and acts for no one',
+    async (_label, provider) => {
+      const root = join(tmp, `unattributed-dispatch-${provider ?? 'seeded'}`);
+      mkdirSync(root, { recursive: true });
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: tmp,
+            createdAt: '2026-09-05T00:00:00.000Z',
+            updatedAt: '2026-09-05T00:00:00.000Z',
+          }),
+        },
+      });
+      const task = await graph.createTask({
+        projectId: 'unattributed-project',
+        title: 'Agent dispatch',
+        agentId: 'codex',
+      });
+      const dispatched = await composeTaskDispatcher(graph, {
+        orchestrationService: service,
+      }).dispatch(task.id, {
+        ownerUserId: 'human:local:operator',
+        ownerAttribution: 'unattributed-agent',
+        fullAccessGrant: null,
+        ...(provider ? { runtimeConfig: { provider, cwd: tmp } } : {}),
+      });
+      expect(dispatched.kind).toBe('dispatched');
+      const sessionId = graph.readTaskView(task.id)!.sessionId!;
+      if (provider) {
+        // The start choke point stamps the marker the engine records.
+        expect(claude.startSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            threadId: sessionId,
+            metadata: expect.objectContaining({
+              userId: 'human:local:operator',
+              ownerAttribution: 'unattributed-agent',
+            }),
+          }),
+        );
+        return;
+      }
+      expect(
+        service.canUserReadSession(
+          sessionId,
+          personalReadAuthority('human:local:operator'),
+        ),
+      ).toBe(true);
+      expect(service.resolveSessionActingPrincipal(sessionId)).toBeUndefined();
+    },
+  );
+
   test.each([false, true])(
     'boot recovers only completed dispatch finalization (provider start uncertain: %s)',
     async (uncertain) => {
@@ -1568,6 +1728,7 @@ describe('OrchestrationService', () => {
         },
       );
       const dispatched = await dispatcher.dispatch(task.id, {
+        ownerUserId: 'test-owner',
         fullAccessGrant: null,
         runtimeConfig: { provider: 'claude', cwd: tmp },
       });
@@ -1767,6 +1928,7 @@ describe('OrchestrationService', () => {
       return original(input);
     });
     const dispatched = dispatcher.dispatch(task.id, {
+      ownerUserId: 'test-owner',
       fullAccessGrant: null,
       runtimeConfig: { provider: 'claude', cwd: tmp },
     });
@@ -5921,7 +6083,6 @@ describe('OrchestrationService', () => {
       adapterRegistry: createRegistry([stationAgent]),
       eventBus: new EventBus(),
       eventStore,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     const threadId = peerService.recordPeerDelegationActivityDispatch({
@@ -7018,24 +7179,22 @@ describe('OrchestrationService', () => {
       adapterRegistry: createRegistry([bedrock]),
       eventBus,
       eventStore,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+    // A personal Station refuses an ownerless session too.
     await expect(
       local.readSession('ownerless-thread', personal),
-    ).resolves.toEqual(
+    ).resolves.toBeNull();
+    await expect(local.readSession('alpha-thread', personal)).resolves.toEqual(
       expect.objectContaining({
-        session: expect.objectContaining({ threadId: 'ownerless-thread' }),
+        session: expect.objectContaining({ threadId: 'alpha-thread' }),
       }),
     );
   });
 
-  test('resolves a personal ownerless session to the any-personal presence subject (slice 6 I10 guard)', () => {
-    // The personal fallback branch of `resolveSessionPresenceSubject` — a
-    // session with no recorded owner in a non-hosted deployment falls back
-    // to the any-personal subject rather than resolving no subject at all.
-    // Before this fixture, deleting the fallback ran the whole suite green:
-    // the hosted test above only exercises tenant-bound subjects.
+  test('resolves no presence subject for a personal ownerless session: nobody may read it (slice 6 I10 guard)', () => {
+    // A session with no recorded owner has no one to notify, so a
+    // completion must not borrow any connected user's presence.
     const threadId = 'ownerless-presence-thread';
     eventStore.upsertSession({
       provider: 'bedrock',
@@ -7044,8 +7203,7 @@ describe('OrchestrationService', () => {
       createdAt: '2026-08-08T00:00:00.000Z',
       updatedAt: '2026-08-08T00:00:00.000Z',
     });
-    const subject = service.resolveSessionPresenceSubject(threadId);
-    expect(subject).toEqual(anyPersonalOrchestrationStreamPresenceSubject());
+    expect(service.resolveSessionPresenceSubject(threadId)).toBeUndefined();
   });
 
   test('#2312: discardDraft stops a live Draft engine, and a late session.exited cannot bring the row back', async () => {
@@ -8947,6 +9105,72 @@ describe('OrchestrationService', () => {
     await bounded.shutdown();
   });
 
+  // archive#1399 M4: a tool-emitted UI block's provenance is sanitized once,
+  // before both persistence and the live publish, so a replay from storage
+  // and the SSE frame carry the same host-derived claim.
+  test('persists and publishes the same sanitized UI block provenance for a forged tool claim', async () => {
+    const threadId = 'ui-block-provenance-parity';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'bedrock' },
+    });
+    service.initialize();
+    const published: CanonicalRuntimeEvent[] = [];
+    const unsubscribe = eventBus.subscribe((message) => {
+      const event = (message.data as { event?: CanonicalRuntimeEvent })?.event;
+      if (
+        message.event === 'orchestration:event' &&
+        event?.eventId === 'forged-ui-block'
+      ) {
+        published.push(event);
+      }
+    });
+
+    bedrock.events.push({
+      eventId: 'forged-ui-block',
+      provider: 'bedrock',
+      threadId,
+      createdAt: new Date().toISOString(),
+      itemId: 'item-1',
+      toolCallId: 'call-1',
+      method: 'tool.completed',
+      toolName: 'report',
+      status: 'success',
+      output: {
+        uiBlock: {
+          type: 'table',
+          columns: ['Name'],
+          rows: [['a']],
+          attestationState: 'attested',
+          provenanceDigest: 'forged-digest',
+        },
+      },
+    } as CanonicalRuntimeEvent);
+
+    const persisted = await waitFor(
+      () =>
+        eventStore
+          .listEvents(threadId)
+          .map((entry) => entry.payload)
+          .find((event) => event.eventId === 'forged-ui-block'),
+      (event) => event !== undefined,
+    );
+    unsubscribe();
+
+    expect(published).toHaveLength(1);
+    const persistedBlock = (
+      persisted as { output: { uiBlock: Record<string, unknown> } }
+    ).output.uiBlock;
+    const publishedBlock = (
+      published[0] as unknown as {
+        output: { uiBlock: Record<string, unknown> };
+      }
+    ).output.uiBlock;
+    expect(persistedBlock).toEqual(publishedBlock);
+    expect(persistedBlock.provenanceDigest).not.toBe('forged-digest');
+    expect(persistedBlock.attestationState).toBe('unattested');
+  });
+
   describe('content delta coalescing at the publish seam (station#3350)', () => {
     /** Every delta this suite streams belongs to one item of one turn. */
     function textDelta(
@@ -9467,179 +9691,6 @@ describe('OrchestrationService', () => {
       );
       expect(docblockRows).toHaveLength(7);
       expect(sites).toEqual(docblockRows);
-    });
-  });
-
-  /** A class-member declaration at the file's two-space member indent. */
-  const MEMBER_DECLARATION =
-    /^ {2}(?:private |public |protected )?(?:static )?(?:readonly )?(?:async )?[A-Za-z_$][\w$]*\(/gm;
-
-  /**
-   * One method's body: from its declaration to whatever member is declared
-   * NEXT, whichever that turns out to be.
-   *
-   * Review L6 (archive#4218) called out the previous form — a slice between two
-   * NAMED markers — as not-a-body, since a member declared between them but
-   * CALLED from above the gate keeps every relative index intact while
-   * inverting the ordering the invariant exists to protect. That was not
-   * hypothetical: applying this helper immediately showed
-   * `captureUsagePricingSnapshot` had already landed between
-   * `consumeAdapterEvents` and `isAdapterCurrent`, so the ingest scan was
-   * reading two members as one body. Naming the next marker is what rots;
-   * this finds it, so an insertion narrows the slice instead of widening it.
-   */
-  function readMethodBody(source: string, declaration: string): string {
-    const start = source.indexOf(declaration);
-    expect(
-      start,
-      `declaration not found: ${declaration}`,
-    ).toBeGreaterThanOrEqual(0);
-    const rest = source.slice(start + declaration.length);
-    const next = [...rest.matchAll(MEMBER_DECLARATION)][0];
-    expect(next, 'no member follows the scanned declaration').toBeDefined();
-    return declaration + rest.slice(0, next?.index ?? rest.length);
-  }
-
-  describe('the cooperative-stop settle-read precedes the quarantine gate (source invariant)', () => {
-    /**
-     * Slice 10 (archive#4204): moving `settleCompletedTurn` below the quarantine
-     * gate changes observable behavior ONLY for a quarantined thread with
-     * an in-flight cooperative stop — a state no runtime fixture had ever
-     * constructed, so the perturbation was 100% green under the whole
-     * suite. The ordering's owner is this scan; its behavioral complement
-     * is the I2 guard fixture beside the stop tests.
-     */
-    test('publishCanonicalEvent settles a completed stop before it can decline the event', () => {
-      const source = readFileSync(
-        join(__dirname, '..', 'orchestration-service.ts'),
-        'utf8',
-      );
-      const body = readMethodBody(source, '\n  private publishCanonicalEvent(');
-      const settle = body.indexOf('.settleCompletedTurn(');
-      const gate = body.indexOf('this.quarantinedThreads.has(');
-      expect(settle).toBeGreaterThanOrEqual(0);
-      expect(gate).toBeGreaterThanOrEqual(0);
-      expect(settle).toBeLessThan(gate);
-      // Exactly one dispatch of the settle, file-wide (double-settle guard).
-      // RAW scan, comments included: a service-side comment that writes the
-      // literal call form `.settleCompletedTurn(` would red this on its own
-      // rationale — keep prose references name-only (same warning as the
-      // forgetThreadState invariant above).
-      expect(source.split('.settleCompletedTurn(').length - 1).toBe(1);
-    });
-  });
-
-  describe('the ingest policy/spool calls sit below the publish continue-gate (source invariant)', () => {
-    /**
-     * Slice 11 (archive#4218): the two FlowPolicySidecar ingest calls must run
-     * ONLY for events the publish seam accepted — moving either above the
-     * continue-gate changes observable behavior only for events the gate
-     * declines (coalesced deltas, quarantined threads), populations no
-     * runtime fixture combined with tool events before this slice. The
-     * ordering's owner is this scan; its behavioral complement is the
-     * quarantined-ingest guard in the S3 policy band. Prose that names the
-     * calls stays name-only (no `this.flowPolicy.` + paren call form) or
-     * this scan reds on its own rationale — same warning as the two
-     * invariants above.
-     */
-    test('consumeAdapterEvents orders gate < post-hoc policy < command spool, each dispatched once file-wide', () => {
-      const source = readFileSync(
-        join(__dirname, '..', 'orchestration-service.ts'),
-        'utf8',
-      );
-      const body = readMethodBody(
-        source,
-        '\n  private async consumeAdapterEvents(',
-      );
-      const gate = body.indexOf('if (!this.projectAndPublishEvent(');
-      const postHoc = body.indexOf('.applyPostHocToolPolicies(');
-      const spool = body.indexOf('.spoolCommandEvidence(');
-      expect(gate).toBeGreaterThanOrEqual(0);
-      expect(postHoc).toBeGreaterThan(gate);
-      expect(spool).toBeGreaterThan(postHoc);
-      // The gate must be the ONLY one in the body: with two, the ingest
-      // calls could sit above the real gate and still be `> gate`.
-      expect(body.split('if (!this.projectAndPublishEvent(').length - 1).toBe(
-        1,
-      );
-      // Exactly one dispatch of each across the SERVICES TREE, not just this
-      // file (review M2): before slice 11 both were private members of this
-      // class, so "file-wide" was "everywhere". They are public members of an
-      // exported class now — any module holding the sidecar can dispatch
-      // them, and a second appender spooling the same event would double
-      // every command into durable Flow evidence. RAW scan, comments
-      // included, so prose naming them stays name-only.
-      const servicesTree = readdirSync(join(__dirname, '..', '..'), {
-        recursive: true,
-        withFileTypes: true,
-      })
-        .filter((entry) => entry.isFile() && String(entry.name).endsWith('.ts'))
-        .map((entry) => join(String(entry.parentPath), String(entry.name)))
-        .filter((file) => !file.includes('__tests__'))
-        .map((file) => readFileSync(file, 'utf8'))
-        .join('\n');
-      expect(servicesTree.split('.applyPostHocToolPolicies(').length - 1).toBe(
-        1,
-      );
-      expect(servicesTree.split('.spoolCommandEvidence(').length - 1).toBe(1);
-    });
-  });
-
-  describe('shutdown reads the retiring set before it drains (source invariant)', () => {
-    /**
-     * Slice 12 (archive#4024): `retiringAdapters()` and `shutdownRetirementTasks()`
-     * used to be one expression over one map. Split across a module seam,
-     * they are two calls that MUST happen at the same synchronous tick —
-     * an await between them lets a retirement settle and drop out of the
-     * set, after which the second arm stops an adapter the first arm is
-     * already stopping. Nothing at any level observes that ordering, so
-     * this scan owns it.
-     */
-    test('the two retirement reads are adjacent, with no await between them', () => {
-      const source = readFileSync(
-        join(__dirname, '..', 'orchestration-service.ts'),
-        'utf8',
-      );
-      const body = readMethodBody(
-        source,
-        '\n  async shutdown(): Promise<void> {',
-      );
-      const set = body.indexOf('.retiringAdapters()');
-      const drain = body.indexOf('.shutdownRetirementTasks()');
-      expect(set).toBeGreaterThanOrEqual(0);
-      expect(drain).toBeGreaterThan(set);
-      // The window starts at the read, so an await IMMEDIATELY BEFORE it —
-      // `const x = await this.adapterRetirement.retiringAdapters()`, if that
-      // ever became async — would suspend outside the scan and stay green
-      // while a retirement settles out of the drain map (review L2). Pin the
-      // call's awaitless form directly.
-      expect(body).toContain(
-        'const retiringAdapters = this.adapterRetirement.retiringAdapters();',
-      );
-      // The ONLY await permitted between them is the one that opens the
-      // `Promise.allSettled([` whose array literal CONTAINS the drain: that
-      // await does not suspend until after the array is built, so the two
-      // reads still happen at one tick. Any OTHER await does suspend, and
-      // that is the hazard. RAW scan, comments included, so prose between
-      // them stays name-only.
-      const between = body
-        .slice(set, drain)
-        .replace('await Promise.allSettled([', '');
-      expect(between).not.toMatch(/\bawait\b/);
-      // Exactly one dispatch of each across the services tree: a second
-      // drain would double-stop every retiring adapter.
-      const servicesTree = readdirSync(join(__dirname, '..', '..'), {
-        recursive: true,
-        withFileTypes: true,
-      })
-        .filter((entry) => entry.isFile() && String(entry.name).endsWith('.ts'))
-        .map((entry) => join(String(entry.parentPath), String(entry.name)))
-        .filter((file) => !file.includes('__tests__'))
-        .map((file) => readFileSync(file, 'utf8'))
-        .join('\n');
-      expect(servicesTree.split('.shutdownRetirementTasks(').length - 1).toBe(
-        1,
-      );
     });
   });
 
@@ -10484,6 +10535,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'both-halves-turn-1-started',
       provider: 'codex',
@@ -10661,6 +10723,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'failed-restart-turn-1-started',
       provider: 'codex',
@@ -10789,20 +10862,113 @@ describe('OrchestrationService', () => {
       false,
     );
     expect(isRestarting?.('loop-guard-thread')).toBe(false);
-    // The WRITER edge — the ctor's `setRestarting` closure handed to
-    // createCredentialRecoveryModule — is a closure no runtime probe can
-    // reach without driving a full recovery dispatch, so it is pinned as a
-    // source invariant: the option must forward to the module's method
-    // (review round 1: neutering that one closure would leave isRestarting
-    // permanently false and let a credential-restart loop run unbounded).
-    const ctorSource = readFileSync(
-      join(__dirname, '..', 'orchestration-service.ts'),
-      'utf8',
-    );
-    expect(ctorSource).toContain(
-      'setRestarting: (threadId, restarting) =>\n' +
-        '            this.credentialProfileRecovery.setRestarting(threadId, restarting),',
-    );
+  });
+
+  test('a real credential-profile recovery marks its thread restarting for exactly the dispatch (slice 7 I5 writer)', async () => {
+    // The WRITER edge of the loop guard: the ctor's `setRestarting` closure
+    // handed to createCredentialRecoveryModule. Neutering it leaves
+    // isCredentialRestarting permanently false, and the coordinator then
+    // cancels the recovery it is running when the restart exits the session
+    // (review round 1). Driven through the composed module, dispatch adapter
+    // and provider restart; observed through the coordinator's own reader.
+    const adapter = new FakeAdapter('codex');
+    const now = () => new Date().toISOString();
+    const restartService = new OrchestrationService({
+      adapterRegistry: createRegistry([adapter]),
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+      credentialProfileRecoveryAdapter: {
+        stage: async (input) => {
+          const application = eventStore
+            .createCredentialApplicationFactory()
+            .start({
+              recoveryFingerprint: input.recoveryFingerprint,
+              connectionId: input.provider,
+              candidateProfileRef: 'loop-guard-profile',
+              now: now(),
+            });
+          if (application.kind !== 'owner') return { kind: 'indeterminate' };
+          application.claim.staged(now());
+          return {
+            kind: 'staged',
+            attempt: {
+              candidateProfileRef: 'loop-guard-profile',
+              capability: 'restart_resume',
+              commit: async () => ({ kind: 'adopted' }),
+              rollback: async () => ({ kind: 'rolled-back' }),
+              inspect: async () => ({ kind: 'staged' }),
+              acknowledge: async () => ({ kind: 'applied' }),
+            },
+          };
+        },
+      },
+    });
+    const internals = restartService as unknown as {
+      credentialRecovery?: {
+        recover(observation: {
+          intent: ConnectionRecoveryIntent;
+          replay: {
+            threadId: string;
+            input: string;
+            recoveryCorrelationId: string;
+            signal: AbortSignal;
+          };
+        }): Promise<{ kind: string }>;
+      };
+      recoveryCoordinator?: {
+        options: { isCredentialRestarting?: (threadId: string) => boolean };
+      };
+    };
+    const isRestarting =
+      internals.recoveryCoordinator?.options.isCredentialRestarting;
+    expect(internals.credentialRecovery).toBeDefined();
+    expect(isRestarting).toBeDefined();
+
+    const threadId = 'loop-guard-real-recovery';
+    await restartService.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'codex' },
+    });
+    const restartObservations: boolean[] = [];
+    const startDefault = adapter.startSession.getMockImplementation()!;
+    adapter.startSession.mockImplementationOnce(async (input) => {
+      restartObservations.push(isRestarting!(threadId));
+      return startDefault(input);
+    });
+    const intent = eventStore.createRecoveryLedger().arm({
+      fingerprint: `${threadId}:turn-1:capacity:account`,
+      threadId,
+      provider: 'codex',
+      sourceEventId: 'loop-guard-source',
+      sourceTurnId: 'turn-1',
+      failureKind: 'capacity',
+      scope: 'account',
+      decision: 'retry-now',
+      dueAt: now(),
+      maxAttempts: 1,
+      outcome: 'armed',
+      createdAt: now(),
+      updatedAt: now(),
+    });
+
+    expect(isRestarting!(threadId)).toBe(false);
+    const outcome = await internals.credentialRecovery!.recover({
+      intent,
+      replay: {
+        threadId,
+        input: 'replayed prompt',
+        recoveryCorrelationId: 'loop-guard-correlation',
+        signal: new AbortController().signal,
+      },
+    });
+
+    // The restart reached the provider, and the guard was up while it ran.
+    expect(restartObservations).toEqual([true]);
+    expect(outcome.kind).not.toBe('conflicted');
+    // ...and is released afterwards, so a later exit is not suppressed.
+    expect(isRestarting!(threadId)).toBe(false);
+    await restartService.shutdown();
   });
 
   test('BOTH REAL HALVES: a restart whose REPLAY dispatch fails still pushes "needs attention" for the stopped turn (slice 7 I7 guard)', async () => {
@@ -10849,6 +11015,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'replay-fail-turn-1-started',
       provider: 'codex',
@@ -11033,6 +11210,17 @@ describe('OrchestrationService', () => {
       input: { threadId, provider: 'codex' },
     });
     const now = () => new Date().toISOString();
+    // The session's owner, as its engine records it: a push is only ever
+    // for someone who may read the session.
+    eventStore.appendEvent({
+      eventId: `${threadId}-owner`,
+      provider: 'codex',
+      threadId,
+      createdAt: now(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { userId: 'owner-user' },
+    } as CanonicalRuntimeEvent);
     eventStore.appendEvent({
       eventId: 'teardown-failed-turn-1-started',
       provider: 'codex',
@@ -17543,11 +17731,9 @@ describe('OrchestrationService', () => {
     // (`orchestration.ts`'s `userId: deps.getUserId?.() ?? getCachedUser().alias`),
     // so the resulting session.started/session.configured event carries a
     // real owner instead of leaving the adopted thread permanently
-    // ownerless. `ownerlessSessionAccess: 'single-user-compat'` mirrors
-    // `runtime-initialize.ts`'s production default so this test exercises
-    // the exact policy archive#1165 is about (under this suite's default `deny`
-    // policy, the pre-existing source-thread precheck wouldn't even let a
-    // userId-bearing dispatch through, masking the bug this test targets).
+    // ownerless. The attached source is owned by the adopting user, as the
+    // follow service records an attached transcript's owner (the local
+    // operator in production), so the source precheck admits the adoption.
     const sourceThreadId = 'external:claude:source-1165';
     const projectRoot = join(tmp, 'project-1165');
     mkdirSync(projectRoot, { recursive: true });
@@ -17571,7 +17757,6 @@ describe('OrchestrationService', () => {
       flowRunService,
       listProjects: () => localProjects,
       workflowSidecarService,
-      ownerlessSessionAccess: 'single-user-compat',
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     localService.initialize();
@@ -17589,6 +17774,15 @@ describe('OrchestrationService', () => {
       createdAt: '2026-07-28T00:00:00.000Z',
       updatedAt: '2026-07-28T00:00:00.000Z',
     });
+    eventStore.appendEvent({
+      eventId: 'source-1165-owner',
+      provider: 'claude',
+      threadId: sourceThreadId,
+      createdAt: '2026-07-28T00:00:00.000Z',
+      method: 'session.started',
+      sessionId: sourceThreadId,
+      metadata: { controlMode: 'read-only-attached', userId: 'adopter-user' },
+    } as CanonicalRuntimeEvent);
 
     const child = await localService.dispatch(
       { type: 'adoptSession', sourceThreadId },
@@ -23602,8 +23796,8 @@ describe('OrchestrationService', () => {
         ),
       ).toBe(false);
       // Unknown thread: never seen by the store at all — falls through to
-      // a full (miss) read every time and is denied by this suite's
-      // default `ownerlessSessionAccess` (fail-closed, unset === deny).
+      // a full (miss) read every time and is denied: a session with no
+      // recorded owner is readable by no caller.
       expect(
         service.canUserReadSession(
           'thread-never-existed',

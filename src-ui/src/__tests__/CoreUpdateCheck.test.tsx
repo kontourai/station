@@ -39,17 +39,9 @@ let applyOptions:
       }) => void;
     }
   | undefined;
-const scopeOptionsCalls: Array<{ scopeKey?: string } | undefined> = [];
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useCoreUpdateStatusQuery: (
-    _apiBase: string,
-    _config: unknown,
-    scope: { scopeKey?: string } | undefined,
-  ) => {
-    scopeOptionsCalls.push(scope);
-    return queryState;
-  },
+  useCoreUpdateStatusQuery: () => queryState,
   useApplyCoreUpdateMutation: (
     _apiBase: string,
     options: typeof applyOptions,
@@ -160,7 +152,6 @@ afterEach(() => {
   requestCoreUpdateRestartStatus.mockReset();
   vi.mocked(queryState.refetch).mockReset();
   applyOptions = undefined;
-  scopeOptionsCalls.length = 0;
   queryState.isFetching = false;
 });
 
@@ -219,6 +210,49 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     ).toBeTruthy();
     expect(screen.getByText(/Checkout: aaaaaaa/)).toBeTruthy();
     expect(screen.getByText(/Source ref: bbbbbbb/)).toBeTruthy();
+  });
+
+  test('a behind checkout under the installed service offers no apply and says how to update instead (#2674)', () => {
+    // The exact shape the server writes for a supervised source checkout:
+    // the code AND the human remedy, on an otherwise apply-eligible compare.
+    renderWith(
+      behindCheckout({
+        selfUpdateUnavailableCode: 'service-managed',
+        selfUpdateUnavailableReason:
+          'this server runs under the installed Station service, which restarts it on exit. Stop the service with "station service stop", run "station upgrade", then start it again with "station service start"',
+      }),
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Update server checkout' }),
+    ).toBeNull();
+    expect(
+      screen.getByText(
+        /Server update cannot be applied from here: this server runs under the installed Station service/,
+      ).textContent,
+    ).toContain('"station service stop", run "station upgrade"');
+    // The comparison facts are still reported; only the apply is withheld.
+    expect(
+      screen.getByText(
+        'Server checkout is 2 commits behind its configured upstream.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('a refusal reason with a code this client does not know still closes the apply offer', () => {
+    renderWith(
+      behindCheckout({
+        selfUpdateUnavailableCode: null,
+        selfUpdateUnavailableReason: 'a future refusal',
+      }),
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Update server checkout' }),
+    ).toBeNull();
+    expect(
+      screen.getByText(
+        'Server update cannot be applied from here: a future refusal.',
+      ),
+    ).toBeTruthy();
   });
 
   test('an unknown-provenance server renders the explicit refusal with its message collapsed into Technical details', () => {
@@ -617,13 +651,6 @@ describe('scope binding (update-ux PR4)', () => {
       <CoreUpdateCheck apiBase="http://localhost:3141" context={context} />,
     );
   }
-
-  test('the correlation scope joins the query options', () => {
-    renderWithScope(makeContext({ scopeKey: 'scope-a' }));
-    expect(scopeOptionsCalls.at(-1)?.scopeKey).toBe(
-      'scope-a\u000011111111-1111-4111-8111-111111111111',
-    );
-  });
 
   test('A→B on the same URL resets restart state, and B never shows A’s accepted update', async () => {
     vi.useFakeTimers();

@@ -1,4 +1,8 @@
-import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import {
+  parseHostedTenantRegistry,
+  sessionReadAuthorityFromRequest,
+  tenantId,
+} from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test } from 'vitest';
 import {
   SessionTranscriptReads,
@@ -182,5 +186,92 @@ describe('SessionTranscriptReads: the fold drop reaches the composition (#464)',
     expect(dropped).toEqual([
       expect.objectContaining({ field: 'promptTokens', value: null }),
     ]);
+  });
+});
+
+describe('SessionTranscriptReads usage owner set (#2568)', () => {
+  function recordingReads() {
+    const receiptQueries: unknown[] = [];
+    const coverageQueries: unknown[] = [];
+    const reads = new SessionTranscriptReads({
+      canReadSession: () => true,
+      isEphemeralSession: () => false,
+      sessionAttributionFor: () => null,
+      listEventPayloads: () => [],
+      listUsageEventRecords: () => [],
+      listUsageReceiptEvents: (options) => {
+        receiptQueries.push(options);
+        return [];
+      },
+      listUsageCoverageEvents: (options) => {
+        coverageQueries.push(options);
+        return [];
+      },
+      searchConversationMessages: () => [],
+      // The personal conversation account: a paired device reads the
+      // operator's and its own rows.
+      transcriptOwnerConstraint: (reader) => ({
+        ownerUserId: reader.userId,
+        ...(reader.mode === 'personal' && reader.userId === 'human:device:phone'
+          ? {
+              ownerUserIds: ['human:device:phone', 'human:local:operator'],
+            }
+          : {}),
+      }),
+      readSessionThreadIds: () => [],
+      requireTenantExecutionContext: () => false,
+      reportDroppedUsageFigure: () => {},
+    });
+    return { reads, receiptQueries, coverageQueries };
+  }
+
+  test('a personal caller reads its personal account’s owners, receipts and coverage alike', () => {
+    const { reads, receiptQueries, coverageQueries } = recordingReads();
+    reads.listUsageReceipts(
+      sessionReadAuthorityFromRequest(
+        'human:device:phone',
+        undefined,
+        undefined,
+      ),
+      'local',
+      request,
+    );
+    for (const query of [receiptQueries[0], coverageQueries[0]]) {
+      expect(query).toMatchObject({
+        ownerUserIds: ['human:device:phone', 'human:local:operator'],
+      });
+      expect(query).not.toHaveProperty('tenantId');
+    }
+  });
+
+  test('a hosted caller reads its exact owner within its tenant, never an account', () => {
+    const { reads, receiptQueries, coverageQueries } = recordingReads();
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [{ id: tenantId('alpha'), authority: 'alpha.example.test' }],
+    });
+    reads.listUsageReceipts(
+      sessionReadAuthorityFromRequest(
+        'human:device:phone',
+        { tenantId: tenantId('alpha') },
+        registry,
+      ),
+      'local',
+      request,
+    );
+    for (const query of [receiptQueries[0], coverageQueries[0]]) {
+      expect(query).toMatchObject({
+        ownerUserIds: ['human:device:phone'],
+        tenantId: 'alpha',
+      });
+    }
+  });
+
+  test('a caller outside any account reads only its own rows', () => {
+    const { reads, receiptQueries } = recordingReads();
+    reads.listUsageReceipts(authority, 'local', request);
+    expect(receiptQueries[0]).toMatchObject({
+      ownerUserIds: ['usage-reader'],
+    });
   });
 });

@@ -95,6 +95,17 @@ export class ClientConnectionPresence {
     this.#record('disconnect');
   }
 
+  /**
+   * Whether `deviceId` holds an unexpired stream — any of its documents, or
+   * exactly `clientSessionId` when given. Unknown reads as not connected.
+   */
+  isConnected(deviceId: string, clientSessionId?: string): boolean {
+    this.#expire();
+    const sessions = this.#sessions.get(deviceId);
+    if (!sessions?.size) return false;
+    return clientSessionId === undefined || sessions.has(clientSessionId);
+  }
+
   snapshot(
     deviceIds: readonly string[],
   ): ReadonlyMap<string, ConnectedClientSnapshot> {

@@ -51,6 +51,7 @@
 // packages/shared, are never adjacent to `@kontourai`/`flow-agents` tokens).
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 // Matches `@kontourai/flow-agents/kits`, `/build`, or `/src` — i.e. any
 // subpath past the package's declared `exports` map (`"."` and
@@ -129,11 +130,6 @@ const SCOPED_EXTENSIONS = [
   '.js',
 ];
 
-// This gate's own script file legitimately names the banned patterns in
-// prose/regexes above — self-exclude it, same precedent as
-// rename-inventory.mjs excluding itself.
-const SELF_EXCLUDE = 'scripts/knowledge-kit-import-gate.mjs';
-
 function listTrackedFiles() {
   const out = execFileSync('git', ['ls-files', '--', ...SCOPED_DIRS], {
     encoding: 'utf8',
@@ -146,10 +142,8 @@ function isScopedSourceFile(file) {
   return SCOPED_EXTENSIONS.some((ext) => file.endsWith(ext));
 }
 
-export function listScopedFiles() {
-  return listTrackedFiles()
-    .filter(isScopedSourceFile)
-    .filter((file) => file !== SELF_EXCLUDE);
+function listScopedFiles() {
+  return listTrackedFiles().filter(isScopedSourceFile);
 }
 
 function main() {
@@ -191,6 +185,6 @@ function main() {
   process.exit(0);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (invokedDirectly(import.meta.url)) {
   main();
 }

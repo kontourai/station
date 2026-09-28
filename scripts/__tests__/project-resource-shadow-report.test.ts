@@ -112,6 +112,19 @@ function runReporter(args: readonly string[]): {
   }
 }
 
+// A passing recovered report is a TYPE error, not just a runtime one (round 4,
+// MEDIUM 1). `gatePass` once sat on the shared base with `recoveredFrom`
+// optional, so this object compiled clean under --strict. `state: 'recovered'`
+// now fixes `gatePass: false`. If the union is ever flattened back, the
+// directive below becomes unused and typecheck (tsconfig.tests.json) fails;
+// there is nothing to assert at runtime.
+void ({
+  state: 'recovered' as const,
+  recoveredFrom: '/tmp/x.json.previous',
+  // @ts-expect-error a recovered report can never report a passing gate
+  gatePass: true as const,
+} satisfies Partial<Extract<ShadowReport, { state: 'recovered' }>>);
+
 describe('the report never renders "never observed" as a zero', () => {
   test('an empty home reports every slice 3c question as UNANSWERED, not as clean', () => {
     const rendered = renderReport(buildReport(home));
@@ -497,24 +510,6 @@ describe('a recovered record cannot pass the gate (round 3, HIGH)', () => {
     expect(recovered(salvaged).tripwire.fired).toBe(false);
     expect(salvaged.gateReasons).toHaveLength(1);
     expect(salvaged.gatePass).toBe(false);
-  });
-
-  test('a passing recovered report is a TYPE error, not just a runtime one', () => {
-    // Round 4, MEDIUM 1. Round 3's comment claimed this hazard was already
-    // unrepresentable, but `gatePass` sat on the shared base and
-    // `recoveredFrom` was optional, so the object below compiled clean under
-    // --strict and only a runtime push kept it honest. `state: 'recovered'`
-    // now fixes `gatePass: false`, so the compiler carries the claim.
-    //
-    // If the union is ever flattened back, this @ts-expect-error becomes
-    // "unused" and the build fails — which is the point.
-    const salvagedPass = {
-      state: 'recovered' as const,
-      recoveredFrom: '/tmp/x.json.previous',
-      // @ts-expect-error a recovered report can never report a passing gate
-      gatePass: true as const,
-    } satisfies Partial<Extract<ShadowReport, { state: 'recovered' }>>;
-    expect(salvagedPass.recoveredFrom).toContain('.previous');
   });
 
   test('the real --gate run on a recovered record exits non-zero', () => {

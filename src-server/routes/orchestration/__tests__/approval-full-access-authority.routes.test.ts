@@ -25,6 +25,7 @@ import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
+import { AgentConfigNotFoundError } from '../../../domain/config-loader-agents.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -55,7 +56,9 @@ afterEach(async () => {
 
 const THREAD = 'full-access-thread';
 
-async function fixture() {
+async function fixture(
+  options: { stationDefault?: string; stationDefaultFails?: boolean } = {},
+) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = mkdtempSync(join(tmpdir(), 'station-full-access-grant-'));
   roots.push(root);
@@ -87,12 +90,12 @@ async function fixture() {
 
   const store = new EventStore(join(root, 'orchestration.sqlite'));
   const eventBus = new EventBus();
+  const engine = new GateTestAdapter();
   const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(new GateTestAdapter()),
+    adapterRegistry: createGateTestRegistry(engine),
     eventBus,
     eventStore: store,
     logger: { debug: vi.fn(), warn: vi.fn() },
-    ownerlessSessionAccess: 'single-user-compat',
   });
   cleanups.push(async () => {
     await service.shutdown();
@@ -102,6 +105,20 @@ async function fixture() {
     type: 'startSession',
     input: { threadId: THREAD, provider: 'claude' },
   });
+  // Owned by the routes' caller, as an engine records it: a session with no
+  // recorded owner accepts no one's command.
+  engine.events.push({
+    eventId: `${THREAD}-owner`,
+    provider: 'claude',
+    threadId: THREAD,
+    createdAt: new Date().toISOString(),
+    method: 'session.started',
+    sessionId: THREAD,
+    metadata: { userId: 'operator' },
+  } as never);
+  await vi.waitFor(() =>
+    expect(store.findSessionOwnerUserId(THREAD)).toBe('operator'),
+  );
 
   // An Agent store whose `builder` Agent starts at `previousDefault`.
   let previousDefault: string | undefined;
@@ -171,6 +188,14 @@ async function fixture() {
       (async (operation: (begin: () => void) => Promise<unknown>) =>
         operation(() => undefined)) as never,
       () => undefined,
+      undefined,
+      undefined,
+      undefined,
+      async () => {
+        if (options.stationDefaultFails)
+          throw new Error('app config unreadable');
+        return options.stationDefault;
+      },
     ),
   );
 
@@ -533,4 +558,175 @@ test("an agent's station-control call, marked or not, cannot record full access 
   ).toEqual({ status: 403, body: REFUSAL });
   expect(f.recorded()).toEqual([]);
   expect(f.agentService.updateAgent).not.toHaveBeenCalled();
+});
+
+/**
+ * #2377 slice C1: an Agent with no default of its own falls through to the
+ * Station's. Leaving it there when the Station default is `never` raises the
+ * Agent to full access as surely as saving `never`.
+ */
+test('clearing an Agent default over a Station default of never needs the grant; tightening and unrelated edits do not', async () => {
+  const f = await fixture({ stationDefault: 'never' });
+  const delegate = f.pair('Delegate', 'delegation');
+  f.setPreviousDefault('ask');
+
+  // Clearing it (an execution block without a default, or null) is refused.
+  for (const execution of [{}, null]) {
+    expect(
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { execution },
+        'PUT',
+      ),
+    ).toEqual({ status: 403, body: REFUSAL });
+  }
+  // So is creating an Agent that has no default of its own.
+  expect(
+    await f.post(delegate.credential, '/api/agents', {
+      name: 'Builder',
+      prompt: 'Build.',
+    }),
+  ).toEqual({ status: 403, body: REFUSAL });
+  expect(f.agentService.updateAgent).not.toHaveBeenCalled();
+  expect(f.agentService.createAgent).not.toHaveBeenCalled();
+
+  // Keeping Ask, or an edit that does not touch execution, is not a raise.
+  expect(
+    (
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { execution: { approvalMode: 'ask' } },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
+  expect(
+    (
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { description: 'Now documented' },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
+
+  // An Agent already at the Station's never stays editable.
+  f.setPreviousDefault(undefined);
+  expect(
+    (
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { description: 'Again', execution: {} },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
+
+  // The operator, and a granted device, may clear it.
+  f.setPreviousDefault('ask');
+  expect(
+    (
+      await f.post(
+        f.operator.credential,
+        '/api/agents/builder',
+        { execution: {} },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
+  f.grant(delegate.device.id, true, 'delegation');
+  expect(
+    (
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { execution: {} },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
+});
+
+test('with a Station default short of never, clearing an Agent default needs nothing', async () => {
+  const f = await fixture({ stationDefault: 'ask' });
+  const delegate = f.pair('Delegate', 'delegation');
+  f.setPreviousDefault('auto');
+  expect(
+    (
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { execution: {} },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
+  expect(
+    (
+      await f.post(delegate.credential, '/api/agents', {
+        name: 'Builder',
+        prompt: 'Build.',
+      })
+    ).status,
+  ).toBeLessThan(300);
+});
+
+/**
+ * #2377 slice C1 delta review (G1, G2): an Agent write that falls through to
+ * the Station default fails closed when either side cannot be read.
+ */
+test('an Agent that cannot be read, or does not exist, is no evidence of an earlier never: clearing it is a raise', async () => {
+  const f = await fixture({ stationDefault: 'never' });
+  const delegate = f.pair('Delegate', 'delegation');
+  f.agentService.getAgent.mockRejectedValueOnce(new Error('EACCES'));
+  expect(
+    await f.post(
+      delegate.credential,
+      '/api/agents/builder',
+      { execution: {} },
+      'PUT',
+    ),
+  ).toEqual({ status: 403, body: REFUSAL });
+  // A PUT on a slug with no Agent is a create, held to the create rule.
+  f.agentService.getAgent.mockRejectedValueOnce(
+    new AgentConfigNotFoundError('ghost', '/nowhere/agent.json'),
+  );
+  expect(
+    await f.post(
+      delegate.credential,
+      '/api/agents/ghost',
+      { execution: {} },
+      'PUT',
+    ),
+  ).toEqual({ status: 403, body: REFUSAL });
+  expect(f.agentService.updateAgent).not.toHaveBeenCalled();
+});
+
+test('a Station default that cannot be read counts as never', async () => {
+  const f = await fixture({ stationDefaultFails: true });
+  const delegate = f.pair('Delegate', 'delegation');
+  f.setPreviousDefault('ask');
+  expect(
+    await f.post(
+      delegate.credential,
+      '/api/agents/builder',
+      { execution: {} },
+      'PUT',
+    ),
+  ).toEqual({ status: 403, body: REFUSAL });
+  // A concrete default of the Agent's own needs no Station read to decide.
+  expect(
+    (
+      await f.post(
+        delegate.credential,
+        '/api/agents/builder',
+        { execution: { approvalMode: 'ask' } },
+        'PUT',
+      )
+    ).status,
+  ).toBeLessThan(300);
 });

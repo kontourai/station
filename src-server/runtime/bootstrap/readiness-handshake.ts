@@ -19,7 +19,7 @@ interface ErrorObservableWritable {
 }
 
 /** True only for the broken-pipe error a departed desktop supervisor causes. */
-export function isBrokenPipeError(error: unknown): boolean {
+function isBrokenPipeError(error: unknown): boolean {
   return (
     typeof error === 'object' &&
     error !== null &&

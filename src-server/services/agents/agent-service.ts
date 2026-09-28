@@ -201,11 +201,10 @@ export const RUNTIME_DEFAULT_AGENT_KEY = 'default';
  *    fact — which is the defect class this whole change removes, made worse
  *    by `listAgents` preferring a stored file over the registry projection.
  *
- * So the record stays unbound and every reader consults this projection
- * instead. Exported so the catalog (`enriched-agents.ts`) and this service
- * read the same field rather than each reaching into the map.
+ * So the record stays unbound and readers consult this projection instead
+ * (Station-identity reads through `projectStationEngineBinding` below).
  */
-export function runtimeStationEngineExecution(
+function runtimeStationEngineExecution(
   agentMetadataMap: ReadonlyMap<string, { execution?: AgentSpec['execution'] }>,
 ): AgentSpec['execution'] | undefined {
   return agentMetadataMap.get(RUNTIME_DEFAULT_AGENT_KEY)?.execution;
@@ -248,7 +247,7 @@ export class AgentService {
   constructor(
     private configLoader: ConfigLoader,
     private storageAdapter: IStorageAdapter,
-    private activeAgents: Map<string, Agent>,
+    _activeAgents: Map<string, Agent>,
     private agentMetadataMap: Map<string, AgentMetadata>,
     _agentSpecs: Map<string, AgentSpec>,
     private logger: any,
@@ -749,18 +748,5 @@ export class AgentService {
     await this.configLoader.deleteAgent(slug);
     agentOps.add(1, { operation: 'delete', agent: slug });
     return { success: true };
-  }
-
-  /** Alias kept for existing callers; `getAgent` is the name of the seam. */
-  async loadAgentSpec(slug: string): Promise<AgentSpec> {
-    return this.getAgent(slug);
-  }
-
-  getActiveAgent(slug: string): Agent | undefined {
-    return this.activeAgents.get(slug);
-  }
-
-  isAgentActive(slug: string): boolean {
-    return this.activeAgents.has(slug);
   }
 }

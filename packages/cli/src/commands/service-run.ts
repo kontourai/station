@@ -7,14 +7,18 @@ import { createDesktopCompanion } from './desktop-companion.js';
 import {
   type CollectedChildStatus,
   type CollectedInstanceStatus,
+  checkSourceBuildStamp,
   collectInstanceStatus,
+  describeSourceBuildStampProblem,
   findListeningPidsForPorts,
   isBuildStale,
   resolveBuildPaths,
+  sourceBuildStampNeedsRebuild,
   start,
   stop,
 } from './lifecycle.js';
 import type { ServiceLifecycleArgs } from './service.js';
+import { SERVICE_SHUTDOWN_DEADLINE_MS } from './service-command.js';
 
 export interface SupervisorDependencies {
   desktopCompanion?: { check: () => void };
@@ -48,7 +52,6 @@ export interface SupervisorDependencies {
 }
 
 const CHECK_INTERVAL_MS = 5_000;
-const SHUTDOWN_DEADLINE_MS = 60_000;
 
 /**
  * Steady-state identity probes answer in single-digit milliseconds on an idle
@@ -153,7 +156,25 @@ export async function superviseService(
   const collect = dependencies.collect ?? collectInstanceStatus;
   const needsBuildForInstance =
     dependencies.needsBuildForInstance ??
-    ((name: string) => isBuildStale(resolveBuildPaths(name)));
+    ((name: string) => {
+      if (isBuildStale(resolveBuildPaths(name))) return true;
+      // station#2689: a bundle whose build stamp is missing or names another
+      // sha boots into "managed boot identity mismatch" on every restart, the
+      // same KeepAlive loop as a stale bundle, so it is rebuilt the same way.
+      const stamp = checkSourceBuildStamp(name);
+      if (sourceBuildStampNeedsRebuild(stamp)) return true;
+      // Missing, but HEAD is unreadable: buildApplication stamps from that
+      // same HEAD, so a rebuild would run for minutes and then throw — on
+      // every KeepAlive restart. Say so once per boot and start as-is; the
+      // boot then fails fast on its identity check, naming the sha.
+      const problem = describeSourceBuildStampProblem(stamp);
+      if (problem) {
+        console.error(
+          `Station service ${name}: not rebuilding — ${problem}. Make git able to read HEAD for this checkout, then run \`station build${name === 'default' ? '' : ` --instance=${name}`}\`.`,
+        );
+      }
+      return false;
+    });
   const exit = dependencies.exit ?? ((code) => process.exit(code));
   const publishServiceLiveness =
     dependencies.publishServiceLiveness ??
@@ -273,10 +294,10 @@ export async function superviseService(
     if (timer) clearTimeout(timer);
     const forceExitTimer = setTimer(() => {
       console.error(
-        `Station service shutdown exceeded ${SHUTDOWN_DEADLINE_MS / 1000}s; forcing exit`,
+        `Station service shutdown exceeded ${SERVICE_SHUTDOWN_DEADLINE_MS / 1000}s; forcing exit`,
       );
       exit(1);
-    }, SHUTDOWN_DEADLINE_MS);
+    }, SERVICE_SHUTDOWN_DEADLINE_MS);
     // Timers from the production seam are NodeJS.Timeouts; deterministic test
     // seams may return a number, which intentionally has no unref method.
     if (
@@ -292,7 +313,7 @@ export async function superviseService(
       // signal cannot strand children in the publication window.
       await startPromise?.catch(() => undefined);
       try {
-        await stopInstance({ instanceName });
+        await stopInstance({ instanceName, stateHome: lifecycle.baseDir });
       } catch (error) {
         console.error('Station service cleanup failed:', error);
       }
@@ -369,6 +390,8 @@ export async function superviseService(
 
   const expected = await collect(instanceName, {
     probeTimeoutMs: STEADY_PROBE_TIMEOUT_MS,
+    // A prebuilt archive keeps the record in this home's root (#2675).
+    projectHome: lifecycle.baseDir,
   });
   if (!expected.found || !expected.bootId || !expected.sha) {
     console.error('Station service did not publish a managed instance record');
@@ -496,6 +519,8 @@ export async function superviseService(
       );
       const confirmation = await collect(instanceName, {
         probeTimeoutMs: CONFIRMATION_PROBE_TIMEOUT_MS,
+        // A prebuilt archive keeps the record in this home's root (#2675).
+        projectHome: lifecycle.baseDir,
       });
       if (confirmation.found && confirmation[name].probe === 'ok') {
         // station#1846: a single long-budget recovery proves a working child
@@ -567,6 +592,8 @@ export async function superviseService(
     if (shuttingDown) return;
     const current = await collect(instanceName, {
       probeTimeoutMs: STEADY_PROBE_TIMEOUT_MS,
+      // A prebuilt archive keeps the record in this home's root (#2675).
+      projectHome: lifecycle.baseDir,
     });
     if (shuttingDown) return;
     if (!current.found || !sameBoot(current, expected)) {

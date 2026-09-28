@@ -760,8 +760,10 @@ function buildSystemRecommendation(input: {
 // chat-readiness for an external engine comes from
 // `resolveExternalEngineReadiness` (CLI resolvable AND authenticated), never
 // from this alone. Shared with native-engine adoption (archive#1575) so both agree
-// on what "installed" means. Cancellation and the reason there is no ceiling
-// live with the calls, in `cliPresence` below.
+// on what "installed" means; since #2663 that is `findCliBinaryAsync`'s answer
+// (process, login-shell and well-known install PATHs), the same rule the
+// engine spawns and the readiness probe use. Cancellation and the reason there
+// is no ceiling live with the calls, in `cliPresence` below.
 const whichCmd = detectCliOnPath;
 
 function createStatusDiscoveryCache(deps: SystemStatusDeps) {

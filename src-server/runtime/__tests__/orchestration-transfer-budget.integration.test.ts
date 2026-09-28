@@ -136,7 +136,6 @@ async function runtime() {
     eventBus,
     eventStore: store,
     logger,
-    ownerlessSessionAccess: 'single-user-compat',
   });
   service.initialize();
   const app = new Hono();

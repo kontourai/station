@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -75,7 +76,7 @@ export function installGitIntegration({
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
   try {
     installGitIntegration();
     console.log('Station git hooks active (.githooks)');

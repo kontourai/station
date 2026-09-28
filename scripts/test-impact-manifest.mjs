@@ -218,6 +218,17 @@ const ORCHESTRATION_STORE_EDGES = Object.freeze([
 ]);
 
 /** Repository data readers and explicit runtime seams supplementing import analysis. */
+/**
+ * Every file under fallow-baselines/, enumerated rather than globbed: the
+ * three baselines code-health-gate.mjs passes to fallow. A new file there is
+ * an unknown path until it is added here with its own evidence.
+ */
+export const FALLOW_BASELINE_FILES = Object.freeze([
+  'fallow-baselines/dead-code.json',
+  'fallow-baselines/dupes.json',
+  'fallow-baselines/health.json',
+]);
+
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   {
     // #2458: the same overflow class as SDK_TRANSPORT_EDGES (#2301). The
@@ -328,9 +339,26 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     // shipping `/home/...` example paths only because nothing in PR CI
     // selected the sweep for a reference-doc change — the entry used to
     // name docs/conformance/** alone.
+    //
+    // #2803: this is also every doc path's evidence, so a docs change no
+    // longer defers the rest of the diff (the `prepush` lane it routed to ran
+    // no doc gate, and in ci:fast a lane only deferred). Each suite exercises
+    // the real docs tree: the privacy sweep, the live-docs reference check
+    // (docs:reference:gate's own logic), index reachability, compile-checked
+    // guide blocks, and the public-docs sources and vocabulary. The link
+    // check and the reference gate also run as ci:fast statics
+    // (run-ci-fast.mjs), so a code change that breaks a doc is caught too.
     pattern: 'docs/**',
-    tests: ['scripts/__tests__/repo-docs-hygiene.test.ts'],
-    reason: 'public repository documentation privacy boundary',
+    tests: [
+      'scripts/__tests__/repo-docs-hygiene.test.ts',
+      'scripts/__tests__/docs-reference-gate.test.ts',
+      'scripts/__tests__/docs-index-reachability.test.ts',
+      'scripts/__tests__/docs-snippets.test.ts',
+      'scripts/__tests__/product-docs-source-links.test.ts',
+    ],
+    reason:
+      'documentation: evidence is the live-docs suites here plus the ' +
+      'docs:reference:gate and docs:links:check ci:fast statics (#2803)',
   },
 
   Object.freeze({
@@ -392,6 +420,11 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
   Object.freeze({
     pattern: '.github/workflows/**',
     tests: Object.freeze([
+      // These three read workflows through a templated URL or a directory
+      // listing the path-read scan cannot resolve, so they had no edge (#2176).
+      'scripts/__tests__/android-channel-release-generation.test.ts',
+      'scripts/__tests__/android-firebase-workflow-env.test.ts',
+      'scripts/__tests__/android-network-policy.test.ts',
       'scripts/__tests__/backlog-priority-policy.test.ts',
       'scripts/__tests__/ci-workflow-contract.test.ts',
       'scripts/__tests__/ci-workflow-governance.test.ts',
@@ -419,6 +452,15 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     ]),
     reason:
       'release availability reads the terminal workflow topology directly',
+  }),
+  Object.freeze({
+    pattern: 'scripts/publish-mobile-feed-transaction.sh',
+    tests: Object.freeze([
+      'scripts/__tests__/publish-mobile-feed-transaction.test.ts',
+      'scripts/__tests__/release-workflow.test.ts',
+    ]),
+    reason:
+      'the feed transaction test runs this script; the release workflow test reads it',
   }),
   Object.freeze({
     pattern: '.github/workflows/codex-pr-review.yml',
@@ -467,6 +509,30 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'related-file edge and the selector reported an infrastructure error ' +
       'instead of running the policy test (station#1753)',
   }),
+  // #2781: release metadata and code-health baselines are known paths. Each
+  // is gated by a ci:fast static (FAST_STATIC_COMMANDS in run-ci-fast.mjs,
+  // which fast-checks-statics runs) and selects only the suite that runs the
+  // same gate over the repository's real files. As unknown paths they
+  // deferred the whole diff, so a published-package pull request ran none of
+  // its related suites in fast-checks.
+  Object.freeze({
+    pattern: '.changeset/**',
+    tests: Object.freeze(['scripts/__tests__/check-changesets.repo.test.ts']),
+    reason:
+      'changeset: evidence is check-changesets (ci:fast static); its suite ' +
+      'plans the repository changesets with the same planner (#2781)',
+  }),
+  ...FALLOW_BASELINE_FILES.map((path) =>
+    Object.freeze({
+      pattern: path,
+      tests: Object.freeze(['scripts/__tests__/code-health-gate.test.ts']),
+      reason:
+        'fallow baseline: evidence is code-health-gate (ci:fast static; it ' +
+        'reads the base revision baselines, so a candidate cannot rebaseline ' +
+        'itself); its suite runs the gate over fixtures copied from these ' +
+        'files (#2781)',
+    }),
+  ),
   Object.freeze({
     pattern: 'scripts/mobile-css-baseline.json',
     tests: Object.freeze(['scripts/__tests__/mobile-css-ratchet.test.ts']),
@@ -503,6 +569,178 @@ const SOURCE_READ_SCRIPT_EDGE_REASON =
   'script source is read and asserted by its test rather than imported, so ' +
   'the import graph has no edge to it (#1757)';
 
+/**
+ * #2176: suites whose subject reaches them by a path the module graph does
+ * not model, so neither `vitest related` nor a generic boundary edge ever
+ * schedules them. Before these edges a new settings row first failed
+ * `gen-settings-registry.test.ts` in the merge queue's full-corpus
+ * regression (#2511, #2593), costing a queue candidate and a rebuild of
+ * everything behind it.
+ *
+ * Every edge is `supplemental`: it only ADDS the suite and leaves the path's
+ * related selection, escalation, and lanes as they were (an ordinary edge
+ * naming `tests` would set `hasExplicitBoundary` and drop the related graph;
+ * #1563, #1613). The suite asserts through `selectChangedVerification` that
+ * each generator input still selects it, so a new input without an edge reds
+ * on the pull request that adds it.
+ *
+ * NOT here, deliberately: whole-tree source scans such as
+ * `orchestration-source-invariants.test.ts` (#2553). Their honest edge is
+ * every file under several roots, which would add them to nearly every
+ * selection and reshape every exact selection this manifest's tests pin. They
+ * run as their own pull-request job instead: `REPO_SCAN_SUITES` below.
+ */
+const GENERATED_SETTINGS_REGISTRY_TEST =
+  'scripts/__tests__/gen-settings-registry.test.ts';
+export const UNMODELLED_INPUT_EDGES = Object.freeze([
+  // The signer CLI imports these shared modules, and ecosystem-manifest.test.ts
+  // reaches them only through that CLI as a child process, which the import
+  // graph cannot see. (The vectors test imports them directly.)
+  ...[
+    'packages/shared/src/release-manifest.mjs',
+    'packages/shared/src/portable-server-targets.mjs',
+    'packages/shared/src/release-rings.generated.mjs',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze(['scripts/__tests__/ecosystem-manifest.test.ts']),
+      reason:
+        'the release-manifest signer CLI imports this module; its tests ' +
+        'reach it only through the CLI child process (#2675)',
+    }),
+  ),
+  // The generator loads its sources through a computed specifier (so the
+  // scripts typecheck never follows it into `.tsx`), and `--check` reads the
+  // checked-in artifact by path. `REGISTRY_SOURCE_PATHS` in the generator is
+  // the list these mirror. The generator itself needs no edge: the suite
+  // imports it.
+  ...[
+    'src-ui/src/views/settings/settings-catalog.ts',
+    'src-ui/src/views/settings/settings-deep-link.ts',
+    'packages/contracts/src/settings-registry.ts',
+    'packages/contracts/src/device-settings.ts',
+    'src-server/generated/settings-registry.json',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([GENERATED_SETTINGS_REGISTRY_TEST]),
+      reason:
+        'settings registry artifact is generated from this input outside ' +
+        'the import graph (#2176)',
+    }),
+  ),
+  // The rest read one named file each, by a path the scan cannot resolve (a
+  // `test.each` parameter, a cwd-relative literal, a directory copied into a
+  // temp plugin), and import nothing that reaches it.
+  ...[
+    // Generation must run where its readers run: `build:basis-pane` and the
+    // ci:fast static list are asserted by text.
+    ['package.json', 'scripts/__tests__/basis-mcp-apps.test.ts'],
+    ['scripts/run-ci-fast.mjs', 'scripts/__tests__/basis-mcp-apps.test.ts'],
+    // Its SHELL_FILES, scanned for hand-rolled chrome alert markup.
+    [
+      'src-ui/src/App.tsx',
+      'src-ui/src/__tests__/shell-chrome-notice-primitive.test.ts',
+    ],
+    [
+      'src-ui/src/main.tsx',
+      'src-ui/src/__tests__/shell-chrome-notice-primitive.test.ts',
+    ],
+    // Installs the example plugin's files and exercises them.
+    [
+      'examples/smart-routing/**',
+      'src-server/routes/__tests__/smart-routing-plugin.test.ts',
+    ],
+  ].map(([pattern, test]) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([test]),
+      reason: 'suite reads this file by path, outside the import graph (#2176)',
+    }),
+  ),
+]);
+
+/**
+ * #2176: suites whose subject is a whole source tree, read by walking it.
+ * No impact edge can honestly select them — the edge would be every file
+ * under the tree, and a supplemental test on every path is noise in the
+ * selection — so they run as their own pull-request job instead
+ * (`npm run test:repo-scans`, the `repo-scans` job in ci.yml). Before that
+ * they ran only in the merge queue's full corpus, where a violation cost a
+ * queue candidate (#2553).
+ *
+ * The ONE list: the runner, the CI job and the classification pin in
+ * `path-read-pin-boundary.test.ts` all read it. That pin requires every suite
+ * with a directory walk whose target does not look temporary to be here or
+ * classified with a reason; its docblock states what that text heuristic
+ * cannot see.
+ */
+export const REPO_SCAN_SUITES = Object.freeze([
+  'packages/basis-pane/src/__tests__/package-boundary.test.ts',
+  'packages/board-pane/src/__tests__/package-boundary.test.ts',
+  'packages/sdk/src/__tests__/keyedQueryDefaults.test.ts',
+  'packages/sdk/src/__tests__/publicBarrel.test.ts',
+  'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
+  'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+  'scripts/__tests__/classify-ci-change.scan.test.ts',
+  'scripts/__tests__/content-integrity-gate.scan.test.ts',
+  'scripts/__tests__/dialog-surface-class-guard.test.ts',
+  'scripts/__tests__/docs-index-reachability.test.ts',
+  'scripts/__tests__/docs-reference-gate.test.ts',
+  'scripts/__tests__/docs-snippets.test.ts',
+  'scripts/__tests__/dogfood-evidence-retention.test.ts',
+  'scripts/__tests__/gate-scope.test.ts',
+  'scripts/__tests__/ios-agent-activity-assets.test.ts',
+  'scripts/__tests__/module-entry.scan.test.ts',
+  'scripts/__tests__/product-docs-source-links.test.ts',
+  // Copies the whole tracked tree and runs the repo-governance lane CLI on it.
+  'scripts/__tests__/proof-family-route-error-egress.test.ts',
+  'scripts/__tests__/publish-surface.test.ts',
+  'scripts/__tests__/random-uuid-guard.test.ts',
+  'scripts/__tests__/sdk-barrel-selection.repo.test.ts',
+  'scripts/__tests__/sdk-error-message-ratchet.test.ts',
+  'scripts/__tests__/test-import-existence-gate.scan.test.ts',
+  'scripts/__tests__/test-temp-dir-ratchet.scan.test.ts',
+  // Walks src-server/knowledge-store and src-server/services/knowledge for raw
+  // fs mutations that bypass the file-transaction seam.
+  'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
+  'src-server/providers/__tests__/child-work-conformance.test.ts',
+  'src-server/providers/__tests__/turn-started-attachment-projection.test.ts',
+  'src-server/routes/__tests__/sse-response-tripwire.test.ts',
+  'src-server/runtime/conversation/__tests__/ui-block-provenance-writer-inventory.test.ts',
+  'src-server/security/__tests__/svg-response-tripwire.test.ts',
+  'src-server/services/__tests__/store-async-lock-cutover.scan.test.ts',
+  'src-server/services/devices/__tests__/device-host-resolver.test.ts',
+  'src-server/services/infra/__tests__/resource-posture.test.ts',
+  'src-server/services/notifications/__tests__/notification-service.scan.test.ts',
+  'src-server/services/orchestration/__tests__/orchestration-service.scan.test.ts',
+  'src-server/services/orchestration/__tests__/orchestration-source-invariants.test.ts',
+  'src-server/services/plugins/__tests__/reserved-plugin-identities.test.ts',
+  'src-ui/src/__tests__/activity-surface-single-mounter.test.ts',
+  'src-ui/src/__tests__/board-surface-single-mounter.test.ts',
+  'src-ui/src/__tests__/connection-host-copy.test.ts',
+  'src-ui/src/__tests__/copy-affordance-cascade.test.ts',
+  'src-ui/src/__tests__/dock-bottom-clearance.test.ts',
+  'src-ui/src/__tests__/home-surface-single-mounter.test.ts',
+  'src-ui/src/__tests__/keepPreviousDataConsumers.test.ts',
+  'src-ui/src/__tests__/package-css-fork.test.ts',
+  'src-ui/src/__tests__/placement-vocabulary.test.ts',
+  'src-ui/src/__tests__/plain-language-policy.test.ts',
+  'src-ui/src/__tests__/project-query-scope-tripwire.test.ts',
+  'src-ui/src/__tests__/raw-local-storage-policy.test.ts',
+  'src-ui/src/__tests__/region-surface-boundary.test.ts',
+  'src-ui/src/__tests__/responsive-dialog-close-adoption.test.ts',
+  'src-ui/src/__tests__/sessionStatusWordCallers.test.ts',
+  'src-ui/src/__tests__/settings-row-literal-coverage.test.ts',
+  'src-ui/src/__tests__/single-main-landmark.test.ts',
+  'src-ui/src/__tests__/undefined-css-custom-properties.test.ts',
+  'src-ui/src/app-shell/__tests__/RoutePendingSkeleton.test.tsx',
+  'src-ui/src/components/__tests__/PageCallout.test.tsx',
+]);
+
 export const SPAWNED_SCRIPT_EDGES = Object.freeze([
   Object.freeze({
     pattern: 'scripts/build-desktop.mjs',
@@ -521,7 +759,10 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
   Object.freeze({
     pattern: 'scripts/ecosystem-manifest.mjs',
     related: true,
-    tests: Object.freeze(['scripts/__tests__/ecosystem-manifest.test.ts']),
+    tests: Object.freeze([
+      'scripts/__tests__/ecosystem-manifest.test.ts',
+      'scripts/__tests__/release-manifest-vectors.test.ts',
+    ]),
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({
@@ -536,12 +777,6 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
     pattern: 'scripts/test-realtime-wait-gate.mjs',
     related: true,
     tests: Object.freeze(['scripts/__tests__/test-realtime-wait-gate.test.ts']),
-    reason: EXECUTED_SCRIPT_EDGE_REASON,
-  }),
-  Object.freeze({
-    pattern: 'scripts/literal-swap-gate.mjs',
-    related: true,
-    tests: Object.freeze(['scripts/__tests__/literal-swap-gate.test.ts']),
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({
@@ -698,9 +933,8 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'scripts/__tests__/agent-instructions-gate.test.ts',
       'scripts/__tests__/verification-policy-gate.test.ts',
-      'scripts/__tests__/trust-reconcile-manifest.test.ts',
     ],
-    reason: 'root instruction routing, completion evidence, and wrapper policy',
+    reason: 'root instruction routing and wrapper policy',
   },
   {
     pattern: 'CLAUDE.md',
@@ -742,7 +976,14 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
       'WSL quarantine exact-list pin parses this source outside the module graph',
   },
   {
+    // SUPPLEMENTAL (#2176). As an ordinary edge its one test set
+    // `hasExplicitBoundary`, which cancelled the `ci-fast` escalation
+    // `package.json` is listed for in ESCALATION_PATHS: a scripts or
+    // dependency edit completed green on a documentation check. The doc
+    // suite still runs; the root manifest still escalates. A dependency bump
+    // escalates through the lockfile regardless, so this adds no lane to one.
     pattern: 'package.json',
+    supplemental: true,
     tests: ['scripts/__tests__/public-doc-contract-examples.test.ts'],
     reason: 'public npm-command example authority',
   },
@@ -852,6 +1093,31 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     pattern: 'install.sh',
     tests: ['scripts/__tests__/documentation-foundations.test.ts'],
     reason: 'channel-specific installation documentation source',
+  },
+  {
+    // install.sh is executed by these suites, never imported, and its channel
+    // and signing-key blocks are generated from the two config files (#2675).
+    // Supplemental: they ADD to each path's own selection.
+    pattern: 'install.sh',
+    supplemental: true,
+    tests: [
+      'scripts/__tests__/install-script-generated.test.ts',
+      'scripts/__tests__/install-script.test.ts',
+      'scripts/__tests__/ecosystem-manifest.test.ts',
+    ],
+    reason: 'installer is run by its tests, not imported',
+  },
+  {
+    pattern: 'config/channel-ports.json',
+    supplemental: true,
+    tests: ['scripts/__tests__/install-script-generated.test.ts'],
+    reason: 'install.sh channel constants are generated from this config',
+  },
+  {
+    pattern: 'config/release-manifest-keys.json',
+    supplemental: true,
+    tests: ['scripts/__tests__/install-script-generated.test.ts'],
+    reason: 'install.sh pinned signing keys are generated from this config',
   },
   {
     pattern: 'config/channel-ports.json',
@@ -1027,19 +1293,9 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'Nightly hidden-window documentation source seam',
   },
   {
-    pattern: 'src-ui/src/platform/native/startupReadiness.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'renderer readiness documentation source seam',
-  },
-  {
     pattern: 'scripts/__tests__/startup-readiness-static.test.ts',
     tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
     reason: 'native startup static verification command contract',
-  },
-  {
-    pattern: 'src-ui/src/platform/native/__tests__/startupReadiness.test.ts',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'renderer startup verification command contract',
   },
   {
     pattern: 'tests/plugin-host-security.spec.ts',
@@ -1385,6 +1641,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'script boundary',
   },
   ...SPAWNED_SCRIPT_EDGES,
+  ...UNMODELLED_INPUT_EDGES,
   {
     pattern: 'scripts/prepush-test-manifest.mjs',
     tests: [
@@ -1410,11 +1667,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     pattern: 'tests/**',
     lanes: ['verify-e2e-full'],
     reason: 'E2E manifest/spec boundary',
-  },
-  {
-    pattern: 'docs/**',
-    lanes: ['prepush'],
-    reason: 'documentation bounded gate',
   },
   {
     pattern: 'src-desktop/**',

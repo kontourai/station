@@ -16,16 +16,6 @@ const NATIVE_PROFILE_AUTHORITY_SOURCE = readFileSync(
   'utf-8',
 );
 
-const RUNTIME_HTTP_SOURCE = readFileSync(
-  fileURLToPath(
-    new URL(
-      '../../../../src-server/runtime/bootstrap/runtime-http.ts',
-      import.meta.url,
-    ),
-  ),
-  'utf-8',
-);
-
 describe('classifyConnectionFailure', () => {
   it('only classifies authentication-failed as terminal', () => {
     expect(classifyConnectionFailure('authentication-failed')).toBe('terminal');
@@ -285,24 +275,6 @@ describe('classifyHttpFailureResponse', () => {
     );
     expect(classifyHttpFailureResponse(429, undefined)).toBe(
       'unexpected-response',
-    );
-  });
-
-  /**
-   * The literal in `connectionFailureClassification.ts` and the constant in
-   * the server's HTTP boundary are the same string on purpose, and this
-   * package cannot import the server tree to say so. Reading the source is
-   * how `classifyNativeTransportRefusal`'s code vocabulary is pinned against
-   * `src-desktop/src/lib.rs` above; this is the same instrument.
-   */
-  it('pins the throttled-auth code against the server that emits it', () => {
-    expect(RUNTIME_HTTP_SOURCE).toContain(
-      "export const AUTH_RATE_LIMITED_ERROR_CODE = 'authentication_rate_limited';",
-    );
-    // And the auth middleware answers with the constant, not a bare literal
-    // that could drift away from it.
-    expect(RUNTIME_HTTP_SOURCE).toContain(
-      '{ error: { code: AUTH_RATE_LIMITED_ERROR_CODE } }',
     );
   });
 

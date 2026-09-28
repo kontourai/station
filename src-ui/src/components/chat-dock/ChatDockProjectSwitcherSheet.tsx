@@ -125,7 +125,9 @@ export function ChatDockProjectSwitcherSheet({
                   onClick={() => run(() => onSwitchProject(project.slug, name))}
                 >
                   <span className="chat-dock__project-switcher-name">
-                    {name}
+                    <span className="chat-dock__project-switcher-label">
+                      {name}
+                    </span>
                     {isBound && (
                       <span
                         className="chat-dock__project-switcher-current"

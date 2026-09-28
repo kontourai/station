@@ -8,14 +8,34 @@ import { TASK_DECLARED_OUTPUT_KEEP_V1 } from '@kontourai/station-contracts/task-
 // `client/**` may reach outside `client/`, because that is what lets this
 // entry run in a CLI process and a browser alike (station#4011). Going
 // through the barrel is the easy way to break it without noticing.
-import { apiErrorMessage } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { envelopeError } from './api-error-message';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  readJsonBody,
+} from './http';
 
 type Envelope<T> = { success: boolean; data?: T; error?: string };
+
+/**
+ * The parsed body. A failure whose body is not JSON keeps its status
+ * (#2708); an unreadable 2xx is a protocol failure.
+ */
+async function readBody<T>(response: Response): Promise<Envelope<T>> {
+  const body = await readJsonBody(response);
+  if (body === undefined) {
+    if (!response.ok)
+      throw envelopeError(response, undefined, `HTTP ${response.status}`);
+    throw new Error('Expected JSON response');
+  }
+  return body as Envelope<T>;
+}
+
 async function unwrap<T>(response: Response): Promise<T> {
-  const body = (await response.json()) as Envelope<T>;
+  const body = await readBody<T>(response);
   if (!response.ok || !body.success || body.data === undefined)
-    throw new Error(apiErrorMessage(body, `HTTP ${response.status}`));
+    throw envelopeError(response, body, `HTTP ${response.status}`);
   return body.data;
 }
 const path = (taskId: string, suffix = '') =>
@@ -250,11 +270,13 @@ export async function keepDeclaredTaskOutput(
     options,
     input,
   );
-  const body = (await response.json()) as Envelope<unknown>;
-  const parsed =
-    response.ok && body.success ? keepResult(body.data) : undefined;
-  if (!parsed)
-    throw new Error(apiErrorMessage(body, `HTTP ${response.status}`));
+  const body = await readBody<unknown>(response);
+  if (!response.ok || !body.success)
+    throw envelopeError(response, body, `HTTP ${response.status}`);
+  const parsed = keepResult(body.data);
+  // An accepted answer whose result is not the declared shape is a protocol
+  // failure, not a refusal: there is no failure status to carry.
+  if (!parsed) throw new Error('Declared output keep result is malformed');
   return parsed;
 }
 export async function deleteTaskOutputClient(
@@ -290,7 +312,14 @@ export async function downloadTaskOutputContent(
     `${apiBase}${path(taskId, `/${encodeURIComponent(outputId)}/content`)}`,
     options,
   );
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) {
+    // A refused download answers a JSON envelope; keep what it says (#2708).
+    throw envelopeError(
+      response,
+      await readJsonBody(response),
+      `HTTP ${response.status}`,
+    );
+  }
   return {
     bytes: new Uint8Array(await response.arrayBuffer()),
     mediaType:

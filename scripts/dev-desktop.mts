@@ -16,6 +16,7 @@ import {
   resolveStationRoot,
   spawnedStationRoot,
 } from '../packages/shared/src/runtime-path-resolver.js';
+import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   executeOwnedCommand,
   terminateSuiteExecution,
@@ -265,8 +266,4 @@ async function main() {
   );
   rmSync(temp, { recursive: true, force: true });
 }
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === resolve(import.meta.filename)
-)
-  void main();
+if (invokedDirectly(import.meta.url)) void main();

@@ -61,7 +61,7 @@ interface ChangedFileEntry {
  * subset that cannot contain quoting, rename delimiters, traversal, or control
  * characters. Ambiguous paths stay visible with navigation disabled.
  */
-export function changedFileEntry(change: string): ChangedFileEntry {
+function changedFileEntry(change: string): ChangedFileEntry {
   const status = change.slice(0, 2).trim() || 'M';
   const displayPath = (change.length > 3 ? change.slice(3) : change).trim();
   const pathSegments = displayPath.split('/');
@@ -78,7 +78,7 @@ export function changedFileEntry(change: string): ChangedFileEntry {
   };
 }
 
-export function collectAttachedContext(session: ChatSession): FileAttachment[] {
+function collectAttachedContext(session: ChatSession): FileAttachment[] {
   const attached = [
     ...session.attachments,
     ...session.messages.flatMap((message) => message.attachments ?? []),

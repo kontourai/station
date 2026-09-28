@@ -36,6 +36,9 @@ const {
   summarizeToolArgs,
   wrapPlatformMutationGatedTools,
 } = await import('../platform-mutation-gate.js');
+const { jsonToolResult } = await import(
+  '../../../tools/station-control-shared.js'
+);
 
 /** Minimal gated delivery definition (one step, one gate). */
 const GATED_DEFINITION = {
@@ -248,6 +251,28 @@ describe('opted workspace, ungated (no active run)', () => {
     });
   });
 
+  // #2795: station-control tools answer a refusal as an `isError` result, not
+  // a throw. The real result writer builds it here; the audit must record the
+  // failure, and the tool's result still reaches the caller unchanged.
+  test('a refused (isError) execution records a failed audit and returns the result', async () => {
+    const cwd = optedWorkspace();
+    const harness = createGate({ cwd });
+    const refusal = jsonToolResult({
+      success: false,
+      code: 'station_control_person_only',
+      error: 'A person must do this in Station.',
+    });
+    const { tool } = makeTool('station-control_install_plugin', () => refusal);
+    const wrapped = wrapWithGate(harness, tool);
+
+    await expect(wrapped.execute!({ source: './x' })).resolves.toBe(refusal);
+    expect(harness.events).toHaveLength(1);
+    expect(harness.events[0]).toMatchObject({
+      outcome: 'failed',
+      tool: 'install_plugin',
+    });
+  });
+
   test('SA_DISABLED_HOOKS=pre:platform-mutation disables the gate', async () => {
     const cwd = optedWorkspace();
     const harness = createGate({
@@ -297,6 +322,40 @@ describe('opted workspace, ungated (no active run)', () => {
 });
 
 describe('opted workspace with an active gated Flow run', () => {
+  // #2795: a refusal answered as an `isError` envelope carries its bounded
+  // code into the run evidence, so "refused" reads apart from "attempted and
+  // failed" — the claim's value stays `failed`, its contract unchanged.
+  test('a refused mutation records its code in the run evidence', async () => {
+    const cwd = optedFlowWorkspace();
+    const flowRunService = new FlowRunService();
+    await flowRunService.startRun(cwd, {
+      definition: 'test-delivery',
+      runId: 'refused-run',
+    });
+    const harness = createGate({ cwd, flowRunService });
+    const refusal = jsonToolResult({
+      success: false,
+      code: 'station_control_person_only',
+      error: 'A person must do this in Station.',
+    });
+    const { tool } = makeTool('station-control_update_skill', () => refusal);
+    const wrapped = wrapWithGate(harness, tool);
+
+    await expect(
+      wrapped.execute!({ name: 'Refused', body: 'x' }),
+    ).resolves.toBe(refusal);
+
+    const run = await flowRunService.getRun(cwd, 'refused-run');
+    const claim = run.manifest.evidence
+      .flatMap((entry: any) => entry.bundle?.claims ?? [])
+      .find((entry: any) => entry.claimType === 'station.platform-mutation');
+    expect(claim).toMatchObject({
+      value: 'failed',
+      fieldOrBehavior:
+        'update_skill [station_control_person_only]: A person must do this in Station.',
+    });
+  });
+
   test('mutation is allowed and attached to the run as audit evidence', async () => {
     const cwd = optedFlowWorkspace();
     const flowRunService = new FlowRunService();

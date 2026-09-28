@@ -80,7 +80,24 @@ export type AgentSource = 'local' | 'acp';
 export interface AgentTools {
   mcpServers: string[];
   available?: string[];
+  /**
+   * Tools that run without asking in ATTENDED chat. Patterns may name the
+   * original MCP tool (`station-control_*`) or the runtime name. Unattended
+   * runs and delegated children do not honour original-name patterns here;
+   * use `unattendedAutoApprove` for those (#2613).
+   */
   autoApprove?: string[];
+  /**
+   * #2613: explicit opt-in for tools this agent may run with nobody present —
+   * scheduled jobs, `/invoke`, the CLI, and delegated children that cannot
+   * grant approvals — on Station's own engine. Same pattern syntax and name
+   * forms as `autoApprove`. Delegation allow/block lists and config
+   * protection still apply, and the approval guardian is consulted before the
+   * opt-in: in enforce mode only a guardian allow lets the call run (a deny or
+   * a defer, including its error fallback, blocks it); in review mode it never
+   * blocks. Absent means no unattended opt-in.
+   */
+  unattendedAutoApprove?: string[];
   /**
    * #90 D14: the built-in browser tools (`station-browser`). Absent means
    * the default: ON for engines Station can deliver them to bound (Claude).
