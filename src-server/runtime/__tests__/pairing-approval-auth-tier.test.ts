@@ -100,6 +100,8 @@ async function createHarness() {
         request
           ? security.authorizeCredential(credential, request)
           : security.verifyCredential(credential),
+      recognizeCredential: (credential) =>
+        security.verifyCredential(credential),
       resolveGrantedScope: (credential) =>
         security.resolveGrantedScope(credential),
       resolveCredentialAuthority: (credential) =>
@@ -307,7 +309,7 @@ afterEach(() => {
 });
 
 describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () => {
-  test('a paired browser session is refused with the live 401, and its attention read says viewerCanDecide: false up front', async () => {
+  test('a paired browser session is refused as insufficient scope, and its attention read says viewerCanDecide: false up front', async () => {
     const harness = await createHarness();
     const paired = await harness.pairDevice('Paired browser');
     // The session cookie carries the paired-device credential verbatim; the
@@ -315,17 +317,17 @@ describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () =
     expect(paired.credential).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const pending = await harness.createPendingRequest('New phone');
 
-    // The exact live failure (#765 verification): device-session cookie on
-    // the confirm route. The middleware folds "authenticated but not
-    // admitted to the pairing family" into `authentication_required`.
+    // Device-session cookie on the confirm route. The credential is live;
+    // route admission still refuses it. That answer is 403, not 401: a 401
+    // is what the browser treats as a dead device session.
     const cookieConfirm = await harness.request(
       `/api/pairing/requests/${pending.requestId}/confirm`,
       cookieInit(paired.credential, 'POST'),
       '203.0.113.21',
     );
-    expect(cookieConfirm.status).toBe(401);
+    expect(cookieConfirm.status).toBe(403);
     expect(await cookieConfirm.json()).toEqual({
-      error: { code: 'authentication_required' },
+      error: { code: 'insufficient_scope' },
     });
 
     // Same tier as a bearer, and the deny twin: same refusal.
@@ -334,16 +336,22 @@ describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () =
       harness.json({}, paired.credential),
       '203.0.113.22',
     );
-    expect(bearerConfirm.status).toBe(401);
+    expect(bearerConfirm.status).toBe(403);
+    expect(await bearerConfirm.json()).toEqual({
+      error: { code: 'insufficient_scope' },
+    });
     const cookieDeny = await harness.request(
       `/api/pairing/requests/${pending.requestId}`,
       cookieInit(paired.credential, 'DELETE'),
       '203.0.113.23',
     );
-    expect(cookieDeny.status).toBe(401);
+    expect(cookieDeny.status).toBe(403);
+    expect(await cookieDeny.json()).toEqual({
+      error: { code: 'insufficient_scope' },
+    });
 
-    // What the fix adds: the projection tells this session it cannot decide,
-    // so the UI renders the remedy instead of buttons that can only 401.
+    // The projection tells this session it cannot decide, so the UI renders
+    // the remedy instead of buttons the boundary will refuse.
     const deviceItems = await attentionPairingItems(
       harness,
       cookieInit(paired.credential, 'GET'),
@@ -533,7 +541,7 @@ test('the desktop home-proven local grant can invite and approve a phone without
         h.json({ endpoint: ORIGIN }, phone.credential),
       )
     ).status,
-  ).toBe(401);
+  ).toBe(403);
   expect(h.security.credentialMayDecidePairingRequests(phone.credential)).toBe(
     false,
   );
@@ -571,7 +579,7 @@ test('the desktop home-proven local grant can invite and approve a phone without
         '127.0.0.1',
       )
     ).status,
-  ).toBe(401);
+  ).toBe(403);
   h.security.devicePairing.revokeDevice(
     desktop.device.id,
     'operator-credential',

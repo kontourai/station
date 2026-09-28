@@ -659,3 +659,89 @@ describe('scoped pairing HTTP enforcement at a loopback peer (station#1123 slice
     }
   });
 });
+
+describe('recognized credentials refused by route admission', () => {
+  // Production verifyCredential is authorizeCredential: a live ordinary
+  // device is false on /api/pairing. The browser treats 401 as a dead
+  // device session and Settings remounts on that loop. Identity recognition
+  // must answer 403 and must not charge the authentication-failure limiter.
+  const KNOWN_DEVICE = 'k'.repeat(43);
+
+  function admissionHarness() {
+    let reached = false;
+    const app = new Hono<{ Bindings: TestBindings }>();
+    configureRuntimeHttp({
+      app: app as never,
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+        debug() {},
+        trace() {},
+        fatal() {},
+        child() {
+          return this;
+        },
+        setLevel() {},
+        getLevel() {
+          return 'info' as const;
+        },
+      },
+      eventBus: { emit() {} } as unknown as EventBus,
+      security: {
+        verifyCredential: (candidate, request) =>
+          candidate === KNOWN_DEVICE &&
+          !request?.path.startsWith('/api/pairing'),
+        recognizeCredential: (candidate) => candidate === KNOWN_DEVICE,
+        resolveGrantedScope: (candidate) =>
+          candidate === KNOWN_DEVICE ? DEFAULT_GRANT_PAIRING_SCOPE : undefined,
+        allowedOrigins: [],
+        maxFailures: 10,
+        windowMs: 60_000,
+      },
+    } as Parameters<typeof configureRuntimeHttp>[0]);
+    app.all('*', (c) => {
+      reached = true;
+      return c.json({ reached: true });
+    });
+    return {
+      reached: () => reached,
+      request: (path: string, init: RequestInit = {}) =>
+        app.request(path, init, {
+          incoming: { socket: { remoteAddress: '100.96.12.7' } },
+        } as TestBindings),
+    };
+  }
+
+  it('answers 403 for a live device cookie on GET /api/pairing/devices and does not rate-limit the session', async () => {
+    const harness = admissionHarness();
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const response = await harness.request('/api/pairing/devices', {
+        headers: { Cookie: `station-device=${KNOWN_DEVICE}` },
+      });
+      expect(response.status, `attempt ${attempt}`).toBe(403);
+      await expect(response.json()).resolves.toEqual({
+        error: { code: 'insufficient_scope' },
+      });
+    }
+    expect(harness.reached()).toBe(false);
+
+    const stillSignedIn = await harness.request('/api/projects', {
+      headers: { Cookie: `station-device=${KNOWN_DEVICE}` },
+    });
+    expect(stillSignedIn.status).not.toBe(401);
+    expect(stillSignedIn.status).not.toBe(403);
+  });
+
+  it('still 401s an unrecognized credential, including on /api/pairing/devices', async () => {
+    const harness = admissionHarness();
+    const response = await harness.request('/api/pairing/devices', {
+      headers: { Authorization: 'Bearer not-a-real-credential' },
+    });
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: { code: 'authentication_required' },
+    });
+    expect(harness.reached()).toBe(false);
+  });
+});

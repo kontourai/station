@@ -49,6 +49,7 @@ function configureAuthenticatedApp(security: EnvironmentSecurityService): Hono {
       verifyCredential: (candidate, request) =>
         request !== undefined &&
         security.authorizeCredential(candidate, request),
+      recognizeCredential: (candidate) => security.verifyCredential(candidate),
       resolveGrantedScope: (candidate) =>
         security.resolveGrantedScope(candidate),
       resolveCredentialAuthority: (candidate) =>

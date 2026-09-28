@@ -351,6 +351,7 @@ async function fixture(options: { realStarts?: boolean } = {}) {
       verifyCredential: (candidate, request) =>
         request !== undefined &&
         security.authorizeCredential(candidate, request),
+      recognizeCredential: (candidate) => security.verifyCredential(candidate),
       resolveGrantedScope: (candidate) =>
         security.resolveGrantedScope(candidate),
       resolveCredentialAuthority: (candidate) =>
