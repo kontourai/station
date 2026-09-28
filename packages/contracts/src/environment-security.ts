@@ -1202,3 +1202,46 @@ export function parsePublicStationHandshake(
 /** Same-user native access decisions; requires direct loopback and this boot's local proof. */
 export const PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH =
   '/.well-known/station/v1/pairing/local-access';
+
+/**
+ * #1796: what revoking a device's full access did to the conversations it
+ * had put there (`approval:full-access` removed from its scope, or the
+ * device revoked). Each reset is a new Ask decision attributed to the
+ * operator's revocation; nothing is deleted and no running turn is
+ * interrupted. `stillFullAccess` lists conversations that remain at full
+ * access for a reason this device's revocation does not undo.
+ */
+export interface FullAccessRevocationReport {
+  readonly cause: 'scope-removed' | 'device-revoked';
+  readonly reset: readonly {
+    readonly conversationId: string;
+    /**
+     * What the device had granted: its own recorded `never`, its Default
+     * pick that resolved to full access, or a session it started unconfined
+     * with no decision recorded since.
+     */
+    readonly was: 'never' | 'default-reaching-full-access' | 'host-start';
+  }[];
+  readonly stillFullAccess: readonly {
+    readonly conversationId: string;
+    readonly reason:
+      | 'operator-decision'
+      | 'another-device-decision'
+      | 'unattributed-decision'
+      | 'agent-default'
+      | 'station-default';
+  }[];
+  /**
+   * Live sessions running unconfined (`host`) whose start recorded no
+   * grantor (started before grantors were recorded): they may be this
+   * device's, so they are listed, never reset. At most 50 are listed;
+   * `total` counts them all.
+   */
+  readonly unattributedHostStarts: {
+    readonly sessions: readonly {
+      readonly conversationId: string;
+      readonly startedAt: string;
+    }[];
+    readonly total: number;
+  };
+}

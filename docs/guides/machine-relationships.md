@@ -66,11 +66,28 @@ message is not sent and the chat is not marked failed: the draft returns to
 the composer, with an explicit choice to send it at the chat's current mode. An Agent never gets full access through any
 grant; a person has to choose it. Nothing is retried at another approval mode.
 
-Removing the scope stops that device from choosing full access from its next
-request on. It does not change a session already running at full access, or
-an approval decision already recorded: those keep their posture until someone
-with the authority changes it (Ask, Auto or Default), the session ends, or it
-is revoked. Revoking the whole device ends its access immediately.
+Removing the scope, whether with `--remove`, `--set` or in the desktop app,
+takes back the full access that device had already given (owner decision,
+#1796). Revoking the whole device does the same. For every conversation the
+device had put at full access (its own full-access decision, its Default pick
+that resolved to full access, or a session it started at full access), Station
+records a new decision of **Ask**, attributed to the operator's revocation.
+Nothing is deleted from the conversation's history. A turn already running
+finishes; the next turn asks before acting.
+
+Some conversations stay at full access, and the command lists them without
+changing them:
+
+- a full-access decision the operator or another device made;
+- a session whose full access comes only from its Agent's or the Station's
+  default;
+- a decision recorded before Station kept track of who made it;
+- a live session started at full access before Station recorded who granted
+  it ("unattributed host start"). At most 50 of these are listed, with the
+  total.
+
+The scope command prints both lists, and the desktop app shows the same after
+the change.
 
 ## Relationship table
 

@@ -38,7 +38,11 @@ interface RecordedCall {
 }
 
 /** Serves the device list and records what the panel asked the host to do. */
-function stubHost(options: { devices: PairedDevice[]; revokeStatus?: number }) {
+function stubHost(options: {
+  devices: PairedDevice[];
+  revokeStatus?: number;
+  revokeBody?: unknown;
+}) {
   const calls: RecordedCall[] = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation(
     async (input: URL | RequestInfo, init?: RequestInit) => {
@@ -49,7 +53,12 @@ function stubHost(options: { devices: PairedDevice[]; revokeStatus?: number }) {
         auth: new Headers(init?.headers).get('Authorization'),
       });
       if (method === 'DELETE') {
-        return new Response(null, { status: options.revokeStatus ?? 204 });
+        return options.revokeBody === undefined
+          ? new Response(null, { status: options.revokeStatus ?? 204 })
+          : new Response(JSON.stringify(options.revokeBody), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
       }
       return new Response(JSON.stringify({ devices: options.devices }), {
         status: 200,
@@ -209,6 +218,53 @@ describe('PairedDevicesPanel', () => {
       );
       expect(revoke?.auth).toBe('Bearer secret-credential');
     });
+  });
+
+  test('#1796 G3: a revoke shows what it reset and what stays at full access, as text', async () => {
+    stubHost({
+      devices: [device({ id: 'abc', name: 'Pixel 9' })],
+      revokeBody: {
+        id: 'abc',
+        fullAccessRevocation: {
+          cause: 'device-revoked',
+          reset: [{ conversationId: 'conversation:reset-1', was: 'never' }],
+          stillFullAccess: [
+            {
+              conversationId: '[x](https://evil.example)',
+              reason: 'station-default',
+            },
+          ],
+          unattributedHostStarts: {
+            sessions: [
+              {
+                conversationId: 'older-host',
+                startedAt: '2026-09-01T00:00:00.000Z',
+              },
+            ],
+            total: 2,
+          },
+        },
+      },
+    });
+    renderPanel();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Revoke Pixel 9' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    const notice = await screen.findByTestId('full-access-revocation');
+    expect(notice.textContent).toContain('Full access removed from “Pixel 9”.');
+    expect(notice.textContent).toContain(
+      'conversation:reset-1 (was its full-access decision)',
+    );
+    expect(notice.textContent).toContain(
+      '[x](https://evil.example), because of the Station’s default approval mode',
+    );
+    expect(notice.textContent).toContain(
+      'older-host, started 2026-09-01T00:00:00.000Z',
+    );
+    expect(notice.textContent).toContain('…and 1 more (2 in all).');
+    expect(notice.querySelector('a')).toBeNull();
   });
 
   test('abandons the revoke when the confirmation is cancelled', async () => {

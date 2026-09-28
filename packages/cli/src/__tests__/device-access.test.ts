@@ -301,6 +301,52 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
     }
   });
 
+  test('G3: removing full access prints what was reset and what stays at full access', async () => {
+    const request = station((deviceId, body) => ({
+      ...DEVICES.find((device) => device.id === deviceId),
+      scope: (body.scope as string[]).join(' '),
+      fullAccessRevocation: {
+        cause: 'scope-removed',
+        reset: [{ conversationId: 'conversation:a', was: 'never' }],
+        stillFullAccess: [
+          { conversationId: 'conversation:b', reason: 'agent-default' },
+        ],
+        unattributedHostStarts: {
+          sessions: [
+            {
+              conversationId: 'older-\u001b[31m',
+              startedAt: '2026-09-01T00:00:00.000Z',
+            },
+          ],
+          total: 3,
+        },
+      },
+    }));
+    await run(['scope', 'aaaa1111', '--remove=terminal:operate'], request);
+    expect(printed()).toContain(
+      'Reset to Ask (a turn already running finishes first; the next one asks):\n  conversation:a  was: its full-access decision',
+    );
+    expect(printed()).toContain(
+      "Still at full access, not changed:\n  conversation:b  because of the Agent's default approval mode",
+    );
+    expect(printed()).toContain(
+      '  older-\\u001b[31m  started 2026-09-01T00:00:00.000Z',
+    );
+    expect(printed()).toContain('  … and 2 more (3 in all).');
+    expect(printed()).not.toContain('\u001b');
+  });
+
+  test('G3: a reset that failed on the Station is an error, after the scope change', async () => {
+    const request = station((deviceId, body) => ({
+      ...DEVICES.find((device) => device.id === deviceId),
+      scope: (body.scope as string[]).join(' '),
+      fullAccessRevocationError: 'reset_failed',
+    }));
+    await expect(
+      run(['scope', 'aaaa1111', '--remove=terminal:operate'], request),
+    ).rejects.toThrow(/could not reset the conversations/);
+  });
+
   test('a dry run prints the change and sends nothing', async () => {
     const request = station();
     await run(

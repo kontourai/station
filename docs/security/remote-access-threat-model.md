@@ -290,9 +290,14 @@ the change drops the device's live terminal and voice leases. One such scope,
 `never`. Its refusal (403 `approval-full-access-not-granted`) names the
 device, the refusing Station and the operator's grant command, derived from
 the request's verified credential; it discloses no credential and grants
-nothing. Removing the scope refuses the device's next full-access request; a
-session already started at full access keeps its posture until changed or
-ended.
+nothing. Removing the scope, or revoking the device, refuses the device's
+next full-access request and resets the full access it had already granted:
+each conversation it put at full access gets a new Ask decision attributed to
+the operator. Attribution is exact, from the server-derived actor on the
+decision or beside the start's `host` stamp. A running turn finishes; the
+next one asks. Full access from the operator, another device, or an Agent or
+Station default is listed and left alone. So are live sessions started before
+grantors were recorded (at most 50, with the total).
 
 Enforcement is a single route -> required-scope table
 (`src-server/security/pairing-route-scopes.ts`) consulted by one piece of

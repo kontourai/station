@@ -2018,7 +2018,11 @@ station environment peers remove <environment-id>
   scope with its meaning. Full access is one scope among them:
   `station environment access scope <device> --add approval:full-access`
   lets that device put a chat, or an Agent's default, at full access;
-  `--remove approval:full-access` takes it back. A paired remote CLI cannot run
+  `--remove approval:full-access` takes it back, and resets to Ask every
+  conversation that device had put at full access (a running turn finishes
+  first). The command prints what it reset and what stays at full access
+  for another reason (the operator's or another device's decision, an Agent or
+  Station default, or a session with no recorded grantor). A paired remote CLI cannot run
   these verbs: they refuse a non-loopback target before reading any
   credential.
 - `environment peers` manages the **outbound** peer-credential store: the

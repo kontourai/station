@@ -41,6 +41,9 @@ import type { IProviderAdapterRegistry } from '../../../providers/provider-inter
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { createAgentDispatchActorResolver } from '../../../runtime/mcp/station-control-caller.js';
+import { configureDevicePairingHostRoutes } from '../../../runtime/routes/runtime-routes.js';
+import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
+import { isRuntimeRequestPrincipalCurrent } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -355,18 +358,31 @@ async function fixture(
     } as never),
   );
 
+  // #1796 G3: the operator's device-access routes, wired as runtime-routes
+  // wires them, so a revocation resets what the device had granted.
+  configureDevicePairingHostRoutes(app as never, security.devicePairing, {
+    verifyOperatorCredential: (candidate) =>
+      security.verifyOperatorCredential(candidate),
+    isApprovalCurrent: (req) => isRuntimeRequestPrincipalCurrent(req, security),
+    isRequestPrincipalCurrent: (req) =>
+      isRuntimeRequestPrincipalCurrent(req, security),
+    resetFullAccessGrantedBy: (input) =>
+      service.resetFullAccessGrantedBy(input),
+  });
+
   const request = async (
     headers: Record<string, string>,
     path: string,
     body: unknown,
     env?: unknown,
+    method = 'POST',
   ) => {
     const res = await app.request(
       path,
       {
-        method: 'POST',
+        method,
         headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify(body),
+        ...(method === 'DELETE' ? {} : { body: JSON.stringify(body) }),
       },
       env as never,
     );
@@ -417,6 +433,7 @@ async function fixture(
   return {
     operator,
     pair,
+    security,
     service,
     store,
     codex,
@@ -1385,4 +1402,365 @@ test('sessionRunsHost reads the start stamp and a recorded never, as a turn does
     input: { threadId: phoneThread, input: 'again' },
   });
   expect(f.claude.turns.at(-1)).toMatchObject({ confinement: 'host' });
+});
+
+/**
+ * #1796 G3 (owner decision): revoking a device's full access resets the full
+ * access it had already granted, through the real operator routes. The next
+ * turn applies the reset; a running turn is left to finish; the operator's
+ * and other devices' decisions, and Agent or Station defaults, are listed,
+ * never changed.
+ */
+describe('#1796 G3: revoking a device resets the full access it granted', () => {
+  const standardScope = [...PAIRING_SCOPE_PRESETS.standard];
+  const NONE_UNATTRIBUTED = { sessions: [], total: 0 };
+  const startGrantor = (f: Fixture, threadId: string) =>
+    (
+      f.store.latestEventByMethod(threadId, 'session.started')?.payload as
+        | { metadata?: Record<string, unknown> }
+        | undefined
+    )?.metadata?.stationConfinementGrantor;
+  /** A host session as an older Station stamped it: no grantor recorded. */
+  const startUnattributedHost = async (f: Fixture, threadId: string) => {
+    await f.service.dispatch(
+      {
+        type: 'startSession',
+        input: {
+          threadId,
+          provider: 'claude',
+          modelOptions: { approvalMode: 'never' },
+        },
+      },
+      { fullAccessGrant: fullAccessGrantForTesting() },
+    );
+    await vi.waitFor(() =>
+      expect(
+        f.store.latestEventByMethod(threadId, 'session.started')?.payload,
+      ).toMatchObject({ metadata: { stationConfinement: 'host' } }),
+    );
+    expect(startGrantor(f, threadId)).toBeUndefined();
+  };
+
+  const removeFullAccess = (f: Fixture, deviceId: string) =>
+    f.request(
+      f.bearer(f.operator.credential),
+      `/api/pairing/devices/${encodeURIComponent(deviceId)}/scope`,
+      { scope: standardScope },
+    );
+  const revokeDevice = (f: Fixture, deviceId: string) =>
+    f.request(
+      f.bearer(f.operator.credential),
+      `/api/pairing/devices/${encodeURIComponent(deviceId)}`,
+      undefined,
+      undefined,
+      'DELETE',
+    );
+  const decisions = (f: Fixture, threadId: string) =>
+    f.store
+      .listEvents(threadId)
+      .map((row) => row.payload as Record<string, any>)
+      .filter((event) => event.method === 'session.approval-mode-set');
+  /** A chat started by `credential`, with a full-access pick recorded or carried on the default channel. */
+  const startAtFullAccess = async (
+    f: Fixture,
+    credential: string,
+    how: 'recorded' | 'default-channel',
+  ) => {
+    const response = await f.request(
+      f.bearer(credential),
+      '/api/orchestration/chat',
+      {
+        message: 'go',
+        target: {
+          environment: { kind: 'current' },
+          agent: 'claude-agent',
+          ...(how === 'default-channel'
+            ? { model: { options: { approvalMode: 'never' } } }
+            : {}),
+        },
+        ...(how === 'recorded'
+          ? { setApprovalMode: 'never', setApprovalModeBasedOn: null }
+          : {}),
+      },
+    );
+    expect(response.status, response.text).toBe(200);
+    const start = f.claude.starts.at(-1)!;
+    expect(start).toMatchObject({
+      confinement: 'host',
+      modelOptions: { approvalMode: 'never' },
+    });
+    return {
+      conversationId: response.body.data.conversationId as string,
+      threadId: start.threadId,
+    };
+  };
+  const nextTurn = async (f: Fixture, threadId: string) => {
+    await f.service.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'next' },
+    });
+    return f.claude.turns.at(-1);
+  };
+
+  test('a device’s recorded never resets to Ask when its full access is removed, attributed to the operator, and the next turn asks', async () => {
+    const f = await fixture({});
+    f.claude.completeTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const { conversationId, threadId } = await startAtFullAccess(
+      f,
+      laptop.credential,
+      'recorded',
+    );
+
+    const removed = await removeFullAccess(f, laptop.device.id);
+
+    expect(removed.status, removed.text).toBe(200);
+    expect(removed.body.fullAccessRevocation).toEqual({
+      cause: 'scope-removed',
+      reset: [{ conversationId, was: 'never' }],
+      stillFullAccess: [],
+      unattributedHostStarts: NONE_UNATTRIBUTED,
+    });
+    // History kept: the device's never, then the operator's Ask.
+    const recorded = decisions(f, threadId);
+    expect(recorded.map((event) => event.approvalMode)).toEqual([
+      'never',
+      'ask',
+    ]);
+    expect(recorded[0]?.clientOrigin?.actor).toEqual({
+      kind: 'device',
+      deviceId: laptop.device.id,
+    });
+    expect(recorded[1]).toMatchObject({
+      clientOrigin: { actor: { kind: 'operator' } },
+      revocation: {
+        reason: 'device-full-access-revoked',
+        deviceId: laptop.device.id,
+        cause: 'scope-removed',
+      },
+    });
+    // The host stamp stays; the next turn runs at Ask, so the engine asks.
+    expect(await nextTurn(f, threadId)).toMatchObject({
+      modelOptions: { approvalMode: 'ask' },
+    });
+  });
+
+  test('revoking the whole device resets a session it started unconfined on the default channel (`--approval-mode=never`)', async () => {
+    const f = await fixture({});
+    f.claude.completeTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const { conversationId, threadId } = await startAtFullAccess(
+      f,
+      laptop.credential,
+      'default-channel',
+    );
+    expect(decisions(f, threadId)).toEqual([]);
+
+    const revoked = await revokeDevice(f, laptop.device.id);
+
+    expect(revoked.status, revoked.text).toBe(200);
+    expect(revoked.body.fullAccessRevocation).toEqual({
+      cause: 'device-revoked',
+      reset: [{ conversationId, was: 'host-start' }],
+      stillFullAccess: [],
+      unattributedHostStarts: NONE_UNATTRIBUTED,
+    });
+    expect(await nextTurn(f, threadId)).toMatchObject({
+      modelOptions: { approvalMode: 'ask' },
+    });
+  });
+
+  test('a turn already running is left to finish', async () => {
+    const f = await fixture({});
+    const laptop = f.pair('Laptop', true);
+    const interrupt = vi.spyOn(f.claude, 'interruptTurn');
+    const stop = vi.spyOn(f.claude, 'stopSession');
+    const { threadId } = await startAtFullAccess(
+      f,
+      laptop.credential,
+      'recorded',
+    );
+    const turnsBefore = f.claude.turns.length;
+
+    const removed = await removeFullAccess(f, laptop.device.id);
+
+    expect(removed.status, removed.text).toBe(200);
+    expect(removed.body.fullAccessRevocation.reset).toHaveLength(1);
+    expect(interrupt).not.toHaveBeenCalled();
+    expect(stop).not.toHaveBeenCalled();
+    expect(f.claude.turns).toHaveLength(turnsBefore);
+    expect(
+      f.store
+        .listEvents(threadId)
+        .map((row) => row.payload.method)
+        .filter((method) => method === 'turn.aborted'),
+    ).toEqual([]);
+  });
+
+  test('the operator’s standing never survives a device’s revocation, and is listed', async () => {
+    const f = await fixture({});
+    f.claude.completeTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const { conversationId, threadId } = await startAtFullAccess(
+      f,
+      laptop.credential,
+      'recorded',
+    );
+    const decided = await f.request(
+      f.bearer(f.operator.credential),
+      '/api/orchestration/commands',
+      {
+        type: 'setApprovalMode',
+        threadId,
+        approvalMode: 'never',
+        basedOnSequence: Math.max(
+          ...f.store
+            .listEvents(threadId)
+            .filter((row) => row.payload.method === 'session.approval-mode-set')
+            .map((row) => row.globalSequence),
+        ),
+      },
+    );
+    expect(decided.status, decided.text).toBe(200);
+
+    const removed = await removeFullAccess(f, laptop.device.id);
+
+    expect(removed.body.fullAccessRevocation).toEqual({
+      cause: 'scope-removed',
+      reset: [],
+      stillFullAccess: [{ conversationId, reason: 'operator-decision' }],
+      unattributedHostStarts: NONE_UNATTRIBUTED,
+    });
+    expect(decisions(f, threadId).at(-1)?.approvalMode).toBe('never');
+    expect(await nextTurn(f, threadId)).toMatchObject({
+      confinement: 'host',
+      modelOptions: { approvalMode: 'never' },
+    });
+  });
+
+  test('never that comes only from an Agent default is listed, not reset', async () => {
+    const f = await fixture({ agents: { 'claude-agent': 'never' } });
+    f.claude.completeTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const { conversationId } = await f.chat(
+      f.bearer(laptop.credential),
+      'claude-agent',
+    );
+    const threadId = f.claude.starts.at(-1)!.threadId;
+    expect(lastStart(f, 'claude-agent')).toMatchObject({
+      confinement: 'host',
+      approvalMode: 'never',
+    });
+
+    const removed = await removeFullAccess(f, laptop.device.id);
+
+    expect(removed.body.fullAccessRevocation).toEqual({
+      cause: 'scope-removed',
+      reset: [],
+      stillFullAccess: [{ conversationId, reason: 'agent-default' }],
+      unattributedHostStarts: NONE_UNATTRIBUTED,
+    });
+    expect(decisions(f, threadId)).toEqual([]);
+  });
+
+  test('a never decision recorded before decisions carried their actor is listed as unattributed, not reset', async () => {
+    const f = await fixture({});
+    f.claude.completeTurns = true;
+    const laptop = f.pair('Laptop', true);
+    const { conversationId } = await f.chat(
+      f.bearer(f.operator.credential),
+      'claude-agent',
+    );
+    const threadId = f.claude.starts.at(-1)!.threadId;
+    // As an older Station recorded it: no clientOrigin.
+    f.service.recordApprovalModeDecision({
+      threadId,
+      provider: 'claude',
+      approvalMode: 'never',
+      basedOnSequence: null,
+    });
+
+    const removed = await removeFullAccess(f, laptop.device.id);
+
+    expect(removed.body.fullAccessRevocation).toEqual({
+      cause: 'scope-removed',
+      reset: [],
+      stillFullAccess: [{ conversationId, reason: 'unattributed-decision' }],
+      unattributedHostStarts: NONE_UNATTRIBUTED,
+    });
+    expect(decisions(f, threadId).map((event) => event.approvalMode)).toEqual([
+      'never',
+    ]);
+  });
+
+  test('a scope change that keeps full access resets nothing', async () => {
+    const f = await fixture({});
+    const laptop = f.pair('Laptop', true);
+    const { threadId } = await startAtFullAccess(
+      f,
+      laptop.credential,
+      'recorded',
+    );
+    const kept = await f.request(
+      f.bearer(f.operator.credential),
+      `/api/pairing/devices/${encodeURIComponent(laptop.device.id)}/scope`,
+      { scope: [...standardScope, PAIRING_SCOPE_APPROVAL_FULL_ACCESS] },
+    );
+    expect(kept.status, kept.text).toBe(200);
+    expect(kept.body.fullAccessRevocation).toBeUndefined();
+    expect(decisions(f, threadId).map((event) => event.approvalMode)).toEqual([
+      'never',
+    ]);
+  });
+
+  test('a live host session with no recorded grantor is listed as unattributed, never reset', async () => {
+    const f = await fixture({});
+    const laptop = f.pair('Laptop', true);
+    await startUnattributedHost(f, 'older-host-session');
+
+    const removed = await removeFullAccess(f, laptop.device.id);
+
+    expect(removed.status, removed.text).toBe(200);
+    expect(removed.body.fullAccessRevocation.reset).toEqual([]);
+    expect(removed.body.fullAccessRevocation.unattributedHostStarts).toEqual({
+      sessions: [
+        { conversationId: 'older-host-session', startedAt: expect.any(String) },
+      ],
+      total: 1,
+    });
+    expect(decisions(f, 'older-host-session')).toEqual([]);
+  });
+
+  test('the unattributed listing is capped at 50, and says how many there are', async () => {
+    const f = await fixture({});
+    const laptop = f.pair('Laptop', true);
+    for (let index = 0; index < 51; index += 1)
+      await startUnattributedHost(f, `older-host-${index}`);
+
+    const removed = await removeFullAccess(f, laptop.device.id);
+
+    const listing = removed.body.fullAccessRevocation.unattributedHostStarts;
+    expect(listing.sessions).toHaveLength(50);
+    expect(listing.total).toBe(51);
+  });
+
+  test('a start stamps its host grantor, and a start receipt records who asked', async () => {
+    const f = await fixture({});
+    const laptop = f.pair('Laptop', true);
+    const { threadId } = await startAtFullAccess(
+      f,
+      laptop.credential,
+      'default-channel',
+    );
+    expect(startGrantor(f, threadId)).toEqual({
+      kind: 'device',
+      deviceId: laptop.device.id,
+    });
+    expect(
+      f.store
+        .listCommandReceipts(threadId)
+        .find((receipt) => receipt.commandType === 'startSession')?.clientOrigin
+        ?.actor,
+    ).toEqual({ kind: 'device', deviceId: laptop.device.id });
+  });
 });

@@ -466,10 +466,30 @@ A session spawned before this change has nothing recorded.
   other on the operator's host channel (`station environment access
   devices|scope|scopes`, over `POST /api/pairing/devices/:id/scope` with
   `expectedScope`). The scope is read per request, so a removal refuses that
-  device's next full-access pick or dispatch at once. It does not reach back:
-  a session already started `host`-stamped at `never`, or a `never` decision
-  already recorded, keeps its posture until someone with the authority
-  changes it, the session ends, or the device is revoked.
+  device's next full-access pick or dispatch at once.
+- **Revocation resets what the device granted (owner decision, #1796 G3).**
+  Removing `approval:full-access`, or revoking the device, runs
+  `OrchestrationService.resetFullAccessGrantedBy`. Attribution is exact and
+  server-derived. A decision carries its recorder in `clientOrigin.actor`.
+  A `host` start stamp carries its grantor in
+  `metadata.stationConfinementGrantor`, beside the stamp and carried forward
+  on a respawn. The start's command receipt now also records `clientOrigin`.
+  - A conversation whose standing decision is that device's `never`, or its
+    Default that resolves to unconfined `never`, gets a new Ask decision. So
+    does one with no standing decision whose `host` session that device
+    started, unless that session's `never` comes from the Agent's or
+    Station's default.
+  - The Ask carries `revocation: { reason, deviceId, cause }` and the
+    operator's `clientOrigin`. History is kept.
+  - A running turn is not touched. The next turn start or respawn applies the
+    decision, which wins over a start's carried mode. The `host` stamp stays,
+    so the session runs unconfined but at Ask: the engine asks first.
+  - Left alone and listed: a standing decision by the operator or another
+    device; a default-only `never`; a `never` decision with no recorded
+    actor; and live `host` sessions with no recorded grantor (at most 50,
+    with the total).
+  - The route answer carries the report (`fullAccessRevocation`). A failed
+    reset is `fullAccessRevocationError`, and the CLI treats it as an error.
 - **Who can reach a session at all.** Command authorization
   (`canReadSessionForCommand`) admits only the session owner's own
   principals. There is no multi-user shared session to decide for.

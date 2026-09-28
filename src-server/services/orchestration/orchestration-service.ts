@@ -14,7 +14,10 @@ import type {
   AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
-import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type {
+  ClientOrigin,
+  ClientOriginActor,
+} from '@kontourai/station-contracts/client-origin';
 import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
@@ -24,6 +27,7 @@ import {
   sessionDeliveryChannels,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import type { FullAccessRevocationReport } from '@kontourai/station-contracts/environment-security';
 import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
@@ -68,6 +72,7 @@ import {
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
   type SessionReattachConflictReason,
+  STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   stripReservedOrchestrationMetadata,
   unsupportedModelOptionError,
@@ -5321,16 +5326,23 @@ export class OrchestrationService {
           // `never` is re-read at every later turn and respawn instead, so a
           // decision that later moves off `never` does not leave a stamp
           // behind it.
+          const hostGranted = isFullAccessGrant(context.fullAccessGrant);
+          // #1796: beside a `host` stamp, who granted it, from the request's
+          // server-derived origin, so revoking that device finds this start.
+          const grantor = hostGranted
+            ? confinementGrantor(context.clientOrigin)
+            : undefined;
           startInput = {
             ...startInput,
             confinement,
             metadata: {
               ...startInput.metadata,
-              [STATION_CONFINEMENT_METADATA_KEY]: isFullAccessGrant(
-                context.fullAccessGrant,
-              )
+              [STATION_CONFINEMENT_METADATA_KEY]: hostGranted
                 ? 'host'
                 : 'workspace',
+              ...(grantor
+                ? { [STATION_CONFINEMENT_GRANTOR_METADATA_KEY]: grantor }
+                : {}),
             },
           };
           // archive#2821 hardening L3: `stripReservedCapabilityMetadata`
@@ -8491,6 +8503,8 @@ export class OrchestrationService {
     basedOnSequence: number | null;
     clientOrigin?: ClientOrigin;
     principal?: PrincipalRef;
+    /** #1796: set only by `resetFullAccessGrantedBy`. */
+    revocation?: SessionApprovalModeSetEvent['revocation'];
   }): SetApprovalModeResult {
     const standing = this.approvalPosture.supersedingDecision(
       input.threadId,
@@ -8517,6 +8531,7 @@ export class OrchestrationService {
           sessionId: input.threadId,
           approvalMode: input.approvalMode,
           ...(input.principal ? { principal: input.principal } : {}),
+          ...(input.revocation ? { revocation: input.revocation } : {}),
         },
         input.clientOrigin,
       ),
@@ -8530,6 +8545,226 @@ export class OrchestrationService {
       recorded: true,
       approvalMode: input.approvalMode,
       sequence,
+    };
+  }
+
+  /**
+   * #1796 (owner decision, G3): revoking a device's full access resets the
+   * full access it had already granted. Called when the operator removes
+   * `approval:full-access` from a device, or revokes the device.
+   *
+   * Per conversation the device touched (a decision it recorded, or a
+   * session it started or adopted, each read from the server-derived
+   * `clientOrigin` of the event or command receipt):
+   *
+   * - Its standing decision is `never`, or a Default that resolves to
+   *   unconfined `never` (`approvalPickReachesFullAccess`): an Ask is
+   *   recorded.
+   * - No decision stands, and it started a session `host`: an Ask is
+   *   recorded, unless that session's `never` comes from its Agent's or the
+   *   Station's default, which is listed and left alone.
+   * - A standing decision by anyone else is left alone, and listed when it
+   *   keeps the conversation at full access.
+   *
+   * Each Ask is a new decision attributed to the operator (`clientOrigin`
+   * of the revoking request) carrying `revocation`; history is never
+   * deleted. Recording a decision does not touch a running turn: the next
+   * turn start or respawn applies it (`ApprovalPosture.resolve`, where a
+   * decision wins over a start's carried mode). A `host` start stamp stays,
+   * so the next turn runs unconfined but at Ask: the engine asks before
+   * acting. `never` decisions from before decisions carried an actor are
+   * listed as unattributed, never reset.
+   */
+  async resetFullAccessGrantedBy(input: {
+    deviceId: string;
+    cause: 'scope-removed' | 'device-revoked';
+    clientOrigin: ClientOrigin;
+  }): Promise<FullAccessRevocationReport> {
+    const store = this.options.eventStore;
+    const reset: Array<FullAccessRevocationReport['reset'][number]> = [];
+    const stillFullAccess: Array<
+      FullAccessRevocationReport['stillFullAccess'][number]
+    > = [];
+    if (!store)
+      return {
+        cause: input.cause,
+        reset,
+        stillFullAccess,
+        unattributedHostStarts: { sessions: [], total: 0 },
+      };
+    const conversationOf = (threadId: string) =>
+      store.conversationForSession(threadId)?.conversationId ?? threadId;
+    const threadsOf = (conversationId: string, seed: string) => [
+      seed,
+      ...store.conversationSessions(conversationId).map((s) => s.sessionId),
+    ];
+    const byDevice = (actor: ClientOriginActor | undefined) =>
+      actor?.kind === 'device' && actor.deviceId === input.deviceId;
+    const started = new Set(
+      store.hostStartThreadsGrantedByDevice(input.deviceId),
+    );
+    const conversations = new Map<string, string>();
+    for (const threadId of [
+      ...store.approvalModeDecisionThreadsByDevice(input.deviceId),
+      ...started,
+    ])
+      if (!conversations.has(conversationOf(threadId)))
+        conversations.set(conversationOf(threadId), threadId);
+    const unattributed = new Map<string, string>();
+    for (const threadId of store.unattributedFullAccessDecisionThreads())
+      if (!conversations.has(conversationOf(threadId)))
+        unattributed.set(conversationOf(threadId), threadId);
+
+    const recordAsk = (
+      conversationId: string,
+      threadId: string,
+      basedOn: number | null,
+      was: FullAccessRevocationReport['reset'][number]['was'],
+    ) => {
+      const provider = this.threadProviderForPosture(threadId);
+      if (!provider || !approvalKnobSupported(provider)) return;
+      this.recordApprovalModeDecision({
+        threadId,
+        provider,
+        approvalMode: 'ask',
+        basedOnSequence: basedOn,
+        clientOrigin: input.clientOrigin,
+        revocation: {
+          reason: 'device-full-access-revoked',
+          deviceId: input.deviceId,
+          cause: input.cause,
+        },
+      });
+      reset.push({ conversationId, was });
+    };
+    const decisionReason = (
+      actor: ClientOriginActor | undefined,
+    ): FullAccessRevocationReport['stillFullAccess'][number]['reason'] =>
+      actor?.kind === 'operator'
+        ? 'operator-decision'
+        : actor?.kind === 'device'
+          ? 'another-device-decision'
+          : 'unattributed-decision';
+    /** The default that puts a `host` session of the conversation at `never`. */
+    const hostDefaultSource = async (threads: readonly string[]) => {
+      for (const threadId of new Set(threads)) {
+        if (this.readStartConfinementStamp(threadId) !== 'host') continue;
+        const agentSlug =
+          this.readLatestSessionStartMetadata(threadId)?.agentSlug;
+        const source = await this.approvalPosture.fullAccessDefaultSource(
+          typeof agentSlug === 'string' ? agentSlug : undefined,
+        );
+        if (source) return source;
+      }
+      return undefined;
+    };
+
+    for (const [conversationId, seed] of conversations) {
+      const threads = threadsOf(conversationId, seed);
+      const standing = this.approvalPosture.decision(seed);
+      if (standing && byDevice(standing.actor)) {
+        if (standing.approvalMode === 'never') {
+          recordAsk(
+            conversationId,
+            standing.threadId,
+            standing.sequence,
+            'never',
+          );
+        } else if (
+          standing.approvalMode === 'connection-default' &&
+          (await this.approvalPickReachesFullAccess({
+            threadId: standing.threadId,
+            pick: 'connection-default',
+          }))
+        ) {
+          recordAsk(
+            conversationId,
+            standing.threadId,
+            standing.sequence,
+            'default-reaching-full-access',
+          );
+        }
+        continue;
+      }
+      if (standing) {
+        // Someone else's decision governs: never changed here.
+        if (standing.approvalMode === 'never')
+          stillFullAccess.push({
+            conversationId,
+            reason: decisionReason(standing.actor),
+          });
+        else if (
+          standing.approvalMode === 'connection-default' &&
+          (await this.approvalPickReachesFullAccess({
+            threadId: standing.threadId,
+            pick: 'connection-default',
+          }))
+        ) {
+          const source = await hostDefaultSource(threads);
+          if (source) stillFullAccess.push({ conversationId, reason: source });
+        }
+        continue;
+      }
+      // The latest start's own stamp and grantor: a later start by someone
+      // else re-stamps it.
+      const hostStart = threads.find((threadId) => {
+        const grantor = this.readStartConfinementGrantor(threadId);
+        return (
+          this.readStartConfinementStamp(threadId) === 'host' &&
+          grantor?.kind === 'device' &&
+          grantor.deviceId === input.deviceId
+        );
+      });
+      const source = await hostDefaultSource(threads);
+      if (source) {
+        stillFullAccess.push({ conversationId, reason: source });
+      } else if (hostStart) {
+        recordAsk(conversationId, hostStart, null, 'host-start');
+      }
+    }
+    // Live `host` sessions started before the grantor was recorded: listed,
+    // never reset. Only sessions this process tracks, and at most
+    // UNATTRIBUTED_HOST_START_LIMIT of them.
+    const unattributedHostStarts: Array<
+      NonNullable<
+        FullAccessRevocationReport['unattributedHostStarts']
+      >['sessions'][number]
+    > = [];
+    let unattributedHostStartCount = 0;
+    const listed = new Set(conversations.keys());
+    for (const session of this.sessionReadModel.values()) {
+      if (session.status === 'closed' || session.status === 'dead') continue;
+      const threadId = session.threadId;
+      if (this.readStartConfinementStamp(threadId) !== 'host') continue;
+      if (this.readStartConfinementGrantor(threadId)) continue;
+      const conversationId = conversationOf(threadId);
+      if (listed.has(conversationId)) continue;
+      listed.add(conversationId);
+      unattributedHostStartCount += 1;
+      if (unattributedHostStarts.length < UNATTRIBUTED_HOST_START_LIMIT)
+        unattributedHostStarts.push({
+          conversationId,
+          startedAt:
+            store.latestEventByMethod(threadId, 'session.started')?.createdAt ??
+            session.createdAt,
+        });
+    }
+    for (const [conversationId, seed] of unattributed) {
+      const standing = this.approvalPosture.decision(seed);
+      if (standing?.approvalMode === 'never' && !standing.actor)
+        stillFullAccess.push({
+          conversationId,
+          reason: 'unattributed-decision',
+        });
+    }
+    return {
+      cause: input.cause,
+      reset,
+      stillFullAccess,
+      unattributedHostStarts: {
+        sessions: unattributedHostStarts,
+        total: unattributedHostStartCount,
+      },
     };
   }
 
@@ -8608,6 +8843,10 @@ export class OrchestrationService {
     // Carry the stamp forward (the stored-metadata read strips reserved
     // keys), so the respawn's own start event still answers for the next
     // one. A missing stamp is written as the `workspace` it already meant.
+    const grantor =
+      stamp === 'host'
+        ? this.readStartConfinementGrantor(input.threadId)
+        : undefined;
     const restamped: ProviderSessionStartInput = {
       ...withoutOptions,
       confinement,
@@ -8615,6 +8854,10 @@ export class OrchestrationService {
         ...withoutOptions.metadata,
         [STATION_CONFINEMENT_METADATA_KEY]:
           stamp === 'host' ? 'host' : 'workspace',
+        // #1796: the grantor rides forward with the stamp it explains.
+        ...(grantor
+          ? { [STATION_CONFINEMENT_GRANTOR_METADATA_KEY]: grantor }
+          : {}),
       },
     };
     return modelOptions ? { ...restamped, modelOptions } : restamped;
@@ -8627,6 +8870,19 @@ export class OrchestrationService {
    * `prepareStart` and a respawn (`withApprovalPostureForStart`) write it,
    * each after the reserved-key strip.
    */
+  /** #1796: the grantor beside the thread's latest start stamp, if any. */
+  private readStartConfinementGrantor(
+    threadId: string,
+  ): ClientOriginActor | undefined {
+    const metadata = (
+      this.options.eventStore?.latestEventByMethod(threadId, 'session.started')
+        ?.payload as { metadata?: Record<string, unknown> } | undefined
+    )?.metadata;
+    return confinementGrantor({
+      actor: metadata?.[STATION_CONFINEMENT_GRANTOR_METADATA_KEY],
+    });
+  }
+
   private readStartConfinementStamp(threadId: string): unknown {
     const metadata = (
       this.options.eventStore?.latestEventByMethod(threadId, 'session.started')
@@ -9840,3 +10096,27 @@ function bucketCount(count: number): string {
 }
 
 export { messageSearchExcerpt } from './session-transcript-reads.js';
+
+/**
+ * #1796: the actor a `host` stamp names as its grantor: a device or the
+ * operator, from a server-derived client origin (or a stored stamp read
+ * back). Anything else records no grantor.
+ */
+function confinementGrantor(
+  origin: { actor?: unknown } | undefined,
+): ClientOriginActor | undefined {
+  const actor = origin?.actor as
+    | { kind?: unknown; deviceId?: unknown }
+    | undefined;
+  if (actor?.kind === 'operator') return { kind: 'operator' };
+  if (
+    actor?.kind === 'device' &&
+    typeof actor.deviceId === 'string' &&
+    actor.deviceId
+  )
+    return { kind: 'device', deviceId: actor.deviceId };
+  return undefined;
+}
+
+/** #1796: how many unattributed live `host` sessions a revocation lists. */
+const UNATTRIBUTED_HOST_START_LIMIT = 50;

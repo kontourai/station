@@ -282,17 +282,17 @@ export async function runDeviceScopeCommand(
     return;
   }
   let updated: DeviceAccessRow | undefined;
+  let answer: unknown;
   try {
-    updated = parseDevice(
-      await channel.request(
-        `/api/pairing/devices/${encodeURIComponent(device.id)}/scope`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scope: next, expectedScope: device.scope }),
-        },
-      ),
+    answer = await channel.request(
+      `/api/pairing/devices/${encodeURIComponent(device.id)}/scope`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: next, expectedScope: device.scope }),
+      },
     );
+    updated = parseDevice(answer);
   } catch (error) {
     if ((error as { code?: unknown }).code === 'scope_not_grantable')
       throw new Error(
@@ -311,6 +311,93 @@ export async function runDeviceScopeCommand(
   write(
     `Updated. Live terminal and voice connections of this device reconnect under the new access.`,
   );
+  reportFullAccessRevocation(answer, write);
+}
+
+const RESET_WAS: Record<string, string> = {
+  never: 'its full-access decision',
+  'default-reaching-full-access':
+    'its Default pick, which resolved to full access',
+  'host-start': 'a session it started at full access',
+};
+const STILL_REASON: Record<string, string> = {
+  'operator-decision': "the operator's own decision",
+  'another-device-decision': "another device's decision",
+  'unattributed-decision': 'a decision with no recorded author (older Station)',
+  'agent-default': "the Agent's default approval mode",
+  'station-default': "the Station's default approval mode",
+};
+
+/**
+ * #1796 (G3): what removing full access reset, and what stays at full
+ * access for another reason. A reset that failed on the Station is an error.
+ */
+function reportFullAccessRevocation(
+  answer: unknown,
+  write: (line: string) => void,
+): void {
+  const record =
+    answer && typeof answer === 'object'
+      ? (answer as Record<string, unknown>)
+      : {};
+  if (record.fullAccessRevocationError !== undefined)
+    throw new Error(
+      'The scope was changed, but Station could not reset the conversations this device had put at full access. They keep their current approval mode until someone changes it. Check the Station log.',
+    );
+  const report = record.fullAccessRevocation as
+    | {
+        reset?: Array<{ conversationId?: unknown; was?: unknown }>;
+        stillFullAccess?: Array<{ conversationId?: unknown; reason?: unknown }>;
+        unattributedHostStarts?: {
+          sessions?: Array<{ conversationId?: unknown; startedAt?: unknown }>;
+          total?: unknown;
+        };
+      }
+    | undefined;
+  if (!report || typeof report !== 'object') return;
+  const reset = Array.isArray(report.reset) ? report.reset : [];
+  const still = Array.isArray(report.stillFullAccess)
+    ? report.stillFullAccess
+    : [];
+  const unattributed = Array.isArray(report.unattributedHostStarts?.sessions)
+    ? report.unattributedHostStarts.sessions
+    : [];
+  const unattributedTotal =
+    typeof report.unattributedHostStarts?.total === 'number'
+      ? report.unattributedHostStarts.total
+      : unattributed.length;
+  const id = (value: unknown) => terminalSafeText(String(value)).slice(0, 128);
+  if (reset.length === 0 && still.length === 0 && unattributed.length === 0) {
+    write('No conversation was at full access through this device.');
+    return;
+  }
+  if (reset.length > 0) {
+    write(
+      'Reset to Ask (a turn already running finishes first; the next one asks):',
+    );
+    for (const entry of reset)
+      write(
+        `  ${id(entry.conversationId)}  was: ${RESET_WAS[String(entry.was)] ?? id(entry.was)}`,
+      );
+  }
+  if (still.length > 0) {
+    write('Still at full access, not changed:');
+    for (const entry of still)
+      write(
+        `  ${id(entry.conversationId)}  because of ${STILL_REASON[String(entry.reason)] ?? id(entry.reason)}`,
+      );
+  }
+  if (unattributed.length > 0) {
+    write(
+      'Unattributed host start: still at full access, not changed (started before Station recorded who granted it; it may be this device):',
+    );
+    for (const entry of unattributed)
+      write(`  ${id(entry.conversationId)}  started ${id(entry.startedAt)}`);
+    if (unattributedTotal > unattributed.length)
+      write(
+        `  … and ${unattributedTotal - unattributed.length} more (${unattributedTotal} in all).`,
+      );
+  }
 }
 
 /** The grantable scopes, from the contracts' own vocabulary and meanings. */
