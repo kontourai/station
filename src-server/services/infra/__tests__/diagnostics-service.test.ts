@@ -11,8 +11,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   diagnosticsBundleErrors: { add: vi.fn() },
 }));
 
-const { DiagnosticsService, MAX_DIAGNOSTIC_LOG_BYTES, readLogTail } =
-  await import('../diagnostics-service.js');
+const { DiagnosticsService } = await import('../diagnostics-service.js');
 
 const tempDirs: string[] = [];
 
@@ -300,17 +299,42 @@ describe('DiagnosticsService', () => {
   });
 });
 
-describe('readLogTail', () => {
-  test('returns at most the last 256 KiB of a log', async () => {
+describe('bundled server log', () => {
+  test('carries at most the last 256 KiB of the configured log', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'station-diagnostics-'));
     tempDirs.push(dir);
-    const path = join(dir, 'server.log');
-    writeFileSync(path, `discard-${'x'.repeat(MAX_DIAGNOSTIC_LOG_BYTES)}tail`);
+    const logPath = join(dir, 'server.log');
+    const limit = 256 * 1024;
+    writeFileSync(logPath, `discard-${'x'.repeat(limit)}tail`);
+    // Default dependencies read the log; only the unrelated sections are stubbed.
+    const service = new DiagnosticsService(dir, {
+      collectDoctor: async () => doctorReport('ok'),
+      readConfig: async () => ({}),
+      logPath,
+    });
 
-    const logs = await readLogTail(path);
+    const { logs } = await service.generateBundle();
 
-    expect(Buffer.byteLength(logs)).toBe(MAX_DIAGNOSTIC_LOG_BYTES);
-    expect(logs.endsWith('tail')).toBe(true);
-    expect(logs.startsWith('discard-')).toBe(false);
+    expect(Buffer.byteLength(logs ?? '')).toBe(limit);
+    expect(logs?.endsWith('tail')).toBe(true);
+    expect(logs?.startsWith('discard-')).toBe(false);
+  });
+
+  test('cuts the log on a character boundary', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'station-diagnostics-'));
+    tempDirs.push(dir);
+    const logPath = join(dir, 'server.log');
+    // 3-byte characters: the last 256 KiB (262144 = 3 * 87381 + 1) starts one
+    // byte into a character, which must be dropped rather than mangled.
+    writeFileSync(logPath, '\u20ac'.repeat(100_000));
+    const service = new DiagnosticsService(dir, {
+      collectDoctor: async () => doctorReport('ok'),
+      readConfig: async () => ({}),
+      logPath,
+    });
+
+    const { logs } = await service.generateBundle();
+
+    expect(logs).toBe('\u20ac'.repeat(87_381));
   });
 });
