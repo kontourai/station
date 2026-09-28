@@ -13,7 +13,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { loadProductLawManifest } from '../lib/product-laws.mjs';
 import { attachCiFastDiagnostics } from '../lib/verification-ci-fast-diagnostics.mjs';
+import { runProductLawGate } from '../product-law-gate.mjs';
 import {
   changedDeadlineFromEnv,
   changedPaths,
@@ -22,6 +24,7 @@ import {
   parseRelatedTestDiscovery,
   planChangedVerificationShards,
   planChangedVitestExecutions,
+  productLawEvidenceTests,
   RELATED_DISCOVERY_FLOOR_MS,
   RELATED_DISCOVERY_RESERVE_MS,
   relatedDiscoveryTimeoutMs,
@@ -33,7 +36,10 @@ import {
   validateChangedVerificationReceipt,
   validateSelectedTestFiles,
 } from '../run-changed-verification.mjs';
-import { SELECTOR_DEFERRED_EXIT_CODE } from '../run-ci-fast.mjs';
+import {
+  FAST_STATIC_COMMANDS,
+  SELECTOR_DEFERRED_EXIT_CODE,
+} from '../run-ci-fast.mjs';
 import {
   buildTestImpactManifest,
   E2E_CONTRACT_BOUNDARIES,
@@ -494,7 +500,7 @@ describe('changed verification selection', () => {
       expect.arrayContaining([
         'packages/contracts/src/__tests__/workspace-pane.test.ts',
         'packages/sdk/src/__tests__/workspacePaneConformance.test.ts',
-        'packages/sdk/src/__tests__/workspace-pane-browser-bundle.test.ts',
+        'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
       ]),
     );
   });
@@ -853,7 +859,7 @@ describe('changed verification selection', () => {
       expect.arrayContaining([
         'packages/contracts/src/__tests__/workspace-file-preview.test.ts',
         'packages/sdk/src/__tests__/workspace-file-preview-query.integration.test.tsx',
-        'packages/sdk/src/__tests__/workspace-file-preview-browser-bundle.test.ts',
+        'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
       ]),
     );
   });
@@ -925,7 +931,7 @@ describe('changed verification selection', () => {
     ]) {
       const selection = selectChangedVerification([path]);
       expect(selection.tests.map((entry) => entry.path)).toContain(
-        'packages/sdk/src/__tests__/workspace-pane-browser-bundle.test.ts',
+        'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
       );
     }
   });
@@ -1924,16 +1930,171 @@ setInterval(() => {}, 1000);`,
     expect(result.productLaws).toEqual([
       'station.queue-dispatch.ordered-drain',
     ]);
-    expect(result.selection.lanes).toContainEqual({
-      id: 'ci-fast',
-      reasons: [
-        'product-law disposition: station.queue-dispatch.ordered-drain',
-      ],
+    // #2887: the law adds its evidence; it does not defer the diff.
+    expect(result.selection.lanes).toEqual([]);
+    expect(result.selection.escalated).toBe(false);
+    expect(result.selection.relatedPaths).toEqual([
+      'src-ui/src/hooks/orchestration/queueDrain.ts',
+    ]);
+    expect(result.selection.tests).toContainEqual({
+      path: 'src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts',
+      reasons: expect.arrayContaining([
+        'product law station.queue-dispatch.ordered-drain: its observation suite (product-law-gate also runs it in the ci:fast statics)',
+        'product law station.queue-dispatch.ordered-drain: its fault-injection suite (product-law-gate also runs it in the ci:fast statics)',
+      ]),
     });
     expect(renderChangedVerificationSummary(result)).toContain(
       'product laws: station.queue-dispatch.ordered-drain',
     );
   });
+  test('a law path runs its related suites and the law observation end to end (#2887)', async () => {
+    const run = reportedRun();
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: ['src-ui/src/hooks/orchestration/queueDrain.ts'],
+      }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    // Related discovery ran (the diff's own selection) ...
+    expect(
+      run.mock.calls.some(([, args]) => (args as string[]).includes('--eval')),
+    ).toBe(true);
+    // ... and the law's observation suite ran beside it.
+    const commands = result.executed.flatMap((execution) => execution.command);
+    expect(commands).toContain(
+      './src-ui/src/hooks/orchestration/__tests__/queueDrain.test.ts',
+    );
+    expect(result.selection.lanes).toEqual([]);
+    expect(result.receipt.terminal.status).toBe('completed');
+    expect(result.exitCode).toBe(0);
+  });
+  test('product-law-gate observes every law in both phases with no changed-path input', async () => {
+    const manifest = loadProductLawManifest({ rootDir: process.cwd() });
+    expect(manifest.laws.length).toBeGreaterThan(0);
+    const observed: Array<Record<string, unknown>> = [];
+    // The gate is given no changed paths at all: nothing about a diff can
+    // narrow which laws it observes.
+    const result = await runProductLawGate({
+      rootDir: process.cwd(),
+      observe: async (observation: Record<string, unknown>) => {
+        observed.push(observation);
+        return { status: 'PASS' };
+      },
+    });
+    expect(result.errors).toEqual([]);
+    // Every law, in both phases: no path filter decides which laws run.
+    expect(
+      observed.map(({ lawId, phase }) => `${lawId}:${phase}`).sort(),
+    ).toEqual(
+      manifest.laws
+        .flatMap((law: { id: string }) => [
+          `${law.id}:behavior`,
+          `${law.id}:fault-injection`,
+        ])
+        .sort(),
+    );
+  });
+
+  test('law evidence is selected only as a vitest-file with a test file', () => {
+    const law = (evidence: Record<string, unknown>) => ({
+      laws: [
+        {
+          id: 'station.example.law',
+          observation: {
+            kind: 'vitest-file',
+            testFile: 'scripts/__tests__/observed.test.ts',
+            selector: 'x',
+          },
+          faultInjection: evidence,
+        },
+      ],
+    });
+    expect(
+      productLawEvidenceTests(
+        law({
+          kind: 'vitest-file',
+          testFile: 'scripts/__tests__/injected.test.ts',
+          selector: 'y',
+        }),
+        ['station.example.law'],
+      ).map(({ path }) => path),
+    ).toEqual([
+      'scripts/__tests__/observed.test.ts',
+      'scripts/__tests__/injected.test.ts',
+    ]);
+    expect(() =>
+      productLawEvidenceTests(law({ kind: 'playwright', spec: 'x' }), [
+        'station.example.law',
+      ]),
+    ).toThrow(
+      "product law station.example.law has fault-injection evidence of kind 'playwright' without a Vitest test file",
+    );
+    expect(() =>
+      productLawEvidenceTests(law({ kind: 'vitest-file' }), [
+        'station.example.law',
+      ]),
+    ).toThrow(
+      "product law station.example.law has fault-injection evidence of kind 'vitest-file' without a Vitest test file",
+    );
+    // A law the diff does not name is never inspected.
+    expect(productLawEvidenceTests(law({ kind: 'playwright' }), [])).toEqual(
+      [],
+    );
+  });
+
+  test('every product law is observed by the ci:fast statics, which is why a law path need not defer', () => {
+    // product-law-gate runs inside verification:policy:gate, a ci:fast
+    // static, and evaluates every law in the manifest.
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts['verification:policy:gate']).toContain(
+      'node scripts/product-law-gate.mjs',
+    );
+    expect(
+      FAST_STATIC_COMMANDS.some(
+        ([command, args]) =>
+          command === 'npm' &&
+          args[0] === 'run' &&
+          args[1] === 'verification:policy:gate',
+      ),
+    ).toBe(true);
+  });
+  test.each([
+    [['docs-private/notes.bin']],
+    [
+      [
+        'src-ui/src/hooks/orchestration/queueDrain.ts',
+        'docs-private/notes.bin',
+      ],
+    ],
+  ])(
+    'a truly unknown path still defers, law path or not: %j',
+    async (paths) => {
+      const result = await runChangedVerification(
+        ['--base=origin/main', '--explain'],
+        {
+          root: process.cwd(),
+          changedPathsFn: () => ({ mergeBase: 'base-sha', paths }),
+          collectProvenance: provenance,
+          writeReceipt: vi.fn(),
+        },
+      );
+      expect(result.selection.escalated).toBe(true);
+      expect(result.selection.lanes).toEqual([
+        expect.objectContaining({
+          id: 'ci-fast',
+          reasons: expect.arrayContaining([
+            'unknown changed path: docs-private/notes.bin',
+          ]),
+        }),
+      ]);
+    },
+  );
   test('renders a bounded terminal handoff while retaining full selection only in the artifact', () => {
     const output = renderChangedVerificationSummary({
       paths: Array.from({ length: 20 }, (_, index) => `src/${index}.ts`),

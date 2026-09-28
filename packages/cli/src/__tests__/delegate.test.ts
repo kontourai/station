@@ -106,6 +106,16 @@ describe('station delegate over HTTP', () => {
     pathname: string;
     body: Record<string, unknown>;
   }> = [];
+  // Every request the mock server receives, reads included, so a test can
+  // prove a path issued none (or no status read).
+  const requestLog: Array<{ method: string; pathname: string }> = [];
+  const statusReads = () =>
+    requestLog.filter(
+      ({ method, pathname }) =>
+        method === 'GET' &&
+        /^\/api\/orchestration\/delegations\/[^/]+$/.test(pathname) &&
+        pathname !== '/api/orchestration/delegations/options',
+    );
   // #2459: the client-origin header each delegation POST carried.
   const delegationOrigins: Array<string | undefined> = [];
   // Capability-delivery disclosure fixtures: when set, the mock server
@@ -122,6 +132,7 @@ describe('station delegate over HTTP', () => {
     consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
     consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     requestBodies.length = 0;
+    requestLog.length = 0;
     delegationOrigins.length = 0;
     tasks.clear();
     conversations.clear();
@@ -144,6 +155,7 @@ describe('station delegate over HTTP', () => {
     server = createServer(async (req, res) => {
       const method = req.method || 'GET';
       const url = new URL(req.url || '/', 'http://127.0.0.1');
+      requestLog.push({ method, pathname: url.pathname });
       const body = method === 'POST' ? await readBody(req) : undefined;
       if (method === 'POST' && body) {
         requestBodies.push({ pathname: url.pathname, body });
@@ -1879,14 +1891,30 @@ Nothing was sent at another approval mode.`);
 
   test('--json emits the one stable shape for every verb (AC10)', async () => {
     const { runCli } = await import('../cli.js');
+    const emitted = async (args: string[]) => {
+      consoleLog.mockClear();
+      await runCli(['delegate', ...args, '--json', `--api-base=${apiBase}`]);
+      return JSON.parse(
+        consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+      ) as Record<string, unknown> & { data: { taskId?: string } };
+    };
+    const created = await emitted(['--agent=default', 'Ship it']);
+    const taskId = String(created.data.taskId);
+    const envelopes: Array<[string, Record<string, unknown>]> = [
+      ['create', created],
+      ['status', await emitted(['status', taskId])],
+      ['events', await emitted(['events', taskId])],
+      ['respond', await emitted(['respond', taskId, 'req-1', 'accept'])],
+      ['interrupt', await emitted(['interrupt', taskId])],
+      ['continue', await emitted(['continue', taskId, 'Keep going'])],
+      ['targets', await emitted(['targets'])],
+    ];
 
-    await runCli(['delegate', 'targets', '--json', `--api-base=${apiBase}`]);
-    const payload = JSON.parse(
-      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
-    );
-    expect(Object.keys(payload).sort()).toEqual(['data', 'kind', 'ok']);
-    expect(payload.ok).toBe(true);
-    expect(payload.kind).toBe('delegate.targets');
+    for (const [verb, payload] of envelopes) {
+      expect(Object.keys(payload).sort(), verb).toEqual(['data', 'kind', 'ok']);
+      expect(payload.ok, verb).toBe(true);
+      expect(payload.kind, verb).toBe(`delegate.${verb}`);
+    }
   });
 
   test('a missing positional is a usage error and exits 1 before any request (AC9)', async () => {
@@ -1895,6 +1923,7 @@ Nothing was sent at another approval mode.`);
     await expect(
       runCli(['delegate', 'status', `--api-base=${apiBase}`]),
     ).rejects.toThrow('Missing required argument: task id');
+    expect(requestLog).toEqual([]);
   });
 
   test('a 400 delegation rejection exits 3, distinct from a transport failure (AC9)', async () => {
@@ -2123,6 +2152,8 @@ Nothing was sent at another approval mode.`);
     expect(payload.kind).toBe('delegate.create');
     expect(payload.data.status).toBe('dispatched');
     expect(payload.data.pendingRequest).toBeUndefined();
+    // The default mode never probes the task's status after creating it.
+    expect(statusReads()).toEqual([]);
   });
 
   test('--on-request=fail on create exits distinctly with the pending requestId when one is already open (station#979 AC4 parity)', async () => {
@@ -2149,6 +2180,7 @@ Nothing was sent at another approval mode.`);
     expect(payload.data.pendingRequest.respondCommand).toMatch(
       /^station delegate respond 'task:\d+' 'req-pending-1' <accept\|acceptForSession\|decline\|cancel>$/,
     );
+    expect(statusReads()).toHaveLength(1);
   });
 
   test('--on-request=fail on create prints the ordinary success output when no request is pending (station#979)', async () => {

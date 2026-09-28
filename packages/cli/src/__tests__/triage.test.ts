@@ -599,28 +599,28 @@ describe('station triage', () => {
         doctor: { ...result.context.doctor, status: 'maybe' },
       } as never),
     ).toThrow('invalid bounded values');
-    if (result.context.remote.status === 'unavailable') {
-      expect(() =>
-        validateTriageContext({
-          ...result.context,
-          remote: {
-            status: 'available',
-            app: {
-              version: '1',
-              nodeVersion: '1',
-              platform: 'test',
-              build: { sourceSha: 'a'.repeat(40), extra: 'no' },
-            },
-            doctor: {
-              checks: [],
-              recommendation: '',
-              chatReady: null,
-              runtimeReady: null,
-            },
-            logs: { status: 'available', tail: '' },
+    // The remote block is replaced wholesale, so this rejection does not
+    // depend on whatever remote status this machine observed.
+    expect(() =>
+      validateTriageContext({
+        ...result.context,
+        remote: {
+          status: 'available',
+          app: {
+            version: '1',
+            nodeVersion: '1',
+            platform: 'test',
+            build: { sourceSha: 'a'.repeat(40), extra: 'no' },
           },
-        } as never),
-      ).toThrow('invalid remote diagnostics');
-    }
+          doctor: {
+            checks: [],
+            recommendation: '',
+            chatReady: null,
+            runtimeReady: null,
+          },
+          logs: { status: 'available', tail: '' },
+        },
+      } as never),
+    ).toThrow('invalid remote diagnostics');
   });
 });

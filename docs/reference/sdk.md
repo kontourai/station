@@ -863,8 +863,7 @@ host. `/boot` is not in the package export map; external consumers must not
 infer an importable subpath from this source file. The host captures the
 origin and request authority before fetching; its guard verifies both that
 captured authority and the destination client. Seeding checks it before every
-cache write and preserves newer individual reads. The ambient legacy boot helper
-remains available for existing callers; it is not the multi-home host path.
+cache write and preserves newer individual reads.
 
 The [SDK Project queries](../../packages/sdk/src/query-domains/workspaceProjects.ts),
 [host Project context](../../src-ui/src/contexts/ProjectsContext.tsx),

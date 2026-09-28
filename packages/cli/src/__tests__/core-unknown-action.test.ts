@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCoreCommand } from '../commands/core.js';
+import { actionsFor } from '../help.js';
 
 /**
  * Unknown-input parity (#CLI audit item 4). `station connections bogus` already
@@ -45,9 +46,20 @@ describe('core command unknown-action messages', () => {
   });
 
   it('names the valid actions when the action word is missing entirely', async () => {
-    await expect(runCoreCommand('tasks', [])).rejects.toThrow(
-      /Missing action for tasks\. Use 'list', 'get', 'create', 'attach-turn', 'show-turn', 'attach-input', 'show-inputs', 'attach-result', 'show-results', 'basis', 'show-support', 'list-support-bundles', 'list-support-claims', 'attach-support', 'replace-support', 'remove-support', 'list-outputs', 'get-output', 'keep-output', 'download-output', 'delete-output'\./,
+    // The exact tasks inventory is pinned once, in cli-help.test.ts; here the
+    // contract is that the refusal names every action that vocabulary owns.
+    const error = await runCoreCommand('tasks', []).then(
+      () => undefined,
+      (caught: unknown) => caught,
     );
+    expect(error).toBeInstanceOf(Error);
+    const message = (error as Error).message;
+    expect(message).toMatch(/^Missing action for tasks\. Use /);
+    const actions = actionsFor('tasks') ?? [];
+    expect(actions.length).toBeGreaterThan(0);
+    for (const action of actions) {
+      expect(message).toContain(`'${action}'`);
+    }
   });
 
   it('covers every core resource, not just agents', async () => {

@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-28T15:27:48Z | nightly-desktop | 0.1.11-nightly.2462.1 | `a30f084` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36429714384) |
+| 2026-09-28T15:27:44Z | nightly-android | 0.1.11-nightly.2462.1 | `a30f084` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36429714384) |
+| 2026-09-28T14:45:05Z | nightly-npm | 0.6.0-nightly.2462.36429714384 | `a30f084` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36429714384) |
 | 2026-09-28T06:21:17Z | nightly-desktop | 0.1.11-nightly.2462 | `ef6e2f0` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36380121606) |
 | 2026-09-28T06:21:14Z | nightly-android | 0.1.11-nightly.2462 | `ef6e2f0` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/36380121606) |
 | 2026-09-28T06:04:26Z | nightly-npm | 0.6.0-nightly.2462.36380121606 | `ef6e2f0` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/36380121606) |
@@ -179,6 +182,78 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-28T15:27:48Z · nightly-desktop · 0.1.11-nightly.2462.1
+
+- Ship SHA: `a30f084b3b93f254337127cb18907d041570f9fc`
+- Artifact built at: `2026-09-28T14:00:15.651Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 36429714384)
+
+### Changelog
+
+Commits since `ef6e2f0` ([full sha](https://github.com/kontourai/station/commit/ef6e2f0eabdb2c7aea77b4b76a485035f4e0c00a)):
+
+**Fixes**
+
+- [#2904](https://github.com/kontourai/station/pull/2904) fix(access): actionable full-access refusals, device scope commands, and revocation that resets what a device granted (#1796)
+- [#2840](https://github.com/kontourai/station/pull/2840) fix(plugins): strip git metadata from agent-proposed local installs
+
+**Other**
+
+- [#2877](https://github.com/kontourai/station/pull/2877) test(server): audit batch 29, runtime bootstrap tests reach their seams
+- [#2863](https://github.com/kontourai/station/pull/2863) test: audit batch 25 - pin push-gateway ceilings, prove OTel identity and signing transitions, drop test seams
+- [#2891](https://github.com/kontourai/station/pull/2891) test(server): audit batch 33, security, voice, adapter and knowledge tests reach their seams
+- [#2890](https://github.com/kontourai/station/pull/2890) test(ui): audit batch 34, shell and sidebar suites reach their owners
+- [#2900](https://github.com/kontourai/station/pull/2900) chore: test-audit owner decisions (batch 66)
+
+## 2026-09-28T15:27:44Z · nightly-android · 0.1.11-nightly.2462.1
+
+- Ship SHA: `a30f084b3b93f254337127cb18907d041570f9fc`
+- Artifact built at: `2026-09-28T13:48:58.795Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 36429714384)
+
+### Changelog
+
+Commits since `ef6e2f0` ([full sha](https://github.com/kontourai/station/commit/ef6e2f0eabdb2c7aea77b4b76a485035f4e0c00a)):
+
+**Fixes**
+
+- [#2904](https://github.com/kontourai/station/pull/2904) fix(access): actionable full-access refusals, device scope commands, and revocation that resets what a device granted (#1796)
+- [#2840](https://github.com/kontourai/station/pull/2840) fix(plugins): strip git metadata from agent-proposed local installs
+
+**Other**
+
+- [#2877](https://github.com/kontourai/station/pull/2877) test(server): audit batch 29, runtime bootstrap tests reach their seams
+- [#2863](https://github.com/kontourai/station/pull/2863) test: audit batch 25 - pin push-gateway ceilings, prove OTel identity and signing transitions, drop test seams
+- [#2891](https://github.com/kontourai/station/pull/2891) test(server): audit batch 33, security, voice, adapter and knowledge tests reach their seams
+- [#2890](https://github.com/kontourai/station/pull/2890) test(ui): audit batch 34, shell and sidebar suites reach their owners
+- [#2900](https://github.com/kontourai/station/pull/2900) chore: test-audit owner decisions (batch 66)
+
+## 2026-09-28T14:45:05Z · nightly-npm · 0.6.0-nightly.2462.36429714384
+
+- Ship SHA: `a30f084b3b93f254337127cb18907d041570f9fc`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2462.36429714384 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `ef6e2f0` ([full sha](https://github.com/kontourai/station/commit/ef6e2f0eabdb2c7aea77b4b76a485035f4e0c00a)):
+
+**Fixes**
+
+- [#2904](https://github.com/kontourai/station/pull/2904) fix(access): actionable full-access refusals, device scope commands, and revocation that resets what a device granted (#1796)
+- [#2840](https://github.com/kontourai/station/pull/2840) fix(plugins): strip git metadata from agent-proposed local installs
+
+**Other**
+
+- [#2877](https://github.com/kontourai/station/pull/2877) test(server): audit batch 29, runtime bootstrap tests reach their seams
+- [#2863](https://github.com/kontourai/station/pull/2863) test: audit batch 25 - pin push-gateway ceilings, prove OTel identity and signing transitions, drop test seams
+- [#2891](https://github.com/kontourai/station/pull/2891) test(server): audit batch 33, security, voice, adapter and knowledge tests reach their seams
+- [#2890](https://github.com/kontourai/station/pull/2890) test(ui): audit batch 34, shell and sidebar suites reach their owners
+- [#2900](https://github.com/kontourai/station/pull/2900) chore: test-audit owner decisions (batch 66)
 
 ## 2026-09-28T06:21:17Z · nightly-desktop · 0.1.11-nightly.2462
 

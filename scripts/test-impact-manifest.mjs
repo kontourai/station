@@ -681,7 +681,6 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
 export const REPO_SCAN_SUITES = Object.freeze([
   'packages/basis-pane/src/__tests__/package-boundary.test.ts',
   'packages/board-pane/src/__tests__/package-boundary.test.ts',
-  'packages/sdk/src/__tests__/keyedQueryDefaults.test.ts',
   'packages/sdk/src/__tests__/publicBarrel.test.ts',
   'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
@@ -1403,7 +1402,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'packages/contracts/src/__tests__/workspace-file-preview.test.ts',
       'packages/sdk/src/__tests__/workspace-file-preview-query.integration.test.tsx',
-      'packages/sdk/src/__tests__/workspace-file-preview-browser-bundle.test.ts',
+      'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
       'packages/sdk/src/__tests__/publicBarrel.test.ts',
     ],
     reason: 'Workspace file preview public contract',
@@ -1447,7 +1446,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   {
     pattern: 'packages/sdk/package.json',
     tests: [
-      'packages/sdk/src/__tests__/workspace-file-preview-browser-bundle.test.ts',
+      'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
       'packages/sdk/src/__tests__/publicBarrel.test.ts',
     ],
     reason: 'Workspace file preview SDK subpath export',
@@ -1456,7 +1455,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     pattern: 'packages/sdk/src/workspace-file-preview.ts',
     tests: [
       'packages/sdk/src/__tests__/workspace-file-preview-query.integration.test.tsx',
-      'packages/sdk/src/__tests__/workspace-file-preview-browser-bundle.test.ts',
+      'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
       'packages/sdk/src/__tests__/publicBarrel.test.ts',
     ],
     reason: 'Workspace file preview SDK opt-in subpath',
@@ -1492,7 +1491,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
       'packages/contracts/src/__tests__/workspace-pane-layout-adapter.test.ts',
       'packages/sdk/src/__tests__/workspacePaneConformance.test.ts',
       'packages/sdk/src/__tests__/publicBarrel.test.ts',
-      'packages/sdk/src/__tests__/workspace-pane-browser-bundle.test.ts',
+      'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
     ],
     reason: 'Workspace Pane public contract',
   },
@@ -1501,7 +1500,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'packages/contracts/src/__tests__/workspace-pane.test.ts',
       'packages/sdk/src/__tests__/workspacePaneConformance.test.ts',
-      'packages/sdk/src/__tests__/workspace-pane-browser-bundle.test.ts',
+      'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
     ],
     reason: 'Workspace Pane declared renderer selection contract',
   },
@@ -1531,7 +1530,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     tests: [
       'packages/sdk/src/__tests__/workspacePaneConformance.test.ts',
       'packages/sdk/src/__tests__/publicBarrel.test.ts',
-      'packages/sdk/src/__tests__/workspace-pane-browser-bundle.test.ts',
+      'packages/sdk/src/__tests__/browser-entry-bundles.test.ts',
     ],
     reason: 'Workspace Pane SDK opt-in subpath',
   },

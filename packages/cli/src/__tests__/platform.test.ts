@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   captureStableProcessFingerprint,
@@ -13,6 +14,7 @@ import {
   IS_WINDOWS,
   inspectProcessFingerprint,
   killProcessTree,
+  promptYN,
   sleepSync,
 } from '../commands/platform.js';
 import {
@@ -509,23 +511,40 @@ describe('killProcessTree', () => {
   }, 15_000);
 });
 
-// ─── promptYN — logic coverage ───────────────────────────────────────────────
+// ─── promptYN ─────────────────────────────────────────────────────────────────
 
-describe('promptYN (answer parsing logic)', () => {
-  // The readline interaction is integration-tested manually; here we verify
-  // the acceptance logic used inside promptYN.
-  const accepts = (raw: string) => raw.trim().toLowerCase() === 'y';
-
-  it('"y" is accepted', () => expect(accepts('y')).toBe(true));
-  it('"Y" is accepted', () => expect(accepts('Y')).toBe(true));
-  it('"y " with trailing space is accepted', () =>
-    expect(accepts('y ')).toBe(true));
-  it('"n" is rejected', () => expect(accepts('n')).toBe(false));
-  it('"N" is rejected', () => expect(accepts('N')).toBe(false));
-  it('empty string is rejected', () => expect(accepts('')).toBe(false));
-  it('whitespace-only is rejected', () => expect(accepts('  ')).toBe(false));
-  it('"yes" is rejected (must be single y)', () =>
-    expect(accepts('yes')).toBe(false));
+describe('promptYN', () => {
+  // Install and upgrade consent defaults to no: only a lone "y" (any case,
+  // surrounding whitespace ignored) is a yes.
+  it.each([
+    ['y\n', true],
+    [' Y \n', true],
+    ['\n', false],
+    ['n\n', false],
+    ['yes\n', false],
+  ])('answers %j with %s', async (input, expected) => {
+    const stdinDescriptor = Object.getOwnPropertyDescriptor(process, 'stdin');
+    const stdin = new PassThrough();
+    Object.defineProperty(process, 'stdin', {
+      configurable: true,
+      value: stdin,
+    });
+    const write = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+    try {
+      const answer = promptYN('Proceed?');
+      stdin.end(input);
+      await expect(answer).resolves.toBe(expected);
+      expect(
+        write.mock.calls.map(([chunk]) => String(chunk)).join(''),
+      ).toContain('Proceed? [y/N] ');
+    } finally {
+      write.mockRestore();
+      if (stdinDescriptor)
+        Object.defineProperty(process, 'stdin', stdinDescriptor);
+    }
+  });
 });
 
 // ─── createPathLink ───────────────────────────────────────────────────────────

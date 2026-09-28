@@ -718,16 +718,6 @@ describe('runCoreCommand', () => {
         }),
       }),
     );
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${LOOPBACK_API_BASE}/api/orchestration/chat/thread-1/continue`,
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          environment: { kind: 'current' },
-          message: 'hello there',
-        }),
-      }),
-    );
     expect(stdoutWrite).toHaveBeenCalledWith('Hello');
     expect(stdoutWrite).toHaveBeenCalledWith(' world');
   });
@@ -779,16 +769,6 @@ describe('runCoreCommand', () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      `${LOOPBACK_API_BASE}/api/orchestration/chat/thread-1/continue`,
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          environment: { kind: 'current' },
-          message: 'hello there',
-        }),
-      }),
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
       `${LOOPBACK_API_BASE}/api/orchestration/chat/thread-1/continue`,
       expect.objectContaining({
         method: 'POST',
