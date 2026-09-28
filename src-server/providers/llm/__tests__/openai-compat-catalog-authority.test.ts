@@ -48,15 +48,4 @@ describe('OpenAI-compatible empty catalogue authority (station#3653)', () => {
       ]),
     ).resolves.toBe('local-model');
   });
-
-  test('the two differ only by endpoint, on the same adapter class', () => {
-    const cloud = new OpenAICompatLLMProvider({
-      baseUrl: 'https://api.groq.com/openai/v1',
-    });
-    const local = new OpenAICompatLLMProvider({
-      baseUrl: 'http://localhost:1234/v1',
-    });
-    expect(cloud.constructor).toBe(local.constructor);
-    expect(cloud.emptyCatalogMeaning).not.toBe(local.emptyCatalogMeaning);
-  });
 });

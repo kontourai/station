@@ -1320,7 +1320,7 @@ describe('#2452 fix round: host ownership and data home', () => {
     expect(released).toEqual([host]);
   });
 
-  test("R6: production passes no data home, so the host uses the user's own; an override is explicit", () => {
+  test('R6: the serve host env moves XDG_DATA_HOME only for an explicit data home', () => {
     expect(museServeEnvOverrides()).toEqual({});
     expect(museServeEnvOverrides('/isolated/data')).toEqual({
       XDG_DATA_HOME: '/isolated/data',

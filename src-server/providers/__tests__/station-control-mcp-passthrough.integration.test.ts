@@ -2,8 +2,9 @@
  * Station#1157 review fix (HIGH): end-to-end regression through the FULL
  * seam a unit-level test of either layer alone can't prove — a real
  * (realistically-shaped) `station-control` integration record, exactly as
- * `runtime-default-agent.ts`'s `createRuntimeSelfIntegration` persists it
- * (env-bearing: `STATION_API_BASE`/`STATION_PORT`), through
+ * `ConfigLoader.loadIntegration` returns it (the persisted
+ * `createRuntimeSelfIntegration` record overlaid with the env-bearing
+ * `stationControlRuntimeIdentity`: `STATION_API_BASE`/`STATION_PORT`), through
  * `createSessionAgentResolver` (`session-agent-resolution.ts`) and then
  * `ClaudeAdapter` (`claude-adapter.ts`). The original session#1157 delivery
  * tested each layer in isolation with a fixture that dodged the exact bug:
@@ -49,7 +50,11 @@ vi.mock('../auth/cli-auth.js', () => ({
   runCliCommand: vi.fn().mockResolvedValue(null),
 }));
 
-import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { createRuntimeSelfIntegration } from '../../runtime/agents/runtime-default-agent.js';
+import {
+  builtinStationControlServerPath,
+  stationControlRuntimeIdentity,
+} from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
@@ -67,25 +72,19 @@ function createMockQuery() {
 }
 
 /**
- * Mirrors `runtime-default-agent.ts`'s `createRuntimeSelfIntegration` output
- * EXACTLY — this is what `configLoader.loadIntegration('station-control')`
- * actually returns in production (env-bearing), not a test-only env-less
- * fixture. The persisted port (9999) is deliberately DIFFERENT from the
- * running instance's port used below (4321), to prove the delivered env
- * comes from the adapter's own knowledge of ITS OWN bound port, never from
- * whatever is baked into this stale persisted record.
+ * What `configLoader.loadIntegration('station-control')` returns in
+ * production, composed from the real writers: the instance-independent record
+ * `createRuntimeSelfIntegration` persists, overlaid with the env-bearing
+ * `stationControlRuntimeIdentity` (ConfigLoader's builtin-runtime-identity
+ * overlay). Not a test-only env-less fixture. The loaded port (9999) is
+ * deliberately DIFFERENT from the running instance's port used below (4321),
+ * to prove the delivered env comes from the adapter's own knowledge of ITS
+ * OWN bound port, never from whatever this loaded record carries.
  */
 function realStationControlToolDef(): ToolDef {
   return {
-    id: 'station-control',
-    kind: 'mcp',
-    transport: 'stdio',
-    command: 'node',
-    args: [builtinStationControlServerPath()],
-    env: {
-      STATION_API_BASE: 'http://127.0.0.1:9999',
-      STATION_PORT: '9999',
-    },
+    ...createRuntimeSelfIntegration().selfIntegration,
+    ...stationControlRuntimeIdentity(9999),
   };
 }
 
@@ -130,7 +129,7 @@ describe('station#1157 e2e: resolver → Claude adapter delivers the REAL statio
     expect(resolved.agent?.toolServers).toEqual([
       {
         id: 'station-control',
-        displayName: undefined,
+        displayName: 'Station Control',
         transport: 'stdio',
         command: 'node',
         args: [builtinStationControlServerPath()],
