@@ -230,6 +230,25 @@ describe('full-run failure evidence retention', () => {
     }
   });
 
+  // The helper above is proven directly; this is the only proof main()'s
+  // finally-block still hands it the real retainer. Running main() needs a
+  // live Station and Playwright, so the wiring is read from source, loosely.
+  test('main hands the real bucket retainer to the settle step', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, '../run-e2e-suite.mjs'),
+      'utf8',
+    );
+    const settleCall = source.indexOf('await settleStartedE2ERun({');
+    expect(settleCall).toBeGreaterThanOrEqual(0);
+    const retainer = source.slice(
+      source.indexOf('retainEvidence:', settleCall),
+      source.indexOf('cleanUp:', settleCall),
+    );
+    expect(retainer).toMatch(
+      /^retainEvidence: \(\) =>\s+retainE2EBucketFailureEvidence\(\{[^}]*evidenceRoot: process\.env\.STATION_E2E_EVIDENCE_ROOT/,
+    );
+  });
+
   test('copies both product phase failures without retaining Playwright bookkeeping', () => {
     cleanupRoot = mkdtempSync(join(tmpdir(), 'station-e2e-retain-'));
     const resultRoot = join(cleanupRoot, 'test-results', 'e2e-product-fixture');

@@ -73,9 +73,16 @@ describe('realtime provider privacy boundaries', () => {
           body: { error: 'Internal error' },
         });
         expect(upstream).toHaveBeenCalledTimes(2);
-        expect(JSON.stringify([rejected, failed, logged])).not.toContain(
-          canary,
+        // JSON.stringify renders an Error as {}, yet a real logger or client
+        // prints its message; expand Errors so passing one along is visible.
+        const serialized = JSON.stringify(
+          [rejected, failed, logged],
+          (_key, value: unknown) =>
+            value instanceof Error
+              ? { message: value.message, stack: value.stack }
+              : value,
         );
+        expect(serialized).not.toContain(canary);
       } finally {
         vi.unstubAllGlobals();
       }
