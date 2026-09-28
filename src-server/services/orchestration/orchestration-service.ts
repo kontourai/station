@@ -155,7 +155,9 @@ import {
 } from '../../runtime/native-output-turn-grant.js';
 import {
   type FullAccessGrant,
+  fullAccessGrantor,
   isFullAccessGrant,
+  UnattributedFullAccessGrantError,
 } from '../../security/coding-authority.js';
 import {
   adapterSessionStartDuration,
@@ -224,7 +226,10 @@ import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
 import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
 import { ApprovalPosture, approvalKnobSupported } from './approval-posture.js';
-import { AttachedSessionAdoption } from './attached-session-adoption.js';
+import {
+  type AdoptionConfinement,
+  AttachedSessionAdoption,
+} from './attached-session-adoption.js';
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
 import { ChildWorkProjection } from './child-work-projection.js';
 import {
@@ -5204,6 +5209,10 @@ export class OrchestrationService {
             this.latestStartedMetadataOfThread(threadId),
         },
         prepareStart: async (postureInput, context, internal, adapter) => {
+          // #1796: a full-access grant that names no grantor would stamp an
+          // unconfined session nothing could revoke. Refused before the
+          // start does anything.
+          assertAttributedFullAccessGrant(context.fullAccessGrant);
           // #2436: the session starts in the conversation's recorded posture
           // (a continuation child, a handoff, or a pick its first send
           // carried, recorded before this start), else in the defaults
@@ -5335,11 +5344,13 @@ export class OrchestrationService {
           // decision that later moves off `never` does not leave a stamp
           // behind it.
           const hostGranted = isFullAccessGrant(context.fullAccessGrant);
-          // #1796: beside a `host` stamp, who granted it, from the request's
-          // server-derived origin, so revoking that device finds this start.
-          const grantor = hostGranted
-            ? confinementGrantor(context.clientOrigin)
-            : undefined;
+          // #1796: beside a `host` stamp, who granted it: the grantor the
+          // grant itself names (checked at the top of `prepareStart`), so
+          // revoking that device finds this start whichever path carried it.
+          const grantor =
+            hostGranted && context.fullAccessGrant
+              ? (fullAccessGrantor(context.fullAccessGrant) ?? undefined)
+              : undefined;
           startInput = {
             ...startInput,
             confinement,
@@ -5922,8 +5933,9 @@ export class OrchestrationService {
             command.idempotencyKey,
             effectiveOwnerAttribution(context ?? {}),
             // #2493: the adopted child's stamp records the adopting
-            // request's grant, like every other start.
-            isFullAccessGrant(context?.fullAccessGrant) ? 'host' : 'workspace',
+            // request's grant, like every other start, and (#1796) who
+            // granted it. A grant naming no grantor is refused.
+            adoptionConfinement(context?.fullAccessGrant),
           );
         case 'sendTurn': {
           // Monitor envelopes register here, at the one execution choke
@@ -10202,3 +10214,17 @@ function confinementGrantor(
 
 /** #1796: how many unattributed live `host` sessions a revocation lists. */
 const UNATTRIBUTED_HOST_START_LIMIT = 50;
+
+/** #1796: refuse a start whose full-access grant names no grantor. */
+function assertAttributedFullAccessGrant(grant: unknown): void {
+  if (isFullAccessGrant(grant) && !fullAccessGrantor(grant))
+    throw new UnattributedFullAccessGrantError();
+}
+
+/** #1796: an adoption's confinement stamp and grantor, from its grant. */
+function adoptionConfinement(grant: unknown): AdoptionConfinement {
+  if (!isFullAccessGrant(grant)) return { stamp: 'workspace' };
+  assertAttributedFullAccessGrant(grant);
+  const grantor = fullAccessGrantor(grant);
+  return grantor ? { stamp: 'host', grantor } : { stamp: 'workspace' };
+}

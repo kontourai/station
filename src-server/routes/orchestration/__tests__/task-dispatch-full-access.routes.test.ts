@@ -20,16 +20,28 @@ import {
   type PairingScopePreset,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import type {
+  ProviderSendTurnInput,
+  ProviderSession,
+  ProviderSessionStartInput,
+} from '../../../providers/adapter-shape.js';
+import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { createAgentDispatchActorResolver } from '../../../runtime/mcp/station-control-caller.js';
+import { configureDevicePairingHostRoutes } from '../../../runtime/routes/runtime-routes.js';
 import { isFullAccessGrant } from '../../../security/coding-authority.js';
 import { bindFullAccessRefusalIdentity } from '../../../security/full-access-refusal.js';
+import { isRuntimeRequestPrincipalCurrent } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventBus as RealEventBus } from '../../../services/orchestration/event-bus.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { sessionOwnerStampFor } from '../../../services/orchestration/session-owner-attribution.js';
 import {
   createTaskDispatcher,
@@ -49,7 +61,9 @@ import { createStarterWorkRoutes } from '../../starter-work.js';
 import { createTaskRoutes } from '../tasks.js';
 
 const roots: string[] = [];
-afterEach(() => {
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
   vi.unstubAllEnvs();
   for (const root of roots.splice(0))
     rmSync(root, { recursive: true, force: true });
@@ -94,7 +108,65 @@ const reservation: TaskDispatchReservation = {
   modelId: undefined,
 };
 
-async function fixture() {
+/**
+ * #1796 H1: an engine that persists what it was started with, so the
+ * session's start stamp and grantor are read back the way a turn reads them.
+ */
+class StampRecordingEngine {
+  readonly provider = 'claude' as const;
+  readonly metadata = {
+    displayName: 'claude',
+    description: 'task dispatch grant test engine',
+    capabilities: ['agent-runtime'],
+  };
+  readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
+  readonly turns: ProviderSendTurnInput[] = [];
+  private readonly sessions = new Map<string, ProviderSession>();
+  async startSession(input: ProviderSessionStartInput) {
+    const now = new Date().toISOString();
+    this.events.push({
+      eventId: `${input.threadId}:session.started`,
+      provider: this.provider,
+      threadId: input.threadId,
+      createdAt: now,
+      method: 'session.started',
+      sessionId: input.threadId,
+      metadata: { ...input.metadata },
+    } as CanonicalRuntimeEvent);
+    const session: ProviderSession = {
+      provider: this.provider,
+      threadId: input.threadId,
+      status: 'ready',
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.sessions.set(input.threadId, session);
+    return session;
+  }
+  async sendTurn(input: ProviderSendTurnInput) {
+    this.turns.push(input);
+    return { threadId: input.threadId, turnId: `turn-${this.turns.length}` };
+  }
+  async interruptTurn() {
+    return { outcome: 'no-active-turn' } as const;
+  }
+  async respondToRequest(): Promise<void> {}
+  async stopSession(threadId: string): Promise<void> {
+    this.sessions.delete(threadId);
+  }
+  async listSessions() {
+    return [...this.sessions.values()];
+  }
+  async hasSession(threadId: string) {
+    return this.sessions.has(threadId);
+  }
+  async stopAll(): Promise<void> {}
+  streamEvents(options?: { signal?: AbortSignal }) {
+    return this.events.iterable(options);
+  }
+}
+
+async function fixture(options: { realStarts?: boolean } = {}) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = mkdtempSync(join(tmpdir(), 'station-task-dispatch-grant-'));
   roots.push(root);
@@ -133,9 +205,59 @@ async function fixture() {
   const started: Array<Record<string, unknown> | undefined> = [];
   // And the principal each session is recorded as belonging to.
   const owners: Array<{ ownerUserId: string; ownerAttribution?: string }> = [];
+  // #1796 H1: with `realStarts`, the start goes to a real orchestration
+  // service the way `TaskGraphService`'s `startOrSeed` hands it: the Task
+  // session's start input, and the grant as its context.
+  const engine = new StampRecordingEngine();
+  const store = options.realStarts
+    ? new EventStore(join(root, 'orchestration.sqlite'))
+    : undefined;
+  const service = store
+    ? new OrchestrationService({
+        adapterRegistry: {
+          register() {},
+          get: (provider: string) =>
+            provider === engine.provider ? engine : undefined,
+          list: () => [engine],
+        },
+        eventBus: new RealEventBus(),
+        eventStore: store,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        isFullAccessGrantorCurrent: (deviceId: string) =>
+          security.deviceHoldsFullAccess(deviceId),
+      } as never)
+    : undefined;
+  if (service && store)
+    cleanups.push(async () => {
+      await service.shutdown();
+      store.close();
+    });
+  const startedThreads: string[] = [];
   const startOrSeed = vi.fn<TaskDispatchRemoteSessions['startOrSeed']>(
     async (_reservation, intent) => {
       started.push(intent.runtimeConfig?.modelOptions);
+      if (service) {
+        const threadId = `task-session-${startedThreads.length + 1}`;
+        startedThreads.push(threadId);
+        await service.dispatch(
+          {
+            type: 'startSession',
+            input: {
+              threadId,
+              provider: 'claude',
+              modelOptions: intent.runtimeConfig?.modelOptions,
+              metadata: { userId: intent.ownerUserId },
+            },
+          },
+          {
+            // Deliberately the grant alone (the shape the delta review
+            // probed): the grant names its own grantor.
+            ...(intent.fullAccessGrant
+              ? { fullAccessGrant: intent.fullAccessGrant }
+              : {}),
+          },
+        );
+      }
       owners.push({
         ownerUserId: intent.ownerUserId,
         ...(intent.ownerAttribution
@@ -340,10 +462,29 @@ async function fixture() {
       },
     });
 
+  // #1796 H1: the operator's device-access routes, reset wired as the
+  // runtime wires it.
+  if (service)
+    configureDevicePairingHostRoutes(app as never, security.devicePairing, {
+      verifyOperatorCredential: (candidate) =>
+        security.verifyOperatorCredential(candidate),
+      isApprovalCurrent: (req) =>
+        isRuntimeRequestPrincipalCurrent(req, security),
+      isRequestPrincipalCurrent: (req) =>
+        isRuntimeRequestPrincipalCurrent(req, security),
+      resetFullAccessGrantedBy: (input) =>
+        service.resetFullAccessGrantedBy(input),
+    });
+
   return {
     operator,
     pair,
     grant,
+    engine,
+    store,
+    service,
+    startedThreads,
+    security,
     post,
     postInternally,
     continueSession,
@@ -528,5 +669,65 @@ test.each([
     ).toBe(granted);
     // The adopted child belongs to the launching principal.
     expect(f.continueSession.mock.calls[0]![0].owner).toEqual(owner);
+  },
+);
+
+/**
+ * #1796 H1 (delta review): a Task dispatched at `never` by a granted device
+ * starts `host`, and revoking the device must reset and re-confine it. The
+ * grant names its grantor, so the start records it whatever path carried
+ * the grant: `POST /api/tasks/:id/dispatch` and Starter Work `start-task`.
+ */
+test.each([
+  ['POST /api/tasks/:id/dispatch', 'task'],
+  ['Starter Work start-task', 'starter'],
+] as const)(
+  '%s at never by a granted device is reset and re-confined after revoke',
+  async (_label, route) => {
+    const f = await fixture({ realStarts: true });
+    const phone = f.pair('Phone');
+    f.grant(phone.device.id);
+    const response =
+      route === 'task'
+        ? await f.dispatchTask(phone.credential, 'never')
+        : await f.launchStarter(phone.credential, 'never');
+    expect(response.status, JSON.stringify(response.body)).toBe(
+      route === 'task' ? 200 : 201,
+    );
+    const threadId = f.startedThreads.at(-1)!;
+    await vi.waitFor(() =>
+      expect(
+        f.store!.latestEventByMethod(threadId, 'session.started')?.payload,
+      ).toMatchObject({
+        metadata: {
+          stationConfinement: 'host',
+          stationConfinementGrantor: {
+            kind: 'device',
+            deviceId: phone.device.id,
+          },
+        },
+      }),
+    );
+
+    const revoked = await f.post(
+      f.operator.credential,
+      `/api/pairing/devices/${encodeURIComponent(phone.device.id)}/scope`,
+      { scope: [...PAIRING_SCOPE_PRESETS.standard] },
+    );
+
+    expect(revoked.status).toBe(200);
+    expect(revoked.body.fullAccessRevocation).toMatchObject({
+      reset: [{ conversationId: threadId, was: 'host-start' }],
+      reconfined: [{ conversationId: threadId }],
+      unattributedHostStarts: { sessions: [], total: 0 },
+    });
+    await f.service!.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'after revoke' },
+    });
+    expect(f.engine.turns.at(-1)).toMatchObject({
+      confinement: 'workspace',
+      modelOptions: { approvalMode: 'ask' },
+    });
   },
 );

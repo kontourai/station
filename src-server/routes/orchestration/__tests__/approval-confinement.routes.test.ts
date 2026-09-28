@@ -1446,6 +1446,17 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
         f.store.latestEventByMethod(threadId, 'session.started')?.payload,
       ).toMatchObject({ metadata: { stationConfinement: 'host' } }),
     );
+    // Every grant names its grantor now, so an older Station's start is
+    // written as it stored one: a `host` stamp with no grantor beside it.
+    f.store.appendEvent({
+      eventId: `${threadId}:legacy-start`,
+      provider: 'claude',
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'session.started',
+      sessionId: threadId,
+      metadata: { stationConfinement: 'host' },
+    } as never);
     expect(startGrantor(f, threadId)).toBeUndefined();
   };
 
@@ -2027,5 +2038,27 @@ describe('#1796 G3: revoking a device resets the full access it granted', () => 
     expect(await nextTurn(f, threadId)).toMatchObject({
       modelOptions: { approvalMode: 'ask' },
     });
+  });
+
+  test('a start whose full-access grant names no grantor is refused, and nothing starts', async () => {
+    const f = await fixture({});
+    const starts = f.claude.starts.length;
+    await expect(
+      f.service.dispatch(
+        {
+          type: 'startSession',
+          input: {
+            threadId: 'actorless-grant',
+            provider: 'claude',
+            modelOptions: { approvalMode: 'never' },
+          },
+        },
+        { fullAccessGrant: fullAccessGrantForTesting(null) },
+      ),
+    ).rejects.toThrow(/must name who granted it/);
+    expect(f.claude.starts).toHaveLength(starts);
+    expect(
+      f.store.latestEventByMethod('actorless-grant', 'session.started'),
+    ).toBeUndefined();
   });
 });

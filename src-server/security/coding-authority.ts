@@ -132,7 +132,19 @@ class FullAccessGrantProof {
   // Type-only and private: makes the type nominal, so a structural
   // look-alike does not type-check. `isFullAccessGrant` is the runtime check.
   declare private readonly nominal: true;
+  /**
+   * #1796: who granted it, derived from the same request: the operator in
+   * person, or the paired device holding `approval:full-access`. Every
+   * start the grant unconfines records this beside its `host` stamp, so
+   * revoking that device finds it, whichever path carried the grant.
+   */
+  constructor(readonly grantor: FullAccessGrantor | null) {}
 }
+
+/** #1796: the actor a full-access grant came from. */
+export type FullAccessGrantor =
+  | { readonly kind: 'operator' }
+  | { readonly kind: 'device'; readonly deviceId: string };
 
 export type FullAccessGrant = FullAccessGrantProof;
 
@@ -140,9 +152,36 @@ export function fullAccessGrantFor(
   request: Request,
   grantedScope: string | undefined,
 ): FullAccessGrant | null {
-  return mayGrantFullAccess(request, grantedScope)
-    ? new FullAccessGrantProof()
+  if (!mayGrantFullAccess(request, grantedScope)) return null;
+  // #1796: a grant always names its grantor. A caller that may grant full
+  // access but is neither the operator in person nor a paired device is
+  // refused rather than granted anonymously: nothing could revoke it.
+  if (isOperatorInPerson(request))
+    return new FullAccessGrantProof({ kind: 'operator' });
+  const deviceId = getRuntimeAuthenticatedRequestPrincipal(request)?.deviceId;
+  return deviceId
+    ? new FullAccessGrantProof({ kind: 'device', deviceId })
     : null;
+}
+
+/** #1796: the grantor a grant names; `null` for one that names none. */
+export function fullAccessGrantor(
+  grant: FullAccessGrant,
+): FullAccessGrantor | null {
+  return grant.grantor;
+}
+
+/**
+ * #1796: a start carrying a full-access grant that names no grantor. The
+ * start path refuses it: an unconfined session nothing could revoke.
+ */
+export class UnattributedFullAccessGrantError extends Error {
+  constructor() {
+    super(
+      'A full-access grant must name who granted it; this start was refused.',
+    );
+    this.name = 'UnattributedFullAccessGrantError';
+  }
 }
 
 /** Whether `value` is a grant this module minted (never a look-alike). */
@@ -168,8 +207,10 @@ export class FullAccessNotGrantedError extends Error {
  * outside the test runner, so production code cannot mint a grant without
  * a request.
  */
-export function fullAccessGrantForTesting(): FullAccessGrant {
+export function fullAccessGrantForTesting(
+  grantor: FullAccessGrantor | null = { kind: 'operator' },
+): FullAccessGrant {
   if (process.env.VITEST !== 'true')
     throw new Error('fullAccessGrantForTesting is test-only.');
-  return new FullAccessGrantProof();
+  return new FullAccessGrantProof(grantor);
 }
