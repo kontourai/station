@@ -8,6 +8,7 @@ import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { trackRecentAgent } from '../../hooks/useRecentAgents';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { agentEngineDescriptor } from '../../utils/engine';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { type EffectiveModelSource } from '../../utils/execution';
 import { sanitizeRuntimeOptionsForModel } from '../../utils/modelCapabilities';
 import {
@@ -682,7 +683,7 @@ export function NewChatModal({
     } catch (error) {
       setSelectFeedback(
         `Could not enable ${engineLabel}: ${
-          error instanceof Error ? error.message : String(error)
+          error instanceof Error ? userFacingErrorMessage(error) : String(error)
         }`,
       );
     } finally {

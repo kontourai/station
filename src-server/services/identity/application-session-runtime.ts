@@ -4,6 +4,7 @@ import { openPrivateSqlite } from '../../utils/private-sqlite.js';
 import {
   type ApplicationSessionCookieAdoptionCallbacks,
   ApplicationSessionService,
+  type ReadVerifiedNativeApplicationRequest,
 } from './application-session-service.js';
 import type { LoadedDeploymentAuthentication } from './deployment-authentication-loader.js';
 
@@ -40,6 +41,7 @@ export function createApplicationSessionRuntime(
   credentialAliasId: (credential: string) => string | undefined = () =>
     undefined,
   adoption?: ApplicationSessionCookieAdoptionCallbacks,
+  readNativeRequest?: ReadVerifiedNativeApplicationRequest,
 ) {
   if (!authentication.service.sessionReferenceCapabilities().verify)
     return undefined;
@@ -60,6 +62,7 @@ export function createApplicationSessionRuntime(
       resolveActiveRelayDevice,
       credentialAliasId,
       adoption,
+      readNativeRequest,
     );
     authentication.service.installContinuationResolver(service);
     return service;

@@ -641,6 +641,22 @@ function staleSchedulingSpawnSync(unitPath: string): Mock {
   });
 }
 
+function runningServiceSpawnSync(unitPath: string): Mock {
+  const fallback = staleSchedulingSpawnSync(unitPath);
+  return vi.fn((command: string, args: string[]) => {
+    if (command === 'launchctl' && args[0] === 'print') {
+      return { status: 0, stderr: '', stdout: 'state = running\n' };
+    }
+    if (command === 'systemctl' && args.includes('is-active')) {
+      return { status: 0, stderr: '', stdout: 'active\n' };
+    }
+    if (command === 'systemctl' && args.includes('is-enabled')) {
+      return { status: 0, stderr: '', stdout: 'enabled\n' };
+    }
+    return fallback(command, args);
+  });
+}
+
 function ensureBuildOutputs(instanceId = 'default'): void {
   const server =
     instanceId === 'default' ? 'dist-server' : `dist-server-${instanceId}`;
@@ -4185,27 +4201,6 @@ describe('upgrade', () => {
       log.mockRestore();
     }
   });
-
-  /**
-   * A backend reporting the installed unit RUNNING (the running twin of
-   * `stoppedServiceProbe`); every other command answers like the stale-
-   * scheduling runner so the guidance path stays representative.
-   */
-  function runningServiceSpawnSync(unitPath: string): Mock {
-    const fallback = staleSchedulingSpawnSync(unitPath);
-    return vi.fn((command: string, args: string[]) => {
-      if (command === 'launchctl' && args[0] === 'print') {
-        return { status: 0, stderr: '', stdout: 'state = running\n' };
-      }
-      if (command === 'systemctl' && args.includes('is-active')) {
-        return { status: 0, stderr: '', stdout: 'active\n' };
-      }
-      if (command === 'systemctl' && args.includes('is-enabled')) {
-        return { status: 0, stderr: '', stdout: 'enabled\n' };
-      }
-      return fallback(command, args);
-    });
-  }
 
   it('refuses a source upgrade while an installed service from this checkout is running, stopping nothing (#2674)', async () => {
     ensureDir(TEST_CWD);
@@ -8729,6 +8724,150 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     }
   });
 
+  /**
+   * An install.sh archive install (v0.7.0-preview.3 active through `current`)
+   * whose home holds one running service; `serviceFields` adjusts its
+   * manifest, which otherwise names this install root's `current`.
+   */
+  function installerArchiveWithRunningService(
+    serviceFields: (
+      installRoot: string,
+    ) => Record<string, unknown> = () => ({}),
+  ) {
+    const installRoot = join(TEST_ROOT, 'archive-install');
+    const version = join(installRoot, 'versions', '0.7.0-preview.3');
+    const stationHome = join(TEST_ROOT, 'home-archive');
+    ensureDir(version);
+    ensureDir(stationHome);
+    writeFileSync(
+      join(version, '.station-prebuilt-archive'),
+      'station-prebuilt-archive-v1\n',
+    );
+    writeFileSync(
+      join(version, '.station-release.json'),
+      `${JSON.stringify({
+        schemaVersion: 2,
+        sha: 'a'.repeat(40),
+        ref: 'v0.7.0-preview.3',
+        createdAt: '2026-09-26T00:00:00.000Z',
+        channel: 'beta',
+        releaseChannel: 'preview',
+        prerelease: true,
+      })}\n`,
+    );
+    writeFileSync(join(version, 'install.sh'), '#!/bin/sh\nexit 0\n', {
+      mode: 0o700,
+    });
+    writeFileSync(
+      join(installRoot, '.station-portable-install-root'),
+      'station-portable-install-root-v1\n',
+    );
+    const manifestUrl = 'https://example.test/station/preview.json';
+    writeFileSync(
+      join(installRoot, '.station-release-state.json'),
+      `${JSON.stringify({
+        schemaVersion: 4,
+        channel: 'beta',
+        releaseChannel: 'preview',
+        installRoot,
+        stationRoot: join(TEST_ROOT, 'root-archive'),
+        stationHome,
+        manifestUrl,
+      })}\n`,
+      { mode: 0o600 },
+    );
+    symlinkSync(version, join(installRoot, 'current'));
+    const unitPath = writeStaleServiceManifest(stationHome, 'archive-running');
+    const serviceManifestPath = join(
+      stationHome,
+      'service',
+      'archive-running.json',
+    );
+    const serviceManifest = JSON.parse(
+      readFileSync(serviceManifestPath, 'utf8'),
+    );
+    writeFileSync(
+      serviceManifestPath,
+      `${JSON.stringify({
+        ...serviceManifest,
+        kind: 'archive',
+        installRoot,
+        repoPath: join(installRoot, 'current'),
+        ...serviceFields(installRoot),
+      })}\n`,
+    );
+    return { installRoot, manifestUrl, stationHome, unitPath, version };
+  }
+
+  it('upgrades an installer-owned archive with a running service of its own by re-running its installer, which restarts it (#2675 C)', async () => {
+    const { installRoot, manifestUrl, stationHome, unitPath, version } =
+      installerArchiveWithRunningService();
+    vi.stubEnv('STATION_INSTALL_PUBLIC_MANIFEST_URL', '');
+    const execFileSync = vi.fn();
+    const execSync = vi.fn();
+    const { lifecycle } = await loadLifecycleModule({
+      cwd: version,
+      childProcessMock: {
+        execFileSync,
+        execSync,
+        spawnSync: runningServiceSpawnSync(unitPath),
+      },
+    });
+
+    await lifecycle.upgrade();
+
+    expect(execFileSync).toHaveBeenCalledWith(
+      'sh',
+      ['./install.sh', 'install'],
+      expect.objectContaining({
+        cwd: version,
+        env: expect.objectContaining({
+          STATION_CHANNEL: 'beta',
+          STATION_HOME: stationHome,
+          STATION_INSTALL_ROOT: installRoot,
+          STATION_INSTALL_PUBLIC_MANIFEST_URL: manifestUrl,
+        }),
+      }),
+    );
+    expect(execSync).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: 'a running source service',
+      fields: () => ({ kind: 'source', installRoot: undefined }),
+    },
+    {
+      name: "another install root's running archive service",
+      fields: (installRoot: string) => ({
+        installRoot: `${installRoot}-other`,
+        repoPath: `${installRoot}-other/current`,
+      }),
+    },
+  ])(
+    'still refuses an archive upgrade under $name, before running the installer (#2675 C)',
+    async ({ fields }) => {
+      const { unitPath, version } = installerArchiveWithRunningService(fields);
+      vi.stubEnv('STATION_INSTALL_PUBLIC_MANIFEST_URL', '');
+      const execFileSync = vi.fn();
+      const execSync = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        cwd: version,
+        childProcessMock: {
+          execFileSync,
+          execSync,
+          spawnSync: runningServiceSpawnSync(unitPath),
+        },
+      });
+
+      await expect(lifecycle.upgrade()).rejects.toThrow(
+        /station upgrade is blocked because an installed Station service supervises this Station\.[\s\S]*archive-running: running/,
+      );
+      expect(execFileSync).not.toHaveBeenCalled();
+      expect(execSync).not.toHaveBeenCalled();
+    },
+  );
+
   it('refuses station upgrade precisely, before touching git or an installer', async () => {
     ensurePrebuiltArchive();
     vi.stubEnv('STATION_HOME', TEST_ROOTED_HOME);
@@ -8740,9 +8879,9 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
 
     await expect(lifecycle.upgrade()).rejects.toThrow(
       [
-        `station upgrade cannot update a prebuilt Station archive in place: ${TEST_CWD} is v0.0.0 (0123456789ab, stable ring). Nothing was changed.`,
-        'Upgrading an archive install is the installer’s job, which arrives with the installer slice (#2675, B2).',
-        'To move to a newer version now: download the newer station-server-<os>-<arch> archive for this ring, run `station stop` here, extract the new archive into its own directory, and run `station start` from there.',
+        `station upgrade cannot update a prebuilt Station archive in place: ${TEST_CWD} is v0.0.0 (0123456789ab, stable ring), and install.sh did not install it. Nothing was changed.`,
+        'Install through install.sh to get upgrades (`station upgrade` re-runs the installer that installed the version).',
+        'To move this copy to a newer version by hand: download the newer station-server-<os>-<arch> archive for this ring, run `station stop` here, extract the new archive into its own directory, and run `station start` from there.',
         `Instance state for the stable channel lives in ${join(TEST_STATION_ROOT, 'state', 'stable')}, outside every version directory, so the new version sees and stops what this one started.`,
       ].join('\n'),
     );

@@ -397,6 +397,7 @@ describe('portable archive workflow paths filter', () => {
       '.github/workflows/portable-server-archives.yml',
       '.nvmrc',
       'config/portable-server-node-runtime.json',
+      'install.sh',
       // The ring table and version grammar behind .station-release.json,
       // reached through packages/ where the import walk stops.
       'config/channel-ports.json',

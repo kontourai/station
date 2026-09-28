@@ -43,6 +43,7 @@ import {
   translateChatError,
 } from '../utils/chatErrorTranslation';
 import { liveTurnTarget, serverTurnLive } from '../utils/conversation-activity';
+import { userFacingErrorMessage } from '../utils/errorText';
 import { sessionAdapterSupportsSteering } from '../utils/execution';
 import { steerRefusalMessage } from '../utils/steerTurn';
 import { drainQueuedMessageOnTurnCompleted } from './orchestration/queueDrain';
@@ -654,7 +655,8 @@ export function useSendMessage(
           foreground?.translation ??
           translateChatError({
             status: err.status,
-            message: err.serverMessage || err.message,
+            // A validation refusal reads as its reasons, not schema keys.
+            message: userFacingErrorMessage(err),
             code: err.code,
           });
         const terminalSession = foregroundIndeterminate
@@ -684,7 +686,7 @@ export function useSendMessage(
           // refusal itself is carried by the ephemeral notice below, which
           // already suppresses Retry for exactly this case.
           status: foregroundIndeterminate || terminalSession ? 'idle' : 'error',
-          error: err.message,
+          error: userFacingErrorMessage(err),
           abortController: undefined,
           ...(foregroundIndeterminate
             ? {

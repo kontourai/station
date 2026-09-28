@@ -32,6 +32,7 @@ import { ComposerAttachmentStrip } from '../chat/ComposerAttachmentStrip';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
 import { ErrorState, SkeletonBlock } from '../state';
 import './NeedsInputReply.css';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 type Scope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 export function NeedsInputReply({
@@ -282,8 +283,8 @@ export function NeedsInputReply({
       )}
       {mutation.error && (
         <p role="alert">
-          {mutation.error.message} Retry sends the same answer with the same
-          operation identity.
+          {userFacingErrorMessage(mutation.error)} Retry sends the same answer
+          with the same operation identity.
         </p>
       )}
       {sent ? (

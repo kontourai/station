@@ -14,6 +14,7 @@ import {
 } from '@kontourai/station-sdk/client';
 import { useEffect, useRef, useState } from 'react';
 import type { ChatSession } from '../../types';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
@@ -140,7 +141,7 @@ export function ConversationContextResetDialog({
     } catch (cause) {
       setError(
         cause instanceof Error
-          ? cause.message
+          ? userFacingErrorMessage(cause)
           : 'Could not replace the engine context.',
       );
     } finally {
@@ -191,7 +192,8 @@ export function ConversationContextResetDialog({
       );
       onReserved(result, idempotencyKey);
     } catch (cause) {
-      const detail = cause instanceof Error ? cause.message : '';
+      const detail =
+        cause instanceof Error ? userFacingErrorMessage(cause) : '';
       setError(
         `Station did not confirm that the current Session stopped${detail ? `: ${detail}` : '.'} No context boundary was reserved.`,
       );
@@ -216,7 +218,7 @@ export function ConversationContextResetDialog({
     } catch (cause) {
       setError(
         cause instanceof Error
-          ? cause.message
+          ? userFacingErrorMessage(cause)
           : 'Could not cancel the context replacement.',
       );
     } finally {

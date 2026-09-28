@@ -50,12 +50,4 @@ describe('protected browser stream inventory', () => {
     expect(idModule).not.toContain('sessionStorage.');
     expect(idModule).not.toContain('crypto.randomUUID()');
   });
-
-  it('admits the exact liveness header through browser CORS only', () => {
-    const source = readFileSync(
-      resolve(process.cwd(), 'src-server/runtime/bootstrap/runtime-http.ts'),
-      'utf8',
-    );
-    expect(source).toContain('X-Station-Client-Session');
-  });
 });

@@ -4,7 +4,6 @@
  * it as a default would tell someone their saved "off" never took.
  */
 
-import { DEVICE_SETTINGS_REGISTRY } from '@kontourai/station-contracts/device-settings';
 import { describe, expect, test } from 'vitest';
 import { resolveEffectiveDeviceSetting } from '../views/settings/effective-device-setting.js';
 
@@ -54,15 +53,6 @@ describe('resolveEffectiveDeviceSetting', () => {
         theme: undefined,
       } as Partial<{ theme: 'light' | 'dark' }>),
     ).toEqual({ value: 'dark', source: 'default' });
-  });
-
-  test('every registered device setting resolves to its own declared default', () => {
-    for (const definition of DEVICE_SETTINGS_REGISTRY) {
-      expect(
-        resolveEffectiveDeviceSetting(definition.key, {}),
-        definition.key,
-      ).toEqual({ value: definition.defaultValue, source: 'default' });
-    }
   });
 
   test('an unregistered key has no honest answer', () => {

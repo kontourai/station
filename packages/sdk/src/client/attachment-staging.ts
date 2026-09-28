@@ -9,7 +9,7 @@ import {
   PUBLIC_STATION_HANDSHAKE_PATH,
   parsePublicStationHandshake,
 } from '@kontourai/station-contracts/environment-security';
-import { ChatHttpError } from './chatHttpError';
+import { ChatHttpError, isStationEnvelope } from './chatHttpError';
 import {
   assertClientRawEgressAllowed,
   type ClientRequestOptions,
@@ -133,6 +133,7 @@ async function read<T>(response: Response, fallback: string): Promise<T> {
       typeof (body as { code?: unknown }).code === 'string'
         ? (body as { code: string }).code
         : undefined,
+      isStationEnvelope(body),
     );
   }
   return body as T;

@@ -1182,6 +1182,37 @@ account cookies, proof verification or membership logic. See the
 [application-session protocol](../guides/deployment-authentication.md#application-sessions-over-virtual-transports)
 for expiry, origin, replay and revocation behavior.
 
+### Native Station account continuation (opt-in)
+
+`@kontourai/station-sdk/application-session-native` is the opt-in native v1
+account-continuation client for Station's own native installation surface. It
+consumes the `station.application-session-native/v1` contract and a
+**caller-supplied encrypted application-channel transport**
+(`NativeApplicationSessionTransportV1`); the client itself never opens an HTTP
+connection, never touches cookies, and never holds a broker bearer. The account
+proof key must be an **independent** non-extractable P-256 key from
+`createApplicationSessionKey()` — never the native broker route proof key. The
+caller owns the trust snapshot: exact Station ID, canonical HTTPS Station
+audience (or loopback HTTP for a local fixture), full approved native surface,
+and the approved Device ID; the
+snapshot is re-read before every operation and any mismatch (Station, audience,
+surface, device, key thumbprint, expiry, replayed challenge, reused JTI) fails
+closed.
+Exchange proofs sign the exact JSON serialization of provider credentials that
+Station forwards to the configured provider; request
+proofs bind method, path, audience, surface, device, continuation nonce and
+credential hash with a one-use JTI. Provider, Device, and Project authority
+remain separate: the continuation is not a bearer or Device grant, and this
+client implements no provider/Device/Project authority.
+
+```ts
+import { NativeApplicationSessionClient } from '@kontourai/station-sdk/application-session-native';
+
+const accounts = new NativeApplicationSessionClient(encryptedTransport, () => trustedSnapshot, key);
+const continuation = await accounts.exchange({ username, password });
+const headers = await accounts.headers(continuation, { method: 'GET', path: '/api/example' });
+```
+
 ### Fresh relay enrollment proof helpers
 
 `@kontourai/station-sdk/relay-enrollment` exposes `createRelayEnrollmentKey`,
@@ -2404,11 +2435,11 @@ class StationHttpError extends Error {
 
 Today every field is carried by the integration, review and workspace pane
 host action fetchers (built on `readEnvelopeOrThrow`), and by the scheduler,
-skills, knowledge, secret-binding, conversation, orchestration, plugin and
-Project fetchers (every fetcher built on `unwrapProjectResponse`). The
-conversation, orchestration and Project fetchers used to throw a plain `Error`
-for a `200` carrying `{ success: false }`; that is now a `StationHttpError`
-with status `200` too. `respondToRequest`'s error still carries the failure
+skills, knowledge, secret-binding, conversation, orchestration, plugin,
+Project (every fetcher built on `unwrapProjectResponse`), Agent, execution
+and Task output fetchers. The conversation, orchestration, Project and Agent
+fetchers used to throw a plain `Error` for a `200` carrying
+`{ success: false }`; that is now a `StationHttpError` with status `200` too. `respondToRequest`'s error still carries the failure
 `receipt`. `readEnvelopeOrThrow(response)`
 throws this error for a non-2xx response or for a body that is not
 `success: true`. A body that is not JSON keeps its status on a non-2xx; on a
@@ -2424,7 +2455,23 @@ error the envelope helper made of the response, so they keep its status,
 `details` and `Retry-After`; a run error's `code` stays its own fixed value.
 `PluginCollectionHttpError` is built the same way: it keeps the envelope's
 `code` on the error and on its `envelope`, and keeps the refusal's `details`
-and `Retry-After`.
+and `Retry-After`. `ChatHttpError`, thrown by the execution fetchers, now
+extends `StationHttpError`; `serverMessage` still holds the route's sentence,
+`stationEnvelope` is `false` when the body was not Station's answer (a proxy's
+HTML page keeps its status but proves nothing Station decided), and `ForegroundMessageIndeterminateError` keeps its `detail` and fixed
+`code`. Both still accept their positional constructor.
+`ProjectTaskRoomProtocolError` keeps the refusal's `status`, `code`, `details`
+and `Retry-After` when Station refused the request, and none of them for a
+malformed room response.
+
+Some fetchers withhold what a protected route said. `getInputReplyContext`
+throws a `StationHttpError`, and the Task and Session reference reads throw
+`TaskToolResultRequestError`, `TaskUserInputReferenceRequestError`,
+`TaskBasisRequestError`, `SessionOutputsRequestError` and
+`SessionInventoryRequestError` (plain `Error` subclasses). Each keeps the
+observed `status`, `code` and `retryAfterMs` under a fixed generic message,
+without `details`. A status of `0` on the reference errors means no response
+was observed.
 
 - `status` is the status the response actually carried. A route that answers
   `200` with `{ success: false }` produces a `StationHttpError` whose status

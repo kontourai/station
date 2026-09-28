@@ -1,9 +1,8 @@
-import { probeHostConformance } from '@kontourai/conduit';
+import { type LifecycleEvent, probeHostConformance } from '@kontourai/conduit';
 import { describe, expect, it, vi } from 'vitest';
 import {
   conformAgentHooks,
   createStationFrameworkConduitAdapter,
-  stationFrameworkCapabilities,
 } from '../conduit-framework-adapter.js';
 
 describe('Station Conduit framework projection', () => {
@@ -14,11 +13,45 @@ describe('Station Conduit framework projection', () => {
         createStationFrameworkConduitAdapter(framework),
       );
       expect(results.every((result) => result.status === 'pass')).toBe(true);
-      const capabilities = stationFrameworkCapabilities(framework);
-      expect(capabilities.lifecycle['before-model']).toBe('unavailable');
-      expect(capabilities.lifecycle['before-tool']).toBe('native');
-      expect(capabilities.lifecycle.stop).toBe('approximated');
-      expect(capabilities.lifecycle['after-tool']).toBe('native');
+    },
+  );
+
+  it.each(['strands', 'voltagent'] as const)(
+    'declares the IAgentHooks lifecycle for %s, with stop approximated rather than native',
+    (framework) => {
+      // An honesty label, not an implementation detail: Conduit's
+      // createConformanceReport reads `capabilities()` into the published
+      // docs/conformance/station-runtime-conformance.{json,md} matrix. IAgentHooks
+      // has no native stop hook, so claiming 'native' would overstate it.
+      const { lifecycle } =
+        createStationFrameworkConduitAdapter(framework).capabilities();
+      expect(lifecycle).toEqual({
+        'session-start': 'unavailable',
+        'before-model': 'unavailable',
+        'before-tool': 'native',
+        'after-tool': 'native',
+        stop: 'approximated',
+      });
+    },
+  );
+
+  it.each(['strands', 'voltagent'] as const)(
+    'projects only the phases Station hooks deliver for %s',
+    async (framework) => {
+      const adapter = createStationFrameworkConduitAdapter(framework);
+      const deny = { decision: 'deny', reason: 'policy' } as const;
+      const project = (phase: LifecycleEvent['phase']) =>
+        adapter.project({ phase, sessionId: 'session', context: {} }, deny);
+
+      for (const phase of ['session-start', 'before-model'] as const) {
+        await expect(project(phase)).resolves.toEqual({
+          decision: 'observe',
+          reason: `Station IAgentHooks does not expose ${phase}`,
+        });
+      }
+      for (const phase of ['before-tool', 'after-tool', 'stop'] as const) {
+        await expect(project(phase)).resolves.toEqual(deny);
+      }
     },
   );
 

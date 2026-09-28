@@ -13,7 +13,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test } from 'vitest';
-import { agentReadinessState } from '../components/AgentReadinessCell';
+import { AgentReadinessCell } from '../components/AgentReadinessCell';
 import { agentRunnability } from '../components/agent-runnability';
 import { selectProjectScopedChatAgents } from '../components/agent-selection-policy';
 import {
@@ -99,6 +99,17 @@ const STATION_ENGINE_NO_MODEL: AgentData = {
   unavailableFix: { kind: 'model-connection' },
 } as unknown as AgentData;
 
+/** The full (non-compact) state a readiness cell renders for this agent. */
+function readinessLabel(agent: AgentData): string {
+  return renderToStaticMarkup(
+    createElement(AgentReadinessCell, { agent, part: 'status' }),
+  )
+    .replace(/<[^>]*>/g, '')
+    .replace(/&#x27;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&');
+}
+
 const FIXTURES = [
   READY,
   NOT_SET_UP,
@@ -118,8 +129,8 @@ describe('agentRunnability', () => {
       unavailableFix: { kind: 'cli-missing' },
     } as unknown as AgentData;
     expect(agentRunnability(expired).runnable).toBe(false);
-    expect(agentReadinessState(expired).label).not.toBe('Ready');
-    expect(agentReadinessState(expired).label).toContain('Sign in again');
+    expect(readinessLabel(expired)).not.toBe('Ready');
+    expect(readinessLabel(expired)).toContain('Sign in again');
   });
 
   test('the verdict table the three consumers share', () => {
@@ -218,7 +229,7 @@ describe('the three consumers agree on one fixture set', () => {
   });
 
   test('the Agents list renders exactly one server-derived readiness state', () => {
-    const items = buildAgentsViewItems(FIXTURES, []);
+    const items = buildAgentsViewItems(FIXTURES);
     // DESIGN.md §2: exactly one state per row, and exactly three of them.
     // An engine row with no Agent behind it is `Not set up`; anything else
     // that cannot run says what it needs, in the server's own words. The row
@@ -226,16 +237,16 @@ describe('the three consumers agree on one fixture set', () => {
     // empty so the state is not printed twice.
     expect(items.every((item) => item.subtitle === '')).toBe(true);
     const flagged = FIXTURES.filter(
-      (agent) => agentReadinessState(agent).label !== 'Ready',
+      (agent) => readinessLabel(agent) !== 'Ready',
     ).map((agent) => agent.slug);
     expect(flagged).toEqual(
       FIXTURES.map((agent) => agent.slug).filter(
         (slug) => !runnableSlugs.includes(slug),
       ),
     );
-    expect(agentReadinessState(NOT_SET_UP).label).toBe('Not set up');
+    expect(readinessLabel(NOT_SET_UP)).toBe('Not set up');
     // And it prints the SAME reason the picker would speak.
-    expect(agentReadinessState(CONNECTION_DOWN).label).toContain(
+    expect(readinessLabel(CONNECTION_DOWN)).toContain(
       "Needs: Engine connection 'kiro' is unavailable.",
     );
   });
@@ -254,8 +265,6 @@ describe('the three consumers agree on one fixture set', () => {
           secondaryEngineBinding: { engineDisplayName: 'Codex' },
         } as unknown as AgentData,
       ],
-      [],
-      undefined,
       { onChat: () => {}, onFix: () => {} },
     );
     const markup = renderToStaticMarkup(

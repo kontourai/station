@@ -726,7 +726,6 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'src-ui/src/__tests__/dock-bottom-clearance.test.ts',
   'src-ui/src/__tests__/home-surface-single-mounter.test.ts',
   'src-ui/src/__tests__/keepPreviousDataConsumers.test.ts',
-  'src-ui/src/__tests__/native-notification-watch.test.ts',
   'src-ui/src/__tests__/package-css-fork.test.ts',
   'src-ui/src/__tests__/placement-vocabulary.test.ts',
   'src-ui/src/__tests__/plain-language-policy.test.ts',
@@ -778,12 +777,6 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
     pattern: 'scripts/test-realtime-wait-gate.mjs',
     related: true,
     tests: Object.freeze(['scripts/__tests__/test-realtime-wait-gate.test.ts']),
-    reason: EXECUTED_SCRIPT_EDGE_REASON,
-  }),
-  Object.freeze({
-    pattern: 'scripts/literal-swap-gate.mjs',
-    related: true,
-    tests: Object.freeze(['scripts/__tests__/literal-swap-gate.test.ts']),
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({
