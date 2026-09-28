@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import type { ChatMessage } from '../types';
 
@@ -102,8 +102,14 @@ describe('MessageBubble answer Session identity', () => {
     answerEligible: true,
   };
 
-  test('does not guess the active replacement Session for an untagged historical row', () => {
+  test('does not guess the active replacement Session for an untagged historical row', async () => {
+    // The overflow is a lazy chunk: preload it and let it settle, or its
+    // absence below would hold before it could have rendered.
+    await import('../components/chat/TurnActionsMenu');
     render(row(untagged, 'conversation-1'));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
     expect(
       screen.queryByRole('button', { name: 'More answer actions' }),
     ).toBeNull();

@@ -10,8 +10,8 @@
  *
  * This mounts the dock's REAL boundary hook (`useConversationBoundaryDialogs`)
  * beside the REAL dialog and reads the REAL query cache: one entry, not two.
- * A hand-rolled query, or a drifted call shape (a different `apiBase`,
- * idempotency-key default, or key factory), lands on its own entry.
+ * A hand-rolled query, or a drifted call shape (a different `apiBase` or
+ * key factory), lands on its own entry.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

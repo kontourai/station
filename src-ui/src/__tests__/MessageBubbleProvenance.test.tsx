@@ -346,7 +346,10 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
   // The row is eligible and its overflow renders for the provenance record, so
   // only the thinking gate on the Task target can keep the attachment out.
   it('does not offer Task attachment while the latest assistant turn is still active', async () => {
+    // Both the menu and its Task item are lazy chunks: preload them and let
+    // the menu settle, or the item's absence would hold before it could load.
     await import('../components/chat/TurnActionsMenu');
+    await import('../components/chat/AttachAnswerToTaskButton');
     renderRow(
       {
         role: 'assistant',
@@ -361,6 +364,9 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'More answer actions' }),
     );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
     expect(
       screen.getByRole('menuitem', { name: 'Turn provenance' }),
     ).toBeTruthy();
