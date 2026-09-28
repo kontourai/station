@@ -327,10 +327,11 @@ the implemented fleet path.**
 **Historical declared/resolved/installed snapshot:** the table below records
 this design's earlier dependency assessment. Current pins come from
 [package.json](../../package.json) and [pnpm-lock.yaml](../../pnpm-lock.yaml).
-Conduit is now used at its current pinned hook contract; Bearing also has a
-[pricing consumer](../../src-server/services/pricing/openrouter-route-pricing.ts),
-and contracts expose [Datum secret references](../../packages/contracts/src/datum-secret-reference.ts).
-Those uses do not establish the proposed fleet Datum/Bearing composition.
+Conduit is now used at its current pinned hook contract, and contracts expose
+[Datum secret references](../../packages/contracts/src/datum-secret-reference.ts).
+Station no longer depends on Bearing directly; its unwired OpenRouter pricing
+consumer was deleted. These uses do not establish the proposed fleet
+Datum/Bearing composition.
 
 
 | Package | `package.json` | lockfile (root) | installed in this tree | published latest |

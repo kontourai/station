@@ -128,11 +128,10 @@ authority masks room state as stale; old authenticated packets remain inert.
 
 ## Scope
 
-The server-owned editing capability and pure controller remain the module
-scope. The former host-neutral React projection is no longer a mounted or
-retained component. The current Task-room UI uses the server-owned room runtime
+Only the server-owned editing capability remains; the pure controller and
+its host-neutral React projection were deleted. The current Task-room UI uses the server-owned room runtime
 and its closed browser DTOs instead of exposing this controller's operation
-adapters to the browser. See the [composition map](../architecture/module-map.md#collaborativeeditorpane)
+adapters to the browser. See the [composition map](../architecture/module-map.md#projecttaskroom)
 for those owners. Current integration and performance evidence must be assessed
 at that composition; the original slice's integration-work list is not a
 present-day absence claim.

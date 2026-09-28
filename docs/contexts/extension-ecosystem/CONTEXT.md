@@ -15,8 +15,8 @@ Extension Ecosystem covers how Station is extended by plugins, registry items, p
 
 The [module map](../../architecture/module-map.md#packagemcpadmissionjournal)
 follows installation custody in detail. Its retained `PluginCompositionModule`
-and `PluginForegroundRuns` entries describe separate mechanisms with fixture
-callers; neither is the production plugin registration or host-action path.
+entry describes a separate mechanism with fixture callers; it is not the
+production plugin registration or host-action path.
 
 ## Language
 

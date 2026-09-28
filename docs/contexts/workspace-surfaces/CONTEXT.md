@@ -16,9 +16,9 @@ and it is never the Kontour Surface product.
 | What survives a reload? | [Host storage](../../../src-ui/src/workspace-panes/workspacePaneHostStorage.ts) and each Pane's separate state owner; [runtime callbacks](../../../src-ui/src/workspace-panes/workspacePaneHostRuntime.ts) remain ephemeral |
 | Where does Task collaboration run? | [TaskWorkspaceView](../../../src-ui/src/views/TaskWorkspaceView.tsx), [TaskRoomEditorPane](../../../src-ui/src/workspace-panes/TaskRoomEditorPane.tsx), and [ProjectTaskRoomRuntime](../../../src-server/services/orchestration/project-task-room-runtime.ts) |
 
-The [module map](../../architecture/module-map.md#collaborativeeditorpane)
-separates that mounted Task path from the retained, unmounted pure editor
-controller. Browser, Device, Work Board and host actions have separate entries
+The [module map](../../architecture/module-map.md#projecttaskroom)
+documents that mounted Task path; the unmounted pure editor controller was
+deleted. Browser, Device, Work Board and host actions have separate entries
 there; sharing a Pane host does not give them the same persistence or authority.
 
 ## Language
