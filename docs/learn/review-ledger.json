@@ -8958,8 +8958,8 @@
     },
     {
       "path": "docs/design/plugin-installation-lifecycle.md",
-      "documentDigest": "f88edf6a452a2ea1f22d6305f47e80bb98e0b325909f75f8f81f4036c0e8ba24",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "documentDigest": "e70ae35ea8391f86d8cb26351b3a6cad2e110e042502d0c941910da615069be2",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "design",
       "state": "source-reviewed",
       "summary": "Reviewed complete lifecycle design against local service/adapter, actual installer, admission custody, grants and route callers: expected revisions, staged code/data selection, unknown commit and compensation, retained generation recovery, withdrawal versus reclamation, reset, bounded journal state and separate legacy behavior. Clarified selected-runtime CLI dependency and package-owned Git discovery.",
@@ -9051,7 +9051,8 @@
         "EXECUTED: 660 tests passed across 30 focused files: Flow/Conduit 79, installation/trust 86, MCP 188, plugin development/permissions/registry 249, server modules/operational subscriptions 58. One Linux-only filesystem digest case skipped on this macOS host. These local fixtures do not qualify live providers or other platforms.",
         "EXECUTED: conduit:conformance:check passed; docs:links:check validated 415 Markdown files; shared build comment emits identical JavaScript to its baseline.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-        "Integration source review through e0314c727: plugin-source.ts and plugin-install-transaction.ts add `excludeGitMetadata` for proposed installs (#2719), and registry-supply-chain.ts gained only a not-yet-active comment. Added that a local folder named by an open install proposal is copied without Git metadata, that a local Git URL is refused as a proposed source, and that install refuses an approval whose preview staged it differently. Source review is separate from executed test evidence."
+        "Integration source review through e0314c727: plugin-source.ts and plugin-install-transaction.ts add `excludeGitMetadata` for proposed installs (#2719), and registry-supply-chain.ts gained only a not-yet-active comment. Added that a local folder named by an open install proposal is copied without Git metadata, that a local Git URL is refused as a proposed source, and that install refuses an approval whose preview staged it differently. Source review is separate from executed test evidence.",
+        "Integration source review through ed05e6f6c: #2864 records proposal-staged local folders in plugin-source-staging.json (PLUGIN_SOURCE_STAGING_FILE, read by plugin-install-routes.ts), so previews and reinstalls keep stripping Git metadata after the proposal resolves. Added that to the source-check paragraph. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -11209,7 +11210,7 @@
     {
       "path": "docs/guides/build-your-first-plugin.md",
       "documentDigest": "92cf393ead150dc61a14dce4523f4c84276ba419317bfff0df75784f984779db",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full304-line original read. Source-reviewed package prerequisites, portable manifest/component/build example, CLI create/init/build/dev/install dispatch, legacy preview and proxy bounds, New plugin Project caller, preview/consent/reconciliation and trusted server-module distinction. Extracted manifest/entrypoint passed actual schema and production/dev build controls. Continuation clarifies that install.ts gates target.source: only automatic active-local/default loopback; explicit loopback API flags and saved localhost selections remain directory-refused.",
@@ -11229,7 +11230,7 @@
         },
         {
           "path": "packages/cli/src/commands/install.ts",
-          "digest": "582968d276da30e474d9bccfab32ad58b35fe9275b170ef1e48469d29922af18"
+          "digest": "ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5"
         },
         {
           "path": "packages/cli/src/dev/http.ts",
@@ -11315,7 +11316,8 @@
         "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-ui/src/views/plugin-management/useNewPluginFlow.ts: Actual error projection now calls userFacingErrorMessage instead of raw message/errorText. That helper reads unique reason sentences from StationHttpError.details and otherwise retains errorText fallback; request, mutation, ownership and success paths unchanged. SDK reference already explains typed refusal details; no stale UI-copy guarantee found.",
         "Required merge-queue recovery through 421517851: package export maps add opt-in source subpaths; existing package/build and public-entry claims remain. Changed inputs reviewed: packages/sdk/package.json. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: plugin-install-transaction.ts added an excludeGitMetadata option so agent-proposed installs stage without `.git` (#2719/#2840). The tutorial's CLI install, consent and preview claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through d72f79b08: #2904's cli.ts change only routes describeCliError through explainFullAccessRefusal for the approval-full-access-not-granted code. Plugin create/init/build/dev/install dispatch and the install target-source gating are unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904's cli.ts change only routes describeCliError through explainFullAccessRefusal for the approval-full-access-not-granted code. Plugin create/init/build/dev/install dispatch and the install target-source gating are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review through abfc7a889: #2864 makes the CLI installer (packages/cli/src/commands/install.ts) send the preview's optional gitMetadata back in its consent. The guide's local-path target rules and its HTTP preview/install outline still hold, and it points to the SDK consent example, which already carries gitMetadata. Prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -14206,7 +14208,7 @@
     {
       "path": "docs/guides/integrating-station.md",
       "documentDigest": "9b9bd7ea90c78e72df6a24a3a13d68142b819ef0c6dd48d9e38a0824ca8861a9",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Reviewed complete integration guide as public-contract routing plus explicit hosted/cloud/commercial delivery requirements. Traced hosted persistence pre/post-schema callers, private local filesystem checks and current deployment/authentication ownership; checked API/SDK/plugin/CLI routing, private GCP recipe status and workspace-package handoff. Multi-tenant PostgreSQL/object-store/worker/Marketplace architecture and acceptance criteria remain prospective; cloud cost figures remain dated assumptions.",
@@ -14234,7 +14236,7 @@
         },
         {
           "path": "docs/guides/plugins.md",
-          "digest": "3e3d29e7cc4c7447a9a02e33b79355db8adb80d867a72304b929cdb555805d0a"
+          "digest": "168d3d4847dfdd234f3bbaa6b6f57190a96a3ca03612642b9f3808386633f8cd"
         },
         {
           "path": "docs/guides/workspace-packages.md",
@@ -14242,7 +14244,7 @@
         },
         {
           "path": "docs/reference/api.md",
-          "digest": "0250dc8a00f0da8618b6e5052aeba7c015b194a107578dad43f9f61ae65a1942"
+          "digest": "998510a962076c2fdc93e74ee28d42f356c4f600cd9cadf58294c3e79e65604e"
         },
         {
           "path": "docs/reference/cli.md",
@@ -14254,7 +14256,7 @@
         },
         {
           "path": "docs/reference/sdk.md",
-          "digest": "36642bf98493678aa6367beb97d7691e31290190dfaf358318d5a160ce7a02fc"
+          "digest": "c2a480d447e3545e890487df7447c1867f87bb7111e811eb50aa5e66e55041b6"
         },
         {
           "path": "packages/contracts/src/deployment-authentication.ts",
@@ -14289,7 +14291,8 @@
         "Reviewed landing deltas through 111744681: Reconciled typed refusal fields, actual Error inheritance/constructors, shape-only stationEnvelope classification and opaque status-0/cancellation behavior. Preserved prior helper truthiness, data-validation and host-action indeterminate caveats.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged; reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/guides/deployment-authentication.md, docs/reference/sdk.md, src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: plugins.md added proposal-named local-folder .git exclusion, cli.md documented archive service units and upgrade, and contracts.md qualified plugin-foreground-work as having no server implementation yet. This guide only routes to those references, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through d72f79b08: #2904 added the cli.md reference for `station environment access devices|scope|scopes` and the host-only full-access scope management. The guide only routes integrators to the CLI/API/SDK/plugin references and states hosted-delivery requirements, and none of that changed. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 added the cli.md reference for `station environment access devices|scope|scopes` and the host-only full-access scope management. The guide only routes integrators to the CLI/API/SDK/plugin references and states hosted-delivery requirements, and none of that changed. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review through abfc7a889: #2864 adds a paragraph to docs/guides/plugins.md about proposal-staged folders staying stripped after reinstall. This guide only links the plugin guide from its routing table and makes no claim about git metadata staging. Prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -16432,8 +16435,8 @@
     },
     {
       "path": "docs/guides/plugins.md",
-      "documentDigest": "3e3d29e7cc4c7447a9a02e33b79355db8adb80d867a72304b929cdb555805d0a",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "documentDigest": "168d3d4847dfdd234f3bbaa6b6f57190a96a3ca03612642b9f3808386633f8cd",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the complete guide against manifest/scaffold, public CLI, build and runtime externals, catalog/provider loading, SDK calls, grants, dependency installation, managed lifecycle, registry policy, MCP frame host, server-module request hooks and operational-event callers. Corrected inactive-MCP and inactive-trust claims, stored Agent IDs versus qualified references, tool-call return shape, dev dependency attempt/readiness, local-catalog/build prerequisites and historical bundle metrics.",
@@ -16610,7 +16613,8 @@
         "EXECUTED: conduit:conformance:check passed; docs:links:check validated 415 Markdown files; shared build comment emits identical JavaScript to its baseline.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused provider preview declaration, retaining the active SchedulerService preview interface.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-        "Integration source review through e0314c727: #2840 added the proposed-local-install paragraph, and it matches plugin-source.ts, plugin-install-routes.ts and plugin-install-transaction.ts: `.git` is excluded at any depth, proposed local git repos are refused, preview reports `gitMetadata: \"excluded\"` and consent echoes it, and an operator's own path keeps `.git`. registry-supply-chain.ts gained only a comment saying RegistryLastKnownGoodStore is not active yet, which is consistent with the guide's 'separate archive utility' prose. Source review is separate from executed test evidence."
+        "Integration source review through e0314c727: #2840 added the proposed-local-install paragraph, and it matches plugin-source.ts, plugin-install-routes.ts and plugin-install-transaction.ts: `.git` is excluded at any depth, proposed local git repos are refused, preview reports `gitMetadata: \"excluded\"` and consent echoes it, and an operator's own path keeps `.git`. registry-supply-chain.ts gained only a comment saying RegistryLastKnownGoodStore is not active yet, which is consistent with the guide's 'separate archive utility' prose. Source review is separate from executed test evidence.",
+        "Integration source review through abfc7a889: #2864's edit to the git-metadata paragraph auto-merged cleanly into the branch's rewrite. The branch's proposed-folder text is followed once by main's text: Station records the folder in plugin-source-staging.json in the Station home, later previews and installs keep stripping it after the proposal resolves and after an uninstall, use the remote URL for git updates, and an install from your own path that no proposal has named keeps its .git. The addition appears only once and does not conflict with the registry `.git` refusal rules or the API consent section. It matches plugin-source-staging.ts: records are keyed by acquisition origin, never removed, and written before the install. Prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -19069,7 +19073,7 @@
     {
       "path": "docs/guides/testing.md",
       "documentDigest": "520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
@@ -19241,7 +19245,7 @@
         },
         {
           "path": "scripts/__tests__/path-read-pin-boundary.test.ts",
-          "digest": "e62aef32887cbcba866ea5948a79997f1c6fe40f64ebef1a4a4250dbcd08a4f6"
+          "digest": "16b1fd0c57114d7c67830ef8e14965019beb4665ee7d44d33d16c816ff0ce06c"
         },
         {
           "path": "scripts/__tests__/portable-server-archive.test.ts",
@@ -19302,7 +19306,8 @@
         "Landing review through 64452b7f0: Updated only the recorded integration boundary to include the source-reviewed reasoning presentation change.",
         "Integration source review through d1e0facc2: Merged actual-repository owner checks with reader/snapshot coverage; retired marker-only assertion removed. Reviewed merged path-read gate tests; production refusal guidance remains accurate. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Required merge-queue recovery through 421517851: Added the actual generator CLI test owner to the exact guardrail classification; no equality/refusal assertion weakened. Baseline at cf3 reproduced 4 passes/1 failure; corrected guardrail plus real metric CLI suites passed 52/52 in 13.69s. Final change after execution was formatter-only wrapping; scoped Biome and diff checks passed.. Changed inputs reviewed: scripts/__tests__/guardrail-execution-coverage.test.ts, scripts/__tests__/metric-reference.test.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-        "Integration source review through e0314c727: ci.yml adds a zsh provisioning step to fast-checks shards (job timeout 60->65, pinned by ci-workflow-contract.test.ts). The test-impact manifest dropped the literal-swap-gate spawned edge (11->10) and the native-notification-watch scan suite and added the knowledge file-transactions scan suite. path-read-pin-boundary adds one fixture exemption, and bearing/forage deps were removed. The guide makes no claims about those counts, steps or timeouts, and its fast-checks shard description remains accurate. Source review is separate from executed test evidence."
+        "Integration source review through e0314c727: ci.yml adds a zsh provisioning step to fast-checks shards (job timeout 60->65, pinned by ci-workflow-contract.test.ts). The test-impact manifest dropped the literal-swap-gate spawned edge (11->10) and the native-notification-watch scan suite and added the knowledge file-transactions scan suite. path-read-pin-boundary adds one fixture exemption, and bearing/forage deps were removed. The guide makes no claims about those counts, steps or timeouts, and its fast-checks shard description remains accurate. Source review is separate from executed test evidence.",
+        "Integration source review through abfc7a889: #2864 adds one TEMP_VIA_FIXTURE directory-walk exemption, for plugin-proposal-staged-reinstall.test.ts, to scripts/__tests__/path-read-pin-boundary.test.ts. The guide makes no claim about that exemption list or its size. Prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -20897,7 +20902,7 @@
     },
     {
       "path": "docs/reference/agent-plugins.md",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed every documented portable Agent Plugins claim through shared schema/parser, runtime loader and host normalization, Skill discovery and mutation policy, MCP projection/read-only service, settings persistence and provider factory, managed installation paths, CLI consent/build and validator gates. Corrected unsupported moving-upstream assertion, retired root-field exception, namespace host-normalization failure boundary, workspacePaneHost classification, literal versus expanded MCP fields, and managed-versus-legacy code/data retention scope. Added package tree and direct owner/caller navigation.",
@@ -20918,7 +20923,7 @@
         },
         {
           "path": "packages/cli/src/commands/install.ts",
-          "digest": "582968d276da30e474d9bccfab32ad58b35fe9275b170ef1e48469d29922af18"
+          "digest": "ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5"
         },
         {
           "path": "packages/contracts/src/agent-plugin.ts",
@@ -21028,7 +21033,8 @@
         "Reviewed source changes: Added docs:impact and focused impact/media tests to the documentation foundation lane. Runtime dependencies, package exports and configuration values are unchanged by these script additions.",
         "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d. src-server/routes/plugins/plugin-config-routes.ts: Actual changelog/update/source-discovery/fetch callers pass ownGitRepositoryArgs, preventing upward repository discovery and pinning work-tree. Registry-owned update path remains distinct. Current plugins guide1147 already states own-repository boundary; prior unavailable→empty observation is unchanged.",
         "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
-        "Integration source review through e0314c727: the install transaction now carries excludeGitMetadata for proposal-named local sources (#2719), and package.json dropped bearing/forage. The reference's directory/git install path, managed retention and data-directory claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through e0314c727: the install transaction now carries excludeGitMetadata for proposal-named local sources (#2719), and package.json dropped bearing/forage. The reference's directory/git install path, managed retention and data-directory claims are unaffected, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Integration source review through abfc7a889: #2864 makes the CLI installer echo the preview's gitMetadata in its install consent. This reference makes no claim about how the CLI builds consent or about git metadata staging. Prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -21157,12 +21163,12 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
       "limits": "Source review of every current documented claim is not exhaustive endpoint coverage or formal validation of every implementation branch. No live provider/model/MCP/registry/AWS pricing or IAM, git remote update/install/restart, native browser/Windows shell/device, Tailscale Serve, hosted or account enrollment outcome was exercised. Current limitations are stated, including placeholder measurements, hidden legacy failure-to-empty results, cooperative abort, pending activation/cleanup, raw pricing units, retained proxy/path gaps, and provider/executor boundaries.37 fences parse and12 exported request-schema examples pass; syntax/shape is not runtime authentication or execution proof. Exact hashes detect later drift and never substitute for semantic delta review.",
-      "documentDigest": "0250dc8a00f0da8618b6e5052aeba7c015b194a107578dad43f9f61ae65a1942",
+      "documentDigest": "998510a962076c2fdc93e74ee28d42f356c4f600cd9cadf58294c3e79e65604e",
       "sources": [
         {
           "path": "packages/cli/src/commands/environment.ts",
@@ -21482,7 +21488,7 @@
         },
         {
           "path": "src-server/routes/plugins/plugin-install-routes.ts",
-          "digest": "31dea4bce7da7a0141f408a06bbe3fd0e5fd972fcd72915106b0493c20ecbb32"
+          "digest": "b5696f343313b1a6ded1a1fd00d15be70ddb1bd7f35a63fc60eafb856ec90bf9"
         },
         {
           "path": "src-server/routes/plugins/plugin-lifecycle-routes.ts",
@@ -21853,7 +21859,8 @@
         "Integration source review through d1e0facc2: Completion validation is private and still runs before provider admission. Removed the scoped-project fetch that fed ignored list-helper arguments; Agent listing/readiness is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged; HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts, src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: the plugin foreground-run projection was deleted from RunService/runs.ts; the page never documented `source: plugin`. The system-update comment now names the Windows task marker and the lifecycle upgrade guard lets archive services through, with no documented route contract changed. The ApiBaseContext/JobDetail edits are comment/export only. Corrected the plugin preview/install sections for #2719: when an open install proposal names the source, preview copies a local folder without `.git`, refuses a local Git URL and reports `gitMetadata: \"excluded\"`; install returns 409 `consent.reason: \"git-metadata\"` when the approving preview kept git metadata. Source review is separate from executed test evidence.",
-        "Integration source review through d72f79b08: #2904 changed several inputs. The full-access 403 refusal from the config route now goes through fullAccessRefusal() and carries structured requester/Station/grant details. Starter start-task and continue-session launches now pass the request's server-derived clientOrigin to dispatch and adoption. runtime-routes binds the refusal identity middleware, and the device scope and device revoke routes now add a full-access revocation report (or reset_failed). The contracts gained PAIRING_SCOPE_DESCRIPTIONS, FullAccessRevocationReport, the confinement-grantor metadata key and an optional revocation on approval-mode-set. device-pairing-service gained deviceHoldsScope. environment.ts added the access devices/scope/scopes verbs on the shared loopback operator channel. DevicePairingPanel shows a revocation notice. None of this contradicts the document. Its Starter Work statuses, dispositions and admission-versus-completion wording, the claim that config full-access writes have 'additional checks', the RouteError code/details wording, the person-binding confirm route, and `access approve --bind-person` are all unchanged. The document does not describe the scope or revoke device routes. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 changed several inputs. The full-access 403 refusal from the config route now goes through fullAccessRefusal() and carries structured requester/Station/grant details. Starter start-task and continue-session launches now pass the request's server-derived clientOrigin to dispatch and adoption. runtime-routes binds the refusal identity middleware, and the device scope and device revoke routes now add a full-access revocation report (or reset_failed). The contracts gained PAIRING_SCOPE_DESCRIPTIONS, FullAccessRevocationReport, the confinement-grantor metadata key and an optional revocation on approval-mode-set. device-pairing-service gained deviceHoldsScope. environment.ts added the access devices/scope/scopes verbs on the shared loopback operator channel. DevicePairingPanel shows a revocation notice. None of this contradicts the document. Its Starter Work statuses, dispositions and admission-versus-completion wording, the claim that config full-access writes have 'additional checks', the RouteError code/details wording, the person-binding confirm route, and `access approve --bind-person` are all unchanged. The document does not describe the scope or revoke device routes. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review through abfc7a889: #2864's plugin-install-routes.ts now also strips git metadata from any source recorded in plugin-source-staging.json. Preview reports gitMetadata: excluded for it, the install records the source before writing anything, and the install returns 409 consent.reason git-metadata for a recorded source approved from a preview that kept git metadata. An unreadable record fails closed. Corrected the preview paragraph, which described only the open-proposal case, and the install 409 sentence, which now covers previously stripped installs. Not reviewed here: docs/design/plugin-installation-lifecycle.md has the same proposal-only framing but is outside this record set. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -21885,7 +21892,7 @@
     {
       "path": "docs/reference/cli.md",
       "documentDigest": "5cf89b34d6bdf46300f185bff1dd68267c8ec1e2acf4bb5b5b81613777f96728",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed remaining documented CLI claims and full-page consistency sweep across the3053-line integration baseline/91 section headings. Retained prior root review of distribution, targeting, chat/session/delegate, settings, lifecycle/service/environment/checkpoints after confirming its13 source hashes unchanged. Finished deeptriage artifact/redaction/mode/consent paths, home backup/restore/reset ownership and publication limits, portable configuration export/import, cloud preview/template/workspace/import/target verification, portable Project attachment and secondary API command callers. Reviewed release-artifact scripts/workflow composition; corrected all-versus-scoped runs/plugins, raw operate-stream authentication, fixed/per-request deadlines, import side effects/partialledger, paired rotation, ACP start-model behavior, plugininit cwd/defaultdir and dev defaults/parser. Root baseline sync76b5ca6e8 is excluded from the delivery commit.",
@@ -22001,7 +22008,7 @@
         },
         {
           "path": "packages/cli/src/commands/install.ts",
-          "digest": "582968d276da30e474d9bccfab32ad58b35fe9275b170ef1e48469d29922af18"
+          "digest": "ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5"
         },
         {
           "path": "packages/cli/src/commands/lifecycle.ts",
@@ -22268,7 +22275,8 @@
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
         "Landing review through d0d9d33f7: Reviewed host-selected platform-v2 archive admission and bundled/verifier Node paths, source-v1/default GitHub fallbacks, version promotion/rollback and ownership. Corrected current installer explanations; native/store/source-checkout claims retain their separate scope. Reviewed schema-3/4 install-state admission, saved manifest URL precedence and installer-owned versions upgrades. Loose archives still refuse upgrades; existing home/instance, service and HTTP update boundaries are unchanged. Reviewed the changed canonical prose against these owners; purpose and prior evidence limits are retained. Integration group: 477 passed and one archive-trigger omission failed in 420.29s. Expanded missing-input control: 20 passed/2 failed; after adding six workflow paths, archive suite 22/22 passed in 494ms. Earlier failure is retained; no live installer/publication claim.",
         "Integration source review through e0314c727: the page's merged prose for the platform-v2 archive install, archive service units (kind/installRoot, `current`, refusal from inactive versions, port refusal, stopped units left stopped, STATION_SERVICE_MANAGED, 75 s TimeoutStopSec) and installer-owned archive upgrade was checked against install.sh, service.ts, service-command.ts and lifecycle.ts. The removed `plugin` runs source was never documented here. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through d72f79b08: #2904 adds the `environment access devices|scope|scopes` verbs (environment.ts, device-access.ts), makes describeCliError render a structured full-access refusal, and makes requestJson errors keep status, code and details. Main's merged synopsis and bullet match the parser and behaviour: id, prefix or name resolution with refusal on ambiguity; expectedScope conflict refusal; access:manage never granted; --dry-run; reset reporting; resetFullAccess retry; loopback-only. The config set and chat/delegate prose is unchanged in meaning. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 adds the `environment access devices|scope|scopes` verbs (environment.ts, device-access.ts), makes describeCliError render a structured full-access refusal, and makes requestJson errors keep status, code and details. Main's merged synopsis and bullet match the parser and behaviour: id, prefix or name resolution with refusal on ambiguity; expectedScope conflict refusal; access:manage never granted; --dry-run; reset reporting; resetFullAccess retry; loopback-only. The config set and chat/delegate prose is unchanged in meaning. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review through abfc7a889: #2864 makes `station plugin install` send the preview's gitMetadata back in its consent, so a folder Station stages stripped installs instead of being refused. The reference says only that the CLI previews, requests consent for the captured package, and that the server rechecks the preview. It never claimed such folders were refused, so nothing is now wrong. Prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -23530,12 +23538,12 @@
     },
     {
       "path": "docs/reference/sdk.md",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full SDK reference claim pass across the initial review and explicit A/B/C/D checklist: public export boundaries/default host contexts, hooks/components/voice/context APIs, scoped reads and mutations, Project/account/relay composition, plugins/host actions/recovery, protected Basis and assessment owners, diagnostics/PR/mobile/channel clients, and remaining generic query/API examples. Followed concrete implementation/callers and corrected unsupported APIs, argument/return shapes, implicit scope assumptions, disabled proxy, named invoke schema behavior and legacy failure-to-empty mapping.175 unique API headings inventoried across55 public source entries:173 resolve;2 explicitly historical ACP headings retain old anchors. Source-reviewed means current documented claims were checked, not exhaustive validation of every API or implementation branch. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
       "limits": "No claim of live provider/audio/physical device/native shell, external forge acceptance, registry publication/install, production account/relay enrollment, cloud deployment or visual accessibility verification.154 code fences parse syntactically; fragment syntax/export presence is not general assignability or end-to-end execution proof. Default SDK host gaps (#2780), active-tab/voice lifecycle (#2806/#2807), notification long-delay wakeup (#2810), optional stale-mutation policy (#2815), disabled production fetch proxy and documented legacy error/guard limits remain current behavior or tracked recommendations. Exact statement/source hashes only establish future drift detection; they do not make later changes semantically correct automatically.",
-      "documentDigest": "36642bf98493678aa6367beb97d7691e31290190dfaf358318d5a160ce7a02fc",
+      "documentDigest": "c2a480d447e3545e890487df7447c1867f87bb7111e811eb50aa5e66e55041b6",
       "sources": [
         {
           "path": "docs/design/mcp-ui-host.md",
@@ -24043,7 +24051,7 @@
         },
         {
           "path": "src-server/routes/plugins/plugin-install-routes.ts",
-          "digest": "31dea4bce7da7a0141f408a06bbe3fd0e5fd972fcd72915106b0493c20ecbb32"
+          "digest": "b5696f343313b1a6ded1a1fd00d15be70ddb1bd7f35a63fc60eafb856ec90bf9"
         },
         {
           "path": "src-server/routes/plugins/plugin-public-routes.ts",
@@ -24520,7 +24528,8 @@
         "Integration source review through d1e0facc2: JSON extraction helper is private; SDK-visible analysis behavior is unchanged. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Required merge-queue recovery through 421517851: Reviewed native-v1 client challenge/exchange/headers, trust rechecks, exact credential serialization and request proof binding. Corrected signer factory overstatement: the public ApplicationSessionSigner facade also accepts host custody; custody is not attested by its shape.. Changed inputs reviewed: docs/reference/sdk.md, packages/sdk/package.json, src-server/routes/system/application-session-routes.ts, src-server/services/identity/application-session-service.ts, packages/sdk/src/client/application-session-native.ts, packages/contracts/src/application-session.ts, packages/sdk/src/__tests__/application-session-native.test.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: #2840 added `gitMetadata?: 'excluded'` to PluginInstallConsent and the install consent schema. Preview now reports it for a source an open install proposal names, and install refuses with 409 `consent.reason: \"git-metadata\"` when a proposed source's consent omits it. Corrected the preview description and the install consent example, which would have hit that 409 for proposed sources, and documented the echo requirement. bearing/forage lockfile removal does not affect SDK claims. Source review is separate from executed test evidence.",
-        "Integration source review through d72f79b08: #2904 changed dispatchOrchestrationCommand. A coded refusal is now built as ChatHttpError(StationHttpError{code, details}, isStationEnvelope(body)), where before it was the positional (status, message, code) form, which dropped `details`. It also widened apiErrorMessage's `details` parameter type to `unknown` with no change in behavior, and changed internals the SDK reference does not document: the task-dispatch/coding refusal bodies, runtime-initialize's grantor check, the confinement grantor and revocation reset in orchestration-service and task-graph-service, and the UI refusal card in useChatInput/useActiveChatSessionMessaging. The Refused requests section's statement that orchestration fetchers keep the refusal fields (status, code, details), and the StationHttpError field list, are now matched more closely by this path. The provider.ts change only adds a reserved metadata key. usePairedDevicesQuery and useSendMessage ('can queue or refuse work') are unchanged. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 changed dispatchOrchestrationCommand. A coded refusal is now built as ChatHttpError(StationHttpError{code, details}, isStationEnvelope(body)), where before it was the positional (status, message, code) form, which dropped `details`. It also widened apiErrorMessage's `details` parameter type to `unknown` with no change in behavior, and changed internals the SDK reference does not document: the task-dispatch/coding refusal bodies, runtime-initialize's grantor check, the confinement grantor and revocation reset in orchestration-service and task-graph-service, and the UI refusal card in useChatInput/useActiveChatSessionMessaging. The Refused requests section's statement that orchestration fetchers keep the refusal fields (status, code, details), and the StationHttpError field list, are now matched more closely by this path. The provider.ts change only adds a reserved metadata key. usePairedDevicesQuery and useSendMessage ('can queue or refuse work') are unchanged. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review through abfc7a889: #2864's plugin-install-routes.ts reports and requires gitMetadata: excluded both for an open-proposal source and for one Station previously installed without its git metadata (recorded in plugin-source-staging.json). Corrected the install consent paragraph and the usePluginPreviewMutation description, which covered only the open-proposal case. The mutate example already echoes preview.gitMetadata. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -26833,7 +26842,7 @@
     {
       "path": "examples/demo-layout/README.md",
       "documentDigest": "28a67db53af713b00865785456aec52759d872dbd4447d053aaf338bd67b9d9f",
-      "sourceRevision": "6676a48eefb1138e35b49af59b100d086c9fff01",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide and both components read; verified manifest/Layout/Agent shape, fixed-key localStorage notes and direct-versus-registry installation consent.",
@@ -26857,7 +26866,7 @@
         },
         {
           "path": "packages/cli/src/commands/install.ts",
-          "digest": "582968d276da30e474d9bccfab32ad58b35fe9275b170ef1e48469d29922af18"
+          "digest": "ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5"
         },
         {
           "path": "src-server/services/plugins/plugin-install-consent.ts",
@@ -26865,7 +26874,8 @@
         }
       ],
       "checks": [
-        "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider."
+        "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+        "Integration source review through abfc7a889: #2864 makes the CLI installer echo the preview's gitMetadata. The README's `station plugin install ./examples/demo-layout` path and its note that the registry CLI lacks a consent step are unchanged. Prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -27186,7 +27196,7 @@
     {
       "path": "examples/getting-started-starter/README.md",
       "documentDigest": "ad3a3341594e0466e3ccdedcea4bf558d2f9d0bc3ffc775b04e9f518bc16a364",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide and components read; corrected nonexistent per-call manifest flag and installation bypass; inspected host action identity and explicit dock-only UI.",
@@ -27210,13 +27220,14 @@
         },
         {
           "path": "packages/cli/src/commands/install.ts",
-          "digest": "582968d276da30e474d9bccfab32ad58b35fe9275b170ef1e48469d29922af18"
+          "digest": "ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5"
         }
       ],
       "checks": [
         "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
         "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records.",
-        "Integration source review through d72f79b08: in cli.ts, #2904 only adds the full-access refusal rendering to describeCliError. The Starter guide's commands, manifest handling, host action identity and dock-only UI claims are unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: in cli.ts, #2904 only adds the full-access refusal rendering to describeCliError. The Starter guide's commands, manifest handling, host action identity and dock-only UI claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review through abfc7a889: #2864 makes the CLI installer echo the preview's gitMetadata. The README's preview-then-install flow for the starter directory is unchanged, and it makes no claim about git metadata. Prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -27610,7 +27621,7 @@
     {
       "path": "examples/minimal-layout/README.md",
       "documentDigest": "97194a0e05db0851a22da5ce9a08ddd303c4fce597c7ba2205f76725fa6289aa",
-      "sourceRevision": "6676a48eefb1138e35b49af59b100d086c9fff01",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide, component, manifest and package build contract read; Pane discovery/dock navigation versus Agent execution and publication boundaries retained.",
@@ -27630,7 +27641,7 @@
         },
         {
           "path": "packages/cli/src/commands/install.ts",
-          "digest": "582968d276da30e474d9bccfab32ad58b35fe9275b170ef1e48469d29922af18"
+          "digest": "ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5"
         },
         {
           "path": "src-ui/src/core/SDKAdapter.tsx",
@@ -27638,7 +27649,8 @@
         }
       ],
       "checks": [
-        "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider."
+        "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
+        "Integration source review through abfc7a889: #2864 makes the CLI installer echo the preview's gitMetadata. The README's install-and-place steps and `station plugin install .` are unchanged, and it makes no claim about how consent is built. Prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -27708,7 +27720,7 @@
     {
       "path": "examples/portable-author-kit/README.md",
       "documentDigest": "1ec20e8f20e2339a3a98072b89961378af2c913a2ef5c334dae6d08f629ace23",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full manifest, Skill/Agent and authoring guide checked; corrected target-source admission to automatic active-local/default loopback only.",
@@ -27732,13 +27744,14 @@
         },
         {
           "path": "packages/cli/src/commands/install.ts",
-          "digest": "582968d276da30e474d9bccfab32ad58b35fe9275b170ef1e48469d29922af18"
+          "digest": "ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5"
         }
       ],
       "checks": [
         "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
         "Reviewed source changes: Uses shared envelopeDetailsMessage instead of duplicated formatter; reviewed CLI sentence semantics and inherited SDK refusal documentation. Root reviewed the corresponding diff and the affected current-document claims.",
-        "Integration source review through d72f79b08: #2904 makes core-api requestJson errors carry the envelope's status, code and details without changing the message. Target-source admission (automatic active-local or default loopback only) and the manifest/authoring claims are unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 makes core-api requestJson errors carry the envelope's status, code and details without changing the message. Target-source admission (automatic active-local or default loopback only) and the manifest/authoring claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review through abfc7a889: #2864 makes the CLI installer echo the preview's gitMetadata. The README's statements that the preview is reviewed and the CLI submits to the same installation API as the UI, and its local-target rules, still hold. Prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -27755,7 +27768,7 @@
     {
       "path": "examples/registry/README.md",
       "documentDigest": "c4d9fea220b43d622b7ec2bfb106e5ba400095a00a97a6aba3e8ab583fea0e8a",
-      "sourceRevision": "6676a48eefb1138e35b49af59b100d086c9fff01",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Both manifests, default resolution and CLI/server installation callers inspected. Catalog presence and no declared dependencies no longer imply successful installation; missing consent linked #2809.",
@@ -27775,7 +27788,7 @@
         },
         {
           "path": "packages/cli/src/commands/install.ts",
-          "digest": "582968d276da30e474d9bccfab32ad58b35fe9275b170ef1e48469d29922af18"
+          "digest": "ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5"
         },
         {
           "path": "src-server/providers/registries/default-registry.ts",
@@ -27792,7 +27805,8 @@
       ],
       "checks": [
         "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
-        "Reviewed source changes: Read the complete current CLI registry owner. Catalog listing no longer guesses installed state from local aliases/files; it directs installed-state reads to the running Station. Example catalog resolution and the separately tracked preview-consent gap remain."
+        "Reviewed source changes: Read the complete current CLI registry owner. Catalog listing no longer guesses installed state from local aliases/files; it directs installed-state reads to the running Station. Example catalog resolution and the separately tracked preview-consent gap remain.",
+        "Integration source review through abfc7a889: #2864 changes only the plugin install command (install.ts), not `registry install`. The statement that `registry install <id>` submits no preview consent (#2809) still holds. Prose accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -28855,7 +28869,7 @@
     },
     {
       "path": "packages/sdk/AGENTS.md",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "policy",
       "state": "classified",
       "summary": "Routes to the SDK reference, forbids app-internal imports by plugins, and requires both cache and waiting-caller observations for cancellation/authority races.",
@@ -28864,7 +28878,7 @@
       "sources": [
         {
           "path": "docs/reference/sdk.md",
-          "digest": "36642bf98493678aa6367beb97d7691e31290190dfaf358318d5a160ce7a02fc"
+          "digest": "c2a480d447e3545e890487df7447c1867f87bb7111e811eb50aa5e66e55041b6"
         },
         {
           "path": "packages/sdk/package.json",
@@ -28885,7 +28899,8 @@
         "Reviewed integration deltas: docs/reference/sdk.md: Integrated typed Project/plugin HTTP errors, Retry-After and optional grantsUnavailable constructor contract; added accurate MCP policy construction limits.",
         "Reviewed landing deltas through 111744681: Reconciled typed refusal fields, actual Error inheritance/constructors, shape-only stationEnvelope classification and opaque status-0/cancellation behavior. Preserved prior helper truthiness, data-validation and host-action indeterminate caveats.",
         "Required merge-queue recovery through 421517851: package export maps add opt-in source subpaths; existing package/build and public-entry claims remain; reviewed current canonical prose/static MCP dependency changes; historical/policy classifications and unrelated documented behavior remain unchanged. Changed inputs reviewed: docs/reference/sdk.md, packages/sdk/package.json. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-        "Integration source review through c8bae67da: docs/reference/sdk.md gained the proposed-install gitMetadata consent echo. This policy only routes to that reference and duplicates none of its API prose, so it is accurate. Source review is separate from executed test evidence."
+        "Integration source review through c8bae67da: docs/reference/sdk.md gained the proposed-install gitMetadata consent echo. This policy only routes to that reference and duplicates none of its API prose, so it is accurate. Source review is separate from executed test evidence.",
+        "Integration source review through ed05e6f6c: docs/reference/sdk.md extended the gitMetadata consent echo to recorded proposal-staged sources. This policy only routes to that reference and duplicates none of its API prose, so it is accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -28920,12 +28935,12 @@
     },
     {
       "path": "packages/sdk/README.md",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full README read (including the original 556 lines). Checked source exports versus local dist output, exact authoring bundle input, host externalization, plugin install/approval boundaries, current chat/Dock/notification signatures, protected result APIs, opt-in Pane/voice surfaces and host theme/context requirements. Follow-up: Directory-source paragraph traced through install helper and actual target-source resolver. Final wording explicitly names automatic source categories and refuses explicit/saved localhost targets.",
       "limits": "Scope is the README named surfaces and corrected examples, not every SDK export or the full SDK reference. No fresh npm installation/publication, full package build, live Agent/tool/voice execution, rendered visual/theme audit, real provider or native-device proof. Code-fence checks establish syntax only; the extracted authoring bundle uses preprovided dependencies.",
-      "documentDigest": "8dad42b6d631d2f872ad76c87602782d62dcbebd43839bfc2a70b41d0af7dcd2",
+      "documentDigest": "2a192a7ab90fd169add24a06294d556590584539557f2bc08010594567346ddc",
       "sources": [
         {
           "path": "packages/cli/src/commands/core-api.ts",
@@ -28933,7 +28948,7 @@
         },
         {
           "path": "packages/cli/src/commands/install.ts",
-          "digest": "582968d276da30e474d9bccfab32ad58b35fe9275b170ef1e48469d29922af18"
+          "digest": "ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5"
         },
         {
           "path": "packages/sdk/package.json",
@@ -29037,7 +29052,8 @@
         "Reviewed landing deltas through 111744681: Protected Task-result reads retain opaque generic errors with supplied status/code/retry metadata; canonical content and read authority are unchanged. Direct-send errors preserve clearer refusal text; dispatch identity, drafting and successful message flow are unchanged. Read the changed document in context; its purpose and prior evidence limits remain. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Required merge-queue recovery through 421517851: package export maps add opt-in source subpaths; existing package/build and public-entry claims remain. Changed inputs reviewed: packages/sdk/package.json. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: the install transaction added .git exclusion only for sources that an open install proposal names (#2719). The README's CLI install from the author's own directory has no proposal, so it keeps its .git, and the preview/consent and target-selection wording is still accurate. Source review is separate from executed test evidence.",
-        "Integration source review through d72f79b08: #2904 makes `requestJson` in core-api.ts and the SDK's `DelegationApiError` keep the envelope's `details`. tasks.ts answers the dispatch full-access refusal with the structured `fullAccessRefusal` body, and useActiveChatSessionMessaging renders a refusal card. The README does not document DelegationApiError fields or the refusal shape. Its `TaskToolResultRequestError` claims and 'a send may be queued or refused' are still true. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 makes `requestJson` in core-api.ts and the SDK's `DelegationApiError` keep the envelope's `details`. tasks.ts answers the dispatch full-access refusal with the structured `fullAccessRefusal` body, and useActiveChatSessionMessaging renders a refusal card. The README does not document DelegationApiError fields or the refusal shape. Its `TaskToolResultRequestError` claims and 'a send may be queued or refused' are still true. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review through abfc7a889: #2864's install.ts now also carries the preview's optional gitMetadata into the install consent. Corrected the list of fields the install command carries so it includes any gitMetadata: \"excluded\". Source review is separate from executed test evidence."
       ]
     },
     {
