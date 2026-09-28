@@ -1154,22 +1154,40 @@ describe('one-line Station installer', {
     // A shell reading the script from a pipe used to run `uninstall` and exit
     // with the rest unread; past the pipe buffer, the writer's write failed
     // (curl exits 23) and a pipefail caller saw the uninstall as a failure.
-    const home = join(tempDir('station-installer-'), 'home');
+    const root = tempDir('station-installer-');
+    const home = join(root, 'home');
     mkdirSync(home, { recursive: true });
-    const script = readFileSync(installScript);
-    // The script is well past a 64 KiB pipe buffer after the uninstall case,
-    // which is what made the failure reachable at all.
-    expect(script.length).toBeGreaterThan(100_000);
-    const result = spawnSync('sh', ['-s', 'uninstall'], {
-      input: script,
-      encoding: 'utf8',
-      timeout: INSTALLER_RUN_TIMEOUT_MS,
-      windowsHide: true,
-      env: { ...process.env, HOME: home, STATION_CHANNEL: 'stable' },
-    });
-    // EPIPE here is the shell closing its stdin before the script ended.
-    expect(result.error, result.stderr).toBeUndefined();
+    // A copy padded just before its last line, so whatever a shell leaves
+    // unread at an early exit is far past any pipe buffer. Without it the
+    // margin is the script's own length after the uninstall case, which is a
+    // few KiB over 64 KiB and was swallowed by read-ahead on Linux.
+    const script = readFileSync(installScript, 'utf8');
+    expect(script).toContain('uninstall_station "${1:-}"\n    exit 0\n');
+    const lastLine = script.lastIndexOf('\n', script.length - 2) + 1;
+    const padded = join(root, 'install-padded.sh');
+    writeFileSync(
+      padded,
+      `${script.slice(0, lastLine)}${'# padding\n'.repeat(128 * 1024)}${script.slice(lastLine)}`,
+    );
+    const writerStatus = join(root, 'writer-status');
+    const result = spawnSync(
+      'sh',
+      [
+        '-c',
+        '{ cat "$1"; echo $? >"$2"; } | sh -s uninstall',
+        'pipe',
+        padded,
+        writerStatus,
+      ],
+      {
+        encoding: 'utf8',
+        timeout: INSTALLER_RUN_TIMEOUT_MS,
+        windowsHide: true,
+        env: { ...process.env, HOME: home, STATION_CHANNEL: 'stable' },
+      },
+    );
     expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(writerStatus, 'utf8').trim()).toBe('0');
   });
 
   it('refuses an unrelated launcher during uninstall', () => {
