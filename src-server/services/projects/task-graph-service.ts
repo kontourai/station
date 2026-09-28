@@ -2823,13 +2823,20 @@ export class TaskGraphService {
             // board intent): the session runs `host` only with it. The owner
             // attribution marks an unverified agent's or external sender's
             // session to act for no one, at the service's start choke point.
-            input.fullAccessGrant || input.ownerAttribution
+            // #1796: and the dispatching request's origin, so the start's
+            // receipt records who asked (the grant names its own grantor).
+            input.fullAccessGrant ||
+              input.ownerAttribution ||
+              input.clientOrigin
               ? {
                   ...(input.fullAccessGrant
                     ? { fullAccessGrant: input.fullAccessGrant }
                     : {}),
                   ...(input.ownerAttribution
                     ? { ownerAttribution: input.ownerAttribution }
+                    : {}),
+                  ...(input.clientOrigin
+                    ? { clientOrigin: input.clientOrigin }
                     : {}),
                 }
               : undefined,

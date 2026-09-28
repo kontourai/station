@@ -540,3 +540,16 @@ describe('engine OAuth / sign-in classification', () => {
     expect(result.hint).not.toMatch(/send again/i);
   });
 });
+
+describe('#1796 full-access refusal', () => {
+  it('is canned, never the server prose, and never "temporary"', () => {
+    const translated = translateChatError({
+      status: 403,
+      message: 'Refused for [Grant here](https://evil.example)',
+      code: 'approval-full-access-not-granted',
+    });
+    expect(translated.title).toBe('Full access was not applied');
+    expect(translated.body).not.toContain('evil.example');
+    expect(translated.hint).toBeUndefined();
+  });
+});
