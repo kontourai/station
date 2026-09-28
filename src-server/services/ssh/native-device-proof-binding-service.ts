@@ -37,7 +37,6 @@ const BASE64URL_32_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const BINDING_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const APP_IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/;
-const NATIVE_CHANNELS = ['dev', 'stable', 'beta', 'nightly'] as const;
 const SURFACE_KEY_SET =
   'appIdentifier,channel,clientInstanceId,keyThumbprint,kind';
 
@@ -48,7 +47,7 @@ const SURFACE_KEY_SET =
  */
 export type NativeDeviceClientSurface = SelfHostedBrokerNativeClientSurfaceV2;
 
-export function isValidNativeClientSurface(
+function isValidNativeClientSurface(
   value: unknown,
 ): value is NativeDeviceClientSurface {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
@@ -57,7 +56,10 @@ export function isValidNativeClientSurface(
   return (
     Object.keys(surface).sort().join(',') === SURFACE_KEY_SET &&
     surface.kind === 'station-native' &&
-    NATIVE_CHANNELS.includes(surface.channel as never) &&
+    (surface.channel === 'dev' ||
+      surface.channel === 'stable' ||
+      surface.channel === 'beta' ||
+      surface.channel === 'nightly') &&
     typeof surface.appIdentifier === 'string' &&
     APP_IDENTIFIER_PATTERN.test(surface.appIdentifier) &&
     typeof surface.clientInstanceId === 'string' &&
@@ -545,7 +547,7 @@ export class NativeDeviceProofBindingService {
       if (
         existing.state === 'active' &&
         existing.deviceId === input.deviceId &&
-        existing.surface.clientInstanceId === surface.clientInstanceId
+        surfacesMatch(existing.surface, surface)
       ) {
         existing.state = 'revoked';
         existing.revokedAt = now;

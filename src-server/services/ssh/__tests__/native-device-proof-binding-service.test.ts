@@ -438,6 +438,29 @@ describe('native device proof binding service (station#2893)', () => {
     ).toThrow('binding_not_found');
   });
 
+  test('revocation cannot target an approved binding through a different native surface', () => {
+    const { pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const approved = surface();
+    const binding = bindingService.createBinding({
+      deviceId,
+      surface: approved,
+      jwk: p256PublicJwk(),
+      approval: mintApproval(),
+    });
+    expect(() =>
+      bindingService.revokeBinding({
+        deviceId,
+        surface: surface({ keyThumbprint: thumbprintOf(p256PublicJwk()) }),
+        approval: mintApproval(),
+      }),
+    ).toThrow('binding_not_found');
+    expect(
+      bindingService.requireCurrentBinding({ deviceId, surface: approved })
+        .binding.bindingId,
+    ).toBe(binding.bindingId);
+  });
+
   test('key replacement revokes the prior binding and rebinds the new key', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
@@ -571,7 +594,7 @@ describe('native device proof binding service (station#2893)', () => {
     const truncated = p256PublicJwk();
     const bad = {
       ...truncated,
-      x: `${truncated.x.slice(0, 42)}A`,
+      x: `${truncated.x.slice(0, 42)}${truncated.x.endsWith('A') ? 'B' : 'A'}`,
     };
     expect(() =>
       bindingService.createBinding({
