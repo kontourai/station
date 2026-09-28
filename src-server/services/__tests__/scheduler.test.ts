@@ -35,9 +35,6 @@ const { ANNOUNCEMENT_LEASE_MS, createSchedulerLedger } = await import(
 );
 type BuiltinSchedulerOptions =
   import('../scheduling/builtin-scheduler.js').BuiltinSchedulerOptions;
-const { resetAnnouncedSchedulerFailuresForTests } = await import(
-  '../scheduling/builtin-scheduler-execution.js'
-);
 const { SchedulerService } = await import('../scheduling/scheduler-service.js');
 const {
   schedulerConcurrencyDeferrals,
@@ -107,12 +104,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
-});
-
-// The announcement dedupe is keyed by run id and lives for the process; run
-// ids are unique in production but a test corpus is one process.
-beforeEach(() => {
-  resetAnnouncedSchedulerFailuresForTests();
 });
 
 /**
@@ -620,9 +611,9 @@ describe('BuiltinScheduler', () => {
     await booted.scheduler.stop();
     expect(booted.failures()).toHaveLength(1);
 
-    // A restart clears the in-process dedupe Set, so silence here can only
-    // come from the stamp the first boot wrote on the run itself.
-    resetAnnouncedSchedulerFailuresForTests();
+    // A restarted scheduler starts with an empty in-process dedupe Set, so
+    // silence here can only come from the stamp the first boot wrote on the
+    // run itself.
     const restarted = schedulerOver(directory);
     restarted.scheduler.start();
     await restarted.scheduler.stop();
@@ -646,7 +637,6 @@ describe('BuiltinScheduler', () => {
     expect(refused.schedule).not.toHaveBeenCalled();
     expect(owedIds(directory)).toEqual([runId]);
 
-    resetAnnouncedSchedulerFailuresForTests();
     const recovered = schedulerOver(directory);
     recovered.scheduler.start();
     await recovered.scheduler.stop();
@@ -684,7 +674,6 @@ describe('BuiltinScheduler', () => {
       // the row is still owed, and still leased by the process that died.
       expect(owedIds(directory)).toHaveLength(1);
 
-      resetAnnouncedSchedulerFailuresForTests();
       const restarted = schedulerOver(directory);
       restarted.scheduler.start();
       expect(restarted.schedule).not.toHaveBeenCalled();
@@ -714,13 +703,10 @@ describe('BuiltinScheduler', () => {
     const first = schedulerOver(directory);
     const second = schedulerOver(directory);
     first.scheduler.start();
-    // Two PROCESSES: the in-process dedupe Set is per-process, so leaving
-    // this test's shared one populated would hide the very race it exists to
-    // pin (it did — an injected always-claim lease passed until this line).
-    // The second scheduler starts while the first one's notification write
-    // is still in flight, so nothing is stamped yet and only the lease can
-    // prevent the duplicate.
-    resetAnnouncedSchedulerFailuresForTests();
+    // Two PROCESSES: each scheduler owns its in-process dedupe Set, so the
+    // second one cannot see the first's. It starts while the first one's
+    // notification write is still in flight, so nothing is stamped yet and
+    // only the lease can prevent the duplicate.
     second.scheduler.start();
     await first.scheduler.stop();
     await second.scheduler.stop();

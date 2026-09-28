@@ -45,6 +45,7 @@ import type {
   LiveSurfaceModifiers,
 } from '@kontourai/station-contracts/live-surface';
 import type { AgentController } from '../live-surface/control-lease.js';
+import { jpegSize } from '../live-surface/jpeg-size.js';
 import {
   claimAgentControl,
   dispatchAgentInput,
@@ -68,7 +69,6 @@ import {
   isValidBrowserViewport,
 } from './browser-session-registry.js';
 import { CdpProtocolError } from './cdp-pipe-transport.js';
-import { jpegDimensions } from './chromium-screencast-producer.js';
 import {
   BrowserHostExitedError,
   BrowserHostPolicyError,
@@ -1578,9 +1578,7 @@ export class BrowserAutomation {
             'screenshot-too-large',
             'The screenshot is too large to return. Resize the viewport smaller (browser_resize) and try again.',
           );
-        const size = jpegDimensions(
-          new Uint8Array(Buffer.from(data, 'base64')),
-        );
+        const size = jpegSize(new Uint8Array(Buffer.from(data, 'base64')));
         screenshot = { mimeType: 'image/jpeg', data, ...(size ?? {}) };
       }
       const value = page?.result?.value ?? {};
