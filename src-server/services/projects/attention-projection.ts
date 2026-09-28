@@ -1424,10 +1424,10 @@ function projectGateOutcome(
 
 /**
  * archive#3203: everything a `session-failed` row needs to say WHAT failed,
- * WHY, and WHICH session it was. Pure and exported so the payload has direct
- * coverage without standing up the whole projection — every field is read off
- * the summary this projection already holds, and a field the summary did not
- * record is OMITTED rather than filled with a placeholder.
+ * WHY, and WHICH session it was. Every field is read off the summary this
+ * projection already holds, and a field the summary did not record is OMITTED
+ * rather than filled with a placeholder. Exported for the orchestration tests
+ * that check a failed summary's bell body.
  *
  * `title` is the session's own `displayTitle`. It used to be the literal
  * `'Session failed'`, which `attentionKindLabel` already renders as the row's

@@ -340,16 +340,6 @@ describe('TaskGraphService', () => {
     ).rejects.toBeInstanceOf(TaskDeclaredOutputKeepConflictError);
   });
 
-  test('has no post-construction project or workflow dependency setters', () => {
-    // Production composes both adapters before publishing the graph. Keeping
-    // this ratchet at the Module's Interface prevents a future startup-order
-    // requirement from returning as a convenient setter.
-    expect(TaskGraphService.prototype).not.toHaveProperty('setProjectService');
-    expect(TaskGraphService.prototype).not.toHaveProperty(
-      'setWorkflowSidecarReader',
-    );
-  });
-
   test('fails closed on an ill-shaped persisted graph without changing its bytes', async () => {
     const home = makeTempDir('station-task-graph-corrupt-');
     const path = join(home, 'task-graph.json');

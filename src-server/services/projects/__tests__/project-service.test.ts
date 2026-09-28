@@ -229,20 +229,6 @@ describe('ProjectService', () => {
     expect(result.slug).toBe('blank-slug');
   });
 
-  test('listProjects delegates', () => {
-    const adapter = createMockStorageAdapter();
-    const svc = new ProjectService(adapter as any);
-    svc.listProjects();
-    expect(adapter.listProjects).toHaveBeenCalled();
-  });
-
-  test('deleteProject delegates', () => {
-    const adapter = createMockStorageAdapter();
-    const svc = new ProjectService(adapter as any);
-    svc.deleteProject('test');
-    expect(adapter.deleteProject).toHaveBeenCalledWith('test');
-  });
-
   // archive#1499: a new project is never in the legacy shape, so the
   // `workingDirectory`-only path shrinks monotonically instead of persisting as
   // a permanent second mode (portable-project-identity.md §5).

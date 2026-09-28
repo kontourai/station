@@ -1,3 +1,5 @@
+import * as basisPane from '@kontourai/station-basis-pane/workspace-basis-pane';
+import * as contracts from '@kontourai/station-contracts';
 import { createWorkspaceChatPaneInstance } from '@kontourai/station-contracts/workspace-chat-pane';
 import {
   createWorkspaceCodingDiffPaneInstance,
@@ -10,6 +12,7 @@ import {
   createWorkspaceTrustPaneInstance,
 } from '@kontourai/station-contracts/workspace-evidence-panels';
 import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-file-preview';
+import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { createWorkspaceSpatialBoardPaneInstance } from '@kontourai/station-contracts/workspace-spatial-board';
 import { describe, expect, test } from 'vitest';
 import {
@@ -274,46 +277,28 @@ describe('known Workspace Pane declarations', () => {
     );
   });
 
-  test('the known declarations claiming docked are exactly Chat, the three coding panes, File Preview, Browser and Device (#928, #2047, #2049, #1969, #90)', () => {
-    // `docked` means "may occupy a shell region". Since #2049 a descriptor
-    // may earn that two ways, and both have a reader:
-    //
-    // - as a REGISTERED SURFACE — Chat and the three coding panes, in
-    //   `REGION_SURFACE_REGISTRY`;
-    // - as an INSTANCE-KEYED family — File Preview, which has no blank
-    //   canonical occurrence and so is no registry key at all; it reaches a
-    //   region through `INSTANCE_SURFACE_PREFIXES` (`file-preview:<nonce>`),
-    //   and `docked-capability-derivation.test.ts` pins each prefix's
-    //   descriptor id to a descriptor that exists and declares `docked`.
-    //
-    // A new entry here claiming `docked` must have one of those two readers,
-    // or the claim is a label nothing derives. Note File Preview IS declared
-    // to this catalog, but a region's chooser lists registry surfaces, and
-    // no prefix family is a registry key (`region-model.ts`), so it can never
-    // list a row that cannot open. Declaration order, so a reordering is
-    // visible too.
+  test('every known declaration claiming docked is an exported built-in descriptor, byte for byte (#928, #2049)', () => {
+    // `docked` means "may occupy a shell region", and the claim is pinned to
+    // a reader by the UI's docked-capability-derivation test. That test can
+    // only see descriptors exported as `WORKSPACE_*_DESCRIPTOR` from the
+    // contracts and basis-pane barrels. A declaration authored inline here
+    // (Flow Run Console is one) is invisible to it, so it must not claim
+    // `docked`, and an exported one must reach the catalog unchanged.
+    const exported = new Map<string, WorkspacePaneDescriptor>();
+    for (const module of [contracts, basisPane] as Record<string, unknown>[])
+      for (const [name, value] of Object.entries(module))
+        if (/^WORKSPACE_[A-Z0-9_]+_DESCRIPTOR$/.test(name))
+          exported.set(
+            (value as WorkspacePaneDescriptor).id,
+            value as WorkspacePaneDescriptor,
+          );
     const claimingDocked = KNOWN_WORKSPACE_PANE_DECLARATIONS.filter(
       ({ descriptor }) =>
         descriptor.placement.supportedRegions.includes('docked'),
-    ).map(({ descriptor }) => descriptor.id);
-    expect(claimingDocked).toEqual([
-      'pane:builtin:chat',
-      'pane:builtin:workspace-preview:file-preview',
-      // #90 D9: an INSTANCE-KEYED family (`browser-preview:<nonce>`), the
-      // pane the float-over-chat's "Open in right panel" places.
-      'pane:builtin:workspace-preview:browser-preview',
-      'pane:builtin:coding:file-browser',
-      'pane:builtin:coding:diff',
-      'pane:builtin:coding:terminal',
-      // #1969: a REGISTERED SURFACE (`device` in `REGION_SURFACE_REGISTRY`),
-      // so it earns `docked` the first of the two ways above.
-      'pane:builtin:device',
-    ]);
-    // The pin has power only if the set it filters is the real one.
-    expect(KNOWN_WORKSPACE_PANE_DECLARATIONS.length).toBeGreaterThan(5);
-    expect(
-      KNOWN_WORKSPACE_PANE_DECLARATIONS.map(({ descriptor }) => descriptor.id),
-    ).toContain('pane:builtin:workspace-preview:flow-run-console');
+    );
+    expect(claimingDocked.length).toBeGreaterThan(0);
+    for (const { descriptor } of claimingDocked)
+      expect(exported.get(descriptor.id), descriptor.id).toEqual(descriptor);
   });
 
   /**

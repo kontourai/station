@@ -33,7 +33,6 @@ import {
 } from '../project-manifest-store.js';
 import { ProjectResourceResolver } from '../project-resource-resolver.js';
 import {
-  baselineCwdOutcome,
   CONFLATED_UNBOUND_NOTE,
   type CwdShadowSample,
   compareCwdShadow,
@@ -130,36 +129,6 @@ function sample(overrides: Partial<CwdShadowSample> = {}): CwdShadowSample {
   };
 }
 
-describe('baselineCwdOutcome — the seam projected onto its own three outcomes', () => {
-  test('an absent project directory is the deliberate no-directory terminus, not a failure', () => {
-    expect(baselineCwdOutcome(undefined)).toEqual({ kind: 'no-directory' });
-  });
-
-  test('a declared directory that exists is where the session launches', () => {
-    const dir = tempDir('station-1501-baseline-');
-    expect(baselineCwdOutcome(dir)).toEqual({ kind: 'directory', path: dir });
-  });
-
-  test('a declared directory that is gone is the #791 fail-closed branch', () => {
-    const dir = join(tempDir('station-1501-baseline-'), 'gone');
-    expect(baselineCwdOutcome(dir)).toEqual({
-      kind: 'missing-directory',
-      path: dir,
-    });
-  });
-
-  test('existence is asked of the injected probe, so the shadow can never disagree with the seam about the path itself', () => {
-    const exists = vi.fn().mockReturnValue(true);
-    expect(baselineCwdOutcome('/x/y', exists)).toEqual({
-      kind: 'directory',
-      path: '/x/y',
-    });
-    // The seam already absolutized and tilde-expanded; re-deriving here is
-    // exactly how a shadow acquires divergences of its own.
-    expect(exists).toHaveBeenCalledWith('/x/y');
-  });
-});
-
 describe('dispatchCwdShadow — the observer never runs on the caller stack', () => {
   test('the observer has NOT been called when dispatch returns, and IS called a check-phase turn later', async () => {
     // The discriminating assertion for the deferral. Draining the check phase
@@ -212,6 +181,22 @@ describe('dispatchCwdShadow — the observer never runs on the caller stack', ()
     mkdirSync(dir, { recursive: true });
     deferred[0]?.();
     expect(observed?.baseline).toEqual({ kind: 'directory', path: dir });
+  });
+
+  test('a declared directory that is gone reaches the observer as the #791 fail-closed baseline', () => {
+    const dir = join(tempDir('station-1501-gone-'), 'gone');
+    let observed: CwdShadowSample | undefined;
+    dispatchCwdShadow(
+      (received) => {
+        observed = received;
+      },
+      { projectSlug: 'acme', provider: 'claude', projectCwd: dir },
+      (callback) => callback(),
+    );
+    expect(observed?.baseline).toEqual({
+      kind: 'missing-directory',
+      path: dir,
+    });
   });
 
   test('an unwired observer is a no-op and schedules nothing', () => {
@@ -627,7 +612,7 @@ describe('observeCwdShadow — reporting, containment, and the kill switch', () 
 
   test('station#1594: `agree-unverified` and `agree-drifted` are COUNTED but NOT LOGGED', async () => {
     // Verifier round 1 caught this gap by fault injection: dropping
-    // `agree-unverified` from NON_DIVERGENT_OUTCOMES passed all 40 shadow
+    // `agree-unverified` from the non-divergent outcome list passed all 40 shadow
     // tests, while in production it would emit a warn line for EVERY
     // manifested-git project that is stale or drifted — precisely the
     // fabricated "do not flip" record this module exists to prevent. The
@@ -858,14 +843,21 @@ describe('observeCwdShadow against the real resolver — transitions, not snapsh
     slug: string,
     projectCwd: string | undefined,
   ) {
-    return observeCwdShadow(
-      {
-        projectSlug: slug,
-        provider: 'claude',
-        baseline: baselineCwdOutcome(projectCwd),
+    // The baseline side is built by the seam's own dispatch, not re-derived
+    // here, so these pins compare against what the seam really samples.
+    let sample: CwdShadowSample | undefined;
+    dispatchCwdShadow(
+      (received) => {
+        sample = received;
       },
-      { homeDir: observerHome, resolve: harness.resolve },
+      { projectSlug: slug, provider: 'claude', projectCwd },
+      (callback) => callback(),
     );
+    if (!sample) throw new Error('dispatchCwdShadow delivered no sample');
+    return observeCwdShadow(sample, {
+      homeDir: observerHome,
+      resolve: harness.resolve,
+    });
   }
 
   test('PINNED: a whitespace-only workingDirectory trips `conflated-unbound` — a real fail-open hazard for the flip, not tripwire noise', async () => {
