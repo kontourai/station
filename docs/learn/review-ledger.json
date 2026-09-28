@@ -11585,7 +11585,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "4128ff5a82b47acda50bef602b4e07a71b15f1683337e532e82a6439082df2bd",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "ccce3163574c601d42215c789621fa84f34a5296",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11593,7 +11593,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
+          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -12085,7 +12085,8 @@
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged; HTTP changes recognize native continuation headers and preserve exact native provenance through bounded Request replacement; ordinary browser Origin/cookie, budget, API error and resource authorization rules remain; reviewed explicit nativeClient opt-in and server-owned native provenance; existing browser/diagnostic paths and physical/deployment evidence limits remain. Changed inputs reviewed: src-server/runtime/bootstrap/runtime-http.ts, src-server/runtime/bootstrap/self-hosted-broker-pion-runtime.ts, src-server/runtime/bootstrap/self-hosted-broker-runtime.ts, src-server/runtime/bootstrap/self-hosted-connector-config.ts, src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
         "Integration source review through e0314c727: the Claude adapter dropped the stdio mintStationControlCallerToken fallback; native-engine-adoption inlined its suppression check with the same behavior; runtime-startup un-exported two helpers; the broker native client gained a comment saying only tests and the echo lab use it; ApiBaseContext and lib.rs lost the retired notification-watch comments and commands. Startup adoption, the 'ordinary native client does not call' signaling claim and the stdio MCP binding claims still hold, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through d72f79b08: #2904 makes `requestJson` in core-api.ts keep the envelope's code, status and details on errors. It also adds the full-access grantor to coding-authority, records the actor on approval-posture decisions, wires `isFullAccessGrantorCurrent` in runtime-initialize, and adds `resetFullAccessGrantedBy` to orchestration-service. None of this touches the saved-profile, key ceremony, relay, HTTP/WS scope or CLI refusal claims. One sentence was wrong: 'Revoke and pair again with the intended grant when changing a Device's access.' `setDeviceScope` already allowed in-place changes before #2904 (every token except `access:manage`), and #2904 adds the host command. I corrected it to the in-place Paired devices → Change access path or `station environment access scope`, and checked both UI labels in packages/connect. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 makes `requestJson` in core-api.ts keep the envelope's code, status and details on errors. It also adds the full-access grantor to coding-authority, records the actor on approval-posture decisions, wires `isFullAccessGrantorCurrent` in runtime-initialize, and adds `resetFullAccessGrantedBy` to orchestration-service. None of this touches the saved-profile, key ceremony, relay, HTTP/WS scope or CLI refusal claims. One sentence was wrong: 'Revoke and pair again with the intended grant when changing a Device's access.' `setDeviceScope` already allowed in-place changes before #2904 (every token except `access:manage`), and #2904 adds the host command. I corrected it to the in-place Paired devices → Change access path or `station environment access scope`, and checked both UI labels in packages/connect. Source review is separate from executed test evidence.",
+        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -14344,7 +14345,7 @@
     {
       "path": "docs/guides/knowledge.md",
       "documentDigest": "c715da7ec799195fa1c36a4cbc12aeb87d68860f2f00258aa46f2920edb6095c",
-      "sourceRevision": "c8bae67dac38dce6107177638464f9f9944fef92",
+      "sourceRevision": "ccce3163574c601d42215c789621fa84f34a5296",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced legacy provider resolution, store/index route callers, explicit rebuild and migration, adapter formats, personal-root UI selection, capture provenance, and Neo4j registration/query/sync boundaries.",
@@ -14352,7 +14353,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
+          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -14499,7 +14500,8 @@
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
-        "Integration source review through e0314c727: neo4j-connection.ts dropped the unused queryNeo4jGraphView stub and connection-type constant but keeps registerNeo4jGraphViewConnection and Neo4jGraphViewConnectionConfig; DELETE /roots/:id now returns 404 'Knowledge root not found' before the conversation-root 403. The guide cites only the retained registration surface and makes no root-delete claim, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through e0314c727: neo4j-connection.ts dropped the unused queryNeo4jGraphView stub and connection-type constant but keeps registerNeo4jGraphViewConnection and Neo4jGraphViewConnectionConfig; DELETE /roots/:id now returns 404 'Knowledge root not found' before the conversation-root 403. The guide cites only the retained registration surface and makes no root-delete claim, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -18435,7 +18437,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "ccce3163574c601d42215c789621fa84f34a5296",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18443,7 +18445,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
+          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -18672,7 +18674,8 @@
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through d1e0facc2: Trigger lookup includes terminal rows with an attached Task, allowing explicit indeterminate resolution; ownership and authoritative outcome checks remain, with no automatic replay. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Integration source review through e0314c727: ClaudeAdapter dropped the unused stdio caller-token mint fallback and keeps in-process station-control and its revocation. Starter Work's readiness, dispatch-fence, continuation and Scheduler claims do not depend on it, so the prose is accurate. Source review is separate from executed test evidence.",
-        "Integration source review through d72f79b08: #2904 threads the request's server-derived `clientOrigin` through the starter-work route, `StarterRegistry.launchStartTask` and continue launches, and `StarterSessionOwner` into dispatch and adoption receipts; a new test shows the body's origin is ignored. Adoption now stamps the full-access grantor, and `prepareStart` refuses a grant that names no grantor. The `startSession` receipt records `clientOrigin`. None of this changes the guide's readiness, one-time dispatch fence, continuation, inspection or Scheduler claims, and the guide makes no full-access claims. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 threads the request's server-derived `clientOrigin` through the starter-work route, `StarterRegistry.launchStartTask` and continue launches, and `StarterSessionOwner` into dispatch and adoption receipts; a new test shows the body's origin is ignored. Adoption now stamps the full-access grantor, and `prepareStart` refuses a grant that names no grantor. The `startSession` receipt records `clientOrigin`. None of this changes the guide's readiness, one-time dispatch fence, continuation, inspection or Scheduler claims, and the guide makes no full-access claims. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -20176,7 +20179,7 @@
     {
       "path": "docs/learn/walkthroughs.md",
       "documentDigest": "e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "ccce3163574c601d42215c789621fa84f34a5296",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed the Project/Task, Connections, request-inspection and repository Knowledge Library scenes against captured UI, source owners and scenario receipts. Captions distinguish persisted state from controlled API/provider fixtures.",
@@ -20184,7 +20187,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
+          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -20392,7 +20395,8 @@
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
         "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
-        "Integration source review through d72f79b08: #2904's orchestration-service changes cover the full-access grantor, the grantor-current confinement check and the revocation reset. The Project/Task, Connections, request-inspection and Knowledge Library scenes and their captions are unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904's orchestration-service changes cover the full-access grantor, the grantor-current confinement check and the revocation reset. The Project/Task, Connections, request-inspection and Knowledge Library scenes and their captions are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -21030,7 +21034,7 @@
     {
       "path": "docs/reference/agent-smoke-confidence.md",
       "documentDigest": "2b19d6d311994f2b925c67e87ae7e762e6864c2e9401f6c6e4759f7315d6aee5",
-      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
+      "sourceRevision": "ccce3163574c601d42215c789621fa84f34a5296",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Revised admission, configuration/check precedence, prompt-vs-tool isolation, cleanup-failed retention and redaction limits. No live smoke run.",
@@ -21038,7 +21042,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
+          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
         },
         {
           "path": "docs/learn/media/connections-models.png",
@@ -21121,7 +21125,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
-        "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
+        "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -23434,7 +23439,7 @@
     {
       "path": "docs/reference/project-task-room-collaboration-acceptance.md",
       "documentDigest": "dc8463805f079a2e2a56cd5128f8c226cd536380c22ad9bcc1dc8987f7378372",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "ccce3163574c601d42215c789621fa84f34a5296",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current browser assertions include private control to real TaskDispatcher seeded Session association and authoritative Agent edit, links and restart. Explicitly distinguishes seeded task-dispatch branch from an external Agent runtime. Browser lane not rerun.",
@@ -23442,7 +23447,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
+          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
         },
         {
           "path": "docs/learn/media/shared-task-document.png",
@@ -23519,7 +23524,8 @@
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Required merge-queue recovery through 421517851: StationRuntime adds only verified native Pion/virtual-request readers at the existing optional ingress/session composition; other recorded bootstrap, plugin, task, settings and evidence owners are unchanged. Changed inputs reviewed: src-server/runtime/bootstrap/station-runtime.ts. Native changed-owner fixture suites: 145/145 across 10 files in 44.12s; fixtures/cryptographic keys and simulated peer/provider paths, not a physical native, live provider, remote network or packaged sign-in receipt. Initial wrong Connect test pathname was refused before execution and is retained separately. Earlier checks and limits remain historical.",
-        "Integration source review through d72f79b08: #2904 makes TaskGraphService pass the dispatching request's clientOrigin to the start (for the receipt) alongside fullAccessGrant and ownerAttribution. The browser assertions (private control to real TaskDispatcher-seeded Session association, Agent edit, links, restart) and the seeded-versus-external distinction are unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 makes TaskGraphService pass the dispatching request's clientOrigin to the start (for the receipt) alongside fullAccessGrant and ownerAttribution. The browser assertions (private control to real TaskDispatcher-seeded Session association, Agent edit, links, restart) and the seeded-versus-external distinction are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -26226,7 +26232,7 @@
     },
     {
       "path": "docs/user/getting-started.md",
-      "sourceRevision": "fcd4407178cb5509ea47a958714603034fe20004",
+      "sourceRevision": "ccce3163574c601d42215c789621fa84f34a5296",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide read. Traced first-run selected-answer save/generation cancellation and three destinations, preserved New Chat setup return and authority revalidation, file/conversation token-to-send callers, personal local source observation, and exact approval request controls. Clarified Ready vs actual chat smoke, save cancellation, 64 file mentions, 25-conversation picker window/eight matches, and send-time captured scope. Reused prior source-backed Starter Task/scheduler/continuation and install/recovery owner review without upgrading live evidence.",
@@ -26243,7 +26249,7 @@
         },
         {
           "path": "docs/learn/media.json",
-          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
+          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
         },
         {
           "path": "docs/learn/media/inspect-request.png",
@@ -26414,7 +26420,8 @@
         "Reviewed landing deltas through 111744681: Engine-enable refusal text improves without changing successful creation or the captured UI layout. Executed SDK/server/UI integration: 556 tests across 8 files passed in 31.07s, with fixtures; no live provider/device result.",
         "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
         "Integration source review through e0314c727: install.sh now records and reuses resolved ports, validates them, and stops/switches/restarts archive services that run the install's `current` (#2867). Uninstall now refuses while such a service exists, and packaged upgrade tolerates that service. The guide's default install, rerun-to-upgrade and uninstall steps stay accurate for the stable/beta path, and it links archive service limits to the archive guide. Source review is separate from executed test evidence.",
-        "Integration source review through d72f79b08: #2904 changes useChatInput's refused queued full-access pick to add a structured refusal notice ('pick-not-applied') in place of the fixed note, and adds grantor and revocation logic to orchestration-service. The guide makes no full-access refusal claim; its first-run, file-mention, conversation-picker and approval-inspection claims are unaffected. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through d72f79b08: #2904 changes useChatInput's refused queued full-access pick to add a structured refusal notice ('pick-not-applied') in place of the fixed note, and adds grantor and revocation logic to orchestration-service. The guide makes no full-access refusal claim; its first-run, file-mention, conversation-picker and approval-inspection claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -27264,7 +27271,7 @@
     {
       "path": "examples/knowledge-library/README.md",
       "documentDigest": "9f1c40c54f1e11aa9f37f1e9a7761c32b972d554515c3e37c2a5e51f9823105b",
-      "sourceRevision": "44468b740ff5c3e0c02b2cf684ba9437ec890ca8",
+      "sourceRevision": "ccce3163574c601d42215c789621fa84f34a5296",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: personal/active-Project root filtering, canonical detail versus derived graph, read-only calls, registration-metadata cache key and missing-record handling, accessible list/scroll/focus shell, Settings entry and index independence.",
@@ -27272,7 +27279,7 @@
       "sources": [
         {
           "path": "docs/learn/media.json",
-          "digest": "95339f8a85ff4646eebcdca21a46a2d2b232445725044edc9455e3dbdac36132"
+          "digest": "bbce0846366eaa4e6c68ddb62b80b0f18d3ccf533ff6bb3c950267565575c6f4"
         },
         {
           "path": "docs/learn/media/repository-knowledge-narrow.png",
@@ -27373,7 +27380,8 @@
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused root-incarnation alias only; library rendering, record reads and graph navigation are unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution. Unused exports were removed without changing production callers; Survey tests now import their dependency unconditionally instead of skipping when unavailable.",
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
-        "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed."
+        "Landing review through 64452b7f0: Reviewed the reasoning-only CSS delta against the retained capture scenarios; no depicted reasoning component was affected. All six PNGs were inspected across the reviews; video scenarios were checked without replaying video. Capture files, digests and captured revisions are unchanged. Reviewed reasoning-only selectors and the added reasoning touch target. Other layout, theme aliases, editor, placement, knowledge, connection, Starter and icon behavior is unchanged. Reasoning disclosure and actual media-manifest checks passed 9/9 in 3.56s; no new native or visual-layout execution is claimed.",
+        "Integration source review through ccce31635: docs/learn/media.json changed only the inspect-request image and video source digests and review revision, after #2904 left the request-inspection path unchanged. Captions, scenarios and capture files are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
       ]
     },
     {
