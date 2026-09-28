@@ -25,15 +25,15 @@ export interface TauriInvoker {
   invoke(command: string, args?: Record<string, unknown>): Promise<unknown>;
 }
 
-export const safeInteger = (value: unknown) =>
+const safeInteger = (value: unknown) =>
   Number.isSafeInteger(value) && (value as number) > 0;
-export const exactKeys = (value: unknown, keys: readonly string[]) =>
+const exactKeys = (value: unknown, keys: readonly string[]) =>
   typeof value === 'object' &&
   value !== null &&
   Object.keys(value).length === keys.length &&
   keys.every((key) => Object.hasOwn(value, key));
 
-export function validateNativeRelayBinding(
+function validateNativeRelayBinding(
   value: NativeRelayBindingDto,
   profileName: string,
   profileRevision: number,
