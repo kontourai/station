@@ -437,7 +437,7 @@ describe('#2911 round 2: a tool grant never covers an escalation riding a tool r
     // One line, no bidi or zero-width characters, bounded from the left
     // (the END of a name is its registrable domain), and quoted: after
     // sanitizing it holds a space, so it is not a hostname.
-    expect(shownHost).toBe(`an unrecognised host "\u2026${'a'.repeat(119)}"`);
+    expect(shownHost).toBe(`an unrecognised host "\u2026${'a'.repeat(59)}"`);
     expect(opened.title).not.toMatch(/[\p{Cc}\p{Cf}]/u);
     await adapter.stopAll();
   });
@@ -667,12 +667,21 @@ describe('#2911 round 5: titles keep their structure and their domain', () => {
     const opened = await openedFor({
       networkApprovalContext: { host, protocol: 'https' },
     });
-    expect(opened.title).toContain('.evil.example (https)');
-    // More UTF-16 units than the snapshot's bound, within it in code points.
-    expect(opened.title.length).toBeGreaterThan(200);
+    // domainToASCII folds the mathematical letters to ASCII.
+    expect(opened.title).toMatch(
+      /^network access to \u2026a+\.evil\.example \(https\)/u,
+    );
     const snapshot = projectDelegatedTaskEvent(1, opened);
     expect(snapshot.title).toBe(opened.title);
     expect(snapshot.title).toContain('.evil.example');
+  });
+
+  test('an astral title the adapter bounded passes the delegation snapshot whole', async () => {
+    const opened = await openedFor({}, '\u{1D41A}'.repeat(300));
+    expect(Array.from(opened.title)).toHaveLength(200);
+    // More UTF-16 units than the snapshot's bound, within it in code points.
+    expect(opened.title.length).toBeGreaterThan(200);
+    expect(projectDelegatedTaskEvent(1, opened).title).toBe(opened.title);
   });
 
   test.each([
@@ -720,7 +729,11 @@ describe('#2911 round 5: titles keep their structure and their domain', () => {
   });
 
   test.each([
-    ['a Unicode name', 'b\u00FCcher.example', 'b\u00FCcher.example'],
+    [
+      'a Unicode name, as punycode',
+      'b\u00FCcher.example',
+      'xn--bcher-kva.example',
+    ],
     ['punycode', 'xn--bcher-kva.example', 'xn--bcher-kva.example'],
     ['IPv4', '203.0.113.7', '203.0.113.7'],
     ['bracketed IPv6', '[2001:db8::1]', '[2001:db8::1]'],
@@ -743,5 +756,80 @@ describe('#2911 round 5: titles keep their structure and their domain', () => {
     expect(opened.title).toBe(
       'network access to ok.example (unrecognised protocol) for: curl x',
     );
+  });
+});
+
+describe('#2911 round 6: only an ASCII host is shown bare, and a quoted host stays quoted', () => {
+  async function titleFor(host: string) {
+    const { adapter, process, events } = await startedAdapter();
+    await emit(
+      process,
+      command(151, 'cmd-1', 'curl x', {
+        networkApprovalContext: { host, protocol: 'https' },
+      }),
+    );
+    const opened = await waitFor(
+      () => openedEvents(events)[0],
+      'request.opened',
+    );
+    await adapter.stopAll();
+    return opened.title as string;
+  }
+
+  /** The text between the delimiter quotes; fails if an interior quote is bare. */
+  function quotedBody(title: string): string {
+    const match =
+      /an unrecognised host "((?:[^"\\]|\\.)*)" \(https\) for: curl x$/u.exec(
+        title,
+      );
+    expect(match, title).not.toBeNull();
+    return match![1];
+  }
+
+  test('a cut never splits an escaped quote into a bare one', async () => {
+    const quoteSuffix = '" (https) for: git status && ls ';
+    // The reviewer's probe: padded so that, escaped, the suffix from the
+    // quote on is exactly 119 code points.
+    const host = `zz${quoteSuffix}${'b'.repeat(119 - quoteSuffix.length)}`;
+    const title = await titleFor(host);
+    expect(title.match(/"/g)).toHaveLength(2);
+    quotedBody(title);
+  });
+
+  test('a cut never leaves a lone backslash escaping the closing quote', async () => {
+    const title = await titleFor(`a b${'\\'.repeat(200)}`);
+    const body = quotedBody(title);
+    expect(body.match(/\\+$/)![0].length % 2).toBe(0);
+  });
+
+  test('separator lookalikes and fillers are never shown bare', async () => {
+    const host =
+      'evil.example\u3164for\u02D0\u3164git\u3164status\u115F\u1160\uFFA0\u1438\u01C0';
+    const title = await titleFor(host);
+    if (title.includes('an unrecognised host "')) {
+      // Quoted: the lookalikes sit inside the delimiters, never outside.
+      expect(quotedBody(title)).toBe(host);
+    } else {
+      // Bare only as domainToASCII's punycode: ASCII, no fillers.
+      expect(title).toMatch(/^[\x20-\x7E]+$/);
+      expect(title).not.toContain('evil.example for');
+    }
+  });
+
+  test('a Unicode name is shown as its punycode', async () => {
+    expect(await titleFor('b\u00FCcher.example')).toBe(
+      'network access to xn--bcher-kva.example (https) for: curl x',
+    );
+  });
+
+  test('an invisible combining mark is not shown', async () => {
+    const title = await titleFor('evil\u034F.example');
+    expect(title).not.toContain('\u034F');
+    expect(title).toBe('network access to evil.example (https) for: curl x');
+  });
+
+  test('a bracketed IPv6 address with a non-ASCII zone is quoted', async () => {
+    const title = await titleFor('[fe80::1%\u00E9th0]');
+    expect(quotedBody(title)).toBe('[fe80::1%\u00E9th0]');
   });
 });

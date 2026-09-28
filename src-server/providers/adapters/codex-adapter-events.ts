@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { domainToASCII } from 'node:url';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import { sniffChatImageMimeType } from '@kontourai/station-contracts/chat-attachment';
 import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orchestration';
@@ -438,25 +439,47 @@ function commandApprovalTitle(payload: Record<string, unknown>): string {
 }
 
 /**
- * A DNS name (letters of any script, digits, hyphen, underscore, dots),
- * an IPv4 address, or a bracketed IPv6 address. Nothing that could pass for
- * the title's own separators (spaces, brackets, colons) fits.
+ * The hosts shown bare, all ASCII: dot-separated labels of letters, digits,
+ * hyphen and underscore with an optional trailing dot (which covers IPv4 and
+ * punycode), or a bracketed IPv6 address whose zone is ASCII. No character
+ * in them can pass for the title's own separators (spaces, brackets, colons,
+ * quotes) or be invisible.
  */
-const HOST_SYNTAX =
-  /^(?:\[[0-9A-Fa-f:.]+(?:%[\p{L}\p{N}_.-]+)?\]|[\p{L}\p{M}\p{N}_-]+(?:\.[\p{L}\p{M}\p{N}_-]+)*\.?)$/u;
+const BARE_HOST_SYNTAX =
+  /^(?:\[[0-9A-Fa-f:.]+(?:%[A-Za-z0-9_.-]+)?\]|[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.?)$/;
 const PROTOCOL_SYNTAX = /^[A-Za-z0-9]+$/;
+/**
+ * Code points kept of an unrecognised host before escaping, "…" included.
+ * Escaping at most doubles each kept code point, so the quoted text ("…"
+ * plus at most 59 escaped code points, 119) stays within
+ * `MAX_TITLE_HOST_LENGTH`.
+ */
+const MAX_QUOTED_HOST_RAW_LENGTH = Math.floor(MAX_TITLE_HOST_LENGTH / 2);
 
 /**
- * The host as the title shows it. A well-formed host is shown bare, cut from
- * the left so its registrable domain stays. Anything else is engine text that
- * could imitate the title's structure (`evil.example (https) for: ls`), so it
- * is quoted, with its own quotes escaped, and cut the same way.
+ * The host as the title shows it.
+ * - An ASCII host matching `BARE_HOST_SYNTAX` is shown bare, cut from the
+ *   left so its registrable domain stays.
+ * - A non-ASCII host is shown as `domainToASCII` gives it (punycode, with
+ *   invisible code points mapped away) when that result is itself a bare
+ *   host.
+ * - Anything else is quoted as "an unrecognised host": cut from the left
+ *   FIRST, then its quotes and backslashes escaped, so no cut can split an
+ *   escape and leave a bare quote.
  */
 function hostLabel(host: string | undefined): string {
   if (!host) return 'an unnamed host';
-  if (HOST_SYNTAX.test(host)) return keepEnd(host, MAX_TITLE_HOST_LENGTH);
-  const escaped = host.replace(/[\\"]/g, (char) => `\\${char}`);
-  return `an unrecognised host "${keepEnd(escaped, MAX_TITLE_HOST_LENGTH)}"`;
+  if (BARE_HOST_SYNTAX.test(host)) return keepEnd(host, MAX_TITLE_HOST_LENGTH);
+  // `host` is sanitized, so it holds no control characters: anything
+  // outside printable ASCII is non-ASCII.
+  if (/[^ -~]/.test(host)) {
+    const ascii = domainToASCII(host);
+    if (ascii && BARE_HOST_SYNTAX.test(ascii))
+      return keepEnd(ascii, MAX_TITLE_HOST_LENGTH);
+  }
+  const kept = keepEnd(host, MAX_QUOTED_HOST_RAW_LENGTH);
+  const escaped = kept.replace(/[\\"]/g, (char) => `\\${char}`);
+  return `an unrecognised host "${escaped}"`;
 }
 
 function protocolLabel(protocol: string | undefined): string {
