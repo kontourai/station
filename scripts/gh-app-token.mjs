@@ -8,8 +8,8 @@ import { spawnSync } from 'node:child_process';
  * installation token of a dedicated app has its own quota. This helper mints
  * one, narrowed to the one repository and to the permissions the call needs:
  *
- *     GH_TOKEN=$(npm run --silent gh:app-token) gh api repos/kontourai/station/pulls/1
- *     npm run --silent gh:app-token -- --permissions pull_requests:write,contents:write -- gh pr merge 1 --repo kontourai/station --auto
+ *     GH_TOKEN=$(node scripts/gh-app-token.mjs) gh api repos/kontourai/station/pulls/1
+ *     node scripts/gh-app-token.mjs --permissions pull_requests:write,contents:write -- gh pr merge 1 --repo kontourai/station --auto
  *
  * Setup, the least-privilege reasoning and key rotation are in
  * docs/guides/development.md#github-automation-token.

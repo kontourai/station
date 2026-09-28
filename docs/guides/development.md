@@ -333,13 +333,13 @@ checks must not spend the owner's personal GitHub quota: during #2886 the
 shared 5,000-per-hour GraphQL limit ran out three times and blocked merges
 for 20 to 40 minutes each time (#2926). Automation uses a dedicated GitHub
 App instead, whose installation tokens carry their own quota.
-`scripts/gh-app-token.mjs` (`npm run gh:app-token`) mints one per call:
+`scripts/gh-app-token.mjs` mints one per call:
 
 ```bash
 # Read-only by default: every granted scope at read level.
-GH_TOKEN=$(npm run --silent gh:app-token) gh api repos/kontourai/station/pulls/<n>
+GH_TOKEN=$(node scripts/gh-app-token.mjs) gh api repos/kontourai/station/pulls/<n>
 # Ask for exactly the write scope a call needs; the child gets GH_TOKEN, never your GITHUB_TOKEN.
-npm run --silent gh:app-token -- --permissions pull_requests:write,contents:write -- \
+node scripts/gh-app-token.mjs --permissions pull_requests:write,contents:write -- \
   gh pr merge <n> --repo kontourai/station --auto
 ```
 
@@ -393,7 +393,7 @@ REST endpoint, so confirm an armed PR with the single GraphQL query in
 
 **Rotation.** Generate a new key in the app's settings, replace the Keychain
 item with the same `security add-generic-password -U` command, confirm
-`npm run --silent gh:app-token >/dev/null` exits 0, then delete the old key
+`node scripts/gh-app-token.mjs >/dev/null` exits 0, then delete the old key
 from the app's settings.
 
 ## Verification
