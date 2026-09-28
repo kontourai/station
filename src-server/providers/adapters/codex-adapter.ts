@@ -2778,9 +2778,10 @@ export class CodexAdapter implements ProviderAdapterShape {
       pending.payload,
       decision,
     );
-    // Tool-level session grant (mirrors claude-adapter `approvedTools`): the
-    // command/file-change/elicitation wire responses carry no session scope,
-    // so Station remembers the tool itself. Recorded only when the wire
+    // Tool-level session grant (mirrors claude-adapter `approvedTools`): on
+    // top of the decision `resolveApprovalOutcome` sends Codex, Station
+    // remembers the tool itself so a later, different call of it does not
+    // prompt. Recorded only when the wire
     // outcome actually accepts — a data-collecting elicitation declines on
     // the wire even for `acceptForSession`, and must not mint a grant.
     if (

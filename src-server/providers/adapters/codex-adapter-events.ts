@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import { sniffChatImageMimeType } from '@kontourai/station-contracts/chat-attachment';
+import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orchestration';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type {
   RequestOpenedEvent,
@@ -240,13 +241,11 @@ export function mapServerRequestToEvent(
         requestId,
         method: 'request.opened',
         requestType: 'approval',
-        // #2911: a managed-network prompt asks about a HOST, not the command
-        // that tripped it. Every approval surface renders the title (strip
-        // card name, toast, inbox row), so it names what is being allowed.
-        title:
-          networkApprovalTitle(payload) ??
-          extractString(payload.command) ??
-          'Approve command execution',
+        // #2911: every approval surface renders the title (strip card name,
+        // toast, inbox row, a delegating agent's snapshot), so it names what
+        // is being allowed: the host for a managed-network prompt, input to a
+        // running process for a stdin write, otherwise the command.
+        title: commandApprovalTitle(payload),
         description: extractString(payload.reason) ?? undefined,
         payload,
       };
@@ -386,22 +385,58 @@ function isEmptyElicitationSchema(schema: unknown): boolean {
   return schema.minProperties === undefined || schema.minProperties === 0;
 }
 
+/** A DNS name is at most 253 characters; anything longer is not a host. */
+const MAX_TITLE_HOST_LENGTH = 253;
+/** Enough of the command to recognise it without burying the host. */
+const MAX_TITLE_COMMAND_LENGTH = 120;
+const MAX_TITLE_PROTOCOL_LENGTH = 16;
+
 /**
- * "network access to example.com (https)" for a managed-network prompt. A
- * noun phrase, because each surface wraps the title in its own sentence:
- * "Use …" on the card, "… wants to use …" on the toast.
+ * The title of a `commandExecution` approval. A noun phrase, because each
+ * surface wraps it in its own sentence ("Use …" on the card, "… wants to use
+ * …" on the toast).
+ *
+ * - Network prompt: "network access to <host> (<protocol>) for: <command>".
+ *   The host leads because it is what is being allowed; the command stays,
+ *   bounded, because the title is the only text a delegating agent's
+ *   snapshot carries, and the host alone does not say what will use it.
+ * - Stdin write: "input to a running command[: <command>]". Codex's stdin
+ *   approvals refer to the existing parent command, so the bare command
+ *   would read as approval to START it.
+ *
+ * Host, protocol and command are engine-supplied text: each is made one
+ * line, stripped of control and format characters (bidi overrides and
+ * isolates, zero-width characters) and bounded before it is shown.
  */
-function networkApprovalTitle(
-  payload: Record<string, unknown>,
-): string | undefined {
+function commandApprovalTitle(payload: Record<string, unknown>): string {
+  const command = displayText(payload.command, MAX_TITLE_COMMAND_LENGTH);
   const context = payload.networkApprovalContext;
-  if (!isRecord(context)) return undefined;
-  const host = extractString(context.host);
-  if (!host) return undefined;
-  const protocol = extractString(context.protocol);
-  return protocol
-    ? `network access to ${host} (${protocol})`
-    : `network access to ${host}`;
+  const host = isRecord(context)
+    ? displayText(context.host, MAX_TITLE_HOST_LENGTH)
+    : undefined;
+  if (host) {
+    const protocol = displayText(
+      (context as Record<string, unknown>).protocol,
+      MAX_TITLE_PROTOCOL_LENGTH,
+    );
+    const target = protocol
+      ? `network access to ${host} (${protocol})`
+      : `network access to ${host}`;
+    return command ? `${target} for: ${command}` : target;
+  }
+  if (payload.kind === 'writeStdin') {
+    return command
+      ? `input to a running command: ${command}`
+      : 'input to a running command';
+  }
+  return extractString(payload.command) || 'Approve command execution';
+}
+
+function displayText(value: unknown, max: number): string | undefined {
+  const text = extractString(value);
+  return text
+    ? sanitizeUntrustedDisplayText(text, max) || undefined
+    : undefined;
 }
 
 export function mapApprovalResolutionStatus(
@@ -420,9 +455,12 @@ export function mapApprovalResolutionStatus(
  * Tool-level session-grant identity for an inbound Codex approval request.
  * Mirrors `deriveToolName`'s vocabulary (`shell_exec`/`apply_patch`) so a
  * Station-side `acceptForSession` grant covers the whole tool, not the one
- * call the engine asked about: Codex's `commandExecution`/`fileChange`
- * wire responses carry no session scope, and `mcpServer/elicitation/request`
- * degrades `acceptForSession` to a one-call `accept`. Returns null for
+ * call the engine asked about. `resolveApprovalOutcome` passes the user's
+ * decision to Codex unchanged for `commandExecution`/`fileChange`
+ * (`acceptForSession` included); this grant is Station's own, and only it
+ * lets a later, different call through without a prompt.
+ * `mcpServer/elicitation/request` degrades `acceptForSession` to a one-call
+ * `accept` on the wire. Returns null for
  * methods with no stable tool identity (nothing is granted or remembered).
  */
 export function deriveApprovalToolName(
@@ -430,20 +468,26 @@ export function deriveApprovalToolName(
   payload: Record<string, unknown>,
 ): string | null {
   switch (method) {
-    // #2911: a request that asks for more than "run this tool call" never
-    // matches or mints a tool grant, so it always prompts:
+    // #2911: a request that asks for more than "run this command" never
+    // matches or mints a tool grant, so it always prompts. The user's own
+    // decision still reaches Codex unchanged (`acceptForSession` included),
+    // so whatever Codex remembers for the session is Codex's call.
     // - `networkApprovalContext` asks to reach a host through the managed
-    //   network proxy. Station sends `acceptForSession` on the wire, so Codex
-    //   remembers the host itself; a Station-side grant would only matter
-    //   for a different host (or, via `shell_exec`, for every command).
+    //   network proxy; a `shell_exec` grant would cover every host.
+    // - `kind: 'writeStdin'` writes to an already-running process (a shell,
+    //   a REPL, a sudo prompt): a grant would allow any later input to any
+    //   process, and the request carries neither the input nor the process,
+    //   so it can be neither shown nor narrowed.
+    // - Only a kind Station knows as "start a command" (absent on older
+    //   servers, or `command`) is `shell_exec`; an unknown kind fails closed.
     // - `grantRoot` asks to allow writes under a root "for the remainder of
-    //   the session" (codex app-server types), which an `accept` would grant.
-    // Input to an existing terminal (`kind: 'writeStdin'`) is a different
-    // tool from starting a command, so its grants and `shell_exec` grants
-    // never cover each other.
+    //   the session" (codex app-server types). An auto-accept under an
+    //   `apply_patch` grant would answer it without the user seeing it.
     case 'item/commandExecution/requestApproval':
       if (payload.networkApprovalContext != null) return null;
-      return payload.kind === 'writeStdin' ? 'write_stdin' : 'shell_exec';
+      return payload.kind === undefined || payload.kind === 'command'
+        ? 'shell_exec'
+        : null;
     case 'item/fileChange/requestApproval':
       return payload.grantRoot != null ? null : 'apply_patch';
     // #2911: a permissions request is an escalation, not a tool. Its

@@ -308,15 +308,16 @@ async function grantForSession(
   expect(repliesTo(process, first.id)).toHaveLength(1);
 }
 
-/** The second request opened a prompt and got no reply on the wire. */
+/** The `nth` request opened a prompt and got no reply on the wire. */
 async function expectPrompted(
   process: FakeCodexProcess,
   events: any[],
   id: number,
+  nth = 1,
 ) {
   const opened = await waitFor(
-    () => openedEvents(events)[1],
-    'second request.opened',
+    () => openedEvents(events)[nth],
+    `request.opened #${nth}`,
   );
   expect(repliesTo(process, id)).toEqual([]);
   return opened;
@@ -335,7 +336,8 @@ describe('#2911 round 2: a tool grant never covers an escalation riding a tool r
     const opened = await expectPrompted(process, events, 72);
     expect(opened).toMatchObject({
       requestType: 'approval',
-      title: 'network access to exfil.example (https)',
+      title:
+        'network access to exfil.example (https) for: curl https://exfil.example',
       payload: { networkApprovalContext: EXFIL.networkApprovalContext },
     });
     await adapter.stopAll();
@@ -361,32 +363,79 @@ describe('#2911 round 2: a tool grant never covers an escalation riding a tool r
     await adapter.stopAll();
   });
 
-  test('a shell_exec grant does not cover writing to a terminal; a stdin grant covers later stdin writes', async () => {
+  test('a stdin prompt after a shell_exec grant prompts; a stdin session answer reaches Codex and mints nothing', async () => {
     const { adapter, process, events } = await startedAdapter();
     await grantForSession(adapter, process, events, command(91, 'cmd-1', 'ls'));
 
+    const stdinWrite = (id: number, n: number) =>
+      command(id, `stdin-${n}`, 'python', {
+        kind: 'writeStdin',
+        approvalId: `stdin-callback-${n}`,
+      });
+    await emit(process, stdinWrite(92, 1));
+    const stdin = await expectPrompted(process, events, 92);
+    expect(stdin).toMatchObject({
+      title: 'input to a running command: python',
+    });
+    await adapter.respondToRequest(THREAD, stdin.requestId, 'acceptForSession');
+    expect(repliesTo(process, 92)[0].result).toEqual({
+      decision: 'acceptForSession',
+    });
+
+    // Neither grant covers a later stdin write: it prompts again.
+    await emit(process, stdinWrite(93, 2));
+    await expectPrompted(process, events, 93, 2);
+    await adapter.stopAll();
+  });
+
+  test('a stdin prompt with no command still names what it asks for', async () => {
+    const { adapter, process, events } = await startedAdapter();
     await emit(
       process,
-      command(92, 'stdin-1', 'python', {
+      command(95, 'stdin-1', 'unused', {
         kind: 'writeStdin',
+        command: null,
         approvalId: 'stdin-callback-1',
       }),
     );
-    const stdin = await expectPrompted(process, events, 92);
-    await adapter.respondToRequest(THREAD, stdin.requestId, 'acceptForSession');
+    const opened = await waitFor(
+      () => openedEvents(events)[0],
+      'request.opened',
+    );
+    expect(opened.title).toBe('input to a running command');
+    await adapter.stopAll();
+  });
 
-    // The stdin grant covers a later stdin write ...
+  test('a command request of an unknown kind after a shell_exec grant prompts and gets no reply', async () => {
+    const { adapter, process, events } = await startedAdapter();
+    await grantForSession(adapter, process, events, command(97, 'cmd-1', 'ls'));
+
+    await emit(process, command(98, 'cmd-2', 'ls', { kind: 'someFutureKind' }));
+
+    await expectPrompted(process, events, 98);
+    await adapter.stopAll();
+  });
+
+  test('a hostile host is shown as one bounded line with no control or bidi characters', async () => {
+    const { adapter, process, events } = await startedAdapter();
+    const host = `\u202Eevil.example\ninjected\u200B${'a'.repeat(500)}`;
     await emit(
       process,
-      command(93, 'stdin-2', 'python', {
-        kind: 'writeStdin',
-        approvalId: 'stdin-callback-2',
+      command(99, 'cmd-1', 'curl x', {
+        networkApprovalContext: { host, protocol: 'https' },
       }),
     );
-    expect(
-      (await waitFor(() => repliesTo(process, 93)[0], 'stdin reply')).result,
-    ).toEqual({ decision: 'accept' });
-    expect(openedEvents(events)).toHaveLength(2);
+    const opened = await waitFor(
+      () => openedEvents(events)[0],
+      'request.opened',
+    );
+    const shownHost = opened.title
+      .replace(/^network access to /, '')
+      .replace(/ \(https\) for: curl x$/, '');
+    expect(shownHost).toBe(
+      `evil.example injected${'a'.repeat(253 - 'evil.example injected'.length)}`,
+    );
+    expect(opened.title).not.toMatch(/[\p{Cc}\p{Cf}]/u);
     await adapter.stopAll();
   });
 
