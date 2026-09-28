@@ -44,7 +44,7 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
  * Scope, deliberately narrow:
  * - **Desktop native hosts only.** On Android the webview is frozen when
  *   backgrounded, so a foreground post is silence exactly when it matters;
- * that case needs the host-side watch (archive#917), which stays dormant.
+ * that case needs push (archive#917).
  * - **Blocking categories and enveloped records only** — the channels above;
  *   other legacy categories stay in-app.
  * - **Blocking categories not while hidden in the tray.** Their poll does
@@ -53,8 +53,7 @@ import { usePlatformProfile } from '../platform/PlatformProfileContext';
  *   and WKWebView's default inactive scheduling policy suspends a hidden
  *   window's page (Station sets no `backgroundThrottling`). Enveloped
  *   notifications are covered while hidden by the native feed consumer
- *   above; the dormant `notification_watch.rs` is not revived — it posts raw
- *   titles.
+ *   above.
  * - **Additive.** The in-app surfaces are unchanged and remain where
  *   decisions are made; a refused or unavailable notifier changes nothing.
  *
