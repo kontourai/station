@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { OrchestrationCommandReceipt } from '@kontourai/station-contracts/orchestration';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
@@ -8,6 +7,7 @@ import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   AdoptionLedger,
   AdoptionReservation,
@@ -223,6 +223,8 @@ describe('AttachedSessionAdoption', () => {
 });
 
 describe('service owner wiring (plan condition 3)', () => {
+  const makeTempDir = trackTempDirs();
+
   /**
    * The service vouches for its reservations from `initialize()` (which
    * every dispatch runs first) until `shutdown()`. While it runs, another
@@ -231,9 +233,7 @@ describe('service owner wiring (plan condition 3)', () => {
    * Observed through real services sharing one ledger.
    */
   it("a running service's reservation survives another boot, and is reclaimed once it shuts down", async () => {
-    const directory = realpathSync(
-      mkdtempSync(join(tmpdir(), 'station-adoption-owner-')),
-    );
+    const directory = realpathSync(makeTempDir('station-adoption-owner-'));
     const cwd = join(directory, 'project');
     mkdirSync(cwd);
     const store = new EventStore(join(directory, 'events.sqlite'));
@@ -315,7 +315,6 @@ describe('service owner wiring (plan condition 3)', () => {
     } finally {
       for (const created of services.reverse()) await created.shutdown();
       store.close();
-      rmSync(directory, { recursive: true, force: true });
     }
   });
 });

@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import type { DoctorReport } from '../../../../packages/cli/src/commands/lifecycle-doctor.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { captureBuildProvenance } from '../../../routes/system/build-provenance.js';
 import { logFatalAndFlush } from '../../../runtime/bootstrap/crash-handlers.js';
 
@@ -13,13 +13,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 
 const { DiagnosticsService } = await import('../diagnostics-service.js');
 
-const tempDirs: string[] = [];
-
-afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+const makeTempDir = trackTempDirs();
 
 function doctorReport(secret: string): DoctorReport {
   return {
@@ -104,8 +98,7 @@ describe('DiagnosticsService', () => {
   });
 
   test('discovers the current instance log from its registry record', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-diagnostics-record-'));
-    tempDirs.push(dir);
+    const dir = makeTempDir('station-diagnostics-record-');
     const logPath = join(dir, 'server.log');
     const statePath = join(dir, 'instance.json');
     writeFileSync(logPath, 'password=hunter2');
@@ -301,8 +294,7 @@ describe('DiagnosticsService', () => {
 
 describe('bundled server log', () => {
   test('carries at most the last 256 KiB of the configured log', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-diagnostics-'));
-    tempDirs.push(dir);
+    const dir = makeTempDir('station-diagnostics-');
     const logPath = join(dir, 'server.log');
     const limit = 256 * 1024;
     writeFileSync(logPath, `discard-${'x'.repeat(limit)}tail`);
@@ -321,8 +313,7 @@ describe('bundled server log', () => {
   });
 
   test('cuts the log on a character boundary', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'station-diagnostics-'));
-    tempDirs.push(dir);
+    const dir = makeTempDir('station-diagnostics-');
     const logPath = join(dir, 'server.log');
     // 3-byte characters: the last 256 KiB (262144 = 3 * 87381 + 1) starts one
     // byte into a character, which must be dropped rather than mangled.

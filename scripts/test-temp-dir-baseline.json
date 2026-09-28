@@ -571,7 +571,6 @@
     "src-server/services/identity/__tests__/local-mode-invariant.test.ts": 1,
     "src-server/services/identity/__tests__/relay-enrollment-service.test.ts": 1,
     "src-server/services/identity/__tests__/relay-enrollment-virtual-ingress.integration.test.ts": 1,
-    "src-server/services/infra/__tests__/diagnostics-service.test.ts": 2,
     "src-server/services/infra/__tests__/engine-spawn-tmpdir.test.ts": 1,
     "src-server/services/infra/__tests__/json-store-fsync-mode.test.ts": 2,
     "src-server/services/infra/__tests__/json-store.test.ts": 1,

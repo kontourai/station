@@ -1,19 +1,14 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { LayoutService } from '../layout-service.js';
 
 describe('LayoutService', () => {
+  const makeTempDir = trackTempDirs();
   let home: string;
 
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'station-layout-service-'));
-  });
-
-  afterEach(() => {
-    rmSync(home, { recursive: true, force: true });
+    home = makeTempDir('station-layout-service-');
   });
 
   // The workflow routes reach the per-Agent workflow store only through this
