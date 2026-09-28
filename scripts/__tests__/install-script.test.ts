@@ -1154,9 +1154,7 @@ describe('one-line Station installer', {
     // A shell reading the script from a pipe used to run `uninstall` and exit
     // with the rest unread; past the pipe buffer, the writer's write failed
     // (curl exits 23) and a pipefail caller saw the uninstall as a failure.
-    const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
-    roots.push(root);
-    const home = join(root, 'home');
+    const home = join(tempDir('station-installer-'), 'home');
     mkdirSync(home, { recursive: true });
     const script = readFileSync(installScript);
     // The script is well past a 64 KiB pipe buffer after the uninstall case,
