@@ -463,6 +463,14 @@ Project, resource and compute checks run. Direct HTTPS cookie/bearer paths
 remain unchanged. A revoked Device or binding fails on every subsequent
 request; account signout does not silently revoke or renew the Device.
 
+The runtime's authenticated Request principal must name this as a distinct
+native Device-proof authority. It must not place a fabricated bearer in the
+existing `credential` field or let a proof inherit operator/home-possession
+status. Freshness and delayed-response checks re-resolve the exact Device and
+binding ID from the pairing owner; scope comes from that current grant. This
+keeps a proof-bearing WebView request from entering the legacy bearer-only
+paths that authorize pairing, consent or other privileged operations.
+
 This approach reuses the existing JavaScript DataChannel and Station virtual
 application ingress without a second native WebRTC implementation. A host-owned
 native DataChannel could keep the bearer out of JavaScript too, but Station has
