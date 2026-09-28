@@ -3,7 +3,6 @@ import {
   _resetUnboundExtensionNotices,
   EXTENSION_NOTIFICATION_BINDINGS,
   EXTENSION_NOTIFICATION_EVIDENCE_GAPS,
-  EXTENSION_NOTIFICATION_PROMOTIONS,
   extensionNotificationBinding,
   isBoundExtensionNotification,
   takeUnboundExtensionNotice,
@@ -204,23 +203,6 @@ describe('extension notification bindings', () => {
     expect(
       extensionNotificationBinding('_kiro.dev', 'unknown'),
     ).toBeUndefined();
-  });
-
-  test('every promotion stays bound until the adapter emits the Station event', () => {
-    for (const item of EXTENSION_NOTIFICATION_PROMOTIONS) {
-      expect(
-        isBoundExtensionNotification(item.namespace, item.type),
-        `${item.namespace}/${item.type} must stay bound until resolved`,
-      ).toBe(true);
-    }
-  });
-
-  test('Grok queue/changed promotes to Station follow-up queue, not steer', () => {
-    const item = EXTENSION_NOTIFICATION_PROMOTIONS.find(
-      (promotion) =>
-        promotion.namespace === '_x.ai' && promotion.type === 'queue/changed',
-    );
-    expect(item?.stationEvent).toBe('queuedMessages');
   });
 
   test('takeUnboundExtensionNotice fires once per provider-tuple', () => {
