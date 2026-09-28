@@ -31,23 +31,3 @@ export function projectAccents(slugs: string[]): Map<string, string> {
   });
   return result;
 }
-
-/**
- * Compatibility single-slug helper. Prefer `projectAccents` at the call site
- * that owns the project set so the palette is allocated across the whole set
- * before repeating. This remains for surfaces that genuinely have one slug and
- * no set context.
- */
-export function projectAccent(slug: string): string {
-  return PROJECT_ACCENT_PALETTE[
-    indexForSlug(slug) % PROJECT_ACCENT_PALETTE.length
-  ];
-}
-
-function indexForSlug(slug: string): number {
-  let hash = 0;
-  for (let index = 0; index < slug.length; index += 1) {
-    hash = (hash * 31 + slug.charCodeAt(index)) | 0;
-  }
-  return hash >>> 0;
-}

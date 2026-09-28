@@ -16,6 +16,7 @@ import {
 } from '../../components/ResponsiveDialogSurface';
 import { Empty, SkeletonBlock } from '../../components/state';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { userFacingErrorMessage } from '../../utils/errorText';
 
 export interface TaskOutputPromotion {
   relativePath: string;
@@ -409,9 +410,9 @@ function TaskOutputContent({
 }
 
 function message(error: unknown, fallback: string) {
-  return error instanceof Error && error.message.trim()
-    ? error.message
-    : fallback;
+  // A validation refusal reads as its reasons, not schema keys (#2708).
+  const text = error instanceof Error ? userFacingErrorMessage(error) : '';
+  return text.trim() ? text : fallback;
 }
 function bytes(value: number) {
   if (!Number.isFinite(value) || value < 0) return 'Unavailable';

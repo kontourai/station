@@ -27,7 +27,7 @@ host.
 | Pairing deep link | unsupported | enabled | One channel-specific scheme is registered (`station-stable`, `station-beta`, or `station-nightly`). It accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
 | Compile-target report | unsupported | enabled | Rust reports target and Station-enabled state. |
 | Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (station#1954). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
-| Remote push wakeup | unsupported | unsupported | No provisioned FCM/APNs application or server delivery credentials. The capability report names this explicitly; the dormant local poller cannot wake a frozen or closed app (#917/#1225). |
+| Remote push wakeup | unsupported | unsupported | No provisioned FCM/APNs application or server delivery credentials. The capability report names this explicitly; a local poller cannot wake a frozen or closed app (#917/#1225). |
 | Station service tray | unsupported | report-authoritative | Desktop implementation remains Rust-owned. The renderer may request native menu reveal through one typed command but receives no opener permission, URL, port, or menu mutation authority. |
 
 Desktop startup readiness is also Rust-owned. A sidecar status may carry the

@@ -1,4 +1,3 @@
-import { isLlmModelConnection } from '@kontourai/station-contracts/model-inventory';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { describe, expect, it } from 'vitest';
 import {
@@ -7,13 +6,6 @@ import {
 } from '../views/connectionInventory';
 
 describe('connectionInventory', () => {
-  it('excludes vectordb-only connections from the model inventory', () => {
-    // archive#3747: membership is decided once, in the contract the server
-    // filters `/api/connections/models` with — not re-derived per surface.
-    expect(isLlmModelConnection({ capabilities: ['vectordb'] })).toBe(false);
-    expect(isLlmModelConnection({ capabilities: ['llm'] })).toBe(true);
-  });
-
   it('prefers enabled knowledge connections and resolves model ids directly', () => {
     const connections: ConnectionConfig[] = [
       {

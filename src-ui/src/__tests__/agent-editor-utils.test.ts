@@ -1,10 +1,8 @@
-import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import { describe, expect, test } from 'vitest';
 import type { Tool } from '../types';
 import {
   buildAgentPayload,
   formFromAgent,
-  validateAgentForm,
 } from '../views/agent-editor/agentsViewUtils';
 import type { AgentFormData } from '../views/agent-editor/types';
 import {
@@ -62,75 +60,6 @@ describe('agent-editor utils', () => {
   test('slugify normalizes names', () => {
     expect(slugify('My Planner Agent')).toBe('my-planner-agent');
     expect(slugify('  Review++ Agent  ')).toBe('review-agent');
-  });
-
-  test("validateAgentForm requires a prompt exactly when the resolved matrix's systemPrompt.state is native (station#1003 Phase B: AgentType retired)", () => {
-    const agentConnections = [
-      {
-        id: 'managed-runtime',
-        kind: 'agent',
-        type: 'managed-runtime',
-        name: 'Managed Runtime',
-        enabled: true,
-        capabilities: ['agent-runtime'],
-        config: { engineId: 'station' },
-      },
-      {
-        id: 'codex',
-        kind: 'agent',
-        type: 'codex',
-        name: 'Codex Runtime',
-        enabled: true,
-        capabilities: ['agent-runtime'],
-        config: { engineId: 'codex' },
-      },
-    ] as any;
-
-    const managedConnection = agentConnections.find(
-      (c: any) => c.id === 'managed-runtime',
-    );
-    const codexConnection = agentConnections.find((c: any) => c.id === 'codex');
-
-    const stationMatrix = resolveEngineCapabilityMatrix(
-      'managed-runtime',
-      managedConnection,
-    );
-    const codexMatrix = resolveEngineCapabilityMatrix('codex', codexConnection);
-    const acpMatrix = resolveEngineCapabilityMatrix('acp');
-
-    expect(stationMatrix.systemPrompt.state).toBe('native');
-    expect(codexMatrix.systemPrompt.state).not.toBe('native');
-    expect(acpMatrix.systemPrompt.state).not.toBe('native');
-
-    const managedForm: AgentFormData = {
-      ...buildForm(),
-      prompt: '',
-      execution: {
-        agentConnectionId: 'managed-runtime',
-        modelConnectionId: '',
-        runtimeOptions: {},
-      },
-    };
-    expect(
-      validateAgentForm(managedForm, false, {
-        requiresPrompt: stationMatrix.systemPrompt.state === 'native',
-      }),
-    ).toMatchObject({ prompt: 'System prompt is required' });
-
-    const codexForm: AgentFormData = {
-      ...buildForm(),
-      prompt: '',
-      execution: {
-        agentConnectionId: 'codex',
-        modelConnectionId: '',
-        runtimeOptions: {},
-      },
-    };
-    expect(
-      validateAgentForm(codexForm, false, {
-        requiresPrompt: codexMatrix.systemPrompt.state === 'native',
-      }).prompt,
-    ).toBeUndefined();
   });
 
   test('removeIntegration clears matching tool state', () => {

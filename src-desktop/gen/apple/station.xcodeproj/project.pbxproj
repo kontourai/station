@@ -46,7 +46,6 @@
 		A9FFC41781B10A1EFFA98C36 /* login_shell.rs */ = {isa = PBXFileReference; path = login_shell.rs; sourceTree = "<group>"; };
 		AFC2B8495E29FD157E17EEAD /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		BB85CE7E4851316560BE5099 /* bundled_server_state.rs */ = {isa = PBXFileReference; path = bundled_server_state.rs; sourceTree = "<group>"; };
-		CEADBA2F0FC0432181CF6049 /* notification_watch.rs */ = {isa = PBXFileReference; path = notification_watch.rs; sourceTree = "<group>"; };
 		D12D8AFF0E5136982B70DEF7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D59DE748810D013D359DCE4E /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		EA2365010BB379059C7633AE /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
@@ -151,7 +150,6 @@
 				5A90D0604A2EC28CA1AFBB25 /* local_access_watch.rs */,
 				A9FFC41781B10A1EFFA98C36 /* login_shell.rs */,
 				EA2365010BB379059C7633AE /* main.rs */,
-				CEADBA2F0FC0432181CF6049 /* notification_watch.rs */,
 				10453FA41C7DAF9DA304DF22 /* pairing_deep_link_channels_generated.rs */,
 				F65B2B0F7649F66A37265DCF /* service_state.rs */,
 				086AD6A306EE7D849A657F29 /* ssh_launcher.rs */,

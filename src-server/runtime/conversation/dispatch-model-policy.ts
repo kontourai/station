@@ -248,7 +248,7 @@ const FIDELITY_RANK: Record<StructuredToolsFidelity, number> = {
  * `catalog-ready` go stale on a model connection too) — this function must
  * not silently start reporting a level its caller can no longer trust.
  */
-export function mapConnectionEvidenceToDispatchLevel(evidence: {
+function mapConnectionEvidenceToDispatchLevel(evidence: {
   level: ConnectionEvidenceLevel;
   freshness: ConnectionEvidenceFreshness;
 }): EvidenceLevel {
@@ -294,7 +294,7 @@ const TOOL_SURFACE_TOOL_CALLS = 'tool-calls';
  * `abort`/`usage` only — so every call site that hasn't been updated to pass
  * one keeps its prior, honest behavior rather than silently regressing.
  */
-export function deriveDispatchCapabilities(
+function deriveDispatchCapabilities(
   level: EvidenceLevel,
   toolSurface?: readonly string[] | null,
 ): readonly string[] {
@@ -344,7 +344,7 @@ const STRUCTURED_TOOLS_CAPABILITY = 'structured-tools';
  * the connection-readiness ladder and is what a policy's `minimumEvidence`
  * gates on.
  */
-export function deriveStructuredToolsFidelity(
+function deriveStructuredToolsFidelity(
   capabilities: readonly string[],
 ): StructuredToolsFidelity {
   return capabilities.includes(STRUCTURED_TOOLS_CAPABILITY)
@@ -376,7 +376,7 @@ function capabilityShape(
  * resolved by `fetchModelToolSurfaceList` — omitted (not just empty) when no
  * tool-surface source is wired at all.
  */
-export function candidateEvidenceFromReadiness(
+function candidateEvidenceFromReadiness(
   readiness: ConnectionReadinessEvidence | undefined,
   toolSurface?: readonly string[] | null,
 ): CapabilityEvidence {
@@ -407,7 +407,7 @@ export function candidateEvidenceFromReadiness(
  *   does not cache a failure for the TTL window (same MB-1 discipline as
  *   `fetchReadinessEvidenceMap`).
  */
-export async function fetchModelToolSurfaceList(
+async function fetchModelToolSurfaceList(
   source: DispatchEvidenceSource | undefined,
   bindings: readonly { connectionId: string; modelId: string }[],
   logger: Logger | undefined,
@@ -462,7 +462,7 @@ export async function fetchModelToolSurfaceList(
  * reading `unavailable` for a full TTL window even after the source
  * recovers on the very next call.
  */
-export async function fetchReadinessEvidenceMap(
+async function fetchReadinessEvidenceMap(
   source: DispatchEvidenceSource | undefined,
   connectionIds: readonly string[],
   logger: Logger | undefined,
@@ -1773,7 +1773,7 @@ export async function createConfiguredDispatchModel(
 const MAX_PENDING_ROUTING_SNAPSHOTS = 32;
 
 /** Observer writes are progress projection, never a provider/receipt gate. */
-export const FLEET_ROUTING_OBSERVER_TIMEOUT_MS = 250;
+const FLEET_ROUTING_OBSERVER_TIMEOUT_MS = 250;
 
 /**
  * Records one plan's routing snapshot, evicting the oldest if the map is at

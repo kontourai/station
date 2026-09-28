@@ -1147,6 +1147,7 @@ function captureAuthorizer(options: {
   throw new Error('Invalid plugin composition authorizer');
 }
 
+/** Not yet composed by any route or runtime; wiring is tracked in #1362. */
 export function createPluginCompositionModule(options: {
   readonly authorizer: PluginCompositionAuthorizer;
   readonly disposerTimeoutMs?: number;

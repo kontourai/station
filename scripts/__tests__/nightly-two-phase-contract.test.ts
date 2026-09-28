@@ -66,6 +66,10 @@ const EFFECTS: ReadonlyArray<{
     matches: (s) => !!s.run?.includes('gh release upload'),
   },
   {
+    effect: 'GitHub release creation',
+    matches: (s) => !!s.run?.includes('gh release create'),
+  },
+  {
     effect: 'GitHub release mutation',
     matches: (s) => !!s.run?.includes('gh release edit'),
   },
@@ -202,7 +206,11 @@ describe('two-phase native Nightly', () => {
       ).toContain("needs['full-regression'].result == 'success'");
     }
     // The rule must have found the real publishers, or it proves nothing.
-    expect(publishers.sort()).toEqual(['native-cohort', 'nightly-cli']);
+    expect(publishers.sort()).toEqual([
+      'native-cohort',
+      'nightly-cli',
+      'portable-nightly',
+    ]);
   });
 
   test('the staging phase builds, signs, and stages but has no provider or authority effect', () => {

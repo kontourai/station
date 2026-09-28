@@ -70,15 +70,16 @@ describe('useRecentLayouts helpers', () => {
     ]);
   });
 
-  test('does not record selection or reads until an apply success explicitly tracks it', () => {
-    const selectedLayoutId = 'plugin:review';
+  test('reading the recent layouts records nothing; only an explicit track does', () => {
+    const trackedLayoutId = 'plugin:review';
 
     expect(getRecentLayoutIds()).toEqual([]);
     expect(getRecentLayouts(catalog)).toEqual([]);
 
-    // This is deliberately the caller's post-success action, not selection.
-    trackRecentLayout(selectedLayoutId);
+    trackRecentLayout(trackedLayoutId);
 
-    expect(getRecentLayoutIds()).toEqual([selectedLayoutId]);
+    // Exactly the tracked id: had either read above recorded a layout, it
+    // would sit behind this one.
+    expect(getRecentLayoutIds()).toEqual([trackedLayoutId]);
   });
 });

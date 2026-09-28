@@ -5,7 +5,7 @@
 // carrying the archive's sha256 and size. Nothing is published.
 //
 //   node scripts/build-portable-server-archive.mjs --ref v0.0.0 \
-//     [--sha <40-hex>] [--created-at <ISO>] [--output-dir dist-portable-server] \
+//     [--ring stable|preview|nightly] [--sha <40-hex>] [--created-at <ISO>] [--output-dir dist-portable-server] \
 //     [--node-distribution <path to the pinned node-v*.tar.gz|zip>] [--keep-stage]
 //
 // The build refuses a --sha other than HEAD, and a dirty working tree.
@@ -24,6 +24,7 @@ const projectRoot = process.cwd();
 const { values } = parseArgs({
   options: {
     ref: { type: 'string' },
+    ring: { type: 'string' },
     sha: { type: 'string' },
     'created-at': { type: 'string' },
     'output-dir': { type: 'string' },
@@ -44,7 +45,7 @@ function git(args) {
 
 if (!values.ref) {
   console.error(
-    'error: --ref is required (vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-preview.N)',
+    'error: --ref is required (vMAJOR.MINOR.PATCH, or vMAJOR.MINOR.PATCH-<ring>.N for a prerelease ring)',
   );
   process.exit(1);
 }
@@ -73,6 +74,7 @@ try {
         ? { nodeDistribution: resolve(values['node-distribution']) }
         : {}),
       keepStage: values['keep-stage'],
+      ...(values.ring ? { expectedRing: values.ring } : {}),
     });
   console.log(`Created ${archivePath}`);
   console.log(`Created ${descriptorPath}`);

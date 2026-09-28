@@ -187,10 +187,9 @@ orchestration sends, streaming invokes) get their own, more generous rate
 bucket so active chat does not collide with — and is not throttled by — the
 standard mutation budget. SSE read surfaces (`GET /events`,
 `GET /api/orchestration/events`, `GET /monitoring/events`,
-`GET /scheduler/events`) are GETs and are therefore unbudgeted; they are
-enumerated explicitly in `DOCUMENTED_SSE_READ_SURFACES` (documentary, not a
-gate — the classifier never consults it; GETs are unbudgeted as non-mutations)
-so the surface stays a reviewed decision, not an implicit escape.
+`GET /scheduler/events`) are GETs and are therefore unbudgeted as
+non-mutations. No path is exempted, so a mutating verb on the same path is
+still budgeted.
 
 **Defaults** (configurable via `RuntimeHttpSecurityOptions`):
 

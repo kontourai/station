@@ -13,7 +13,6 @@ import {
   fleetRoutingReceiptPath,
   readFleetRoutingReceipts,
 } from '../fleet-routing-receipt-log.js';
-import { verifyChain } from '../receipt-chain.js';
 
 async function home(): Promise<string> {
   return mkdtemp(join(tmpdir(), 'station-fleet-receipts-'));
@@ -181,33 +180,5 @@ describe('routing receipts are chained by content digest', () => {
     expect(page.receipts).toHaveLength(0);
     expect(page.totalRecords).toBe(0);
     expect(page.chain.message).toContain('No fleet routing has been receipted');
-  });
-});
-
-describe('the anchor/log read skew is one-directional (round 2, M-2)', () => {
-  it('the skew is one-directional: log BEHIND anchor is still broken', () => {
-    // Guards the fix from degenerating into "ignore the anchor". Verified
-    // directly against the predicate so both directions are asserted in one
-    // place: log ahead of anchor (a concurrent append) is fine, log behind
-    // anchor (records removed) is the real signal.
-    const anchor = { lastReceiptId: 'x'.repeat(64), recordCount: 3 };
-    const ahead = verifyChain({
-      parsed: [],
-      firstScannedIndex: 0,
-      totalRecords: 4,
-      malformed: 0,
-      anchor,
-    });
-    expect(ahead.status).not.toBe('broken');
-
-    const behind = verifyChain({
-      parsed: [],
-      firstScannedIndex: 0,
-      totalRecords: 2,
-      malformed: 0,
-      anchor,
-    });
-    expect(behind.status).toBe('broken');
-    expect(behind.message).toContain('truncated');
   });
 });

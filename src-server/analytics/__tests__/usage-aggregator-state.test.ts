@@ -1,5 +1,5 @@
 import { cacheInclusivePromptTokens } from '@kontourai/station-shared/usage-fold';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   ACHIEVEMENTS,
   applyEnrichmentUsageToUsageStats,
@@ -273,27 +273,69 @@ describe('mergeRescannedUsageStats', () => {
   });
 });
 
-describe('achievement helpers', () => {
-  test('compute streak stats and achievement progress', () => {
+describe('computeStreakStats', () => {
+  const originalTz = process.env.TZ;
+  afterEach(() => {
+    vi.useRealTimers();
+    if (originalTz === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTz;
+  });
+
+  function streakFor(now: string, activeDays: readonly string[]) {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(now));
     const stats = createEmptyUsageStats();
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
-      .toISOString()
-      .split('T')[0];
-    stats.byDate[today] = {
-      messages: 1,
-      cost: 0,
-      inputTokens: 0,
-      outputTokens: 0,
-      byAgent: {},
-    };
-    stats.byDate[yesterday] = {
-      messages: 1,
-      cost: 0,
-      inputTokens: 0,
-      outputTokens: 0,
-      byAgent: {},
-    };
+    for (const day of activeDays) {
+      stats.byDate[day] = {
+        messages: 1,
+        cost: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        byAgent: {},
+      };
+    }
+    computeStreakStats(stats);
+    return stats.lifetime;
+  }
+
+  test('counts every consecutive active day ending today', () => {
+    const lifetime = streakFor('2026-04-11T12:00:00.000Z', [
+      '2026-04-09',
+      '2026-04-10',
+      '2026-04-11',
+    ]);
+    expect(lifetime.daysActive).toBe(3);
+    expect(lifetime.streak).toBe(3);
+  });
+
+  test('a gap day ends the streak', () => {
+    const lifetime = streakFor('2026-04-11T12:00:00.000Z', [
+      '2026-04-09',
+      '2026-04-11',
+    ]);
+    expect(lifetime.daysActive).toBe(2);
+    expect(lifetime.streak).toBe(1);
+  });
+
+  test('a streak survives a daylight-saving change in the local time zone', () => {
+    // Usage days are UTC dates. Stepping back by local calendar days moved
+    // the UTC instant across the date line when Chicago left DST, skipping
+    // 2026-11-01.
+    process.env.TZ = 'America/Chicago';
+    expect(new Date('2026-11-02T00:00:00.000Z').getTimezoneOffset()).toBe(360);
+    expect(new Date('2026-10-31T00:00:00.000Z').getTimezoneOffset()).toBe(300);
+    const lifetime = streakFor('2026-11-02T12:00:00.000Z', [
+      '2026-10-31',
+      '2026-11-01',
+      '2026-11-02',
+    ]);
+    expect(lifetime.streak).toBe(3);
+  });
+});
+
+describe('achievement helpers', () => {
+  test('achievements follow message and model counts', () => {
+    const stats = createEmptyUsageStats();
     stats.lifetime.totalMessages = 120;
     stats.byModel.a = {
       messages: 100,
@@ -327,10 +369,6 @@ describe('achievement helpers', () => {
     };
     stats.lifetime.totalCost = 0.5;
 
-    computeStreakStats(stats);
-
-    expect(stats.lifetime.daysActive).toBe(2);
-    expect(stats.lifetime.streak).toBeGreaterThanOrEqual(1);
     expect(checkAchievement(ACHIEVEMENTS[1], stats)).toBe(true);
     expect(checkAchievement(ACHIEVEMENTS[3], stats)).toBe(true);
     expect(getAchievementProgress(ACHIEVEMENTS[1], stats)).toBe(100);

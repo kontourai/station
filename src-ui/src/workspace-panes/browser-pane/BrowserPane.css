@@ -114,7 +114,11 @@
   flex: 0 1 auto;
   max-height: 45%;
   overflow: auto;
-  padding: var(--space-2, 8px);
+  /* On touch, the shared Toggle's 44px hit area reaches 12px past its 20px
+     track (Toggle.css). A narrow panel wraps that switch onto its last row,
+     and this scroll container clips at its padding edge, so the bottom
+     padding leaves room for the overhang instead of cutting the target. */
+  padding: var(--space-2, 8px) var(--space-2, 8px) var(--space-6, 12px);
 }
 
 .browser-pane__panel h3,

@@ -442,6 +442,47 @@ describe('PlatformProfile derivation', () => {
     expect(profile.isDevBuild).toBe(false);
   });
 
+  test('projects the host dev flag and channel onto the root, and takes them back off', async () => {
+    // The same UI bundle ships in the debug and release apps, so the tint
+    // follows the host report, never a bundle-time flag: Vitest itself runs
+    // with import.meta.env.DEV true, and a release host must stay untinted.
+    const root = document.documentElement;
+    await resolveProfile(
+      platformProfileAdapter({
+        platform: 'tauri',
+        getCapabilityReport: async () => ({
+          status: 'ok',
+          value: {
+            platform: 'android',
+            capabilities: [],
+            devBuild: true,
+            channel: 'beta',
+          },
+        }),
+      }),
+    );
+    expect(root.classList.contains('is-dev-build')).toBe(true);
+    expect(root.dataset.appChannel).toBe('beta');
+    // Channel accents are stylesheet defaults; an inline brand would outrank
+    // the user's persisted accent choice.
+    expect(root.style.getPropertyValue('--k-brand')).toBe('');
+    cleanup();
+    expect(root.classList.contains('is-dev-build')).toBe(false);
+    expect(root.dataset.appChannel).toBeUndefined();
+
+    await resolveProfile(
+      platformProfileAdapter({
+        platform: 'tauri',
+        getCapabilityReport: async () => ({
+          status: 'ok',
+          value: { platform: 'android', capabilities: [] },
+        }),
+      }),
+    );
+    expect(root.classList.contains('is-dev-build')).toBe(false);
+    expect(root.dataset.appChannel).toBe('stable');
+  });
+
   test('tauri with an unreadable capability report degrades to unknown', async () => {
     const profile = await resolveProfile(
       platformProfileAdapter({
