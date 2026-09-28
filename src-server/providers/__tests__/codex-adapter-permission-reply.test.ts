@@ -4,6 +4,10 @@
  * the grant. A decline, a cancel, or a turn interrupt must answer with the
  * empty profile; echoing the requested permissions grants them.
  *
+ * #2911: for the same reason, a Station-side session grant must never answer
+ * a later permissions request on its own; that would grant whatever the new
+ * request asks for without a prompt.
+ *
  * Every case drives the real `CodexAdapter` through its child's stdout and
  * reads the reply off its stdin.
  */
@@ -93,7 +97,7 @@ async function waitFor<T>(
   throw new Error(`Never observed: ${label}`);
 }
 
-async function adapterWithOpenPermissionRequest() {
+async function startedAdapter() {
   const process = new FakeCodexProcess();
   const adapter = new CodexAdapter({ processFactory: () => process as never });
   const events: any[] = [];
@@ -118,26 +122,51 @@ async function adapterWithOpenPermissionRequest() {
   await flushIo();
   await emit(process, { id: '3', result: { turn: { id: 'turn-1' } } });
   await withTimeout(turn, 'sendTurn');
+  return { adapter, process, events };
+}
 
-  await emit(process, {
-    id: APPROVAL_ID,
+function permissionsRequest(
+  id: number,
+  itemId: string,
+  permissions: Record<string, unknown>,
+) {
+  return {
+    id,
     method: 'item/permissions/requestApproval',
     params: {
       threadId: 'codex-thread',
       turnId: 'turn-1',
-      itemId: 'perm-1',
+      itemId,
       environmentId: null,
       startedAtMs: 1_790_000_000_000,
       cwd: '/tmp/project',
-      reason: 'Needs network and write access',
-      permissions: REQUESTED,
+      reason: 'Needs more access',
+      permissions,
     },
-  });
+  };
+}
+
+async function openedRequestId(events: any[], nth: number): Promise<string> {
   const opened = await waitFor(
-    () => events.find((event) => event.method === 'request.opened'),
-    'request.opened',
+    () => events.filter((event) => event.method === 'request.opened')[nth],
+    `request.opened #${nth}`,
   );
-  return { adapter, process, events, requestId: opened.requestId as string };
+  return opened.requestId;
+}
+
+async function adapterWithOpenPermissionRequest() {
+  const started = await startedAdapter();
+  await emit(
+    started.process,
+    permissionsRequest(APPROVAL_ID, 'perm-1', REQUESTED),
+  );
+  return { ...started, requestId: await openedRequestId(started.events, 0) };
+}
+
+function repliesTo(process: FakeCodexProcess, id: number | string) {
+  return stdinMessages(process).filter(
+    (line) => line.id === id && !('method' in line),
+  );
 }
 
 /** The single reply Station wrote for the permissions request. */
@@ -226,6 +255,74 @@ describe('#2909: a Codex permissions reply grants only what the user accepted', 
       result: { permissions: {}, scope: 'turn' },
     });
     expect(await resolvedStatus(events)).toBe('cancelled');
+    await adapter.stopAll();
+  });
+});
+
+describe('#2911: a session grant never auto-approves a later permissions escalation', () => {
+  test('after acceptForSession on network, a broader fileSystem request prompts and gets no reply', async () => {
+    const { adapter, process, events } = await startedAdapter();
+    const network = { network: { enabled: true }, fileSystem: null };
+    await emit(process, permissionsRequest(51, 'perm-network', network));
+    const first = await openedRequestId(events, 0);
+    await adapter.respondToRequest(THREAD, first, 'acceptForSession');
+    // Codex is told to remember the grant for the session itself.
+    expect(repliesTo(process, 51)).toEqual([
+      {
+        jsonrpc: '2.0',
+        id: 51,
+        result: { permissions: network, scope: 'session' },
+      },
+    ]);
+
+    const broader = {
+      network: null,
+      fileSystem: { read: null, write: ['/Users/victim'] },
+    };
+    await emit(process, permissionsRequest(52, 'perm-write', broader));
+
+    const second = await waitFor(
+      () => events.filter((event) => event.method === 'request.opened')[1],
+      'second request.opened',
+    );
+    expect(second).toMatchObject({
+      requestType: 'permission',
+      payload: { permissions: broader },
+    });
+    expect(repliesTo(process, 52)).toEqual([]);
+    await adapter.stopAll();
+  });
+
+  test('an ordinary tool grant still auto-allows a later different command', async () => {
+    const { adapter, process, events } = await startedAdapter();
+    const command = (id: number, itemId: string, text: string) => ({
+      id,
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        threadId: 'codex-thread',
+        turnId: 'turn-1',
+        itemId,
+        command: text,
+      },
+    });
+    await emit(process, command(61, 'cmd-1', 'ls'));
+    const first = await openedRequestId(events, 0);
+    await adapter.respondToRequest(THREAD, first, 'acceptForSession');
+
+    await emit(process, command(62, 'cmd-2', 'git status'));
+
+    const reply = await waitFor(
+      () => repliesTo(process, 62)[0],
+      'auto-approval reply',
+    );
+    expect(reply).toEqual({
+      jsonrpc: '2.0',
+      id: 62,
+      result: { decision: 'accept' },
+    });
+    expect(
+      events.filter((event) => event.method === 'request.opened'),
+    ).toHaveLength(1);
     await adapter.stopAll();
   });
 });

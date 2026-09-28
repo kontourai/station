@@ -410,8 +410,12 @@ export function deriveApprovalToolName(
       return 'shell_exec';
     case 'item/fileChange/requestApproval':
       return 'apply_patch';
+    // #2911: a permissions request is an escalation, not a tool. Its
+    // `acceptForSession` reply already carries `scope: 'session'`, so Codex
+    // remembers that grant itself; a Station-side grant would only matter for
+    // a DIFFERENT (possibly broader) request, which must prompt.
     case 'item/permissions/requestApproval':
-      return 'permissions';
+      return null;
     case 'mcpServer/elicitation/request': {
       const serverName = extractString(payload.serverName) ?? 'server';
       return `mcp/${serverName}`;
