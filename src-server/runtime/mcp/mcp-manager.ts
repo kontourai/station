@@ -672,7 +672,7 @@ export async function loadAgentTools(
   return tools;
 }
 
-export function createRuntimeOAuthProvider(
+function createRuntimeOAuthProvider(
   configLoader: ConfigLoader,
   def: ToolDef,
   serverPort: number,

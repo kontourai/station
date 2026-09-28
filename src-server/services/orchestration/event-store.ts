@@ -11575,9 +11575,6 @@ export class EventStore {
   releaseChatTurn(clientTurnId: string): void {
     this.turnIdempotence.release(chatTurnDedupKey(clientTurnId));
   }
-  readChatTurn(clientTurnId: string): string | undefined {
-    return this.turnIdempotence.read(chatTurnDedupKey(clientTurnId));
-  }
   awaitChatTurn(
     clientTurnId: string,
     timeoutMs?: number,

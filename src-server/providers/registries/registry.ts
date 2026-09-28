@@ -1027,10 +1027,6 @@ export async function getAllPrerequisites(options?: {
 
 // ── Branding ───────────────────────────────────────────
 
-export function registerBrandingProvider(provider: IBrandingProvider) {
-  registerProvider('branding', provider);
-}
-
 export function getBrandingProvider(): IBrandingProvider {
   return (
     getProvider<IBrandingProvider>('branding') ?? new DefaultBrandingProvider()

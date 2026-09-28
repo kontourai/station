@@ -362,7 +362,16 @@ test('another user still cannot open the reserved-tail conversation', async () =
   // successor — the start this test fails.
   await closeBinding(service, adapter, 'conv-private');
   failNextStartBeforeLaunch();
-  await expect(send('conv-private')).rejects.toThrow();
+  await expect(send('conv-private')).rejects.toThrow(
+    'agent resolution unavailable',
+  );
+  // Premise: the failed start left a reserved tail, and the owner can still
+  // open the conversation through it. Without this, a null for another user
+  // could just mean nothing was reserved.
+  expect(store.conversationSessions('conv-private')).toHaveLength(2);
+  await expect(
+    service.resolveConversationOpen('conv-private', OWNER_AUTHORITY),
+  ).resolves.toMatchObject({ status: 'resolved' });
 
   await expect(
     service.resolveConversationOpen(
