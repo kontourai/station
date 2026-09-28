@@ -15,6 +15,7 @@ import {
   writeNativeClientBuildManifest,
 } from '../lib/desktop-build-manifest.mjs';
 import {
+  AAB_BUILD_MANIFEST_ENTRY,
   APK_BUILD_MANIFEST_ENTRY,
   extractAndroidBuildManifest,
   parseAndroidBuildProvenance,
@@ -167,6 +168,9 @@ describe('android build manifest', () => {
     // If either side is edited alone the stamp becomes unfindable while both
     // halves still pass their own tests.
     expect(APK_BUILD_MANIFEST_ENTRY).toBe(`assets/${BUILD_MANIFEST_FILENAME}`);
+    // A Play bundle carries the APK's assets under its `base/` module; this
+    // literal prefix is the only guard on that layout.
+    expect(AAB_BUILD_MANIFEST_ENTRY).toBe(`base/${APK_BUILD_MANIFEST_ENTRY}`);
   });
 
   test('refuses a Play archive without an extractable manifest', () => {
