@@ -16737,7 +16737,7 @@ describe('OrchestrationService', () => {
     expect(claude.startSession).not.toHaveBeenCalled();
   });
 
-  test('the internal model-option bypass works when explicitly invoked (review r1 HIGH fix)', async () => {
+  test('the internal model-option bypass works when explicitly invoked', async () => {
     // The mechanism runConnectionSmoke relies on. The ordinary two-argument
     // call stays enforced (the test above); that a request body cannot
     // populate this third argument is owned by the /commands route test.

@@ -183,7 +183,7 @@ describe('dispatchCwdShadow — the observer never runs on the caller stack', ()
     expect(observed?.baseline).toEqual({ kind: 'directory', path: dir });
   });
 
-  test('a declared directory that is gone reaches the observer as the #791 fail-closed baseline', () => {
+  test('a declared directory that is gone reaches the observer as the archive#791 fail-closed baseline', () => {
     const dir = join(tempDir('station-1501-gone-'), 'gone');
     let observed: CwdShadowSample | undefined;
     dispatchCwdShadow(

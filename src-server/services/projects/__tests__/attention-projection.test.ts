@@ -1665,7 +1665,7 @@ describe('AttentionProjectionService', () => {
         expect(bare).not.toHaveProperty('agent');
       });
 
-      test('never titles the row with the thread id, even for a whitespace-only name (#3139)', async () => {
+      test('never titles the row with the thread id, even for a whitespace-only name (archive#3139)', async () => {
         // The precedence has two branches and neither may fall through to an
         // identifier — that regression is exactly what archive#3139 was.
         const service = makeService({
