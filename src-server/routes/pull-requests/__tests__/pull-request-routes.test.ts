@@ -85,6 +85,29 @@ describe('pull request operator gate', () => {
       },
     });
 
+    const forked = createPullRequestRoutes(
+      () => [x.provider],
+      async () => {
+        const resolved = await context();
+        return {
+          ...resolved,
+          context: {
+            ...resolved.context,
+            head: { branch: 'b-upstream', owner: 'fork-owner' },
+          },
+        };
+      },
+      { operatorIdentityForRequest: () => undefined },
+    );
+    await expect(
+      (await forked.request('/context?project=station')).json(),
+    ).resolves.toMatchObject({
+      data: {
+        branch: 'b',
+        head: { branch: 'b-upstream', owner: 'fork-owner' },
+      },
+    });
+
     const unavailable = createPullRequestRoutes(
       () => [x.provider],
       async () => ({ available: false, reason: 'Checkout has no remote' }),
@@ -296,7 +319,7 @@ describe('pull request operator gate', () => {
     });
     expect(getPullRequest).not.toHaveBeenCalled();
     expect(transport.mock.calls.at(-1)?.[0]).toContain(
-      'number,headRefName,mergeable',
+      'number,headRefName,headRepositoryOwner,mergeable',
     );
   });
 

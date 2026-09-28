@@ -157,6 +157,8 @@ describe('session conflict chips observe once per repository (#2937)', () => {
 
     expect(mergeabilityReads('station')).toBe(1);
     expect(mergeabilityReads('other')).toBe(1);
+    // Pinned literal, independent of the imported constant: two minutes.
+    expect(OBSERVATION_INTERVAL_MS).toBe(120_000);
     // The narrow read is repository-scoped: it names the project only.
     const read = requests.find((url) => url.pathname.endsWith('/mergeability'));
     expect([...read!.searchParams.keys()]).toEqual(['project']);
@@ -184,6 +186,26 @@ describe('session conflict chips observe once per repository (#2937)', () => {
       expect(mergeabilityReads('other')).toBe(interval + 1);
     }
     expect(fullListReads()).toBe(0);
+  });
+
+  test('the old 30 s cadence makes no read; two minutes makes one', async () => {
+    render(withClient(client, <Rows threads={stationRows} />));
+    await settle();
+    expect(mergeabilityReads('station')).toBe(1);
+    // Literal durations, not the imported constant.
+    for (let step = 0; step < 3; step += 1) {
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+      await settle();
+    }
+    expect(mergeabilityReads('station')).toBe(1);
+    expect(contextReads()).toBe(stationRows.length);
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+    await settle();
+    expect(mergeabilityReads('station')).toBe(2);
   });
 
   test('a hidden window does not poll, and returning refetches the stale answer', async () => {

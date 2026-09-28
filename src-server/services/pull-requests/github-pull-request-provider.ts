@@ -156,7 +156,8 @@ class ForgeReadCache {
 
 /**
  * gh's default of 30 would hide a session's pull request behind thirty newer
- * ones; the narrow fields keep a longer page cheap.
+ * ones; the narrow fields keep a longer page cheap. One more row than this is
+ * requested so a longer list is refused as truncated, never served partially.
  */
 const GITHUB_MERGEABILITY_LIST_LIMIT = 100;
 const githubMergeability = (value: unknown): PullRequest['mergeability'] =>
@@ -215,9 +216,11 @@ function normalizeGitHubBranchMergeability(
 ): PullRequestBranchMergeability {
   if (!Number.isInteger(value?.number) || typeof value.headRefName !== 'string')
     throw new Error('GitHub CLI returned an incomplete pull request');
+  const sourceOwner = value.headRepositoryOwner?.login;
   return {
     ref: String(value.number),
     sourceBranch: value.headRefName,
+    ...(typeof sourceOwner === 'string' ? { sourceOwner } : {}),
     mergeability: githubMergeability(value.mergeable),
   };
 }
@@ -524,9 +527,11 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
    * three fields they read, so it costs the forge a fraction of the review
    * list and shares nothing with it but the availability probe.
    */
-  listOpenPullRequestMergeability(c: PullRequestRepositoryContext) {
+  async listOpenPullRequestMergeability(
+    c: PullRequestRepositoryContext,
+  ): Promise<PullRequestResult<PullRequestBranchMergeability[]>> {
     const host = this.getHost(c);
-    return this.read(
+    const result = await this.read(
       c,
       [
         'pr',
@@ -536,9 +541,9 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
         '--state',
         'open',
         '--limit',
-        String(GITHUB_MERGEABILITY_LIST_LIMIT),
+        String(GITHUB_MERGEABILITY_LIST_LIMIT + 1),
         '--json',
-        'number,headRefName,mergeable',
+        'number,headRefName,headRepositoryOwner,mergeable',
       ],
       true,
       (parsed) => {
@@ -547,6 +552,14 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
         return parsed.map(normalizeGitHubBranchMergeability);
       },
     );
+    if (
+      result.available &&
+      (result.data?.length ?? 0) > GITHUB_MERGEABILITY_LIST_LIMIT
+    )
+      return unavailable(
+        `More than ${GITHUB_MERGEABILITY_LIST_LIMIT} open pull requests; branch mergeability is not observed`,
+      );
+    return result;
   }
   getPullRequest(c: PullRequestRepositoryContext, ref: string) {
     const host = this.getHost(c);

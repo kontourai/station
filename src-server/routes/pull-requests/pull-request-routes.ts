@@ -154,6 +154,9 @@ export function createPullRequestRoutes(
         ...(resolution.context.branch
           ? { branch: resolution.context.branch }
           : {}),
+        ...(resolution.context.branch && resolution.context.head
+          ? { head: resolution.context.head }
+          : {}),
       },
     });
   });

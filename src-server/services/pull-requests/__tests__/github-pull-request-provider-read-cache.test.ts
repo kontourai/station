@@ -351,9 +351,11 @@ describe('GitHubPullRequestProvider forge read coalescing (#2937)', () => {
         '--state',
         'open',
         '--limit',
-        '100',
+        // Pinned literal: the limit is 100, and one more row is requested
+        // so a longer list is refused rather than served partially.
+        '101',
         '--json',
-        'number,headRefName,mergeable',
+        'number,headRefName,headRepositoryOwner,mergeable',
       ],
     ]);
     expect(gh.count('auth')).toBe(1);
@@ -381,5 +383,112 @@ describe('GitHubPullRequestProvider forge read coalescing (#2937)', () => {
       provider.listOpenPullRequestMergeability(station),
     ).resolves.toMatchObject({ available: true, data: [{ ref: '7' }] });
     expect(gh.count('pr list')).toBe(2);
+  });
+  test.each([
+    // Pinned literals: the narrow read serves at most 100 open pull requests.
+    [100, true],
+    [101, false],
+  ])(
+    '%i open pull requests: served = %s, never a partial list',
+    async (rows, served) => {
+      const gh = fakeGh();
+      const { provider } = providerWith(gh);
+      gh.stdoutNext(
+        'pr list',
+        JSON.stringify(
+          Array.from({ length: rows }, (_, index) => ({
+            number: index + 1,
+            headRefName: `branch-${index + 1}`,
+            headRepositoryOwner: { login: 'kontourai' },
+            mergeable: 'MERGEABLE',
+          })),
+        ),
+      );
+      const result = await provider.listOpenPullRequestMergeability(station);
+      if (served) {
+        expect(result).toMatchObject({ available: true });
+        expect(result.data).toHaveLength(100);
+      } else {
+        expect(result).toEqual(
+          expect.objectContaining({
+            available: false,
+            reason:
+              'More than 100 open pull requests; branch mergeability is not observed',
+          }),
+        );
+        expect(result.data).toBeUndefined();
+      }
+    },
+  );
+
+  test('the narrow read reports the source branch owner so a fork is distinguishable', async () => {
+    const gh = fakeGh();
+    const { provider } = providerWith(gh);
+    gh.stdoutNext(
+      'pr list',
+      JSON.stringify([
+        {
+          number: 7,
+          headRefName: 'feature',
+          headRepositoryOwner: { login: 'kontourai' },
+          mergeable: 'CONFLICTING',
+        },
+        {
+          number: 9,
+          headRefName: 'feature',
+          headRepositoryOwner: { login: 'a-fork' },
+          mergeable: 'CONFLICTING',
+        },
+      ]),
+    );
+    const result = await provider.listOpenPullRequestMergeability(station);
+    expect(result.data).toEqual([
+      {
+        ref: '7',
+        sourceBranch: 'feature',
+        sourceOwner: 'kontourai',
+        mergeability: 'conflicting',
+      },
+      {
+        ref: '9',
+        sourceBranch: 'feature',
+        sourceOwner: 'a-fork',
+        mergeability: 'conflicting',
+      },
+    ]);
+  });
+
+  test('one repository name under two owners is two availability probes with their own merge methods', async () => {
+    const calls: string[][] = [];
+    const settingsFor: Record<string, object> = {
+      'github.com/o1/r': {
+        mergeCommitAllowed: false,
+        squashMergeAllowed: true,
+        rebaseMergeAllowed: false,
+      },
+      'github.com/o2/r': {
+        mergeCommitAllowed: true,
+        squashMergeAllowed: false,
+        rebaseMergeAllowed: false,
+      },
+    };
+    const transport = async (args: string[]) => {
+      calls.push(args);
+      if (args[0] === 'repo')
+        return { stdout: JSON.stringify(settingsFor[args[2] as string]) };
+      return { stdout: args[0] === 'pr' ? '[]' : '' };
+    };
+    const provider = new GitHubPullRequestProvider(transport, transport, {
+      now: () => 0,
+    });
+    await expect(
+      provider.getAvailability(contextFor('o1', 'r')),
+    ).resolves.toMatchObject({ effectiveMergeMethods: ['squash'] });
+    await expect(
+      provider.getAvailability(contextFor('o2', 'r')),
+    ).resolves.toMatchObject({ effectiveMergeMethods: ['merge'] });
+    expect(
+      calls.filter((args) => args[0] === 'repo').map((args) => args[2]),
+    ).toEqual(['github.com/o1/r', 'github.com/o2/r']);
   });
 });
