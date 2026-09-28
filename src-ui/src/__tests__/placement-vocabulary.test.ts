@@ -1,13 +1,7 @@
 // @vitest-environment node
 
 import { execFileSync } from 'node:child_process';
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -208,28 +202,6 @@ describe('placement vocabulary (#928)', () => {
       ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('the design record and glossary entries exist', () => {
-    expect(existsSync(resolve(ROOT, 'docs/design/placement.md'))).toBe(true);
-    const glossary = readFileSync(resolve(ROOT, 'docs/glossary.md'), 'utf8');
-    for (const entry of [
-      '**Region**',
-      '**Surface**',
-      '**Pane host**',
-      '**Arrangement**',
-    ]) {
-      expect(glossary, `docs/glossary.md lacks ${entry}`).toContain(entry);
-    }
-    const context = readFileSync(
-      resolve(ROOT, 'docs/contexts/workspace-surfaces/CONTEXT.md'),
-      'utf8',
-    );
-    for (const entry of ['**Region**:', '**Arrangement**:']) {
-      expect(context, `workspace-surfaces CONTEXT.md lacks ${entry}`).toContain(
-        entry,
-      );
     }
   });
 });

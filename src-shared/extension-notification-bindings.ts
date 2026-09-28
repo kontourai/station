@@ -34,6 +34,8 @@ export interface ExtensionNotificationBinding {
 /**
  * Exact evidence-backed application semantics for opaque extension events.
  * Unknown tuples remain opaque/no-op; namespace similarity is never authority.
+ * Kiro v3's `_kiro` notification spelling has not been observed, so it stays
+ * unbound.
  */
 const DECLARED_EXTENSION_NOTIFICATION_BINDINGS = [
   {
@@ -215,14 +217,6 @@ export const EXTENSION_NOTIFICATION_BINDINGS: readonly ExtensionNotificationBind
       }),
     ),
   );
-
-export const EXTENSION_NOTIFICATION_EVIDENCE_GAPS = Object.freeze([
-  Object.freeze({
-    namespace: '_kiro',
-    observedAgainst: 'kiro-v3' as const,
-    gap: 'notification spelling has not been observed',
-  }),
-]);
 
 export function extensionNotificationBinding(
   namespace: string,

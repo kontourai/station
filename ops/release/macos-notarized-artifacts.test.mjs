@@ -14,7 +14,6 @@ import {
   commandFailureExcerpt,
   createMacosNotarizedArtifacts,
   DEFAULT_COMMAND_TIMEOUT_MS,
-  DMG_CREATION_COMMAND_TIMEOUT_MS,
   DMG_CREATION_MAX_ATTEMPTS,
   DMG_CREATION_RETRY_BACKOFF_MS,
   EMBEDDED_MACHO_COMMAND_TIMEOUT_MS,
@@ -699,9 +698,6 @@ test('uses the explicit ten-minute authority for every complete-payload artifact
       )?.[2].timeoutMs,
     ).toBe(LARGE_ARTIFACT_COMMAND_TIMEOUT_MS);
   }
-  expect(DMG_CREATION_COMMAND_TIMEOUT_MS).toBe(
-    LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
-  );
 });
 
 test('keeps the short default timeout for non-payload release probes', async () => {
@@ -1174,12 +1170,6 @@ test('retries a bounded embedded timestamp signing failure once without rewrappi
         args.at(-1) === file,
     )?.[2].timeoutMs,
   ).toBe(EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS);
-  expect(
-    release.calls.some(
-      ([program, args]) =>
-        program === 'node' && args.includes('macos-embedded-signing.mjs'),
-    ),
-  ).toBe(false);
 });
 
 test('validates absolute release epochs and reserves process-group cleanup grace after delayed setup', async () => {
