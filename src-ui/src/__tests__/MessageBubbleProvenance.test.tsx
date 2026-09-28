@@ -343,20 +343,29 @@ describe('MessageBubble turn provenance (station#1410, #2211)', () => {
     expect(screen.queryByLabelText(/^Answer provenance/)).toBeNull();
   });
 
-  it('does not offer Task attachment while the latest assistant turn is still active', () => {
+  // The row is eligible and its overflow renders for the provenance record, so
+  // only the thinking gate on the Task target can keep the attachment out.
+  it('does not offer Task attachment while the latest assistant turn is still active', async () => {
+    await import('../components/chat/TurnActionsMenu');
     renderRow(
       {
         role: 'assistant',
         content: 'Still working.',
         turnId: 'turn-active',
+        answerEligible: true,
+        provenance: envelope,
       },
       { isThinking: true },
     );
 
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More answer actions' }),
+    );
     expect(
-      screen.queryByRole('button', {
-        name: 'Add this answer to a Task (turn turn-active)',
-      }),
+      screen.getByRole('menuitem', { name: 'Turn provenance' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('menuitem', { name: /Add this answer to a Task/ }),
     ).toBeNull();
   });
 

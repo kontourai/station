@@ -16,12 +16,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ThemeToggle } from '../components/header/ThemeToggle';
+import { isDistinctFrameOrigin } from '../components/mcp-ui/frameOrigin';
 import {
-  isDistinctFrameOrigin,
   MCPToolUIFrame,
   mcpUiHostAppearance,
   mcpUiHostGeometry,
-  mcpUiToolCallDecision,
   sessionInventoryV2OpenLinkCapability,
 } from '../components/mcp-ui/MCPToolUIFrame';
 import { deviceSettingsStore } from '../lib/device-settings-store';
@@ -1156,12 +1155,101 @@ describe('MCPToolUIFrame', () => {
     );
   });
 
-  test('mcpUiToolCallDecision denies read-only, server-gates require, prompts otherwise', () => {
-    expect(mcpUiToolCallDecision('read-only')).toBe('deny');
-    expect(mcpUiToolCallDecision('require')).toBe('server-gate');
-    expect(mcpUiToolCallDecision('inherit')).toBe('prompt');
-    expect(mcpUiToolCallDecision(undefined)).toBe('prompt');
-  });
+  // A `require` pin reaching the server with no local prompt is proven by the
+  // v2 work-item test above: its `tools/call` would hang behind this prompt.
+  test.each([
+    { approvalPolicy: 'read-only', answer: null, reaches: false },
+    { approvalPolicy: 'inherit', answer: 'Deny', reaches: false },
+    { approvalPolicy: 'inherit', answer: 'Approve', reaches: true },
+  ] as const)(
+    'a View tool call under a $approvalPolicy pin answered $answer reaches the server: $reaches',
+    async ({ approvalPolicy, answer, reaches }) => {
+      mockConfig = { mcpUiHost: true };
+      fetchMock.mockImplementation((url: string) => {
+        if (url.endsWith('/resource'))
+          return Promise.resolve(
+            response({
+              uri: 'ui://github/create-issue',
+              mimeType: 'text/html;profile=mcp-app',
+              text: '<main>create issue</main>',
+            }),
+          );
+        if (url.endsWith('/ui/call'))
+          return Promise.resolve(response({ content: [], marker: 'CALLED' }));
+        return Promise.resolve(
+          response({
+            status: 'success',
+            ref: 'github/create_issue',
+            serverId: 'github',
+            toolName: 'create_issue',
+            resourceUri: 'ui://github/create-issue',
+          }),
+        );
+      });
+      renderFrame({ ref: 'github/create_issue', approvalPolicy });
+      const iframe = (await screen.findByTitle(
+        'MCP tool UI: github/create_issue',
+      )) as HTMLIFrameElement;
+      const target = iframe.contentWindow!;
+      const sent = vi.spyOn(target, 'postMessage');
+      const send = (data: unknown) =>
+        window.dispatchEvent(
+          new MessageEvent('message', { data, source: target }),
+        );
+      send({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'ui/initialize',
+        params: {
+          appInfo: { name: 'fixture', version: '1.0.0' },
+          appCapabilities: {},
+          protocolVersion: '2026-01-26',
+        },
+      });
+      await waitFor(() =>
+        expect(sent).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 1, result: expect.any(Object) }),
+          '*',
+        ),
+      );
+      send({ jsonrpc: '2.0', method: 'ui/notifications/initialized' });
+      send({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: { name: 'create_issue', arguments: { title: 'x' } },
+      });
+      if (answer) {
+        expect(await screen.findByText('Approve MCP tool call')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: answer }));
+      }
+      await waitFor(() =>
+        expect(sent).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 2 }),
+          '*',
+        ),
+      );
+      const reply = sent.mock.calls.find(
+        ([message]) => (message as { id?: number }).id === 2,
+      )?.[0] as { result?: unknown; error?: { message?: string } };
+      const serverCalls = fetchMock.mock.calls.filter(([url]) =>
+        String(url).endsWith('/ui/call'),
+      );
+      if (reaches) {
+        expect(reply.error).toBeUndefined();
+        expect(reply.result).toMatchObject({ marker: 'CALLED' });
+        expect(serverCalls).toHaveLength(1);
+      } else {
+        expect(reply.result).toBeUndefined();
+        expect(reply.error?.message).toMatch(
+          answer ? /denied by user/ : /read-only; tool calls are blocked/,
+        );
+        expect(serverCalls).toHaveLength(0);
+      }
+      if (!answer)
+        expect(screen.queryByText('Approve MCP tool call')).toBeNull();
+    },
+  );
 
   test('mediates AppBridge fullscreen and PiP requests through exact Pane host intent', async () => {
     mockConfig = { mcpUiHost: true };

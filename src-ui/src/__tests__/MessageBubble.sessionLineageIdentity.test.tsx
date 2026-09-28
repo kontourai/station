@@ -176,7 +176,14 @@ describe('MessageBubble session-lineage identity (station#4240)', () => {
         onForkFromTurn={vi.fn()}
       />,
     );
-    expect(screen.queryByRole('button', { name: 'Fork from here' })).toBeNull();
+    // Fork is a menuitem behind the overflow. With no provenance or other
+    // action, an incomplete turn offers no overflow to hold it.
+    expect(
+      screen.queryByRole('button', { name: 'More answer actions' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('menuitem', { name: /Fork from here/ }),
+    ).toBeNull();
   });
 
   test('renders a historical Codex answer from its own Agent, never the current Claude Agent', () => {

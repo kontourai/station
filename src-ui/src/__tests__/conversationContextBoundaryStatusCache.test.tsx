@@ -8,54 +8,28 @@
  * dialog open held two cache entries and two two-second refetch timers over
  * the same endpoint.
  *
- * What is proved here, and what is not:
- *
- * - The behavioural test mounts the REAL dialog and a probe that issues the
- *   dock's call, and reads the REAL query cache: one entry, not two. That is
- *   the property the fix exists for, and it fails if either call shape drifts
- *   (a different `apiBase`, a different idempotency-key default, a different
- *   key factory) — the drifted caller lands on its own entry.
- * - It does not mount `ChatWorkspacePane`. No test in this repo does: its
- *   graph needs an active chat session carrying a `conversationId`, seeded
- *   through `activeChatsStore` plus the conversation inventory query, and
- *   `DockShellControlParity.test.tsx`/`DockShellProjectBinding.test.tsx` both
- *   record that decision. So the probe is a copy of the dock's call, and the
- *   second test pins the dock's real call against it: the copy cannot silently
- *   stop describing the original.
+ * This mounts the dock's REAL boundary hook (`useConversationBoundaryDialogs`)
+ * beside the REAL dialog and reads the REAL query cache: one entry, not two.
+ * A hand-rolled query, or a drifted call shape (a different `apiBase`,
+ * idempotency-key default, or key factory), lands on its own entry.
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { useConversationContextBoundaryStatusQuery } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConversationContextResetDialog } from '../components/chat-dock/ConversationContextResetDialog';
 import { contextBoundaryUiStorageKey } from '../components/chat-dock/conversationContextBoundaryUiState';
+import { useConversationBoundaryDialogs } from '../components/chat-dock/useConversationBoundaryDialogs';
+import {
+  _resetOutboundQueueStorage,
+  _setOutboundQueueStorage,
+} from '../lib/outboundQueue';
+import { _resetOutboundQueueSource } from '../lib/outboundQueueSnapshotSource';
+import type { ChatSession } from '../types';
 
 const API_BASE = 'http://station.test';
 const CONVERSATION_ID = 'conversation-under-reset';
 const IDEMPOTENCY_KEY = 'idem-1';
-
-/**
- * The dock's own source. `ChatWorkspacePane` holds the surface; its
- * conversation-boundary state (including this query) lives in
- * `useConversationBoundaryDialogs`. Both are read so the "no hand-rolled
- * query is left in the dock" assertions keep covering the whole surface
- * wherever the call currently sits.
- */
-const dockSource = [
-  join(__dirname, '..', 'components', 'chat-dock', 'ChatDock.tsx'),
-  join(
-    __dirname,
-    '..',
-    'components',
-    'chat-dock',
-    'useConversationBoundaryDialogs.ts',
-  ),
-]
-  .map((path) => readFileSync(path, 'utf8'))
-  .join('\n');
 
 function seedStoredBoundary(): void {
   window.localStorage.setItem(
@@ -71,24 +45,17 @@ function seedStoredBoundary(): void {
   );
 }
 
-/**
- * The dock's call, verbatim. The second test is what keeps it verbatim.
- */
-function DockBoundaryStatusProbe({
-  apiBase,
-  conversationId,
-  idempotencyKey,
-}: {
-  apiBase: string;
-  conversationId: string;
-  idempotencyKey: string | undefined;
-}) {
-  useConversationContextBoundaryStatusQuery(
-    conversationId,
-    idempotencyKey ?? '',
-    apiBase,
-    { enabled: Boolean(idempotencyKey), refetchInterval: 2_000 },
-  );
+function DockBoundaryHook() {
+  useConversationBoundaryDialogs({
+    agents: [],
+    apiBase: API_BASE,
+    activeSession: {
+      id: 'session-1',
+      conversationId: CONVERSATION_ID,
+      agentSlug: 'codex',
+    } as ChatSession,
+    allSessions: [],
+  });
   return null;
 }
 
@@ -103,6 +70,14 @@ function boundaryQueryKeys(client: QueryClient): unknown[][] {
 describe('conversation context-boundary status cache', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    // The hook also subscribes to the outbound queue; keep it off IndexedDB.
+    let queue: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => queue,
+      setItem: async (_key, next) => {
+        queue = next;
+      },
+    });
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -114,6 +89,8 @@ describe('conversation context-boundary status cache', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     window.localStorage.clear();
+    _resetOutboundQueueSource();
+    _resetOutboundQueueStorage();
   });
 
   test('the dock and its reset dialog observe one cache entry', async () => {
@@ -122,11 +99,7 @@ describe('conversation context-boundary status cache', () => {
 
     render(
       <QueryClientProvider client={client}>
-        <DockBoundaryStatusProbe
-          apiBase={API_BASE}
-          conversationId={CONVERSATION_ID}
-          idempotencyKey={IDEMPOTENCY_KEY}
-        />
+        <DockBoundaryHook />
         <ConversationContextResetDialog
           apiBase={API_BASE}
           conversationId={CONVERSATION_ID}
@@ -150,24 +123,5 @@ describe('conversation context-boundary status cache', () => {
         API_BASE,
       ],
     ]);
-  });
-
-  test('the dock issues exactly the call the probe copies', () => {
-    // No hand-rolled query for this endpoint is left in the dock.
-    expect(dockSource).not.toContain("'conversation-context-boundary'");
-    expect(dockSource).not.toContain('getConversationContextBoundaryStatus');
-
-    const call = dockSource.match(
-      /useConversationContextBoundaryStatusQuery\(([\s\S]{0,300}?)\);/,
-    );
-    expect(call, 'the dock must call the SDK boundary-status query').not.toBe(
-      null,
-    );
-    const args = (call?.[1] ?? '').replace(/\s+/g, ' ');
-    expect(args).toContain('activeConversationId');
-    expect(args).toContain("contextBoundaryStored?.idempotencyKey ?? ''");
-    expect(args).toContain('apiBase');
-    expect(args).toContain('enabled: Boolean(contextBoundaryStored)');
-    expect(args).toContain('refetchInterval: 2_000');
   });
 });

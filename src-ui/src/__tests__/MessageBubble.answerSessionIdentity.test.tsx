@@ -95,15 +95,32 @@ describe('MessageBubble answer Session identity', () => {
     expect(screen.queryByTestId('basis-origin')).toBeNull();
   });
 
+  const untagged: ChatMessage = {
+    role: 'assistant',
+    content: 'Unknown origin',
+    turnId: 'turn-1',
+    answerEligible: true,
+  };
+
   test('does not guess the active replacement Session for an untagged historical row', () => {
-    render(
-      row(
-        { role: 'assistant', content: 'Unknown origin', turnId: 'turn-1' },
-        'conversation-1',
-      ),
-    );
+    render(row(untagged, 'conversation-1'));
+    expect(
+      screen.queryByRole('button', { name: 'More answer actions' }),
+    ).toBeNull();
     expect(screen.queryByTestId('answer-origin')).toBeNull();
     expect(screen.queryByTestId('basis-origin')).toBeNull();
+  });
+
+  // The control for the refusal above: without a conversation there is no
+  // replacement Session, so the active Session is the row's own.
+  test('attaches an untagged legacy one-session row to the active Session', async () => {
+    render(row(untagged));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More answer actions' }),
+    );
+    expect((await screen.findByTestId('answer-origin')).textContent).toBe(
+      'replacement-session/turn-1',
+    );
   });
 
   test('offers a Task action only for a durable user row with its full source tuple', async () => {
