@@ -4857,19 +4857,6 @@ async function uninstallPluginUnderPublication(
   }
 }
 
-export async function resolvePluginRegistrySource(
-  id: string,
-): Promise<string | null> {
-  try {
-    return (await resolveSinglePluginRegistryProvider(id)).source;
-  } catch (error) {
-    if (errorMessage(error).startsWith('No plugin registry provider')) {
-      return null;
-    }
-    throw error;
-  }
-}
-
 export async function resolvePluginRegistryInstall(
   id: string,
 ): Promise<{ source: string; registryKey: string } | null> {

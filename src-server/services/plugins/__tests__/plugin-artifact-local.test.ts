@@ -52,6 +52,21 @@ test('a transferable reader materializes actual bytes and verifies the source di
     '{"name":"fixture"}',
   );
 });
+test('content whose bytes do not hash to the prepared digest is refused', async () => {
+  const f = fixture();
+  await expect(
+    materializePluginArtifact(
+      artifact([
+        {
+          path: 'plugin.json',
+          kind: 'file',
+          bytes: new TextEncoder().encode('{"name":"fixture"}'),
+        },
+      ]),
+      f.destination,
+    ),
+  ).rejects.toThrow('does not match its verified digest');
+});
 test('a symlink escape is rejected before publication rather than trusted because its text is hashed', async () => {
   const f = fixture();
   await expect(
