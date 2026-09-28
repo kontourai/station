@@ -184,16 +184,88 @@ describe('#2880: Codex decision delivery', () => {
     await adapter.stopAll();
   });
 
-  test('a stopped session reports nothing after the window', async () => {
-    const { adapter, events } = await answered(0);
+  /** Delivery reports for `requestId`, in order, and where `session.exited` fell. */
+  function deliveryBeforeExit(events: any[], requestId: string) {
+    const methods = events
+      .filter(
+        (event) =>
+          event.method === 'session.exited' ||
+          (event.method === 'request.delivery' &&
+            event.requestId === requestId),
+      )
+      .map((event) =>
+        event.method === 'session.exited'
+          ? 'session.exited'
+          : `${event.outcome}:${event.reason ?? ''}`,
+      );
+    return methods;
+  }
+
+  test('stopping the session settles a waiting reply as unacknowledged before session.exited', async () => {
+    const { adapter, events, requestId } = await answered(0);
+    await vi.advanceTimersByTimeAsync(1_200);
     await adapter.stopSession(THREAD);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(deliveryBeforeExit(events, requestId)).toEqual([
+      'unacknowledged:no-acknowledgement',
+      'session.exited',
+    ]);
+    expect(of(events, 'request.delivery')[0].waitedMs).toBe(1_200);
+    expect(delegatedLastDecision(events)).toMatchObject({
+      requestId,
+      delivery: 'unacknowledged',
+      reason: 'no-acknowledgement',
+    });
+    // The window's timer went with the session: no second report, no
+    // "not yet" warning for a session that has already ended.
     await vi.advanceTimersByTimeAsync(CODEX_APPROVAL_ACK_WINDOW_MS * 2);
-    expect(of(events, 'request.delivery')).toEqual([]);
+    expect(of(events, 'request.delivery')).toHaveLength(1);
     expect(
       of(events, 'runtime.warning').filter(
         (event) => event.code === CODEX_DECISION_UNACKNOWLEDGED_CODE,
       ),
     ).toEqual([]);
+  });
+
+  test('an unexpected exit settles a waiting reply at once, and an acknowledgement still in the pipe supersedes it', async () => {
+    const { adapter, process, events, requestId } = await answered(0);
+    process.emit('exit', 1);
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(deliveryBeforeExit(events, requestId)).toEqual([
+      'unacknowledged:no-acknowledgement',
+      'session.exited',
+    ]);
+    await vi.advanceTimersByTimeAsync(CODEX_APPROVAL_ACK_WINDOW_MS * 2);
+    expect(of(events, 'request.delivery')).toHaveLength(1);
+    expect(
+      of(events, 'runtime.warning').filter(
+        (event) => event.code === CODEX_DECISION_UNACKNOWLEDGED_CODE,
+      ),
+    ).toEqual([]);
+
+    // Codex acknowledged before dying; the line is read after the exit.
+    await send(process, acknowledgement(0));
+    expect(delegatedLastDecision(events)).toMatchObject({
+      requestId,
+      delivery: 'acknowledged',
+    });
+    await adapter.stopAll();
+  });
+
+  test('a process error settles a waiting reply before session.exited', async () => {
+    const { adapter, process, events, requestId } = await answered(0);
+    process.emit('error', new Error('spawn gone'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(deliveryBeforeExit(events, requestId)).toEqual([
+      'unacknowledged:no-acknowledgement',
+      'session.exited',
+    ]);
+    await vi.advanceTimersByTimeAsync(CODEX_APPROVAL_ACK_WINDOW_MS * 2);
+    expect(of(events, 'request.delivery')).toHaveLength(1);
+    await adapter.stopAll();
   });
 
   test('a reply outside the vocabulary is refused, never written, and never reads as delivered', async () => {
@@ -243,6 +315,48 @@ describe('#2880: Codex decision delivery', () => {
       delivery: 'unacknowledged',
       reason: 'invalid-reply',
     });
+    await harness.adapter.stopAll();
+  });
+
+  test('Codex closing a request before the #2316 cancel reply settles that reply acknowledged at once', async () => {
+    const harness = await startedAdapter();
+    await emit(harness.process, commandApproval(9));
+    const requestId = await openedRequestId(harness.events);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const interrupt = harness.adapter.interruptTurn(THREAD, 'turn-1');
+    await vi.advanceTimersByTimeAsync(0);
+    const interruptRpc = harness.process.stdin.lines
+      .map((line) => JSON.parse(line))
+      .find((line) => line.method === 'turn/interrupt');
+    expect(interruptRpc).toBeDefined();
+
+    // Codex closes the pending approval itself, BEFORE Station's reply.
+    await send(harness.process, acknowledgement(9));
+    // Remembering it changes nothing about the approval yet.
+    expect(of(harness.events, 'request.resolved')).toEqual([]);
+    expect(of(harness.events, 'request.delivery')).toEqual([]);
+
+    await send(harness.process, { id: interruptRpc.id, result: {} });
+    await interrupt;
+    expect(repliesTo(harness.process, 9)).toEqual([
+      expect.objectContaining({ result: { decision: 'cancel' } }),
+    ]);
+    expect(of(harness.events, 'request.delivery')).toEqual([
+      expect.objectContaining({
+        requestId,
+        outcome: 'acknowledged',
+        waitedMs: 0,
+      }),
+    ]);
+    await vi.advanceTimersByTimeAsync(CODEX_APPROVAL_ACK_WINDOW_MS * 2);
+    expect(
+      of(harness.events, 'request.delivery').map((event) => event.outcome),
+    ).toEqual(['acknowledged']);
+    expect(
+      of(harness.events, 'runtime.warning').filter(
+        (event) => event.code === CODEX_DECISION_UNACKNOWLEDGED_CODE,
+      ),
+    ).toEqual([]);
     await harness.adapter.stopAll();
   });
 

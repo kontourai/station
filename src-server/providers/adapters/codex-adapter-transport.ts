@@ -212,6 +212,7 @@ export class CodexAdapterTransport {
       if (limit.observedBytes <= limit.maxBytes) return;
       limit.exceeded = true;
       record.stopped = true;
+      this.settleAcknowledgementWatches(record);
       this.rejectPendingRpcRequests(
         record,
         () =>
@@ -244,6 +245,7 @@ export class CodexAdapterTransport {
       // so a synchronous `exit` from kill() (as the test doubles emit)
       // doesn't produce a duplicate session.exited.
       if (record.stopped) return;
+      this.settleAcknowledgementWatches(record);
       const nowIso = this.now().toISOString();
       const interruptedTurnId = this.rejectPendingRpcRequests(
         record,
@@ -270,6 +272,7 @@ export class CodexAdapterTransport {
     record.process.on('error', (error) => {
       if (record.stopped) return;
       record.stopped = true;
+      this.settleAcknowledgementWatches(record);
       const nowIso = this.now().toISOString();
       const interruptedTurnId = this.rejectPendingRpcRequests(
         record,
@@ -319,6 +322,7 @@ export class CodexAdapterTransport {
         return;
       }
       record.stopped = true;
+      this.settleAcknowledgementWatches(record);
       const nowIso = this.now().toISOString();
       const interruptedTurnId = this.rejectPendingRpcRequests(
         record,
@@ -445,7 +449,9 @@ export class CodexAdapterTransport {
    * reply it cannot parse, so this check is the only thing that keeps a
    * malformed reply from reading as delivered — and is reported as
    * `unacknowledged` (`invalid-reply`). A written reply is watched until
-   * Codex's `serverRequest/resolved` names it; nothing is ever re-sent.
+   * Codex's `serverRequest/resolved` names it; nothing is ever re-sent. When
+   * Codex already closed the request before this reply (see
+   * `closedBeforeReply`), the reply settles as acknowledged at once.
    */
   replyToApproval(
     record: CodexSessionRecord,
@@ -458,6 +464,10 @@ export class CodexAdapterTransport {
     },
   ): void {
     const refusal = refuseCodexApprovalReply(input.method, input.result);
+    // Consumed whatever the outcome, so the set never outlives the approval.
+    const closedBeforeReply =
+      record.closedBeforeReply?.delete(jsonRpcIdKey(input.rpcRequestId)) ??
+      false;
     if (refusal === undefined) {
       this.sendResponse(record, input.rpcRequestId, input.result);
     }
@@ -494,6 +504,19 @@ export class CodexAdapterTransport {
         code: CODEX_DECISION_REPLY_REFUSED_CODE,
         message: `Station recorded the decision but did not send it to Codex, because ${refusal}. Codex is still waiting for an answer to this request.`,
         details: { requestId: input.requestId },
+      });
+      return;
+    }
+    if (closedBeforeReply) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId,
+        createdAt: this.now().toISOString(),
+        requestId: input.requestId,
+        method: 'request.delivery',
+        outcome: 'acknowledged',
+        waitedMs: 0,
       });
       return;
     }
@@ -547,11 +570,13 @@ export class CodexAdapterTransport {
   }
 
   /**
-   * #2880: Codex's `serverRequest/resolved` — the engine closed the request
-   * after Station's reply. Matched on the wire id's value AND type. An id
-   * Station is not watching (an auto-approved grant, a request Codex closed
-   * on its own) is ignored. A late acknowledgement still publishes
-   * `acknowledged`, which supersedes the earlier `unacknowledged`.
+   * #2880: Codex's `serverRequest/resolved` — the engine closed the request.
+   * Matched on the wire id's value AND type. A late acknowledgement still
+   * publishes `acknowledged`, which supersedes the earlier `unacknowledged`.
+   * An id Station has not replied to yet but still holds pending (Codex
+   * closing it on a turn interrupt, ahead of Station's cancel reply) is only
+   * remembered, for that reply to settle against; the approval itself stays
+   * pending as before. Any other id (an auto-approved grant) is ignored.
    */
   private acknowledgeServerRequest(
     record: CodexSessionRecord,
@@ -565,7 +590,16 @@ export class CodexAdapterTransport {
     if (rpcRequestId === undefined) return;
     const key = jsonRpcIdKey(rpcRequestId);
     const entry = record.awaitingAcknowledgements?.get(key);
-    if (!entry) return;
+    if (!entry) {
+      for (const pending of record.pendingApprovals.values()) {
+        if (jsonRpcIdKey(pending.rpcRequestId) === key) {
+          record.closedBeforeReply ??= new Set();
+          record.closedBeforeReply.add(key);
+          return;
+        }
+      }
+      return;
+    }
     record.awaitingAcknowledgements?.delete(key);
     if (entry.timer) clearTimeout(entry.timer);
     this.publish({
@@ -580,11 +614,34 @@ export class CodexAdapterTransport {
     });
   }
 
-  private clearAcknowledgementWatches(record: CodexSessionRecord): void {
+  /**
+   * #2880: at every session-end door, a reply still waiting settles now: the
+   * process that could acknowledge it is gone, so it is reported
+   * `unacknowledged` (`no-acknowledgement`, the time actually waited) before
+   * `session.exited` — the same representation Muse uses when its host goes
+   * — rather than 30 s later or never. Each entry is kept, timer cleared and
+   * marked reported, so an acknowledgement still in the pipe supersedes it
+   * like any late one and a second door publishes nothing twice.
+   */
+  private settleAcknowledgementWatches(record: CodexSessionRecord): void {
+    record.closedBeforeReply?.clear();
     for (const entry of record.awaitingAcknowledgements?.values() ?? []) {
       if (entry.timer) clearTimeout(entry.timer);
+      entry.timer = undefined;
+      if (entry.warned) continue;
+      entry.warned = true;
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        requestId: entry.requestId,
+        method: 'request.delivery',
+        outcome: 'unacknowledged',
+        reason: 'no-acknowledgement',
+        waitedMs: Math.max(0, this.now().getTime() - entry.sentAt),
+      });
     }
-    record.awaitingAcknowledgements?.clear();
   }
 
   sendErrorResponse(
@@ -677,7 +734,7 @@ export class CodexAdapterTransport {
       return;
     }
     record.stopped = true;
-    this.clearAcknowledgementWatches(record);
+    this.settleAcknowledgementWatches(record);
 
     // Settle outstanding inbound approval requests before teardown so the
     // request event contract holds: every request.opened gets a matching

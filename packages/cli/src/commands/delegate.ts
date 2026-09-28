@@ -493,6 +493,9 @@ function formatStatusSummary(snapshot: DelegatedTaskSnapshot): string {
   if (snapshot.transitionReason) {
     lines.push(`Transition: ${snapshot.transitionReason}`);
   }
+  for (const decision of snapshot.earlierUnacknowledgedDecisions ?? []) {
+    lines.push(formatDecisionLine(decision));
+  }
   if (snapshot.lastDecision) {
     lines.push(formatDecisionLine(snapshot.lastDecision));
   }

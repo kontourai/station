@@ -1007,12 +1007,15 @@ engine reports afterwards is shown separately as `lastDecision` on
 | --- | --- |
 | `awaiting-acknowledgement` | The engine acknowledges decisions and has not yet. Codex normally does within a second. |
 | `acknowledged` | The engine closed the request after Station's well-formed reply. This is not proof it applied the decision as given; `engineStatus` carries the engine's own outcome when it reports one (Muse). |
-| `unacknowledged` | `reason: no-acknowledgement`: nothing arrived within the adapter's window (30 s for Codex). Station has not re-sent the decision. A late acknowledgement replaces this with `acknowledged`. `reason: invalid-reply`: Station refused to send a reply the engine would not accept, so the engine is still waiting. |
+| `unacknowledged` | `reason: no-acknowledgement`: nothing arrived within the adapter's window (30 s for Codex), or the session ended first. Station has not re-sent the decision. A late acknowledgement replaces this with `acknowledged`. `reason: invalid-reply`: Station refused to send a reply the engine would not accept, so the engine is still waiting. |
 | `in-process` | Station's own engine consumed the decision. |
 | `not-reported` | The engine's protocol reports no delivery (Claude Code, ACP connections), or the decision predates delivery reporting. This is a capability, not a warning. |
 
 The default output prints it as one line, for example
 `Decision on req-1: approved (recorded), acknowledged by the engine after 42 ms`.
+An earlier decision on the same task that is still `unacknowledged` is listed
+as `earlierUnacknowledgedDecisions` and printed on its own line above it, so
+a later acknowledged decision never hides it.
 Codex acknowledges even a reply it cannot parse, so Station checks every
 reply against the engine's decision vocabulary before sending it; that check,
 not the acknowledgement, is what keeps a malformed reply from reading as

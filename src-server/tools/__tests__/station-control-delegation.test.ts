@@ -3647,6 +3647,59 @@ describe('observeDelegatedTask reports the last decision apart from its delivery
     const snapshot = await observeDelegatedTask({ taskId: 'task-1' });
     expect(snapshot.lastDecision?.delivery).toBe('awaiting-acknowledgement');
   });
+
+  test('an earlier unacknowledged decision stays visible after a later one is acknowledged', async () => {
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    const on = (requestId: string, event: Record<string, unknown>) => ({
+      ...event,
+      requestId,
+    });
+    installTaskFetch([
+      // req-1: never acknowledged.
+      recorded('engine'),
+      delivery({
+        outcome: 'unacknowledged',
+        reason: 'no-acknowledgement',
+        waitedMs: 30_000,
+      }),
+      // req-2: unacknowledged, then a late acknowledgement supersedes it.
+      on('req-2', recorded('engine')),
+      on('req-2', delivery({ outcome: 'unacknowledged', waitedMs: 30_000 })),
+      on('req-2', delivery({ outcome: 'acknowledged', waitedMs: 31_000 })),
+      // req-3: the latest decision, acknowledged.
+      on('req-3', recorded('engine')),
+      on('req-3', delivery({ outcome: 'acknowledged', waitedMs: 9 })),
+    ]);
+    const snapshot = await observeDelegatedTask({ taskId: 'task-1' });
+    expect(snapshot.lastDecision).toMatchObject({
+      requestId: 'req-3',
+      delivery: 'acknowledged',
+    });
+    expect(snapshot.earlierUnacknowledgedDecisions).toEqual([
+      {
+        requestId: 'req-1',
+        status: 'approved',
+        delivery: 'unacknowledged',
+        reason: 'no-acknowledgement',
+        waitedMs: 30_000,
+      },
+    ]);
+  });
+
+  test('no earlier list when the only unacknowledged decision is the latest', async () => {
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    installTaskFetch([
+      recorded('engine'),
+      delivery({ outcome: 'unacknowledged', reason: 'invalid-reply' }),
+    ]);
+    const snapshot = await observeDelegatedTask({ taskId: 'task-1' });
+    expect(snapshot.lastDecision?.delivery).toBe('unacknowledged');
+    expect(snapshot).not.toHaveProperty('earlierUnacknowledgedDecisions');
+  });
 });
 
 describe('observeDelegatedTask answerability passthrough (station#1783)', () => {

@@ -257,14 +257,39 @@ describe('ChatDockBody interrupted-turn marker (station#4080 slice 1)', () => {
 describe('ChatDockBody unacknowledged-decision notice (#2880)', () => {
   const NOTICE =
     'Your decision is recorded, but the engine has not acknowledged it yet. Station has not re-sent it.';
+  const REFUSED =
+    'Your decision is recorded, but Station did not send it because the engine would not accept that reply. The engine is still waiting for an answer.';
 
-  test('shows the not-yet notice while a decision is unacknowledged', () => {
-    renderDock(buildSession({ unacknowledgedDecisions: ['req-1'] }));
+  function noticeText() {
     const notice = document.querySelector(
       '[data-chat-decision-delivery="turn-interrupted-session"]',
     );
     expect(notice?.getAttribute('role')).toBe('status');
-    expect(notice?.textContent?.replace(/\s+/g, ' ').trim()).toBe(NOTICE);
+    return [...(notice?.querySelectorAll('span') ?? [])].map((span) =>
+      span.textContent?.replace(/\s+/g, ' ').trim(),
+    );
+  }
+
+  test('shows the not-yet notice while a sent decision is unacknowledged', () => {
+    renderDock(
+      buildSession({
+        unacknowledgedDecisions: [
+          { requestId: 'req-1', reason: 'no-acknowledgement' },
+        ],
+      }),
+    );
+    expect(noticeText()).toEqual([NOTICE]);
+  });
+
+  test('a refused reply says it was never sent, not that it awaits acknowledgement', () => {
+    renderDock(
+      buildSession({
+        unacknowledgedDecisions: [
+          { requestId: 'req-1', reason: 'invalid-reply' },
+        ],
+      }),
+    );
+    expect(noticeText()).toEqual([REFUSED]);
   });
 
   test('says nothing once every decision is acknowledged', () => {

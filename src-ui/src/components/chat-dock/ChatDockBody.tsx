@@ -1057,16 +1057,30 @@ export function ChatDockBody({
         // acknowledged. Shown beside the transcript, not in the streaming
         // row: a turn stuck after an approval often has no streaming row.
         // "Not yet": a late acknowledgement removes it, and it never claims
-        // the reply failed or that the engine applied it.
+        // the reply failed or that the engine applied it. A refused reply
+        // (`invalid-reply`) was never sent, so it gets its own statement.
         <div
           className="chat-stream-status"
           role="status"
           data-chat-decision-delivery={activeSession.id}
         >
-          <span>
-            Your decision is recorded, but the engine has not acknowledged it
-            yet. Station has not re-sent it.
-          </span>
+          {activeSession.unacknowledgedDecisions?.some(
+            (decision) => decision.reason === 'invalid-reply',
+          ) && (
+            <span>
+              Your decision is recorded, but Station did not send it because the
+              engine would not accept that reply. The engine is still waiting
+              for an answer.
+            </span>
+          )}
+          {activeSession.unacknowledgedDecisions?.some(
+            (decision) => decision.reason === 'no-acknowledgement',
+          ) && (
+            <span>
+              Your decision is recorded, but the engine has not acknowledged it
+              yet. Station has not re-sent it.
+            </span>
+          )}
         </div>
       )}
       {activeSession.unsentMessages?.length ? (

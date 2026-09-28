@@ -115,6 +115,7 @@ describe('station delegate over HTTP', () => {
         provider?: string;
         capabilityDelivery?: Record<string, unknown>;
         lastDecision?: Record<string, unknown>;
+        earlierUnacknowledgedDecisions?: Array<Record<string, unknown>>;
       }
     | undefined;
 
@@ -442,6 +443,12 @@ describe('station delegate over HTTP', () => {
               : {}),
             ...(statusDeliveryFixture?.lastDecision
               ? { lastDecision: statusDeliveryFixture.lastDecision }
+              : {}),
+            ...(statusDeliveryFixture?.earlierUnacknowledgedDecisions
+              ? {
+                  earlierUnacknowledgedDecisions:
+                    statusDeliveryFixture.earlierUnacknowledgedDecisions,
+                }
               : {}),
             ...(record.pendingRequest
               ? { pendingRequest: record.pendingRequest }
@@ -2430,6 +2437,57 @@ describe('station delegate over HTTP', () => {
         `--api-base=${apiBase}`,
       ]);
       expect(printedText().split('\n')).toContain(line);
+    } finally {
+      statusDeliveryFixture = undefined;
+    }
+  });
+
+  test('human output: an earlier unacknowledged decision prints beside an acknowledged latest one (#2880)', async () => {
+    const { runCli } = await import('../cli.js');
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'decision delivery',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+    statusDeliveryFixture = {
+      earlierUnacknowledgedDecisions: [
+        {
+          requestId: 'req-6',
+          status: 'denied',
+          delivery: 'unacknowledged',
+          reason: 'no-acknowledgement',
+          waitedMs: 30_000,
+        },
+      ],
+      lastDecision: {
+        requestId: 'req-7',
+        status: 'approved',
+        delivery: 'acknowledged',
+        waitedMs: 42,
+      },
+    };
+    try {
+      await runCli([
+        'delegate',
+        'status',
+        created.data.taskId,
+        `--api-base=${apiBase}`,
+      ]);
+      const lines = printedText().split('\n');
+      const earlier = lines.indexOf(
+        'Decision on req-6: denied (recorded), not yet acknowledged by the engine after 30 s; Station has not re-sent it',
+      );
+      const latest = lines.indexOf(
+        'Decision on req-7: approved (recorded), acknowledged by the engine after 42 ms',
+      );
+      expect(earlier).toBeGreaterThanOrEqual(0);
+      expect(latest).toBe(earlier + 1);
     } finally {
       statusDeliveryFixture = undefined;
     }

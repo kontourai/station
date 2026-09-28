@@ -366,6 +366,11 @@ export interface DelegatedTaskSnapshot {
   lastEvent?: { method: string; createdAt?: string };
   /** #2880: the latest recorded decision and its delivery, if any. */
   lastDecision?: DelegatedTaskDecision;
+  /**
+   * #2880: earlier decisions the engine reported unacknowledged, oldest
+   * first; `lastDecision` is never repeated here.
+   */
+  earlierUnacknowledgedDecisions?: DelegatedTaskDecision[];
   pendingRequest?: DelegatedTaskPendingRequest;
   canInterrupt: boolean;
   resumable: boolean;

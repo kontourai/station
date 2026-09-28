@@ -1243,6 +1243,41 @@ export function delegatedLastDecision(
     }
   }
   if (resolvedIndex < 0) return undefined;
+  return delegatedDecisionAt(events, resolvedIndex);
+}
+
+/**
+ * #2880: decisions recorded BEFORE `lastDecision` whose engine has reported
+ * them unacknowledged, oldest first. `lastDecision` alone could read
+ * "acknowledged" for B while an earlier decision A on the same task never
+ * was; these keep A visible. Each request is judged on its latest
+ * `request.resolved`, exactly as `lastDecision` is.
+ */
+export function delegatedEarlierUnacknowledgedDecisions(
+  events: ReadonlyArray<Record<string, unknown>>,
+  lastRequestId: string,
+): DelegatedTaskDecision[] {
+  const latestResolved = new Map<string, number>();
+  events.forEach((event, index) => {
+    if (
+      event.method === 'request.resolved' &&
+      typeof event.requestId === 'string' &&
+      event.requestId !== lastRequestId
+    ) {
+      latestResolved.delete(event.requestId);
+      latestResolved.set(event.requestId, index);
+    }
+  });
+  return [...latestResolved.values()]
+    .map((index) => delegatedDecisionAt(events, index))
+    .filter((decision) => decision.delivery === 'unacknowledged');
+}
+
+/** The decision recorded by `events[resolvedIndex]` and its delivery since. */
+function delegatedDecisionAt(
+  events: ReadonlyArray<Record<string, unknown>>,
+  resolvedIndex: number,
+): DelegatedTaskDecision {
   const resolved = events[resolvedIndex];
   const requestId = resolved.requestId as string;
   const status = optionalString(resolved.status, 32) ?? 'resolved';
@@ -1319,6 +1354,11 @@ export interface DelegatedTaskSnapshot {
   lastEvent?: { method: string; createdAt?: string };
   /** #2880: the latest recorded decision and its delivery, if any. */
   lastDecision?: DelegatedTaskDecision;
+  /**
+   * #2880: earlier decisions the engine reported unacknowledged, oldest
+   * first; absent when there are none. `lastDecision` is never repeated here.
+   */
+  earlierUnacknowledgedDecisions?: DelegatedTaskDecision[];
   /**
    * #2269: effective supervision for the CURRENT turn, forwarded — never
    * re-derived — from the serving Station's own facts (the owning adapter's
@@ -3344,7 +3384,17 @@ export function snapshotFor(options: {
       : {}),
     ...(() => {
       const lastDecision = delegatedLastDecision(events);
-      return lastDecision ? { lastDecision } : {};
+      if (!lastDecision) return {};
+      const earlier = delegatedEarlierUnacknowledgedDecisions(
+        events,
+        lastDecision.requestId,
+      );
+      return {
+        lastDecision,
+        ...(earlier.length > 0
+          ? { earlierUnacknowledgedDecisions: earlier }
+          : {}),
+      };
     })(),
     ...(pendingRequest
       ? {

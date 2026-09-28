@@ -438,8 +438,10 @@ describe('handleRequestDeliveryEvent — recorded vs acknowledged (#2880)', () =
   function delivery(
     outcome: 'acknowledged' | 'unacknowledged',
     requestId: string,
+    reason?: 'no-acknowledgement' | 'invalid-reply',
   ) {
     return {
+      ...(reason ? { reason } : {}),
       eventId: `evt-${outcome}`,
       provider: 'codex',
       threadId: 'thread-1',
@@ -456,21 +458,42 @@ describe('handleRequestDeliveryEvent — recorded vs acknowledged (#2880)', () =
     getChatForExecutionSession.mockReset();
   });
 
-  test('an unacknowledged decision is listed on the chat', () => {
+  test('an unacknowledged decision is listed on the chat with its reason', () => {
     getChatForExecutionSession.mockReturnValue({ unacknowledgedDecisions: [] });
-    handleRequestDeliveryEvent(delivery('unacknowledged', 'req-1'));
+    handleRequestDeliveryEvent(
+      delivery('unacknowledged', 'req-1', 'no-acknowledgement'),
+    );
     expect(updateChat).toHaveBeenCalledWith('thread-1', {
-      unacknowledgedDecisions: ['req-1'],
+      unacknowledgedDecisions: [
+        { requestId: 'req-1', reason: 'no-acknowledgement' },
+      ],
+    });
+  });
+
+  test('a refused reply is listed as invalid-reply, not as awaiting', () => {
+    getChatForExecutionSession.mockReturnValue({ unacknowledgedDecisions: [] });
+    handleRequestDeliveryEvent(
+      delivery('unacknowledged', 'req-1', 'invalid-reply'),
+    );
+    expect(updateChat).toHaveBeenCalledWith('thread-1', {
+      unacknowledgedDecisions: [
+        { requestId: 'req-1', reason: 'invalid-reply' },
+      ],
     });
   });
 
   test('a late acknowledgement takes only that decision off the list', () => {
     getChatForExecutionSession.mockReturnValue({
-      unacknowledgedDecisions: ['req-1', 'req-2'],
+      unacknowledgedDecisions: [
+        { requestId: 'req-1', reason: 'no-acknowledgement' },
+        { requestId: 'req-2', reason: 'no-acknowledgement' },
+      ],
     });
     handleRequestDeliveryEvent(delivery('acknowledged', 'req-1'));
     expect(updateChat).toHaveBeenCalledWith('thread-1', {
-      unacknowledgedDecisions: ['req-2'],
+      unacknowledgedDecisions: [
+        { requestId: 'req-2', reason: 'no-acknowledgement' },
+      ],
     });
   });
 });

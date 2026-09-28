@@ -180,12 +180,21 @@ export function handleRequestDeliveryEvent(
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
   const others = (chat.unacknowledgedDecisions || []).filter(
-    (id) => id !== event.requestId,
+    (decision) => decision.requestId !== event.requestId,
   );
   activeChatsStore.updateChat(event.threadId, {
     unacknowledgedDecisions:
       event.outcome === 'unacknowledged'
-        ? [...others, event.requestId]
+        ? [
+            ...others,
+            {
+              requestId: event.requestId,
+              reason:
+                event.reason === 'invalid-reply'
+                  ? 'invalid-reply'
+                  : 'no-acknowledgement',
+            },
+          ]
         : others,
   });
 }
