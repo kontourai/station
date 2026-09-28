@@ -449,7 +449,13 @@ describe('update backup of a realistic home (#2675 D review F1)', () => {
   });
 
   it('refuses a manifest that places a file or a link below a recorded link (review L1)', () => {
-    for (const entry of ['link', 'file'] as const) {
+    for (const [entry, recordedName] of [
+      ['link', 'station-shared'],
+      ['file', 'station-shared'],
+      // A case-insensitive volume resolves this through the same link.
+      ['link', 'STATION-SHARED'],
+      ['file', 'Station-Shared'],
+    ] as const) {
       const fixture = realisticHome();
       mkdirSync(join(fixture.root, 'update-backups'));
       createStationHomeUpdateBackup({
@@ -468,7 +474,7 @@ describe('update backup of a realistic home (#2675 D review F1)', () => {
         'draft',
         'node_modules',
         '@kontourai',
-        'station-shared',
+        recordedName,
         'planted',
       ];
       if (entry === 'link') {

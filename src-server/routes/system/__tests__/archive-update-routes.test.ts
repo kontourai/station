@@ -480,7 +480,13 @@ describe('POST /core-update on a launcher-run archive', () => {
             ),
           ),
         {},
-        /did not verify/,
+        /did not verify[\s\S]*"station upgrade"/,
+      ],
+      [
+        'an unreachable manifest',
+        () => fetchFn.mockRejectedValue(new Error('getaddrinfo ENOTFOUND')),
+        {},
+        /Could not reach[\s\S]*network access[\s\S]*"station upgrade"/,
       ],
     ];
     for (const [, arrange, overrides, error] of cases) {

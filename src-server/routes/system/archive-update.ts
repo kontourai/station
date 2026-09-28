@@ -386,7 +386,9 @@ export async function applyArchiveUpdate(
         ? `This Station server cannot update itself: ${status.selfUpdateUnavailableReason}.`
         : status.releaseCheck === 'verified'
           ? `There is nothing to update: this server runs the newest ${status.channel} release (${status.currentVersion}).`
-          : (status.message ?? 'The release check did not verify.'),
+          : status.releaseCheck === 'unreachable'
+            ? `${status.message ?? 'Could not reach the release manifest.'} Check this server's network access to it and try again, or ${UPGRADE_ON_HOST}.`
+            : `${status.message ?? 'The release check did not verify.'} Nothing was requested; ${UPGRADE_ON_HOST}.`,
     };
   }
   try {

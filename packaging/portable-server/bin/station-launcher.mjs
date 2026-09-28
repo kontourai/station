@@ -357,22 +357,29 @@ function windowsShell(kind) {
 
 /**
  * Own-birth attempts, the schedule packages/shared's process-identity.mjs
- * `ownProcessBirthProbeSchedule` gives a cold Windows start (#2746, #2830):
- * Windows PowerShell for 10 s, then PowerShell 7 for 20 s. Off Windows, three
- * short probes. service-launcher.test.ts pins the two schedules together.
+ * `ownProcessBirthProbeSchedule` and `resolveOwnProcessIdentity` give a cold
+ * Windows start (#2746, #2830): Windows PowerShell for 10 s, 250 ms apart
+ * from PowerShell 7 for 20 s. Off Windows, three short probes 100 ms apart.
+ * All of it inside one overall deadline, the shared one.
+ * service-launcher.test.ts pins the two schedules together.
  */
 // Exported for service-launcher.test.ts (the parity pin).
 // fallow-ignore-next-line unused-export
 export function ownBirthSchedule(platform = process.platform) {
-  return platform === 'win32'
-    ? [
-        { timeoutMs: 10_000, shell: 'powershell' },
-        { timeoutMs: 20_000, shell: 'pwsh7' },
-      ]
-    : Array.from({ length: 3 }, () => ({
-        timeoutMs: BIRTH_PROBE_TIMEOUT_MS,
-        shell: 'powershell',
-      }));
+  const windows = platform === 'win32';
+  return {
+    retryDelayMs: windows ? 250 : 100,
+    deadlineMs: 10_000 + 250 + 20_000,
+    attempts: windows
+      ? [
+          { timeoutMs: 10_000, shell: 'powershell' },
+          { timeoutMs: 20_000, shell: 'pwsh7' },
+        ]
+      : Array.from({ length: 3 }, () => ({
+          timeoutMs: BIRTH_PROBE_TIMEOUT_MS,
+          shell: 'powershell',
+        })),
+  };
 }
 
 /**
@@ -453,9 +460,27 @@ export function processBirth(
 
 /** This process's own start time; it is certainly alive, so retried. */
 function ownBirth() {
-  for (const { timeoutMs, shell } of ownBirthSchedule()) {
-    const birth = processBirth(process.pid, timeoutMs, shell);
+  const { attempts, retryDelayMs, deadlineMs } = ownBirthSchedule();
+  const startedAt = Date.now();
+  for (let attempt = 0; attempt < attempts.length; attempt += 1) {
+    const remainingMs = deadlineMs - (Date.now() - startedAt);
+    if (remainingMs <= 0) break;
+    const { timeoutMs, shell } = attempts[attempt];
+    const birth = processBirth(
+      process.pid,
+      Math.min(timeoutMs, remainingMs),
+      shell,
+    );
     if (birth) return birth;
+    if (attempt === attempts.length - 1) break;
+    const pause = Math.min(retryDelayMs, deadlineMs - (Date.now() - startedAt));
+    if (pause <= 0) break;
+    Atomics.wait(
+      new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)),
+      0,
+      0,
+      pause,
+    );
   }
   return null;
 }

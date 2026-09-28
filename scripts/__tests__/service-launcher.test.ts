@@ -24,6 +24,7 @@ import {
 import {
   lookupProcessBirthFingerprint,
   ownProcessBirthProbeSchedule,
+  WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS,
 } from '../../packages/shared/src/process-identity.mjs';
 import { readServiceUpdateProgress } from '../../packages/shared/src/service-launcher-protocol.js';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
@@ -50,9 +51,11 @@ type LauncherModule = {
   MAX_RESTORE_ATTEMPTS: number;
   compareVersions: (left: string, right: string) => number | null;
   processBirth: (pid: number) => string | null;
-  ownBirthSchedule: (
-    platform: string,
-  ) => Array<{ timeoutMs: number; shell: 'powershell' | 'pwsh7' }>;
+  ownBirthSchedule: (platform: string) => {
+    retryDelayMs: number;
+    deadlineMs: number;
+    attempts: Array<{ timeoutMs: number; shell: 'powershell' | 'pwsh7' }>;
+  };
   reclaimStaleLock: (lock: string, judged: string) => void;
   recordServiceActiveVersion: (installRoot: string, version: string) => void;
 };
@@ -653,20 +656,29 @@ describe('the launcher lock survives reboots and pid reuse (#2675 D review F2)',
     const { ownBirthSchedule } = await launcherModule();
     for (const platform of ['win32', 'linux', 'darwin'] as const) {
       const shared = ownProcessBirthProbeSchedule(platform);
+      const launcher = ownBirthSchedule(platform);
       expect(
-        ownBirthSchedule(platform).map(({ timeoutMs, shell }) => ({
+        launcher.attempts.map(({ timeoutMs, shell }) => ({
           timeoutMs,
           // The shared schedule names the retry shell `pwsh.exe` and the
           // default (System32 Windows PowerShell) `undefined`.
           windowsShell: shell === 'pwsh7' ? 'pwsh.exe' : undefined,
         })),
       ).toEqual(shared.attempts);
+      expect(launcher.retryDelayMs).toBe(shared.retryDelayMs);
+      // resolveOwnProcessIdentity's overall deadline, on every platform.
+      expect(launcher.deadlineMs).toBe(WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS);
     }
     // Pinned literals beside the derived comparison.
-    expect(ownBirthSchedule('win32')).toEqual([
-      { timeoutMs: 10_000, shell: 'powershell' },
-      { timeoutMs: 20_000, shell: 'pwsh7' },
-    ]);
+    expect(ownBirthSchedule('win32')).toEqual({
+      retryDelayMs: 250,
+      deadlineMs: 30_250,
+      attempts: [
+        { timeoutMs: 10_000, shell: 'powershell' },
+        { timeoutMs: 20_000, shell: 'pwsh7' },
+      ],
+    });
+    expect(ownBirthSchedule('linux').retryDelayMs).toBe(100);
   });
 
   it('takes over a lock whose pid now belongs to an unrelated live process', async () => {

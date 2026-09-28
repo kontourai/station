@@ -768,10 +768,14 @@ function strictManifest(
   // may be written THROUGH a recorded link. A tampered manifest that put a
   // file or another link below one would have the restore place it wherever
   // that link points, outside the home.
-  const linkKeys = symlinks.map((link) => link.path);
+  // Compared case-folded and NFC-normalized on every platform: on a
+  // case-insensitive or normalizing volume (APFS, NTFS) `STATION-SHARED`
+  // names the same directory entry as a recorded `station-shared` link.
+  const fold = (segment: string) => segment.normalize('NFC').toLowerCase();
+  const linkKeys = symlinks.map((link) => link.path.map(fold));
   const below = (path: string[], link: string[]) =>
     path.length > link.length &&
-    link.every((segment, index) => path[index] === segment);
+    link.every((segment, index) => fold(path[index] ?? '') === segment);
   for (const entry of [...files, ...symlinks]) {
     if (linkKeys.some((link) => below(entry.path, link)))
       fail('backup manifest places a path below a symbolic link');
