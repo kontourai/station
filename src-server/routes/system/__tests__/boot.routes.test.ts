@@ -6,7 +6,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   bootPayloadSectionErrors: { add: vi.fn() },
 }));
 
-const { createBootRoutes, BOOT_PAYLOAD_VERSION } = await import('../boot.js');
+const { createBootRoutes } = await import('../boot.js');
 
 describe('boot routes', () => {
   const providers = () => ({
@@ -21,10 +21,17 @@ describe('boot routes', () => {
   test('returns a versioned complete envelope', async () => {
     const response = await createBootRoutes(providers()).request('/');
     expect(response.status).toBe(200);
-    expect(await json(response)).toMatchObject({
-      version: BOOT_PAYLOAD_VERSION,
+    // A literal, not the constant: changing the wire version must be a
+    // deliberate edit here too.
+    expect(await json(response)).toEqual({
+      version: 1,
       sections: {
         auth: { data: { authenticated: true } },
+        config: { data: { success: true, data: {} } },
+        capabilities: { data: { runtime: 'station' } },
+        branding: { data: { success: true, data: { name: 'Station' } } },
+        agents: { data: { success: true, data: [] } },
+        projects: { data: { success: true, data: [] } },
         models: { data: { success: true, data: [] } },
       },
     });

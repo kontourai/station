@@ -78,7 +78,21 @@ function absentReleaseNote(record, documents, tracked) {
   );
 }
 
-/** Shared interpretation for strict builds and advisory catch-up reporting. */
+/** The bytes a review record vouches for: its document and recorded sources. */
+export function reviewInputs(record) {
+  return [record.path, ...record.sources.map((source) => source.path)];
+}
+
+/**
+ * Shared interpretation for strict builds and advisory catch-up reporting.
+ * `requireFresh` is a boolean or the scoped decision from
+ * `freshnessRequirement` in documentation-freshness.mjs.
+ * @param {any} record
+ * @param {Map<string, string>} documents
+ * @param {Set<string>} tracked
+ * @param {(path: string) => any} readSource
+ * @param {{ requireFresh?: boolean | ((entry: { path: string, inputs: string[] }) => boolean), reportMissing?: boolean }} [options]
+ */
 export async function evaluateDocumentationReview(
   record,
   documents,
@@ -184,7 +198,12 @@ export async function evaluateDocumentationReview(
       };
     }
   }
-  if (requireFresh && changed.length)
+  if (
+    changed.length &&
+    (typeof requireFresh === 'function'
+      ? requireFresh({ path: record.path, inputs: reviewInputs(record) })
+      : requireFresh)
+  )
     throw new Error(
       `Documentation review needs refresh: ${record.path}; changed: ${changed.join(', ')}`,
     );
@@ -202,12 +221,21 @@ export async function evaluateDocumentationReview(
   };
 }
 
+/**
+ * @param {any} ledger
+ * @param {Map<string, string>} documents
+ * @param {Set<string>} tracked
+ * @param {(path: string) => any} readSource
+ * @param {{ requireFresh?: boolean | ((entry: { path: string, inputs: string[] }) => boolean), reportMissing?: boolean }} [options]
+ * `reportMissing` reports an absent document or source as a changed input
+ * instead of refusing the ledger, so the freshness policy decides it.
+ */
 export async function compileDocumentationReviews(
   ledger,
   documents,
   tracked,
   readSource,
-  { requireFresh = false } = {},
+  { requireFresh = false, reportMissing = false } = {},
 ) {
   if (ledger?.version !== 1 || !Array.isArray(ledger.records))
     throw new Error('Documentation review ledger requires version 1 records.');
@@ -228,6 +256,7 @@ export async function compileDocumentationReviews(
       record?.path,
       await evaluateDocumentationReview(record, documents, tracked, read, {
         requireFresh,
+        reportMissing,
       }),
     );
   }

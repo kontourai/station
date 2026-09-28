@@ -11,17 +11,36 @@ const makeTempDir = trackTempDirs();
 describe('repo-scans runner (#2176)', () => {
   it('hands the focused runner exactly REPO_SCAN_SUITES, once', async () => {
     const run = vi.fn(async (_args: string[]) => 0);
-    await runRepoScans({ run });
+    await runRepoScans({ run, env: {} });
     expect(run).toHaveBeenCalledTimes(1);
     expect(run.mock.calls[0]?.[0]).toEqual([...REPO_SCAN_SUITES]);
     // A copy, so the runner cannot mutate the frozen list it was given.
     expect(run.mock.calls[0]?.[0]).not.toBe(REPO_SCAN_SUITES);
   });
 
+  it('reports documentation freshness instead of judging it without a PR scope (#2923)', async () => {
+    const env: Record<string, string> = {};
+    const run = vi.fn(async () => {
+      expect(env.STATION_DOCS_FRESHNESS).toBe('advisory');
+      return 0;
+    });
+    await runRepoScans({ run, ensureCli: () => false, env });
+    expect(run).toHaveBeenCalledTimes(1);
+    const chosen = { STATION_DOCS_FRESHNESS: 'scoped' };
+    await runRepoScans({
+      run: async () => 0,
+      ensureCli: () => false,
+      env: chosen,
+    });
+    expect(chosen.STATION_DOCS_FRESHNESS).toBe('scoped');
+  });
+
   it.each([0, 1, 2])(
     'returns the focused runner exit code %i unchanged',
     async (code) => {
-      await expect(runRepoScans({ run: async () => code })).resolves.toBe(code);
+      await expect(
+        runRepoScans({ run: async () => code, env: {} }),
+      ).resolves.toBe(code);
     },
   );
 
@@ -31,6 +50,7 @@ describe('repo-scans runner (#2176)', () => {
         run: async () => {
           throw new Error('vitest did not start');
         },
+        env: {},
       }),
     ).rejects.toThrow('vitest did not start');
   });
@@ -38,7 +58,7 @@ describe('repo-scans runner (#2176)', () => {
   it('ensures the CLI bundle before handing off to the runner', async () => {
     const run = vi.fn(async (_args: string[]) => 0);
     const ensureCli = vi.fn(() => false);
-    await runRepoScans({ run, ensureCli });
+    await runRepoScans({ run, ensureCli, env: {} });
     expect(ensureCli).toHaveBeenCalledTimes(1);
     expect(run).toHaveBeenCalledTimes(1);
   });

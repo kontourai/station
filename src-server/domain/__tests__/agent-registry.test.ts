@@ -19,17 +19,15 @@ import {
   engineConnectionId,
   ReservedStationIdentityError,
 } from '@kontourai/station-contracts/agent-identity';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AgentRegistryConflictError,
   acquireAgentIdentityMutationLockAtHome,
   adoptNativeEngineConnection,
-  agentRegistrySourceSignature,
   loadOrCreateAgentRegistry,
   reconcilePluginEngineConnections,
   registerEngineConnection,
   replacePluginEngineConnections,
-  saveAgentRegistry,
   unregisterEngineConnection,
   unregisterPluginEngineConnections,
   updateAgentRegistry,
@@ -40,6 +38,36 @@ import {
   STATION_HOME_SCHEMA_VERSION,
   StationHomeResetRequiredError,
 } from '../home-schema-gate.js';
+
+// Pass-through lock: the real lock is taken, and a test may then act at the
+// exact point the registry write holds its path lock, which is where the
+// in-lock path recheck runs.
+const lockHooks = vi.hoisted(() => ({
+  afterRegistryLock: undefined as (() => void) | undefined,
+}));
+vi.mock(
+  '@kontourai/station-shared/lifecycle-events',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/station-shared/lifecycle-events')
+      >();
+    return {
+      ...actual,
+      acquireFileMutationLockAsync: async (
+        ...args: Parameters<typeof actual.acquireFileMutationLockAsync>
+      ) => {
+        const release = await actual.acquireFileMutationLockAsync(...args);
+        if (String(args[0]).endsWith('agent-registry.json.mutation')) {
+          const hook = lockHooks.afterRegistryLock;
+          lockHooks.afterRegistryLock = undefined;
+          hook?.();
+        }
+        return release;
+      },
+    };
+  },
+);
 
 const homes: string[] = [];
 const createHome = () => {
@@ -617,45 +645,39 @@ describe('agent registry', () => {
     expect(readFileSync(path, 'utf8')).toBe(before);
   });
 
-  it('rejects a stale source signature before replacing the registry', async () => {
+  it('rejects a registry edited after its signature was read and keeps the edit', async () => {
     const home = createHome();
     const loader = new ConfigLoader({ projectHomeDir: home });
-    const registry = await loadOrCreateAgentRegistry(loader);
-    const staleSignature = await agentRegistrySourceSignature(loader);
-    const replacement = { ...registry, revision: 1 };
-    await saveAgentRegistry(loader, replacement, staleSignature);
-    const before = readFileSync(
-      join(home, 'config', 'agent-registry.json'),
-      'utf8',
-    );
+    await loadOrCreateAgentRegistry(loader);
+    const path = join(home, 'config', 'agent-registry.json');
+    let concurrent = '';
 
+    // `mutate` runs after updateAgentRegistry read the source signature and
+    // before it saves, so an edit here is a concurrent writer winning the race.
     await expect(
-      saveAgentRegistry(
-        loader,
-        { ...replacement, revision: 2 },
-        staleSignature,
-      ),
+      updateAgentRegistry(loader, 0, (current) => {
+        concurrent = JSON.stringify({ ...current, revision: 7 }, null, 2);
+        writeFileSync(path, concurrent);
+        return current;
+      }),
     ).rejects.toBeInstanceOf(AgentRegistryConflictError);
-    expect(
-      readFileSync(join(home, 'config', 'agent-registry.json'), 'utf8'),
-    ).toBe(before);
+    expect(readFileSync(path, 'utf8')).toBe(concurrent);
   });
 
   it('rejects a config-parent path swap immediately before registry rename', async () => {
     const home = createHome();
     const loader = new ConfigLoader({ projectHomeDir: home });
-    const registry = await loadOrCreateAgentRegistry(loader);
-    const signature = await agentRegistrySourceSignature(loader);
+    await loadOrCreateAgentRegistry(loader);
     const configPath = join(home, 'config');
     const movedConfigPath = `${configPath}-moved`;
+    lockHooks.afterRegistryLock = () => {
+      renameSync(configPath, movedConfigPath);
+      mkdirSync(configPath);
+    };
     await expect(
-      saveAgentRegistry(loader, { ...registry, revision: 1 }, signature, {
-        beforeRename: () => {
-          renameSync(configPath, movedConfigPath);
-          mkdirSync(configPath);
-        },
-      }),
+      updateAgentRegistry(loader, 0, (current) => current),
     ).rejects.toMatchObject({ code: 'STATION_HOME_RESET_REQUIRED' });
+    expect(lockHooks.afterRegistryLock).toBeUndefined();
     expect(
       readFileSync(join(movedConfigPath, 'agent-registry.json'), 'utf8'),
     ).toContain('"revision": 0');

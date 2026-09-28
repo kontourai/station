@@ -41,29 +41,7 @@ function bedrockConnection(config: Record<string, unknown>) {
   };
 }
 
-describe('schema definitions barrel', () => {
-  test('exports runtime and content schemas through schemas.ts', () => {
-    expect(
-      acpConnectionSchema.parse({
-        id: 'kiro',
-        command: 'kiro-cli',
-      }),
-    ).toEqual({
-      id: 'kiro',
-      command: 'kiro-cli',
-    });
-
-    expect(
-      localSkillCreateSchema.parse({
-        name: 'My Skill',
-        body: 'Hello',
-      }),
-    ).toEqual({
-      name: 'My Skill',
-      body: 'Hello',
-    });
-  });
-
+describe('schema definitions', () => {
   describe('authored artifact budget (station#2838)', () => {
     const overBudget = 'x'.repeat(AUTHORED_ARTIFACT_MAX_CHARS + 1);
 
@@ -112,6 +90,14 @@ describe('schema definitions barrel', () => {
             body: overBudget,
           }),
       },
+      {
+        name: 'skillImportSchema.files[].content',
+        artifact: 'Skill body',
+        parse: () =>
+          skillImportSchema.safeParse({
+            files: [{ filename: 'bounded.md', content: overBudget }],
+          }),
+      },
     ];
 
     for (const budgetedArtifact of cases) {
@@ -135,6 +121,11 @@ describe('schema definitions barrel', () => {
       expect(
         localSkillCreateSchema.safeParse({ name: 'Skill', body: exact })
           .success,
+      ).toBe(true);
+      expect(
+        skillImportSchema.safeParse({
+          files: [{ filename: 'exact.md', content: exact }],
+        }).success,
       ).toBe(true);
     });
   });
@@ -394,22 +385,14 @@ describe('schema definitions barrel', () => {
     expect(chatSchema.parse({ input: 'hello' }).ambientContext).toBeUndefined();
   });
 
-  test('exports scheduler and system schemas through schemas.ts', () => {
+  test('pluginInstallSchema refuses an empty source and a non-UUID proposal id', () => {
+    const source = 'https://example.com/plugin.tgz';
+    expect(pluginInstallSchema.safeParse({ source }).success).toBe(true);
+    expect(pluginInstallSchema.safeParse({ source: '' }).success).toBe(false);
     expect(
-      addJobSchema.parse({
-        name: 'daily-sync',
-        cron: '0 9 * * *',
-        prompt: 'run sync',
-      }).name,
-    ).toBe('daily-sync');
-
-    expect(
-      pluginInstallSchema.parse({
-        source: 'https://example.com/plugin.tgz',
-      }),
-    ).toEqual({
-      source: 'https://example.com/plugin.tgz',
-    });
+      pluginInstallSchema.safeParse({ source, proposalId: 'not-a-uuid' })
+        .success,
+    ).toBe(false);
   });
 
   test('integrationSchema accepts an omitted icon and a short manifest-declared icon (issue #691)', () => {

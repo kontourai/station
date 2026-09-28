@@ -43,7 +43,7 @@ test.skipIf(process.platform === 'win32')(
       expect({ code, signal }).toEqual({ code: 0, signal: null });
       expect(JSON.parse(stdout)).toEqual({
         swapped: true,
-        refused: true,
+        refusal: 'AppConfigConflictError',
         originalRetained: true,
       });
     } finally {

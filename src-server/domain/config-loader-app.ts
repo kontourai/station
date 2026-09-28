@@ -460,22 +460,3 @@ export function mergeAppConfigUpdate(
   }
   return merged as unknown as AppConfig;
 }
-
-export async function updateAppConfigFile(
-  projectHomeDir: string,
-  updates: Partial<AppConfig>,
-): Promise<AppConfig> {
-  await loadAppConfigFile(projectHomeDir);
-  const expectedSourceSignature = await appConfigFileSignature(projectHomeDir);
-  const existing = await loadAppConfigFile(projectHomeDir);
-  if (
-    (await appConfigFileSignature(projectHomeDir)) !== expectedSourceSignature
-  ) {
-    throw new AppConfigConflictError();
-  }
-  const updated = mergeAppConfigUpdate(existing, updates);
-  await saveAppConfigFile(projectHomeDir, updated, {
-    expectedSourceSignature,
-  });
-  return updated;
-}

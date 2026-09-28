@@ -96,6 +96,19 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
+  // #2922: cheap verify:static gates on the PR-visible lane; see
+  // run-ci-fast.mjs.
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'gate:evidence-check-execution']),
+  ]),
+  Object.freeze(['npm', Object.freeze(['run', 'install-script:check'])]),
+  Object.freeze(['npm', Object.freeze(['run', 'mobile:permissions:gate'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'agent-plugin:validators:gate']),
+  ]),
+  Object.freeze(['npm', Object.freeze(['run', 'settings:registry:gate'])]),
   Object.freeze(['npm', Object.freeze(['run', 'content:integrity'])]),
   Object.freeze(['npm', Object.freeze(['run', 'content:excluded-names'])]),
   // CLI help ↔ docs/reference/cli.md parity. Pure source read, ~50ms; see

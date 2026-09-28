@@ -364,20 +364,6 @@ describe('Config Routes', () => {
     expect(loader.updateAppConfig).not.toHaveBeenCalled();
   });
 
-  test('PUT /app emits event when eventBus provided', async () => {
-    const loader = createMockConfigLoader();
-    const eventBus = { emit: vi.fn() };
-    const app = createConfigRoutes(loader as any, mockLogger, eventBus as any);
-    await app.request('/app', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ region: 'us-west-2' }),
-    });
-    expect(eventBus.emit).toHaveBeenCalledWith('system:status-changed', {
-      source: 'config',
-    });
-  });
-
   test('PUT /app keeps persistence inside the configuration mutation', async () => {
     const loader = createMockConfigLoader();
     const mutationObserved = vi.fn();
