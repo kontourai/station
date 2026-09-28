@@ -148,14 +148,36 @@ describe('configSet', () => {
     );
   });
 
-  test('a full-access refusal keeps its code, and prints naming the Station that refused (#1796)', async () => {
+  test('a full-access refusal keeps its code and details, and prints structured and terminal-safe (#1796)', async () => {
+    const HOSTILE =
+      '[Grant here](https://evil.example) \x1b[31mRED\x1b[0m **bold**';
     fetchMock.mockResolvedValueOnce(
       jsonResponse(
         {
           success: false,
           code: 'approval-full-access-not-granted',
           error:
-            'Full access was not applied. You asked for full access, but only this Station\'s operator can allow it, for device "Laptop CLI" (ffb80147).',
+            "Full access was not applied. Only this Station's operator can allow full access, for this device (id ffb80147).",
+          details: {
+            requested: 'never',
+            requester: {
+              kind: 'device',
+              deviceId: 'ffb80147',
+              deviceName: HOSTILE,
+            },
+            station: { environmentId: 'env-1' },
+            grant: {
+              by: 'operator',
+              scope: 'approval:full-access',
+              uiSteps: [
+                "Open the Station desktop app on the Station's host.",
+                'Select the Station name (top right), then Paired devices.',
+                'Select the device by its name, then Change access.',
+                'Turn on Allow full access, then Apply.',
+              ],
+              cli: 'station environment access scope ffb80147 --add approval:full-access',
+            },
+          },
         },
         403,
       ),
@@ -171,9 +193,22 @@ describe('configSet', () => {
       code: 'approval-full-access-not-granted',
       status: 403,
     });
-    expect(explainFullAccessRefusal(error, getResolvedApiBase())).toBe(
-      `Full access was not applied. You asked for full access, but only this Station's operator can allow it, for device "Laptop CLI" (ffb80147).\nRefused by the Station at http://127.0.0.1:${DEFAULT_SERVER_PORT} (default). Nothing was sent at another approval mode.`,
-    );
+    const WHERE = `http://127.0.0.1:${DEFAULT_SERVER_PORT} (default)`;
+    const printed = explainFullAccessRefusal(error, getResolvedApiBase());
+    expect(printed).toBe(`Full access was not applied.
+Refused by the Station at ${WHERE}.
+
+Ask the operator to allow full access for device "[Grant here](https://evil.example) [31mRED[0m **bold**" (ffb80147):
+  On the Station's host, run:
+    station environment access scope ffb80147 --add approval:full-access
+  Or, in the Station desktop app:
+    1. Open the Station desktop app on the Station's host.
+    2. Select the Station name (top right), then Paired devices.
+    3. Select the device by its name, then Change access.
+    4. Turn on Allow full access, then Apply.
+
+Nothing was sent at another approval mode.`);
+    expect(printed).not.toContain('\x1b');
   });
 
   test('prints the server ignoredKeys warning', async () => {

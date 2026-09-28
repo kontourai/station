@@ -58,12 +58,11 @@ afterEach(() => {
 /** #1796: the refusal names the paired device and the operator's grant path. */
 function refusedFor(phone: { device: { id: string; name: string } }) {
   const short = phone.device.id.slice(0, 8);
-  const ui = `in the Station desktop app on its host, select the Station name (top right) → Paired devices → ${phone.device.name} → Change access → Allow full access → Apply`;
   const cli = `station environment access scope ${short} --add approval:full-access`;
   return {
     success: false,
     code: 'approval-full-access-not-granted',
-    error: `Full access was not applied. You asked for full access, but only this Station's operator can allow it, for device "${phone.device.name}" (${short}). Ask the operator to add the approval:full-access scope to it: on the Station's host, run: ${cli}; or ${ui}.`,
+    error: `Full access was not applied. Only this Station's operator can allow full access, for this device (id ${short}). On the Station's host, the operator can run: ${cli}`,
     details: {
       requested: 'never',
       requester: {
@@ -72,7 +71,17 @@ function refusedFor(phone: { device: { id: string; name: string } }) {
         deviceName: phone.device.name,
       },
       station: { environmentId: expect.any(String) },
-      grant: { by: 'operator', scope: 'approval:full-access', ui, cli },
+      grant: {
+        by: 'operator',
+        scope: 'approval:full-access',
+        uiSteps: [
+          "Open the Station desktop app on the Station's host.",
+          'Select the Station name (top right), then Paired devices.',
+          'Select the device by its name, then Change access.',
+          'Turn on Allow full access, then Apply.',
+        ],
+        cli,
+      },
     },
   };
 }

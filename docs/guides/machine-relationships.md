@@ -59,9 +59,11 @@ right) → **Paired devices** → the device → **Change access**.
 chat, or an Agent's default, at approval mode `never`: the agent runs with no
 sandbox and no approval prompts, as the operator. A device without it that
 asks for full access is refused (`approval-full-access-not-granted`). The
-refusal names the device (its name and short id), the Station that refused,
-and the exact command above, and it separates what the caller asked for from
-what only the operator can grant. An Agent never gets full access through any
+refusal names the device (its short id, and its name shown as plain text),
+the Station that refused, and the exact command above, and it separates what
+the caller asked for from what only the operator can grant. In a chat the
+message is not sent and the chat is not marked failed: the draft returns to
+the composer, with an explicit choice to send it at the chat's current mode. An Agent never gets full access through any
 grant; a person has to choose it. Nothing is retried at another approval mode.
 
 Removing the scope stops that device from choosing full access from its next

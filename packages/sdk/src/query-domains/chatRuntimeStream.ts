@@ -17,6 +17,7 @@ async function buildChatHttpError(response: Response): Promise<ChatHttpError> {
     const body = (await response.json()) as {
       error?: unknown;
       code?: unknown;
+      details?: unknown;
     } | null;
     const serverMessage =
       body && typeof body.error === 'string' && body.error.length > 0
@@ -26,7 +27,12 @@ async function buildChatHttpError(response: Response): Promise<ChatHttpError> {
       body && typeof body.code === 'string' && body.code.length > 0
         ? body.code
         : undefined;
-    return new ChatHttpError(response.status, serverMessage, code);
+    return new ChatHttpError(
+      response.status,
+      serverMessage,
+      code,
+      body?.details,
+    );
   } catch {
     // Body isn't JSON (or is empty) — fall back to a generic status message
     // rather than failing to construct an error at all.

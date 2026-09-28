@@ -47,10 +47,18 @@ describe('fullAccessRefusalBody', () => {
       grant: {
         by: 'operator',
         scope: 'approval:full-access',
-        ui: 'in the Station desktop app on its host, select the Station name (top right) → Paired devices → Laptop CLI → Change access → Allow full access → Apply',
+        uiSteps: [
+          "Open the Station desktop app on the Station's host.",
+          'Select the Station name (top right), then Paired devices.',
+          'Select the device by its name, then Change access.',
+          'Turn on Allow full access, then Apply.',
+        ],
         cli: 'station environment access scope 01234567 --add approval:full-access',
       },
     });
+    expect(body.error).toBe(
+      "Full access was not applied. Only this Station's operator can allow full access, for this device (id 01234567). On the Station's host, the operator can run: station environment access scope 01234567 --add approval:full-access",
+    );
     expect(JSON.stringify(body)).not.toContain('device-secret');
     expect(JSON.stringify(body)).not.toContain('0123456789abcdef');
   });
@@ -86,7 +94,12 @@ describe('fullAccessRefusalBody', () => {
     expect(body.details.grant).toEqual({
       by: 'operator',
       scope: 'approval:full-access',
-      ui: 'in the Station desktop app on its host, select the Station name (top right) → Paired devices → your device → Change access → Allow full access → Apply',
+      uiSteps: [
+        "Open the Station desktop app on the Station's host.",
+        'Select the Station name (top right), then Paired devices.',
+        'Select the device by its name, then Change access.',
+        'Turn on Allow full access, then Apply.',
+      ],
     });
     expect(body.error).toContain('for the device you are using');
   });

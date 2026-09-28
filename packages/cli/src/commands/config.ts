@@ -200,6 +200,7 @@ async function parseFullEnvelope<T>(response: Response): Promise<T> {
         ...(typeof code === 'string' && /^[a-z][a-z_-]{0,63}$/.test(code)
           ? { code }
           : {}),
+        ...(payload?.details !== undefined ? { details: payload.details } : {}),
       },
     );
   }

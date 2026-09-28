@@ -32,9 +32,12 @@ import type {
 } from '../lib/outboundQueue';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 import {
+  approvalModeChipLabel,
   approvalPickReceived,
-  fullAccessRefusalNote,
+  FULL_ACCESS_REFUSAL_SUMMARY,
+  fullAccessRefusalNotice,
   isFullAccessRefusal,
+  sessionApprovalOverride,
   supersededPickNote,
 } from '../utils/approvalMode';
 import {
@@ -470,15 +473,80 @@ export function useSendMessage(
       } catch (error) {
         // #2436: a carried full access this device may not grant refused the
         // whole send. The pick is dropped (resending it could only be
-        // refused again) and the send's own failure handling below runs.
+        // refused again).
         if (isFullAccessRefusal(error)) {
           const latest = activeChatsStore.getSnapshot()[sessionId];
           if (latest?.queuedApprovalMode === 'never')
             updateChat(sessionId, { queuedApprovalMode: undefined });
+        }
+        // #1796: the refusal is decided before anything runs, so the chat
+        // did not fail. It returns to `idle` (the state a send declined
+        // before any engine saw it already uses, below) instead of `error`,
+        // which the inbox would call "Failed". The notice is a structured
+        // card, not the generic "Retrying may help" error, and the only way
+        // on is an explicit send at the mode the chat already has.
+        if (isFullAccessRefusal(error) && !options?.dispatch) {
+          const refusedState = activeChatsStore.getSnapshot()[sessionId];
+          const rollback = rejectedSendRollback(transaction, refusedState);
+          updateChat(sessionId, {
+            ...rollback,
+            status: 'idle',
+            error: undefined,
+            abortController: undefined,
+            pendingClientTurnId: undefined,
+            sendAwaitingTurnStart: undefined,
+          });
+          clearStreamingMessage(sessionId);
+          clearEphemeralMessages(sessionId);
+          const standing = sessionApprovalOverride(
+            activeChatsStore.getSnapshot()[sessionId],
+          );
           addEphemeralMessage(sessionId, {
             role: 'system',
-            content: fullAccessRefusalNote(error),
+            content: FULL_ACCESS_REFUSAL_SUMMARY,
+            fullAccessRefusal: {
+              ...fullAccessRefusalNotice(error, 'message-not-sent'),
+              draftRestored: 'input' in rollback,
+            },
+            // Offered only when the chat's own mode is not full access, so
+            // the resend cannot carry what was just refused.
+            ...(standing?.mode === 'never'
+              ? {}
+              : {
+                  action: {
+                    label: `Send without full access (current mode: ${
+                      standing
+                        ? approvalModeChipLabel(standing.mode)
+                        : 'Default'
+                    })`,
+                    handler: () => {
+                      const now = activeChatsStore.getSnapshot()[sessionId];
+                      // The draft the rollback restored is this message:
+                      // sending it empties the composer as a send would.
+                      if (now?.input === content)
+                        updateChat(sessionId, { input: '' });
+                      if (
+                        rollback.attachments &&
+                        now?.attachments === rollback.attachments
+                      )
+                        updateChat(sessionId, {
+                          attachments: [],
+                          attachmentStages: [],
+                        });
+                      void sendMessage(
+                        sessionId,
+                        agentSlug,
+                        now?.conversationId ?? conversationId,
+                        content,
+                        attachments,
+                        ambientContext,
+                        resolvedTurnId,
+                      );
+                    },
+                  },
+                }),
           });
+          return false;
         }
         // Stop deliberately releases the browser's foreground observer after
         // the server has settled the interrupt. Fetch rejects with the abort

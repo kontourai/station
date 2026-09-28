@@ -9,8 +9,10 @@
  *  - what the caller asked for (its own consent to full access), apart from
  *    what only this Station's operator can grant;
  *  - who asked, identified from the request's own VERIFIED credential: a
- *    paired device by display name and short id (never a credential), an
- *    Agent, or another person;
+ *    paired device by short id and display name (never a credential), an
+ *    Agent, or another person. The requester chooses its pairing name, so
+ *    the name is sanitized and carried only in `details`, never in the
+ *    `error` prose a client might render as Markdown or print to a terminal;
  *  - the refusing Station (its environment id);
  *  - the operator's grant path, when one exists: the Station UI path and the
  *    exact host command. An Agent's call has none: an agent never gives
@@ -23,6 +25,7 @@ import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   type ApprovalFullAccessRefusalDetails,
   type ApprovalFullAccessRequester,
+  sanitizeRefusalDeviceName,
 } from '@kontourai/station-contracts/orchestration';
 import { requestMayBeAnAgent } from './coding-authority.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from './runtime-request-security.js';
@@ -58,11 +61,15 @@ function shortDeviceId(deviceId: string): string {
  * the Station name at the top right opens the connection manager, whose
  * "Paired devices" list has "Change access" per device. It needs the
  * operator's own session (the Station desktop app on its host); a paired
- * browser cannot list devices, so the host command comes first.
+ * browser cannot list devices, so the host command comes first. Fixed text:
+ * no step names the device.
  */
-function fullAccessGrantUiPath(deviceName: string): string {
-  return `in the Station desktop app on its host, select the Station name (top right) → Paired devices → ${deviceName} → Change access → Allow full access → Apply`;
-}
+const FULL_ACCESS_GRANT_UI_STEPS: readonly string[] = [
+  "Open the Station desktop app on the Station's host.",
+  'Select the Station name (top right), then Paired devices.',
+  'Select the device by its name, then Change access.',
+  'Turn on Allow full access, then Apply.',
+];
 
 /** The operator command, run on the Station's own host. */
 function fullAccessGrantCommand(deviceId: string): string {
@@ -82,7 +89,7 @@ function requesterOf(request: Request): ApprovalFullAccessRequester {
     return {
       kind: 'device',
       deviceId: shortDeviceId(deviceId),
-      deviceName: name ?? 'this device',
+      deviceName: sanitizeRefusalDeviceName(name ?? ''),
     };
   }
   return { kind: 'person' };
@@ -113,11 +120,7 @@ function detailsFor(
         : {
             by: 'operator',
             scope: 'approval:full-access',
-            ui: fullAccessGrantUiPath(
-              requester.kind === 'device'
-                ? requester.deviceName
-                : 'your device',
-            ),
+            uiSteps: FULL_ACCESS_GRANT_UI_STEPS,
             ...(fullDeviceId
               ? { cli: fullAccessGrantCommand(fullDeviceId) }
               : {}),
@@ -131,13 +134,13 @@ function messageFor(details: ApprovalFullAccessRefusalDetails): string {
     return 'Full access was not applied. An agent can never put itself, or any session, at full access. A person must choose it in Station, from a device the operator has allowed full access.';
   const who =
     requester.kind === 'device'
-      ? `device "${requester.deviceName}" (${requester.deviceId})`
+      ? `this device (id ${requester.deviceId})`
       : 'the device you are using';
   return (
-    `Full access was not applied. You asked for full access, but only this Station's operator can allow it, for ${who}. ` +
-    'Ask the operator to add the approval:full-access scope to it: ' +
-    (grant.cli ? `on the Station's host, run: ${grant.cli}; or ` : '') +
-    `${grant.ui}.`
+    `Full access was not applied. Only this Station's operator can allow full access, for ${who}.` +
+    (grant.cli
+      ? ` On the Station's host, the operator can run: ${grant.cli}`
+      : ' The operator can allow it in the Station desktop app on its host, under Paired devices.')
   );
 }
 

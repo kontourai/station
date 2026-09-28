@@ -444,16 +444,24 @@ A session spawned before this change has nothing recorded.
   before the send or the command has any effect. Since #1796 it is
   actionable without being weakened: `details` carries what was requested
   (`never`), the requester derived from the request's own verified
-  credential (`device` with display name and short id, `agent`, or `person`),
+  credential (`device` with short id and display name, `agent`, or `person`),
   the refusing Station's environment id, and the operator's grant path
   (`grant.cli`, the exact host command
   `station environment access scope <short-id> --add approval:full-access`,
-  and `grant.ui`, the desktop app path through **Paired devices** → the
-  device → **Change access**). An Agent's refusal has `grant: null`: no scope
-  lets an Agent choose full access. The wording is in
-  `src-server/security/full-access-refusal.ts`; `mayGrantFullAccess` stays the
-  only derivation. Clients show the Station's words and never retry at
-  another mode.
+  and `grant.uiSteps`, the desktop app steps through **Paired devices** →
+  the device → **Change access**). An Agent's refusal has `grant: null`: no
+  scope lets an Agent choose full access. The requester chooses its pairing
+  name, so the name is sanitized (control, format and separator characters
+  removed, 64 characters at most) and carried only in `details`; the `error`
+  prose names the device by its short id alone. Clients render the refusal
+  from `details` as plain text (the chat card, the CLI through
+  `terminalSafeText`), never the prose as Markdown, and never retry at
+  another mode. The wording is in `src-server/security/full-access-refusal.ts`
+  and the parser in `@kontourai/station-contracts/orchestration`;
+  `mayGrantFullAccess` stays the only derivation. A refused send is not a
+  failed chat: the chat returns to idle, the draft to the composer, and the
+  only way on is an explicit "Send without full access" at the chat's
+  current mode.
 - **Granting and revoking.** The grant is a device scope, managed like any
   other on the operator's host channel (`station environment access
   devices|scope|scopes`, over `POST /api/pairing/devices/:id/scope` with

@@ -733,20 +733,37 @@ describe('an approval pick as a server-ordered command (#2436)', () => {
       expect((await send()).setApprovalMode).toBeUndefined();
     });
 
-    test('#1796: the note is the Station’s own refusal, naming the device and the grant command', async () => {
+    test('#1796: the note carries the refusal’s structure, not its prose', async () => {
       startedSession();
-      const refusal =
-        'Full access was not applied. You asked for full access, but only this Station\'s operator can allow it, for device "Laptop CLI" (ffb80147). Ask the operator to add the approval:full-access scope to it: on the Station\'s host, run: station environment access scope ffb80147 --add approval:full-access.';
+      const details = {
+        requested: 'never',
+        requester: {
+          kind: 'device',
+          deviceId: 'ffb80147',
+          deviceName: 'Laptop CLI',
+        },
+        station: {},
+        grant: {
+          by: 'operator',
+          scope: 'approval:full-access',
+          uiSteps: ["Open the Station desktop app on the Station's host."],
+          cli: 'station environment access scope ffb80147 --add approval:full-access',
+        },
+      };
       setOrchestrationApprovalMode.mockRejectedValueOnce(
-        Object.assign(new Error(refusal), {
+        Object.assign(new Error('**server prose, never rendered**'), {
           code: 'approval-full-access-not-granted',
+          details,
         }),
       );
       const { pick } = renderComposer();
       await pick('never');
-      expect(
-        (chat().ephemeralMessages ?? []).map((message) => message.content),
-      ).toContain(refusal);
+      const notice = (chat().ephemeralMessages ?? []).at(-1);
+      expect(notice?.content).toBe('Full access was not applied.');
+      expect(notice?.fullAccessRefusal).toEqual({
+        outcome: 'pick-not-applied',
+        details,
+      });
     });
   });
 

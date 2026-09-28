@@ -165,7 +165,9 @@ export type ApprovalFullAccessRequester =
 /**
  * #1796: the structured half of the `approval-full-access-not-granted`
  * refusal, sent as the envelope's `details`. The `error` text says the same
- * in words. `grant` is `null` when no grant exists (an Agent's call).
+ * in words, without the device's name: a pairing name is chosen by the
+ * requester, so it travels only here, as data a client renders as plain
+ * text. `grant` is `null` when no grant exists (an Agent's call).
  */
 export interface ApprovalFullAccessRefusalDetails {
   /** What the caller asked for: its own consent to full access. */
@@ -177,11 +179,101 @@ export interface ApprovalFullAccessRefusalDetails {
   readonly grant: {
     readonly by: 'operator';
     readonly scope: 'approval:full-access';
-    /** The Station UI path, on the operator's own session. */
-    readonly ui: string;
+    /**
+     * The Station UI path, as steps on the operator's own session. Fixed
+     * text: no step carries the device's name.
+     */
+    readonly uiSteps: readonly string[];
     /** The operator command, run on the Station's own host. */
     readonly cli?: string;
   } | null;
+}
+
+/** The longest device name a refusal carries, after sanitizing. */
+export const FULL_ACCESS_REFUSAL_DEVICE_NAME_MAX = 64;
+
+/**
+ * A requester-chosen device name, made safe to carry as data: control,
+ * format and separator characters are removed (no terminal escapes, no
+ * bidirectional overrides), whitespace is collapsed, and the result is
+ * bounded. Markup is left as text; a client renders it as plain text.
+ */
+export function sanitizeRefusalDeviceName(name: string): string {
+  const cleaned = name
+    .replace(/[\t\n\v\f\r\p{Zl}\p{Zp}]/gu, ' ')
+    .replace(/[\p{Cc}\p{Cf}]/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  const bounded = Array.from(cleaned)
+    .slice(0, FULL_ACCESS_REFUSAL_DEVICE_NAME_MAX)
+    .join('');
+  return bounded.length > 0 ? bounded : 'this device';
+}
+
+const isBoundedString = (value: unknown, max: number): value is string =>
+  typeof value === 'string' && value.length > 0 && value.length <= max;
+
+/**
+ * Reads a refusal's `details` from an untrusted envelope, or `undefined` when
+ * it is not one. Every string is bounded and the device name is sanitized
+ * again, so a client never renders more than the contract allows.
+ */
+export function parseApprovalFullAccessRefusalDetails(
+  value: unknown,
+): ApprovalFullAccessRefusalDetails | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.requested !== 'never') return undefined;
+  const rawRequester = record.requester as Record<string, unknown> | undefined;
+  let requester: ApprovalFullAccessRequester;
+  if (rawRequester?.kind === 'agent') requester = { kind: 'agent' };
+  else if (rawRequester?.kind === 'person') requester = { kind: 'person' };
+  else if (
+    rawRequester?.kind === 'device' &&
+    typeof rawRequester.deviceId === 'string' &&
+    /^[0-9a-f-]{1,36}$/i.test(rawRequester.deviceId) &&
+    isBoundedString(rawRequester.deviceName, 1024)
+  )
+    requester = {
+      kind: 'device',
+      deviceId: rawRequester.deviceId,
+      deviceName: sanitizeRefusalDeviceName(rawRequester.deviceName),
+    };
+  else return undefined;
+  const rawStation = record.station as Record<string, unknown> | undefined;
+  const station =
+    rawStation && isBoundedString(rawStation.environmentId, 128)
+      ? { environmentId: rawStation.environmentId }
+      : {};
+  const rawGrant = record.grant as Record<string, unknown> | null | undefined;
+  if (rawGrant === null) {
+    return requester.kind === 'agent'
+      ? { requested: 'never', requester, station, grant: null }
+      : undefined;
+  }
+  if (
+    !rawGrant ||
+    requester.kind === 'agent' ||
+    rawGrant.by !== 'operator' ||
+    rawGrant.scope !== 'approval:full-access' ||
+    !Array.isArray(rawGrant.uiSteps) ||
+    rawGrant.uiSteps.length === 0 ||
+    rawGrant.uiSteps.length > 8 ||
+    !rawGrant.uiSteps.every((step) => isBoundedString(step, 256)) ||
+    (rawGrant.cli !== undefined && !isBoundedString(rawGrant.cli, 256))
+  )
+    return undefined;
+  return {
+    requested: 'never',
+    requester,
+    station,
+    grant: {
+      by: 'operator',
+      scope: 'approval:full-access',
+      uiSteps: [...(rawGrant.uiSteps as string[])],
+      ...(typeof rawGrant.cli === 'string' ? { cli: rawGrant.cli } : {}),
+    },
+  };
 }
 
 /**

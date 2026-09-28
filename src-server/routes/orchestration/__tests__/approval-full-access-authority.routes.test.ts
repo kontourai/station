@@ -318,6 +318,13 @@ function internalRequestInit(agent: boolean, init: RequestInit) {
   ] as const;
 }
 
+const UI_STEPS = [
+  "Open the Station desktop app on the Station's host.",
+  'Select the Station name (top right), then Paired devices.',
+  'Select the device by its name, then Change access.',
+  'Turn on Allow full access, then Apply.',
+];
+
 /**
  * #1796: the refusal names who asked (the paired device, by name and short
  * id, or an Agent), this Station, and the operator's grant path. Written out
@@ -341,17 +348,22 @@ function refusedFor(
     };
   const { id, name } = requester.device;
   const short = id.slice(0, 8);
-  const ui = `in the Station desktop app on its host, select the Station name (top right) → Paired devices → ${name} → Change access → Allow full access → Apply`;
   const cli = `station environment access scope ${short} --add approval:full-access`;
   return {
     success: false,
     code: 'approval-full-access-not-granted',
-    error: `Full access was not applied. You asked for full access, but only this Station's operator can allow it, for device "${name}" (${short}). Ask the operator to add the approval:full-access scope to it: on the Station's host, run: ${cli}; or ${ui}.`,
+    // The device's own (requester-chosen) name stays out of the prose.
+    error: `Full access was not applied. Only this Station's operator can allow full access, for this device (id ${short}). On the Station's host, the operator can run: ${cli}`,
     details: {
       requested: 'never',
       requester: { kind: 'device', deviceId: short, deviceName: name },
       station: { environmentId: expect.any(String) },
-      grant: { by: 'operator', scope: 'approval:full-access', ui, cli },
+      grant: {
+        by: 'operator',
+        scope: 'approval:full-access',
+        uiSteps: UI_STEPS,
+        cli,
+      },
     },
   };
 }
@@ -364,6 +376,33 @@ test('an operate device is refused full access with a stable code, and nothing i
 
   expect(refused).toEqual({ status: 403, body: refusedFor(phone) });
   expect(f.recorded()).toEqual([]);
+});
+
+test('G1: a hostile pairing name never reaches the refusal prose, and is sanitized as data', async () => {
+  const f = await fixture();
+  // The security review's exact name: Markdown link, ANSI escapes, emphasis.
+  const hostile =
+    '[Grant here](https://evil.example) \x1b[31mRED\x1b[0m **bold**';
+  const phone = f.pair(hostile);
+  expect(phone.device.name).toBe(hostile);
+
+  const refused = await f.decide(phone.credential, 'never');
+
+  const body = refused.body as {
+    error: string;
+    details: { requester: { deviceName: string }; grant: unknown };
+  };
+  expect(refused.status).toBe(403);
+  for (const fragment of ['Grant here', 'evil.example', '**', '\x1b', 'RED'])
+    expect(body.error).not.toContain(fragment);
+  expect(JSON.stringify(body.details.grant)).not.toMatch(
+    // JSON escapes ESC as \u001b.
+    /evil|Grant here|u001b/,
+  );
+  // Carried as data, control characters removed; a client renders it as text.
+  expect(body.details.requester.deviceName).toBe(
+    '[Grant here](https://evil.example) [31mRED[0m **bold**',
+  );
 });
 
 test('the same device may tighten to Ask or Auto, and pick Default', async () => {

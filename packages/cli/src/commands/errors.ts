@@ -10,8 +10,12 @@
  * once you know which Station the CLI picked and why.
  */
 
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
+import {
+  APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+  parseApprovalFullAccessRefusalDetails,
+} from '@kontourai/station-contracts/orchestration';
 import type { ApiBaseSource, ResolvedApiBase } from './core-api.js';
+import { terminalSafeText } from './terminal-safe.js';
 
 /** How a resolved base URL is described in an error, e.g. `(default)`. */
 export function describeApiBaseSource(resolved: ResolvedApiBase): string {
@@ -83,11 +87,13 @@ export function isIndeterminateWriteFailure(error: unknown): boolean {
 }
 
 /**
- * #1796: a full-access refusal, as every command prints it. The message is
- * the Station's own words (who asked, what only its operator can grant, and
- * how); this names which Station answered, since the operator acts there,
- * and says nothing was retried at another mode. `undefined` for any other
- * error. It is not a transport failure, so it is separate from
+ * #1796: a full-access refusal, as every command prints it: structured from
+ * the refusal's `details` (who asked, the host command, the desktop steps),
+ * naming which Station answered, since the operator acts there, and saying
+ * nothing was retried at another mode. Every Station-supplied string passes
+ * through `terminalSafeText`: the device's name is chosen by whoever paired
+ * it, so it can carry escape sequences. `undefined` for any other error. It
+ * is not a transport failure, so it is separate from
  * {@link explainRequestFailure}, whose callers treat a result as one.
  */
 export function explainFullAccessRefusal(
@@ -99,11 +105,44 @@ export function explainFullAccessRefusal(
     APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE
   )
     return undefined;
-  const message = error instanceof Error ? error.message : String(error);
+  const safe = terminalSafeText;
   const where = resolved
-    ? `the Station at ${resolved.apiBase} (${describeApiBaseSource(resolved)})`
+    ? `the Station at ${safe(resolved.apiBase)} (${safe(describeApiBaseSource(resolved))})`
     : 'the Station this command targeted';
-  return `${message}\nRefused by ${where}. Nothing was sent at another approval mode.`;
+  const details = parseApprovalFullAccessRefusalDetails(
+    (error as { details?: unknown }).details,
+  );
+  const lines = ['Full access was not applied.', `Refused by ${where}.`];
+  if (!details) {
+    // An older Station: its own words, made safe for the terminal.
+    const message = error instanceof Error ? error.message : String(error);
+    lines.push(safe(message));
+  } else if (details.requester.kind === 'agent' || !details.grant) {
+    lines.push(
+      'An agent can never put itself, or any session, at full access. A person must choose it in Station, from a device the operator has allowed full access.',
+    );
+  } else {
+    const who =
+      details.requester.kind === 'device'
+        ? `device "${safe(details.requester.deviceName)}" (${safe(details.requester.deviceId)})`
+        : 'the device you are using';
+    lines.push('', `Ask the operator to allow full access for ${who}:`);
+    if (details.grant.cli)
+      lines.push(
+        "  On the Station's host, run:",
+        `    ${safe(details.grant.cli)}`,
+      );
+    lines.push(
+      details.grant.cli
+        ? '  Or, in the Station desktop app:'
+        : '  In the Station desktop app:',
+      ...details.grant.uiSteps.map(
+        (step, index) => `    ${index + 1}. ${safe(step)}`,
+      ),
+    );
+  }
+  lines.push('', 'Nothing was sent at another approval mode.');
+  return lines.join('\n');
 }
 
 /**

@@ -1,4 +1,8 @@
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
+import {
+  APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+  type ApprovalFullAccessRefusalDetails,
+  parseApprovalFullAccessRefusalDetails,
+} from '@kontourai/station-contracts/orchestration';
 import {
   type ApprovalMode,
   isApprovalMode,
@@ -388,21 +392,36 @@ export function isFullAccessRefusal(error: unknown): boolean {
 }
 
 /**
- * The chat note for a full-access refusal (#1796): the Station's own words,
- * which name this device and the operator's exact grant path, or a generic
- * note when an older Station sent none.
+ * #1796: a full-access refusal as the chat shows it. Rendered by
+ * `FullAccessRefusalCard` from the refusal's parsed `details`, as plain text,
+ * never from the server's prose: the device's name is chosen by whoever
+ * paired it, and Markdown would turn it into links or formatting.
  */
-export function fullAccessRefusalNote(error: unknown): string {
-  const message =
-    error instanceof Error &&
-    error.message.startsWith('Full access was not applied')
-      ? error.message
-      : undefined;
-  return (
-    message ??
-    "Full access was not applied: only this Station's operator can allow it for this device (on the Station's host: station environment access scope <device> --add approval:full-access)."
-  );
+export interface FullAccessRefusalNotice {
+  /** What the refusal did to the user's action. */
+  readonly outcome: 'message-not-sent' | 'pick-not-applied';
+  /** Absent when an older Station sent no structure. */
+  readonly details?: ApprovalFullAccessRefusalDetails;
+  /** A refused send put the draft back in the composer. */
+  readonly draftRestored?: boolean;
 }
+
+/** The notice for a refused full-access pick or send. */
+export function fullAccessRefusalNotice(
+  error: unknown,
+  outcome: FullAccessRefusalNotice['outcome'],
+): FullAccessRefusalNotice {
+  const details = parseApprovalFullAccessRefusalDetails(
+    (error as { details?: unknown } | null)?.details,
+  );
+  return details ? { outcome, details } : { outcome };
+}
+
+/**
+ * The notice's text for any reader that shows ephemeral content as text
+ * (the card renders the structure). Fixed words: nothing from the server.
+ */
+export const FULL_ACCESS_REFUSAL_SUMMARY = 'Full access was not applied.';
 
 /** The note a pick dropped by compare-and-set earns in the chat. */
 export function supersededPickNote(standing: ApprovalMode): string {

@@ -107,6 +107,7 @@ type ExecutionErrorResponse = {
   error?: string;
   code?: string;
   outcome?: unknown;
+  details?: unknown;
   receipt?: unknown;
   receiptStatus?: unknown;
   session?: unknown;
@@ -172,6 +173,7 @@ function readExecutionReceipt(
       response.status,
       apiErrorMessage(result, `Execution API error: ${response.status}`),
       result.code,
+      result.details,
     );
   }
   if (

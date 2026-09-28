@@ -477,13 +477,14 @@ export async function dispatchOrchestrationCommand<T = unknown>(
     data?: T;
     error?: string;
     code?: string;
+    details?: unknown;
   };
   if (!response.ok || !result.success) {
     const message = apiErrorMessage(result, `HTTP ${response.status}`);
     // A stable refusal code (e.g. #2436's `approval-full-access-not-granted`)
     // is kept, so a caller can tell a refusal from a transport failure.
     throw typeof result.code === 'string'
-      ? new ChatHttpError(response.status, message, result.code)
+      ? new ChatHttpError(response.status, message, result.code, result.details)
       : new Error(message);
   }
   return result.data as T;

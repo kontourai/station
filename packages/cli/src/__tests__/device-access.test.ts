@@ -225,6 +225,51 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
     ).rejects.toThrow(/No paired device matches/);
   });
 
+  test('G4: precedence is exact id, then a unique id prefix, then an exact name', async () => {
+    // One device is NAMED like another device's id prefix. The prefix must
+    // win: a name is chosen by whoever paired the device, so it must never
+    // redirect a scope change aimed at another device's id.
+    const impostor = {
+      id: 'dddd5555-0000-4000-8000-000000000005',
+      name: 'aaaa1111',
+      scope: 'orchestration:read',
+      kind: 'device',
+      createdAt: 5,
+      revokedAt: null,
+    };
+    const request = vi
+      .fn<OperatorJsonRequest>()
+      .mockImplementation(async (_apiBase, path, init) => {
+        if (path === '/.well-known/station/v1')
+          return { environmentId: HOME.environmentId };
+        if (path === PUBLIC_STATION_PROOF_PATH) return proofResponse(init);
+        if (path === '/api/pairing/devices')
+          return { devices: [...DEVICES, impostor] };
+        const scope = /^\/api\/pairing\/devices\/([^/]+)\/scope$/.exec(path);
+        if (scope && init?.method === 'POST') {
+          const id = decodeURIComponent(scope[1]!);
+          const body = JSON.parse(String(init.body)) as { scope: string[] };
+          const device = [...DEVICES, impostor].find((d) => d.id === id)!;
+          return { ...device, scope: body.scope.join(' ') };
+        }
+        throw new Error(`Unexpected test request: ${path}`);
+      });
+    await run(['scope', 'aaaa1111', '--add=approval:full-access'], request);
+    const posted = request.mock.calls
+      .filter(([, path]) => path.endsWith('/scope'))
+      .map(([, path]) => path);
+    expect(posted).toEqual([`/api/pairing/devices/${DEVICES[0]!.id}/scope`]);
+    // And an exact id beats a device whose name is that id.
+    request.mockClear();
+    impostor.name = DEVICES[1]!.id;
+    await run(['scope', DEVICES[1]!.id, '--add=approval:full-access'], request);
+    expect(
+      request.mock.calls
+        .filter(([, path]) => path.endsWith('/scope'))
+        .map(([, path]) => path),
+    ).toEqual([`/api/pairing/devices/${DEVICES[1]!.id}/scope`]);
+  });
+
   test('an unknown or ungrantable scope is refused before any Station is contacted', async () => {
     for (const flag of [
       '--add=approval:everything',
@@ -397,21 +442,37 @@ describe('station environment access devices / scope / scopes (#1796)', () => {
 });
 
 describe('a full-access refusal as the CLI prints it (#1796)', () => {
-  test('keeps the Station’s words, names the Station that refused, and says nothing was retried', async () => {
+  test('an older Station without details keeps its words, made terminal-safe', async () => {
     const { describeCliError } = await import('../cli.js');
     const refusal = Object.assign(
-      new Error(
-        'Full access was not applied. You asked for full access, but only this Station’s operator can allow it, for device "Laptop CLI" (154d4e68).',
-      ),
+      new Error('Full access was not applied for "\x1b[31mRED\x1b[0m".'),
       { code: 'approval-full-access-not-granted', status: 403 },
     );
     const printed = describeCliError(refusal);
-    expect(printed).toContain('for device "Laptop CLI" (154d4e68)');
+    expect(printed).toContain('\\u001b[31mRED');
+    expect(printed).not.toContain('\x1b');
     expect(printed).toMatch(
-      /Refused by the Station (at \S+|this command targeted)\./,
+      /Refused by the Station (at \S+|this command targeted)/,
     );
     expect(printed).toContain('Nothing was sent at another approval mode.');
     // Any other failure keeps its own rendering.
     expect(describeCliError(new Error('boom'))).not.toContain('Refused by');
+  });
+
+  test('an Agent is told no grant exists', async () => {
+    const { describeCliError } = await import('../cli.js');
+    const printed = describeCliError(
+      Object.assign(new Error('x'), {
+        code: 'approval-full-access-not-granted',
+        details: {
+          requested: 'never',
+          requester: { kind: 'agent' },
+          station: {},
+          grant: null,
+        },
+      }),
+    );
+    expect(printed).toContain('An agent can never put itself');
+    expect(printed).not.toContain('station environment access scope');
   });
 });
