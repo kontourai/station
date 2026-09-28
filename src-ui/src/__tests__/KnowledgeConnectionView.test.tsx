@@ -3,8 +3,8 @@
  */
 // archive#242 Knowledge port — asserts KnowledgeConnectionView now renders through the
 // canonical page-layout shell (.page/.page--narrow, not the old bespoke
-// `.knowledge-view` wrapper) and the canonical `Empty` primitive for both
-// empty branches (no bespoke `knowledge-view__empty` className survives).
+// `.knowledge-view` wrapper) and the canonical `Empty` primitive for its
+// empty branches.
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -58,11 +58,12 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
     expect(container.querySelector('h1')).toBeNull();
   });
 
-  it('renders the canonical Empty component copy for the no-vector-db state, not a bespoke __empty paragraph', () => {
-    const { container } = render(<KnowledgeConnectionView />);
+  it('renders the no-vector-db state through the canonical Empty component, not a bespoke paragraph', () => {
+    render(<KnowledgeConnectionView />);
 
-    expect(screen.getByText('No vector database configured')).toBeTruthy();
-    expect(container.querySelector('.knowledge-view__empty')).toBeNull();
+    const label = screen.getByText('No vector database configured');
+    expect(label.classList.contains('empty__label')).toBe(true);
+    expect(label.closest('.empty')).toBeTruthy();
   });
 
   it('does not claim vector storage is unconfigured while knowledge status is loading or failed', () => {

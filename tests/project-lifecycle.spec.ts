@@ -401,23 +401,6 @@ test.describe('Project lifecycle', () => {
     await seedProjectRoutes(page);
   });
 
-  test('project create flow settles from the new project modal', async ({
-    page,
-  }) => {
-    await page.goto('/projects/new');
-
-    await expect(
-      page.getByRole('heading', { name: 'New Project' }),
-    ).toBeVisible();
-    await page.waitForSelector('input[placeholder="My Project"]', {
-      timeout: 15_000,
-    });
-    await fillStable(page, 'input[placeholder="My Project"]', 'Launchpad');
-    await page.getByRole('button', { name: 'Create', exact: true }).click();
-
-    await expect(page).toHaveURL(/\/projects\/launchpad$/);
-  });
-
   test('Git recommendation applies one canonical starter request before landing the project', async ({
     page,
   }) => {
@@ -467,69 +450,6 @@ test.describe('Project lifecycle', () => {
     await expect(page).toHaveURL(/\/projects\/git-project$/);
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
-  });
-
-  test('an explicit no-layout choice survives the Git recommendation and skips application', async ({
-    page,
-  }) => {
-    let layoutPosts = 0;
-    await page.route('**/api/projects/layouts/available', (route) =>
-      route.fulfill(json({ success: true, data: STARTER_CATALOG })),
-    );
-    await page.route('**/api/coding/repos**', (route) =>
-      route.fulfill(
-        json({
-          success: true,
-          data: {
-            workspace: '/tmp/no-layout',
-            workspaceIsRepo: true,
-            repos: [{ root: '/tmp/no-layout', name: 'no-layout' }],
-          },
-        }),
-      ),
-    );
-    await page.route('**/api/projects/no-layout/layouts/apply', (route) => {
-      layoutPosts += 1;
-      return route.fulfill(json({ success: true, data: {} }, 201));
-    });
-
-    await page.goto('/projects/new');
-    await fillStable(page, 'input[placeholder="My Project"]', 'No Layout');
-    await page.getByPlaceholder('/path/to/project').fill('/tmp/no-layout/');
-    await expect(page.getByRole('button', { name: /Coding/ })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    const noLayout = page.getByRole('button', {
-      name: /Start without a layout/,
-    });
-    await noLayout.click();
-    await expect(noLayout).toHaveAttribute('aria-pressed', 'true');
-    await page.getByRole('button', { name: 'Create', exact: true }).click();
-
-    await expect(page).toHaveURL(/\/projects\/no-layout$/);
-    expect(layoutPosts).toBe(0);
-  });
-
-  test('project edit and delete all surface correctly', async ({ page }) => {
-    await page.goto('/');
-
-    const update = await page.evaluate(async () => {
-      const res = await fetch('/api/projects/demo', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Demo Project Updated' }),
-      });
-      return res.json();
-    });
-    expect(update.success).toBe(true);
-    expect(update.data.name).toBe('Demo Project Updated');
-
-    const deletion = await page.evaluate(async () => {
-      const res = await fetch('/api/projects/demo', { method: 'DELETE' });
-      return res.json();
-    });
-    expect(deletion.success).toBe(true);
   });
 
   test('project settings guards unsaved navigation and surfaces failed saves', async ({

@@ -37,10 +37,6 @@ const PRE_SHELL_MAIN_OWNERS = new Set([
   'views/account/AccountEntryView.tsx',
   // The shell's own landmark.
   'App.tsx',
-  // Unreferenced by any route or component (kept out of the sweep's scope
-  // rather than silently blessed: if it is ever mounted, this entry is the
-  // thing to re-check).
-  'components/TasksLayout.tsx',
 ]);
 
 function* sourceFiles(dir: string): Generator<string> {

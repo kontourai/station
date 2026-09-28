@@ -493,7 +493,7 @@ describe('createAgentHooks — Flow Agents policy seams (S3)', () => {
     expect(approved).toBe(true);
   });
 
-  test('quality gate runs after successful writes and logs warnings, never throws', () => {
+  test('quality gate runs after successful writes and logs its warnings', () => {
     const ws = optedInWorkspace();
     const service = policyService();
     const afterWriteSpy = vi

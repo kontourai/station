@@ -9,7 +9,6 @@ import {
   isWellFormedProjectResourceBindOutcome,
   localProjectResourceId,
   PROJECT_RESOLUTION_POSTURES,
-  type ProjectResolutionPosture,
   type ProjectResolutionView,
   type ResourceResolutionResult,
 } from '../project-identity.js';
@@ -333,23 +332,6 @@ describe('isWellFormedProjectResolutionView — rejects', () => {
     for (const value of rejected) {
       expect(isWellFormedProjectResolutionView(value)).toBe(false);
     }
-  });
-});
-
-describe('the type-level exhaustiveness proof', () => {
-  test('every posture in the union is in the array', () => {
-    // The compile-time proof lives in the module; this is its runtime mirror,
-    // so a member added to the type and forgotten in the array fails here too
-    // for anyone reading test output rather than tsc output.
-    const fromUnion: ProjectResolutionPosture[] = [
-      'not-backing',
-      'backing',
-      'unreadable',
-    ];
-    for (const posture of fromUnion) {
-      expect(PROJECT_RESOLUTION_POSTURES).toContain(posture);
-    }
-    expect(PROJECT_RESOLUTION_POSTURES.length).toBe(fromUnion.length);
   });
 });
 

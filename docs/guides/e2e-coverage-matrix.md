@@ -38,7 +38,7 @@ intercepts before extending its evidence to a backend or provider.
 | Projects | `project-lifecycle`, `project-forms`, `project-architecture`, `coding-layout-plan-panel` | Create/edit/delete, layout selection, unsaved guards, failed saves, and phone-sized form containment |
 | Agents | `agents-pane`, `agents-readiness-board`, `agents-editor-gates`, `agents-editor-roundtrip`, `agents-copy-existing`, `agents-new-model-turn`, `agents-new-cli-turn`, `agents-new-muse-echo-turn`, `default-agent-workflow` | Separate browsing, readiness, editing, copying, and engine-specific turn journeys; `agents.spec.ts` is no longer the owner |
 | Skills | `skills` | Create/edit/source labeling, command switches, variable resolution, test runs, read-only explanation, and the retired playbook redirect |
-| Registry | `registry`, `registry-install`, `skills` | Tabs including Layouts, preview, search, install/remove, enable/disable, and action failures |
+| Registry | `registry`, `skills` | Tabs including Layouts, preview, search, install/remove, enable/disable, and action failures |
 | Connections | `connections-crud`, `connect-modal`, `connect-remote-auth-recovery`, `connect-reconnect-banner` | Model/runtime/tool-server setup, manual consent, connection repair, keyboard focus, and phone-sized dialogs |
 | Plugins | `plugin-update`, `plugin-system`, `plugin-preview` | Update success/failure, permission denial, installed layout loading, settings, removal, and dialog containment |
 | Schedule | `schedule`, `schedule-runs` | CRUD, explicit run, filter/toggle, keyboard sorting, run history, output, and exact-run deep links |

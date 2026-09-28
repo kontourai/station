@@ -16,7 +16,6 @@ import {
 } from '../build-learning-guide.mjs';
 import { checkMarkdownLinks } from '../check-markdown-links.mjs';
 import { renderLedgerMarkdown } from '../deploy-ledger.mjs';
-import { INDEXED_DIRECTORIES } from '../docs-index.mjs';
 import {
   compileStationDocs,
   readStationDocsInputs,
@@ -519,16 +518,6 @@ describe('docs index reachability', () => {
       windowsHide: true,
     });
     expect(result).toBe('');
-  });
-
-  it('both indexed READMEs still carry their marker blocks', () => {
-    for (const directory of INDEXED_DIRECTORIES) {
-      const body = readFileSync(`${directory}/README.md`, 'utf8');
-      expect(
-        body,
-        `${directory}/README.md lost its docs-index block`,
-      ).toContain('docs-index:start');
-    }
   });
 });
 

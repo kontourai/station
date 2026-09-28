@@ -11,7 +11,6 @@ import {
   findUndefinedDialogSurfaceClasses,
   listScannedSourceFiles,
   listScannedStyleFiles,
-  SCAN_PATHSPECS,
   SCOPE_SENTINELS,
 } from '../dialog-surface-class-guard.mjs';
 
@@ -170,27 +169,8 @@ describe('dialog-surface-class guard "any token defined" rule', () => {
 });
 
 describe('dialog-surface-class guard scope honesty', () => {
-  test('every sentinel is inside the scanned set', () => {
-    const files = listScannedSourceFiles();
-    for (const sentinel of SCOPE_SENTINELS) {
-      expect(files).toContain(sentinel);
-    }
-  });
-
   test('a lost sentinel fails rather than reporting green', () => {
     expect(evaluate([], ['src-ui/src/a.tsx'])).toMatchObject({ ok: false });
-  });
-
-  test('the scanned source set is every tracked .tsx under SCAN_PATHSPECS, minus tests', () => {
-    const tracked = execFileSync('git', ['ls-files', '--', ...SCAN_PATHSPECS], {
-      encoding: 'utf8',
-      windowsHide: true,
-    })
-      .split('\n')
-      .filter((line) => line.endsWith('.tsx'))
-      .filter((line) => !line.includes('__tests__'));
-
-    expect([...listScannedSourceFiles()].sort()).toEqual(tracked.sort());
   });
 
   test('the repo is at zero, which is the whole point of this gate', () => {

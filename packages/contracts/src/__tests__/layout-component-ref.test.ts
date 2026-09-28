@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { LayoutComponentRef, LayoutTab } from '../layout';
 import {
-  formatMcpToolRef,
   isLayoutComponentRef,
   isValidMcpToolRef,
   normalizeLayoutComponentRef,
@@ -49,10 +48,7 @@ describe('layout component refs', () => {
     ).toEqual([pluginRef, builtinRef, mcpRef]);
   });
 
-  test('formats and parses canonical MCP tool refs', () => {
-    expect(formatMcpToolRef('github', 'create_issue')).toBe(
-      'github/create_issue',
-    );
+  test('parses canonical MCP tool refs', () => {
     expect(parseMcpToolRef('github/create_issue')).toEqual({
       serverId: 'github',
       toolName: 'create_issue',
@@ -80,8 +76,6 @@ describe('layout component refs', () => {
         normalizeLayoutComponentRef({ kind: 'mcp-tool-ui', ref }),
       ).toThrow(TypeError);
     }
-
-    expect(() => formatMcpToolRef('github', 'create/issue')).toThrow(TypeError);
   });
 
   test('identifies valid component refs without accepting malformed objects', () => {
