@@ -101,11 +101,17 @@ async function settle() {
     });
 }
 
+// Steps in quarter intervals, settling between, so a fetch completes before
+// the next timer fires: one big jump would let a second observer's timer
+// join the first's in-flight fetch and hide a per-row poll.
 async function advance(ms: number) {
-  act(() => {
-    vi.advanceTimersByTime(ms);
-  });
-  await settle();
+  const step = OBSERVATION_INTERVAL_MS / 4;
+  for (let elapsed = 0; elapsed < ms; elapsed += step) {
+    act(() => {
+      vi.advanceTimersByTime(Math.min(step, ms - elapsed));
+    });
+    await settle();
+  }
 }
 
 function setVisibility(state: 'hidden' | 'visible') {
