@@ -50,7 +50,7 @@ const ALLOWED = new Set<string>(BRANDING_THEME_PROPERTIES);
 const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 /** A validated, lower-cased hex colour, or `null`. */
-export function parseHexColor(value: unknown): string | null {
+function parseHexColor(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   return HEX_COLOR.test(value) ? value.toLowerCase() : null;
 }
@@ -80,8 +80,8 @@ export const SHIPPED_MODE_TOKENS: Record<
 };
 
 /** WCAG AA for text; non-text (focus indicator) contrast. */
-export const TEXT_CONTRAST_MIN = 4.5;
-export const NON_TEXT_CONTRAST_MIN = 3;
+const TEXT_CONTRAST_MIN = 4.5;
+const NON_TEXT_CONTRAST_MIN = 3;
 
 /**
  * WCAG contrast ratio of two already-validated hex colours, through Station's
@@ -301,7 +301,7 @@ export function logBrandingThemeViolations(
 }
 
 /** The mode the theme scope is currently in. Dark is the shipped default. */
-export function currentThemeMode(root: HTMLElement): BrandingThemeMode {
+function currentThemeMode(root: HTMLElement): BrandingThemeMode {
   return root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
 }
 
