@@ -13,7 +13,7 @@ const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 /** @param {string} path a binding path */
-export function splitBinding(path) {
+function splitBinding(path) {
   const match = VALUE_BINDING.exec(path);
   return match
     ? { file: match[1], pointer: match[2] }
