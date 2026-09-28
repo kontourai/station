@@ -121,9 +121,19 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).toContain('fn commit_renderer_mount');
     expect(lib).toContain('commit_renderer_mount,');
     expect(lib).toContain('renderer_mount_label_admitted(window.label())');
-    // The reveal prerequisites themselves are owned by startup_readiness.rs's
-    // own Rust tests, and the renderer's single layout-mount commit by
+    // startup_readiness.rs's own Rust tests prove the reveal prerequisites,
+    // but they run only on the paths-filtered, non-required Desktop Rust
+    // lane. Keep a merge-blocking pin here that the readiness reveal waits
+    // for both the native identity and the React mount. The renderer's single
+    // layout-mount commit is owned by
     // src-ui/src/platform/native/__tests__/rendererLiveness.test.tsx.
+    const reveal = rustBlock(
+      read('src-desktop/src/startup_readiness.rs'),
+      'fn maybe_reveal',
+    );
+    expect(reveal).toMatch(
+      /if phase_admits && next\.identity_committed && next\.renderer_mounted \{\s+next\.phase = ReadinessPhase::Ready;\s+effects\.push\(ReadinessEffect::RevealMainWindow\);/,
+    );
     const renderApp = main.slice(main.indexOf('function renderApp'));
     expect(renderApp.indexOf('<NativeRendererMountCommit />')).toBeLessThan(
       renderApp.indexOf('<PlatformBootstrap>'),
