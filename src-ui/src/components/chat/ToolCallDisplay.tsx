@@ -59,8 +59,9 @@ export interface ToolCallData {
 
 /**
  * #2316: how an approval decision landed. `already-settled` means Station
- * refused it because the request had ALREADY been answered (e.g. from the
- * toast) — verified against the request itself, not inferred from an error.
+ * refused it because the request is no longer open (answered elsewhere,
+ * closed by the engine, cancelled, or expired) — verified against the
+ * request itself, not inferred from an error.
  */
 export type ToolApprovalOutcome = 'answered' | 'already-settled';
 

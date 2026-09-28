@@ -2767,8 +2767,8 @@ export class CodexAdapter implements ProviderAdapterShape {
     const pending = record.pendingApprovals.get(requestId);
     if (!pending) {
       // Answered already, closed by Codex, or never opened: in each case
-      // there is nothing left to answer.
-      throw new Error('This Codex approval request is no longer open.');
+      // there is nothing open to answer, so the copy says only that.
+      throw new Error('This Codex approval request is not open.');
     }
 
     record.pendingApprovals.delete(requestId);

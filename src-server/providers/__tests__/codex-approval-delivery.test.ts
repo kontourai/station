@@ -420,7 +420,7 @@ describe('#2880: Codex decision delivery', () => {
     ).toEqual([]);
     expect(delegatedLastDecision(events)?.delivery).not.toBe('acknowledged');
     // How: the decision is refused and never written.
-    expect(answer).toBe('This Codex approval request is no longer open.');
+    expect(answer).toBe('This Codex approval request is not open.');
     expect(repliesTo(process, 9)).toEqual([]);
     expect(of(events, 'request.delivery')).toEqual([]);
     expect(of(events, 'request.resolved').map((event) => event.status)).toEqual(
