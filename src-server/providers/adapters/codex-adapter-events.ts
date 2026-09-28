@@ -240,7 +240,13 @@ export function mapServerRequestToEvent(
         requestId,
         method: 'request.opened',
         requestType: 'approval',
-        title: extractString(payload.command) ?? 'Approve command execution',
+        // #2911: a managed-network prompt asks about a HOST, not the command
+        // that tripped it. Every approval surface renders the title (strip
+        // card name, toast, inbox row), so it names what is being allowed.
+        title:
+          networkApprovalTitle(payload) ??
+          extractString(payload.command) ??
+          'Approve command execution',
         description: extractString(payload.reason) ?? undefined,
         payload,
       };
@@ -380,6 +386,24 @@ function isEmptyElicitationSchema(schema: unknown): boolean {
   return schema.minProperties === undefined || schema.minProperties === 0;
 }
 
+/**
+ * "network access to example.com (https)" for a managed-network prompt. A
+ * noun phrase, because each surface wraps the title in its own sentence:
+ * "Use …" on the card, "… wants to use …" on the toast.
+ */
+function networkApprovalTitle(
+  payload: Record<string, unknown>,
+): string | undefined {
+  const context = payload.networkApprovalContext;
+  if (!isRecord(context)) return undefined;
+  const host = extractString(context.host);
+  if (!host) return undefined;
+  const protocol = extractString(context.protocol);
+  return protocol
+    ? `network access to ${host} (${protocol})`
+    : `network access to ${host}`;
+}
+
 export function mapApprovalResolutionStatus(
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
 ): RequestResolvedEvent['status'] {
@@ -406,10 +430,22 @@ export function deriveApprovalToolName(
   payload: Record<string, unknown>,
 ): string | null {
   switch (method) {
+    // #2911: a request that asks for more than "run this tool call" never
+    // matches or mints a tool grant, so it always prompts:
+    // - `networkApprovalContext` asks to reach a host through the managed
+    //   network proxy. Station sends `acceptForSession` on the wire, so Codex
+    //   remembers the host itself; a Station-side grant would only matter
+    //   for a different host (or, via `shell_exec`, for every command).
+    // - `grantRoot` asks to allow writes under a root "for the remainder of
+    //   the session" (codex app-server types), which an `accept` would grant.
+    // Input to an existing terminal (`kind: 'writeStdin'`) is a different
+    // tool from starting a command, so its grants and `shell_exec` grants
+    // never cover each other.
     case 'item/commandExecution/requestApproval':
-      return 'shell_exec';
+      if (payload.networkApprovalContext != null) return null;
+      return payload.kind === 'writeStdin' ? 'write_stdin' : 'shell_exec';
     case 'item/fileChange/requestApproval':
-      return 'apply_patch';
+      return payload.grantRoot != null ? null : 'apply_patch';
     // #2911: a permissions request is an escalation, not a tool. Its
     // `acceptForSession` reply already carries `scope: 'session'`, so Codex
     // remembers that grant itself; a Station-side grant would only matter for

