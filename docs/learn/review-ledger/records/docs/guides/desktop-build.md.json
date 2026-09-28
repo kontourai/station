@@ -30,8 +30,6 @@
 
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"packages/cli/src/commands/desktop-companion.ts","digest":"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/cli/src/commands/dev-ports.ts","digest":"8bc6030539f0ccf57eed8af8ea08d31d8be13f3d3897517e41f797778294898e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -134,7 +132,19 @@
 
     {"path":"src-ui/src/views/settings/SystemSection.tsx","digest":"628ff7524f0002f310c0f83fedcc39790d1fa69b7998de046c6615004ae2b9f7","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"vite.config.ts","digest":"2ad80ce74f16031e23bdee55790094bf36e257e9138ee8de2c2af6502e511c5d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"vite.config.ts","digest":"2ad80ce74f16031e23bdee55790094bf36e257e9138ee8de2c2af6502e511c5d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/fixture:browser-preview:macos","digest":"d340ef87237d5a3453c8c41651cf197577f6ace4849a7c06eea8dedffa2cb332","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/tauri","digest":"8a4b6b67be2e18f2e85f9bf4c290ebe225eebbd698aefd41de8a542d5fd3e7df","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/verify:desktop-clean-checkout","digest":"5cd08fb8475a1eddfe79cd814b197ebc743038fd7d9ceea2292e7dfba2ea7085","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"},
+
+    {"path":"package.json#/packageManager","digest":"50fca3fe5c025e96dd5375620d17ab71c3e90fec05d7fe4a572a638193d73bd0","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"}
   ],
 
   "checks": [

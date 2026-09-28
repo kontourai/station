@@ -30,8 +30,6 @@
 
     {"path":"install.sh","digest":"f2b2fbf2dba1198f08637b48ad3a1cd7ae684cee020621cd293668e6bbb8b4bc","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"packages/cli/src/commands/desktop-companion.ts","digest":"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/cli/src/commands/dev-ports.ts","digest":"8bc6030539f0ccf57eed8af8ea08d31d8be13f3d3897517e41f797778294898e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -142,7 +140,13 @@
 
     {"path":"config/portable-server-node-runtime.json","digest":"740077d29cbbeb2a40f2fec363d06aacf111f2d2d29f50e71886dcb0a1306438","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"packages/cli/src/commands/lifecycle.ts","digest":"bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/build:ios:simulator","digest":"3255b2f2a3e1f765a3d6e35cf3ae515387a878e81f0235b5da5b9ce7fb6ac754","revision":"f8a1bcaa554b0ebe0e08e7df78d5e3e6c2c6c1df"},
+
+    {"path":"package.json#/scripts/channel-ports:check","digest":"199f794cc84fc36a71366f1503f6b3520343fd664feab4790718d996932b6029","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/install-script:check","digest":"71f9c5895d8e19e1c1216cf5bf576168cf7a4d1d4a592024f3268febcbc4c6cd","revision":"6f10c06b853f98e26779822e14e3ac108397e977"}
   ],
 
   "checks": [

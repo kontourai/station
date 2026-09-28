@@ -14,9 +14,23 @@
   "sources": [
     {"path":"justfile","digest":"cef61b904045bb86794b61a00a6ee39367705b86eb9ac466d77bd549156294c9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/just-interface.mjs","digest":"f2660b18a8d6df42872d5953c61181eea377bbf51e3dbcc31e04c31d94c69219","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/just-interface.mjs","digest":"f2660b18a8d6df42872d5953c61181eea377bbf51e3dbcc31e04c31d94c69219","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"package.json#/scripts/build:android","digest":"51d728b57564c0b1427d0d7b57d86086ab1168a689e7dba583b4cd2d79374c21","revision":"7a2154aaa17b18483ce8876f8066cb856e173b3d"},
+
+    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/dev:desktop","digest":"5a02ee7ef1eefa0d93c9d33d8a501964941809ad42c5b36d4a0fd52c4aec8b24","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/full:regression","digest":"c9515f8d1266c6f66972172476fdf896a72e73b3f8c995b57e0273b3ba1b41e0","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/release:static","digest":"5a21465c2ff6d6a62ee5132c955d8e9bd1f302a307123e0fee4e216c140da9c3","revision":"2e319539271fb2107854527e7917f2a9a06d4542"},
+
+    {"path":"package.json#/scripts/test:changed","digest":"448b70b57d2edff1276025401924ec201d2bdc24e5dacb738fc4384951bbd593","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/test:focused","digest":"d9cac783fed6a1be9353f6b5be8a3f85b2059024cc299c96cc342e3d4a3ca282","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/verify:static","digest":"11d986f344d89ce8a809af289108cb97f7f204e0661fed6f0f1bac572371982d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
   ],
 
   "checks": [

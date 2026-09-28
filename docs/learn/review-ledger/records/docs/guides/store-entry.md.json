@@ -38,8 +38,6 @@
 
     {"path":"ops/nightly/install-macos.zsh","digest":"70db095f76a9397adaccbab4a78374a2e562a76af2e0f595a30b5f09328776f3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"schemas/release-artifact-manifest.schema.json","digest":"07221e98f2132afb9e1b50f52b713327e634b66772a9fdc01e5ff026b0f0f5ae","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/__tests__/ensure-ios-agent-activity-extension.test.ts","digest":"866e000cc1d4b2e62d6124bc0a8bf74e4014564b471602603ab7cecdf18c143b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -102,7 +100,9 @@
 
     {"path":"src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx","digest":"d4b04ded0daf9782f355af8c27f7f2b07d4ed1a8263dad862a71f4b9708bea58","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/components/CoreUpdateLaunchCheck.tsx","digest":"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"src-ui/src/components/CoreUpdateLaunchCheck.tsx","digest":"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/version","digest":"28038cba2d9ec115028d011d4b7289218a794d7e4943a6fb33f148f2eede1152","revision":"bfe2de5ae881fa9221b2dd94360d003b996f0474"}
   ],
 
   "checks": [

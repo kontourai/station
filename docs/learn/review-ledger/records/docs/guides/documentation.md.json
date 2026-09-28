@@ -9,7 +9,7 @@
 
   "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
 
-  "document": {"digest":"64cf356730ba368242e47509fa200c493e057bbee62e5fa01c93e7f658666eef","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+  "document": {"digest":"2aa944283e4ea545dddd7a3e156f0b6960c84bad47131639e9509acb2d72697a","revision":"294167795ff5e2a3e374d80411e081275d9adef9"},
 
   "sources": [
     {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
@@ -18,11 +18,11 @@
 
     {"path":".veritas/attestations/HEAD","digest":"509a9ed1d454af138d096f874c8fe21ce9e76cb34982654b06a62778d622bb41","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/documentation-freshness.mjs","digest":"8f2dbfdc57633e8df8a5e120c0b5191bc3c1c575295df94efe6fa926b3e3e750","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"scripts/lib/documentation-freshness.mjs","digest":"1015b8a88ace1d10171a04a1b5da6a192b0397174fa51127c66211736c06ab74","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/check-documentation-freshness.mjs","digest":"3643bd457887af2c59144082a9561d69ce782f354d00f3603b9ead2669a6ae90","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/check-documentation-freshness.mjs","digest":"41d1622754ffb7a8671a277b2728c5cee2f226da71340666bf4a2be6e8f11d5f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/record-documentation-review.mjs","digest":"9f7a17cf6706ad85f6bda94208cc025f50f99ac80c4098cab1dbb0f7eda9dbe4","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"scripts/record-documentation-review.mjs","digest":"2541d1547706a30bf5cd19927d4b0567b00ae379e4f61ddcd7d36da382f6f54f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
     {"path":"scripts/docs-freshness-sweep.mjs","digest":"b081d84f26484adc6afe330b37976a38e6ed9312c2ed5c394e701a212934c8e8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
@@ -30,7 +30,11 @@
 
     {"path":"scripts/run-repo-scan-suites.mjs","digest":"06c1be69f439b1676b78bfe673c310f5abaf3c4a29ddfd25160ae5a36f684584","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/review-ledger-store.mjs","digest":"e78277c290b3665557cbfc895fa7da56886e7c589923141ad21e4fd5d37c3465","revision":"66ae5ea6b03d3b796ebd4185e2031ce16ee0a597"}
+    {"path":"scripts/lib/review-ledger-store.mjs","digest":"0ae9f94081af3b929fb17cc93bc222e9ce84227fe3832aa1beb1fbbc8dd3884a","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+
+    {"path":"scripts/lib/review-binding.mjs","digest":"d55daea7fb536248f1c11a5e8a9965be1dd1db43fefe9839080d3688b2e28ce4","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+
+    {"path":"scripts/migrate-review-ledger.mjs","digest":"b142c7b723f8a2af28fde4d6311fbecc5b9c44ee8b63046cbb6879fe1a8f55d3","revision":"294167795ff5e2a3e374d80411e081275d9adef9"}
   ],
 
   "checks": [

@@ -38,8 +38,6 @@
 
     {"path":"ops/nightly/install-macos.zsh","digest":"70db095f76a9397adaccbab4a78374a2e562a76af2e0f595a30b5f09328776f3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"patches/android-native-keyring-store/src/by_service/cred.rs","digest":"780472c84c59241c7bb0a54dc8d39032ae683cff9b4220f6b5a069243c9a1e14","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"patches/android-native-keyring-store/src/by_store/cred.rs","digest":"41738684ee143f81095c32cad36099b47552e15c62857de7f16c7a1875871d5c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -114,7 +112,9 @@
 
     {"path":"src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx","digest":"d4b04ded0daf9782f355af8c27f7f2b07d4ed1a8263dad862a71f4b9708bea58","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/components/CoreUpdateLaunchCheck.tsx","digest":"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"src-ui/src/components/CoreUpdateLaunchCheck.tsx","digest":"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/mobile:permissions:gate","digest":"388ab98f993e01ae62702b6901800b488c2ca0c767a5dbf851c481e37074aca9","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
   ],
 
   "checks": [

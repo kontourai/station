@@ -12,8 +12,6 @@
   "document": {"digest":"807e4c84220d4ae4f255f3b3728811f2736a101e608e369eef1729e6bcef84d2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
   "sources": [
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"packages/sdk/src/client/application-session.ts","digest":"47e755613e8c9008336e854ce799b1411f44017b5250958cadd0401d16c2c501","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/sdk/src/client/projects.ts","digest":"f89fed1caeffeaec2d1b29e0eda07253caa9e4f88a435b44f7be0248d2d40a3c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -76,7 +74,9 @@
 
     {"path":"src-server/services/identity/__tests__/application-session-service.test.ts","digest":"6608c71fe083a4cd4ed7b8bf7793c2917ff7b079bceec8e3476062251c0d844e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/identity/__tests__/deployment-authentication-http.test.ts","digest":"bebb3244e9758f5c608beca3b53884faa6c5b2b776a7fbece902c8928b08fb4d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"src-server/services/identity/__tests__/deployment-authentication-http.test.ts","digest":"bebb3244e9758f5c608beca3b53884faa6c5b2b776a7fbece902c8928b08fb4d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/test:focused","digest":"d9cac783fed6a1be9353f6b5be8a3f85b2059024cc299c96cc342e3d4a3ca282","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
   ],
 
   "checks": [

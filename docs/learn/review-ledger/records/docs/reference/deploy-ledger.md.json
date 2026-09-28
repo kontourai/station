@@ -16,7 +16,7 @@
 
     {"path":"scripts/deploy-ledger.mjs","digest":"20a24b252e2de00f69435afffb7af55f74e8fe3b8b31e91c5a0ef8cc7cfd6522","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"scripts/lib/documentation-review.mjs","digest":"643d1a3b0b0d3b86b6fb81313474abf047835dbe9ef6210de10143f6ddcbe3f2","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"}
+    {"path":"scripts/lib/documentation-review.mjs","digest":"d227f0fd1b1d90823e3cbfa3236a0a3de8540df0cb022c9762f374c9b3797331","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"}
   ],
 
   "checks": [

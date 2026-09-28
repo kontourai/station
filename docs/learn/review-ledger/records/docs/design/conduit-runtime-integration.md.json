@@ -14,8 +14,6 @@
   "sources": [
     {"path":"docs/conformance/station-runtime-conformance.json","digest":"cbc50694ef250065ab80f9b05865d59cbeef8a15177e6d805b9818c7550794d2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"pnpm-lock.yaml","digest":"dca9053bdf32c016ab863607b7be3241c4b10cdb3261aa8f45c59b0152e7df75","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/generate-runtime-conformance.mjs","digest":"4f5197dcdd37c540f09d3938807e9ef5866472827429ee906ed56e6e8d8d0876","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -30,7 +28,11 @@
 
     {"path":"src-server/runtime/frameworks/strands-agent-hooks.ts","digest":"491f93e51fb022603ae2b45af1a350c9f758c3dc5c45823c8ff53e10269009df","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/runtime/frameworks/voltagent-adapter.ts","digest":"fa8bf0806d17d96fb3154a6a60d72f720ea0a7d7e433321ae978a602e10a0be2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"src-server/runtime/frameworks/voltagent-adapter.ts","digest":"fa8bf0806d17d96fb3154a6a60d72f720ea0a7d7e433321ae978a602e10a0be2","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/conduit:conformance:generate","digest":"cba739550476cc421d79a51df9b131ae3d710713e565e31b43be1fdbe6c7988e","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/verify:static","digest":"11d986f344d89ce8a809af289108cb97f7f204e0661fed6f0f1bac572371982d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"}
   ],
 
   "checks": [

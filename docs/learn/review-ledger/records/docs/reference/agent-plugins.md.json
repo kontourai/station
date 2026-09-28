@@ -14,8 +14,6 @@
   "sources": [
     {"path":".githooks/pre-push","digest":"eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"packages/cli/src/commands/build.ts","digest":"fe59b0aec5413bc16de44073be4669a2345d1a2c3ab0519f50b4dea615ce5b55","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -68,7 +66,9 @@
 
     {"path":"src-server/services/plugins/reserved-plugin-identities.ts","digest":"968bbf2ec02e12c19299863c303c1ea7097444345e3f8ed8da60b9ab51cbde19","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/views/plugin-management/PluginSettingFieldRow.tsx","digest":"fcc06701bb9ca810d7f3021cb18d5eb184c1999b064c5827ad2fb212c4703e0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"src-ui/src/views/plugin-management/PluginSettingFieldRow.tsx","digest":"fcc06701bb9ca810d7f3021cb18d5eb184c1999b064c5827ad2fb212c4703e0d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/agent-plugin:validators:gate","digest":"981a70b44b8755a2c69a3ded474dbe7b5f81f89eb73248e7ca90518e3280af77","revision":"444e3ec61e26b58fa5c2edd68abfca6d00a2cc98"}
   ],
 
   "checks": [

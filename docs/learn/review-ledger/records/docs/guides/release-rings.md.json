@@ -40,8 +40,6 @@
 
     {"path":"ops/nightly/install-macos.zsh","digest":"70db095f76a9397adaccbab4a78374a2e562a76af2e0f595a30b5f09328776f3","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"schemas/release-artifact-manifest.schema.json","digest":"07221e98f2132afb9e1b50f52b713327e634b66772a9fdc01e5ff026b0f0f5ae","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/__tests__/release-artifacts.test.ts","digest":"cbc2d4fb766186bbf2a95f343bf6f6c07c38afec8731bf649e5d211ca4ce7e64","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -84,7 +82,9 @@
 
     {"path":"src-desktop/src/lib.rs","digest":"36834a67820b6d406efe19620c261120ddcdbc8277077a99cb2a2e1136555b6b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-server/services/notifications/agent-activity-publisher.ts","digest":"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"src-server/services/notifications/agent-activity-publisher.ts","digest":"3753a4c2bf54fbe7024f0cd658b5a69e9e2c8e0a03c00b9e8592ab6096ee0712","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/version","digest":"28038cba2d9ec115028d011d4b7289218a794d7e4943a6fb33f148f2eede1152","revision":"bfe2de5ae881fa9221b2dd94360d003b996f0474"}
   ],
 
   "checks": [

@@ -18,8 +18,6 @@
 
     {"path":".veritas/GOVERNANCE.md","digest":"896ca1d26e71e4e8d691fb2539888282903f15024cd1dc2585299d682b9d269c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"scripts/dependency-lifecycle.mjs","digest":"59182737dece9f0981ba7857efd524e5c6a30eb45c25dc963d3a0c9bba7b6163","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"scripts/gate-for.mjs","digest":"e414b95418770c138509db2b192e64baed53e9c493f6824be2b0cda2a5261821","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -28,7 +26,21 @@
 
     {"path":"scripts/orchestration-transfer-gate.mjs","digest":"f0809c17d88b7abbdbf1e88ab04f98bddebabd8c426db9891763cd76474ac7d5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/run-focused-tests.mjs","digest":"7587827cfbb7d8f6cde2181a8a0e392a4788acad7df3e69c5155ff849abea79c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"scripts/run-focused-tests.mjs","digest":"7587827cfbb7d8f6cde2181a8a0e392a4788acad7df3e69c5155ff849abea79c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/ci:fast","digest":"63205403780b83bab17755e05d5bd616a956950093d8d92a59955a74e5ce0364","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/full:regression","digest":"c9515f8d1266c6f66972172476fdf896a72e73b3f8c995b57e0273b3ba1b41e0","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/gate:for","digest":"7b50a6ae44d67b5b14d5c599d38f14aff7b09c798e012e48625037826834eb2b","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/test:changed","digest":"448b70b57d2edff1276025401924ec201d2bdc24e5dacb738fc4384951bbd593","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/test:focused","digest":"d9cac783fed6a1be9353f6b5be8a3f85b2059024cc299c96cc342e3d4a3ca282","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/packageManager","digest":"50fca3fe5c025e96dd5375620d17ab71c3e90fec05d7fe4a572a638193d73bd0","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"}
   ],
 
   "checks": [

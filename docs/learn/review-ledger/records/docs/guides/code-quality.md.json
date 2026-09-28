@@ -38,7 +38,7 @@
 
     {"path":"AGENTS.md","digest":"f36e98bb2ed75610e96f64267428f1e0e05edf017a91e51e8ac9a509125d3df0","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"docs/guides/documentation.md","digest":"64cf356730ba368242e47509fa200c493e057bbee62e5fa01c93e7f658666eef","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"docs/guides/documentation.md","digest":"2aa944283e4ea545dddd7a3e156f0b6960c84bad47131639e9509acb2d72697a","revision":"294167795ff5e2a3e374d80411e081275d9adef9"},
 
     {"path":"docs/guides/testing.md","digest":"520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -48,7 +48,7 @@
 
     {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6dd1caae1b87f19ed95a7275cd4b175c1f717e8c12e366c491dceeefea078750","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"6cb7bc6da9989659b0332ff0da2815b3ecc2afd34403a894704d6434270cdbf5","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"f0376c008b04dedfd81e4e52b4198c463b57fe70d37de1cb6541fc1baad6ee9d","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
     {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"2f28943e864a5eea369b11fba6e2cd5741bd7cc8979a3f20034679e0421b339d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -64,7 +64,7 @@
 
     {"path":"scripts/lib/dependency-lifecycle-policy.mjs","digest":"3221df34cc1ffaa99b9dedfcff8e2b1dce41baa44170464d2b8d3e88cd2894f4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/documentation-review.mjs","digest":"643d1a3b0b0d3b86b6fb81313474abf047835dbe9ef6210de10143f6ddcbe3f2","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"scripts/lib/documentation-review.mjs","digest":"d227f0fd1b1d90823e3cbfa3236a0a3de8540df0cb022c9762f374c9b3797331","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
     {"path":"scripts/lib/fast-checks-shards.mjs","digest":"bf2ae7c3888d17e789aeb7a5f3acda22b53540fa85ce98b5fe517ea5ede6c590","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -96,7 +96,7 @@
 
     {"path":"scripts/__tests__/prepush-typecheck.test.ts","digest":"c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/documentation-freshness.mjs","digest":"8f2dbfdc57633e8df8a5e120c0b5191bc3c1c575295df94efe6fa926b3e3e750","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"scripts/lib/documentation-freshness.mjs","digest":"1015b8a88ace1d10171a04a1b5da6a192b0397174fa51127c66211736c06ab74","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
     {"path":"scripts/run-repo-scan-suites.mjs","digest":"06c1be69f439b1676b78bfe673c310f5abaf3c4a29ddfd25160ae5a36f684584","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"}
   ],

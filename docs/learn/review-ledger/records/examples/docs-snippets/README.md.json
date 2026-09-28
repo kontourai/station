@@ -14,11 +14,11 @@
   "sources": [
     {"path":"examples/docs-snippets/src/plugins-agents-and-chat.tsx","digest":"3f6f7737842458a41242bc8e0c162fbec66e9b74439fdc9cd672e823c087dad5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"scripts/__tests__/docs-snippets.test.ts","digest":"c6f31e3851bdba669d93680c01abe4ba95e8b1cab0e336f4ddcd4cd99b91f195","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/examples-conformance.mjs","digest":"2eac8e0f018acdf56bc2ead72e428a38cf7d40c3be2dde34b4945f969fa4d587","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"scripts/examples-conformance.mjs","digest":"2eac8e0f018acdf56bc2ead72e428a38cf7d40c3be2dde34b4945f969fa4d587","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/typecheck:examples","digest":"faba62416714a4e921624f94654885d68cc649a6270f3cb80a522d5068e36868","revision":"797b97599f89df6555282de2d42af11e4aee4f08"}
   ],
 
   "checks": [

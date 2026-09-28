@@ -50,8 +50,6 @@
 
     {"path":"ops/release/macos-notarized-artifacts.test.mjs","digest":"5e6c917312920f7f08dc1ee2e8cc709fe6360c5e9cdac137027b46f16340a75f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"packages/cli/src/commands/desktop-companion.ts","digest":"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/cli/src/commands/lifecycle.ts","digest":"bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -166,7 +164,21 @@
 
     {"path":"src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx","digest":"d4b04ded0daf9782f355af8c27f7f2b07d4ed1a8263dad862a71f4b9708bea58","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"src-ui/src/components/CoreUpdateLaunchCheck.tsx","digest":"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"src-ui/src/components/CoreUpdateLaunchCheck.tsx","digest":"97dbb424d7dcdb9a111cd789df399ace5f50468ccc1015d0a9ec9594656e495e","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/build:connect","digest":"35ca4a6a3ad84f771ce3898eef5de47d42fe2509a020344aec518b006a29b002","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/build:native-client","digest":"b0af0cf67e6f9032f76fc919726b3e542091a634195ac5bb83c94340599808df","revision":"c0c1a2f24efb065b16a02215ef1a4af9b271ba5c"},
+
+    {"path":"package.json#/scripts/build:sdk","digest":"e145efdeedc782b0759babe2ba5be9b9e8a73288417775a87f94196adaa6e00e","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/release:static","digest":"5a21465c2ff6d6a62ee5132c955d8e9bd1f302a307123e0fee4e216c140da9c3","revision":"2e319539271fb2107854527e7917f2a9a06d4542"},
+
+    {"path":"package.json#/scripts/tauri","digest":"8a4b6b67be2e18f2e85f9bf4c290ebe225eebbd698aefd41de8a542d5fd3e7df","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/version","digest":"28038cba2d9ec115028d011d4b7289218a794d7e4943a6fb33f148f2eede1152","revision":"bfe2de5ae881fa9221b2dd94360d003b996f0474"}
   ],
 
   "checks": [

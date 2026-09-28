@@ -14,9 +14,11 @@
   "sources": [
     {"path":"examples/portable-author-kit/plugin.json","digest":"332b41c7aff2bf308211fa388999aa5580185763512b10ade5336f221825d714","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"scripts/examples-conformance.mjs","digest":"2eac8e0f018acdf56bc2ead72e428a38cf7d40c3be2dde34b4945f969fa4d587","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/examples-conformance.mjs","digest":"2eac8e0f018acdf56bc2ead72e428a38cf7d40c3be2dde34b4945f969fa4d587","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"package.json#/scripts/examples:conformance","digest":"2424d0e55a2ccff023d5369220c5233c3dee7defedacee9dc2ba5f94fb202c6d","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/typecheck:examples","digest":"faba62416714a4e921624f94654885d68cc649a6270f3cb80a522d5068e36868","revision":"797b97599f89df6555282de2d42af11e4aee4f08"}
   ],
 
   "checks": [

@@ -48,8 +48,6 @@
 
     {"path":"ops/release/macos-notarized-artifacts.test.mjs","digest":"5e6c917312920f7f08dc1ee2e8cc709fe6360c5e9cdac137027b46f16340a75f","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"packages/cli/src/commands/desktop-companion.ts","digest":"f33b07c369544b549f720ef7bc012cf35fb7cb1211162f78c61bb463170ffdb5","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/cli/src/commands/lifecycle.ts","digest":"bd8f7f88834900af74d1b7666e4b178bd276dcff361d52e75d57a37a07b3a277","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -138,7 +136,13 @@
 
     {"path":"scripts/portable-nightly-publication.mjs","digest":"ead20dbb641dd589b6f6eae6ecbd7923ac744f38e958ea57b0a099ba006d3940","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/__tests__/portable-nightly-publish-workflow.test.ts","digest":"fb6c30bc81b659d67325e21684117134ea6e689fe8a879df9bebeea519058d18","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"scripts/__tests__/portable-nightly-publish-workflow.test.ts","digest":"fb6c30bc81b659d67325e21684117134ea6e689fe8a879df9bebeea519058d18","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/build:desktop","digest":"9772f288b54c1d026ed8895d38309354aa31ff05cdec24a5ddfa37b4fbbe0c3c","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"}
   ],
 
   "checks": [

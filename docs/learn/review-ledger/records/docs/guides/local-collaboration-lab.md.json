@@ -12,8 +12,6 @@
   "document": {"digest":"23cebd66c9b548a70e1f3199e1212c52d89af935d8fd2da9c3c511d79658d748","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
   "sources": [
-    {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
-
     {"path":"packages/connect/src/core/applicationChannel.ts","digest":"340a746de265ada1eb052d6cee95b5d5459826a3e3bf904faac19f79d5a9332b","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
     {"path":"packages/connect/src/core/applicationChannelFrames.ts","digest":"0bc272a93b799b8c7a26f4642d9a5be78fb50cea0bdce8d57367ea5af9dad3f6","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
@@ -162,7 +160,27 @@
 
     {"path":"scripts/lib/local-collaboration-relay.mjs","digest":"cb07996d48a3a4afa8c43b7a0f7871e4cca342ad8f538495d9e3c466edde3ed8","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"scripts/lib/local-collaboration-udp-relay.mjs","digest":"3b8afc8d9b439b8b709ba318bdc26227916cb60c220dd7a53c3711966ac7845d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"}
+    {"path":"scripts/lib/local-collaboration-udp-relay.mjs","digest":"3b8afc8d9b439b8b709ba318bdc26227916cb60c220dd7a53c3711966ac7845d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+
+    {"path":"package.json#/scripts/connection:key","digest":"a3fbd9cffb8957a0881d98eb06e31778d81430cc7b1422bd93e1d756f50e86ba","revision":"96290b2a6be25d5b4b62d3fbd3f671888148e90a"},
+
+    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/install:playwright","digest":"72ceae4ea454289696c3237a8fe3f23a56d801056d131f320665cdb067f6c5a0","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/lab:browser-transport","digest":"9188d44aa698cb2541f4a30d03b180e267a2db639ea0cac7556400e79f1c8ba4","revision":"ba739a696f65bbdd81bff2cb740dbc93cceced78"},
+
+    {"path":"package.json#/scripts/lab:collaboration","digest":"a70e4d5bbdecd622f4862f89f90a0a4f8facb38a1bd98b4ed0f1825cd29c6ead","revision":"6aee00836436ae60acad00c377534baac8ade9b5"},
+
+    {"path":"package.json#/scripts/lab:native-relay-diagnostic-echo","digest":"1b8d98d8b5e584c58f571f0f0aedf6b75506411fc6f541cc326030f5c64d0a71","revision":"1482667a35ab9e3edefc95b81185589ca2aa813b"},
+
+    {"path":"package.json#/scripts/lab:remote-relay","digest":"b8f56e50c34b3455edb1d9b87110f070074b6b109fa21e8660d400a8bcc7cb32","revision":"60a7e0cc312d3dd061f5f30babcf966131b6129e"},
+
+    {"path":"package.json#/scripts/test:focused","digest":"d9cac783fed6a1be9353f6b5be8a3f85b2059024cc299c96cc342e3d4a3ca282","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+
+    {"path":"package.json#/scripts/test:mutation:smoke","digest":"c4400854fe7e13d8dc8d69af73aef1313a2bbdc3d5a959120934bd001c4daa32","revision":"86a943268c5517bfe0dce14638adc784e29c84fc"},
+
+    {"path":"package.json#/engines","digest":"72bfe486551bb055654d87a905296a8746692494ee534da87a176800407926d5","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"}
   ],
 
   "checks": [

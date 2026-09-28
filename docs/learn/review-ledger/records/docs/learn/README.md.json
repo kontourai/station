@@ -12,21 +12,21 @@
   "document": {"digest":"0ac8f8ac857022280619dd19947686c17b2bda0f1d6a954b1591b0c65fe81404","revision":"e6db304484770666a5dad430b4beae94cdefe69a"},
 
   "sources": [
-    {"path":"docs/learn/atlas.js","digest":"a050cf7067ab97095128c2942733fa875009047a4c58932faa8517686a5d75e4","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"docs/learn/atlas.js","digest":"5736779c6e338b74ab1415003b56e14654e05208887a69b6b2a9d92e8b534483","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
     {"path":"docs/learn/atlas.json","digest":"ed4395353d103a11f3de0d430e28fb4ab8c1447626284d3fb1633023ea86b966","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
     {"path":"scripts/__tests__/learning-atlas.browser.test.ts","digest":"a66a69ef5f1f7db3856983105ba94ab0eda9d6f7c50c073915c64a2fc1678bcf","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"scripts/build-learning-guide.mjs","digest":"2d366cd9819a3be6b2ddb606082b8a16e2cf98fbd79ab9b2ce50781c65a764d3","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"scripts/build-learning-guide.mjs","digest":"3a3462887203d43998cd6817e300a59c9856c2710d697274a597d4076ce969dd","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/documentation-impact.mjs","digest":"f8218bca453de33a09854f6770cb2f5387d8d50f4e5a826afee8533138a79be1","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"scripts/documentation-impact.mjs","digest":"4d9cc897cbbf6046574acd80239d54cc53c7f01632dc6d71ddaf24d0fb6316ab","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
     {"path":"scripts/lib/documentation-model.mjs","digest":"cbfd7235be50696a0289524232c6d2b1de5de03bff71f8e6edef38f6adcaf6b4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
     {"path":"scripts/lib/learning-markdown.mjs","digest":"fbc83e6e0c25264ba1c6f0ea557144ff805e381ded7b7b4663ebc4fa9ebf5b5e","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"scripts/lib/learning-media.mjs","digest":"7aebedbd360cb82a7fce491c206a833dc4c9217a7de63aa709a595b61dc76dc6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"scripts/lib/learning-media.mjs","digest":"6d3bfbc02e925e382beb9be69fcb60427fda18987dfc6b61ec7cd4a119a3e40e","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
     {"path":"src-server/tools/station-docs-server.ts","digest":"c76912b19734775f650634f5b97639c60168fe9995b61f927c0e35a62b3fb1ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -36,11 +36,11 @@
 
     {"path":"docs/learn/diagrams.js","digest":"dd72f02140d05078f0423312e01ea8fd8bd8d1b66c125f94d275f3f323642c24","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/documentation-freshness.mjs","digest":"8f2dbfdc57633e8df8a5e120c0b5191bc3c1c575295df94efe6fa926b3e3e750","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"scripts/lib/documentation-freshness.mjs","digest":"1015b8a88ace1d10171a04a1b5da6a192b0397174fa51127c66211736c06ab74","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/record-documentation-review.mjs","digest":"9f7a17cf6706ad85f6bda94208cc025f50f99ac80c4098cab1dbb0f7eda9dbe4","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"scripts/record-documentation-review.mjs","digest":"2541d1547706a30bf5cd19927d4b0567b00ae379e4f61ddcd7d36da382f6f54f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
-    {"path":"scripts/lib/review-ledger-store.mjs","digest":"e78277c290b3665557cbfc895fa7da56886e7c589923141ad21e4fd5d37c3465","revision":"66ae5ea6b03d3b796ebd4185e2031ce16ee0a597"}
+    {"path":"scripts/lib/review-ledger-store.mjs","digest":"0ae9f94081af3b929fb17cc93bc222e9ce84227fe3832aa1beb1fbbc8dd3884a","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"}
   ],
 
   "checks": [

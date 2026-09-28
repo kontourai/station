@@ -36,7 +36,7 @@
 
     {"path":".veritas/repo-standards/default.repo-standards.json","digest":"739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"docs/guides/documentation.md","digest":"64cf356730ba368242e47509fa200c493e057bbee62e5fa01c93e7f658666eef","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"docs/guides/documentation.md","digest":"2aa944283e4ea545dddd7a3e156f0b6960c84bad47131639e9509acb2d72697a","revision":"294167795ff5e2a3e374d80411e081275d9adef9"},
 
     {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
@@ -44,7 +44,7 @@
 
     {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6dd1caae1b87f19ed95a7275cd4b175c1f717e8c12e366c491dceeefea078750","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"6cb7bc6da9989659b0332ff0da2815b3ecc2afd34403a894704d6434270cdbf5","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"f0376c008b04dedfd81e4e52b4198c463b57fe70d37de1cb6541fc1baad6ee9d","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
     {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"2f28943e864a5eea369b11fba6e2cd5741bd7cc8979a3f20034679e0421b339d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -60,7 +60,7 @@
 
     {"path":"scripts/lib/dependency-lifecycle-policy.mjs","digest":"3221df34cc1ffaa99b9dedfcff8e2b1dce41baa44170464d2b8d3e88cd2894f4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/documentation-review.mjs","digest":"643d1a3b0b0d3b86b6fb81313474abf047835dbe9ef6210de10143f6ddcbe3f2","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    {"path":"scripts/lib/documentation-review.mjs","digest":"d227f0fd1b1d90823e3cbfa3236a0a3de8540df0cb022c9762f374c9b3797331","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
     {"path":"scripts/lib/fast-checks-shards.mjs","digest":"bf2ae7c3888d17e789aeb7a5f3acda22b53540fa85ce98b5fe517ea5ede6c590","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -92,7 +92,7 @@
 
     {"path":"scripts/__tests__/prepush-typecheck.test.ts","digest":"c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/test-impact-manifest.mjs","digest":"2347ccee7f635136d84b242d98236aed8e488c97a376b1106f1e384631a1b286","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/test-impact-manifest.mjs","digest":"f8f251204e7567b245f3797c4fa6e86bbd10bb73219af108fd7bf7ab5ba11e90","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
 
     {"path":"scripts/__tests__/path-read-pin-boundary.test.ts","digest":"c07e3e1ab3e7a9654b68316e817e95fe7a403ea5b1f9f643ea26e5d7c3a242ac","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
