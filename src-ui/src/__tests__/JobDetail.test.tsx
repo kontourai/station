@@ -9,11 +9,10 @@
  * `waiting_for_approval`, which is a run stalled on the user, shown to that
  * same user as already broken.
  *
- * These tests render the real `JobDetail` component (not just the pure
- * `runStatusVisual` mapping) against one run per status and assert the
- * rendered tone via the status cell's accessible name/title, so a
- * regression back to the boolean check would fail here even if it still
- * exported a correct-looking helper nobody wired up.
+ * These tests render the real `JobDetail` component against one run per
+ * status, find the status cell by its literal label, and assert the rendered
+ * tone class, so a regression back to the boolean check (or a garbled label)
+ * fails here.
  */
 
 import type { RunStatus, RunSummary } from '@kontourai/station-contracts/runs';
@@ -37,7 +36,7 @@ vi.mock('../hooks/useScheduler', () => ({
   }),
 }));
 
-import { JobDetail, runStatusVisual } from '../components/scheduler/JobDetail';
+import { JobDetail } from '../components/scheduler/JobDetail';
 
 const JOB_NAME = 'nightly-sync';
 
@@ -66,18 +65,6 @@ function statusCell(label: string): HTMLElement {
   return cell!;
 }
 
-describe('runStatusVisual', () => {
-  test('maps every RunStatus to a tone', () => {
-    expect(runStatusVisual('completed').tone).toBe('ok');
-    expect(runStatusVisual('failed').tone).toBe('fail');
-    expect(runStatusVisual('cancelled').tone).toBe('fail');
-    expect(runStatusVisual('waiting_for_approval').tone).toBe('attention');
-    expect(runStatusVisual('queued').tone).toBe('pending');
-    expect(runStatusVisual('starting').tone).toBe('pending');
-    expect(runStatusVisual('running').tone).toBe('pending');
-  });
-});
-
 describe('JobDetail run-history status column', () => {
   test('completed renders the ok tone', () => {
     renderWithRuns([makeRun('completed', 'r1')]);
@@ -85,24 +72,25 @@ describe('JobDetail run-history status column', () => {
     expect(cell.className).toContain('schedule__log-status--ok');
   });
 
-  test.each<RunStatus>(['failed', 'cancelled'])(
-    'genuinely-failed status %s renders the fail tone',
-    (status) => {
-      renderWithRuns([makeRun(status, `r-${status}`)]);
-      const cell = statusCell(runStatusVisual(status).label);
-      expect(cell.className).toContain('schedule__log-status--fail');
-    },
-  );
+  test.each<[RunStatus, string]>([
+    ['failed', 'Failed'],
+    ['cancelled', 'Cancelled'],
+  ])('genuinely-failed status %s renders the fail tone', (status, label) => {
+    renderWithRuns([makeRun(status, `r-${status}`)]);
+    const cell = statusCell(label);
+    expect(cell.className).toContain('schedule__log-status--fail');
+  });
 
-  test.each<RunStatus>(['queued', 'starting', 'running'])(
-    'in-flight status %s does NOT render the fail tone',
-    (status) => {
-      renderWithRuns([makeRun(status, `r-${status}`)]);
-      const cell = statusCell(runStatusVisual(status).label);
-      expect(cell.className).not.toContain('schedule__log-status--fail');
-      expect(cell.className).toContain('schedule__log-status--pending');
-    },
-  );
+  test.each<[RunStatus, string]>([
+    ['queued', 'Queued'],
+    ['starting', 'Starting'],
+    ['running', 'Running'],
+  ])('in-flight status %s does NOT render the fail tone', (status, label) => {
+    renderWithRuns([makeRun(status, `r-${status}`)]);
+    const cell = statusCell(label);
+    expect(cell.className).not.toContain('schedule__log-status--fail');
+    expect(cell.className).toContain('schedule__log-status--pending');
+  });
 
   test('waiting_for_approval does NOT render the fail tone, and is distinguishable from plain running', () => {
     renderWithRuns([makeRun('waiting_for_approval', 'r-wait')]);

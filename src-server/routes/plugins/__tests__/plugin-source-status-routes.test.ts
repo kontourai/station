@@ -37,6 +37,7 @@ import {
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { pluginAcquisitionOrigin } from '../../../services/plugins/plugin-acquisition-origin.js';
 import { resolveInstalledPluginRoot } from '../../../services/plugins/plugin-incarnation.js';
+import { PluginLifecycleProposalService } from '../../../services/plugins/plugin-lifecycle-proposals.js';
 import {
   LOCAL_SOURCE_STATUS_MAX_FOLDERS,
   observeLocalPluginSourceStatuses,
@@ -156,10 +157,12 @@ function fixture() {
     );
     await next();
   });
+  const proposals = new PluginLifecycleProposalService(home);
   const plugin = new Hono();
   registerPluginInstallRoutes(plugin, {
     ...deps,
     projectVisiblePlugins: () => (installed) => installed,
+    proposals,
   });
   app.route('/api/plugins', plugin);
   app.route(
@@ -210,6 +213,7 @@ function fixture() {
     const preview = await readJson<{
       valid: boolean;
       contentDigest: string;
+      gitMetadata?: 'excluded';
       permissions: { required: string[] };
       installationRevision: unknown;
       grantRevision?: string;
@@ -233,6 +237,7 @@ function fixture() {
         consent: {
           permissions: preview.permissions.required,
           contentDigest: preview.contentDigest,
+          ...(preview.gitMetadata ? { gitMetadata: preview.gitMetadata } : {}),
           dependencies: [],
           ...(preview.grantRevision !== undefined
             ? { grantRevision: preview.grantRevision }
@@ -249,6 +254,7 @@ function fixture() {
     plugins,
     source,
     journal,
+    proposals,
     projects,
     statuses,
     sources,
@@ -284,6 +290,36 @@ describe('#2323 S4 GET /api/plugin-sources', () => {
     });
     expect(changed!.currentSourceDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(changed!.currentSourceDigest).not.toBe(preview.contentDigest);
+  });
+
+  test('#2719: a proposed install of a folder with a nested repository reads unchanged, then changed after an edit', async () => {
+    const f = fixture();
+    mkdirSync(join(f.source, 'vendor', '.git'), { recursive: true });
+    writeFileSync(join(f.source, 'vendor', '.git', 'HEAD'), 'ref: main\n');
+    await f.proposals.propose({
+      kind: 'install',
+      source: f.source,
+      rationale: 'Adds the pulse pane.',
+      author: { principal: 'agent' },
+    });
+    const { preview } = await f.previewAndInstall(f.source);
+    expect(preview.gitMetadata).toBe('excluded');
+
+    expect(await f.sources()).toEqual([
+      {
+        pluginName: 'pulse',
+        projectSlug: 'pulse-project',
+        status: 'unchanged',
+        installedSourceDigest: preview.contentDigest,
+        currentSourceDigest: preview.contentDigest,
+      },
+    ]);
+
+    writeFileSync(
+      join(f.source, 'skills', 'pulse-skill', 'SKILL.md'),
+      '---\nname: pulse-skill\ndescription: Pulse\n---\nGeneration two.',
+    );
+    expect((await f.sources())[0]).toMatchObject({ status: 'changed' });
   });
 
   test('another spelling of the same folder matches (realpath), because the installer canonicalizes the same way', async () => {

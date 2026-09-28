@@ -227,6 +227,11 @@ export interface PluginInstallConsent {
   registryTrustRevision?: string;
   permissions: string[];
   contentDigest: string;
+  /**
+   * Echo of the preview's `gitMetadata`: the preview staged the source
+   * without its git metadata, and the install must stage it the same way.
+   */
+  gitMetadata?: 'excluded';
   dependencies: string[];
   dependencyApprovals?: Array<{
     id: string;

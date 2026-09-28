@@ -34,6 +34,8 @@ export interface ExtensionNotificationBinding {
 /**
  * Exact evidence-backed application semantics for opaque extension events.
  * Unknown tuples remain opaque/no-op; namespace similarity is never authority.
+ * Kiro v3's `_kiro` notification spelling has not been observed, so it stays
+ * unbound.
  */
 const DECLARED_EXTENSION_NOTIFICATION_BINDINGS = [
   {
@@ -216,14 +218,6 @@ export const EXTENSION_NOTIFICATION_BINDINGS: readonly ExtensionNotificationBind
     ),
   );
 
-export const EXTENSION_NOTIFICATION_EVIDENCE_GAPS = Object.freeze([
-  Object.freeze({
-    namespace: '_kiro',
-    observedAgainst: 'kiro-v3' as const,
-    gap: 'notification spelling has not been observed',
-  }),
-]);
-
 export function extensionNotificationBinding(
   namespace: string,
   type: string,
@@ -239,131 +233,6 @@ export function isBoundExtensionNotification(
 ): boolean {
   return extensionNotificationBinding(namespace, type) !== undefined;
 }
-
-/**
- * Open work to stop using the escape hatch for facts Station already has
- * (or should have) a noun for. Bindings stay operational until the adapter
- * emits the target method and the UI consumer of the extension is removed.
- */
-export type ExtensionNotificationPromotion = {
-  readonly namespace: string;
-  readonly type: string;
-  readonly stationEvent: string;
-  readonly status: 'open';
-  readonly evidence: ExtensionNotificationEvidence;
-};
-
-export const EXTENSION_NOTIFICATION_PROMOTIONS = Object.freeze([
-  Object.freeze({
-    namespace: 'claude-code',
-    type: 'thinking/tokens',
-    stationEvent: 'session.activity',
-    status: 'open',
-    evidence: 'station#1815-runtime-observation',
-  }),
-  Object.freeze({
-    namespace: 'claude-code',
-    type: 'session/status',
-    stationEvent: 'session.activity',
-    status: 'open',
-    evidence: 'station#1815-runtime-observation',
-  }),
-  Object.freeze({
-    namespace: '_kiro.dev',
-    type: 'compaction/status',
-    stationEvent: 'session.activity',
-    status: 'open',
-    evidence: 'station#1815-runtime-observation',
-  }),
-  Object.freeze({
-    namespace: '_x.ai',
-    type: 'mcp/init_progress',
-    stationEvent: 'session.activity',
-    status: 'open',
-    evidence: 'station#1935-runtime-observation',
-  }),
-  // Replay only since #2457 (persisted pre-#2457 Claude history).
-  Object.freeze({
-    namespace: 'claude-code',
-    type: 'task/registry',
-    stationEvent: 'agent.tasks',
-    status: 'open',
-    evidence: 'station#1815-runtime-observation',
-  }),
-  Object.freeze({
-    namespace: 'claude-code',
-    type: 'task/settled',
-    stationEvent: 'agent.tasks',
-    status: 'open',
-    evidence: 'station#1815-runtime-observation',
-  }),
-  Object.freeze({
-    namespace: '_kiro.dev',
-    type: 'subagent/list_update',
-    stationEvent: 'agent.tasks',
-    status: 'open',
-    evidence: 'station#1935-runtime-observation',
-  }),
-  Object.freeze({
-    namespace: '_kiro.dev',
-    type: 'metadata',
-    stationEvent: 'token-usage.updated',
-    status: 'open',
-    evidence: 'station#1935-runtime-observation',
-  }),
-  Object.freeze({
-    namespace: '_kiro.dev',
-    type: 'mcp/oauth_request',
-    stationEvent: 'request.opened',
-    status: 'open',
-    evidence: 'station#1815-runtime-observation',
-  }),
-  Object.freeze({
-    namespace: '_x.ai',
-    type: 'session/prompt_complete',
-    stationEvent: 'turn.completed',
-    status: 'open',
-    evidence: 'station#1935-runtime-observation',
-  }),
-  Object.freeze({
-    namespace: '_x.ai',
-    type: 'models/update',
-    stationEvent: 'session.configured',
-    status: 'open',
-    evidence: 'station#1935-runtime-observation',
-  }),
-  Object.freeze({
-    namespace: '_x.ai',
-    type: 'settings/update',
-    stationEvent: 'session.configured',
-    status: 'open',
-    evidence: 'station#1935-runtime-observation',
-  }),
-  Object.freeze({
-    namespace: '_x.ai',
-    type: 'sessions/changed',
-    stationEvent: 'session.attached',
-    status: 'open',
-    evidence: 'station#1935-runtime-observation',
-  }),
-  Object.freeze({
-    namespace: '_x.ai',
-    type: 'announcements/update',
-    stationEvent: 'session.notice',
-    status: 'open',
-    evidence: 'station#1935-runtime-observation',
-  }),
-  Object.freeze({
-    namespace: '_x.ai',
-    type: 'queue/changed',
-    // Grok's engine-side prompt queue. Station's noun is queuedMessages
-    // (drain on turn.completed as a new turn). Steer is the host→agent
-    // extension method `_x.ai/interject`, not this notification.
-    stationEvent: 'queuedMessages',
-    status: 'open',
-    evidence: 'station#1935-runtime-observation',
-  }),
-]) satisfies readonly ExtensionNotificationPromotion[];
 
 const unboundFirstSeen = new Set<string>();
 
@@ -385,8 +254,4 @@ export function takeUnboundExtensionNotice(
   if (unboundFirstSeen.has(key)) return false;
   unboundFirstSeen.add(key);
   return true;
-}
-
-export function _resetUnboundExtensionNotices(): void {
-  unboundFirstSeen.clear();
 }

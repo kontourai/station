@@ -6,7 +6,6 @@ import { FileMemoryAdapter } from '../memory-adapter.js';
 import {
   createPromptOnlyMemoryView,
   excludeChatErrorMarkers,
-  isChatErrorMarkerMessage,
 } from '../memory-adapter-prompt-view.js';
 
 const tempDirs: string[] = [];
@@ -95,7 +94,7 @@ describe('createPromptOnlyMemoryView (#191 code-review HIGH-1)', () => {
       (m: any) => m.parts?.[0]?.text as string | undefined,
     );
 
-    expect(texts).not.toContain(expect.stringContaining('[CHAT_ERROR]'));
+    expect(texts).not.toContainEqual(expect.stringContaining('[CHAT_ERROR]'));
     expect(texts.some((t) => t?.includes('AccessDeniedException'))).toBe(false);
     // The unrelated add-system-message convention stays visible to the model.
     expect(texts).toContain('[SYSTEM_EVENT] User switched to dark mode');
@@ -145,33 +144,8 @@ describe('createPromptOnlyMemoryView (#191 code-review HIGH-1)', () => {
   });
 });
 
-describe('isChatErrorMarkerMessage / excludeChatErrorMarkers', () => {
-  test('only matches role:user messages carrying the [CHAT_ERROR] sub-marker', () => {
-    expect(
-      isChatErrorMarkerMessage({
-        role: 'user',
-        parts: [{ type: 'text', text: '[SYSTEM_EVENT] [CHAT_ERROR] boom' }],
-      } as any),
-    ).toBe(true);
-
-    expect(
-      isChatErrorMarkerMessage({
-        role: 'user',
-        parts: [
-          { type: 'text', text: '[SYSTEM_EVENT] User switched to dark mode' },
-        ],
-      } as any),
-    ).toBe(false);
-
-    expect(
-      isChatErrorMarkerMessage({
-        role: 'assistant',
-        parts: [{ type: 'text', text: '[SYSTEM_EVENT] [CHAT_ERROR] boom' }],
-      } as any),
-    ).toBe(false);
-  });
-
-  test('excludeChatErrorMarkers preserves order of remaining messages', () => {
+describe('excludeChatErrorMarkers', () => {
+  test('drops only user [CHAT_ERROR] markers and preserves the order of the rest', () => {
     const messages = [
       { id: 'a', role: 'user', parts: [{ type: 'text', text: 'hi' }] },
       {
@@ -180,11 +154,25 @@ describe('isChatErrorMarkerMessage / excludeChatErrorMarkers', () => {
         parts: [{ type: 'text', text: '[SYSTEM_EVENT] [CHAT_ERROR] boom' }],
       },
       { id: 'c', role: 'assistant', parts: [{ type: 'text', text: 'ok' }] },
+      {
+        id: 'd',
+        role: 'assistant',
+        parts: [{ type: 'text', text: '[SYSTEM_EVENT] [CHAT_ERROR] boom' }],
+      },
+      {
+        id: 'e',
+        role: 'user',
+        parts: [
+          { type: 'text', text: '[SYSTEM_EVENT] User switched to dark mode' },
+        ],
+      },
     ] as any;
 
     expect(excludeChatErrorMarkers(messages).map((m: any) => m.id)).toEqual([
       'a',
       'c',
+      'd',
+      'e',
     ]);
   });
 });
