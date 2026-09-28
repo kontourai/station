@@ -78,7 +78,8 @@ async function recordInlineHistory(page: Page) {
   await page.addInitScript(() => {
     const w = window as unknown as { __brandingHistory?: string[] };
     w.__brandingHistory = [];
-    let last = '';
+    // Neither property set; other inline-style writes on <html> are ignored.
+    let last = '|';
     const record = () => {
       const style = document.documentElement?.style;
       if (!style) return;
@@ -94,6 +95,11 @@ async function recordInlineHistory(page: Page) {
     });
   });
 }
+
+const inlineFocus = (page: Page) =>
+  page.evaluate(() =>
+    document.documentElement.style.getPropertyValue('--k-focus'),
+  );
 
 const inlineHistory = (page: Page) =>
   page.evaluate(
