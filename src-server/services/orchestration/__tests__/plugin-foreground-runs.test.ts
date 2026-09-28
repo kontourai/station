@@ -1,6 +1,7 @@
 import { PLUGIN_FOREGROUND_WORK_SCHEMA_VERSION } from '@kontourai/station-contracts/plugin-foreground-work';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test } from 'vitest';
+import type { PluginForegroundRunRecord } from '../../plugins/plugin-foreground-runs.js';
 import {
   PluginForegroundRunStorageUnavailableError,
   RunService,
@@ -23,6 +24,19 @@ const run = {
   updatedAt: '2026-09-03T00:00:02.000Z',
   completedAt: '2026-09-03T00:00:02.000Z',
   failureSummary: 'Plugin work may have continued before Station stopped.',
+};
+// The full stored row, private owner and idempotency facts included. The
+// reader's public type admits it (a record extends the run), so only the
+// `/runs` projection stands between these fields and the wire.
+const storedRecord: PluginForegroundRunRecord = {
+  ...run,
+  installationKey: 'host-installation-key-secret',
+  accountId: 'account-a',
+  idempotencyDigest: 'idempotency-digest-secret',
+  inputDigest: 'input-digest-secret',
+  executionOwnerId: 'execution-owner-secret',
+  executionOwnerPid: 4242,
+  executionOwnerIdentityKind: 'unverified',
 };
 
 function createService(
@@ -52,10 +66,10 @@ function createService(
 describe('RunService plugin foreground projection', () => {
   test('reads and filters the canonical plugin run without projecting private identities', async () => {
     const service = createService({
-      list: async () => ({ kind: 'available', runs: [run] }),
+      list: async () => ({ kind: 'available', runs: [storedRecord] }),
       read: async (runId) => ({
         kind: 'available',
-        run: runId === run.runId ? run : null,
+        run: runId === run.runId ? storedRecord : null,
       }),
     });
 
@@ -76,10 +90,24 @@ describe('RunService plugin foreground projection', () => {
         }),
       }),
     ]);
+    const listed = await service.listRuns(authority, { source: 'plugin' });
     const observed = await service.readRun(run.runId, authority);
     expect(observed).toMatchObject({ source: 'plugin', status: 'failed' });
-    expect(JSON.stringify(observed)).not.toContain('installationKey');
-    expect(JSON.stringify(observed)).not.toContain('idempotency');
+    for (const projected of [
+      JSON.stringify(listed),
+      JSON.stringify(observed),
+    ]) {
+      for (const secret of [
+        'host-installation-key-secret',
+        'idempotency-digest-secret',
+        'input-digest-secret',
+        'execution-owner-secret',
+        'installationKey',
+        'idempotency',
+      ]) {
+        expect(projected).not.toContain(secret);
+      }
+    }
   });
 
   test('fails closed when the canonical plugin run reader is unavailable', async () => {

@@ -2424,9 +2424,9 @@ export class OrchestrationService {
         this.sessionReadModel.get(threadId)?.provider,
       providerForThread: (threadId) => this.threadProviders.get(threadId),
       // The divergent teardown flags are declared HERE, not in the module:
-      // the slice-2 source invariant scans only this file and pins all six
-      // flagged forgetThreadState call sites (quarantine's row is first in
-      // the seam docblock table, and this ctor site keeps that order).
+      // the slice-2 source invariant scans only this file and keys this
+      // site by the collaborator it is handed to (the seam docblock table's
+      // CredentialProfileRecovery row).
       forgetThreadState: (threadId) =>
         this.forgetThreadState(threadId, {
           policyThreads: true,
@@ -2533,10 +2533,9 @@ export class OrchestrationService {
       },
       // The divergent teardown flags are declared HERE, not in the module
       // (slice-2 source invariant, T10(3)): the scan reads only this file,
-      // and an inline literal is the only form it can see. This is the
-      // SECOND ctor-declared seam site; CredentialProfileRecovery's sorts
-      // first and this one second, mirrored by the docblock table's first
-      // two rows.
+      // and an inline literal is the only form it can see. The scan keys
+      // this site by the collaborator it is handed to (the docblock table's
+      // CooperativeStop row).
       forgetThreadState: (threadId) =>
         this.forgetThreadState(threadId, {
           policyThreads: true,
@@ -3039,7 +3038,6 @@ export class OrchestrationService {
       ? await this.options.resolveSessionAgent(withCredentialProfile, captured)
       : withCredentialProfile;
     const unavailableReason = sessionAgentStartUnavailableReason({
-      provider: input.provider,
       agentSlug,
       // Providers with no session-delivery concept — Station's own engine
       // and the managed model runtimes, for which `sessionDeliveryChannels`
@@ -6989,8 +6987,8 @@ export class OrchestrationService {
           // which reads only `ACTIVE_TURN_FOLD_METHODS` and treats every
           // other canonical method as a pass-through no-op — so narrowing
           // the query to that shared list is bit-identical to folding the
-          // full log (pinned by a differential test against all 27 canonical
-          // methods, alongside `InternalStopSuppression.arm`'s narrowing —
+          // full log (pinned by a differential test against every canonical
+          // method, alongside `InternalStopSuppression.arm`'s narrowing —
           // see its docblock for the same idiom and the cost breakdown: row
           // count and `JSON.parse` savings, NOT attachment-blob hydration,
           // which fires only on `turn.started` and is paid identically
@@ -8340,10 +8338,10 @@ export class OrchestrationService {
    * review, instead of six copies drifting silently.
    *
    * Current declared subsets (update this table when a caller changes;
-   * rows 1 AND 2's flags are DECLARED at the ctor seam — the
-   * `forgetThreadState` dep closures handed to CredentialProfileRecovery
-   * and CooperativeStop, in that construction order — which is also why
-   * those sites sort first and second in file order). `discardDraftSession`
+   * the first segment of each caller names the enclosing method, or, for
+   * the `forgetThreadState` dep closures DECLARED at the ctor seam, the
+   * collaborator they are handed to — CredentialProfileRecovery and
+   * CooperativeStop). `discardDraftSession`
    * (#2312) clears everything: the thread is deleted, so no binding, cached
    * owner or progress record of it may outlive the delete:
    * | caller | policyThreads | flowBoundThreads | ownerCache | turnProgress |

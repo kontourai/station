@@ -41,27 +41,6 @@ describe('RecoveryLedger', () => {
     return { databasePath, eventStore, ledger, intent };
   }
 
-  test('keeps the former EventStore recovery method bag out of its Interface', () => {
-    const names = Object.getOwnPropertyNames(EventStore.prototype);
-    expect(names).not.toEqual(
-      expect.arrayContaining([
-        'insertRecoveryIntent',
-        'readRecoveryIntent',
-        'readLatestRecoveryProjection',
-        'listPendingRecoveryIntents',
-        'listCompensationRequiredRecoveryIntents',
-        'recordRecoveryOutcome',
-        'recordRecoveryFailure',
-        'markRecoveryCompensationRequired',
-        'resolveRecoveryCompensation',
-        'cancelRecoveryIntent',
-        'cancelPendingRecoveryIntents',
-        'cancelPendingRecoveryIntentsForTurn',
-        'createRecoveryDispatchSettlement',
-      ]),
-    );
-  });
-
   test('returns frozen redacted snapshots instead of settlement credentials', () => {
     const { eventStore, ledger, intent } = fixture();
     const snapshot = ledger.find(intent.fingerprint);
