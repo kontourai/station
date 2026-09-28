@@ -8,6 +8,12 @@ export function captureInputs(capture) {
   return [capture.path, ...capture.sources.map((source) => source.path)];
 }
 
+/**
+ * @param {any} manifest
+ * @param {Set<string>} tracked
+ * @param {(path: string) => Promise<Buffer | Uint8Array | string> | Buffer | Uint8Array | string} read
+ * @param {{ requireFresh?: boolean | ((entry: { path: string, inputs: string[] }) => boolean) }} [options]
+ */
 export async function compileLearningMedia(
   manifest,
   tracked,

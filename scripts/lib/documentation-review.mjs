@@ -87,6 +87,11 @@ export function reviewInputs(record) {
  * Shared interpretation for strict builds and advisory catch-up reporting.
  * `requireFresh` is a boolean or the scoped decision from
  * `freshnessRequirement` in documentation-freshness.mjs.
+ * @param {any} record
+ * @param {Map<string, string>} documents
+ * @param {Set<string>} tracked
+ * @param {(path: string) => any} readSource
+ * @param {{ requireFresh?: boolean | ((entry: { path: string, inputs: string[] }) => boolean), reportMissing?: boolean }} [options]
  */
 export async function evaluateDocumentationReview(
   record,
@@ -216,6 +221,13 @@ export async function evaluateDocumentationReview(
   };
 }
 
+/**
+ * @param {any} ledger
+ * @param {Map<string, string>} documents
+ * @param {Set<string>} tracked
+ * @param {(path: string) => any} readSource
+ * @param {{ requireFresh?: boolean | ((entry: { path: string, inputs: string[] }) => boolean) }} [options]
+ */
 export async function compileDocumentationReviews(
   ledger,
   documents,
