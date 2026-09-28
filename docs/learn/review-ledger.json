@@ -1111,7 +1111,7 @@
     {
       "path": ".veritas/README.md",
       "documentDigest": "f7ccb945343f28964f21df514e0005e861b1bdd122e7808cbe06277818a2180c",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "8e4fd10cc263c039bc6b3abdf9bfc8152ad27cee",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Current repository Veritas integration and protected-policy/evidence boundaries. Full 87-line baseline read. Actual repository configuration, installed Veritas 1.7.4 public docs/schema, hook wiring and generated-path contracts inspected. Reviewed the approved documentation evidence activation and policy-change attestation; authority settings remain unchanged.",
@@ -1215,7 +1215,7 @@
         },
         {
           "path": "scripts/lib/documentation-review.mjs",
-          "digest": "64b2e7e2c053818dad293b34f253993fa89d4f3b8dcfea6ad0f20ea65b22f300"
+          "digest": "f1439e2073cbec562f1014601c2ad50d1e4b9d975b5cb351d35e05332d1c23ea"
         },
         {
           "path": "scripts/lib/fast-checks-shards.mjs",
@@ -1312,7 +1312,8 @@
         "Integration source review through d1e0facc2: Merged actual-repository owner checks with reader/snapshot coverage; retired marker-only assertion removed. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Integration source review through e0314c727: ci.yml added a zsh step and a longer timeout to the fast-checks shards, and package.json dropped bearing/forage. Veritas stays pinned at 1.7.4, and fast-checks still aggregates a plan, four shards and fast-checks-statics, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2914) verification-policy-gate.mjs now also reports validateLaneCatalog errors and unexports E2E_LATEST_GUIDANCE_MARKERS/VERIFICATION_SCHEDULING_SECTION. The README's claims (the gate keeps lane wiring and guidance from drifting; verification-lanes.mjs is the command owner) still hold; prose accurate. Source review is separate from executed test evidence.",
-        "Rewrote the documentation-truth freshness description: scoped in ci:fast readiness and pre-push, advisory in the merge queue, on main and in Nightly static verification, reported by the repo-scan job; checked against documentation-freshness.mjs mode selection and run-repo-scan-suites.mjs. The run-ci-fast/verification-policy delta adds five verify:static gates to ci:fast and does not change the readiness call described here."
+        "Rewrote the documentation-truth freshness description: scoped in ci:fast readiness and pre-push, advisory in the merge queue, on main and in Nightly static verification, reported by the repo-scan job; checked against documentation-freshness.mjs mode selection and run-repo-scan-suites.mjs. The run-ci-fast/verification-policy delta adds five verify:static gates to ci:fast and does not change the readiness call described here.",
+        "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged."
       ]
     },
     {
@@ -11419,7 +11420,7 @@
     {
       "path": "docs/guides/code-quality.md",
       "documentDigest": "c1561e1356529f776d9a4ee0728f3a15780417a527d9e8ea1931c5227e777564",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "8e4fd10cc263c039bc6b3abdf9bfc8152ad27cee",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Contributor quality and publication requirements with current hook composition. Full 316-line baseline read. Hook ordering, readiness selection, lane composition, route-helper adoption and actual raw-parameter route inspected. Requirements distinguished from execution proof; historical cost observations not remeasured. Follow-up: Push & Monitor delta only: separates merge-queue arm/confirm/stop from following task-required CI evidence to its outcome.",
@@ -11531,7 +11532,7 @@
         },
         {
           "path": "scripts/lib/documentation-review.mjs",
-          "digest": "64b2e7e2c053818dad293b34f253993fa89d4f3b8dcfea6ad0f20ea65b22f300"
+          "digest": "f1439e2073cbec562f1014601c2ad50d1e4b9d975b5cb351d35e05332d1c23ea"
         },
         {
           "path": "scripts/lib/fast-checks-shards.mjs",
@@ -11627,7 +11628,8 @@
         "Integration source review through d1e0facc2: Merged actual-repository owner checks with reader/snapshot coverage; retired marker-only assertion removed. Existing prose remains accurate. Source review is separate from executed test evidence.",
         "Integration source review through e0314c727: ci.yml added zsh provisioning to fast-checks shards and package.json dropped bearing/forage. The guide's fast-checks aggregation, shard and hook claims are unaffected and cite no shard timeout, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 8b48e2b35 (#2914) adds validateLaneCatalog errors to the verification-policy gate and narrows two exports. The guide's fast-checks and documentation-gate descriptions are unaffected; prose accurate. Source review is separate from executed test evidence.",
-        "Updated the documentation-checks paragraph for scoped freshness (touched stale records block; repo scans and the merge queue report). Reviewed deltas: ci:fast gains five cheap verify:static gates; the code-health section is unchanged; documentation.md and the audit skill gained freshness and slice guidance."
+        "Updated the documentation-checks paragraph for scoped freshness (touched stale records block; repo scans and the merge queue report). Reviewed deltas: ci:fast gains five cheap verify:static gates; the code-health section is unchanged; documentation.md and the audit skill gained freshness and slice guidance.",
+        "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged."
       ]
     },
     {
@@ -13524,7 +13526,7 @@
     {
       "path": "docs/guides/development.md",
       "documentDigest": "ec666bebf846549080f52a23b5d13a1f3fc7a87be01a72c78a1ce8cdf13a7a25",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "8e4fd10cc263c039bc6b3abdf9bfc8152ad27cee",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Checkout setup and contributor workflow, with normative boundaries routed to owners. Full 415-line baseline read. Dependency lifecycle, workspace/package contract, command ownership, verification paths and plugin workflow boundaries checked. No installs outside managed setup, plugin installation, runtime/service control, native build or publication performed.",
@@ -13652,7 +13654,7 @@
         },
         {
           "path": "scripts/lib/documentation-review.mjs",
-          "digest": "64b2e7e2c053818dad293b34f253993fa89d4f3b8dcfea6ad0f20ea65b22f300"
+          "digest": "f1439e2073cbec562f1014601c2ad50d1e4b9d975b5cb351d35e05332d1c23ea"
         },
         {
           "path": "scripts/lib/fast-checks-shards.mjs",
@@ -13738,7 +13740,8 @@
         "Integration source review through e0314c727: ci.yml added a zsh provisioning step to the four fast-checks shards (timeout 60 to 65). package.json dropped bearing/forage. lifecycle-code-root.ts gained install-root marker and installer-owned archive resolution. The shard/statics description, package table and CLI list are still accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 1cc8576b4 deletes the test-only helpers parseGitSource and extractPluginName from packages/cli/src/commands/helpers.ts. They had no production callers, and the guide mentions neither them nor a default Git branch. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) moves the packaged-release manifest parsing out of lifecycle-code-root.ts into shared/prebuilt-archive and stages bin/station-launcher.mjs in portable-server-archive. 8b48e2b35 (#2914) adds validateLaneCatalog to the verification-policy gate. The guide's CLI list (./station upgrade), package table and ci:fast invariants description are unaffected; prose accurate. Source review is separate from executed test evidence.",
-        "Named the evidence-check registration and generated-output invariants that ci:fast now runs (run-ci-fast.mjs FAST_STATIC_COMMANDS). Other deltas (package.json scripts, documentation guide and skill freshness text, review compiler predicate) do not affect this guide's claims."
+        "Named the evidence-check registration and generated-output invariants that ci:fast now runs (run-ci-fast.mjs FAST_STATIC_COMMANDS). Other deltas (package.json scripts, documentation guide and skill freshness text, review compiler predicate) do not affect this guide's claims.",
+        "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged."
       ]
     },
     {
@@ -19276,7 +19279,7 @@
     {
       "path": "docs/guides/testing.md",
       "documentDigest": "520a589a2fc47520ae395148d71c85b68672d083c1df36f109319c46cfcb0fe2",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "8e4fd10cc263c039bc6b3abdf9bfc8152ad27cee",
       "kind": "policy",
       "state": "source-reviewed",
       "summary": "Evidence selection, contributor test practices, and dated verification rationale. Full 1615-line baseline read. Traced named lane owners, generated sections, static prerequisites, focused runner, CI path, SSE helper and representative public test helpers. Benchmarks, screenshot observations, live-provider and native outcomes retained as historical or unverified; not all tests executed.",
@@ -19380,7 +19383,7 @@
         },
         {
           "path": "scripts/lib/documentation-review.mjs",
-          "digest": "64b2e7e2c053818dad293b34f253993fa89d4f3b8dcfea6ad0f20ea65b22f300"
+          "digest": "f1439e2073cbec562f1014601c2ad50d1e4b9d975b5cb351d35e05332d1c23ea"
         },
         {
           "path": "scripts/lib/fast-checks-shards.mjs",
@@ -19513,7 +19516,8 @@
         "Integration source review through abfc7a889: #2864 adds one TEMP_VIA_FIXTURE directory-walk exemption, for plugin-proposal-staged-reinstall.test.ts, to scripts/__tests__/path-read-pin-boundary.test.ts. The guide makes no claim about that exemption list or its size. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 42491ca6b: 55cc03451 (#2910) makes a product-law path add its law's observation and fault-injection vitest-file suites to the changed selection, where it used to route to a ci-fast lane and defer the whole diff. 1cc8576b4 (#2907) drops keyedQueryDefaults from the repo-scan and path-read lists, renames the SDK browser-bundle manifest targets to browser-entry-bundles.test.ts and adds a profile.test.ts directory-walk exemption. The guide never claimed that product laws defer to a ci-fast lane and names none of these suites. Its claims still hold: exit 3 is a deferral, deferred lanes stay deferred, and changed areas are matched to their registered laws. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: #2914 adds Android NDK, PR-smoke bound and no-child-process tests to ci-workflow-contract; the Playwright image version vs pnpm-lock assertion remains. It repoints the path-read-pin fixtures, drops the native-recovery-docs impact rules and adds the store-registry test in test-impact-manifest. It also makes verification-policy-gate run validateLaneCatalog and un-export its E2E latest markers, which are still enforced. Prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed deltas: ci:fast adds five fixed verify:static gates (the guide describes a fixed bounded static invariant set, still accurate); test-impact-manifest maps the freshness CLIs and sweep workflow to documentation-freshness.test.ts; the ledger test now uses the shared scoped policy. No generated schedule or claim here changes."
+        "Reviewed deltas: ci:fast adds five fixed verify:static gates (the guide describes a fixed bounded static invariant set, still accurate); test-impact-manifest maps the freshness CLIs and sweep workflow to documentation-freshness.test.ts; the ledger test now uses the shared scoped policy. No generated schedule or claim here changes.",
+        "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged."
       ]
     },
     {
@@ -20328,7 +20332,7 @@
       "kind": "current",
       "state": "source-reviewed",
       "documentDigest": "6957212df287b51011420a3f6f46a696a701c5e48fd92e277f82800ff6cc21ac",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "8e4fd10cc263c039bc6b3abdf9bfc8152ad27cee",
       "summary": "Reviewed navigation, immutable source snapshots, lazy loading, diagram controls, capture admission, review freshness, impact/catch-up and shared MCP inputs against their actual implementation.",
       "limits": "Local contributor reader. No public Pages deployment, remote physical device, or semantic certification follows from a structural check. Media playback has a separate browser check.",
       "sources": [
@@ -20362,7 +20366,7 @@
         },
         {
           "path": "scripts/lib/learning-media.mjs",
-          "digest": "2166372a7ae84742173a10c299b6563e2406ea8abdb1892a619311c47d1d2335"
+          "digest": "a4dce45b834148b0affa0c1e2c4da7034e4129389912954b277dfe262382fbd7"
         },
         {
           "path": "src-server/tools/station-docs-server.ts",
@@ -20404,7 +20408,8 @@
         "Landing source delta through 61d497e88: Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
         "Reviewed landing deltas through 111744681: Added NativeApplicationSignaling to the Connections branch; the catalog still assigns every module once and introduces no runtime authority.",
         "Integration source review through e0314c727: atlas.json swapped CollaborativeEditorPane for ProjectTaskRoom, added NativeApplicationSignaling and dropped PluginForegroundRuns in its concept groups. The README describes atlas mechanics generically and names none of them; prose accurate. Source review is separate from executed test evidence.",
-        "Reviewed the freshness and capture paragraphs against the shared policy (build-learning-guide check mode now resolves it; stale entries outside the change print as advisory) and the capture refresh path in record-documentation-review.mjs (reviewedRevision, source digests, reviewNotes; refuses changed image bytes). learning-media.mjs gained captureInputs, the requireFresh predicate and reviewNotes validation. Executed learning-media.test.ts and documentation-freshness.test.ts."
+        "Reviewed the freshness and capture paragraphs against the shared policy (build-learning-guide check mode now resolves it; stale entries outside the change print as advisory) and the capture refresh path in record-documentation-review.mjs (reviewedRevision, source digests, reviewNotes; refuses changed image bytes). learning-media.mjs gained captureInputs, the requireFresh predicate and reviewNotes validation. Executed learning-media.test.ts and documentation-freshness.test.ts.",
+        "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged."
       ]
     },
     {
@@ -23298,7 +23303,7 @@
       "kind": "generated",
       "state": "source-reviewed",
       "documentDigest": "03d269422876c81717e4e4d616506ffffbac0c99426a5b260692fce34ff20472",
-      "sourceRevision": "9a2f2f9966d4bb47ce78aa6480a446f0afd632bc",
+      "sourceRevision": "8e4fd10cc263c039bc6b3abdf9bfc8152ad27cee",
       "summary": "Reviewed release-entry validation and deterministic Markdown projection. Routine data updates receive a separate generated-output check; publication and commit-back remain independently fallible.",
       "limits": "Machine validation establishes entry shape and exact projection, not publication outcomes, complete release history, current artifact availability or platform behavior. Prior review hashes remain historical when generated data changes.",
       "sources": [
@@ -23312,7 +23317,7 @@
         },
         {
           "path": "scripts/lib/documentation-review.mjs",
-          "digest": "64b2e7e2c053818dad293b34f253993fa89d4f3b8dcfea6ad0f20ea65b22f300"
+          "digest": "f1439e2073cbec562f1014601c2ad50d1e4b9d975b5cb351d35e05332d1c23ea"
         }
       ],
       "checks": [
@@ -23322,7 +23327,8 @@
         "Reviewed the generated nightly-npm entry from upstream 39dfe2680: dated workflow/registry attribution and explicitly unknown artifactBuiltAt remain historical publication metadata, not new audit execution or qualification. No product/runtime source changed.",
         "Reviewed the closed generated-release lifecycle: entry and changelog validation, unique identities, fatal UTF-8 decoding, and exact Markdown rendering are separate from publication truth and retained human/agent source review. Generator/validator drift and ordinary missing/changed guides still require review. Only source-free, check-free classified changeset notes can become absent historical records. Catch-up and the reader use the same derived states; old hashes are not automatically refreshed.",
         "Canonical deployment entry validator now checks rendered changelog fields while retaining qualified note-only historical rows; 32 focused tests passed in 560ms. Generated compiler and CLI tests exercise refusal cases separately.",
-        "Reviewed the documentation-review.mjs delta: requireFresh also accepts the scoped predicate and reviewInputs is exported; the deploy-ledger generated-output validation path is unchanged."
+        "Reviewed the documentation-review.mjs delta: requireFresh also accepts the scoped predicate and reviewInputs is exported; the deploy-ledger generated-output validation path is unchanged.",
+        "Reviewed the JSDoc-only delta that types the requireFresh option (boolean or scoped predicate) in the review and capture compilers; behavior and this document's claims are unchanged."
       ]
     },
     {
