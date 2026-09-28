@@ -17,7 +17,10 @@ import type {
 } from '@kontourai/station-contracts/starter-work';
 import { apiErrorMessage } from './client/api-error-message';
 import { authenticatedFetch } from './client/http';
-import { rethrowDeadline } from './client/request-deadline';
+import {
+  rethrowDeadline,
+  StationRequestTimeoutError,
+} from './client/request-deadline';
 import {
   type QueryConfig,
   resolveApiBase,
@@ -220,7 +223,9 @@ export async function launchScheduledCheckStarter(
   try {
     parsed = (await response.json()) as typeof parsed;
   } catch (error) {
-    rethrowDeadline(error);
+    // A deadline mid-body is the same uncertainty as one before the headers.
+    if (error instanceof StationRequestTimeoutError)
+      throw new ScheduledCheckStarterResponseError(input.operationId, error);
     if (response.ok)
       throw new ScheduledCheckStarterResponseError(input.operationId, error);
     throw error;

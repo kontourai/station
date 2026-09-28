@@ -45,7 +45,7 @@ import {
   type SessionBuilderRunView,
   type SessionFlowRunView,
 } from '../client/orchestration';
-import { rethrowDeadline } from '../client/request-deadline';
+import { StationRequestTimeoutError } from '../client/request-deadline';
 import {
   type MutationOptions,
   type QueryConfig,
@@ -569,7 +569,15 @@ export async function adoptOrchestrationSession(input: {
   try {
     result = (await response.json()) as typeof result;
   } catch (error) {
-    rethrowDeadline(error);
+    // A request deadline that fired while the body was read: Station may have
+    // created the continuation, exactly as when it fires before the headers.
+    if (error instanceof StationRequestTimeoutError)
+      throw new AdoptSessionError({
+        failureClass: 'uncertain-no-response',
+        message: 'Station did not answer before the request ended.',
+        retryable: true,
+        cause: error,
+      });
     if (response.ok) {
       // A 2xx whose body cannot be read may have CREATED the continuation
       // (the native relay resolves on headers; the stream can reset while
