@@ -21360,7 +21360,7 @@
     },
     {
       "path": "docs/reference/api.md",
-      "sourceRevision": "bef4d5230e321a78f9764cdcb3081df3d145462a",
+      "sourceRevision": "a2557223bd164d27f83e30cb117df8e5235b7d61",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the full API current-claim sweep across all original4073 lines and explicit A-F route-family checklist. Reconciled actual mounted paths, requests/results/errors, consumers and owner boundaries; removed obsolete conflicting examples and historical implementation narration while preserving topic anchors. Current APIs distinguish configured/detected/accepted/activated/completed and missing/unavailable states. Final families cover StarterWork correlation/dispatch, revisioned Spatial pins versus principal-owned Boards, independent-review identity/execution/receipts, and explicit verified-person Device binding. Added grouped navigation and direct source/caller links. This reference is a selected route walkthrough; endpoints.md remains the endpoint inventory authority.",
@@ -21933,7 +21933,7 @@
         },
         {
           "path": "src-server/services/scheduling/scheduler-service.ts",
-          "digest": "e81ddfaf053ad9002a1670108fcc0d433f2562902487cd2287c1c9b1d057bd03"
+          "digest": "9060db6e6f089bd8f68263f8339de189ce47a90787e856412f31fac3fb0d62b7"
         },
         {
           "path": "src-server/services/spatial-board/spatial-board-owner-resolver.ts",
@@ -22061,7 +22061,8 @@
         "Integration source review through 42491ca6b: cf43e14d0 changes one case. An ordinary paired-device credential that authorizeCredential refuses on /api/pairing, including POST /api/pairing/requests/:id/confirm without access:approve, now gets 403 insufficient_scope instead of 401. The section on binding a paired device to its verified person already says insufficient authority returns 403, so it is now matched on this path too. No other route claims depend on the refusal status. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c (#2880) adds the request.delivery event and the acknowledgement field to runtime-events, adds ACP approvalAcknowledgement 'none', and adds delegation lastDecision. It changes only a comment in useToolApproval (already-settled now covers requests closed by the engine, cancelled or expired). The /tool-approval routing, /events payload-vocabulary pointer, continuation-caller and ACP model-apply claims are unchanged by the delta. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: 3ab09593d (#2881) install-provenance.ts adds installKind 'archive'; system-update-routes.ts branches GET/POST /api/system/core-update on archives (signed-manifest releaseCheck, applyMethod service-update/station-upgrade/reinstall, installKind archive-service; POST queues an update request and returns 202 with serviceUpdate.requestId or 409/500) and adds GET /api/system/core-update/service-update; pairing scopes add that read leaf; SDK exports requestServiceUpdateProgress/useServiceUpdateProgressQuery; lifecycle.ts forwards STATION_SERVICE_LAUNCHER only to the supervised server; ChatDock only un-exports a helper (#2919). Corrected the Check/Apply Core App Update sections, which listed only source/desktop/unknown provenance: they now cover the archive branch, the 202 service-update request, its 409 refusals and the service-update progress route. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); scheduler.ts (drops the legacy output-only manual-run branch; output/receipt envelope unchanged); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); mcp-service.ts (unused addToolToAgent/removeToolFromAgent/getIntegrationMetadata deleted); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); builtin-scheduler.ts (owns the announced-run set); scheduler-service.ts (addProvider and legacy string manual-run normalization removed); claims corrected: removed the legacy-provider plain-output sentence from Run Job Now.",
+        "2026-09-28 test-audit follow-up: src-server/services/scheduling/scheduler-service.ts changed only by deleting an orphaned doc comment that named the removed legacy route result; claims unaffected. Source review only; no new executed evidence."
       ]
     },
     {
@@ -25164,8 +25165,8 @@
     },
     {
       "path": "docs/reference/station-docs.md",
-      "documentDigest": "52d3c088aed1ecaa9eaf65a68eaeedee361d9390ffcd8cf6d5cbcedd846c20a0",
-      "sourceRevision": "bef4d5230e321a78f9764cdcb3081df3d145462a",
+      "documentDigest": "9e17f0b1ab7f479d22fbcceeba33b78274cf022f4306da4fceb1ed026d791f11",
+      "sourceRevision": "a2557223bd164d27f83e30cb117df8e5235b7d61",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25357,7 +25358,7 @@
         },
         {
           "path": "src-server/tools/station-docs-content.ts",
-          "digest": "2ae5a91a08d895c28a2237f8e7fd1618fb4585ac4b35a94615b90c2e821c83fe"
+          "digest": "f7be47371425b7737b50a91cd366d647882e3feda0ffed9fb540abe793350915"
         },
         {
           "path": "src-server/tools/station-docs-mcp-server.ts",
@@ -25410,7 +25411,8 @@
         "Integration source review through 5731eba07: a290454b4 (#2919) made mcpUiToolCallDecision private and removed the isDistinctFrameOrigin re-export from MCPToolUIFrame.tsx without changing behavior. The sandboxed-frame and mcp-tool-ui renderer claims still hold. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 2ef40ae83: the regenerated MCP content changes only the StationHomeArchive and verification-coordinator module topics, carrying reviewed module-map corrections. The manual's catalog and credential-free claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
         "Integration source review through e464b7065: station-docs-mcp-server.test.ts drops the PERMITTED installation statement for the deleted PluginForegroundRuns topic (#2900); the remaining permission and architecture statements are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
-        "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); session-agent-resolution.ts (never-read provider input removed); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); station-docs-content.ts (regenerated module-map scheduler paragraph); claims unaffected."
+        "2026-09-28 test-audit refresh (PR #2918): sources changed only by enriched-agents.ts (drops the never-read provider argument); orchestration-service.ts (comment rewording and the dropped never-read provider argument); orchestration-session-state.ts (classifyAgentRunFailure/isAgentRunRetryEligible unexported); session-agent-resolution.ts (never-read provider input removed); plugin-install-transaction.ts (unused resolvePluginRegistrySource deleted); plugin-permissions.ts (deprecated always-throwing restorePluginGrantEntry deleted); builtin-scheduler-execution.ts (announced-run fast path moved from a module global to the scheduler instance (test reset hook deleted)); station-docs-content.ts (regenerated module-map scheduler paragraph); claims unaffected.",
+        "2026-09-28 test-audit follow-up: removed the sentence 'Other scheduler providers have their own capabilities.' because addProvider was deleted and only the built-in provider can exist; station-docs-content.ts regenerated with npm run docs:mcp:generate. Source review only; no new executed evidence."
       ]
     },
     {
