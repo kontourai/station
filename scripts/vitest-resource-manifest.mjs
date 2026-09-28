@@ -982,6 +982,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Chromium via `@playwright/test` to measure real cascade-resolved
   // layout (collapsed-card control geometry and hit-testing).
   'src-ui/src/components/notifications/__tests__/BannerHost.collapsed-controls.test.tsx',
+  // Same shape again: launches a real Chromium to measure the content inset
+  // the published banner height produces, and the collapse tween the
+  // reduced-motion primitive refuses, under the real cascade.
+  'src-ui/src/components/notifications/__tests__/BannerHost.reserve-cascade.test.tsx',
   // station#4475 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to hit-test connections-flow controls
   // with and without an active banner.
@@ -1015,6 +1019,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // cascade-resolved row heights (the loading skeleton row vs. the real item
   // row it stands in for).
   'src-ui/src/__tests__/SplitPaneLayout.skeleton-geometry.test.tsx',
+  // Same shape again: launches a real Chromium to prove a long Dialog body
+  // scrolls and keeps the footer's commit action on screen and hittable.
+  'src-ui/src/__tests__/Dialog.chrome.geometry.test.tsx',
   // Exercises the release-cohort CLI through real Node subprocesses so its
   // externally persisted receipt boundary is observable end-to-end.
   'scripts/__tests__/release-cohort.test.ts',

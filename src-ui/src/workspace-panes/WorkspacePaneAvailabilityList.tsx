@@ -45,7 +45,7 @@ const PANE_PREVIEW_ACCENTS = [
   'var(--event-reasoning)',
 ] as const;
 
-export function panePreviewAccent(descriptorId: string): string {
+function panePreviewAccent(descriptorId: string): string {
   let hash = 0;
   for (let index = 0; index < descriptorId.length; index += 1) {
     hash = (hash * 31 + descriptorId.charCodeAt(index)) | 0;

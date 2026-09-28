@@ -37,12 +37,25 @@ test.describe('Orchestration Execution Settings', () => {
   test('shows the active execution summary without triggering onboarding', async ({
     page,
   }) => {
+    // The runner's established-user profile has already dismissed the setup
+    // launcher; clear that so its absence below is the chat-ready status's
+    // own answer rather than the stored dismissal.
+    await page.addInitScript(() => {
+      localStorage.removeItem('station:onboarding-setup-dismissed');
+    });
+    const status = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === '/api/system/status',
+    );
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
-    await dismissSetupLauncher(page);
+    await status;
 
+    // The status was read and the dock is up, so the launcher has had its
+    // chance to render.
+    const dockActions = page.getByRole('button', { name: 'More dock actions' });
+    await expect(dockActions).toBeVisible();
     await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'More dock actions' }).click();
+    await dockActions.click();
     await page
       .getByRole('menuitem', { name: 'Chat settings', exact: true })
       .click();

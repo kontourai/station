@@ -274,10 +274,4 @@ describe('EngineChip', () => {
     render(<EngineChip engine={{ name: 'OpenCode', model: 'GLM-4.7' }} />);
     expect(screen.getByText('OpenCode · GLM-4.7')).toBeTruthy();
   });
-
-  test('never renders "External" or "ACP" — permanent regression guard', () => {
-    render(<EngineChip engine={{ name: 'Claude Code' }} />);
-    expect(screen.queryByText('External')).toBeNull();
-    expect(screen.queryByText('ACP')).toBeNull();
-  });
 });

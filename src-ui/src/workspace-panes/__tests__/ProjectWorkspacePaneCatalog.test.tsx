@@ -58,7 +58,6 @@ test('carries an open refusal in the sanctioned callout primitive, above a still
   const callout = within(dialog).getByRole('alert', {
     name: 'Workspace pane could not open',
   });
-  expect(callout.getAttribute('role')).toBe('alert');
   expect(
     within(dialog).queryByRole('status', {
       name: 'Workspace pane could not open',

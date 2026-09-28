@@ -848,12 +848,14 @@ describe('CommandPalette', () => {
     expect(navigateMock).toHaveBeenCalledWith('/schedule');
   });
 
-  test('runs a command from the shared shortcut registry', async () => {
+  test('records keyboard and pointer selections exactly once each', async () => {
     await renderCommandPalette();
     open();
     const input = screen.getByRole('combobox');
     fireEvent.change(input, { target: { value: 'registered command' } });
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' });
+    // The keyboard path records exactly once on its own, so a double record
+    // there cannot hide behind a pointer path that records nothing.
     expect(registeredCommand).toHaveBeenCalledTimes(1);
     expect(commandFrecencyStorage.read()).toEqual([
       expect.objectContaining({
@@ -861,14 +863,6 @@ describe('CommandPalette', () => {
         count: 1,
       }),
     ]);
-  });
-
-  test('records keyboard and pointer selections exactly once each', async () => {
-    await renderCommandPalette();
-    open();
-    const input = screen.getByRole('combobox');
-    fireEvent.change(input, { target: { value: 'registered command' } });
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' });
 
     open();
     fireEvent.change(screen.getByRole('combobox'), {
@@ -924,14 +918,38 @@ describe('CommandPalette', () => {
     expect(commandFrecencyStorage.read()).toEqual([]);
   });
 
-  test('Arrow keys move highlight before Enter', async () => {
-    projectsMock = [{ slug: 'alpha', name: 'Alpha' }];
+  test('Arrow keys move the highlight, and Enter runs the highlighted command', async () => {
+    projectsMock = [
+      { slug: 'alpha', name: 'Alpha' },
+      { slug: 'alpine', name: 'Alpine' },
+    ];
     await renderCommandPalette();
+    const highlighted = () =>
+      document.getElementById(
+        screen.getByRole('combobox').getAttribute('aria-activedescendant') ??
+          '',
+      )?.textContent;
+
     open();
-    const input = screen.getByRole('combobox');
-    fireEvent.change(input, { target: { value: 'al' } }); // matches "Alpha"
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'alp' },
+    });
+    expect(highlighted()).toContain('Alpha');
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowDown' });
+    expect(highlighted()).toContain('Alpine');
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' });
-    expect(setProjectMock).toHaveBeenCalledWith('alpha');
+    expect(setProjectMock).toHaveBeenCalledTimes(1);
+    expect(setProjectMock).toHaveBeenLastCalledWith('alpine');
+
+    open();
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'alp' },
+    });
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowDown' });
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowUp' });
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' });
+    expect(setProjectMock).toHaveBeenCalledTimes(2);
+    expect(setProjectMock).toHaveBeenLastCalledWith('alpha');
   });
 
   test('Esc closes the palette', async () => {

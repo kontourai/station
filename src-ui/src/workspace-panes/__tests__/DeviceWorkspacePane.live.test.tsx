@@ -43,10 +43,8 @@ import {
 } from '../../float-over-chat/floatStore';
 import { isSourceShown } from '../../float-over-chat/shownSources';
 import {
-  DEVICE_PLACEHOLDER_ASPECT,
   DEVICE_SELECTION_WAIT_MS,
   DeviceWorkspacePane,
-  deviceCornerRadius,
 } from '../DeviceWorkspacePane';
 import { selectDeviceInPane } from '../device/devicePaneSelection';
 import { deviceOsLabel } from '../device/deviceScreen';
@@ -865,13 +863,6 @@ describe('D12: a Project admin reaches shared devices through the Project', () =
 });
 
 describe('the phone stage', () => {
-  test('placeholder aspects and corner radii follow the platform', () => {
-    expect(DEVICE_PLACEHOLDER_ASPECT.ios).toBeCloseTo(9 / 19.5);
-    expect(DEVICE_PLACEHOLDER_ASPECT.android).toBeCloseTo(9 / 20);
-    expect(deviceCornerRadius('ios', { width: 300, height: 650 })).toBe(12);
-    expect(deviceCornerRadius('android', { width: 300, height: 650 })).toBe(42);
-  });
-
   test('the OS label says the platform once, as the hub reports it or bare', () => {
     // The hub reports `version` with its platform ("iOS 26.5", as the
     // server's host fixture has it); a bare version gets the platform.

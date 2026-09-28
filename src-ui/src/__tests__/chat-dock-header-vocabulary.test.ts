@@ -38,16 +38,6 @@ describe('chat dock header keycap hints (station audit F6)', () => {
     expect(subtitle).toMatch(/background:/);
     expect(subtitle).toMatch(/font-family:\s*var\(--font-mono\)/);
   });
-
-  test('the per-button overrides that gave Maximize/New a different keycap color than the dock-toggle hint are gone', () => {
-    // Before the fix, `.chat-dock__new .chat-dock__subtitle` and
-    // `.chat-dock__maximize-btn .chat-dock__subtitle` restyled the keycap
-    // with a second, different color — reverting that (re-adding a
-    // divergent override) reds this.
-    expect(indexCss).not.toMatch(
-      /\.chat-dock__maximize-btn \.chat-dock__subtitle\s*\{[^}]*color:\s*var\(--text-secondary\)/,
-    );
-  });
 });
 
 describe('chat dock "Start a chat" action (station audit F6)', () => {

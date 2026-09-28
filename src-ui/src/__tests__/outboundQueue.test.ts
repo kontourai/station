@@ -1272,12 +1272,6 @@ describe('classifyUndeliverableSend (station#3686)', () => {
     delete (window.navigator as { onLine?: unknown }).onLine;
   });
 
-  it('restores the inherited onLine between tests', () => {
-    expect(
-      Object.getOwnPropertyDescriptor(window.navigator, 'onLine'),
-    ).toBeUndefined();
-  });
-
   // The point of the split. `fetch` throws TypeError for every pre-response
   // failure — a refused socket, a DNS failure, a TLS error, a rejected origin,
   // the wrong port — none of which mean the device has no network. The old

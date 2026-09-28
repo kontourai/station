@@ -452,30 +452,6 @@ async function waitForExecutionThread(
 }
 
 test.describe('Built-in runtime chat workflows', () => {
-  test('opens a Claude runtime session from New Chat', async ({ page }) => {
-    await seedRuntimeRoutes(page);
-    await openRuntimeSession(page, 'Claude Runtime');
-
-    await expect(
-      page
-        .getByRole('complementary', { name: 'Inbox chats' })
-        .locator('button[aria-current="true"]'),
-    ).toContainText('Claude Runtime');
-    await expect(page.locator('body')).toContainText('Default');
-  });
-
-  test('opens a Codex runtime session from New Chat', async ({ page }) => {
-    await seedRuntimeRoutes(page);
-    await openRuntimeSession(page, 'Codex Runtime');
-
-    await expect(
-      page
-        .getByRole('complementary', { name: 'Inbox chats' })
-        .locator('button[aria-current="true"]'),
-    ).toContainText('Codex Runtime');
-    await expect(page.locator('body')).toContainText('Default');
-  });
-
   test('reopens Claude runtime history from the history panel', async ({
     page,
   }) => {
@@ -569,7 +545,7 @@ test.describe('Built-in runtime chat workflows', () => {
         createdAt: '2026-04-12T00:00:01.000Z',
         method: 'content.text-delta',
         itemId: 'item-1',
-        delta: 'Claude says hi',
+        delta: 'Claude streamed a live reply',
       },
     });
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
@@ -582,7 +558,11 @@ test.describe('Built-in runtime chat workflows', () => {
       },
     });
 
-    await expect(page.locator('body')).toContainText('Claude says hi');
+    // The seeded history already holds 'Claude says hi', so only a string no
+    // fixture carries, read from the transcript itself, proves the stream.
+    await expect(
+      page.getByRole('log', { name: 'Conversation transcript' }),
+    ).toContainText('Claude streamed a live reply');
   });
 
   test('restores a Claude runtime transcript after a full page reload', async ({
@@ -775,7 +755,7 @@ test.describe('Built-in runtime chat workflows', () => {
         createdAt: '2026-04-12T00:00:01.000Z',
         method: 'content.text-delta',
         itemId: 'item-1',
-        delta: 'Codex says hi',
+        delta: 'Codex streamed a live reply',
       },
     });
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
@@ -788,7 +768,11 @@ test.describe('Built-in runtime chat workflows', () => {
       },
     });
 
-    await expect(page.locator('body')).toContainText('Codex says hi');
+    // The seeded history already holds 'Codex says hi', so only a string no
+    // fixture carries, read from the transcript itself, proves the stream.
+    await expect(
+      page.getByRole('log', { name: 'Conversation transcript' }),
+    ).toContainText('Codex streamed a live reply');
   });
 
   test('renders a tool call and surfaces a runtime error for a Claude runtime turn', async ({

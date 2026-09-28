@@ -282,3 +282,12 @@ describe.skipIf(!chromiumAvailable)(
     });
   },
 );
+
+test.skipIf(chromiumAvailable)(
+  'the workspace pane picker is a modal overlay on every route that mounts it (#1616) — Chromium not installed',
+  () => {
+    throw new Error(
+      'Playwright Chromium is not installed in this worktree, so the picker overlay geometry cannot be verified. Run npm run install:playwright and retry.',
+    );
+  },
+);

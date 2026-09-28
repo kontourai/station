@@ -4622,12 +4622,25 @@ describe('Activity presentation (sessions moved under Home)', () => {
     const { container } = renderView();
     fireEvent.click(screen.getByRole('tab', { name: 'By app' }));
 
-    expect(
-      Array.from(
-        container.querySelectorAll('.split-pane__section-header'),
-      ).some((node) => node.textContent === 'Started in Claude Code'),
-    ).toBe(true);
-    expect(container.textContent).toContain('No provenance session');
+    // Section headers are flat siblings of the rows they head, so a row's
+    // group is the nearest header before it in document order.
+    const sectionOf = (title: string) => {
+      let section: string | null = null;
+      for (const node of container.querySelectorAll(
+        '.split-pane__section-header, .split-pane__item',
+      )) {
+        if (node.classList.contains('split-pane__section-header')) {
+          section = node.textContent;
+        } else if (node.textContent?.includes(title)) {
+          return section;
+        }
+      }
+      throw new Error(`no row for ${title}`);
+    };
+    // The unrecorded row is filed by what IS known (the attached engine),
+    // never under a paired device the registry happens to hold.
+    expect(sectionOf('No provenance session')).toBe('Started in Claude Code');
+    expect(container.textContent).not.toContain('Brian’s Pixel');
     expect(screen.getByText('Also driven from another origin')).toBeTruthy();
   });
 

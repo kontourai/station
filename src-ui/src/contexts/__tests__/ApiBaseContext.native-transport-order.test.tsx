@@ -4,7 +4,7 @@ import {
   authenticatedFetch,
   setClientCredentialResolver,
 } from '@kontourai/station-sdk';
-import { render, waitFor } from '@testing-library/react';
+import { render, renderHook, waitFor } from '@testing-library/react';
 import { type ReactNode, useLayoutEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -98,7 +98,10 @@ vi.mock('../../platform/native/authenticatedTransport', () => ({
 }));
 
 import { getJson } from '../../../../packages/sdk/src/client/http';
-import { ApiBaseProvider } from '../ApiBaseContext';
+import {
+  ApiBaseProvider,
+  useHostRequestAuthorityScope,
+} from '../ApiBaseContext';
 
 let firstHealthRequest: Promise<Response> | undefined;
 let firstScopedHealthRequest: Promise<Response> | undefined;
@@ -152,6 +155,33 @@ describe('ApiBaseContext native transport installation order', () => {
   afterEach(() => {
     setClientCredentialResolver(undefined);
     vi.unstubAllGlobals();
+  });
+
+  it('folds the captured native receipt into the host request scope, and withholds a scope without one', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <ApiBaseProvider>{children}</ApiBaseProvider>
+    );
+    const bound = renderHook(() => useHostRequestAuthorityScope(), {
+      wrapper,
+    });
+    expect(bound.result.current).toMatchObject({
+      apiBase: 'https://station.example.test',
+      authorityKey: JSON.stringify([
+        'station-profile:station',
+        'runtime:1',
+        0,
+        'device-session',
+        '11111111-1111-4111-8111-111111111111',
+      ]),
+      requiresEnrolledCredential: true,
+    });
+    bound.unmount();
+
+    nativeBinding.current = null;
+    const unbound = renderHook(() => useHostRequestAuthorityScope(), {
+      wrapper,
+    });
+    expect(unbound.result.current).toBeUndefined();
   });
 
   it('installs the native authenticated transport before a child layout-effect health probe', async () => {

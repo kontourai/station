@@ -15,7 +15,7 @@ import { MIN_TOUCH_TARGET_PX } from '../helpers/touch-target';
  * the header's `Toggle menu` opens the sidebar drawer, whose footer owns
  * Settings (`ProjectSidebarFooter`). Both taps are asserted rather than only
  * the destination, so a regression that shrinks either control below the
- * touch floor, or lets an overlay (the knowledge nudge, a backdrop) sit on top
+ * touch floor, or lets an overlay (a backdrop, say) sit on top
  * of it, fails here instead of reaching Settings by some other route.
  */
 async function openSettingsFromMobileDrawer(page: Page): Promise<void> {
@@ -141,7 +141,6 @@ test.describe('Android — Mobile Layout', () => {
 
     await page.goto('/');
 
-    await expect(page.getByTestId('knowledge-nudge')).toHaveCount(0);
     expect(
       await page.evaluate(
         () =>
@@ -152,7 +151,6 @@ test.describe('Android — Mobile Layout', () => {
 
     await openSettingsFromMobileDrawer(page);
     await expect(page).toHaveURL(/\/settings/);
-    await expect(page.getByTestId('knowledge-nudge')).toHaveCount(0);
 
     await page
       .getByRole('link', { name: 'My knowledge store', exact: true })

@@ -11,6 +11,7 @@
  * same four honesty properties are asserted here against rendered text.
  */
 
+import { createHash } from 'node:crypto';
 import type {
   FleetRoutingCandidate,
   FleetRoutingReceiptPage,
@@ -450,10 +451,30 @@ describe('the SERVING side is readable too (security review, M-2)', () => {
     expect(text).toContain('credential fingerprint, not an identity');
   });
 
-  test('never renders a prompt, a completion, or a credential', () => {
-    const text = renderServe({ data: servePage() });
+  // The serve receipt carries digests, not request content; that it never
+  // records content is the server receipt writer's contract. What this
+  // surface owns is the disclosure copy and showing digests only by prefix.
+  test('discloses that content is never recorded and shows digests truncated', () => {
+    // Distinct, non-repeating digests, so a prefix of the wrong length
+    // cannot still contain the expected one.
+    const [receiptId, peerFingerprint, promptDigest] = [
+      'receipt',
+      'peer',
+      'prompt',
+    ].map((seed) => createHash('sha256').update(seed).digest('hex'));
+    const data = servePage();
+    Object.assign(data.receipts[0]!, {
+      receiptId,
+      peerFingerprint,
+      promptDigest,
+    });
+    const text = renderServe({ data });
     expect(text).toContain('the request content is never recorded');
     expect(text).toContain('not signed');
+    for (const digest of [receiptId, peerFingerprint, promptDigest]) {
+      expect(text).not.toContain(digest);
+      expect(text).toContain(`${digest.slice(0, 12)}…`);
+    }
   });
 
   test('a refusal is shown by code rather than omitted', () => {

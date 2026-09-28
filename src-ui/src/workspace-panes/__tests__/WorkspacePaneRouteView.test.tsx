@@ -111,8 +111,6 @@ vi.mock('../../contexts/ConfigContext', () => ({
 }));
 
 vi.mock('../builtinWorkspacePaneRegistry', () => ({
-  builtinWorkspacePaneRendererPresence: () => 'present',
-  isCanonicalBuiltinCodingOccurrence: () => false,
   getBuiltinWorkspacePaneRenderer: (descriptor: {
     id: string;
     renderer?: { kind?: string };
