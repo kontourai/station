@@ -129,6 +129,22 @@ describe('iOS simulator runtime smoke selection', () => {
     expect(swiftSmoke.slice(shellWait, firstTap)).toMatch(
       /if dismissSystemAlertIfPresent\(\) \{\s+app\.activate\(\)\s+\}/,
     );
+    // It can also win the race with that first tap itself (#1174), so a
+    // second reactivating dismissal must sit between the first tap and the
+    // bounded manager wait. The call-site equality above cannot see its loss.
+    const managerWait = swiftSmoke.indexOf('tap(connect, until: addAddress');
+    expect(managerWait).toBeGreaterThan(firstTap);
+    expect(swiftSmoke.slice(firstTap, managerWait)).toMatch(
+      /if dismissSystemAlertIfPresent\(\) \{\s+app\.activate\(\)\s+\}/,
+    );
+    // Each dismissal attempt is bounded by one short deadline, so recovering
+    // on the post-tap path cannot eat the manager wait's budget.
+    const helper = swiftSmoke.slice(
+      swiftSmoke.indexOf('private func dismissSystemAlertIfPresent()'),
+    );
+    expect(helper).toMatch(
+      /^[^}]*let deadline = Date\(\)\.addingTimeInterval\(2\)\s+[^}]*alert\.waitForExistence\(timeout: deadline\.timeIntervalSinceNow\)/,
+    );
     // A tap delivered to a WKWebView before its handler is attached is
     // dropped, and one existence wait afterwards cannot tell that apart from
     // a surface that never opens (#1174): each tap-opened surface is asserted
