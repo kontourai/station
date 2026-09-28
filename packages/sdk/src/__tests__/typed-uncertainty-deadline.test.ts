@@ -16,6 +16,7 @@ import {
   adoptOrchestrationSession,
 } from '../query-domains/chatRuntimeOrchestration';
 import {
+  launchContinueSessionStarter,
   launchScheduledCheckStarter,
   ScheduledCheckStarterResponseError,
 } from '../starter-work';
@@ -38,7 +39,7 @@ function never() {
   );
 }
 
-function stalledBody() {
+function stalledBody(status = 200) {
   return vi.fn(async (_input: unknown, init?: RequestInit) => {
     const signal = init?.signal;
     return new Response(
@@ -50,14 +51,14 @@ function stalledBody() {
           );
         },
       }),
-      { status: 200, headers: { 'content-type': 'application/json' } },
+      { status, headers: { 'content-type': 'application/json' } },
     );
   });
 }
 
 const phases = [
   ['before the headers', never],
-  ['mid-body', stalledBody],
+  ['mid-body', () => stalledBody()],
 ] as const;
 
 async function failure(call: () => Promise<unknown>): Promise<unknown> {
@@ -94,10 +95,58 @@ describe.each(phases)('a deadline that fires %s', (_phase, server) => {
     expect(error).toMatchObject({ operationId: 'scheduled-check-deadline' });
   });
 
+  it('launchContinueSessionStarter: uncertain-no-response, retryable', async () => {
+    vi.stubGlobal('fetch', server());
+    const error = await failure(() =>
+      launchContinueSessionStarter({
+        starterId: 'continue-session',
+        apiBase: API,
+      } as never),
+    );
+    expect(error).toBeInstanceOf(AdoptSessionError);
+    expect(error).toMatchObject({
+      failureClass: 'uncertain-no-response',
+      retryable: true,
+    });
+    expect((error as { cause?: unknown }).cause).toBeInstanceOf(
+      StationRequestTimeoutError,
+    );
+  });
+
   it("resolveConversationOpen: 'network'", async () => {
     vi.stubGlobal('fetch', server());
     const error = await failure(() => resolveConversationOpen('c1', API));
     expect(error).toMatchObject({ kind: 'network' });
+    expect((error as { cause?: unknown }).cause).toBeInstanceOf(
+      StationRequestTimeoutError,
+    );
+  });
+});
+
+describe('a deadline mid-body after a refusal: Station did answer', () => {
+  it('adoptOrchestrationSession: certain-response with the status', async () => {
+    vi.stubGlobal('fetch', stalledBody(403));
+    const error = await failure(() =>
+      adoptOrchestrationSession({ sourceThreadId: 's1', apiBase: API }),
+    );
+    expect(error).toBeInstanceOf(AdoptSessionError);
+    expect(error).toMatchObject({
+      failureClass: 'certain-response',
+      status: 403,
+      retryable: true,
+    });
+  });
+
+  it('launchContinueSessionStarter: a plain refusal carrying the status, not an uncertainty', async () => {
+    vi.stubGlobal('fetch', stalledBody(409));
+    const error = await failure(() =>
+      launchContinueSessionStarter({
+        starterId: 'continue-session',
+        apiBase: API,
+      } as never),
+    );
+    expect(error).not.toBeInstanceOf(AdoptSessionError);
+    expect((error as Error).message).toBe('HTTP 409');
     expect((error as { cause?: unknown }).cause).toBeInstanceOf(
       StationRequestTimeoutError,
     );

@@ -17,10 +17,7 @@ import type {
 } from '@kontourai/station-contracts/starter-work';
 import { apiErrorMessage } from './client/api-error-message';
 import { authenticatedFetch } from './client/http';
-import {
-  rethrowDeadline,
-  StationRequestTimeoutError,
-} from './client/request-deadline';
+import { StationRequestTimeoutError } from './client/request-deadline';
 import {
   type QueryConfig,
   resolveApiBase,
@@ -148,23 +145,46 @@ export async function launchStartTaskStarter(
     ),
   );
 }
+/** A continuation whose outcome Station never confirmed: safe to retry. */
+function continuationUnconfirmed(cause: unknown): AdoptSessionError {
+  return new AdoptSessionError({
+    failureClass: 'uncertain-no-response',
+    message: 'Station did not answer before the request ended.',
+    retryable: true,
+    cause,
+  });
+}
+
 export async function launchContinueSessionStarter(
   input: ContinueSessionStarterLaunchInput & { apiBase?: string },
 ): Promise<ContinueSessionStarterLaunchResult> {
   const { apiBase, ...body } = input;
-  const response = await authenticatedFetch(
-    `${await resolveApiBase(apiBase)}/api/starter-work/launch`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    },
-  );
+  let response: Response;
+  try {
+    response = await authenticatedFetch(
+      `${await resolveApiBase(apiBase)}/api/starter-work/launch`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    );
+  } catch (error) {
+    // A deadline before any answer: the continuation may have been created.
+    if (error instanceof StationRequestTimeoutError)
+      throw continuationUnconfirmed(error);
+    throw error;
+  }
   let parsed: ApiResult<ContinueSessionStarterLaunchResult>;
   try {
     parsed = (await response.json()) as typeof parsed;
   } catch (error) {
-    rethrowDeadline(error);
+    // A deadline mid-body: after 2xx headers Station may have created the
+    // continuation (uncertain); after a refusal it answered (certain).
+    if (error instanceof StationRequestTimeoutError)
+      throw response.ok
+        ? continuationUnconfirmed(error)
+        : Object.assign(new Error(`HTTP ${response.status}`), { cause: error });
     if (response.ok)
       throw new AdoptSessionError({
         failureClass: 'uncertain-no-response',

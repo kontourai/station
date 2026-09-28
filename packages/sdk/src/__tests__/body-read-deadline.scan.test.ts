@@ -18,9 +18,21 @@
  * - A `.catch(...)` anywhere on a chain that reads a body (including
  *   `.text().then(...).catch(...)`) takes `unlessDeadline(...)`.
  *
+ * - A `try` that also issues the request wraps the whole exchange in its own
+ *   error; its handler's first statement must not swallow the failure
+ *   (`rethrowDeadline`, `if (e instanceof X) throw ...`, or `throw`), unless
+ *   the site is named in `ALLOWED_FALLBACKS` with a reason.
+ *
  * The scanner is exercised against inline fixtures first, so the repository
  * assertion is not the only thing holding it up, and the repository result
  * is pinned by the identity of sites it must find, not by a count.
+ *
+ * Known limits, not solved here: a body read inside a helper or a callback
+ * the try only calls (other than a `.then` callback on the `.catch` chain); a
+ * reader bound or stored first (`const read = r.json.bind(r)`), or a body
+ * promise stored and caught later; the two-argument `.then(ok, fail)` form;
+ * and a typed wrap whose `throw` follows another statement in the `if`
+ * block, which is accepted without checking what that statement does.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -51,7 +63,11 @@ interface Site {
   /** The nearest named enclosing function, for identity pins. */
   owner: string;
   guarded: boolean;
-  kind: 'try' | 'chain';
+  /**
+   * `try`: a body read only; `request`: a try that also issues the request;
+   * `chain`: a `.catch` on a body-reading chain.
+   */
+  kind: 'try' | 'request' | 'chain';
 }
 
 function calledName(call: ts.CallExpression): string | undefined {
@@ -83,6 +99,24 @@ function contains(node: ts.Node, test: (child: ts.Node) => boolean): boolean {
     ts.forEachChild(child, visit);
   };
   ts.forEachChild(node, visit);
+  return found;
+}
+
+/** `contains`, but descending into a function's own body. */
+function containsInFunction(
+  fn: ts.Node,
+  test: (child: ts.Node) => boolean,
+): boolean {
+  let found = false;
+  const visit = (child: ts.Node) => {
+    if (found) return;
+    if (test(child)) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(child, visit);
+  };
+  ts.forEachChild(fn, visit);
   return found;
 }
 
@@ -134,11 +168,74 @@ function guardsDeadline(clause: ts.CatchClause): boolean {
   return false;
 }
 
+/**
+ * A try that issues the request as well as reading the body wraps the whole
+ * exchange in its own error, so its handler may type anything as long as it
+ * does not SWALLOW the failure: its first statement passes a deadline on
+ * (`rethrowDeadline`), throws when the error is of some type
+ * (`if (e instanceof X) throw ...`), or throws outright.
+ */
+function wrapsWholeRequest(clause: ts.CatchClause): boolean {
+  if (guardsDeadline(clause)) return true;
+  const binding = clause.variableDeclaration?.name;
+  const name = binding && ts.isIdentifier(binding) ? binding.text : undefined;
+  const first = clause.block.statements[0];
+  if (!first) return false;
+  if (ts.isThrowStatement(first)) return true;
+  if (!name || !ts.isIfStatement(first)) return false;
+  const condition = first.expression;
+  const throws =
+    ts.isThrowStatement(first.thenStatement) ||
+    (ts.isBlock(first.thenStatement) &&
+      first.thenStatement.statements.some((statement) =>
+        ts.isThrowStatement(statement),
+      ));
+  return (
+    throws &&
+    ts.isBinaryExpression(condition) &&
+    condition.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword &&
+    ts.isIdentifier(condition.left) &&
+    condition.left.text === name
+  );
+}
+
+/**
+ * Sites that deliberately do not type or pass on a failure, each with its
+ * reason. Keyed `file#owner`; a key that no longer names a site fails the
+ * repository test, so the list cannot go stale.
+ */
+const ALLOWED_FALLBACKS: Readonly<Record<string, string>> = {
+  'eventStreamResumeCapability.ts#fetchEventStreamResumeCapability':
+    'capability probe: any failure, a deadline included, means "not supported" (unchanged)',
+  'sessionEventWindowCapability.ts#fetchSessionEventWindowCapability':
+    'capability probe: any failure, a deadline included, means "unknown" (unchanged)',
+  'client/attachment-staging.ts#getAttachmentStagingCapability':
+    'capability probe: a failed legacy handshake means "unknown" (unchanged)',
+  'api-agent-runtime.ts#sendMessage':
+    'raw global fetch with no SDK deadline; its catch records telemetry and rethrows',
+  'api-agent-runtime.ts#callTool':
+    'raw global fetch with no SDK deadline; its catch records telemetry and rethrows',
+  'hooks/operations.ts#useUserLookup':
+    'raw global fetch with no SDK deadline; the hook shows any failure as its error',
+};
+
 /** Whether a `.catch` call's receiver chain reads a body. */
 function chainReadsBody(expression: ts.Expression): boolean {
   let node: ts.Expression = expression;
   for (;;) {
     if (isBodyRead(node)) return true;
+    // `x.then((r) => r.json())`: the callback reads the body.
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === 'then' &&
+      node.arguments.some(
+        (argument) =>
+          ts.isFunctionLike(argument) &&
+          (isBodyRead(argument) || containsInFunction(argument, isBodyRead)),
+      )
+    )
+      return true;
     if (ts.isCallExpression(node)) node = node.expression;
     else if (ts.isPropertyAccessExpression(node)) node = node.expression;
     else if (ts.isParenthesizedExpression(node)) node = node.expression;
@@ -181,14 +278,19 @@ function scanSource(text: string, file: string): Site[] {
     if (
       ts.isTryStatement(node) &&
       node.catchClause &&
-      contains(node.tryBlock, isBodyRead) &&
-      !issuesRequest(node.tryBlock)
+      contains(node.tryBlock, isBodyRead)
     ) {
+      const request = issuesRequest(node.tryBlock);
+      const owner = ownerOf(node);
       sites.push({
         where: where(node),
-        owner: ownerOf(node),
-        guarded: guardsDeadline(node.catchClause),
-        kind: 'try',
+        owner,
+        guarded:
+          (request
+            ? wrapsWholeRequest(node.catchClause)
+            : guardsDeadline(node.catchClause)) ||
+          Object.hasOwn(ALLOWED_FALLBACKS, `${file}#${owner}`),
+        kind: request ? 'request' : 'try',
       });
     }
     if (
@@ -198,13 +300,15 @@ function scanSource(text: string, file: string): Site[] {
       chainReadsBody(node.expression.expression)
     ) {
       const [handler] = node.arguments;
+      const owner = ownerOf(node);
       sites.push({
         where: where(node),
-        owner: ownerOf(node),
+        owner,
         guarded:
-          handler !== undefined &&
-          ts.isCallExpression(handler) &&
-          calledName(handler) === 'unlessDeadline',
+          (handler !== undefined &&
+            ts.isCallExpression(handler) &&
+            calledName(handler) === 'unlessDeadline') ||
+          Object.hasOwn(ALLOWED_FALLBACKS, `${file}#${owner}`),
         kind: 'chain',
       });
     }
@@ -291,12 +395,26 @@ describe('the body-read scanner (fixtures)', () => {
     ).toMatchObject([{ guarded: false }]);
   });
 
-  it('leaves a catch that also covers the request to its own wrapper', () => {
+  it('holds a catch that also covers the request to typing or rethrowing', () => {
     expect(
       one(`async function f() {
         try { const r = await getJson('/x'); return await r.json(); } catch (error) { throw typed(error); }
       }`),
-    ).toEqual([]);
+    ).toMatchObject([{ guarded: true, kind: 'request' }]);
+    expect(
+      one(`async function f() {
+        try { const r = await getJson('/x'); return await r.json(); } catch (error) {
+          if (error instanceof MyError) throw error;
+          throw new MyError(0);
+        }
+      }`),
+    ).toMatchObject([{ guarded: true, kind: 'request' }]);
+    // A request-plus-read catch that swallows the failure is flagged.
+    expect(
+      one(`async function f() {
+        try { const r = await getJson('/x'); return await r.json(); } catch (error) { return undefined; }
+      }`),
+    ).toMatchObject([{ guarded: false, kind: 'request' }]);
   });
 
   it('flags every .catch on a body-reading chain, .then included', () => {
@@ -313,6 +431,19 @@ describe('the body-read scanner (fixtures)', () => {
     expect(
       one(`async function f(r: Response) {
         return r.text().then((t) => t.trim()).catch(unlessDeadline(() => undefined));
+      }`),
+    ).toMatchObject([{ guarded: true, kind: 'chain' }]);
+  });
+
+  it('sees a body read inside a .then callback', () => {
+    expect(
+      one(`async function f(p: Promise<Response>) {
+        return p.then((r) => r.json()).catch(() => undefined);
+      }`),
+    ).toMatchObject([{ guarded: false, kind: 'chain' }]);
+    expect(
+      one(`async function f(p: Promise<Response>) {
+        return p.then(async (r) => { return await r.text(); }).catch(unlessDeadline(() => undefined));
       }`),
     ).toMatchObject([{ guarded: true, kind: 'chain' }]);
   });
@@ -334,6 +465,15 @@ describe('every SDK body-read catch passes a deadline on', () => {
       'conversation-open.ts#resolveConversationOpen',
     ])
       expect(owners, pin).toContain(pin);
+  });
+
+  it('names only sites that exist in its allowlist', () => {
+    const owners = new Set(
+      sites.map((site) => `${site.where.split(':')[0]}#${site.owner}`),
+    );
+    expect(
+      Object.keys(ALLOWED_FALLBACKS).filter((key) => !owners.has(key)),
+    ).toEqual([]);
   });
 
   it('holds every one of them to the guard', () => {
