@@ -99,6 +99,13 @@ changing them:
 The scope command prints both lists, and the desktop app shows the same after
 the change.
 
+Only the operator in person or a paired device can give a session full access
+when it starts. A caller that may choose full access but is neither (for
+example an account session that holds the scope) now starts its new sessions
+confined. They run at full access only if a full-access decision is recorded
+for the conversation, and that decision's actor is recorded as unknown, not
+as a device, so revoking a device does not reset it.
+
 ## Relationship table
 
 | | Direction | Trust model | What it unlocks | Persistence |

@@ -482,6 +482,12 @@ A session spawned before this change has nothing recorded.
   legitimate actor-less grant exists: every grant is minted from a request.
   The start's command receipt also records `clientOrigin`, and Task dispatch
   and Starter Work carry the request's server-derived origin to it.
+  - Behaviour change: a caller that may grant full access but is neither
+    the operator in person nor a paired device (for example an account
+    session holding the scope) gets no grant at session start. Its new
+    sessions start `workspace`, unless a recorded `never` decision makes them
+    `host`; that decision's `clientOrigin.actor` is `unknown`, not a device,
+    so no device's revocation resets it.
   - A conversation gets a new Ask decision when its standing decision is one
     of that device's: its `never`, its Default that still resolves to
     unconfined `never`, or its Auto on a session its grant unconfined. So
@@ -508,7 +514,9 @@ A session spawned before this change has nothing recorded.
     actor; and live `host` sessions with no recorded grantor (at most 50,
     with the total).
   - The route answer carries the report (`fullAccessRevocation`). Each entry
-    names the conversation, its title and a session to open it by. A failed
+    names the conversation, its title and a session to open it by. Clients
+    pass a title through `sanitizeUntrustedDisplayText` (control, format,
+    bidi and zero-width characters removed, 256 at most) before showing it. A failed
     reset is `fullAccessRevocationError`, and the CLI treats it as an error.
     The reset is idempotent and can be re-run.
     `station environment access scope <device> --remove approval:full-access`
