@@ -113,6 +113,16 @@ clicking Allow/Deny on an approval card. Requests surface as `request.opened` ca
 runtime events (see [Reading session activity](#reading-session-activity)); resolve them
 by `requestId`.
 
+For Codex, this is Station's canonical string ID. The
+[adapter](../../src-server/providers/adapters/codex-adapter-transport.ts)
+maps it to Codex's original wire ID and preserves that ID's value and type in
+the reply. Numeric `0` and string `"0"` are different IDs: converting between
+them previously left an approval resolved in Station while Codex kept waiting
+([#562](https://github.com/kontourai/station/issues/562)). The
+[adapter tests](../../src-server/providers/__tests__/codex-adapter-rpc-id.test.ts)
+cover explicit decisions, session grants, interrupt cancellation, and unsupported
+requests through simulated process streams; they are not a live Codex receipt.
+
 ```jsonc
 {
   "type": "respondToRequest",

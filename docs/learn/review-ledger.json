@@ -2431,7 +2431,7 @@
     },
     {
       "path": "docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "sourceRevision": "7ff7d560117b98d655d52d28caee56c9f7735f06",
       "kind": "historical",
       "state": "classified",
       "summary": "A top status note points to ADR0014 and distinguishes the superseded flag/rollback mechanism from the retained orchestration/private-adapter/no-migration decisions. Current interactive route composition supplies the foreground orchestration seam.",
@@ -2444,7 +2444,7 @@
         },
         {
           "path": "docs/reference/session-api.md",
-          "digest": "d491d6f2c5120833c9d2c85a9500209fa91c6c6c39bca2aa40ab6231535ebcae"
+          "digest": "6878ea99fa3adc9459f99e20253776dd0f6a73515599de8638220efec004a0c1"
         },
         {
           "path": "packages/cli/src/commands/session-client.ts",
@@ -2467,7 +2467,8 @@
         "Full ADR read; original bodies, tables and probe transcripts preserved beneath current-owner/status notes.",
         "ADR lane: 175 focused owner tests and 97 documentation tests passed; historical probes and live platforms not rerun.",
         "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged.",
-        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution."
+        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+        "Landing delta 622565ef7: The updated Session API remains the current successor; added wire-ID details do not change the historical cutover classification or ADR rationale. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed."
       ]
     },
     {
@@ -7127,7 +7128,7 @@
     {
       "path": "docs/design/connections-onboarding.md",
       "documentDigest": "dc33fe48b286ac9111bfb09c095a1c85ac62665eb89ec9e77a8637d28c3126ed",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "sourceRevision": "7ff7d560117b98d655d52d28caee56c9f7735f06",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed current documented mechanism/caller review plus full historical-body classification: actual five-section Connections layout, presets, app-home import and cleanup, profile selection/recovery, source-affinity resumes, first-run persistence and ACP/skills passthrough. Marked former unified overview and engine audit as history; corrected current spawn environment, durable compensation uncertainty, authored MCP secret boundary and non-atomic filesystem/size claims.",
@@ -7151,11 +7152,11 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
-          "digest": "3b087a06842d7e3e9bd792c6ed7490e48e820b5719082e5184304231eb387a75"
+          "digest": "c4424006cb70f7a76b9f387561e877d8e296d40d797b2f87cafc277bfcb4464c"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "5a72f0a1e26f93f57dae60af8515516002b810e990049dc7f3a40b1052a39287"
+          "digest": "7f7d84070fae818fe8575618df05ddcb42b7b9284f945b30c86df81afec25a1c"
         },
         {
           "path": "src-server/providers/app-home/app-home-profiles.ts",
@@ -7243,7 +7244,8 @@
         "EXECUTED: local Markdown paths/anchors415 PASS; public contract examples10 PASS; repository documentation hygiene PASS; two comment-only TypeScript programs print identically with comments removed; scoped Biome PASS.",
         "No new provider/native/runtime journey and no repeated broad regression. Root owns combined ledger/reader freshness after integration.",
         "EXECUTED: Veritas veritas-1790535465599 exited 0 with 0 failures and 2 optional diagnostic warnings. Governance and lint passed. The connected-agent diagnostic ended with SIGTERM after 600,139 ms and had reported two timing-related test failures; verification-policy refused 3 installed Knowledge example tests under the preserved demo home. Neither optional diagnostic passed; neither was rerun.",
-        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits."
+        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+        "Landing delta 622565ef7: Codex reply matching now preserves peer ID types; spawn environment, profile/source-home precedence and retained historical observations are unchanged. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed."
       ]
     },
     {
@@ -9287,7 +9289,7 @@
     {
       "path": "docs/design/session-tape-replay.md",
       "documentDigest": "ea0862885ca10d1e69538090976167a8f61695436bd269f37955de874100f72a",
-      "sourceRevision": "9d6ae66f1cbc871dcb4eaff5944b9f3933151d83",
+      "sourceRevision": "7ff7d560117b98d655d52d28caee56c9f7735f06",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed tape limits and import/export, archive paging, replay registration and persistence exclusion, shared fold/effect fences, DOM observations, timeline lineage and fork identity, and current adapter steering mappings. Qualified redaction and command/name-based ACP selection.",
@@ -9303,7 +9305,7 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "5a72f0a1e26f93f57dae60af8515516002b810e990049dc7f3a40b1052a39287"
+          "digest": "7f7d84070fae818fe8575618df05ddcb42b7b9284f945b30c86df81afec25a1c"
         },
         {
           "path": "src-ui/src/components/chat/ChatSettingsPanel.tsx",
@@ -9369,7 +9371,8 @@
       "checks": [
         "Full document read; bounded current-owner/caller routing inspection. Purpose classification only, not complete source-accuracy certification.",
         "Original document bytes preserved exactly after removing the added reading-status banner.",
-        "39 tape import/player/archive/render-invariant and mounted timeline tests passed across five files. Read browser matrix and actual adapter delivery owners."
+        "39 tape import/player/archive/render-invariant and mounted timeline tests passed across five files. Read browser matrix and actual adapter delivery owners.",
+        "Landing delta 622565ef7: Codex reply matching does not alter turn/steer arguments, event folding, replay isolation or recorded tape limits. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed."
       ]
     },
     {
@@ -10141,7 +10144,7 @@
     {
       "path": "docs/guides/agents.md",
       "documentDigest": "8d66f17c9ab72933cf26109e5b989a9d5c1669d0e64f89d77786d45ed79b3fe1",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "sourceRevision": "7ff7d560117b98d655d52d28caee56c9f7735f06",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed Agent configuration and engine/model bindings, native adoption, foreground execution, approval handling, contributor Quick Reference, navigation/isolation/component conventions, and Inbox actions. Follow-up: Changed MCP/policy and interactive approval explanation only. Preserve prior partial coverage. Retired tools.aliases checked against actual schema and loader; valid self-configuring example and rejected delegation configuration checked.",
@@ -10205,11 +10208,11 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
-          "digest": "3b087a06842d7e3e9bd792c6ed7490e48e820b5719082e5184304231eb387a75"
+          "digest": "c4424006cb70f7a76b9f387561e877d8e296d40d797b2f87cafc277bfcb4464c"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "5a72f0a1e26f93f57dae60af8515516002b810e990049dc7f3a40b1052a39287"
+          "digest": "7f7d84070fae818fe8575618df05ddcb42b7b9284f945b30c86df81afec25a1c"
         },
         {
           "path": "src-server/providers/adapters/codex-approval-mode.ts",
@@ -10455,7 +10458,8 @@
         "Reviewed source deltas: Spawn environment construction was inlined at the actual spawn with the same augmented PATH, extra-env and owned TMPDIR order; removed test-only export is not referenced by maintained prose. Removed historical test-only default knobs; actual selected/inherited posture rules unchanged. Removed unused guidance/count methods and redundant early exits; current filter still distinguishes absent versus explicit empty skill names and returns empty when none remain. Reviewed comment correction; transpiled executable bytes unchanged.",
         "Reviewed source changes: Reviewed delegation tool wrappers: refused operations now produce MCP error results through delegationToolResult; navigation outcomes remain separately reported and permission requirements remain. Reviewed all added local-refusal propagation: only target.kind=current carries LocalStationRefusal; peer/SSH errors do not gain local-code authority. Dispatch and follow-up identities remain unchanged. Genesis now admits the installer/process bookkeeping state directory in addition to installs. It does not admit saved Station history as an empty profile store.",
         "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/runtime/plugins/runtime-provider-resolution.ts: Removed test-only configured-model wrapper; actual managed-model resolution now calls private resolveBedrockModelId with the already validated preferred selector. Provider, model and per-connection auth precedence unchanged. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/services/orchestration/approval-posture.ts: Effective-default resolution handles Project Default that reaches never/full-access on host, requiring the existing grant. Recorded Default still follows later Project default edits as the accepted residual; no assertion of immutable future policy. src-server/security/station-control-authority-guard.ts: Adds thread-command scope validation for steer/adopt: derives target owner/project/host from persisted session; bound non-operator requires same owner; other scoped callers need same owner/project and not host. Bound operator still passes route ownership checks. Unknown thread fails closed. src-server/tools/station-control-delegation.ts: Wires approvalPickReachesFullAccess into delegation; no transport, home-transfer, target activation or Project import authority added. src-server/tools/station-control-policy.ts: Adds command-thread scope branch and dependencies for real persisted target validation; steer/adopt now require target-specific authority instead of inference from caller fields. src-ui/src/views/provider-settings/providerCatalog.tsx: Removed unused buildProviderCatalog and its auxiliary shape; actual resolveProviderPresentation/resolveProviderChoicePresentation callers and results unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. packages/cli/src/commands/profile-store.ts: Delegates Windows trust execution to the shared bounded runner (120-second default timeout/1MiB output), preserving command/arguments and owner-only trust policy. No new Windows execution proof.",
-        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits."
+        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+        "Landing delta 622565ef7: Independent delta review confirmed Station-engine approval flow, unattended policy and canonical string Session request IDs remain unchanged; Codex wire IDs are separate. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed."
       ]
     },
     {
@@ -11328,7 +11332,7 @@
     {
       "path": "docs/guides/connections.md",
       "documentDigest": "3a6a4cc4c0d545b102484406bd3a08b53b3bbdbc2e899bf8c927cba8b35ff5bc",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "sourceRevision": "7ff7d560117b98d655d52d28caee56c9f7735f06",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed the documented saved-profile, native key ceremony, browser trust/TURN/relay enrollment, current HTTP/WS scope and CLI refusal claims, alongside the previously reviewed Models/Engines/configuration caller paths. Corrected the blanket loopback terminal-scope claim. Reviewed frozen-main native grant renewal and Desktop all-saved-route maintenance, including durable replay, fresh status, generation fences, visibility and 64-route refusal; application transport remains unavailable.",
@@ -11460,11 +11464,11 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
-          "digest": "3b087a06842d7e3e9bd792c6ed7490e48e820b5719082e5184304231eb387a75"
+          "digest": "c4424006cb70f7a76b9f387561e877d8e296d40d797b2f87cafc277bfcb4464c"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "5a72f0a1e26f93f57dae60af8515516002b810e990049dc7f3a40b1052a39287"
+          "digest": "7f7d84070fae818fe8575618df05ddcb42b7b9284f945b30c86df81afec25a1c"
         },
         {
           "path": "src-server/providers/adapters/codex-approval-mode.ts",
@@ -11821,7 +11825,8 @@
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused clearBudget and documentary SSE list; active GET/non-mutation and mutating-verb classifier unchanged. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
-        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes."
+        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
+        "Landing delta 622565ef7: Independent delta review confirmed engine discovery, configuration/authentication and readiness requirements; probes now match their own string reply IDs exactly. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed."
       ]
     },
     {
@@ -17508,7 +17513,7 @@
     {
       "path": "docs/guides/self-configuring-agent.md",
       "documentDigest": "897111efa688f89ef5dfa4fbedbbf3dddc9fa65b00bee53bcaacacb5b9b6b2b2",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "sourceRevision": "7ff7d560117b98d655d52d28caee56c9f7735f06",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full read; tool definitions, actual delegation creation/metadata/posture and request handling, UI placement, skill edit/run/provenance callers. Existing scheduler-grant explanation retained from prior bounded review; no live scheduled run.",
@@ -17568,11 +17573,11 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
-          "digest": "3b087a06842d7e3e9bd792c6ed7490e48e820b5719082e5184304231eb387a75"
+          "digest": "c4424006cb70f7a76b9f387561e877d8e296d40d797b2f87cafc277bfcb4464c"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "5a72f0a1e26f93f57dae60af8515516002b810e990049dc7f3a40b1052a39287"
+          "digest": "7f7d84070fae818fe8575618df05ddcb42b7b9284f945b30c86df81afec25a1c"
         },
         {
           "path": "src-server/providers/adapters/codex-approval-mode.ts",
@@ -17793,7 +17798,8 @@
         "Reviewed source deltas: Spawn environment construction was inlined at the actual spawn with the same augmented PATH, extra-env and owned TMPDIR order; removed test-only export is not referenced by maintained prose. Removed historical test-only default knobs; actual selected/inherited posture rules unchanged. Removed unused guidance/count methods and redundant early exits; current filter still distinguishes absent versus explicit empty skill names and returns empty when none remain. Reviewed comment correction; transpiled executable bytes unchanged.",
         "Reviewed source changes: Reviewed delegation tool wrappers: refused operations now produce MCP error results through delegationToolResult; navigation outcomes remain separately reported and permission requirements remain. Reviewed all added local-refusal propagation: only target.kind=current carries LocalStationRefusal; peer/SSH errors do not gain local-code authority. Dispatch and follow-up identities remain unchanged. Genesis now admits the installer/process bookkeeping state directory in addition to installs. It does not admit saved Station history as an empty profile store.",
         "Reviewed integration deltas: src-server/runtime/plugins/runtime-provider-resolution.ts: Removed test-only configured-model wrapper; actual managed-model resolution now calls private resolveBedrockModelId with the already validated preferred selector. Provider, model and per-connection auth precedence unchanged. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/services/orchestration/approval-posture.ts: Effective-default resolution handles Project Default that reaches never/full-access on host, requiring the existing grant. Recorded Default still follows later Project default edits as the accepted residual; no assertion of immutable future policy. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/security/station-control-authority-guard.ts: Adds thread-command scope validation for steer/adopt: derives target owner/project/host from persisted session; bound non-operator requires same owner; other scoped callers need same owner/project and not host. Bound operator still passes route ownership checks. Unknown thread fails closed. src-server/tools/station-control-delegation.ts: Wires approvalPickReachesFullAccess into delegation; no transport, home-transfer, target activation or Project import authority added. src-server/tools/station-control-policy.ts: Adds command-thread scope branch and dependencies for real persisted target validation; steer/adopt now require target-specific authority instead of inference from caller fields. src-ui/src/views/provider-settings/providerCatalog.tsx: Removed unused buildProviderCatalog and its auxiliary shape; actual resolveProviderPresentation/resolveProviderChoicePresentation callers and results unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. packages/cli/src/commands/profile-store.ts: Delegates Windows trust execution to the shared bounded runner (120-second default timeout/1MiB output), preserving command/arguments and owner-only trust policy. No new Windows execution proof.",
-        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution."
+        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+        "Landing delta 622565ef7: Independent delta review confirmed dispatch scope, Task approval and engine-policy limits; the reply fix does not add tool-policy enforcement. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed."
       ]
     },
     {
@@ -18018,7 +18024,7 @@
     {
       "path": "docs/guides/starter-work.md",
       "documentDigest": "2f88268c7921ff878df4acd932ff85af309a36cecabc762eec0a24de356dcf3c",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "sourceRevision": "7ff7d560117b98d655d52d28caee56c9f7735f06",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Completed all documented Starter Work claims against current UI, SDK, route, registry, binding/launch fence, attachment adoption, exact inspection and Scheduler intent owners. Confirmed readiness-before-create, one-time dispatch fences, caller-bound independent continuation, owner-specific inspection tuples and prepared-before-activation Scheduler recovery. The copy adds the shared first-run prerequisite and per-Device Developer tools condition, narrows the initial readiness predicate and distinguishes API stale observations from missing Home-card copy.",
@@ -18058,7 +18064,7 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "5a72f0a1e26f93f57dae60af8515516002b810e990049dc7f3a40b1052a39287"
+          "digest": "7f7d84070fae818fe8575618df05ddcb42b7b9284f945b30c86df81afec25a1c"
         },
         {
           "path": "src-server/routes/__tests__/starter-work.routes.test.ts",
@@ -18250,7 +18256,8 @@
         "Removed duplicate scenario/caption sentences for four captures and corrected dimension/revision spacing. Asset bytes, capture revisions and evidence scope are unchanged.",
         "Landing delta f3954615e to 2400482c2 plus integrated corrections: Removed unused provider preview method; HTTP/MCP preview still belongs to SchedulerService with zone validation. Project-switcher truncation moved onto its inner label while hit targets/callbacks remain unchanged; other UI/capture scope remains accurate. Historical captures and inspected new geometry tests are not new execution.",
         "Retained the existing capture bytes and capture revisions after inspecting the bounded incoming CSS change (Project-switcher sheet labels, not shown in these scenes) and unused Knowledge Library export removal. Updated media source-review metadata only. The required media test now reaches the actual checked-in manifest; it first rejected the stale CSS binding (five passed, one failed). Historical provider/device and fixture limits remain unchanged.",
-        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes."
+        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution. Media bytes/capture revisions are unchanged; reviewed the new read-only orchestration getters and station-control-only enforcement, which do not change the captured person-facing scenes.",
+        "Landing delta 622565ef7: The reply-ID fix does not change independent continuation, completed-turn/source-home requirements, one-time correlations or approval inspection. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed."
       ]
     },
     {
@@ -23915,8 +23922,8 @@
     },
     {
       "path": "docs/reference/session-api.md",
-      "documentDigest": "d491d6f2c5120833c9d2c85a9500209fa91c6c6c39bca2aa40ab6231535ebcae",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "documentDigest": "6878ea99fa3adc9459f99e20253776dd0f6a73515599de8638220efec004a0c1",
+      "sourceRevision": "7ff7d560117b98d655d52d28caee56c9f7735f06",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Traced canonical foreground/continuation commands, receipt outcomes, history/SSE semantics, bounded external transcript import, native adoption ownership, source-home configuration, and exact-request/gate attention projection.",
@@ -23936,7 +23943,7 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "5a72f0a1e26f93f57dae60af8515516002b810e990049dc7f3a40b1052a39287"
+          "digest": "7f7d84070fae818fe8575618df05ddcb42b7b9284f945b30c86df81afec25a1c"
         },
         {
           "path": "src-server/providers/sessions/claude-transcript-session-source.ts",
@@ -24005,6 +24012,18 @@
         {
           "path": "src-server/utils/path-containment.ts",
           "digest": "e6a7867d0d39ee6b6c4dee4d7b697b8ab4ab55e86c7f9503d6ce657e0ed1d083"
+        },
+        {
+          "path": "src-server/providers/adapters/codex-adapter-transport.ts",
+          "digest": "c4424006cb70f7a76b9f387561e877d8e296d40d797b2f87cafc277bfcb4464c"
+        },
+        {
+          "path": "src-server/providers/adapters/codex-adapter-types.ts",
+          "digest": "5768452e84a46568ace56a4af20ed4628335e9539da0ef60fe76a30432ba3b00"
+        },
+        {
+          "path": "src-server/providers/__tests__/codex-adapter-rpc-id.test.ts",
+          "digest": "25ec9e62aeab3517843b2cc48c3c266833a5d196ccd62664db9da079478e64dc"
         }
       ],
       "checks": [
@@ -24012,7 +24031,8 @@
         "Session roundtrip diagnostic fixtures: 8 tests passed.",
         "Codex source/follower and request-inspection route selection: 40 tests across 3 files passed.",
         "Reviewed integration deltas: src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged.",
-        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution."
+        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits. Reviewed corresponding canonical prose, the new dispatch-scope module/tree entry and regenerated 101-topic MCP content. Only affected claims changed; source links remain evidence routes, not proof of execution.",
+        "Landing delta 622565ef7: Added the canonical-to-Codex-wire ID distinction and retained the numeric-versus-string regression rationale; public requestId remains a string. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed."
       ]
     },
     {
@@ -27170,7 +27190,7 @@
     {
       "path": "examples/self-configuring-agent/README.md",
       "documentDigest": "1886de7539fcd4951978c70f2a2a506f23fc3b2f84d29906c322a58bd3169c68",
-      "sourceRevision": "b78b164722084d11b93b3565bd3d128c26c99ea7",
+      "sourceRevision": "7ff7d560117b98d655d52d28caee56c9f7735f06",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full example README and Agent configuration reviewed against tool definitions, actual ConfigLoader, delegation metadata/posture and UI caller.",
@@ -27230,11 +27250,11 @@
         },
         {
           "path": "src-server/providers/adapters/codex-adapter-transport.ts",
-          "digest": "3b087a06842d7e3e9bd792c6ed7490e48e820b5719082e5184304231eb387a75"
+          "digest": "c4424006cb70f7a76b9f387561e877d8e296d40d797b2f87cafc277bfcb4464c"
         },
         {
           "path": "src-server/providers/adapters/codex-adapter.ts",
-          "digest": "5a72f0a1e26f93f57dae60af8515516002b810e990049dc7f3a40b1052a39287"
+          "digest": "7f7d84070fae818fe8575618df05ddcb42b7b9284f945b30c86df81afec25a1c"
         },
         {
           "path": "src-server/providers/adapters/codex-approval-mode.ts",
@@ -27455,7 +27475,8 @@
         "Reviewed source deltas: Spawn environment construction was inlined at the actual spawn with the same augmented PATH, extra-env and owned TMPDIR order; removed test-only export is not referenced by maintained prose. Removed historical test-only default knobs; actual selected/inherited posture rules unchanged. Removed unused guidance/count methods and redundant early exits; current filter still distinguishes absent versus explicit empty skill names and returns empty when none remain. Reviewed comment correction; transpiled executable bytes unchanged.",
         "Reviewed source changes: Reviewed delegation tool wrappers: refused operations now produce MCP error results through delegationToolResult; navigation outcomes remain separately reported and permission requirements remain. Reviewed all added local-refusal propagation: only target.kind=current carries LocalStationRefusal; peer/SSH errors do not gain local-code authority. Dispatch and follow-up identities remain unchanged. Genesis now admits the installer/process bookkeeping state directory in addition to installs. It does not admit saved Station history as an empty profile store.",
         "Reviewed integration deltas: src-server/runtime/plugins/runtime-provider-resolution.ts: Removed test-only configured-model wrapper; actual managed-model resolution now calls private resolveBedrockModelId with the already validated preferred selector. Provider, model and per-connection auth precedence unchanged. src-server/services/orchestration/orchestration-service.ts: Added sessionRunsHost and approvalPickReachesFullAccess through existing ApprovalPosture and canonical session starts. Existing session lifecycle, replay and storage behavior unchanged by this additive authority observation. src-server/services/orchestration/approval-posture.ts: Effective-default resolution handles Project Default that reaches never/full-access on host, requiring the existing grant. Recorded Default still follows later Project default edits as the accepted residual; no assertion of immutable future policy. src-server/routes/orchestration/orchestration.ts: Full-access refusals now keep their typed route result; setApprovalMode checks the effective Default pick before mutation. Existing session history/read and domain-owner contracts unchanged. src-server/security/station-control-authority-guard.ts: Adds thread-command scope validation for steer/adopt: derives target owner/project/host from persisted session; bound non-operator requires same owner; other scoped callers need same owner/project and not host. Bound operator still passes route ownership checks. Unknown thread fails closed. src-server/tools/station-control-delegation.ts: Wires approvalPickReachesFullAccess into delegation; no transport, home-transfer, target activation or Project import authority added. src-server/tools/station-control-policy.ts: Adds command-thread scope branch and dependencies for real persisted target validation; steer/adopt now require target-specific authority instead of inference from caller fields. src-ui/src/views/provider-settings/providerCatalog.tsx: Removed unused buildProviderCatalog and its auxiliary shape; actual resolveProviderPresentation/resolveProviderChoicePresentation callers and results unchanged. src-ui/src/app-shell/routing.ts: Removed two unused management-navigation wrappers and their type import; actual destination registry and route/redirect parsing unchanged. src-ui/src/contexts/ApiBaseContext.tsx: Composes Desktop-only NativeRelayGrantRenewalSupervisor from effect lifecycle; no app-route selection, credential enrollment or browser relay change. packages/cli/src/commands/profile-store.ts: Delegates Windows trust execution to the shared bounded runner (120-second default timeout/1MiB output), preserving command/arguments and owner-only trust policy. No new Windows execution proof.",
-        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits."
+        "Landing source delta through 61d497e88: Reviewed C2a target resolution and policy through actual route composition: verified station-control callers now have owner/Project/global/host/remote limits; local Project cwd overrides require canonical containment. Added canonical scope explanation and qualified examples. New read-only orchestration getters do not alter persistence, replay, lifecycle, answerability, browser/Knowledge wiring or ordinary paired-person capture scenes; unchanged claims retain prior evidence limits.",
+        "Landing delta 622565ef7: Independent delta review confirmed the example still uses Station engine with qualified external-worker approval/evidence limits. Executed Codex adapter and RPC-ID suites: 135/135 tests, 12.38s, through simulated process streams; no live provider or device result is claimed."
       ]
     },
     {
