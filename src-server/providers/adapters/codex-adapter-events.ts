@@ -315,8 +315,9 @@ export function resolveApprovalOutcome(
     // #2909: `PermissionsRequestApprovalResponse` is `{permissions, scope}`
     // with no decision field, so the granted profile IS the answer. A denial
     // grants the empty profile (every `GrantedPermissionProfile` field is
-    // optional). Its scope is `turn`, the protocol default: an empty grant
-    // has nothing to remember for the session.
+    // optional). Its scope is `turn`, matching Codex's own denial (the
+    // default, empty profile with scope Turn): an empty grant has nothing to
+    // remember for the session.
     case 'item/permissions/requestApproval': {
       const granted = decision === 'accept' || decision === 'acceptForSession';
       return {
