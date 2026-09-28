@@ -15,7 +15,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   OBSERVATION_INTERVAL_MS,
   SessionPullRequestConflictChip,
-  SessionPullRequestObservationProvider,
 } from '../components/session/SessionPullRequestConflictChip';
 import { stationQueryDefaults } from '../lib/queryDefaults';
 
@@ -77,13 +76,13 @@ const session = (threadId: string) =>
 
 function Rows({ threads }: { threads: string[] }) {
   return (
-    <SessionPullRequestObservationProvider>
+    <>
       {threads.map((thread) => (
         <div key={thread} data-testid={`row-${thread}`}>
           <SessionPullRequestConflictChip session={session(thread)} />
         </div>
       ))}
-    </SessionPullRequestObservationProvider>
+    </>
   );
 }
 
@@ -167,8 +166,8 @@ describe('session conflict chips observe once per repository (#2937)', () => {
       screen.getByTestId('row-t1').textContent?.includes('PR conflict'),
     ).toBe(true);
 
-    // A row mounted mid-interval joins the repository's observer; it does
-    // not add a timer of its own.
+    // A row mounted mid-interval joins the repository's query; its interval
+    // re-arms with the others' on each update rather than firing on its own.
     await advance(OBSERVATION_INTERVAL_MS / 2);
     rendered.rerender(
       withClient(
