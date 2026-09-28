@@ -1598,7 +1598,8 @@ describe('TaskGraphService', () => {
     });
     expect(outcome.kind).toBe('dispatched');
     expect(
-      (dispatch.mock.calls[0]?.[1] as { clientOrigin?: unknown }).clientOrigin,
+      (dispatch.mock.calls[0]?.[1] as { clientOrigin?: unknown } | undefined)
+        ?.clientOrigin,
     ).toEqual(clientOrigin);
   });
 
