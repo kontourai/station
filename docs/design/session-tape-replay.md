@@ -112,7 +112,8 @@ the product UI. Detection is for developers:
 - session diagnostics (`namespace/type (unbound)`)
 - `station.runtime.extension_notifications` if an OTLP exporter is set (field)
 
-`EXTENSION_NOTIFICATION_PROMOTIONS` is the mapping backlog. Bias is promote
+The mapping backlog lives in
+[#2899](https://github.com/kontourai/station/issues/2899). Bias is promote
 to a typed Station event. There is no in-product “accept unique” workflow.
 
 ## Queue vs steer

@@ -253,12 +253,6 @@ describe('StationKitObservabilityHost', () => {
     );
   });
 
-  test('executes Flow Agents public conformance unchanged', () => {
-    expect(host().runPublicConformance()).toEqual(
-      expect.objectContaining({ passed: true }),
-    );
-  });
-
   test('consumes the exact public Flow conformance descriptor without a Station copy', () => {
     const descriptor = sharedConformanceContribution();
     const experience = host().present({

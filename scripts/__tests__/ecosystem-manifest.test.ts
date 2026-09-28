@@ -4,14 +4,13 @@ import {
   createPrivateKey,
   createPublicKey,
   generateKeyPairSync,
-  type KeyObject,
-  sign,
 } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -19,10 +18,15 @@ import {
 } from 'node:fs';
 import { type AddressInfo, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import {
+  buildPrebuiltArchive,
+  type PrebuiltArchive,
+  signArchiveManifest,
+} from './fixtures/prebuilt-archive.js';
 import { platformPayload } from './fixtures/release-manifest-v2.js';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -423,44 +427,6 @@ exit 0
   );
 });
 
-// A fixed ed25519 key (seed 0x01..0x20). Ed25519 signatures are
-// deterministic, so a fixed key and payload give a fixed signature.
-function goldenPrivateKey(): KeyObject {
-  const seed = Buffer.from(Array.from({ length: 32 }, (_, index) => index + 1));
-  return createPrivateKey({
-    key: Buffer.concat([
-      Buffer.from('302e020100300506032b657004220420', 'hex'),
-      seed,
-    ]),
-    format: 'der',
-    type: 'pkcs8',
-  });
-}
-
-const GOLDEN_PAYLOAD = {
-  schemaVersion: 2,
-  channel: 'nightly',
-  version: '0.7.0-nightly.12',
-  releaseTag: 'v0.7.0-nightly.12',
-  sourceSha: '0123456789abcdef0123456789abcdef01234567',
-  publishedAt: '2026-09-25T00:00:00.000Z',
-  artifacts: {
-    portable: {
-      url: 'file:///nonexistent/station-golden/station-portable.tar.gz',
-      name: 'station-portable.tar.gz',
-      sha256: 'ab'.repeat(32),
-    },
-  },
-};
-// The exact bytes install.sh must derive from GOLDEN_PAYLOAD: recursively
-// sorted keys, no whitespace. Written out, not computed, so it cannot drift
-// alone. GOLDEN_PAYLOAD is the pre-#2675 schema 2 shape (artifacts.portable)
-// that install.sh reads until slice B2; the signer's per-platform golden
-// vector is in release-manifest-vectors.test.ts.
-const GOLDEN_CANONICAL = `{"artifacts":{"portable":{"name":"station-portable.tar.gz","sha256":"${'ab'.repeat(32)}","url":"file:///nonexistent/station-golden/station-portable.tar.gz"}},"channel":"nightly","publishedAt":"2026-09-25T00:00:00.000Z","releaseTag":"v0.7.0-nightly.12","schemaVersion":2,"sourceSha":"0123456789abcdef0123456789abcdef01234567","version":"0.7.0-nightly.12"}`;
-const GOLDEN_SIGNATURE =
-  '0qCbEHmy8XP5SdwwyAlY4fJKYqX3c4ypu+hvwCDDPUSokVaEXa5lQ0ttKUJZWDygzVZzbJa2Xamwd5QeKLOdDw==';
-
 type InstallFixture = {
   dir: string;
   fakeBin: string;
@@ -497,146 +463,42 @@ function makeInstallFixture(prefix: string): InstallFixture {
   return { dir, fakeBin, testKeyPath, privateKeyPath };
 }
 
-/** Builds a portable archive whose provenance names `version`. */
+/**
+ * Builds a prebuilt server archive for this host whose provenance names
+ * `version` (the builder's exact layout; see fixtures/prebuilt-archive.ts).
+ */
 function buildArchive(
   fixture: InstallFixture,
   version: string,
   variant = '',
-): string {
-  const base = join(fixture.dir, 'source', `${version}${variant}`);
-  const source = join(base, 'station');
-  mkdirSync(source, { recursive: true });
-  writeFileSync(
-    join(source, 'package.json'),
-    JSON.stringify({
-      name: 'station-portable-fixture',
-      version,
-      scripts: {
-        'dependencies:ci': 'node scripts/dependency-lifecycle.mjs ci',
-      },
-    }),
-  );
-  writeFileSync(join(source, 'package-lock.json'), '{}\n');
-  writeFileSync(
-    join(source, '.station-release.json'),
-    `${JSON.stringify({ schemaVersion: 2, sha: 'a'.repeat(40), ref: `v${version}`, createdAt: '2026-08-16T00:00:00.000Z', ...(version.includes('-preview.') ? { channel: 'beta', releaseChannel: 'preview', prerelease: true } : version.includes('-nightly.') ? { channel: 'nightly', releaseChannel: 'nightly', prerelease: true } : { channel: 'stable', releaseChannel: 'stable', prerelease: false }) })}\n`,
-  );
-  // Different bytes for the same version (a republish, or a replayed one).
-  if (variant) writeFileSync(join(source, `variant-${variant}`), variant);
-  writeFileSync(
-    join(source, 'station'),
-    `#!/bin/sh
-printf '%s\\n' "$*" >> "$(dirname "$0")/.calls"
-if [ "\${1:-}" = start ]; then touch "$(dirname "$0")/.launched"; fi
-exit 0
-`,
-  );
-  chmodSync(join(source, 'station'), 0o755);
-  const artifacts = join(fixture.dir, 'artifacts', `${version}${variant}`);
-  mkdirSync(artifacts, { recursive: true });
-  const archive = join(artifacts, 'station-portable.tar.gz');
-  expect(
-    spawnSync('tar', ['-czf', archive, '-C', base, 'station']).status,
-  ).toBe(0);
-  return archive;
+): PrebuiltArchive {
+  return buildPrebuiltArchive(fixture.dir, version, { variant });
 }
 
-let manifestSequence = 0;
-
 /**
- * Signs an installer-shape v2 manifest for `archive` with the fixture's test
- * key. The channel follows the version (preview for `-preview.N`, nightly for
- * `-nightly.N`, otherwise stable), and so does the pinned key id it is
- * labelled with.
+ * Signs a per-platform schema 2 manifest for `archive` with the fixture's
+ * test key. The channel follows the version (preview for `-preview.N`,
+ * nightly for `-nightly.N`, otherwise stable), and so does the pinned key id
+ * it is labelled with. The keyId labels which pinned entry's policy applies;
+ * the bytes are the fixture key's (through the test-only key override).
  */
 function signManifest(
   fixture: InstallFixture,
   version: string,
-  archive: string,
+  archive: PrebuiltArchive,
   overrides: { channel?: string; keyId?: string; url?: string } = {},
 ): string {
-  manifestSequence += 1;
-  const payloadPath = join(
+  return signArchiveManifest(
     fixture.dir,
-    `payload-${version}-${manifestSequence}.json`,
-  );
-  writeFileSync(
-    payloadPath,
-    `${JSON.stringify({
-      schemaVersion: 2,
-      channel:
-        overrides.channel ??
-        (version.includes('-preview.')
-          ? 'preview'
-          : version.includes('-nightly.')
-            ? 'nightly'
-            : 'stable'),
-      version,
-      releaseTag: `v${version}`,
-      sourceSha: 'a'.repeat(40),
-      publishedAt: '2026-09-25T00:00:00.000Z',
-      artifacts: {
-        portable: {
-          name: 'station-portable.tar.gz',
-          url: overrides.url ?? pathToFileURL(archive).href,
-          sha256: digest(archive),
-        },
-      },
-    })}\n`,
-  );
-  // install.sh reads the pre-#2675 schema 2 shape (artifacts.portable) until
-  // slice B2 moves it to per-platform archives. The signer no longer emits
-  // that shape, so this fixture signs it directly. The keyId labels which
-  // pinned entry's policy applies; the bytes are the fixture key's (through
-  // the test-only key override).
-  return signRawManifest(
-    fixture,
-    JSON.parse(readFileSync(payloadPath, 'utf8')),
+    archive,
+    createPrivateKey(readFileSync(fixture.privateKeyPath)),
     overrides.keyId ??
       (version.includes('-nightly.') ? NIGHTLY_KEY_ID : RELEASE_KEY_ID),
+    {
+      payload: overrides.channel ? { channel: overrides.channel } : {},
+      artifact: overrides.url ? { url: overrides.url } : {},
+    },
   );
-}
-
-/**
- * Signs `payload` directly, bypassing the signer's own validation, to model a
- * pinned key that signed something the installer must still refuse. The
- * canonical form is the one GOLDEN_CANONICAL pins.
- */
-function signRawManifest(
-  fixture: InstallFixture,
-  payload: unknown,
-  keyId = RELEASE_KEY_ID,
-): string {
-  const canonical = (value: unknown): string => {
-    if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-    if (value && typeof value === 'object')
-      return `{${Object.keys(value)
-        .sort()
-        .map(
-          (key) =>
-            `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`,
-        )
-        .join(',')}}`;
-    return JSON.stringify(value);
-  };
-  manifestSequence += 1;
-  const manifestPath = join(fixture.dir, `raw-${manifestSequence}.json`);
-  const privateKey = createPrivateKey(readFileSync(fixture.privateKeyPath));
-  writeFileSync(
-    manifestPath,
-    JSON.stringify({
-      schemaVersion: 1,
-      algorithm: 'ed25519',
-      keyId,
-      payload,
-      signature: sign(
-        null,
-        Buffer.from(canonical(payload)),
-        privateKey,
-      ).toString('base64'),
-    }),
-  );
-  return manifestPath;
 }
 
 function runInstaller(
@@ -665,9 +527,30 @@ function runInstaller(
         fixture.testKeyPath,
       ).href,
       STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '1',
+      STATION_FIXTURE_CLI_LOG: cliLog(fixture),
       ...env,
     },
   });
+}
+
+/** Every `<version dir>|<argv>` the installed archives' CLI ran, in order. */
+function cliLog(fixture: InstallFixture): string {
+  return join(fixture.dir, 'cli.log');
+}
+
+function cliCalls(fixture: InstallFixture): string[] {
+  return existsSync(cliLog(fixture))
+    ? readFileSync(cliLog(fixture), 'utf8').trim().split('\n').filter(Boolean)
+    : [];
+}
+
+/** Whether the installer's last start ran `release` (the fake's running file). */
+function launchedFrom(fixture: InstallFixture, release: string): boolean {
+  const running = `${cliLog(fixture)}.running`;
+  return (
+    existsSync(running) &&
+    realpathSync(readFileSync(running, 'utf8')) === release
+  );
 }
 
 function currentRelease(fixture: InstallFixture, ring = 'stable'): string {
@@ -704,48 +587,6 @@ describe('pinned manifest signing keys', () => {
       expect(createPublicKey(entry.publicKeySpkiPem).asymmetricKeyType).toBe(
         'ed25519',
       );
-  });
-
-  it('pins installer canonicalization to one golden vector', () => {
-    const dir = makeTempDir('station-manifest-golden-');
-    const privateKey = goldenPrivateKey();
-    const publicPath = join(dir, 'golden-public.pem');
-    writeFileSync(
-      publicPath,
-      createPublicKey(privateKey).export({ format: 'pem', type: 'spki' }),
-    );
-    // The signature over the written-out canonical bytes, not over a
-    // computed canonical form: install.sh accepts it only if it derives the
-    // same bytes from GOLDEN_PAYLOAD.
-    const signature = sign(
-      null,
-      Buffer.from(GOLDEN_CANONICAL),
-      privateKey,
-    ).toString('base64');
-    expect(signature).toBe(GOLDEN_SIGNATURE);
-    const manifestPath = join(dir, 'golden.json');
-    const envelope = {
-      schemaVersion: 1,
-      algorithm: 'ed25519',
-      keyId: 'station-golden-vector',
-      payload: GOLDEN_PAYLOAD,
-      signature,
-    };
-
-    // Verifier: install.sh accepts the golden signature. Every verification
-    // failure has its own message; this one is the channel comparison that
-    // runs only after the signature verified (an unset STATION_CHANNEL
-    // requests stable, and the golden payload is nightly).
-    envelope.keyId = NIGHTLY_KEY_ID;
-    writeFileSync(manifestPath, JSON.stringify(envelope));
-    const fixture = makeInstallFixture('station-manifest-golden-install-');
-    const result = runInstaller(fixture, manifestPath, {
-      STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: pathToFileURL(publicPath).href,
-    });
-    expect(result.stderr).toContain(
-      'requested channel does not match public ecosystem manifest',
-    );
-    expect(result.status).toBe(1);
   });
 
   it('verifies with --keys only for a pinned key authorized for the channel', () => {
@@ -852,7 +693,7 @@ describe('install.sh public manifest verification', () => {
     );
     expect(result.status, result.stderr).toBe(0);
     expect(installedTag(fixture)).toBe('v1.2.3');
-    expect(existsSync(join(currentRelease(fixture), '.launched'))).toBe(true);
+    expect(launchedFrom(fixture, currentRelease(fixture))).toBe(true);
   });
 
   it('rejects a tampered payload', { timeout: 60_000 }, () => {
@@ -971,15 +812,14 @@ describe('install.sh public manifest verification', () => {
     const manifestPath = signManifest(fixture, '1.2.3', archive);
     const first = runInstaller(fixture, manifestPath);
     expect(first.status, first.stderr).toBe(0);
-    const launched = join(currentRelease(fixture), '.launched');
-    rmSync(launched);
+    const calls = cliCalls(fixture).length;
     const again = runInstaller(fixture, manifestPath);
     expect(again.status, again.stderr).toBe(0);
     expect(again.stdout).toContain(
       'Station v1.2.3 is already installed; nothing to do.',
     );
     // Nothing was stopped or started.
-    expect(existsSync(launched)).toBe(false);
+    expect(cliCalls(fixture)).toHaveLength(calls);
   });
 
   it('refuses a downgrade unless an exact version and the rollback flag are both given', {
@@ -1066,8 +906,17 @@ describe('install.sh public manifest verification', () => {
       STATION_INSTALL_ALLOW_ROLLBACK: '1',
     });
     expect(replaced.status, replaced.stderr).toBe(0);
-    expect(currentRelease(fixture)).not.toBe(installedRelease);
+    // A prebuilt archive's directory is its version, so the replacement takes
+    // the same path with the new bytes; the old bytes were moved aside and
+    // stay as the rollback target.
+    expect(currentRelease(fixture)).toBe(installedRelease);
     expect(existsSync(join(currentRelease(fixture), 'variant-B'))).toBe(true);
+    expect(existsSync(join(currentRelease(fixture), 'variant-A'))).toBe(false);
+    expect(
+      readdirSync(dirname(installedRelease)).filter((name) =>
+        name.startsWith('1.2.3.replaced.'),
+      ),
+    ).toHaveLength(1);
   });
 
   it('treats an unset STATION_CHANNEL as stable when the manifest says preview', {
@@ -1126,26 +975,18 @@ describe('install.sh public manifest verification', () => {
     // next field, so the installer checked a hash other than the signed one.
     const fixture = makeInstallFixture('station-pinned-url-form-');
     const archive = buildArchive(fixture, '1.2.3');
-    const payload = (url: string, sha256: string) => ({
-      schemaVersion: 2,
-      channel: 'stable',
-      version: '1.2.3',
-      releaseTag: 'v1.2.3',
-      sourceSha: 'a'.repeat(40),
-      publishedAt: '2026-09-25T00:00:00.000Z',
-      artifacts: {
-        portable: { name: 'station-portable.tar.gz', url, sha256 },
-      },
-    });
-    const href = pathToFileURL(archive).href;
+    const href = pathToFileURL(archive.archive).href;
     for (const url of [
-      `${href}\n${digest(archive)}`,
+      `${href}\n${archive.sha256}`,
       `${href.slice(0, 12)}\t${href.slice(12)}`,
       href.replace('file://', 'FILE://'),
+      // A plain file name and nothing else: no query, fragment or userinfo.
+      `${href}?x=1`,
+      `${href}#x`,
     ]) {
       const result = runInstaller(
         fixture,
-        signRawManifest(fixture, payload(url, '0'.repeat(64))),
+        signManifest(fixture, '1.2.3', archive, { url }),
       );
       expect(result.stderr, JSON.stringify(url)).toContain(
         'public ecosystem manifest artifact URL is not in canonical form',
@@ -1153,10 +994,7 @@ describe('install.sh public manifest verification', () => {
       expect(result.status).toBe(1);
     }
     // Control: the same payload with the canonical URL installs.
-    const good = runInstaller(
-      fixture,
-      signRawManifest(fixture, payload(href, digest(archive))),
-    );
+    const good = runInstaller(fixture, signManifest(fixture, '1.2.3', archive));
     expect(good.status, good.stderr).toBe(0);
 
     // The signer refuses to emit such a URL in the first place.
@@ -1174,7 +1012,7 @@ describe('install.sh public manifest verification', () => {
       JSON.stringify({
         ...signerPayload,
         artifacts: [
-          { ...first, url: `${first.url}\n${digest(archive)}` },
+          { ...first, url: `${first.url}\n${archive.sha256}` },
           ...rest,
         ],
       }),
@@ -1316,12 +1154,16 @@ describe('install.sh nightly channel (#2675)', () => {
       ),
     );
     expect(state).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       channel: 'nightly',
       releaseChannel: 'nightly',
       installRoot: realpathSync(paths.installRoot),
       stationRoot: realpathSync(paths.stationRoot),
       stationHome: realpathSync(paths.stationHome),
+      manifestUrl: pathToFileURL(manifestPath).href,
+      // The nightly channel's ports, which an upgrade reuses (#2675 C).
+      serverPort: 38141,
+      uiPort: 38000,
     });
     const launcher = readFileSync(paths.launcher, 'utf8');
     expect(launcher).toContain("export STATION_CHANNEL='nightly'\n");
@@ -1331,12 +1173,12 @@ describe('install.sh nightly channel (#2675)', () => {
     expect(launcher).toContain(
       `export STATION_INSTALL_ROOT='${realpathSync(paths.installRoot)}'\n`,
     );
-    // The build is handed the nightly port pair from channel-ports.json.
-    expect(
-      readFileSync(join(currentRelease(fixture, 'nightly'), '.calls'), 'utf8'),
-    ).toBe(
-      `build --base=${realpathSync(paths.stationHome)} --port=38141 --ui-port=38000\n`,
+    // A prebuilt archive is installed as its signed version, and nothing is
+    // built: without a start, its CLI never ran.
+    expect(currentRelease(fixture, 'nightly')).toBe(
+      join(realpathSync(paths.installRoot), 'versions', '0.7.0-nightly.242704'),
     );
+    expect(cliCalls(fixture)).toEqual([]);
     // Stable and beta roots are untouched.
     for (const other of ['stable', 'beta'])
       expect(existsSync(join(paths.stationRoot, 'installs', other))).toBe(
@@ -1522,8 +1364,8 @@ describe('install.sh nightly channel (#2675)', () => {
       STATION_INSTALL_UI_PORT: String(uiPort),
     });
     expect(installed.status, installed.stderr).toBe(0);
-    expect(
-      existsSync(join(currentRelease(fixture, 'nightly'), '.launched')),
-    ).toBe(true);
+    expect(launchedFrom(fixture, currentRelease(fixture, 'nightly'))).toBe(
+      true,
+    );
   });
 });

@@ -63,9 +63,9 @@ import {
 import './console-board-pane.css';
 
 /**
- * Reverses `OperatingStateService.qualifiedWorkflowProcessId`'s
- * `[producer.product, scope.kind, scope.id, taskSlug].join(':')` scheme
- * (server-side source of truth: `src-server/services/operating-state-service.ts`,
+ * Reverses the `[producer.product, scope.kind, scope.id, taskSlug].join(':')`
+ * process id console-server's bridge derives for a workflow task (Station's
+ * inputs: `src-server/services/infra/operating-state-service.ts`,
  * `STATION_OPERATING_STATE_PRODUCT`/`_SCOPE_KIND`) — kept as a small,
  * self-contained mirror here rather than importing a server module into
  * the UI bundle. Returns `undefined` (fails closed) for any id that does

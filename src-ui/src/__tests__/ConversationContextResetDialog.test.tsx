@@ -16,7 +16,10 @@ const status = vi.fn(
     data: undefined,
   }),
 );
-vi.mock('@kontourai/station-sdk/client', () => ({
+// The real module stays underneath: `userFacingErrorMessage` reads
+// `StationHttpError` from it.
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   reserveConversationContextBoundary: (...args: unknown[]) => reserve(...args),
   cancelConversationContextBoundary: (...args: unknown[]) => cancel(...args),
 }));
@@ -99,6 +102,48 @@ describe('ConversationContextResetDialog', () => {
       ),
     );
     expect(dispatchWithReceipt).not.toHaveBeenCalled();
+  });
+
+  // #2708 A-3a: the boundary route validates its body; a refusal as the REAL
+  // execution fetcher throws it reads as the server's reason.
+  test('a validation refusal from the real fetcher shows its reason', async () => {
+    const actual = await vi.importActual<
+      typeof import('@kontourai/station-sdk/client')
+    >('@kontourai/station-sdk/client');
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Validation failed',
+          details: {
+            formErrors: [],
+            fieldErrors: { policy: ['Choose how the context is replaced.'] },
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+    let refusal: unknown;
+    try {
+      refusal = await actual
+        .reserveConversationContextBoundary('http://station.test', 'c', {
+          idempotencyKey: 'k',
+        } as never)
+        .catch((caught: unknown) => caught);
+    } finally {
+      globalThis.fetch = previous;
+    }
+    reserve.mockRejectedValueOnce(refusal);
+    renderDialog();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Replace engine context' }),
+    );
+
+    await vi.waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toBe(
+        'Choose how the context is replaced.',
+      ),
+    );
   });
 
   test('stops a ready Session, confirms its lifecycle, then reserves the boundary', async () => {

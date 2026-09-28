@@ -23,7 +23,7 @@ import { useRef, useState } from 'react';
  */
 
 /** Splice semantics: remove `from`, insert at `to` (indexes in the current list). */
-export function reorderedSlugs(
+function reorderedSlugs(
   slugs: readonly string[],
   from: number,
   to: number,

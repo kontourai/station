@@ -724,7 +724,12 @@ export class BrokerNativeGrantRenewalConflictError extends Error {
   }
 }
 
-/** Fixed native signaling client. It has no Origin, cookie or proxy operation. */
+/**
+ * Fixed native signaling client. It has no Origin, cookie or proxy operation.
+ * Protocol scaffolding: only tests and the opt-in native relay echo lab use it
+ * so far; see "Native routing grant foundation (v2)" in
+ * docs/guides/self-hosted-broker.md.
+ */
 export class SelfHostedBrokerNativeClient {
   readonly #base: string;
   readonly #grant: Readonly<SelfHostedBrokerNativeClientGrantV2>;

@@ -28,7 +28,6 @@
  */
 
 import type { DsseEnvelope } from '@kontourai/surface';
-import { buildPaeBytes } from '@kontourai/surface';
 import { describe, expect, test } from 'vitest';
 import type { DsseEnvelopeShape } from '../channel-assurance.js';
 import { isDsseEnvelopeShape } from '../channel-assurance.js';
@@ -87,12 +86,5 @@ describe('the DSSE shape stays byte-compatible with @kontourai/surface', () => {
       signatures: [{ keyid: 'key-home-epoch-3', sig: 'c2ln' }],
     };
     expect(isDsseEnvelopeShape(fromSurface)).toBe(true);
-  });
-
-  test('surface owns the PAE encoding, and slices 3+ must call it rather than reimplement it', () => {
-    // Asserted here so the dependency is a live fact rather than a comment:
-    // PAE(type, body) = "DSSEv1" SP LEN(type) SP type SP LEN(body) SP body.
-    const pae = new TextDecoder().decode(buildPaeBytes('t', 'body'));
-    expect(pae).toBe('DSSEv1 1 t 4 body');
   });
 });

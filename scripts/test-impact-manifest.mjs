@@ -339,9 +339,26 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     // shipping `/home/...` example paths only because nothing in PR CI
     // selected the sweep for a reference-doc change — the entry used to
     // name docs/conformance/** alone.
+    //
+    // #2803: this is also every doc path's evidence, so a docs change no
+    // longer defers the rest of the diff (the `prepush` lane it routed to ran
+    // no doc gate, and in ci:fast a lane only deferred). Each suite exercises
+    // the real docs tree: the privacy sweep, the live-docs reference check
+    // (docs:reference:gate's own logic), index reachability, compile-checked
+    // guide blocks, and the public-docs sources and vocabulary. The link
+    // check and the reference gate also run as ci:fast statics
+    // (run-ci-fast.mjs), so a code change that breaks a doc is caught too.
     pattern: 'docs/**',
-    tests: ['scripts/__tests__/repo-docs-hygiene.test.ts'],
-    reason: 'public repository documentation privacy boundary',
+    tests: [
+      'scripts/__tests__/repo-docs-hygiene.test.ts',
+      'scripts/__tests__/docs-reference-gate.test.ts',
+      'scripts/__tests__/docs-index-reachability.test.ts',
+      'scripts/__tests__/docs-snippets.test.ts',
+      'scripts/__tests__/product-docs-source-links.test.ts',
+    ],
+    reason:
+      'documentation: evidence is the live-docs suites here plus the ' +
+      'docs:reference:gate and docs:links:check ci:fast statics (#2803)',
   },
 
   Object.freeze({
@@ -706,7 +723,6 @@ export const REPO_SCAN_SUITES = Object.freeze([
   'src-ui/src/__tests__/dock-bottom-clearance.test.ts',
   'src-ui/src/__tests__/home-surface-single-mounter.test.ts',
   'src-ui/src/__tests__/keepPreviousDataConsumers.test.ts',
-  'src-ui/src/__tests__/native-notification-watch.test.ts',
   'src-ui/src/__tests__/package-css-fork.test.ts',
   'src-ui/src/__tests__/placement-vocabulary.test.ts',
   'src-ui/src/__tests__/plain-language-policy.test.ts',
@@ -758,12 +774,6 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
     pattern: 'scripts/test-realtime-wait-gate.mjs',
     related: true,
     tests: Object.freeze(['scripts/__tests__/test-realtime-wait-gate.test.ts']),
-    reason: EXECUTED_SCRIPT_EDGE_REASON,
-  }),
-  Object.freeze({
-    pattern: 'scripts/literal-swap-gate.mjs',
-    related: true,
-    tests: Object.freeze(['scripts/__tests__/literal-swap-gate.test.ts']),
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({
@@ -1654,11 +1664,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     pattern: 'tests/**',
     lanes: ['verify-e2e-full'],
     reason: 'E2E manifest/spec boundary',
-  },
-  {
-    pattern: 'docs/**',
-    lanes: ['prepush'],
-    reason: 'documentation bounded gate',
   },
   {
     pattern: 'src-desktop/**',

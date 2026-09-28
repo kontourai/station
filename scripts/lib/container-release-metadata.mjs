@@ -1,9 +1,14 @@
+import { CHANNEL_VERSION } from '../../packages/shared/src/release-manifest.mjs';
+import { STATION_RELEASE_RINGS } from '../../packages/shared/src/release-rings.generated.mjs';
 import { invokedDirectly } from './module-entry.mjs';
 
 const SHA = /^[0-9a-f]{40}$/i;
-const STABLE = /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
-const PREVIEW =
-  /^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-preview\.(?:[1-9]\d*)$/;
+/**
+ * Container images are published for the stable and preview rings only: a
+ * Nightly image has no registry tag policy (its prerelease would take the
+ * `preview` tag), so createContainerReleaseMetadata refuses every other ring.
+ */
+const CONTAINER_RINGS = new Set(['stable', 'preview']);
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const CONTAINER_PLATFORMS = ['linux/amd64', 'linux/arm64'];
 
@@ -11,9 +16,32 @@ function fail(message) {
   throw new Error(`Invalid container release metadata: ${message}`);
 }
 
+/**
+ * The release ring a `v<version>` tag belongs to, read from the generated
+ * ring table (config/channel-ports.json releaseRings) through the shared
+ * verifier's per-ring version grammar, so every installable ring is accepted
+ * and no ring list is typed here.
+ */
+function releaseRingForTag(tag) {
+  if (typeof tag !== 'string' || !tag.startsWith('v')) return undefined;
+  const version = tag.slice(1);
+  return Object.keys(STATION_RELEASE_RINGS).find((ring) =>
+    CHANNEL_VERSION[ring]?.test(version),
+  );
+}
+
 export function createPackagedReleaseManifest({ tag, sha, createdAt }) {
-  if (typeof tag !== 'string' || !(STABLE.test(tag) || PREVIEW.test(tag))) {
-    fail('tag must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-preview.N');
+  const ring = releaseRingForTag(tag);
+  if (!ring) {
+    fail(
+      `tag must be one release ring's version: ${Object.entries(
+        STATION_RELEASE_RINGS,
+      )
+        .map(([name, { prerelease }]) =>
+          prerelease ? `vMAJOR.MINOR.PATCH-${name}.N` : 'vMAJOR.MINOR.PATCH',
+        )
+        .join(', ')}`,
+    );
   }
   if (typeof sha !== 'string' || !SHA.test(sha))
     fail('sha must be a 40-character Git SHA');
@@ -25,15 +53,15 @@ export function createPackagedReleaseManifest({ tag, sha, createdAt }) {
   ) {
     fail('createdAt must be a canonical ISO-8601 timestamp');
   }
-  const preview = PREVIEW.test(tag);
+  const { runtimeChannel, prerelease } = STATION_RELEASE_RINGS[ring];
   return {
     schemaVersion: 2,
     sha: sha.toLowerCase(),
     ref: tag,
     createdAt,
-    channel: preview ? 'beta' : 'stable',
-    releaseChannel: preview ? 'preview' : 'stable',
-    prerelease: preview,
+    channel: runtimeChannel,
+    releaseChannel: ring,
+    prerelease,
   };
 }
 
@@ -44,6 +72,10 @@ export function createContainerReleaseMetadata({
   repository,
 }) {
   const manifest = createPackagedReleaseManifest({ tag, sha, createdAt });
+  if (!CONTAINER_RINGS.has(manifest.releaseChannel))
+    fail(
+      `container images are published for stable and preview tags only, not ${manifest.releaseChannel}`,
+    );
   if (
     typeof repository !== 'string' ||
     !/^[a-z0-9][a-z0-9._/-]*$/.test(repository)

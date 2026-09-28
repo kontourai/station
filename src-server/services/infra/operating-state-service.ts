@@ -97,43 +97,6 @@ export interface OperatingStateServiceDeps {
   >;
 }
 
-/**
- * `ConsoleProcess.id` console-server's bridge derives for one task-slug
- * entry in this scope — `[producer.product, scope.kind, scope.id,
- * entry.id].join(':')` (console-server's `qualifiedSubjectId`, mirrored
- * here as a TRIVIAL 4-field join, not "mapping logic": this service
- * controls every one of those four fields itself, including using the bare
- * task slug as `entry.id`, so re-deriving the join is safe and exact, not a
- * drift risk). Used to recover the task slug a board card selection names.
- */
-export function qualifiedWorkflowProcessId(
-  scopeId: string,
-  taskSlug: string,
-): string {
-  return [
-    STATION_OPERATING_STATE_PRODUCT,
-    STATION_OPERATING_STATE_SCOPE_KIND,
-    scopeId,
-    taskSlug,
-  ].join(':');
-}
-
-/**
- * Reverses `qualifiedWorkflowProcessId` for a given scope. Returns
- * `undefined` when `processId` does not carry this scope's exact prefix
- * (e.g. a stale id from a different project, or a non-workflow process) —
- * fails closed rather than guessing at a truncated slug.
- */
-export function taskSlugFromQualifiedProcessId(
-  processId: string,
-  scopeId: string,
-): string | undefined {
-  const prefix = `${STATION_OPERATING_STATE_PRODUCT}:${STATION_OPERATING_STATE_SCOPE_KIND}:${scopeId}:`;
-  if (!processId.startsWith(prefix)) return undefined;
-  const slug = processId.slice(prefix.length);
-  return slug.length > 0 ? slug : undefined;
-}
-
 export class OperatingStateService {
   private readonly deps: OperatingStateServiceDeps;
   private readonly logger?: OperatingStateLogger;

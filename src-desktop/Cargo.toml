@@ -29,9 +29,10 @@ serde_json = "1"
 tauri = { version = "=2.11.5", features = ["devtools", "tray-icon", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# rustls, because the notification watch polls the Station over HTTPS — a
+# rustls, because native requests reach the Station over HTTPS — a
 # Tailscale-served host is the normal remote case. Without a TLS backend every
-# such poll fails with "TLS required, but transport is unsecured".
+# such request fails with "TLS required, but transport is unsecured"
+# (pinned by native_http_agent_can_actually_speak_tls).
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 url = "2"
 uuid = { version = "1", features = ["v4"] }

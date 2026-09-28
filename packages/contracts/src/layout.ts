@@ -496,23 +496,6 @@ export function isValidMcpToolRef(ref: string): boolean {
   return parseMcpToolRef(ref) !== null;
 }
 
-export function formatMcpToolRef(serverId: string, toolName: string): string {
-  if (
-    !isNonEmptyString(serverId) ||
-    !isNonEmptyString(toolName) ||
-    serverId !== serverId.trim() ||
-    toolName !== toolName.trim() ||
-    !isValidMcpToolRefPart(serverId) ||
-    !isValidMcpToolRefPart(toolName)
-  ) {
-    throw new TypeError(
-      'MCP tool UI refs require non-empty serverId and toolName without whitespace or slashes',
-    );
-  }
-
-  return `${serverId}/${toolName}`;
-}
-
 export function isLayoutComponentRef(
   component: unknown,
 ): component is LayoutComponentRef {

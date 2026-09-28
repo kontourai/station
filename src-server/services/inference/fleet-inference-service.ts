@@ -174,13 +174,11 @@ type ValidationResult =
   | { ok: false; code: FleetInferenceRefusalCode; message: string };
 
 /**
- * Structural validation, separated from execution so the refusal taxonomy is
- * testable without a provider. Every rejection names the field: a peer
- * debugging a fleet across two machines cannot read this Station's logs.
+ * Structural validation, run before admission so a malformed request costs
+ * no provider work. Every rejection names the field: a peer debugging a fleet
+ * across two machines cannot read this Station's logs.
  */
-export function validateFleetCompletionRequest(
-  body: unknown,
-): ValidationResult {
+function validateFleetCompletionRequest(body: unknown): ValidationResult {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     return {
       ok: false,

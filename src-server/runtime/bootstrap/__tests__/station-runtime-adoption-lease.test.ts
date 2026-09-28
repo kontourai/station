@@ -56,6 +56,7 @@ function supervisorGraceMs(): Record<string, number> {
     source('src-desktop/src/lib.rs'),
     'terminate_desktop_child',
   );
+  const serviceCommand = source('packages/cli/src/commands/service-command.ts');
   const read = (label: string, pattern: RegExp, text: string): number => {
     const match = pattern.exec(text);
     if (!match?.[1]) {
@@ -64,7 +65,7 @@ function supervisorGraceMs(): Record<string, number> {
           'or the code did — either way this table has stopped being true.',
       );
     }
-    return Number(match[1]);
+    return Number(match[1].replaceAll('_', ''));
   };
 
   return {
@@ -82,12 +83,22 @@ function supervisorGraceMs(): Record<string, number> {
       /const deadline = Date\.now\(\) \+ (\d+);/,
       platform,
     ),
+    // The unit renders TimeoutStopSec from SYSTEMD_STOP_TIMEOUT_SECONDS,
+    // which derives from `service run`'s own shutdown deadline plus a margin.
     systemd:
-      read(
-        'systemd',
-        /TimeoutStopSec=(\d+)/,
-        source('packages/cli/src/commands/service-systemd.ts'),
-      ) * 1000,
+      (Math.ceil(
+        read(
+          'systemd shutdown deadline',
+          /SERVICE_SHUTDOWN_DEADLINE_MS = ([\d_]+);/,
+          serviceCommand,
+        ) / 1000,
+      ) +
+        read(
+          'systemd stop margin',
+          /SYSTEMD_STOP_TIMEOUT_SECONDS =\s*Math\.ceil\(SERVICE_SHUTDOWN_DEADLINE_MS \/ 1_000\) \+ (\d+);/,
+          serviceCommand,
+        )) *
+      1000,
     launchd:
       read(
         'launchd',

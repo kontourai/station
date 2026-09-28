@@ -216,12 +216,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Builds two tiny real repositories to prove CLI artifact provenance ignores
   // hostile inherited Git routing and sees a staged dirty index.
   'packages/cli/src/__tests__/build-metadata.test.ts',
-  // Builds throwaway Git repositories and runs the gate as a child process, so
-  // the real exit status is what the assertions read; process ownership is the
-  // behavior under test, not a helper.
-  'scripts/__tests__/literal-swap-gate.test.ts',
-  // Same shape: throwaway Git repositories, and the real-time wait gate run
-  // as a child process so its exit status (0/1/2) is what is asserted.
+  // Builds throwaway Git repositories and runs the real-time wait gate as a
+  // child process, so its exit status (0/1/2) is what the assertions read.
   'scripts/__tests__/test-realtime-wait-gate.test.ts',
   // station#1648: runs the Playwright install script as a child process behind
   // a fake `npx` on PATH, because the exit status and the argv it really
@@ -545,6 +541,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675: runs the manifest signer CLI (sign, verify, assemble) as bounded
   // single-shot children for each golden vector.
   'scripts/__tests__/release-manifest-vectors.test.ts',
+  // #2675 slice E: drives the manifest signer and the Nightly publication
+  // helper CLIs as bounded single-shot children (dry-run sign and verify).
+  'scripts/__tests__/portable-nightly-publish-workflow.test.ts',
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',
@@ -958,6 +957,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/__tests__/chatFeedback.geometry.test.tsx',
   // #2260: owns Chromium for actual mobile close-target geometry and hit testing.
   'src-ui/src/__tests__/ProjectSidebarHeader.mobileCloseGeometry.test.tsx',
+  // archive#3331: owns Chromium touch emulation for the sidebar reorder
+  // handle's coarse-pointer visibility, size and hit testing.
+  'src-ui/src/__tests__/ProjectSidebarReorder.coarseGeometry.test.tsx',
   // Owns Chromium to measure the legacy action-row wrap and touch-target
   // floor against the real index.css cascade at a phone viewport.
   'src-ui/src/__tests__/legacy-action-row.touch-target.test.ts',
@@ -1037,6 +1039,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // is right that nothing here can see a `playwright-core` spawn, so an
   // omission is silent until the run is slow or flaky.
   'src-ui/src/__tests__/SplitPaneLayout.railName.overflow.test.tsx',
+  // Chromium hit-testing of the framed mobile detail sheet between a fixed
+  // toolbar and dock.
+  'src-ui/src/__tests__/SplitPaneLayout.mobileSheet-geometry.test.tsx',
   // #1536 F (round 3): same shape again — launches a real Chromium to read the
   // Layout menu's RESOLVED row/group borders. A text scan could not: the first
   // fix tied on specificity with a rule 90 lines below it and lost on source

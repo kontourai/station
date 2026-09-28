@@ -6,6 +6,10 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PAIRING_SCOPE_ROUTE_TABLE } from '../../../security/pairing-route-scopes.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import type { Logger } from '../../../utils/logger.js';
 import { RouteError } from '../../../utils/route-error.js';
@@ -140,7 +144,26 @@ describe('resolveRuntimeCorsOrigin', () => {
     expect(resolveRuntimeCorsOrigin('https://unknown.example.com')).toBeNull();
   });
 
-  test('station#169: the preflight allowlist admits Last-Event-ID so cross-origin SSE reconnects survive', async () => {
+  test('keeps the middleware-authenticated cookie or bearer principal on its exact request', () => {
+    const request = new Request('http://station.test/api/tasks/task/room');
+    setRuntimeAuthenticatedRequestPrincipal(request, {
+      credential: 'paired-device-credential',
+      authority: 'device-credential',
+      source: 'session',
+    });
+    expect(getRuntimeAuthenticatedRequestPrincipal(request)).toEqual({
+      credential: 'paired-device-credential',
+      authority: 'device-credential',
+      source: 'session',
+    });
+    expect(
+      getRuntimeAuthenticatedRequestPrincipal(
+        new Request('http://station.test/api/tasks/task/room'),
+      ),
+    ).toBeUndefined();
+  });
+
+  test('archive#169: the preflight allowlist admits Last-Event-ID and the stream liveness header so cross-origin SSE reconnects survive', async () => {
     const logger: Logger = {
       info: vi.fn(),
       warn: vi.fn(),
@@ -174,7 +197,8 @@ describe('resolveRuntimeCorsOrigin', () => {
         headers: {
           Origin: 'http://localhost:5173',
           'Access-Control-Request-Method': 'GET',
-          'Access-Control-Request-Headers': 'last-event-id',
+          'Access-Control-Request-Headers':
+            'last-event-id, x-station-client-session',
         },
       },
       { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
@@ -188,6 +212,7 @@ describe('resolveRuntimeCorsOrigin', () => {
     // normalized list is the property the SSE reconnect depends on.
     expect(allowed).toContain('last-event-id');
     expect(allowed).toContain('authorization');
+    expect(allowed).toContain('x-station-client-session');
   });
 
   test('station#1848: the access log never reports a stream-open time as a request duration', async () => {

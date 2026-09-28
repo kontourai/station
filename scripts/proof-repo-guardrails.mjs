@@ -667,7 +667,6 @@ const feedbackAnalysis = readRequiredSource(
   '../src-server/services/feedback/feedback-analysis.ts',
 );
 for (const requiredHelper of [
-  'export function extractJson',
   'export async function runMiniFeedbackAnalysis',
   'export async function runFullFeedbackAnalysis',
 ]) {
