@@ -708,7 +708,7 @@ describe('CI verification workflow contracts', () => {
   // while nightly kept shipping and neither lane's state implied anything about
   // the other's. Read the pins from the gate; do not restate them here either.
   it('pins one Android NDK and build-tools revision across every lane', () => {
-    const seen = readWorkflowDocuments().flatMap(({ file }) => {
+    const seen = readWorkflowDocuments().flatMap(({ file, document }) => {
       const source = readFileSync(file, 'utf8');
       return [
         ...[...source.matchAll(/ndk[;/]([0-9][0-9.]*)/g)].map((m) => ({
@@ -716,17 +716,29 @@ describe('CI verification workflow contracts', () => {
           kind: 'ndk',
           value: m[1],
         })),
-        // Workflows name the revision once, as ANDROID_BUILD_TOOLS_VERSION, and
-        // install `build-tools;${ANDROID_BUILD_TOOLS_VERSION}`; match both shapes.
-        ...[
-          ...source.matchAll(
-            /(?:build-tools[;/]|ANDROID_BUILD_TOOLS_VERSION: ')([0-9][0-9.]*)/g,
-          ),
-        ].map((m) => ({
+        ...[...source.matchAll(/build-tools[;/]([0-9][0-9.]*)/g)].map((m) => ({
           file,
           kind: 'build-tools',
           value: m[1],
         })),
+        // Workflows name the revision once, as a job-level
+        // ANDROID_BUILD_TOOLS_VERSION, and install
+        // `build-tools;${ANDROID_BUILD_TOOLS_VERSION}`. Read the env value from
+        // the parsed YAML so its quoting style cannot hide it from the pin.
+        ...Object.values(
+          (
+            document as {
+              jobs?: Record<string, { env?: Record<string, unknown> }>;
+            }
+          )?.jobs ?? {},
+        )
+          .map((job) => job?.env?.ANDROID_BUILD_TOOLS_VERSION)
+          .filter((value) => value !== undefined)
+          .map((value) => ({
+            file,
+            kind: 'build-tools',
+            value: String(value),
+          })),
       ];
     });
     // Guards the guard: a typo in the patterns above would make this vacuous.
@@ -743,6 +755,58 @@ describe('CI verification workflow contracts', () => {
       seen
         .filter((entry) => entry.value !== expected[entry.kind])
         .map((entry) => `${entry.file}: ${entry.kind} ${entry.value}`),
+    ).toEqual([]);
+  });
+
+  // The pin above compares only the values it finds, so a lane that stops
+  // installing the NDK, or stops naming its build-tools revision, would pass on
+  // the other lanes' matches and build with whatever the runner preinstalled.
+  // Every job that runs sdkmanager must install both, pinned, itself.
+  it('installs the pinned NDK and build-tools in every Android lane', () => {
+    const lanes = readWorkflowDocuments().flatMap(({ file, document }) =>
+      Object.entries(
+        (
+          document as {
+            jobs?: Record<
+              string,
+              { env?: Record<string, unknown>; steps?: { run?: unknown }[] }
+            >;
+          }
+        )?.jobs ?? {},
+      ).flatMap(([jobName, job]) => {
+        const installs = (job?.steps ?? [])
+          .map((step) => (typeof step?.run === 'string' ? step.run : ''))
+          .filter((run) => /\bsdkmanager\b/.test(run));
+        if (installs.length === 0) return [];
+        const install = installs.join('\n');
+        const buildTools = job?.env?.ANDROID_BUILD_TOOLS_VERSION;
+        return [
+          {
+            lane: `${file}#${jobName}`,
+            ndk: /"ndk;([0-9][0-9.]*)"/.exec(install)?.[1] ?? null,
+            buildTools:
+              install.includes(
+                '"build-tools;${ANDROID_BUILD_TOOLS_VERSION}"',
+              ) && buildTools !== undefined
+                ? String(buildTools)
+                : (/"build-tools;([0-9][0-9.]*)"/.exec(install)?.[1] ?? null),
+          },
+        ];
+      }),
+    );
+    // The three lanes that ship or verify Android; a lane dropping out of this
+    // set (renamed job, sdkmanager moved elsewhere) must be a visible change.
+    expect(lanes.map(({ lane }) => lane.split('#')[0]).sort()).toEqual([
+      '.github/workflows/build-android.yml',
+      '.github/workflows/nightly-native-stage.yml',
+      '.github/workflows/release.yml',
+    ]);
+    expect(
+      lanes.filter(
+        (lane) =>
+          lane.ndk !== ANDROID_NDK_VERSION ||
+          lane.buildTools !== ANDROID_BUILD_TOOLS_VERSION,
+      ),
     ).toEqual([]);
   });
 
