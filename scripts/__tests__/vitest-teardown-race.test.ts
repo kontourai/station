@@ -1,6 +1,22 @@
-import type { rm } from 'node:fs/promises';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { removeRunRoot } from '../../vitest.global-setup.js';
+import setup, { removeRunRoot } from '../../vitest.global-setup.js';
+
+// setup() is exercised for its returned teardown only: its temp root is
+// redirected to a scratch directory and the day-old sweep is stubbed, so the
+// call touches neither the real run root nor other runs' leftovers.
+const scratch = vi.hoisted(() => ({ root: '' }));
+vi.mock('node:fs/promises', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs/promises')>()),
+  rm: vi.fn(),
+}));
+vi.mock('@kontourai/station-shared/temp-dir', () => ({
+  stationTempRoot: () => scratch.root,
+  sweepStationTempRoot: async () => 0,
+}));
 
 /**
  * The run root is removed by `vitest.global-setup.ts` while pooled workers may
@@ -40,6 +56,40 @@ describe('run-root teardown', () => {
       ).resolves.toBeUndefined();
     },
   );
+
+  // The helper is only worth its tests if setup() still tears down through it.
+  it('setup returns a teardown that tolerates a contended run root', async () => {
+    const saved = {
+      host: process.env.STATION_VITEST_HOST_TMPDIR,
+      runRoot: process.env.STATION_VITEST_RUN_ROOT,
+    };
+    scratch.root = mkdtempSync(join(tmpdir(), 'station-teardown-wiring-'));
+    const remove = vi.mocked(rm);
+    remove.mockReset();
+    remove.mockRejectedValue(
+      Object.assign(new Error('EBUSY: run root'), { code: 'EBUSY' }),
+    );
+    try {
+      const teardown = await setup();
+      const runRoot = process.env.STATION_VITEST_RUN_ROOT;
+      expect(runRoot?.startsWith(scratch.root)).toBe(true);
+      await expect(teardown()).resolves.toBeUndefined();
+      expect(remove).toHaveBeenCalledWith(
+        runRoot,
+        expect.objectContaining({ recursive: true, force: true }),
+      );
+      expect(remove.mock.calls[0][1]?.maxRetries).toBeGreaterThan(0);
+    } finally {
+      for (const [key, value] of [
+        ['STATION_VITEST_HOST_TMPDIR', saved.host],
+        ['STATION_VITEST_RUN_ROOT', saved.runRoot],
+      ] as const) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      rmSync(scratch.root, { recursive: true, force: true });
+    }
+  });
 
   // A genuinely undeletable root is still worth surfacing.
   it('rethrows any other removal failure', async () => {
