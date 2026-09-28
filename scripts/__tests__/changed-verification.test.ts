@@ -2729,6 +2729,7 @@ setInterval(() => {}, 1000);`,
   test('runs the representative narrow diff through non-explain selection and reports timing/counts', async () => {
     const worktreeCommand = vi.fn();
     const runChanged = vi.fn(() => ({
+      paths: ['src-server/routes/chat/__tests__/chat-context.test.ts'],
       selection: {
         relatedPaths: ['src-server/routes/chat/__tests__/chat-context.test.ts'],
       },
@@ -2779,6 +2780,7 @@ setInterval(() => {}, 1000);`,
       }),
     ).toEqual({
       fixture: 'src-server/routes/chat/__tests__/chat-context.test.ts',
+      paths: ['src-server/routes/chat/__tests__/chat-context.test.ts'],
       elapsedMs: 45,
       counts: { executed: 12, passed: 12, failed: 0 },
       selection: {
@@ -2827,7 +2829,7 @@ setInterval(() => {}, 1000);`,
     expect(result.stderr).not.toContain(
       'workspace dependency provenance rejected',
     );
-    expect(result.stdout).toContain('[test:changed] 0 changed path(s)');
+    expect(result.stdout).toContain('[test:changed] 1 changed path(s)');
     expect(result.stdout).toContain(
       'src-server/routes/chat/__tests__/chat-context.test.ts',
     );
