@@ -163,6 +163,7 @@ describe('e2e manifest', () => {
       'tests/minimal-workspace-example.spec.ts',
       'tests/workspace-pane-host-actions-live.spec.ts',
       'tests/bundled-plugin-registry-lifecycle.spec.ts',
+      'tests/authenticated-request-canary.spec.ts',
       'tests/ui-crud-smoke.spec.ts',
       'tests/knowledge-onboarding-smoke.spec.ts',
       'tests/task-workspace.spec.ts',

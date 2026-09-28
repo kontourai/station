@@ -160,15 +160,16 @@ async function selectAndQuote(page: Page, keyboard = true) {
   ).toContainText('selected words');
 }
 
-test('selection retains the existing draft, produces removable context and keeps a source link after send', async ({
+// The harness owns the reply text and composes the sent message itself, so
+// draft retention and composition belong to useChatInput and
+// answer-quotes.test.ts. What is real here is the selection toolbar, the quote
+// draft store, and how a sent quote renders and inspects its source.
+test('selection produces removable context and a sent quote keeps its source link', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mount(page, () => ({}));
   await selectAndQuote(page);
-  await expect(page.getByRole('textbox', { name: 'Reply' })).toHaveValue(
-    'Keep existing draft',
-  );
   await page.getByRole('button', { name: 'Remove quote 1' }).click();
   await expect(
     page.getByRole('region', { name: 'Quoted context' }),
@@ -176,7 +177,6 @@ test('selection retains the existing draft, produces removable context and keeps
   await selectAndQuote(page);
   await page.getByRole('button', { name: 'Send reply' }).click();
   const sent = page.getByRole('region', { name: 'Sent reply' });
-  await expect(sent).toContainText('Keep existing draft');
   await expect(sent).toContainText('selected words');
   await sent.getByRole('button', { name: 'Quoted answer' }).click();
   await expect(page.getByRole('dialog')).toContainText(

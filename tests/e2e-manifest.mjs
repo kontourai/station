@@ -464,7 +464,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "UX audit E1 (reports/agents-lane/DESIGN.md §2/§5): the Agents rail as a readiness board against a live Station — the engines band above the authored band, a non-ready row printing the server's own unavailableReason verbatim with exactly one fixing verb mapped from unavailableFix.kind, and a Ready row whose Chat action opens the shared New Chat picker onto a real composer. The non-ready row is seeded by binding an agent to an engine connection that does not exist, so the state is an observation rather than a mocked string. Desktop plus a 390x844 variant asserting the same one verb, a 44px repair target and no horizontal document scroll.",
+      "UX audit E1 (reports/agents-lane/DESIGN.md §2/§5): the Agents rail as a readiness board against a live Station — the engines band above the authored band, a non-ready row printing the server's own unavailableReason verbatim with exactly one fixing verb mapped from unavailableFix.kind and never identifying the missing engine by its connection id (station#3742), and a Ready row whose Chat action opens the shared New Chat picker onto a real composer. The non-ready row is seeded by binding an agent to an engine connection that does not exist, so the state is an observation rather than a mocked string. Desktop plus a 390x844 variant asserting the same one verb, a 44px repair target and no horizontal document scroll.",
     exceptions: [],
   },
   {
@@ -1106,6 +1106,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/authenticated-request-canary.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'E2E harness authentication',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'The suite authentication canary against the live instance: the authenticatedRequest fixture credential is accepted on an operator route (GET /api/pairing/requests) and an ordinary Playwright request context with no credential is refused 401. Without it, every spec that seeds through authenticatedRequest would still pass against a server started with authentication off or a fixture that leaked its bearer into the ambient context. API-only by design: the harness server exists only in an E2E run.',
+    exceptions: [],
+  },
+  {
     path: 'tests/connections-crud.spec.ts',
     bucket: 'product',
     surface: 'Connections',
@@ -1162,7 +1172,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "The three gate facts no sibling Agents spec can see, against the real API rather than mocked routes: the Create gate and the model picker giving ONE answer with the connections query deliberately delayed past the starting-point click, which is the state-dependent disagreement station#3743 records; the required system prompt marked and gating Create instead of refusing after submit (station#3741); and an unavailable engine named rather than identified by its connection id (station#3742). agents-new-model-turn owns the ready-connection wait and its inline repair, agents-editor-roundtrip the mobile sticky footer, agents-readiness-board the rail's readiness sentence.",
+      "The two gate facts no sibling Agents spec can see, against the real API rather than mocked routes: the Create gate and the model picker giving ONE answer with the connections query deliberately delayed past the starting-point click, which is the state-dependent disagreement station#3743 records; and the required system prompt marked and gating Create instead of refusing after submit (station#3741). agents-new-model-turn owns the ready-connection wait and its inline repair, agents-editor-roundtrip the mobile sticky footer, agents-readiness-board the rail's readiness sentence and that an unavailable engine is never identified by its connection id (station#3742).",
     exceptions: [],
   },
   {
