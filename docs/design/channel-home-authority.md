@@ -183,8 +183,7 @@ with a required caller-bound synchronous authorization predicate. The adapter fi
 under the transaction lock before access and before commit. Revocation rolls back the entire decision change and
 returns `denied`; a failed authority lookup returns `unavailable`. Promise-valued
 guards are refused, never treated as truthy grants. The callback must be owned
-by the service, not supplied by a request body. The guarded entry rejects an absent guard. The separate unguarded constructor
-retains the private storage-only API; it is not safe to expose directly.
+by the service, not supplied by a request body. The guarded entry rejects an absent guard, and it is the only constructor.
 
 The adapter itself performs no home authentication, membership authorization,
 lease issuance, renewal or target activation. No runtime write path currently

@@ -28,7 +28,7 @@ import {
   createPlannedHomeControlSessionAuthority,
   type PlannedHomeControlAdmissionPort,
 } from '../planned-home-control-session-authority.js';
-import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
+import { createAuthorizedSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
 import { projectTaskRoomChannelId } from '../project-task-room-history.js';
 
 const cleanup: Array<() => Promise<void> | void> = [];
@@ -103,7 +103,10 @@ async function fixture() {
       replaySecret: randomBytes(32).toString('hex'),
     }),
   ).capability;
-  const transfers = createSqlitePlannedHomeTransferStore(database);
+  const transfers = createAuthorizedSqlitePlannedHomeTransferStore(
+    database,
+    () => true,
+  );
   const owner = (scope: ProjectTaskRoomScope) =>
     transfers.initialize({
       tenantId: personalControllerTenantId(controller.environmentId),
