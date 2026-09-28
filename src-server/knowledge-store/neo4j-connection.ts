@@ -2,12 +2,10 @@
  * Process-local Neo4j graph-view configuration, separate from canonical stores.
  * Registration is not persisted and must be repeated after restart.
  * validateNeo4jGraphViewConnection checks TCP reachability, not authentication
- * or Cypher. The generic query function remains an unsupported stub; real
- * fixed-query reads/sync live in neo4j-graph-provider.ts and neo4j-graph-sync.ts.
+ * or Cypher. There is no generic query function; fixed-query reads and sync
+ * live in neo4j-graph-provider.ts and neo4j-graph-sync.ts.
  */
 import { createConnection } from 'node:net';
-
-export const NEO4J_GRAPH_VIEW_CONNECTION_TYPE = 'neo4j-graph-view' as const;
 
 /** Bolt default port (Neo4j's own documented default) — used when a URI omits one. */
 const DEFAULT_BOLT_PORT = 7687;
@@ -35,12 +33,6 @@ export interface Neo4jGraphViewConnectionConfig {
 
 interface Neo4jReachabilityResult {
   ok: boolean;
-  reason: string;
-}
-
-interface Neo4jGraphQueryResult {
-  // K2 never returns `ok: true` for an actual query — it ships no query client.
-  ok: false;
   reason: string;
 }
 
@@ -158,30 +150,5 @@ export async function validateNeo4jGraphViewConnection(
       `TCP-reachable at ${host}:${port}, but not verifiable as a live Neo4j/bolt ` +
       'daemon without a driver — K2 ships registration only; a full bolt-protocol ' +
       'handshake/health-check is K5 dual-adapter dogfood scope',
-  };
-}
-
-// ── Query stub ───────────────────────────────────────────────────────────────────
-
-/**
- * Honest no-op query surface: K2 ships no graph-sync client, so every call returns
- * `{ok: false, reason}` naming exactly why — never throws, never silently returns
- * an empty success result (the "silently returning empty success" failure mode the
- * plan explicitly calls out and rejects).
- */
-export async function queryNeo4jGraphView(
-  config: Neo4jGraphViewConnectionConfig | null,
-  _cypher: string,
-): Promise<Neo4jGraphQueryResult> {
-  if (!config?.uri) {
-    return { ok: false, reason: 'not configured' };
-  }
-  return {
-    ok: false,
-    reason:
-      'not implemented: K2 registers the Neo4j graph-view connection surface only ' +
-      '(config shape + reachability check) — a real bolt-driver query client is ' +
-      "K5's dual-adapter dogfood scope (docs/design/knowledge-foundation.md, " +
-      '"K5 hooks")',
   };
 }

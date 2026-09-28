@@ -1,14 +1,8 @@
 # Collaborative editor pane
 
-> **Reading status: current pure-controller contract with historical renderer scope.**
-> The [controller](../../src-shared/collaborative-editor-pane.ts) and
-> [editing capability](../../src-server/domain/shared-working-state-editing.ts)
-> own the boundaries below. The original React projection was removed in
-> `2775e92eb` after remaining unmounted. Current Task editing instead mounts
-> [TaskRoomEditorPane](../../src-ui/src/workspace-panes/TaskRoomEditorPane.tsx)
-> through [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx).
-> These are distinct compositions; this note does not certify a live controller
-> renderer or re-run the protocol, authority, or performance evidence.
+> **Status: not shipped.** The pure controller this design describes was
+> deleted because nothing composed it. The shipped Task workspace collaboration
+> path is [ProjectTaskRoom](../architecture/module-map.md#projecttaskroom).
 
 The [original design](https://github.com/kontourai/station-archive/issues/2890)
 describes a Workspace Pane projection for shared text/code work. It is

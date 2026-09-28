@@ -1768,6 +1768,27 @@ rebuilds first, as it does for a stale bundle, and refuses, naming
 not write one. `station service run` rebuilds on the same conditions. Packaged
 installs (no `.git`) are not checked.
 
+What the unit runs depends on where `service install` runs from. A source
+checkout's unit runs its `scripts/station-cli.ts` through `tsx` with the
+installing Node.js, from the checkout's physical path. A prebuilt archive's
+unit runs `bin/station.mjs` with the archive's bundled Node.js; for the
+version `install.sh` made active, it runs them through
+`<install root>/current` (and puts `current/runtime/bin` on its `PATH`), so an
+upgrade switches `current` and restarts the unit without rewriting it. The
+service manifest records which (`kind`: `source` or `archive`) and, for such
+an archive, its `installRoot`; the installer and `station upgrade` recognize
+the service by that root. Installing a service from another version under
+`<install root>/versions/` is refused, because the installer may remove it.
+The unit keeps the ports it was installed with: an installer run that names
+another port explicitly refuses rather than ignoring it. A registered unit
+that is not running (stopped, or waiting to be restarted after a crash) is
+stopped for the switch and left stopped, and the installer starts no separate
+Station beside it; `service start` starts it on the new version. Every unit
+sets `STATION_SERVICE_MANAGED=1`, and systemd waits 75 seconds
+(`TimeoutStopSec`) for `service run`'s 60-second shutdown before it kills the
+unit. A unit installed by an earlier version keeps `TimeoutStopSec=30` until
+`station service install` is run again.
+
 `--allowed-origin=<origin>` (repeatable) adds a browser origin the runtime's
 pairing gate trusts — required when Station is reached through a reverse
 proxy such as `tailscale serve`, where the server itself only sees
@@ -2165,12 +2186,17 @@ station stop --home=/tmp/station-a
 In a source checkout, pull the latest code, reinstall dependencies, and rebuild.
 In a signed portable install, reuse the persisted release ring and delegate to
 the installer without a Git checkout or pre-stop action. Installed plugins are preserved.
-For a prebuilt server archive (`station-server-<os>-<arch>`) installed by
-`install.sh` under `versions/<version>`, `upgrade` validates the install state,
-provenance, ownership marker and active link, then re-runs that version's
-installer. Public-manifest installs record the URL in schema-4 state; an
-explicit `STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. A supervising
-installed service blocks this upgrade.
+From a prebuilt server archive (`station-server-<os>-<arch>`) that `install.sh`
+installed (the version `<install root>/current` names), `upgrade` validates the
+install state, provenance, ownership marker and active link, then re-runs that
+version's installer with the recorded release manifest. Public-manifest
+installs record the URL in schema-4 state; an explicit
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. A Station user service
+installed from that archive does not block it: the installer stops the
+service, switches `current`, and starts the service again, and if the service
+does not come back answering as the new release it restores the previous
+version and restarts the service on it. Any other installed service still
+blocks the upgrade, as in a source checkout.
 
 A loose extracted archive has no installer-owned layout and still refuses
 `upgrade` without changing anything. Install through `install.sh`, or stop

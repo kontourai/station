@@ -65,11 +65,10 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [KnowledgeFileTransactions](#knowledgefiletransactions) | Publish one multi-file knowledge mutation with durable rollback and exact conflict detection. | `src-server/knowledge-store/adapters/shared/file-transactions.ts` |
 | [SharedWorkingState](#sharedworkingstate) | Converge one authorized text document through versioned causal operations and bounded resync. | `src-server/domain/shared-working-state.ts` |
 | [LiveWorkSession](#liveworksession) | Project bounded, separately authorized ephemeral work presence for one exact Project/Task/surface/session. | `src-server/domain/live-work-session.ts` |
-| [CollaborativeEditorPane](#collaborativeeditorpane) | Present one authorized shared text/code document with optimistic intent, presence, cursors, and local-first follow controls. | `src-shared/collaborative-editor-pane.ts` |
+| [ProjectTaskRoom](#projecttaskroom) | Present one Task's shared text document, presence, and cursors through the server-owned task room. | `src-server/services/orchestration/project-task-room-runtime.ts` |
 | [SharedWorkingStateEditingCapability](#sharedworkingstateeditingcapability) | Plan exact text-edit operation batches from #2889 atom snapshots and prove preview/operation identity. | `src-server/domain/shared-working-state-editing.ts` |
 | [RevisionEvidenceModule](#revisionevidencemodule) | Freeze immutable shared-state revisions and resolve Station-local evidence references. | `src-server/domain/revision-bound-evidence.ts` |
 | [ActionOperationModule](#actionoperationmodule) | Retain one authorized platform mutation's reconnect-safe execution status without owning its domain lifecycle. | `src-server/services/operations/action-operation-service.ts` |
-| [PluginForegroundRuns](#pluginforegroundruns) | Admit and project user-initiated plugin work without giving plugins a private run authority. | `src-server/services/plugins/plugin-foreground-runs.ts` |
 | [OperationalEventOutbox](#operationaleventoutbox) | Persist validated operational facts before isolated notification and expose bounded replay truth. | `src-server/services/operational-events/operational-event-outbox.ts` |
 | [OperationalEventDelivery](#operationaleventdelivery) | Claim, settle, retry, and dead-letter one scope-filtered operational fact without duplicate effects. | `src-server/services/operational-events/operational-event-delivery.ts` |
 | [OperationalEventSubscriptions](#operationaleventsubscriptions) | Authorize declarative subscribers and isolate projected at-least-once delivery. | `src-server/services/operational-events/operational-event-subscriptions.ts` |
@@ -1616,43 +1615,7 @@ are the focused contract evidence. **Do not reintroduce:**
 an API/database/UI here, a second message/presence log, caller-authored actor/work
 facts, insertion-order IDs, authority inferred from replay, or restored liveness.
 
-## CollaborativeEditorPane
-
-**Status and purpose.** [CollaborativeEditorPaneController](../../src-shared/collaborative-editor-pane.ts)
-is a retained pure controller with fixture callers. No production renderer
-instantiates it. Its former, unmounted React projection was deleted. The
-mounted Task workspace uses the server/browser composition below; controller
-tests do not prove that its complete watch/follow/navigation API is shipped UI.
-
-**Retained controller contract.** Composition binds one Pane occurrence, local
-actor and exact Project/Task/document to separate document, editing, room,
-principal, target, cursor, transport and navigation authorities. Intent enters
-through local input/selection, remote operations, room projections, recovery,
-or watch/follow/jump/join/share. Public state omits atoms, snapshots, operations,
-writer epochs, grants, raw room logs, filesystem paths and host placement
-capabilities.
-
-Current exact actor/scope authority is checked at ingress. Solo document
-read/write/resync uses document authority; room permission separately gates
-presence, cursors and sharing. Revoked read authority masks document-derived
-text and attribution while private possible-effect evidence remains available
-for reconciliation. A planned batch stays `uninvoked` until `submitBatch`.
-Its digest binds version, intent, scope and ordered operation semantics.
-Deferred or uncertain effects remain pending; projected operations alone do
-not settle a batch whose total transport result is outstanding. Contradictory
-member/total outcomes quarantine the batch and make the document stale.
-Retries reuse the exact batch rather than minting another edit.
-
-Room projections have closed schemas, exact scope, server-owned generation and
-epoch, sequence, TTL and capacity bounds. An authenticated old packet is
-ignored; missing current stream authority makes the projection stale. Actor
-ID/kind is stable while Session/run presence can change; accepted edit
-attribution remains immutable. Cursor coordinates are transformed through the
-same private pending operations or suppressed. Follow/navigation resolves an
-exact target and uses a consumed, revision/scope/actor-bound host capability.
-Local input can leave follow mode; unwatch is explicit. Restore and resync share
-an abort generation so late recovery cannot overwrite a newer state. Working
-revisions and immutable evidence revisions have different owners.
+## ProjectTaskRoom
 
 **Mounted Task path.** [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
 mounts `ProjectTaskRoomProvider`, `ProjectTaskRoomPresence`, `TaskRoomEditorPane`
@@ -1676,16 +1639,13 @@ Terminal streams clear live presence; reconnect, duplicate/gap handling and
 Task changes use the authoritative recovery path. Unsaved browser text is not
 a durable server operation, and closing a stream does not undo a submitted edit.
 
-**Evidence.** `src-shared/__tests__/collaborative-editor-pane.test.ts` tests the
-retained controller, including dynamic revocation, exact batch settlement,
-room bounds, stale recovery and navigation fencing. Room-runtime, working-state,
-route and SDK tests cover the separate production composition. Mounted
+**Evidence.** Room-runtime, working-state, route and SDK tests cover the
+production composition. Mounted
 `TaskRoomEditorPane.cache-integration.test.tsx` and `ProjectTaskRoomContext.test.tsx`
 cover shared document delivery and recovery. `tests/project-task-room-collaboration.spec.ts`
 is the two-browser acceptance route; a unit-test run is not that acceptance run.
-Keep renderer-specific overlays from the deleted prototype in historical
-records, not in the current Task editor contract.
 
+The pure `CollaborativeEditorPaneController` that [the #2890 design](../design/collaborative-editor-pane.md) describes was deleted: no pane host, catalog entry, or route ever composed it, and its own tests were its only callers. **Do not reintroduce:** editor-local CRDT/OT/LWW logic, client-owned authority, exported pending payload, opaque-epoch freshness guesses, JSON metadata equivocation, per-cursor document copies, caller-asserted revision verification, local paths, capability conflation, durable chat/history ownership, host placement policy, or renderer-specific transport.
 
 ## SharedWorkingStateEditingCapability
 
@@ -1720,9 +1680,7 @@ and digest plus text/selection preview, never atoms, operations or a writer
 grant. The runtime keeps at most 256 private plans, expires a plan after five
 minutes, and settles only its exact scope/principal/digest. If the in-memory
 plan is absent, submit can read an already durable matching receipt; it cannot
-reconstruct an unsubmitted plan after restart. The retained
-CollaborativeEditorPaneController consumes the narrow capability type in its
-fixtures, but is not the mounted Task editor.
+reconstruct an unsubmitted plan after restart.
 
 **Evidence.** `shared-working-state-editing.test.ts` checks Unicode, exact
 preview, byte chunking, insertion ordering, deletion, clone ownership and
@@ -1839,60 +1797,6 @@ cover concurrency, authorization, publication faults and cancellation races with
 fixtures. Do not add caller-created rows, arbitrary URLs, global watch cursors
 or claims that an Activity status independently proves the underlying work.
 
-
-## PluginForegroundRuns
-
-[PluginForegroundRuns](../../src-server/services/plugins/plugin-foreground-runs.ts) is a
-retained foreground-work mechanism with controlled coordinator fixtures. No runtime
-bootstrap, manifest, HTTP or UI path starts this work today; ordinary plugin host
-actions use Session commands instead.
-
-**Intent and Interface.** `createPluginForegroundRuns()` admits one declared,
-user-initiated plugin work request under a host-bound plugin installation, generation,
-account, and process owner. A caller receives a safe `plugin:*` run projection and, only
-for a new admission, an opaque claim that can cross the effect boundary and record one
-terminal outcome. A deterministic identity joins a repeated idempotency key; the same
-identity with different input or correlation is equivocation. The plugin receives no
-coordinator, owner identity, persisted input, or Action Operation service.
-
-**Contract.** Declarations, capabilities, JSON input, identifiers, and public copy are
-bounded. Registration alone grants no execution authority: the host authorizer runs
-before admission and again immediately before effect. Run identity includes
-installation, account, and optional machine scope before applying the plugin's
-idempotency key. The durable coordinator is the sole run authority and records
-`admitted`, `running`, `completed`, `failed`, `cancelled`, or `indeterminate` with
-explicit `uninvoked`, `possible-effect`, or `confirmed-effect` depth. A dead admitted
-owner is definitely failed before effect; a dead running owner is indeterminate and is
-never replayed. Each composed authority owns a scoped execution-owner epoch; releasing
-one cannot release another authority that happens to use the same display identity, and
-every admission, effect, or terminal claim from the released epoch is stale. A live
-owner, or one whose process identity cannot be checked, is not stolen. Cancellation
-targets the exact recorded process owner, coalesces concurrent requests, retains its
-outcome across uncertain settlement without reinvoking the Adapter, and lets the
-coordinator atomically derive terminal effect depth from current state; refusal
-preserves current truth and uncertainty becomes indeterminate. `RunService` can project
-the same identity with `source: 'plugin'`; input, idempotency material, installation
-keys, and process facts remain private. Action Operations are deadline-bounded
-best-effort observers and cannot indefinitely delay, overturn, or replace the canonical
-run outcome; a begin that resolves after its deadline attaches first and reconciles
-against current canonical state so it cannot leave orphan activity.
-
-**Seam, Implementation, callers, and tests.** Public declarations, start intents,
-limits, states, and safe projections live in
-`@kontourai/station-contracts/plugin-foreground-work`. The server implementation depends
-on an injected `PluginForegroundRunCoordinator`, dynamic authorizer, reader authorizer,
-process-identity Adapter, and optional cancellation/Action Operation observers. This
-retained #1360 component has no EventStore coordinator, manifest parser, worker Adapter,
-runtime bootstrap, route, SDK, CLI, station-control, pane, or shutdown wiring, so it is
-not user-facing and `RunService` composition remains optional. The next slice must
-implement the coordinator inside the existing EventStore/run authority, bind worker
-execution with `AbortSignal`, close admission and drain exact owners through plugin
-replacement lifecycle, then expose the existing operator surfaces without a second
-ledger. Focused state-machine, recovery, cancellation, observer, and RunService
-projection evidence lives in `plugin-foreground-runs.test.ts`. **Do not reintroduce:**
-plugin-owned job files, an in-memory canonical registry, registration-as-authorization,
-raw worker errors in public copy, process-ID-only cancellation, replay after possible
-effect, Action Operations as run truth, or scheduler ownership for foreground work.
 
 ## OperationalEventOutbox
 

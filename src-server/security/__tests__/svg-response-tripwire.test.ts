@@ -1,7 +1,8 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   applySvgResponseSecurityHeaders,
   SVG_RESPONSE_SECURITY_HEADERS,
@@ -32,6 +33,20 @@ function routeSourceFiles(root: string): string[] {
   });
 }
 
+function unguardedSvgRouteSources(roots: readonly string[]): string[] {
+  return roots.flatMap((root) =>
+    routeSourceFiles(root).flatMap((path) => {
+      const source = readFileSync(path, 'utf8');
+      return SVG_RESPONSE_MARKER.test(source) &&
+        !SVG_HARDENING_CALL.test(source)
+        ? [path]
+        : [];
+    }),
+  );
+}
+
+const makeTempDir = trackTempDirs();
+
 describe('app-origin SVG response tripwire', () => {
   test('applies the exact hardening headers through the shared helper', () => {
     const header = vi.fn();
@@ -51,17 +66,40 @@ describe('app-origin SVG response tripwire', () => {
     });
   });
 
-  test('requires app-origin route sources in the scanned roots to guard any SVG response', () => {
-    const unguardedSvgRoutes = APP_ORIGIN_ROUTE_ROOTS.flatMap((root) =>
-      routeSourceFiles(root).flatMap((path) => {
-        const source = readFileSync(path, 'utf8');
-        return SVG_RESPONSE_MARKER.test(source) &&
-          !SVG_HARDENING_CALL.test(source)
-          ? [path]
-          : [];
-      }),
+  test('flags an unguarded SVG route and passes a guarded one (positive control)', () => {
+    // Without this, the scan below could stop matching anything and still
+    // report an empty list.
+    const root = makeTempDir('svg-tripwire-');
+    const write = (relative: string, source: string) => {
+      const path = join(root, relative);
+      mkdirSync(join(path, '..'), { recursive: true });
+      writeFileSync(path, source);
+      return path;
+    };
+    const rawSvg = write(
+      'avatars/raw-avatar.ts',
+      "app.get('/avatar', (c) => { c.header('Content-Type', 'image/svg+xml'); return c.body(svg); });\n",
+    );
+    const svgFile = write(
+      'static-logo.ts',
+      "app.get('/logo', (c) => c.redirect('/static/logo.svg'));\n",
+    );
+    write(
+      'guarded-avatar.ts',
+      "app.get('/avatar', (c) => { applySvgResponseSecurityHeaders(c); c.header('Content-Type', 'image/svg+xml'); return c.body(svg); });\n",
+    );
+    write('plain.ts', "app.get('/ping', (c) => c.text('ok'));\n");
+    write(
+      '__tests__/fixture.ts',
+      "c.header('Content-Type', 'image/svg+xml');\n",
     );
 
-    expect(unguardedSvgRoutes).toEqual([]);
+    expect(unguardedSvgRouteSources([root]).sort()).toEqual(
+      [rawSvg, svgFile].sort(),
+    );
+  });
+
+  test('requires app-origin route sources in the scanned roots to guard any SVG response', () => {
+    expect(unguardedSvgRouteSources(APP_ORIGIN_ROUTE_ROOTS)).toEqual([]);
   });
 });

@@ -297,16 +297,6 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
   // cannot do this while the gate is showing a blocking connection error.
   _setApiBase(apiBase);
 
-  // This context does not start the legacy notification_watch: that reader
-  // bypasses delivery-envelope/privacy decisions. Desktop uses notification_feed;
-  // mobile uses FCM/APNs. Earlier Android limitations are dated evidence in
-  // docs/guides/native-shell-verification.md (archive#3088), not a current DNS rule.
-  //
-  // Preserve the old pairing lesson: credentialProvider can keep the same
-  // function identity while its credential changes. An effect depending only
-  // on that function misses the change. The request boundary below captures
-  // current credential evidence when a request is issued.
-
   // Install the process-wide SDK boundary before any descendant layout effect
   // can start a connection-health probe. A parent layout effect runs after its
   // children's layout effects, which let the first native request escape to

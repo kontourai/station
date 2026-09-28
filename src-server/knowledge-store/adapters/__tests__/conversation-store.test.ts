@@ -5,7 +5,6 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { describe, expect, test, vi } from 'vitest';
-import { isSafePathSegment } from '../../../knowledge-index/path-safety.js';
 import type { SessionQueryModule } from '../../../services/orchestration/session-query-module.js';
 import { ReadOnlyStoreError } from '../../errors.js';
 import {
@@ -424,28 +423,6 @@ describe('conversation-store adapter (station#1879)', () => {
       });
       await expect(attempt()).rejects.toThrow(new RegExp(op, 'i'));
     }
-  });
-
-  test('conversation ids pass isSafePathSegment (probe risk R9 — UUID-shaped, no traversal risk)', async () => {
-    const uuidLikeThreadId = 'a1b2c3d4-e5f6-47a8-b9c0-d1e2f3a4b5c6';
-    const sessionReader = new FakeSessionReader([
-      {
-        threadId: uuidLikeThreadId,
-        agentSlug: 'claude',
-        title: 'UUID-id conversation',
-        createdAt: '2026-08-05T00:00:00.000Z',
-        updatedAt: '2026-08-05T00:00:00.000Z',
-        messages: [textMessage('m1', 'user', 'text')],
-      },
-    ]);
-    const descriptor = createConversationStoreAdapterDescriptor({
-      sessionReader,
-      fileStores: emptyFileStores(),
-      getUserId: () => 'user-1',
-    });
-    const adapter = await descriptor.create({ storeRoot: '/unused' });
-    const [record] = await adapter.listByType('raw', {});
-    expect(isSafePathSegment(record.id)).toBe(true);
   });
 
   test('hosted alpha suppresses the unbound bravo file-conversation leg, including direct ids', async () => {

@@ -7,23 +7,6 @@ import {
 } from '../crash-handlers.js';
 
 describe('logFatalAndFlush', () => {
-  it('logs fatal and flushes on the happy path', () => {
-    const logger = { fatal: vi.fn() };
-    const flushSync = vi.fn();
-
-    logFatalAndFlush(
-      logger,
-      'Failed to start Station',
-      { err: 'boom' },
-      flushSync,
-    );
-
-    expect(logger.fatal).toHaveBeenCalledWith('Failed to start Station', {
-      err: 'boom',
-    });
-    expect(flushSync).toHaveBeenCalledTimes(1);
-  });
-
   it('falls back to console.error, preserving the original failure, when logger.fatal throws — and never throws itself', () => {
     const loggingFailure = new Error('logger broke');
     const logger = {

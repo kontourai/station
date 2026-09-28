@@ -135,6 +135,10 @@ interface PluginInstallRouteDeps {
    * #2323 S5: the proposal store `POST /install` completes when the request
    * names a `proposalId`. Optional: a composition without it installs
    * exactly as before and reports the proposal as still open.
+   *
+   * #2719: also what makes a source a proposed one. Preview and install
+   * both stage a source an open install proposal names without its git
+   * metadata, so the approval's digest and the install's agree.
    */
   proposals?: PluginLifecycleProposalService;
 }
@@ -483,7 +487,14 @@ export function registerPluginInstallRoutes(
         );
       }
 
-      const result = await fetchPluginSource(source, pluginsDir, logger);
+      // #2719: a source an open install proposal names is staged without
+      // its git metadata. The preview says so, and the install's consent
+      // carries it back, so both stage the same bytes.
+      const excludeGitMetadata =
+        deps.proposals?.hasOpenInstallProposal(source) === true;
+      const result = await fetchPluginSource(source, pluginsDir, logger, {
+        excludeGitMetadata,
+      });
       if ('error' in result) {
         return c.json({
           valid: false,
@@ -777,6 +788,7 @@ export function registerPluginInstallRoutes(
           })),
           git,
           contentDigest: consentBasis.contentDigest,
+          ...(excludeGitMetadata ? { gitMetadata: 'excluded' as const } : {}),
           permissions: {
             required: consentBasis.required,
             autoGranted: consentBasis.autoGranted,
@@ -861,6 +873,24 @@ export function registerPluginInstallRoutes(
           400,
         );
       }
+      // #2719: stage as the preview did. An install whose source an open
+      // proposal names, approved on a preview that kept git metadata, is
+      // refused rather than installing bytes nobody previewed. A preview
+      // that excluded it stays excluded even if the proposal has since been
+      // dismissed or completed.
+      const proposed = deps.proposals?.hasOpenInstallProposal(source) === true;
+      const previewExcludedGitMetadata = consent.gitMetadata === 'excluded';
+      if (proposed && !previewExcludedGitMetadata) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'An open proposal names this source, so it installs without its git metadata, and this approval came from a preview that kept it. Preview it again, then install it from that preview.',
+            consent: { reason: 'git-metadata' },
+          },
+          409,
+        );
+      }
       const operatorDecision: PluginInstallConsent = {
         kind: 'operator-decision',
         registryTrustRevision: consent.registryTrustRevision,
@@ -899,6 +929,7 @@ export function registerPluginInstallRoutes(
               dataPolicy,
               expectedInstallation,
               activationSession,
+              excludeGitMetadata: proposed || previewExcludedGitMetadata,
             },
           );
           return installed;

@@ -1,4 +1,3 @@
-import { _resetUnboundExtensionNotices } from '@shared/extension-notification-bindings';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
@@ -36,7 +35,6 @@ describe('handleExtensionNotificationEvent', () => {
       agentName: 'Kiro',
       title: 'Kiro Chat',
     });
-    _resetUnboundExtensionNotices();
   });
 
   afterEach(() => {

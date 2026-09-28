@@ -1161,6 +1161,9 @@ describe('install.sh nightly channel (#2675)', () => {
       stationRoot: realpathSync(paths.stationRoot),
       stationHome: realpathSync(paths.stationHome),
       manifestUrl: pathToFileURL(manifestPath).href,
+      // The nightly channel's ports, which an upgrade reuses (#2675 C).
+      serverPort: 38141,
+      uiPort: 38000,
     });
     const launcher = readFileSync(paths.launcher, 'utf8');
     expect(launcher).toContain("export STATION_CHANNEL='nightly'\n");
