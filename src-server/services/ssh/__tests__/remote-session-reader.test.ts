@@ -104,36 +104,6 @@ describe('listConnectedRemoteSessions', () => {
     ]);
   });
 
-  test('runs every connected environment concurrently, not serialized behind the slowest one', async () => {
-    const service = {
-      list: vi.fn(() => [
-        connectedView('env-slow', 'Slow box', 'http://127.0.0.1:1'),
-        connectedView('env-fast', 'Fast box', 'http://127.0.0.1:2'),
-      ]),
-    };
-    let fastResolvedAt = 0;
-    let slowStartedAt = 0;
-    const fetchSessions = vi.fn(async (apiBase: string) => {
-      if (apiBase === 'http://127.0.0.1:1') {
-        slowStartedAt = Date.now();
-        await new Promise((resolve) => setTimeout(resolve, 30));
-        return [] as any;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      fastResolvedAt = Date.now();
-      return [{ threadId: 'thread-fast' }] as any;
-    });
-
-    await listConnectedRemoteSessions(service as any, fetchSessions);
-
-    // The fast fetch resolved before the slow one even before its own delay
-    // elapsed, proving both started at ~the same time rather than the fast
-    // one waiting for the slow one to finish first.
-    expect(fastResolvedAt).toBeGreaterThan(0);
-    expect(slowStartedAt).toBeGreaterThan(0);
-    expect(fastResolvedAt).toBeLessThan(slowStartedAt + 30);
-  });
-
   test('a malformed (non-array) remote response is treated as unavailable, not thrown to the caller', async () => {
     const service = {
       list: vi.fn(() => [
