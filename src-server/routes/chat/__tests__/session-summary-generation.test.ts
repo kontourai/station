@@ -152,6 +152,8 @@ describe('generateSessionSummary', () => {
       SESSION_SUMMARY_TRANSCRIPT_MAX_CHARS,
     );
     expect(rendered.transcript.startsWith('User: ')).toBe(true);
+    // The per-message cap ran, not just redaction's own string limit.
+    expect(rendered.transcript).toContain('[…truncated…]');
     expect(rendered.included).toEqual([expect.objectContaining({ id: 'm1' })]);
   });
 

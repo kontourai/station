@@ -112,9 +112,9 @@ export function renderSessionSummaryTranscript(
   let size = 0;
   for (const turn of [...turns].reverse()) {
     const addition = turn.text.length + (included.length ? 2 : 0);
-    // `capped` bounds every turn far below the transcript budget, so the
-    // newest turn always fits and `included` is never empty for a non-empty
-    // `turns`.
+    // `capped` (and redaction's own string limit) keep every turn far below
+    // the transcript budget, so the newest turn always fits and `included`
+    // is never empty for a non-empty `turns`.
     if (addition > SESSION_SUMMARY_TRANSCRIPT_MAX_CHARS - size) continue;
     included.unshift(turn.message);
     size += addition;
