@@ -559,6 +559,13 @@ describe('scoped documentation freshness (#2923)', () => {
 describe('docs:review:record (#2924, #2936)', () => {
   it('rebinds only the changed lines, adds one notes file and reports dependents', () => {
     const f = fixture();
+    // Like a migrated record: the source is bound to a later commit that
+    // also holds its bytes, not to the commit that last changed it.
+    const later = git(f.root, ['rev-parse', 'HEAD']);
+    editRecord(f.root, 'docs/a.md', (data) => {
+      data.sources[0].revision = later;
+    });
+    commit(f.root, 'bind A to a later commit');
     f.write('docs/a.md', '# A, revised\n');
     const changedAt = commit(f.root, 'revise A');
     const file = recordFile('docs/a.md');
