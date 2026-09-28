@@ -9,7 +9,7 @@ import {
  * station#585 smooth-reveal design inputs. Keep the tuning in one place so
  * dogfooding can change a coherent policy rather than hunting magic numbers.
  */
-export const SMOOTH_REVEAL_CONSTANTS = {
+const SMOOTH_REVEAL_CONSTANTS = {
   backlogWindowSeconds: 0.4,
   slewTauSeconds: 0.15,
   minCharsPerSecond: 50,

@@ -119,10 +119,13 @@ describe('SessionModelPicker', () => {
       screen.getByText('Models unavailable while this Station is unreachable'),
     ).toBeTruthy();
 
+    // A live empty catalog explains itself without fake choices: no effort
+    // select even though a stored effort override is still present.
     rerender(
       <SessionModelPicker
         models={[]}
         stale={false}
+        runtimeOptions={{ effort: 'high' }}
         onSelect={vi.fn()}
         onReset={vi.fn()}
         onRuntimeOptionChange={vi.fn()}
@@ -132,6 +135,8 @@ describe('SessionModelPicker', () => {
     expect(
       screen.getByText('This engine reported no selectable models'),
     ).toBeTruthy();
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByText('Model not reported')).toBeNull();
   });
 
   test('selects a model and provider-supported effort directly', () => {
@@ -199,16 +204,6 @@ describe('SessionModelPicker', () => {
     expect((autoMode as HTMLInputElement).checked).toBe(true);
     fireEvent.click(autoMode);
     expect(props.onRuntimeOptionChange).toHaveBeenCalledWith('autoMode', false);
-  });
-
-  test('explains an unreported catalog without presenting fake choices', () => {
-    renderPicker({ models: [], currentModel: undefined, runtimeId: undefined });
-
-    expect(
-      screen.getByText('This engine reported no selectable models'),
-    ).toBeTruthy();
-    expect(screen.queryByRole('combobox')).toBeNull();
-    expect(screen.queryByText('Model not reported')).toBeNull();
   });
 
   test('offers an explicit session reset', () => {
@@ -635,18 +630,19 @@ describe('SessionModelPicker', () => {
     }
   });
 
-  // archive#1806: the selected-model check glyph used to fall into the
-  // grid's implicit placement (sharing only the model-name row), pinning it
-  // to the top of the two-line name+id cell instead of centering against
-  // the option's full height. It must render through a class the CSS can
-  // explicitly span both rows and center on.
-  test('renders the selected-model check glyph through its centering class', () => {
+  // archive#1806: the selected-model check glyph renders through its own
+  // class (the CSS spans and centers it; jsdom cannot show that), and only on
+  // the selected option, so it is a truthful selection indicator.
+  test('renders the selected-model check glyph on the selected option only', () => {
     renderPicker();
 
-    const activeOption = screen.getByRole('option', { name: /GPT-5.6/ });
-    const check = activeOption.querySelector(
-      '.session-model-picker__model-check',
+    const options = screen.getAllByRole('option');
+    const withCheck = options.filter((option) =>
+      option.querySelector('.session-model-picker__model-check'),
     );
-    expect(check).not.toBeNull();
+    expect(options.length).toBeGreaterThan(1);
+    expect(withCheck).toEqual([
+      screen.getByRole('option', { name: /GPT-5.6/ }),
+    ]);
   });
 });

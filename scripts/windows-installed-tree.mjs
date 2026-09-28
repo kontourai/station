@@ -34,11 +34,11 @@ export function inspectWindowsInstalledTree(directory) {
     'dist-server/command-station.js',
     'dist-server/station-build.json',
   ]) {
-    if (!lstatSync(join(root, name)).isFile())
+    if (!lstatSync(join(root, name), { throwIfNoEntry: false })?.isFile())
       throw new Error(`Missing runtime file: ${name}`);
   }
   for (const name of ['dist-server', 'node_modules', 'schemas']) {
-    if (!lstatSync(join(root, name)).isDirectory())
+    if (!lstatSync(join(root, name), { throwIfNoEntry: false })?.isDirectory())
       throw new Error(`Missing runtime directory: ${name}`);
   }
   visit(root);

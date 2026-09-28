@@ -65,6 +65,7 @@ interface RuntimeInitializationContext {
     | 'resolveGrantedScope'
     | 'canSharePersonalConversation'
     | 'personalConversationOwnerIds'
+    | 'deviceHoldsFullAccess'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {

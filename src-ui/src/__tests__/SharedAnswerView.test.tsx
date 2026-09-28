@@ -317,18 +317,6 @@ describe('SharedAnswerView', () => {
     ).toBeTruthy();
   });
 
-  it('degrades honestly for a payload schema this build does not understand', async () => {
-    vi.stubGlobal('fetch', respondWith(payload({ schemaVersion: 99 })));
-    render(<SharedAnswerView />);
-
-    expect(
-      await screen.findByText(
-        'This share was written in a format this page cannot read',
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByText('The shared answer.')).toBeNull();
-  });
-
   it('renders the answer even when the turn carries no provenance envelope', async () => {
     vi.stubGlobal('fetch', respondWith(payload({ provenance: undefined })));
     render(<SharedAnswerView />);

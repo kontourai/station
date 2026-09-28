@@ -114,7 +114,7 @@ describe('spatial board SDK', () => {
     );
   });
 
-  test('does not retry a mutation when the response is lost', async () => {
+  test('createSpatialBoardPin makes one transport attempt and propagates a lost response', async () => {
     authenticatedFetch.mockRejectedValueOnce(new TypeError('network lost'));
     await expect(
       createSpatialBoardPin({

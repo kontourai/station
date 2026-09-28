@@ -614,6 +614,77 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(notice?.action).toBeUndefined();
   });
 
+  // #1796 G2: a full-access refusal is decided before anything runs. It is
+  // neither a failed chat nor a temporary failure: no "Failed", no
+  // "Retrying may help", and the only way on is an explicit send at the
+  // chat's current mode, which must not carry full access again.
+  it('a refused full access is not a failure: the draft returns and the resend drops full access', async () => {
+    activeChatsStore.updateChat(sessionId, { queuedApprovalMode: 'never' });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      Object.assign(
+        new CodedOrchestrationError(
+          403,
+          "Full access was not applied. Only this Station's operator can allow full access, for this device (id ffb80147).",
+          'approval-full-access-not-granted',
+        ),
+        {
+          details: {
+            requested: 'never',
+            requester: {
+              kind: 'device',
+              deviceId: 'ffb80147',
+              deviceName: 'Laptop CLI',
+            },
+            station: {},
+            grant: {
+              by: 'operator',
+              scope: 'approval:full-access',
+              uiSteps: ["Open the Station desktop app on the Station's host."],
+              cli: 'station environment access scope ffb80147 --add approval:full-access',
+            },
+          },
+        },
+      ),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'hello');
+    });
+
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat?.status).toBe('idle');
+    expect(chat?.error).toBeUndefined();
+    expect(chat?.queuedApprovalMode).toBeUndefined();
+    expect(chat?.input).toBe('hello');
+    expect(chat?.ephemeralMessages).toHaveLength(1);
+    const notice = chat?.ephemeralMessages?.[0];
+    expect(notice?.content).toBe('Full access was not applied.');
+    expect(notice?.content).not.toContain('Retrying may help');
+    expect(notice?.fullAccessRefusal).toMatchObject({
+      outcome: 'message-not-sent',
+      draftRestored: true,
+      details: { requester: { kind: 'device', deviceName: 'Laptop CLI' } },
+    });
+    expect(notice?.action?.label).toBe(
+      'Send without full access (current mode: Default)',
+    );
+    expect(JSON.stringify(sendExecutionMessageMock.mock.calls[0])).toContain(
+      '"never"',
+    );
+
+    await act(async () => {
+      notice?.action?.handler();
+    });
+    await vi.waitFor(() =>
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2),
+    );
+    expect(
+      JSON.stringify(sendExecutionMessageMock.mock.calls[1]),
+    ).not.toContain('"never"');
+    expect(activeChatsStore.getSnapshot()[sessionId]?.input).toBe('');
+  });
+
   // The discriminating counter-case: an ordinary send failure is NOT a
   // Station-side refusal and must still read as an error, or the fix above
   // would have silently swallowed real failures.

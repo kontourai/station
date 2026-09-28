@@ -79,7 +79,10 @@ export class ProviderTurnInProgressError extends SendTurnRefusedError {
   }
 }
 
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  ApprovalAcknowledgement,
+  CanonicalRuntimeEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import type {
   ConnectionCapability,
   Prerequisite,
@@ -158,6 +161,13 @@ export interface ProviderAdapterMetadata {
    * with a test against the adapter's real catalog.
    */
   modelCatalogIdentityMapped?: boolean;
+  /**
+   * #2880: what this adapter can report after Station records an approval
+   * decision (see `ApprovalAcknowledgement`). The adapter stamps the same
+   * value on each decision's `request.resolved`. Absent reads as `none`: a
+   * plugin adapter claims no acknowledgement until it declares one.
+   */
+  approvalAcknowledgement?: ApprovalAcknowledgement;
 }
 
 export interface ProviderAdapterModelCatalog {

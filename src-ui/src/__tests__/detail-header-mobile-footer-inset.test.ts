@@ -41,37 +41,23 @@ function declaration(name: string): string {
 }
 
 /**
- * archive#3902 folded the three terms this file used to read here into one
- * shell-owned token, `--dock-bottom-clearance` (index.css) — because the SHELL
- * was reserving a strictly smaller number than this bar offset itself by, and
- * a route that reserved nothing of its own sat under the dock. The property
- * these tests exist for is unchanged, so they follow the derivation to where
- * it lives now rather than re-pinning the terms in two places.
+ * archive#3902 folded the three terms this bar used to add up here into one
+ * shell-owned token, `--dock-bottom-clearance` (index.css). That token's terms,
+ * the visible-viewport inset among them, are pinned where it is declared, by
+ * `dock-bottom-clearance.test.ts`; this file pins that the bar and the body it
+ * floats over consume it rather than a smaller number of their own.
  */
-const indexCss = readFileSync(join(__dirname, '..', 'index.css'), 'utf8');
-
-function dockClearance(): string {
-  const index = indexCss.indexOf('--dock-bottom-clearance:');
-  expect(index, '--dock-bottom-clearance not found').toBeGreaterThan(-1);
-  return indexCss.slice(index, indexCss.indexOf(';', index));
-}
-
 describe('the mobile Save bar tracks the visible viewport', () => {
-  test('its bottom offset includes the shared inset, alongside the dock and safe area', () => {
+  test('its bottom offset is the shared dock clearance', () => {
     expect(mobileRuleBody('.detail-header__mobile-footer')).toContain(
       'var(--dock-bottom-clearance)',
     );
-    const clearance = dockClearance();
-    expect(clearance).toContain('--dock-slot-size');
-    expect(clearance).toContain('--safe-bottom');
-    expect(clearance).toContain(VISUAL_VIEWPORT_BOTTOM_INSET_VAR);
   });
 
-  test('and so does the clearance a scrolling body reserves for it', () => {
+  test('and so is the clearance a scrolling body reserves for it', () => {
     expect(declaration('--detail-body-bottom-clearance')).toContain(
       'var(--dock-bottom-clearance)',
     );
-    expect(dockClearance()).toContain(VISUAL_VIEWPORT_BOTTOM_INSET_VAR);
   });
 });
 

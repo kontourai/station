@@ -405,12 +405,21 @@ describe('#2452 muse serve: a workflow subagent approval reaches Station', () =>
             ?.sourceIndex,
       ),
     ).toEqual([0, 1]);
+    // #2880: the decision is recorded when Station answers; muse's
+    // `approval/resolved` is its acknowledgement, carrying muse's outcome.
     const resolved = of(h.events, 'request.resolved');
     expect(resolved).toEqual([
       expect.objectContaining({
         requestId: APPROVAL,
         status: 'approved',
-        response: { decision: 'approved', resolvedBy: 'user' },
+        acknowledgement: 'engine',
+      }),
+    ]);
+    expect(of(h.events, 'request.delivery')).toEqual([
+      expect.objectContaining({
+        requestId: APPROVAL,
+        outcome: 'acknowledged',
+        engineStatus: 'approved',
       }),
     ]);
     // The Station turn ended at its own terminal; muse then replied on its own.
@@ -1116,7 +1125,10 @@ describe('#2452 fix round: no approval stays stuck', () => {
     await host.nextRequest('approval/decide', new Set());
     // Muse is slow to answer; the deadline passes.
     await new Promise((resolve) => setTimeout(resolve, 150));
-    expect(of(h.events, 'request.resolved')).toEqual([]);
+    // #2880: the accepted decision is recorded as such, never as expired.
+    expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({ requestId: APPROVAL, status: 'approved' }),
+    ]);
     expect(
       of(h.events, 'runtime.warning').filter(
         (event) => event.code === MUSE_APPROVAL_EXPIRED_CODE,
@@ -1160,8 +1172,17 @@ describe('#2452 fix round 2: an answer muse will not take is still bounded', () 
     // ...and then the host is ended; the request resolves, never left open.
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(host.stdinEnded).toBe(true);
+    // #2880: the decision stays recorded as the user made it, and is
+    // reported never acknowledged — never left open, never cancelled over.
     expect(of(h.events, 'request.resolved')).toEqual([
-      expect.objectContaining({ requestId: APPROVAL, status: 'cancelled' }),
+      expect.objectContaining({ requestId: APPROVAL, status: 'approved' }),
+    ]);
+    expect(of(h.events, 'request.delivery')).toEqual([
+      expect.objectContaining({
+        requestId: APPROVAL,
+        outcome: 'unacknowledged',
+        reason: 'no-acknowledgement',
+      }),
     ]);
   });
 });
@@ -1231,11 +1252,17 @@ describe('#2452 fix round: the walk answers only what the user saw', () => {
     expect(
       host.sent.filter((frame) => frame.method === 'approval/decide'),
     ).toHaveLength(1);
+    // #2880: the user's answer was recorded for the subject they saw; muse
+    // changed the subject before closing it, so that decision is reported
+    // never acknowledged, and the new subject is a new request.
     expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({ requestId: APPROVAL, status: 'approved' }),
+    ]);
+    expect(of(h.events, 'request.delivery')).toEqual([
       expect.objectContaining({
         requestId: APPROVAL,
-        status: 'cancelled',
-        response: { reason: 'subject-changed' },
+        outcome: 'unacknowledged',
+        reason: 'no-acknowledgement',
       }),
     ]);
     const opened = of(h.events, 'request.opened');
@@ -1875,7 +1902,12 @@ describe('#2452 delta review: escalation only acts on the question it belongs to
     });
     const second = await host.nextRequest('approval/decide', consumed);
     expect(second.params?.requirementId).toMatchObject({ sourceIndex: 1 });
-    expect(of(h.events, 'request.resolved')).toEqual([]);
+    // #2880: only the decision the user made is recorded; the refinement
+    // neither reopens the request nor closes it.
+    expect(of(h.events, 'request.resolved')).toEqual([
+      expect.objectContaining({ requestId: APPROVAL, status: 'approved' }),
+    ]);
+    expect(of(h.events, 'request.delivery')).toEqual([]);
     expect(of(h.events, 'request.opened')).toHaveLength(1);
   });
 });

@@ -1,0 +1,144 @@
+# Browser workspace
+
+The Browser pane shows a page running in a Station-owned Chromium process on
+the selected Station host. The pane, an authorized Agent, and other authorized
+viewers share that browser session. The page is not embedded in Station's
+privileged web UI, and it does not use the viewer's ordinary browser profile.
+
+This is the current implementation guide. [ADR 0019](../adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md)
+records the original design; its dated future tense and verification gaps are
+not a current feature inventory. Native CEF hosting remains planned. The
+current [host resolver](../../src-server/services/browser/browser-host.ts)
+accepts only `local`, meaning the selected Station host, even when the viewer
+is on another machine.
+
+## Open and use a session
+
+Use a personal Station deployment and a Project. Hosted tenant runtimes do not
+mount the browser or live-surface routes. The Station operator may view and
+control browser sessions across profiles; an active Project admin or owner may
+use sessions in their own profile for that Project. Project contributors and
+viewers do not receive browser access. Pairing or knowing a session ID does not
+replace those checks.
+
+Open a Browser pane for the Project and choose a session or open a URL. The
+[pane](../../src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx) provides
+the address bar, navigation history, viewport presets, session list, setup,
+local-target registration and Agent access controls. A phone viewport preset
+emulates a browser viewport; it is not an iOS/Android device or app test. Use
+the [Device pane](mobile-device-workspace.md) for simulators and emulators.
+
+If no supported browser is available, the operator can approve the displayed
+Chromium download. [Acquisition](../../src-server/services/browser/chromium-acquisition.ts)
+prefers a detected system Chrome, Edge or Chromium, then a previously installed
+pinned Chrome-for-Testing build. Status reads do not download. A new download
+requires literal consent, checks the pinned archive size and SHA-256, and
+validates archive paths before installation. It is stored beneath
+`<STATION_HOME>/browser/chromium/`; it is not bundled with Station. Installed
+browser discovery and launch compatibility still need qualification on each OS.
+
+An open pane subscribes to the session's live surface. Hiding or closing that
+viewer stops its frame request, not the browser session. An authorized Agent
+may work while nobody watches. Close the server session explicitly when the
+page should stop running. If its browser exits, or Station restarts, retained
+sessions become `needs-reopen`; they are not silently declared live. Reopening
+uses a new browser generation and invalidates the old live-surface reference.
+
+## Profiles and network reach
+
+The [session registry](../../src-server/services/browser/browser-session-registry.ts)
+keys profiles by canonical Project ID and principal: the operator has one
+profile per Project, and each Project admin has a separate profile. Directories
+use digests under `<STATION_HOME>/browser/profiles/`. Cookies and site storage
+belong to that profile, not to the viewer's browser. The operator can access
+other profiles' sessions; this is not isolation from the host operator or
+arbitrary code running as the same OS user.
+
+The [Chromium host](../../src-server/services/browser/hosts/chromium-server-host.ts)
+launches an owned process with a CDP pipe, an allowlisted environment and a
+Station-owned egress proxy. No CDP network port is opened. Its launch flags
+disable extensions and sync, and its page policy refuses downloads and file
+choosers. These controls do not constitute a claim that every browser version
+or hostile page has been qualified.
+
+The [URL policy](../../src-server/services/browser/url-policy.ts) admits
+`http:`/`https:` navigation, with `about:blank` and subframe `about:srcdoc`
+exceptions. Other navigation schemes are refused. The
+[egress policy](../../src-server/services/browser/egress-policy.ts) separately
+checks resolved connection addresses:
+
+- Operator profiles can reach public, loopback and private addresses, subject
+  to the Station-listener denial.
+- Project-admin profiles can reach public addresses and local targets the
+  operator registered for the Project. Registering a target is a separate
+  operator action; discovery suggestions do not grant access.
+- Ordinary hostnames resolving to non-public addresses are refused even for
+  the operator. Use an admitted IP literal or local spelling for those targets;
+  a LAN/tailnet hostname is not automatically admitted.
+- Known Station listeners, managed device helpers and the egress proxy itself
+  are denied. Other-instance listener discovery is cached briefly; an
+  unreadable instance registry contributes no sibling entries. This is a
+  code-enforced listener inventory, not proof that every process on the host
+  is known or that an already-open connection is recalled immediately.
+
+[Local targets](../../src-server/services/browser/browser-local-targets.ts)
+name an admitted host and port for a canonical Project. Public and link-local
+addresses are not registrable targets; Station listener ports cannot be added.
+The proxy checks current target registrations on new connection decisions.
+
+## Agent authority and human input
+
+The built-in [station-browser tools](../../src-server/tools/station-browser-mcp-server.ts)
+provide status, open, navigate, resize, snapshot, click, type, press, scroll,
+wait and evaluation operations through
+[browser-agent routes](../../src-server/routes/browser-agent.ts). They require
+a verified, bound calling Session, its recorded owner and Project, and current
+operator/admin standing. Bearer-exposed or delegated-custody credentials do not
+satisfy that caller contract. A tool-supplied Session or Project ID cannot
+create authority.
+
+[BrowserAutomation](../../src-server/services/browser/browser-automation.ts)
+selects only the caller's authorized Project profile. Its control operations
+use the shared lease and check the captured fence around asynchronous steps.
+Human input with a current epoch can preempt an Agent; Agents cannot preempt
+a live human holder. Watching needs no control lease. Closing the pane does
+not explicitly release the human lease; it can lapse. A timeout or interrupted
+operation does not establish that an already-sent browser effect was undone.
+
+**Agent access → Let agents run JavaScript in this Project's pages** is off by
+default and is a separate permission from ordinary read/click/type tools. A
+person with operator or Project-admin authority can change it; Agent-originated
+requests cannot. Enabled scripts act with the page's privileges and may keep
+running after the tool call ends. Even without evaluation, dynamic pages can
+move targets between checking and input. Do not treat a tool response or a
+screenshot as independent verification of the application under test.
+
+## State, evidence and remaining limits
+
+Pane state `2.0` stores the Project ID and server browser-session reference.
+The [legacy migration](../../src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx)
+opens or restores a session for a `1.0` preview URL, then persists the new
+reference after attachment. Native handles, process identity and control grants
+are not durable Pane authority.
+
+Browser action history is bounded, with summary omissions and truncation
+counts. It is not an unlimited audit log. After the last live target closes,
+the profile's idle process is shut down after the registry delay; zero viewers
+alone only stop capture. Process ownership and shutdown use the existing
+owned-child machinery. Windows browser process-tree cleanup and packaged
+platform interaction require their own receipts.
+
+The [shared live-surface module](../architecture/module-map.md#shared-live-surface)
+also serves Device sessions. Frames use binary fetch streams rather than SSE
+replay. The current viewer opens one stream per visible viewer; the single
+multiplexed stream and saturated-pool input-latency requirement in
+[ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)
+remain unqualified design constraints. Native transports and relays have their
+own limits; no fixed frame rate or immediate input guarantee follows from the
+shared canvas.
+
+Source and fixture evidence lives in the
+[BrowserSessionService module](../architecture/module-map.md#browsersessionservice).
+This documentation review used synthetic acquisition/host/producer seams. It
+did not download or launch a real browser, reach a public site, drive a device,
+measure a saturated browser connection pool, or qualify a release package.

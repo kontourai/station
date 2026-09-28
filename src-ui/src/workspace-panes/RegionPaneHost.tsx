@@ -70,7 +70,7 @@ import {
  *   (`adoptLegacyChatDockDocument`) when Chat occupies the region — per
  *   region, on that region's first Chat mount; the legacy key never retires.
  */
-export const AMBIENT_CHAT_DOCK_DOCUMENT_ID = 'chat-dock';
+const AMBIENT_CHAT_DOCK_DOCUMENT_ID = 'chat-dock';
 
 /**
  * The document a dock region owns: `ambient:<region>` (#2045). Per REGION,
@@ -196,16 +196,6 @@ export function reconcileRegionPaneHostDocument(
   } catch {
     return false;
   }
-}
-
-/** The legacy Chat dock document: the model-less mount's, and adoption's source. */
-export function createAmbientChatDockPaneDocument(): WorkspacePaneHostDocumentV1 {
-  const document = createRegionPaneHostDocument(AMBIENT_CHAT_DOCK_DOCUMENT_ID, [
-    'chat',
-  ]);
-  // Chat's occurrence needs no context, so this is a code-owned constant.
-  if (!document) throw new Error('Invalid built-in ambient Chat dock document');
-  return document;
 }
 
 /**

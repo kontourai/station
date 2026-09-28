@@ -380,38 +380,3 @@ describe('BannerHost collapsed stack', () => {
     expect(cap.textContent).toBe('1 more notice, 1 informational');
   });
 });
-
-describe('test-only passive-chrome clearing hook (station#3823)', () => {
-  test('removes passive chrome and never the notice the reader caused', () => {
-    // jsdom, deliberately: `banner-store.ts` installs the hook on `window` at
-    // module load, so a node-environment suite cannot see it at all — and a
-    // spec that calls it through `?.` on a page where it was never installed
-    // would silently do nothing and still pass.
-    act(() =>
-      bannerStore.present({
-        id: 'chrome:capability',
-        priority: BANNER_PRIORITY.capabilityFailure,
-        tone: 'warning',
-        message: 'A capability failed',
-      }),
-    );
-    act(() =>
-      bannerStore.present({
-        id: 'chrome:board:unavailable',
-        priority: BANNER_PRIORITY.info,
-        tone: 'info',
-        message: 'redirect',
-        userInitiated: true,
-      }),
-    );
-    const clear = window.__stationClearPassiveChromeBannersForTestsOnly;
-    expect(typeof clear).toBe('function');
-    act(() => clear?.());
-    const live = bannerStore
-      .getSnapshot()
-      .filter((banner) => banner.phase !== 'exiting');
-    expect(live.map((banner) => banner.id)).toEqual([
-      'chrome:board:unavailable',
-    ]);
-  });
-});

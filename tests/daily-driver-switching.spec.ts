@@ -655,13 +655,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
         ),
       )
     ).every(Boolean);
-    await attachHandoffObservation(testInfo, {
-      profile: 'claude-default',
-      surface: 'ui',
-      scenario: 'agent-engine-handoff',
-      capability: 'agent-engine-handoff',
-      repetition: 1,
-      targetProfile: 'codex-default',
+    const evidence = {
       explicitRouteUsed: handoffRequests.length === 1,
       conversationStable:
         new URL(page.url()).searchParams.get('chat') === HANDOFF_CONVERSATION,
@@ -671,6 +665,26 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
         (handoffRequests[0]?.target as { agent?: string })?.agent === 'codex',
       persistedMarker: await boundary.isVisible(),
       markerExactlyOnce: (await boundary.count()) === 1,
+    };
+    await attachHandoffObservation(testInfo, {
+      profile: 'claude-default',
+      surface: 'ui',
+      scenario: 'agent-engine-handoff',
+      capability: 'agent-engine-handoff',
+      repetition: 1,
+      targetProfile: 'codex-default',
+      ...evidence,
+    });
+    // The artifact records a false field as an unmet expectation without
+    // throwing, so the test itself must refuse one.
+    expect(evidence).toEqual({
+      explicitRouteUsed: true,
+      conversationStable: true,
+      targetSessionDistinct: true,
+      disclosureComplete: true,
+      targetAgentApplied: true,
+      persistedMarker: true,
+      markerExactlyOnce: true,
     });
   });
 });

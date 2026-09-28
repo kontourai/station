@@ -1,5 +1,13 @@
 # Design: Station-to-Station peer pairing (spike, station#1123)
 
+> **Reading status: historical peer-pairing decision and supersession log.**
+> The old no-credential SSH and loopback assumptions below are not current
+> instructions. [Peer credentials](../../src-server/services/peers/peer-credential-store.ts),
+> [delegation](../../src-server/tools/station-control-delegation.ts), and
+> [pairing scope contracts](../../packages/contracts/src/environment-security.ts)
+> own the implemented paths. The mutual-exchange sketches do not prove a
+> completed two-way UI ceremony or remote-host journey.
+
 > Status: **spike deliverable — decision doc, no implementation**. Answers the
 > three decision points from the owner's reframing comment on #1123
 > (2026-07-28). Refs #1123, #1134, #1133, #1128, #1119, #1116, #1114/#1098,

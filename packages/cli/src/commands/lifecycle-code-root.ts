@@ -27,198 +27,31 @@
  * No migration: no archive has been released, so no archive-root state
  * exists anywhere to carry over.
  */
-import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { join } from 'node:path';
 import {
-  STATION_RELEASE_RINGS,
-  type StationReleaseRing,
-} from '@kontourai/station-shared/ports';
+  type PackagedReleaseManifest,
+  readPrebuiltArchiveRelease,
+} from '@kontourai/station-shared/prebuilt-archive';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 
-export interface PackagedReleaseManifest {
-  schemaVersion: 2;
-  sha: string;
-  ref: string;
-  createdAt: string;
-  channel: PackagedRuntimeChannel;
-  releaseChannel: PackagedReleaseChannel;
-  prerelease: boolean;
-}
-
-export type PackagedReleaseChannel = StationReleaseRing;
-export type PackagedRuntimeChannel =
-  (typeof STATION_RELEASE_RINGS)[PackagedReleaseChannel]['runtimeChannel'];
-
-export const PACKAGED_RELEASE_MANIFEST_FILENAME = '.station-release.json';
-
-/**
- * The installable packaged rings come from config/channel-ports.json (via the
- * generated STATION_RELEASE_RINGS); a Nightly-staging bundle is evidence-only
- * and deliberately absent. A prerelease ring's tag is `vX.Y.Z-<ring>.N`.
- */
-function packagedReleaseTag(ring: PackagedReleaseChannel): RegExp {
-  const label = STATION_RELEASE_RINGS[ring].prerelease
-    ? `-${ring}\\.(?:[1-9]\\d*)`
-    : '';
-  return new RegExp(
-    `^v(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)${label}$`,
-  );
-}
-
-export function isPackagedReleaseChannel(
-  value: unknown,
-): value is PackagedReleaseChannel {
-  return (
-    typeof value === 'string' && Object.hasOwn(STATION_RELEASE_RINGS, value)
-  );
-}
-
-export function validatePackagedReleaseManifest(
-  value: unknown,
-): PackagedReleaseManifest | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const candidate = value as Partial<PackagedReleaseManifest>;
-  const keys = Object.keys(value).sort();
-  const expectedKeys = [
-    'channel',
-    'createdAt',
-    'prerelease',
-    'ref',
-    'releaseChannel',
-    'schemaVersion',
-    'sha',
-  ];
-  if (
-    keys.length !== expectedKeys.length ||
-    keys.some((key, index) => key !== expectedKeys[index]) ||
-    candidate.schemaVersion !== 2 ||
-    typeof candidate.sha !== 'string' ||
-    !/^[0-9a-f]{40}$/i.test(candidate.sha) ||
-    typeof candidate.ref !== 'string' ||
-    !/^[A-Za-z0-9._/-]{1,128}$/.test(candidate.ref) ||
-    typeof candidate.createdAt !== 'string' ||
-    !Number.isFinite(Date.parse(candidate.createdAt)) ||
-    new Date(Date.parse(candidate.createdAt)).toISOString() !==
-      candidate.createdAt ||
-    !isPackagedReleaseChannel(candidate.releaseChannel) ||
-    candidate.channel !==
-      STATION_RELEASE_RINGS[candidate.releaseChannel].runtimeChannel ||
-    candidate.prerelease !==
-      STATION_RELEASE_RINGS[candidate.releaseChannel].prerelease ||
-    !packagedReleaseTag(candidate.releaseChannel).test(candidate.ref)
-  ) {
-    return null;
-  }
-  return {
-    schemaVersion: 2,
-    sha: candidate.sha,
-    ref: candidate.ref,
-    createdAt: candidate.createdAt,
-    channel: STATION_RELEASE_RINGS[candidate.releaseChannel].runtimeChannel,
-    releaseChannel: candidate.releaseChannel,
-    prerelease: STATION_RELEASE_RINGS[candidate.releaseChannel].prerelease,
-  };
-}
-
-/**
- * Written only by the portable server archive builder
- * (scripts/lib/portable-server-archive.mjs), whose trees ship dist-server and
- * dist-ui prebuilt and carry no toolchain to rebuild them. install.sh's
- * source release trees also have `.station-release.json` and no `.git`, but
- * they are built on the host and never contain this marker.
- */
-export const PREBUILT_ARCHIVE_MARKER_FILENAME = '.station-prebuilt-archive';
-export const PREBUILT_ARCHIVE_MARKER_CONTENT = 'station-prebuilt-archive-v1\n';
-
-/**
- * The release provenance of a prebuilt archive root, or null for anything
- * else: marker, valid release provenance, and no checkout.
- */
-function readPrebuiltArchiveRelease(
-  root: string,
-): PackagedReleaseManifest | null {
-  if (existsSync(join(root, '.git'))) return null;
-  try {
-    if (
-      readFileSync(join(root, PREBUILT_ARCHIVE_MARKER_FILENAME), 'utf-8') !==
-      PREBUILT_ARCHIVE_MARKER_CONTENT
-    ) {
-      return null;
-    }
-    return validatePackagedReleaseManifest(
-      JSON.parse(
-        readFileSync(join(root, PACKAGED_RELEASE_MANIFEST_FILENAME), 'utf-8'),
-      ),
-    );
-  } catch {
-    return null;
-  }
-}
-
-/** A prebuilt archive: marker, valid release provenance, and no checkout. */
-export function isPrebuiltArchiveRoot(root: string): boolean {
-  return readPrebuiltArchiveRelease(root) !== null;
-}
-
-/**
- * install.sh claims an install root with this marker, with exactly this
- * content (INSTALL_ROOT_MARKER / INSTALL_ROOT_SIGNATURE there).
- */
-export const INSTALL_ROOT_MARKER_FILENAME = '.station-portable-install-root';
-export const INSTALL_ROOT_MARKER_CONTENT = 'station-portable-install-root-v1\n';
-
-export interface InstallerOwnedArchiveFs {
-  lstatSync: (path: string) => { isSymbolicLink(): boolean };
-  readFileSync: (path: string, encoding: 'utf8') => string;
-  realpathSync: (path: string) => string;
-}
-
-/**
- * Where `root` (a prebuilt archive's physical path) sits in an install.sh
- * install (#2675 slice C): `<installRoot>/versions/<version>` in a root
- * carrying the installer's marker. `active` says whether the root's
- * `current` link resolves to `root`. Null for any other archive copy.
- *
- * A service unit for the active version runs `<installRoot>/current`, so an
- * upgrade flips `current` without rewriting the unit and a pruned version
- * directory never breaks it. An inactive version is one install.sh may prune
- * at its next upgrade.
- */
-export function resolveInstallerOwnedArchiveVersion(
-  root: string,
-  fs: InstallerOwnedArchiveFs = {
-    lstatSync,
-    readFileSync: (path, encoding) => readFileSync(path, encoding),
-    realpathSync: (path) => realpathSync(path),
-  },
-): { installRoot: string; active: boolean } | null {
-  const versions = dirname(root);
-  if (basename(versions) !== 'versions') return null;
-  const installRoot = dirname(versions);
-  try {
-    if (
-      fs.readFileSync(
-        join(installRoot, INSTALL_ROOT_MARKER_FILENAME),
-        'utf8',
-      ) !== INSTALL_ROOT_MARKER_CONTENT
-    ) {
-      return null;
-    }
-  } catch {
-    return null;
-  }
-  try {
-    const current = join(installRoot, 'current');
-    return {
-      installRoot,
-      active:
-        fs.lstatSync(current).isSymbolicLink() &&
-        fs.realpathSync(current) === fs.realpathSync(root),
-    };
-  } catch {
-    return { installRoot, active: false };
-  }
-}
+// The archive facts themselves live in the shared module, which the server's
+// update route reads too (#2675 D3); these re-exports keep the CLI's
+// importers on one path.
+export {
+  INSTALL_ROOT_MARKER_CONTENT,
+  INSTALL_ROOT_MARKER_FILENAME,
+  type InstallerOwnedArchiveFs,
+  isPackagedReleaseChannel,
+  isPrebuiltArchiveRoot,
+  PACKAGED_RELEASE_MANIFEST_FILENAME,
+  type PackagedReleaseChannel,
+  type PackagedReleaseManifest,
+  type PackagedRuntimeChannel,
+  PREBUILT_ARCHIVE_MARKER_CONTENT,
+  PREBUILT_ARCHIVE_MARKER_FILENAME,
+  resolveInstallerOwnedArchiveVersion,
+  validatePackagedReleaseManifest,
+} from '@kontourai/station-shared/prebuilt-archive';
 
 /** What the CLI runs from. Where its state lives also depends on the home. */
 export type LifecycleCodeRoot =

@@ -11,11 +11,15 @@
 # With SMOKE_SYSTEMD_SERVICE=1 (Linux with a systemd user manager, #2675
 # slice C) it then installs the first archive again as a systemd --user
 # service and checks that:
-#   - the unit runs the bundled Node.js and bin/station.mjs through
-#     <install root>/current, and waits 75 s before killing on stop;
-#   - `station upgrade` restarts that service as the second archive, whose
-#     provenance sha must differ from the first's so the identity check means
-#     something;
+#   - the unit runs the fixed service launcher (#2675 slice D,
+#     <install root>/runtime/station-launcher.mjs, copied from the installed
+#     version) with the bundled Node.js through <install root>/current, and
+#     waits 165 s (the launcher's stop budget plus a margin) before killing;
+#   - `station upgrade` stages the second archive and hands the switch to the
+#     running service: its launcher trials the second version and commits
+#     (runtime/service-state.json), `current` follows, and the service serves
+#     the second archive, whose provenance sha must differ from the first's so
+#     the identity check means something;
 #   - `service uninstall` and then install.sh uninstall remove it all.
 #
 #   scripts/smoke-install-prebuilt-archive.sh <first archive> <second archive> <work dir>
@@ -253,22 +257,41 @@ env -i "${service_env[@]}" "$launcher" service install \
 unit="$HOME/.config/systemd/user/station-$service_instance.service"
 physical_install_root="$(cd "$install_root" && pwd -P)"
 cat "$unit"
-grep -qF "ExecStart=\"$physical_install_root/current/runtime/bin/node\" \"$physical_install_root/current/bin/station.mjs\" \"service\" \"run\"" "$unit" || {
-  echo 'the unit does not run the bundled Node.js and bin/station.mjs through current' >&2
+grep -qF "ExecStart=\"$physical_install_root/current/runtime/bin/node\" \"$physical_install_root/runtime/station-launcher.mjs\" \"service\" \"run\"" "$unit" || {
+  echo 'the unit does not run the fixed launcher with the bundled Node.js through current' >&2
   exit 1
 }
+# The fixed launcher is the installed version's own copy.
+cmp "$physical_install_root/runtime/station-launcher.mjs" \
+  "$physical_install_root/versions/$first_version/bin/station-launcher.mjs"
 if grep -q '/versions/' "$unit"; then
   echo 'the unit names a version directory, which an upgrade would leave behind' >&2
   exit 1
 fi
-grep -qx 'TimeoutStopSec=75' "$unit"
+grep -qx 'TimeoutStopSec=165' "$unit"
 grep -qx 'Environment=STATION_SERVICE_MANAGED=1' "$unit"
 test "$(service_identity)" = "true $first_sha"
 
-echo "== station upgrade restarts the service as $second_version"
+echo "== station upgrade hands $second_version to the service's launcher"
 publish "$second_archive" >/dev/null
 env -i "${service_env[@]}" "$launcher" upgrade 2>&1 | tee "$work/service-upgrade.log"
-grep -q "Restarting Station service $service_instance" "$work/service-upgrade.log"
+grep -qF "Asked the Station service to switch to $second_version" "$work/service-upgrade.log"
+grep -qF "The Station service now runs $second_version." "$work/service-upgrade.log"
+# The launcher's own record of the switch; `current` follows it below.
+node -e '
+  const [file, from, to] = process.argv.slice(1);
+  const state = JSON.parse(require("node:fs").readFileSync(file, "utf8"));
+  const update = state.update ?? {};
+  if (
+    state.activeVersion !== to ||
+    update.status !== "committed" ||
+    update.fromVersion !== from ||
+    update.targetVersion !== to
+  ) {
+    console.error(`unexpected launcher state: ${JSON.stringify(state)}`);
+    process.exit(1);
+  }
+' "$physical_install_root/runtime/service-state.json" "$first_version" "$second_version"
 test "$(readlink "$install_root/current")" = "$physical_install_root/versions/$second_version"
 observed="$(service_identity)"
 if [ "$observed" != "true $second_sha" ]; then

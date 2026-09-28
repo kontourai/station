@@ -3,9 +3,10 @@
 This directory holds the two registry manifests Station ships.
 
 - **`default.json` is the one that ships as a default.** When `registryUrl` is
-  unset, Station serves this manifest, so a fresh install can browse and install
-  working examples with no configuration. It lists only the dependency-free
-  starters, so installing one never needs the network.
+  unset and the bundled file is present, Station uses this local catalog.
+  Its plugin entries have no declared package dependencies or host build commands;
+  that does not remove installation review, runtime prerequisites or permission
+  grants. Missing bundled files yield no fallback registry.
 - **`manifest.json` is the fuller catalog**, adding the examples that pull npm
   dependencies (`enterprise-layout`, `survey-review-workbench`,
   `fieldwork-review`). Point `registryUrl` at it to expose those too.
@@ -29,7 +30,12 @@ verification.
 
 ```bash
 ./station registry ./examples/registry/manifest.json
-./station registry install demo-layout
+./station registry
 ```
 
 Read `plugins[].id` in `manifest.json` for the current fixture entries.
+The CLI's `registry install <id>` submits no preview consent; executable or
+lifecycle-bearing entries are refused by the installer. [#2809](https://github.com/kontourai/station/issues/2809)
+tracks that caller. For now use the Registry UI's reviewed preview flow, or
+`./station plugin install ./examples/demo-layout` for the supported local
+target. Setting a local CLI catalog does not configure an unrelated remote host.

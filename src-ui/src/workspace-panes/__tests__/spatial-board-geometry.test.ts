@@ -51,16 +51,11 @@ describe('spatial board plane geometry', () => {
     ).toEqual({ x: 1540, y: -960, zoom: 2 });
   });
 
-  test('renders legacy and newly resized cards large enough for two 44px controls and content', () => {
+  test('clamps restored and resized cards to the minimum card size', () => {
     expect(SPATIAL_BOARD_MIN_CARD).toEqual({ width: 152, height: 240 });
     expect(spatialBoardCardBounds({ width: 80, height: 60 })).toEqual({
       width: 152,
       height: 240,
     });
-    // Header/footer boxes are 52px each in the shipped CSS. A two-line Flow
-    // title plus eyebrow badge and exact identity needs 111px at 152px wide.
-    expect(52 + 52 + 16 + 111).toBeLessThanOrEqual(
-      SPATIAL_BOARD_MIN_CARD.height,
-    );
   });
 });

@@ -1,5 +1,19 @@
 # Design: Identity (pluggable sources, local-first invariant)
 
+> **Status: mixed design record; current-owner check 2026-09-26.** The
+> single-provider count below describes only the ingress-source list, now owned
+> by [identity-source.ts](../../src-server/services/identity/identity-source.ts).
+> Optional local accounts and OIDC use a separate deployment-authentication
+> path, composed with device and operator authority by the
+> [request principal resolver](../../src-server/runtime/bootstrap/orchestration-request-principal.ts).
+> See [Deployment authentication](../guides/deployment-authentication.md) for
+> current configuration and limits. The original single-principal framing and
+> provider roadmap below are not a complete inventory of current identity
+> capabilities. The offline journey remains an acceptance requirement, not
+> evidence that a real offline chat or every provider/device path was tested.
+
+## Original ingress design
+
 > Status: **landed**. One identity source ships today
 > (`TailscaleServeIdentitySource`, tailnet WhoIs ingress). The abstraction and
 > the ordered source list are the seam for future, additive providers; the

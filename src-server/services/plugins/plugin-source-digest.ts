@@ -20,6 +20,7 @@
 import { lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { observePluginTreeAsync } from '@kontourai/station-shared/plugin-tree-digest';
+import { isGitMetadataName } from '../../utils/git-metadata-name.js';
 
 /** The bounds of the in-place digest walk (#2323 S5 review M4). */
 export const LOCAL_SOURCE_DIGEST_MAX_ENTRIES = 5000;
@@ -68,8 +69,14 @@ async function withinDigestBounds(root: string): Promise<boolean | null> {
   }
 }
 
+/**
+ * `digest` reads the folder as an ordinary install stages it.
+ * `digestWithoutGitMetadata` reads it, in the same walk, as a proposed
+ * install stages it (#2719): every git metadata entry left out at any depth,
+ * so it compares with that preview's `contentDigest`.
+ */
 export type LocalSourceDigestObservation =
-  | { digest: string }
+  | { digest: string; digestWithoutGitMetadata: string }
   | { unavailable: 'too-large' | 'unreadable' };
 
 export async function observeLocalPluginSourceDigest(
@@ -78,6 +85,13 @@ export async function observeLocalPluginSourceDigest(
   const bounded = await withinDigestBounds(path);
   if (bounded === null) return { unavailable: 'unreadable' };
   if (!bounded) return { unavailable: 'too-large' };
-  const digest = (await observePluginTreeAsync(path))?.digest;
-  return digest ? { digest } : { unavailable: 'unreadable' };
+  const observed = await observePluginTreeAsync(path, {
+    alsoWithout: isGitMetadataName,
+  });
+  return observed?.digest && observed.digestWithout
+    ? {
+        digest: observed.digest,
+        digestWithoutGitMetadata: observed.digestWithout,
+      }
+    : { unavailable: 'unreadable' };
 }

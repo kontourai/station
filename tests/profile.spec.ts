@@ -192,18 +192,9 @@ test.describe('Profile Page', () => {
     await expect(page.locator('.profile-hero-subtitle')).toContainText(
       '42 messages',
     );
-    await expect(page.getByLabel('Usage activity overview')).toBeVisible();
-  });
-
-  test('renders chart columns inside the first hero card when activity data exists', async ({
-    page,
-  }) => {
-    await page.goto('/profile');
-
+    // The activity overview and its bars live inside the first hero card.
     const heroCard = page.locator('.profile-container > .profile-card').first();
-    await expect(
-      heroCard.locator('[aria-label="Usage activity overview"]'),
-    ).toBeVisible();
+    await expect(heroCard.getByLabel('Usage activity overview')).toBeVisible();
     await expect(
       heroCard.locator('.profile-usage-graph__bar').first(),
     ).toBeVisible();
@@ -282,7 +273,15 @@ test.describe('Profile Page', () => {
     await expect(pill30d).toHaveClass(/is-active/);
   });
 
-  test('reset confirmation dialog works', async ({ page }) => {
+  test('reset confirmation dialog cancels without resetting and confirms with one reset', async ({
+    page,
+  }) => {
+    const resets: string[] = [];
+    await page.route('**/api/analytics/usage*', (route) => {
+      if (route.request().method() !== 'DELETE') return route.fallback();
+      resets.push(route.request().url());
+      return route.fulfill({ json: { success: true } });
+    });
     await page.goto('/profile');
     const resetBtn = page.getByRole('button', { name: 'Reset' });
     await resetBtn.click();
@@ -294,11 +293,14 @@ test.describe('Profile Page', () => {
     // Cancel dismisses
     await page.getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByText('Reset Usage Statistics')).not.toBeVisible();
+    expect(resets).toEqual([]);
 
     // Open again and confirm
     await resetBtn.click();
     await page.getByRole('button', { name: 'Reset All' }).click();
     await expect(page.getByText('Reset Usage Statistics')).not.toBeVisible();
+    // The dialog closes before the reset runs, so its closing is no proof.
+    await expect.poll(() => resets.length).toBe(1);
   });
 
   test('shows empty states with no data', async ({ page }) => {
@@ -365,13 +367,17 @@ test.describe('Profile Page', () => {
     await page.goto('/profile');
     await expect(page.locator('.profile-page')).toBeVisible();
 
-    // Stats grid should be single column at mobile
-    const grid = page.locator('.profile-stats-grid');
-    const box = await grid.boundingBox();
-    if (box) {
-      // In single-column mode, width should be close to viewport width
-      expect(box.width).toBeLessThan(400);
-    }
+    // Single column at mobile: the grid's two cards share a left edge and
+    // the second starts below the first.
+    const cards = page.locator('.profile-stats-grid > .profile-card');
+    await expect(cards).toHaveCount(2);
+    const [first, second] = await Promise.all(
+      [cards.nth(0), cards.nth(1)].map(
+        async (card) => (await card.boundingBox())!,
+      ),
+    );
+    expect(second.x).toBeCloseTo(first.x, 0);
+    expect(second.y).toBeGreaterThanOrEqual(first.y + first.height);
   });
 
   test('no console errors on profile page', async ({ page }) => {

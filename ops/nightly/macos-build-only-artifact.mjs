@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, realpathSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 
 export function canonicalPath(
@@ -45,16 +45,6 @@ export function validateBuildOnlyOutput({
       );
   }
   return output;
-}
-
-export function createExclusiveDirectory(path, { mkdir = mkdirSync } = {}) {
-  try {
-    mkdir(path);
-  } catch (error) {
-    if (error?.code === 'EEXIST')
-      throw new Error(`Build-only output directory already exists: ${path}`);
-    throw error;
-  }
 }
 
 export function assertSafeArchiveEntries(entries) {

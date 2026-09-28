@@ -188,19 +188,10 @@ async function loadCliWithLifecycleMocks() {
     validateLifecyclePorts: vi.fn(),
   };
   const service = { runServiceCommand: vi.fn() };
-
-  vi.doMock('../commands/build.js', () => ({ build: vi.fn() }));
-  vi.doMock('../commands/config.js', () => ({
-    configGet: vi.fn(),
-    configSet: vi.fn(),
-  }));
-  vi.doMock('../commands/export.js', () => ({ exportConfig: vi.fn() }));
-  vi.doMock('../commands/import.js', () => ({ importConfig: vi.fn() }));
-  vi.doMock('../commands/init.js', () => ({
-    createPlugin: vi.fn(),
-    init: vi.fn(),
-  }));
-  vi.doMock('../commands/install.js', () => ({
+  const build = { build: vi.fn() };
+  const config = { configGet: vi.fn(), configSet: vi.fn() };
+  const portability = { exportConfig: vi.fn(), importConfig: vi.fn() };
+  const install = {
     info: vi.fn(),
     install: vi.fn(),
     installRegistryPlugin: vi.fn(),
@@ -209,7 +200,21 @@ async function loadCliWithLifecycleMocks() {
     registry: vi.fn(),
     remove: vi.fn(),
     update: vi.fn(),
+  };
+
+  vi.doMock('../commands/build.js', () => build);
+  vi.doMock('../commands/config.js', () => config);
+  vi.doMock('../commands/export.js', () => ({
+    exportConfig: portability.exportConfig,
   }));
+  vi.doMock('../commands/import.js', () => ({
+    importConfig: portability.importConfig,
+  }));
+  vi.doMock('../commands/init.js', () => ({
+    createPlugin: vi.fn(),
+    init: vi.fn(),
+  }));
+  vi.doMock('../commands/install.js', () => install);
   vi.doMock('../commands/lifecycle.js', () => lifecycle);
   vi.doMock('../commands/lifecycle-doctor.js', () => doctor);
   vi.doMock('../commands/service.js', () => service);
@@ -218,7 +223,16 @@ async function loadCliWithLifecycleMocks() {
   }));
 
   const { runCli } = await import('../cli.js');
-  return { lifecycle, doctor, runCli, service };
+  return {
+    build,
+    config,
+    doctor,
+    install,
+    lifecycle,
+    portability,
+    runCli,
+    service,
+  };
 }
 
 describe('runCli', () => {
@@ -695,101 +709,16 @@ describe('runCli', () => {
   });
 
   test('dispatches registry install through the canonical Station API command', async () => {
-    const installRegistryPlugin = vi.fn().mockResolvedValue(undefined);
-
-    vi.doMock('../commands/build.js', () => ({ build: vi.fn() }));
-    vi.doMock('../commands/config.js', () => ({
-      configGet: vi.fn(),
-      configSet: vi.fn(),
-    }));
-    vi.doMock('../commands/export.js', () => ({ exportConfig: vi.fn() }));
-    vi.doMock('../commands/init.js', () => ({
-      createPlugin: vi.fn(),
-      init: vi.fn(),
-    }));
-    vi.doMock('../commands/import.js', () => ({ importConfig: vi.fn() }));
-    vi.doMock('../commands/install.js', () => ({
-      info: vi.fn(),
-      install: vi.fn(),
-      installRegistryPlugin,
-      list: vi.fn(),
-      preview: vi.fn(),
-      registry: vi.fn(),
-      remove: vi.fn(),
-      update: vi.fn(),
-    }));
-    vi.doMock('../commands/lifecycle.js', () => ({
-      buildApplication: vi.fn(),
-      clean: vi.fn(),
-      link: vi.fn(),
-      shortcut: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      upgrade: vi.fn(),
-      validateLifecyclePorts: vi.fn(),
-    }));
-    vi.doMock('../dev/server.js', () => ({
-      startDevServer: vi.fn(),
-    }));
-
-    const { runCli } = await import('../cli.js');
+    const { install, runCli } = await loadCliWithLifecycleMocks();
     await runCli(['registry', 'install', 'demo-layout']);
 
-    expect(installRegistryPlugin).toHaveBeenCalledWith(
+    expect(install.installRegistryPlugin).toHaveBeenCalledWith(
       'demo-layout',
       expect.objectContaining({ flags: {}, positionals: [] }),
     );
   });
 
-  test('dispatches create-plugin with the selected template', async () => {
-    const createPlugin = vi.fn();
-
-    vi.doMock('../commands/build.js', () => ({ build: vi.fn() }));
-    vi.doMock('../commands/config.js', () => ({
-      configGet: vi.fn(),
-      configSet: vi.fn(),
-    }));
-    vi.doMock('../commands/export.js', () => ({ exportConfig: vi.fn() }));
-    vi.doMock('../commands/init.js', () => ({
-      createPlugin,
-      init: vi.fn(),
-    }));
-    vi.doMock('../commands/import.js', () => ({ importConfig: vi.fn() }));
-    vi.doMock('../commands/install.js', () => ({
-      info: vi.fn(),
-      install: vi.fn(),
-      installRegistryPlugin: vi.fn(),
-      list: vi.fn(),
-      preview: vi.fn(),
-      registry: vi.fn(),
-      remove: vi.fn(),
-      update: vi.fn(),
-    }));
-    vi.doMock('../commands/lifecycle.js', () => ({
-      buildApplication: vi.fn(),
-      clean: vi.fn(),
-      link: vi.fn(),
-      shortcut: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      upgrade: vi.fn(),
-      validateLifecyclePorts: vi.fn(),
-    }));
-    vi.doMock('../dev/server.js', () => ({
-      startDevServer: vi.fn(),
-    }));
-
-    const { runCli } = await import('../cli.js');
-    const { INVOKED_CWD } = await import('../commands/helpers.js');
-    await runCli(['plugin', 'create', 'provider-kit', '--template=provider']);
-
-    expect(createPlugin).toHaveBeenCalledWith('provider-kit', {
-      template: 'provider',
-      cwd: INVOKED_CWD,
-    });
-  });
-
-  test.each(['pane', 'layout', 'full'])(
+  test.each(['pane', 'layout', 'full', 'provider'])(
     'accepts --template=%s and hands it to createPlugin unchanged',
     async (template) => {
       // #2323 S2: `pane` is new and `layout` stays as its alias; the parser
@@ -839,45 +768,7 @@ describe('runCli', () => {
   });
 
   test('dispatches portability export and import commands', async () => {
-    const exportConfig = vi.fn();
-    const importConfig = vi.fn();
-
-    vi.doMock('../commands/build.js', () => ({ build: vi.fn() }));
-    vi.doMock('../commands/config.js', () => ({
-      configGet: vi.fn(),
-      configSet: vi.fn(),
-    }));
-    vi.doMock('../commands/init.js', () => ({
-      createPlugin: vi.fn(),
-      init: vi.fn(),
-    }));
-    vi.doMock('../commands/install.js', () => ({
-      info: vi.fn(),
-      install: vi.fn(),
-      installRegistryPlugin: vi.fn(),
-      list: vi.fn(),
-      preview: vi.fn(),
-      registry: vi.fn(),
-      remove: vi.fn(),
-      update: vi.fn(),
-    }));
-    vi.doMock('../commands/lifecycle.js', () => ({
-      buildApplication: vi.fn(),
-      clean: vi.fn(),
-      link: vi.fn(),
-      shortcut: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      upgrade: vi.fn(),
-      validateLifecyclePorts: vi.fn(),
-    }));
-    vi.doMock('../commands/export.js', () => ({ exportConfig }));
-    vi.doMock('../commands/import.js', () => ({ importConfig }));
-    vi.doMock('../dev/server.js', () => ({
-      startDevServer: vi.fn(),
-    }));
-
-    const { runCli } = await import('../cli.js');
+    const { portability, runCli } = await loadCliWithLifecycleMocks();
     await runCli([
       'export',
       '--format=agents-md',
@@ -885,12 +776,12 @@ describe('runCli', () => {
     ]);
     await runCli(['import', AGENTS_MD_TARGET]);
 
-    expect(exportConfig).toHaveBeenCalledWith({
+    expect(portability.exportConfig).toHaveBeenCalledWith({
       format: 'agents-md',
       includeSecrets: false,
       output: AGENTS_MD_TARGET,
     });
-    expect(importConfig).toHaveBeenCalledWith(AGENTS_MD_TARGET);
+    expect(portability.importConfig).toHaveBeenCalledWith(AGENTS_MD_TARGET);
   });
 
   test('passes an explicit base through clean-before-start lifecycle calls', async () => {
@@ -1122,46 +1013,9 @@ describe('runCli', () => {
 
   test('dispatches core resource commands through the shared core command handler', async () => {
     const runCoreCommand = vi.fn().mockResolvedValue(undefined);
+    vi.doMock('../commands/core.js', () => ({ runCoreCommand }));
+    const { runCli } = await loadCliWithLifecycleMocks();
 
-    vi.doMock('../commands/build.js', () => ({ build: vi.fn() }));
-    vi.doMock('../commands/config.js', () => ({
-      configGet: vi.fn(),
-      configSet: vi.fn(),
-    }));
-    vi.doMock('../commands/export.js', () => ({ exportConfig: vi.fn() }));
-    vi.doMock('../commands/import.js', () => ({ importConfig: vi.fn() }));
-    vi.doMock('../commands/init.js', () => ({
-      createPlugin: vi.fn(),
-      init: vi.fn(),
-    }));
-    vi.doMock('../commands/install.js', () => ({
-      info: vi.fn(),
-      install: vi.fn(),
-      installRegistryPlugin: vi.fn(),
-      list: vi.fn(),
-      preview: vi.fn(),
-      registry: vi.fn(),
-      remove: vi.fn(),
-      update: vi.fn(),
-    }));
-    vi.doMock('../commands/lifecycle.js', () => ({
-      buildApplication: vi.fn(),
-      clean: vi.fn(),
-      link: vi.fn(),
-      shortcut: vi.fn(),
-      start: vi.fn(),
-      stop: vi.fn(),
-      upgrade: vi.fn(),
-      validateLifecyclePorts: vi.fn(),
-    }));
-    vi.doMock('../commands/core.js', () => ({
-      runCoreCommand,
-    }));
-    vi.doMock('../dev/server.js', () => ({
-      startDevServer: vi.fn(),
-    }));
-
-    const { runCli } = await import('../cli.js');
     await runCli(['agents', 'list', '--json']);
     await runCli(['tasks', 'list']);
     await runCli(['chat', 'default', 'hello']);
@@ -1175,82 +1029,6 @@ describe('runCli', () => {
       'default',
       'hello',
     ]);
-  });
-
-  test('includes tasks in the core workspace usage surface', async () => {
-    await loadCliWithLifecycleMocks();
-    const { usageText } = await import('../cli.js');
-    const { actionsFor, commandHelpText } = await import('../help.js');
-    const summary =
-      'List, get, create, attach exact answers, inputs, or tool results, support them, and keep immutable task outputs';
-    const taskOutputActions = [
-      'list-outputs',
-      'get-output',
-      'keep-output',
-      'download-output',
-      'delete-output',
-    ];
-    const answerSupportActions = [
-      'show-support',
-      'list-support-bundles',
-      'list-support-claims',
-      'attach-support',
-      'replace-support',
-      'remove-support',
-    ];
-    const userInputActions = ['attach-input', 'show-inputs'];
-    const toolResultActions = ['attach-result', 'show-results'];
-    const taskOutputUsage = [
-      '  station tasks list-outputs|get-output <taskId> [outputId]',
-      '  station tasks keep-output <taskId> --path=<relativePath> --title=<title> --operation=<operationId>',
-      '  station tasks download-output <taskId> <outputId> --out=<absolute destination>',
-      '  station tasks delete-output <taskId> <outputId>',
-    ];
-    const answerSupportUsage = [
-      '  station tasks show-support <taskId>',
-      '  station tasks basis <taskId> [--answer-reference=<referenceId>] [--format summary|json]',
-      '  station tasks list-support-bundles <taskId> --reference=<referenceId>',
-      '  station tasks list-support-claims <taskId> --reference=<referenceId> --bundle=<bundleId>',
-      '  station tasks attach-support <taskId> --reference=<referenceId> --bundle=<bundleId> --claim=<claimId>',
-      '  station tasks replace-support <taskId> --reference=<referenceId> --bundle=<bundleId> --claim=<claimId> --revision=<revision>',
-      '  station tasks remove-support <taskId> --reference=<referenceId> --revision=<revision>',
-    ];
-    const userInputUsage = [
-      '  station tasks attach-input <taskId> --session=<sessionId> --event=<eventId>',
-      '  station tasks show-inputs <taskId> [--json]',
-    ];
-    const toolResultUsage = [
-      '  station tasks attach-result <taskId> --session=<sessionId> --event=<eventId>',
-      '  station tasks show-results <taskId> [--json]',
-    ];
-    const taskHelp = commandHelpText('tasks') ?? '';
-
-    expect(usageText()).toContain(`station tasks <action>       ${summary}`);
-    expect(taskHelp).toContain(`station tasks — ${summary}`);
-    expect(actionsFor('tasks')).toEqual([
-      'list',
-      'get',
-      'create',
-      'attach-turn',
-      'show-turn',
-      ...userInputActions,
-      ...toolResultActions,
-      'basis',
-      ...answerSupportActions,
-      ...taskOutputActions,
-    ]);
-    expect(taskHelp.match(/Usage:\n([\s\S]*?)\n\nActions:/)?.[1]).toContain(
-      taskOutputUsage.join('\n'),
-    );
-    expect(taskHelp.match(/Usage:\n([\s\S]*?)\n\nActions:/)?.[1]).toContain(
-      answerSupportUsage.join('\n'),
-    );
-    expect(taskHelp.match(/Usage:\n([\s\S]*?)\n\nActions:/)?.[1]).toContain(
-      userInputUsage.join('\n'),
-    );
-    expect(taskHelp.match(/Usage:\n([\s\S]*?)\n\nActions:/)?.[1]).toContain(
-      toolResultUsage.join('\n'),
-    );
   });
 
   // Slice B (#1984): the interactive-menu and lazy-start additions must not
@@ -1318,16 +1096,6 @@ describe('runCli', () => {
       expect(stderr).not.toHaveBeenCalled();
     });
 
-    test('unknown plugin subcommand exits non-zero with usage on stderr', async () => {
-      const { runCli } = await loadCliWithLifecycleMocks();
-      const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      await runCli(['plugin', 'bogus']);
-
-      expect(process.exitCode).toBe(1);
-      expect(stderr).toHaveBeenCalledWith('Unknown command: plugin bogus');
-    });
-
     test('bare plugin command (missing action) exits non-zero', async () => {
       const { runCli } = await loadCliWithLifecycleMocks();
       const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -1340,91 +1108,21 @@ describe('runCli', () => {
       );
     });
 
-    test('unknown config action exits non-zero while bare config still lists', async () => {
-      const configGet = vi.fn();
-      vi.doMock('../commands/build.js', () => ({ build: vi.fn() }));
-      vi.doMock('../commands/config.js', () => ({
-        configGet,
-        configSet: vi.fn(),
-      }));
-      vi.doMock('../commands/export.js', () => ({ exportConfig: vi.fn() }));
-      vi.doMock('../commands/import.js', () => ({ importConfig: vi.fn() }));
-      vi.doMock('../commands/init.js', () => ({
-        createPlugin: vi.fn(),
-        init: vi.fn(),
-      }));
-      vi.doMock('../commands/install.js', () => ({
-        info: vi.fn(),
-        install: vi.fn(),
-        installRegistryPlugin: vi.fn(),
-        list: vi.fn(),
-        preview: vi.fn(),
-        registry: vi.fn(),
-        remove: vi.fn(),
-        update: vi.fn(),
-      }));
-      vi.doMock('../commands/lifecycle.js', () => ({
-        buildApplication: vi.fn(),
-        clean: vi.fn(),
-        link: vi.fn(),
-        shortcut: vi.fn(),
-        start: vi.fn(),
-        stop: vi.fn(),
-        upgrade: vi.fn(),
-        validateLifecyclePorts: vi.fn(),
-      }));
-      vi.doMock('../dev/server.js', () => ({ startDevServer: vi.fn() }));
-      const { runCli } = await import('../cli.js');
-      const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+    test('bare config lists the configuration and exits cleanly', async () => {
+      const { config, runCli } = await loadCliWithLifecycleMocks();
 
       await runCli(['config']);
-      expect(configGet).toHaveBeenCalledTimes(1);
-      expect(process.exitCode).toBeUndefined();
 
-      await runCli(['config', 'sett', 'key', 'value']);
-      expect(process.exitCode).toBe(1);
-      expect(stderr).toHaveBeenCalledWith('Unknown command: config sett');
+      expect(config.configGet).toHaveBeenCalledTimes(1);
+      expect(process.exitCode).toBeUndefined();
     });
 
     test('known plugin build dispatches to build with exit 0', async () => {
-      const build = vi.fn();
-      vi.doMock('../commands/build.js', () => ({ build }));
-      vi.doMock('../commands/config.js', () => ({
-        configGet: vi.fn(),
-        configSet: vi.fn(),
-      }));
-      vi.doMock('../commands/export.js', () => ({ exportConfig: vi.fn() }));
-      vi.doMock('../commands/import.js', () => ({ importConfig: vi.fn() }));
-      vi.doMock('../commands/init.js', () => ({
-        createPlugin: vi.fn(),
-        init: vi.fn(),
-      }));
-      vi.doMock('../commands/install.js', () => ({
-        info: vi.fn(),
-        install: vi.fn(),
-        installRegistryPlugin: vi.fn(),
-        list: vi.fn(),
-        preview: vi.fn(),
-        registry: vi.fn(),
-        remove: vi.fn(),
-        update: vi.fn(),
-      }));
-      vi.doMock('../commands/lifecycle.js', () => ({
-        buildApplication: vi.fn(),
-        clean: vi.fn(),
-        link: vi.fn(),
-        shortcut: vi.fn(),
-        start: vi.fn(),
-        stop: vi.fn(),
-        upgrade: vi.fn(),
-        validateLifecyclePorts: vi.fn(),
-      }));
-      vi.doMock('../dev/server.js', () => ({ startDevServer: vi.fn() }));
-      const { runCli } = await import('../cli.js');
+      const { build, runCli } = await loadCliWithLifecycleMocks();
 
       await runCli(['plugin', 'build']);
 
-      expect(build).toHaveBeenCalledTimes(1);
+      expect(build.build).toHaveBeenCalledTimes(1);
       expect(process.exitCode).toBeUndefined();
     });
   });

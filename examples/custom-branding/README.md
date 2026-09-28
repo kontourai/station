@@ -1,41 +1,50 @@
 # Custom Branding Example
 
-Shows how a plugin can override Station's default branding using the provider system.
+Provides server-side branding through a plain CommonJS provider factory.
 
 ## What it does
 
-Registers a `branding` provider that replaces:
+Once admitted, the `branding` provider supplies:
 - **App name**: "Station" → "Project Station"
 - **Logo**: adds a custom logo with alt text
 - **Welcome message**: custom onboarding text
 
 ## Install
 
+From the repository root, with a running local Station selected by automatic
+discovery or the default loopback fallback:
+
 ```bash
-cp -r examples/custom-branding .station/plugins/custom-branding
+station plugin preview ./examples/custom-branding
+station plugin install ./examples/custom-branding
 ```
 
-Then restart the server or hit `POST /api/plugins/reload`.
+Review the requested `providers.register` permission. This is a trusted
+server-code capability and needs the host-owned review described in the
+[plugin guide](../../docs/guides/plugins.md#installation-flow). Copying a directory
+or reloading plugins does not supply that grant. No UI bundle is needed.
 
 ## Verify
 
-```bash
-curl http://localhost:4310/api/branding
-# → {"name":"Project Station","logo":{"src":"/favicon.png","alt":"Station"},"theme":null,"welcomeMessage":"Welcome to Project Station — your AI-powered workspace"}
-```
+An authenticated `GET /api/branding` on the selected Station returns
+`{ "success": true, "data": { "name": ..., "logo": ..., "theme": ...,
+"welcomeMessage": ... } }`. The
+[route](../../src-server/routes/system/branding.ts) resolves the active provider;
+the [SDK request](../../packages/sdk/src/query-domains/systemRuntimeRequests.ts)
+maps `data.name` to `appName`.
 
-The header, onboarding gate, and workspace view will all reflect the new branding.
+The browser sidebar consumes that name. Native sidebar chrome deliberately
+keeps the installed Station/channel identity, so this provider does not rename
+every surface. Returning a logo or welcome message does not prove every view
+uses it. Installation and rendered branding were not exercised in this audit.
 
 ## Disable without uninstalling
 
-In the UI: **Plugins → custom-branding → Providers → toggle branding off**
-
-Or via API:
-```bash
-curl -X PUT http://localhost:4310/api/plugins/custom-branding/overrides \
-  -H 'Content-Type: application/json' \
-  -d '{"disabled":["branding"]}'
-```
+Open the plugin's **Connection types** section and use its branding toggle.
+The authenticated `PUT /api/plugins/custom-branding/overrides` operation stores
+`{ "disabled": ["branding"] }`. This is a provider override, not whole-plugin
+uninstallation; see the [configuration routes](../../src-server/routes/plugins/plugin-config-routes.ts)
+and [plugin guide](../../docs/guides/plugins.md) for lifecycle and reload behavior.
 
 ## Structure
 

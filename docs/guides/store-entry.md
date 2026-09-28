@@ -13,9 +13,10 @@ and [mobile-release.md](./mobile-release.md). Listing copy lives in
 - iOS channel bundle IDs: `io.kontourai.station`,
   `io.kontourai.station.beta`, and `io.kontourai.station.nightly`. They are
   three installable apps, not TestFlight tracks of one app.
-- App Store Connect listing names are **Station by Kontour AI**, **Station Beta
+- Intended App Store Connect listing names are **Station by Kontour AI**, **Station Beta
   by Kontour AI**, and **Station Nightly by Kontour AI**. Installed app names
-  remain Station, Station Beta, and Station Nightly; seller is Kontour AI LLC.
+  remain Station, Station Beta, and Station Nightly. Confirm those records and
+  the proposed seller, Kontour AI LLC, in the owner account before submission.
 - Privacy policy URL: https://kontourai.io/privacy/station/
 - Support URL source: https://kontourai.io/support/ — verify the live response
   before submitting a listing
@@ -66,10 +67,15 @@ accepted preview commit can be promoted to Stable without a source edit.
 
 ## 1. Apple (one-time)
 
-1. Register each of the three channel bundle IDs above.
+1. Register each of the three channel app bundle IDs above. Beta and Nightly
+   also need their `.AgentActivity` and `.NotificationService` extension App
+   IDs; see [the extension signing contract](mobile-release.md#live-activity-in-beta-and-nightly).
 2. Create one matching app record and one explicit internal TestFlight group
-   per channel. The API cannot create apps or tester groups.
-3. Create an **App Store distribution** provisioning profile per bundle ID. Ad-hoc and
+   per channel. Station requires these existing records; Apple exposes a
+   [beta-group creation API](https://developer.apple.com/documentation/appstoreconnectapi/post-v1-betagroups),
+   so group creation is not universally a manual-only API limitation.
+3. Create an **App Store distribution** provisioning profile for each app and
+   required extension bundle ID. Ad-hoc and
    development profiles fail the release job.
 4. Export the iOS Distribution certificate (`.p12`) and its password.
 5. Generate an App Store Connect Team API key (App Manager). Download the
@@ -77,9 +83,13 @@ accepted preview commit can be promoted to Stable without a source edit.
 
 ## 2. Google Play (one-time)
 
-1. Create application `io.kontourai.station`.
-2. Paste the privacy URL, support URL, and Data Safety answers. Complete
-   content rating, target audience, and the ads declaration (no ads).
+1. Create the intended channel application: Stable `io.kontourai.station`,
+   Beta `io.kontourai.station.beta`, or Nightly `io.kontourai.station.nightly`.
+   Each package needs its own provider setup and tester access.
+2. Review the privacy URL, support URL, and Data Safety answers for the exact
+   build and configured services before submitting them. Complete content
+   rating, target audience, and the ads declaration; “no ads” is the proposed
+   answer, not a declaration established by this checklist.
 3. Create a Cloud service account with no project roles, enable the Play
    Developer API, and authorize GitHub through Workload Identity Federation.
    Invite the service account to Play with **Release apps to testing tracks**
@@ -117,10 +127,11 @@ for env in native-release ios-beta ios-nightly; do
   gh secret set APPLE_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env "$env"
 done
 
-# The Live Activity widget extension's App Store profile (Beta and Nightly
-# only; see mobile-release.md "Live Activity in Beta and Nightly")
+# Separate App Store profiles for both extensions (Beta and Nightly only;
+# see mobile-release.md "Live Activity in Beta and Nightly")
 for env in ios-beta ios-nightly; do
   gh secret set APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env "$env"
+  gh secret set APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env "$env"
 done
 
 # Internal authority signatures are verified in every delivery environment.
@@ -162,13 +173,15 @@ the scheduled Nightly uses the same reserved day/index build number as its
 Android build. Every lane first reconciles the exact App Store build number:
 an absent build uploads once, PROCESSING is polled, VALID is receipted without
 a duplicate upload, and any other or ambiguous state fails closed. Receipts
-retain the source SHA, IPA digest, provider app/build IDs, processing state,
-and workflow URL. Tester email lists remain in Apple custody, never this
+retain candidate identity, provider app/build IDs, processing state and workflow
+URL. For a newly uploaded build the receipt records its candidate association;
+for a reconciled existing build its provider SHA/digest remain unverified.
+Do not mistake a new local candidate hash for the existing provider bytes. Tester email lists remain in Apple custody, never this
 public repository.
 
 For an owner-side, no-upload readiness check, decode the channel profile only
-through the repository command (it verifies the channel's fixed bundle/listing
-authority and group ID before any App Store request):
+through the repository command (it checks the local profile against the
+channel's bundle ID and validates group-ID syntax):
 
 ```sh
 node scripts/ios-testflight-readiness.mjs --channel beta \
@@ -176,8 +189,10 @@ node scripts/ios-testflight-readiness.mjs --channel beta \
   --team TEAM_ID --group-id APP_STORE_CONNECT_GROUP_ID
 ```
 
-Run it once per `stable`, `beta`, and `nightly`; it never contains tester
-emails or credentials in source or output.
+Run it once per `stable`, `beta`, and `nightly`. This command makes no App Store
+request and does not verify that the named app/group exists or that a tester
+can install. The delivery workflow performs those separate provider preflights.
+Treat decoded profile metadata/output as operator evidence, not public listing copy.
 
 ## 5. Tag only after secrets exist
 
@@ -190,13 +205,13 @@ git tag -s "v$release_version" -m "Station v$release_version"
 git push origin "v$release_version"
 ```
 
-Confirm in the job logs that Play / TestFlight either uploaded or printed the
-documented skip notice — not a missing-keystore or missing-environment
-failure. Then confirm the build in the consoles.
+Required delivery must have its upload/reconciliation and provider receipts.
+A missing-keystore, environment refusal or skipped required delivery is not
+success. Confirm the channel-specific build and group/track state in the consoles.
 
 ## Not this checklist
 
 - Making the GitHub repository public (#1978)
 - Custom `updates.kontourai.io` feed (#2211)
 - Wrapping this process in a Flow (#1769)
-- Apple 4.2 unpaired first-launch for **external** review (#1772)
+- Unpaired first-launch for **external** review ([historical finding](https://github.com/kontourai/station-archive/issues/1772)); a source change or closed backlog item does not establish reviewer access

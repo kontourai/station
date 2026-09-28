@@ -824,19 +824,11 @@ describe('server build package portability', () => {
         desktopConfig.bundle.resources['../dist-desktop-runtime/node_modules'],
       ).toBe('node_modules');
     }
-    expect(
-      appImageTauriConfig.bundle.resources[
-        '../dist-desktop-runtime/node_modules'
-      ],
-    ).toBeNull();
-    expect(appImageTauriConfig.bundle.resources['../dist-server']).toBeNull();
+    // The AppImage resource relocation is owned by
+    // native-platform-boundary.mjs (findTauriResourceBoundaryViolations).
     expect(appImageTauriConfig.build.beforeBuildCommand).toBe(
       'npm run build:desktop:resources',
     );
-    expect(appImageTauriConfig.bundle.linux.appimage.files).toEqual({
-      'usr/share/Station/dist-server': '../dist-server',
-      'usr/share/Station/node_modules': '../dist-desktop-runtime/node_modules',
-    });
     // The portable wrapper owns one immutable client-build transaction, then
     // delegates server staging after that stamp has been reused. Keep this
     // assertion at the package boundary and verify the nested staging command

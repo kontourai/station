@@ -70,6 +70,9 @@ vi.mock('@kontourai/station-sdk', async () => {
       isPending: false,
     }),
     usePairedDevicesQuery: () => ({ data: [] }),
+    // ConnectedServerUpdates reads the shared core-update answer (it never
+    // fetches it). No answer yet is the neutral case for the catalog.
+    useCoreUpdateStatusQuery: () => ({ data: undefined }),
     StationReadOnlyError: class extends Error {},
     useEngineConnectionsQuery: () => ({ data: [] }),
     useAnswerSharesQuery: () => ({ data: [] }),
@@ -930,7 +933,7 @@ describe('settings catalog completeness', () => {
 
   test('#2436: a full-access default this device may not set says why, not "retry"', async () => {
     const refusal =
-      "This device is not allowed to give an agent full access. The Station's operator can allow it: Devices, this device's access, Allow full access.";
+      'Full access was not applied. You asked for full access, but only this Station\'s operator can allow it, for device "Laptop CLI" (154d4e68). Ask the operator to add the approval:full-access scope to it: on the Station\'s host, run: station environment access scope 154d4e68 --add approval:full-access; or in the Station desktop app on its host, select the Station name (top right) → Paired devices → Laptop CLI → Change access → Allow full access → Apply.';
     updateConfig.mockRejectedValueOnce(
       Object.assign(new Error(refusal), {
         code: 'approval-full-access-not-granted',

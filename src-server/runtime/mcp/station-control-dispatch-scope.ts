@@ -98,8 +98,8 @@ export type StationControlDispatchTargetRef =
 
 /**
  * A target as the scope rule reads it, plus, for a new session with a
- * folder, the canonical path the check decided on: the route dispatches
- * that path, so a symlink swapped after the check cannot move the session.
+ * folder, the canonical path the check decided on. The route dispatches this
+ * resolved path rather than the original alias.
  */
 export type StationControlResolvedDispatchTarget =
   StationControlDispatchTarget & { readonly canonicalCwd?: string };
@@ -107,7 +107,7 @@ export type StationControlResolvedDispatchTarget =
 export interface StationControlDispatchScope {
   /**
    * The target a reference names, checked for `action` in its Project;
-   * `undefined` when Station cannot read it (which refuses).
+   * `undefined` when Station cannot read it; the caller policy decides refusal.
    */
   target(
     ref: StationControlDispatchTargetRef,

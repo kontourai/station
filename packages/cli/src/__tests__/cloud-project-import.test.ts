@@ -154,7 +154,9 @@ test.each([401, 403, 500])(
   async (status) => {
     const f = fixture();
     f.fetch.mockResolvedValue(reply(null, status));
-    await expect(runCloudCommand(f.args)).rejects.toThrow();
+    await expect(runCloudCommand(f.args)).rejects.toThrow(
+      `Request failed with HTTP ${status}`,
+    );
     expect(existsSync(f.destination)).toBe(false);
     expect(f.fetch).toHaveBeenCalledTimes(1);
   },

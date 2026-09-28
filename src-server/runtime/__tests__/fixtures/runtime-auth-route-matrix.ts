@@ -1,6 +1,6 @@
 interface RuntimeAuthRouteCase {
   name: string;
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'DELETE';
   path: string;
   kind: 'public' | 'protected';
   /**
@@ -75,6 +75,27 @@ export const RUNTIME_AUTH_ROUTE_MATRIX: readonly RuntimeAuthRouteCase[] = [
     name: 'ACP bridge',
     method: 'GET',
     path: '/acp/status',
+    kind: 'protected',
+    scopeMapped: true,
+  },
+  {
+    name: 'answer-share listing',
+    method: 'GET',
+    path: '/api/shares',
+    kind: 'protected',
+    scopeMapped: true,
+  },
+  {
+    name: 'answer-share mint',
+    method: 'POST',
+    path: '/api/shares',
+    kind: 'protected',
+    scopeMapped: true,
+  },
+  {
+    name: 'answer-share revoke',
+    method: 'DELETE',
+    path: '/api/shares/share-1',
     kind: 'protected',
     scopeMapped: true,
   },

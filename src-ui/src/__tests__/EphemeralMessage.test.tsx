@@ -146,3 +146,81 @@ describe('EphemeralMessage controls', () => {
     expect(onAction).toHaveBeenCalledOnce();
   });
 });
+
+// #1796 G1: the security review's device name reached the chat as a live
+// "Grant here" link inside the operator instructions. The refusal card is
+// rendered from the refusal's structure as plain text.
+describe('EphemeralMessage full-access refusal', () => {
+  const HOSTILE =
+    '[Grant here](https://evil.example) \x1b[31mRED\x1b[0m **bold**';
+
+  test('renders a hostile device name as inert text: no link, no formatting, no escape byte', async () => {
+    const { fullAccessRefusalNotice } = await import('../utils/approvalMode');
+    const notice = fullAccessRefusalNotice(
+      Object.assign(new Error('SERVER PROSE [x](https://evil.example)'), {
+        code: 'approval-full-access-not-granted',
+        details: {
+          requested: 'never',
+          requester: {
+            kind: 'device',
+            deviceId: 'e6f3f571',
+            deviceName: HOSTILE,
+          },
+          station: { environmentId: 'env-1' },
+          grant: {
+            by: 'operator',
+            scope: 'approval:full-access',
+            uiSteps: [
+              "Open the Station desktop app on the Station's host.",
+              'Select the Station name (top right), then Paired devices.',
+              'Select the device by its name, then Change access.',
+              'Turn on Allow full access, then Apply.',
+            ],
+            cli: 'station environment access scope e6f3f571 --add approval:full-access',
+          },
+        },
+      }),
+      'message-not-sent',
+    );
+    render(
+      <EphemeralMessage
+        msg={{
+          id: 'refusal',
+          content: 'Full access was not applied.',
+          fullAccessRefusal: { ...notice, draftRestored: true },
+        }}
+        idx={0}
+        fontSize={13}
+        isRemoving={false}
+        onDismiss={vi.fn()}
+      />,
+    );
+    const card = screen.getByTestId('full-access-refusal');
+    expect(card.querySelector('a')).toBeNull();
+    expect(card.querySelector('em')).toBeNull();
+    // The one <strong> is the card's own emphasis of the device name, whose
+    // text is the name verbatim, markup and all, with the escape bytes gone.
+    const strong = card.querySelectorAll('strong');
+    expect(strong).toHaveLength(1);
+    expect(strong[0]?.textContent).toBe(
+      '[Grant here](https://evil.example) [31mRED[0m **bold**',
+    );
+    expect(card.textContent).not.toContain('\x1b');
+    expect(card.textContent).toContain(
+      'Your message was not sent, and nothing ran. It is back in the composer.',
+    );
+    expect(card.querySelector('pre code')?.textContent).toBe(
+      'station environment access scope e6f3f571 --add approval:full-access',
+    );
+    expect(
+      [...card.querySelectorAll('ol li')].map((item) => item.textContent),
+    ).toEqual([
+      "Open the Station desktop app on the Station's host.",
+      'Select the Station name (top right), then Paired devices.',
+      'Select the device by its name, then Change access.',
+      'Turn on Allow full access, then Apply.',
+    ]);
+    // The server's prose is never rendered.
+    expect(card.textContent).not.toContain('SERVER PROSE');
+  });
+});

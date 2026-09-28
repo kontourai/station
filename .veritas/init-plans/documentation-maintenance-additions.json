@@ -1,0 +1,67 @@
+{
+  "status": "applied-owner-approved",
+  "evidenceCheck": {
+    "id": "documentation-truth",
+    "command": "npm run docs:truth:gate",
+    "method": "validation",
+    "summary": "Run the existing documentation contracts, including strict recorded document/source freshness. Passing does not establish semantic review of unrecorded claims or dependencies."
+  },
+  "appendDefaultEvidenceCheckIds": [
+    "documentation-truth"
+  ],
+  "appendRequiredEvidenceCheckIds": [
+    "documentation-truth"
+  ],
+  "guideRule": {
+    "id": "documentation-source-currentness",
+    "kind": "required-artifacts",
+    "classification": "promotable-policy",
+    "enforcementLevel": "Guide",
+    "message": "Review affected documentation against real callers and preserve honest current, historical and evidence boundaries.",
+    "owner": "documentation",
+    "rollback_switch": null,
+    "evidenceCheckIds": [
+      "documentation-truth"
+    ],
+    "explain": {
+      "summary": "The documentation-audit skill and maintenance guide already own this workflow. Artifact presence is only structural guidance; the existing documentation truth gate checks paths, examples, publication and recorded byte freshness. Human or independent source review owns semantic correctness.",
+      "mustDo": [
+        "Run the docs:impact report from gate:for, or its --catch-up mode for accumulated changes. Review affected owners and account for unmapped paths; retain the coverage baseline until outstanding coverage is resolved.",
+        "Trace changed behavior through public callers and the owning implementation, then revisit the affected guide, README, diagram, example and generated reference.",
+        "Record the reviewed claims, document purpose, source hashes, actual checks and limits. A justified no-prose-change outcome is valid; a source hash refresh without re-review is not.",
+        "Classify dated designs and fixtures honestly. Regenerate from the owner rather than editing generated output."
+      ],
+      "mustNotDo": [
+        "Do not claim that passing links, byte freshness or inventory coverage proves every product statement or platform.",
+        "Do not invent a second documentation validator, blanket approval workflow, or mandatory prose diff for behavior-neutral changes."
+      ],
+      "exampleGood": "A source change triggers re-review of its recorded guide claims; stale evidence fails the existing strict freshness check until that review is recorded.",
+      "exampleBad": "Replace source digests to clear the gate without reading callers, or add a token documentation line to satisfy a diff rule.",
+      "contextLinks": [
+        ".agents/skills/documentation-audit/SKILL.md",
+        "docs/guides/documentation.md",
+        "docs/plans/documentation-code-audit.md",
+        "docs/learn/review-ledger.json"
+      ]
+    },
+    "match": {
+      "artifacts": [
+        "README.md",
+        "docs/",
+        "src-server/",
+        "src-ui/",
+        "src-desktop/",
+        "src-shared/",
+        "packages/",
+        "scripts/",
+        "examples/",
+        "deploy/",
+        ".agents/skills/documentation-audit/SKILL.md",
+        "docs/guides/documentation.md",
+        "scripts/docs-truth-gate-aggregate.mjs",
+        "scripts/lib/documentation-review.mjs",
+        "scripts/__tests__/docs-index-reachability.test.ts"
+      ]
+    }
+  }
+}

@@ -46,12 +46,10 @@ const HomeRolePane = lazy(() =>
  *
  * Stage 3 (the Home role) reaches this host through exactly one seam: the
  * SERVER-derived `WorkspaceHomeRoleStatus` read through
- * `useWorkspaceHomeRoleStatus`. Nothing browser-writable participates —
- * same-origin plugin code can neither write the grant record (it lives
- * server-side; the grant channel itself awaits a distinct-origin consent
- * surface and has no production writer on this build) nor forge the
- * status this render trusts (the SDK reparses it fail-closed through the
- * contract). This file still never chooses between Home descriptors — with
+ * `useWorkspaceHomeRoleStatus`. Browser storage is not grant authority:
+ * the grant lives server-side and its production writer requires the
+ * distinct-origin consent path. The SDK reparses the returned status through
+ * the contract before rendering. This file never chooses between Home descriptors — with
  * no grant there is one, and with a grant the choice was the user's
  * explicit act, held by the role, not the host. `HomeRolePane` owns
  * granted-Pane selection, its recovery boundary (which falls back to the

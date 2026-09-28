@@ -45,7 +45,7 @@ import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { defaultTerminalShell } from '../../services/terminal/terminal-shells.js';
 import { configOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED } from '../orchestration/approval-authority.js';
+import { fullAccessRefusal } from '../orchestration/approval-authority.js';
 
 /** Thrown inside the serialized config mutation; mapped to the 403 below. */
 const FULL_ACCESS_DEFAULT_NOT_GRANTED = 'FULL_ACCESS_DEFAULT_NOT_GRANTED';
@@ -647,7 +647,7 @@ export function createConfigRoutes(
         error.message === FULL_ACCESS_DEFAULT_NOT_GRANTED
       ) {
         configOps.add(1, { op: 'update_app_full_access_default_refused' });
-        return c.json(APPROVAL_FULL_ACCESS_NOT_GRANTED, 403);
+        return fullAccessRefusal(c);
       }
       if (
         error instanceof Error &&

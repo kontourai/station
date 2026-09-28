@@ -533,23 +533,6 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     },
   );
 
-  test.each(PRE_REFACTOR_CAPTURE)(
-    'clearance variables match the pre-refactor capture ($placement/$state)',
-    async ({ placement, state, classes, dockSlotSize, sideSize }) => {
-      seedPlacement(placement, state);
-      const shell = await renderShellsSettled();
-      await waitFor(() => expect(classTokens(shell)).toEqual([...classes]));
-      await waitFor(() =>
-        expect(clearance('--dock-slot-size')).toBe(dockSlotSize),
-      );
-      // The captured side width, now under the rendered side's own name:
-      // the single-side alias it was captured from is retired (#1374).
-      if (placement !== 'bottom') {
-        expect(clearance(`--region-${placement}-size`)).toBe(sideSize);
-      }
-    },
-  );
-
   /**
    * #928 contract, not a capture: the rendered region's variable carries
    * the value its legacy alias does (a side's width, bottom's size) and the

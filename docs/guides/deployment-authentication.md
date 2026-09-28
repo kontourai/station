@@ -10,8 +10,9 @@ grants, Project membership, private Session access and execution offers remain
 independent. An account cookie alone cannot load the personal Project catalog.
 Built-in username/password accounts and manually shared invitation links work
 without a mail service. The implemented administration and membership boundaries
-are described below; complete shared-content/device admission remains under #488.
-Optional configured OIDC choices use the same local account/session owner (see below); the official hosted identity service remains #489.
+are described below and in [Project rooms #488](https://github.com/kontourai/station/issues/488).
+Independent-person acceptance is tracked separately in [#497](https://github.com/kontourai/station/issues/497).
+Optional configured OIDC choices use the same local account/session owner (see below); the official hosted identity service is tracked in [#489](https://github.com/kontourai/station/issues/489).
 Optional provider integration does not make hosted identity a core prerequisite.
 
 ## Enable local accounts without email
@@ -56,6 +57,12 @@ this Station home's `authentication` directory. Restart preserves existing
 account identity and unexpired cookies. Another Station identity or a missing
 authority secret for an existing account store is refused. Preserve that whole
 private directory under the Station home backup/recovery procedure.
+
+Private-file checks enforce ownership and modes on POSIX systems. The Windows
+path checks file/directory shape and symlinks, but does not validate a private
+Windows ACL. The operator must protect that directory and its backups with
+appropriate OS access controls; Windows custody has not been qualified by
+this audit. These files are not a generally encrypted database.
 
 ## Configure a deployment
 
@@ -105,8 +112,8 @@ and implement idempotent resource closure.
   are a conflict; no credential is selected by precedence.
 - `endpoints` lists exact relative paths, GET/POST methods and their login,
   callback, registration, contact-verification, recovery, refresh or revocation
-  purpose. An explicit POST logout operation is required. The core `/session`
-  and `/accept-invitation` paths are reserved.
+  purpose. An explicit POST logout operation is required. The core `/session`,
+  `/invitation-preview`, and `/accept-invitation` paths are reserved.
 - Optional `login` selects the standard browser entry: `email-password` or
   `username-password` names
   declared POST `signInPath` and optional `signUpPath` operations; `redirect`
@@ -173,8 +180,10 @@ Unknown operations return 404. Bodies are limited to 32 KiB, responses use
 budget before adapter invocation. The adapter must also enforce its account-
 and operation-specific abuse controls.
 
-POST requires the configured Station origin. Cross-origin form-post callbacks
-are outside this first contract's supported browser flow; use a GET code callback
+POST requires an exact configured allowed browser origin. The public Station
+origin is included; additional origins must be explicitly configured through
+`STATION_AUTHENTICATION_BROWSER_ORIGINS` as well as the existing CORS policy.
+This does not make arbitrary cross-origin form-post callbacks supported. Use a GET code callback
 with the provider's state, nonce, issuer, audience and PKCE verification. OAuth
 authorization alone does not establish identity. A custom non-OIDC adapter must
 verify identity using its provider's documented contract.
@@ -214,9 +223,14 @@ after sign-in. Station attaches the verified account candidate and makes this
 intent immutable: approval and exchange cannot issue a personal or Tailnet-bound
 Device for that request. Existing ordinary pairing requests remain available.
 
-The first collaborator profile is deliberately read-only. It admits account
-controls and membership-filtered Project catalogue/detail reads, sets
-`Cache-Control: no-store`, and binds response delivery to the exact local and
+The collaborator profile admits account controls, membership-filtered Project
+catalogue/detail reads, and bounded reads of explicitly published shared Tasks:
+the shared-work list, history, and document. Shared work is read-only in this
+entry. The [account-bound Device gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts)
+admits those specific paths; the
+[shared Task routes](../../src-server/routes/projects/project-shared-tasks.ts)
+independently require current membership and publication. Protected reads set
+`Cache-Control: no-store` and bind response delivery to the exact local and
 portable Project incarnation. Membership is rechecked before delivery and each
 streamed chunk. The audited administration endpoints below are the only
 additional Project mutations admitted here. Unrelated personal configuration,
@@ -253,9 +267,11 @@ unauthorized. Self-demotion or self-revocation can still return the contentless
 and Project incarnation remain valid; this acknowledgement carries no protected
 member or token data. Already downloaded plaintext cannot be recalled.
 
-These are backend API capabilities. The invited-admin controls in the guest UI
-and the independent-person browser journey have separate qualification work;
-the backend tests do not establish that user journey.
+The [guest entry](../../src-ui/src/views/account/GuestDeviceOnboarding.tsx)
+mounts Project access controls as well as shared Task views. Showing those
+controls does not confer administration: current membership and the separately
+approved Device scope still govern each action. Independent-person browser and
+native qualification remain separate from backend and component-test evidence.
 
 For authenticated members, the existing Project catalogue/detail endpoints
 return `station.member-project/v1` views: Project ID, slug, name, optional icon
@@ -269,9 +285,13 @@ member/full-view union. Legacy `listProjects` and `getProject` refuse member
 projections rather than pretending they contain full configuration. Unknown
 versions, extra fields and malformed member views fail validation.
 
-The full browser/native UI, shared content, compute-offer and two-person journey
-remain owned by #483/#488. Tailnet member integration remains under #1513 and
-#488.
+Shared Task list/history/document reads are implemented separately from that
+restricted base Project projection. Shared editing and execution, compute-offer
+access, and the fully qualified two-person browser/native journey remain
+separate work discussed in [#483](https://github.com/kontourai/station/issues/483),
+[#488](https://github.com/kontourai/station/issues/488) and
+[#497](https://github.com/kontourai/station/issues/497). Tailnet member integration is discussed in
+#1513 and [#488](https://github.com/kontourai/station/issues/488).
 
 ## Browser invitation entry
 
@@ -297,14 +317,19 @@ entry and clears its form state. An earlier acceptance finishing afterward clear
 only its own saved continuation, never the newly received invitation.
 
 After acceptance, this entry requests an immutable account-bound Device and
-shows only validated `station.member-project/v1` catalogue and detail metadata.
+shows validated `station.member-project/v1` catalogue and detail metadata.
 It rechecks the exact signed-in principal around each read, removes stale query
 authority when the Station or account changes, and returns to Device approval
 when that grant is revoked. It never mounts the personal Station provider tree
-or treats a personal Device receipt as guest access. Shared Task content,
-mutation and execution remain outside this metadata-only entry. Optional native opening, compatible
+or treats a personal Device receipt as guest access. Selecting a Project also
+opens bounded, read-only shared Task list/history/document views and the
+separately authorized Project access view. Shared content requires current
+publication and membership, revalidated through guarded response delivery;
+base Project metadata alone grants neither. Shared Task editing and execution
+remain outside this entry. Optional native opening, compatible
 platform downloads and installation continuation are required follow-up
-acceptance under #488 and #497. Their completion requires real browser/native
+acceptance discussed in [#488](https://github.com/kontourai/station/issues/488) and
+[#497](https://github.com/kontourai/station/issues/497). Their completion requires real browser/native
 evidence and published artifacts; the account page does not establish that an
 app is installed or that a device has been approved.
 
@@ -336,7 +361,7 @@ custody property, not an attestation supplied by a client-controlled JSON field.
 
 All application headers and bodies travel inside the authenticated encrypted
 transport. The receiver must establish the selected Station's identity before
-credentials enter it. The continuation adds these headers to the normal Device
+credentials enter it. The browser-profile continuation adds these headers to the normal Device
 authorization:
 
 | Header | Meaning |
@@ -347,8 +372,8 @@ authorization:
 | `Origin` | Actual, explicitly allowed client origin; never omitted to impersonate a native client |
 
 The proof has type `station.application-session+jwt` and signs the protocol
-version, Station id, purpose, server nonce, method, canonical target, credential
-hash for resource requests, random request-proof id and issuance time. Verification
+version, Station id, purpose, server nonce, method, canonical target, continuation
+credential hash for resource requests, random request-proof id and issuance time. Verification
 requires a fresh proof (60 seconds, five-second clock tolerance), exact public key,
 nonce, target including query, method and continuation. This is a Station virtual
 request profile, not a claim that a DataChannel is HTTPS or implements OAuth DPoP.
@@ -417,6 +442,37 @@ The core/SDK fixture is free and uses real cryptographic keys, maintained local
 sessions and the production HTTP principal path without a cookie-processing client.
 It is not proof of actual WebRTC delivery, native key custody or two-human use;
 the relay consumer and physical acceptance must supply those receipts.
+
+#### Native application-session profile
+
+`station.application-session-native/v1` is a separate opt-in profile.
+`POST /api/account-auth/continuations/native/challenge` accepts its version and
+public JWK; `/native/exchange` accepts its version, challenge ID, provider
+credentials and proof. Both require server-owned request provenance from the
+admitted native Pion/virtual-application path, the exact configured Station
+audience and native surface, and an approved Device already bound to an account.
+They reject a browser `Origin`; absence of that header on a direct HTTP request
+does not establish native provenance. Controls retain the 16 KiB body bound.
+
+The provider must support private session-reference login and verification.
+Exchange consumes the challenge before provider login, then rechecks the exact
+provider subject/session and Device binding before persisting a continuation.
+The client's exchange proof binds the exact serialized credential body; resource proofs bind the
+method, path/query, Station audience, native surface, Device, nonce and
+continuation hash. Native resource requests carry
+`X-Station-Native-Account-Continuation` and `X-Station-Native-Account-Proof`
+alongside the existing Device credential. Combining native and browser
+continuation headers is refused. The receiver rechecks current provider and
+Device authority and rejects replay; the native continuation lasts at most
+15 minutes and never beyond its provider session.
+
+The native SDK supplies `challenge`, `exchange` and signed `headers`; this
+profile does not add a native renewal or cookie-adoption operation. It consumes
+a caller-owned encrypted transport and independent account signer. The
+[connector opt-in](self-hosted-broker.md#native-routing-grant-foundation-v2)
+and [SDK contract](../reference/sdk.md#native-station-account-continuation-opt-in)
+do not establish ordinary Desktop activation, key-custody integration or a
+physical end-to-end result.
 
 The executable external-module fixture materializes a disposable module using
 the public factory contract and loads it through the production loader. It
@@ -490,8 +546,10 @@ The pinned Better Auth generic OAuth implementation performs discovery, code
 exchange, PKCE, ID-token signature/audience/issuer validation and nonce binding.
 Station additionally pins the discovered issuer to the configured issuer,
 requires an ID token on every OIDC callback (no UserInfo-only downgrade), and
-refuses registration if required verification is unavailable. Provider tokens
-are encrypted by the maintained library in Station's private account database.
+refuses registration if required verification is unavailable. The pinned
+library encrypts OAuth access and refresh tokens in the account store. This
+setting does not encrypt every account field or the database as a whole;
+other stored identity material relies on the private-file access controls.
 The public descriptor exposes only the configured display choice, availability
 and Station login endpoint. It exposes no client secret or provider token.
 
@@ -505,10 +563,13 @@ verified issuer and immutable subject; reusing an operator's provider label for
 a different issuer cannot inherit an old account. UserInfo must identify the
 same subject as the verified ID token, following [OIDC Core UserInfo validation](https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse). Equal emails never link accounts automatically.
 
-Discovery runs at account-provider startup. An unavailable or mismatched
-optional issuer is shown as unavailable and its start/callback endpoints refuse;
-local username/password login remains available. Restart after repairing issuer
-configuration/discovery. Existing Station sessions use Station's current local
+Discovery runs at account-provider startup. If discovery returns a failure or
+an issuer mismatch, the optional provider becomes unavailable and its
+start/callback endpoints refuse, while local username/password login can start.
+A stalled discovery request delays the whole account provider: this path has
+no Station-owned discovery deadline. Optional OIDC therefore does not yet have
+independent startup availability. Restart after repairing issuer configuration
+or connectivity. Existing Station sessions use Station's current local
 account/session revocation state; disabling an account at the external IdP does
 not itself revoke an already established Station session. Operators can disable
 or revoke it through Station's account administration.

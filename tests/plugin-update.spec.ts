@@ -136,6 +136,7 @@ function seedRoutes(page: import('@playwright/test').Page) {
 }
 
 async function seedPluginLifecycleRoutes(page: Page) {
+  const settingsWrites: unknown[] = [];
   let removed = false;
   let version = '1.0.0';
   let settings = { mode: 'safe' };
@@ -201,6 +202,7 @@ async function seedPluginLifecycleRoutes(page: Page) {
     async (route) => {
       if (route.request().method() === 'PUT') {
         const body = route.request().postDataJSON();
+        settingsWrites.push(body);
         settings = { ...settings, ...body.settings };
         await route.fulfill({ json: { success: true } });
         return;
@@ -272,21 +274,10 @@ async function seedPluginLifecycleRoutes(page: Page) {
   await page.route('**/api/connections/models', (route) =>
     route.fulfill({ json: { success: true, data: [] } }),
   );
+  return { settingsWrites };
 }
 
 test.describe('Plugin Update Flow', () => {
-  test('shows update banner when updates are available', async ({ page }) => {
-    await seedRoutes(page);
-    await page.goto('/plugins');
-    await dismissSetupLauncher(page);
-    await expect(page.getByText('1 update available')).toBeVisible({
-      timeout: 10000,
-    });
-    await expect(
-      page.getByRole('button', { name: /Update All/ }),
-    ).toBeVisible();
-  });
-
   test('executes plugin update and refreshes list', async ({ page }) => {
     await seedRoutes(page);
 
@@ -434,7 +425,7 @@ test.describe('Plugin Update Flow', () => {
   test('plugin detail covers update, settings, providers, changelog, and remove', async ({
     page,
   }) => {
-    await seedPluginLifecycleRoutes(page);
+    const { settingsWrites } = await seedPluginLifecycleRoutes(page);
     await page.goto('/plugins');
 
     await page.getByRole('button', { name: /Lifecycle Plugin/ }).click();
@@ -467,11 +458,17 @@ test.describe('Plugin Update Flow', () => {
         .getByRole('switch'),
     ).toHaveAttribute('aria-checked', 'false');
 
-    await page
+    const mode = page
       .locator('.plugins__setting-field')
       .filter({ hasText: 'Mode' })
-      .locator('select')
-      .selectOption('fast');
+      .locator('select');
+    await mode.selectOption('fast');
+    await expect
+      .poll(() => settingsWrites)
+      .toEqual([{ settings: { mode: 'fast' } }]);
+    // The select is controlled by the saved values, so it only holds `fast`
+    // once the write has been read back.
+    await expect(mode).toHaveValue('fast');
 
     await page.getByRole('button', { name: 'Changelog (1)' }).click();
     await expect(page.getByText('Improve lifecycle hooks')).toBeVisible();

@@ -1,4 +1,11 @@
 #!/bin/sh
+# The whole script is one brace group, so a shell reading it from a pipe
+# (`curl ... | sh -s uninstall`) parses all of it before running any of it.
+# Without the group, a path that exits early (uninstall, a refusal) leaves the
+# rest of the script unread in the pipe; once that is more than the pipe
+# buffer (64 KiB on Linux), curl's write fails and it exits 23, which a
+# `set -o pipefail` caller reports as the install failing.
+{
 set -eu
 
 REPOSITORY="kontourai/station"
@@ -931,6 +938,21 @@ case "${1:-install}" in
 esac
 
 public_manifest_url="${STATION_INSTALL_PUBLIC_MANIFEST_URL:-}"
+
+# Stage-only mode (#2675 slice D). A service that runs through the fixed
+# launcher updates itself: its running version runs THIS script with
+# STATION_INSTALL_STAGE_ONLY=1 to download, verify, extract, self-check and
+# seal the new version into versions/<v> exactly as an install would, and the
+# launcher then trials it. Nothing else changes: not current, not the channel
+# launcher, not the install state, not a service. The last line of output is
+# STATION_STAGED_VERSION=<the version now staged>, which is the running one
+# when the manifest names nothing newer.
+stage_only=false
+if [ "${STATION_INSTALL_STAGE_ONLY:-0}" = 1 ]; then
+  [ -n "$public_manifest_url" ] || \
+    fail 'STATION_INSTALL_STAGE_ONLY=1 stages only from a signed public manifest (STATION_INSTALL_PUBLIC_MANIFEST_URL)'
+  stage_only=true
+fi
 # Nightly is published only as a signed public manifest (#2675). The
 # authenticated gh path below resolves `v*` GitHub releases, verifies
 # attestations from release.yml, and maps only stable/preview tags; a nightly
@@ -1610,6 +1632,7 @@ check_public_manifest_version() {
         [ -f "$release_dir/.station-install-complete" ] && \
         [ "$(cat "$release_dir/.station-install-complete")" = "$actual_checksum" ]; then
         printf 'Station %s is already installed; nothing to do.\n' "$release_tag"
+        [ "$stage_only" = false ] || printf 'STATION_STAGED_VERSION=%s\n' "$release_version"
         exit 0
       fi
       # The same version in the other layout (a source release built on
@@ -1652,6 +1675,9 @@ else
   release_dir="$releases_dir/$actual_checksum"
   release_entry=station
 fi
+if [ "$stage_only" = true ] && [ "$release_kind" != archive ]; then
+  fail 'STATION_INSTALL_STAGE_ONLY=1 stages only prebuilt archives'
+fi
 if [ -n "$public_manifest_url" ]; then
   check_public_manifest_version
 fi
@@ -1670,6 +1696,81 @@ if [ -L "$current_link" ]; then
   previous_release="$(readlink "$current_link")"
 fi
 
+# Queues an update of the running service to the staged version and waits for
+# the launcher's verdict (#2675 slice D). Exits: 0 when the service committed
+# it, 1 when the service rolled it back or refused it.
+hand_off_to_launcher() {
+  handoff_status=0
+  node -e '
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const crypto = require("node:crypto");
+    const [runtime, version, timeoutSeconds] = process.argv.slice(1);
+    const request = path.join(runtime, "update-request.json");
+    const processing = path.join(runtime, "update-request.processing.json");
+    if (fs.existsSync(request) || fs.existsSync(processing)) {
+      console.error("another Station update is already requested for this service");
+      process.exit(1);
+    }
+    const id = crypto.randomUUID();
+    const stage = `${request}.${process.pid}.tmp`;
+    fs.writeFileSync(stage, `${JSON.stringify({ id, requestedAt: new Date().toISOString(), targetVersion: version })}\n`, { mode: 0o600, flag: "wx" });
+    fs.renameSync(stage, request);
+    console.log(`Asked the Station service to switch to ${version}; it trials the new version and keeps the current one if the trial fails.`);
+    const read = (file) => { try { return JSON.parse(fs.readFileSync(path.join(runtime, file), "utf8")); } catch { return null; } };
+    const deadline = Date.now() + Number(timeoutSeconds) * 1000;
+    const poll = () => {
+      const result = read("update-request-result.json");
+      if (result?.requestId === id) {
+        if (result.status === "up-to-date") { console.log(`The Station service already runs ${result.version}.`); process.exit(0); }
+        console.error(`The Station service did not update (${result.status}): ${result.reason}`);
+        process.exit(1);
+      }
+      const update = read("service-state.json")?.update;
+      if (update?.requestId === id && update.status !== "pending") {
+        if (update.status === "committed") { console.log(`The Station service now runs ${update.targetVersion}.`); process.exit(0); }
+        console.error(`The Station service kept ${update.fromVersion}: the update to ${update.targetVersion} ${update.status} (${update.reason}).`);
+        process.exit(1);
+      }
+      if (Date.now() > deadline) {
+        console.error(`The Station service has not finished the update after ${timeoutSeconds}s; it continues on its own (see station service status).`);
+        process.exit(1);
+      }
+      setTimeout(poll, 1000);
+    };
+    poll();
+  ' "$install_root/runtime" "$release_version" "${STATION_INSTALL_HANDOFF_TIMEOUT_SECONDS:-1200}" || handoff_status=$?
+  exit "$handoff_status"
+}
+
+# After this install switched `current` for a launcher-run service that is
+# not running, its launcher state must name the same version, or the next
+# start would move `current` back (#2675 slice D). Written by the service's
+# own fixed launcher code, under its lock, and refused when an update became
+# unfinished since the check above (a registered unit that started on its
+# own meanwhile): one writer, one lock, one staleness rule (#2675 D review F9).
+record_launcher_active_version() {
+  [ "$release_kind" = archive ] && [ -f "$launcher_state" ] || return 0
+  # Through the environment, not argv: the launcher runs itself as a program
+  # when argv[1] names it, which `node -e <script> <launcher>` would.
+  STATION_RECORD_LAUNCHER="$install_root/runtime/station-launcher.mjs" \
+  STATION_RECORD_ROOT="$install_root" STATION_RECORD_VERSION="$release_version" \
+  node --input-type=module -e '
+    import { pathToFileURL } from "node:url";
+    const { STATION_RECORD_LAUNCHER: launcher, STATION_RECORD_ROOT: root, STATION_RECORD_VERSION: version } = process.env;
+    const { recordServiceActiveVersion } = await import(pathToFileURL(launcher).href);
+    try {
+      recordServiceActiveVersion(root, version);
+    } catch (error) {
+      console.error(error.message);
+      process.exit(1);
+    }
+  '
+}
+
+# Staging touches no service: the running version that asked for it keeps
+# serving until its launcher trials the result.
+if [ "$stage_only" = false ]; then
 # Unquoted on purpose: always two port words, `-` for a port nobody named.
 archive_services="$(list_archive_services $(explicit_port_arguments))" || \
   fail "cannot switch this install around the Station services in $station_home/service (see above); nothing was changed"
@@ -1684,6 +1785,36 @@ if [ -n "$archive_services" ]; then
       registered) registered_services="${registered_services:+$registered_services }$service_id" ;;
     esac
   done
+fi
+fi
+
+# A service that runs through the fixed launcher (#2675 slice D) owns its own
+# switch: runtime/service-state.json, not `current`, says which version it
+# runs, and the launcher trials a new version and rolls it back on failure.
+# So this install only stages the version, queues an update request for the
+# running service, and waits for the launcher's verdict. An update the
+# launcher left unfinished (it was killed mid-update and the service is down)
+# is finished by starting the service, never overwritten from here.
+launcher_state="$install_root/runtime/service-state.json"
+launcher_handoff=false
+if [ "$stage_only" = false ] && [ "$release_kind" = archive ] && [ -f "$launcher_state" ]; then
+  node -e '
+    const fs = require("node:fs");
+    let state;
+    try { state = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); } catch { process.exit(1); }
+    if (state?.update?.status === "pending") process.exit(2);
+    if (state?.update?.status === "needs-operator") process.exit(3);
+  ' "$launcher_state" || {
+    launcher_state_status=$?
+    [ "$launcher_state_status" = 2 ] && \
+      fail "a supervised Station update is unfinished in $install_root; start the Station service to let its launcher finish or roll it back, then retry. Nothing was changed"
+    [ "$launcher_state_status" = 3 ] && \
+      fail "a supervised Station update could not be rolled back in $install_root: the Station service could not restore its home and is stopped (see its log). Fix the cause, then retry the restore with: station service stop --instance=<name> && station service start --instance=<name>; retry this install once the service runs. Nothing was changed"
+    fail "the Station service launcher state is unreadable: $launcher_state; nothing was changed"
+  }
+  if [ -n "$active_services" ]; then
+    launcher_handoff=true
+  fi
 fi
 
 release_complete=false
@@ -1812,6 +1943,20 @@ else
   printf 'Station release already installed; reusing verified files.\n'
 fi
 
+if [ "$stage_only" = true ] || [ "$launcher_handoff" = true ]; then
+  # The running version stays where it is: the launcher moves off it only
+  # after a trial of the staged one.
+  [ "$replace_active_version" = false ] || \
+    fail "cannot replace the running Station $release_tag in place under the service launcher; nothing was changed"
+fi
+if [ "$stage_only" = true ]; then
+  printf 'STATION_STAGED_VERSION=%s\n' "$release_version"
+  exit 0
+fi
+if [ "$launcher_handoff" = true ]; then
+  hand_off_to_launcher
+fi
+
 canonical_install_root="$(canonicalize_path "$install_root")"
 canonical_station_root="$(canonicalize_path "$station_root")"
 canonical_station_home="$(canonicalize_path "$station_home")"
@@ -1926,6 +2071,9 @@ if [ "${STATION_INSTALL_NO_START:-0}" != 1 ]; then
   done
 fi
 
+record_launcher_active_version || \
+  fail_with_rollback 'could not record the new version for the Station service launcher'
+
 printf '\nStation is installed at %s\n' "$current_link"
 printf 'Launcher: %s\n' "$launcher"
 case ":$PATH:" in
@@ -1953,3 +2101,4 @@ elif [ -n "$active_services" ]; then
 else
   printf 'Open http://localhost:%s\n' "$resolved_ui_port"
 fi
+}

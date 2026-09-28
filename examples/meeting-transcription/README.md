@@ -3,8 +3,16 @@
 Reference implementation of a meeting transcription plugin. It contributes one
 Workspace Pane, **Meeting Transcription**: add it to a Project, choose **Start
 meeting**, and the modal listens through a registered speech-to-text provider.
-The transcript goes to chat with Station's own Agent, since this plugin
-contributes none.
+Sending requests chat with Station's own Agent, since this plugin contributes
+none; it is not a confirmed model response or a persisted Knowledge record.
+
+**Source-build gap:** the public plugin builder currently refuses the Pane's
+runtime import of `@kontourai/station-contracts/agent-identity`: that source is
+outside the allowed plugin/SDK build roots. The SDK exports the identity types,
+but not the `agentId`/`STATION_AGENT_ID` runtime helpers used here. Component
+tests do not establish an installable bundle. Resolve that public SDK packaging
+boundary before treating this source example as a working installed plugin;
+do not disable the builder's containment check.
 
 Station has no plugin toolbar actions. This example used to declare one
 (`toolbarActions`), along with `clientBundle` and `providerTypes`; no runtime
@@ -35,6 +43,19 @@ placeholder is first, the modal opens but hears nothing.
 
 ## Contrast with the old `MeetingTranscriptionModal.tsx`
 
-The previous version (deleted in this commit) used `useMeetingTranscription()` directly,
+An earlier implementation used `useMeetingTranscription()` directly,
 which hardcoded WebSpeech. This version routes through `voiceRegistry`, subject to
 the selection limits above.
+
+Sending opens chat for Station's own Agent through the public SDK; it does not
+create a raw or compiled Knowledge record or rebuild an index. Use the separate
+[Meeting Notes example](../meeting-notes/README.md) for those record operations.
+The component tests use registered-provider doubles; microphone access, provider
+selection in a deployed client, and a real transcript-to-Agent journey need
+separate runtime qualification.
+
+The modal appends each transcript value emitted by the selected provider; it
+does not normalize cumulative versus incremental provider output. **Send**
+requests chat and then closes and clears the modal without awaiting a delivery
+acknowledgement. The SDK declines a missing Agent catalog entry, so an open
+modal alone does not establish that sending will start a Session.

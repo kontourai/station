@@ -72,8 +72,8 @@ const MARKDOWN_SYNTAX_CHARACTERS = new Set([
   '+',
   '!',
 ]);
-export const MAX_SOURCE_HIGHLIGHT_TOKENS = 1_024;
-export const MAX_SOURCE_HIGHLIGHT_REACT_NODES = 2_048;
+const MAX_SOURCE_HIGHLIGHT_TOKENS = 1_024;
+const MAX_SOURCE_HIGHLIGHT_REACT_NODES = 2_048;
 
 const STATUS_COPY: Record<
   Exclude<WorkspaceFilePreviewStatus, 'ready'>,
@@ -179,7 +179,7 @@ function latestMatchingFilePreviewState(
 }
 
 /** The response range owns numbering because ranged service content is sliced. */
-export function projectFilePreviewLines(
+function projectFilePreviewLines(
   preview: WorkspaceFilePreview,
   state: WorkspaceFilePreviewPaneState,
 ): readonly FilePreviewLineProjection[] {
@@ -301,10 +301,7 @@ const TOKEN_COLOR: Record<SourceTokenKind, string> = {
 };
 
 /** React text nodes preserve content literally; no workspace markup is parsed. */
-export function highlightFilePreviewLine(
-  line: string,
-  enabled: boolean,
-): ReactNode {
+function highlightFilePreviewLine(line: string, enabled: boolean): ReactNode {
   if (!enabled) return line;
   const nodes: ReactNode[] = [];
   let cursor = 0;
@@ -335,7 +332,7 @@ export function highlightFilePreviewLine(
 }
 
 /** Preflights the whole response so token-dense content gets one inert text node. */
-export function shouldHighlightFilePreviewLines(
+function shouldHighlightFilePreviewLines(
   lines: readonly FilePreviewLineProjection[],
   source: boolean,
 ): boolean {
@@ -425,7 +422,7 @@ function FilePreviewLine({
   );
 }
 
-export function useFilePreviewWrapController(
+function useFilePreviewWrapController(
   stateKey: string,
   state: WorkspaceFilePreviewPaneState,
 ) {
@@ -444,7 +441,7 @@ export function useFilePreviewWrapController(
   return { wrap, updateWrap } as const;
 }
 
-export function useFilePreviewMarkdownModeController(
+function useFilePreviewMarkdownModeController(
   stateKey: string,
   state: WorkspaceFilePreviewPaneState,
 ) {
@@ -510,7 +507,7 @@ function FilePreviewToolbar({
   );
 }
 
-export function FilePreviewSourceLines({
+function FilePreviewSourceLines({
   preview,
   state,
   stateKey,
@@ -679,7 +676,7 @@ function MarkdownPreviewToolbar({
   );
 }
 
-export function isRenderedMarkdownWithinBudget(content: string): boolean {
+function isRenderedMarkdownWithinBudget(content: string): boolean {
   if (content.length > MAX_RENDERED_MARKDOWN_CHARACTERS) return false;
   let lines = 1;
   let syntaxTokens = 0;

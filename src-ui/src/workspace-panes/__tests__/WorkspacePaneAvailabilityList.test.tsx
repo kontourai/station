@@ -6,10 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { sharedActionsTouchFloor } from '../../__tests__/helpers/shared-touch-floor';
-import {
-  panePreviewAccent,
-  WorkspacePaneAvailabilityList,
-} from '../WorkspacePaneAvailabilityList';
+import { WorkspacePaneAvailabilityList } from '../WorkspacePaneAvailabilityList';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspacePaneAvailabilityPresentation';
 import { presentWorkspacePaneAvailability } from '../workspacePaneAvailabilityPresentation';
 import { builtinWorkspacePaneGlyph } from '../workspacePaneGlyphs';
@@ -180,8 +177,9 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect([...afterReorder.keys()]).toEqual(['Preview', 'Files']);
     expect(afterReorder.get('Files')).toBe(beforeReorder.get('Files'));
     expect(afterReorder.get('Preview')).toBe(beforeReorder.get('Preview'));
-    // And it is the exported derivation, not an unrelated constant.
-    expect(afterReorder.get('Files')).toBe(panePreviewAccent('pane.files'));
+    // Pinned for the id `pane.files`: a derivation from the display name
+    // ("Files") lands on a different token (--event-agent-complete).
+    expect(afterReorder.get('Files')).toBe('var(--event-reasoning)');
 
     const preview = document.querySelector(
       '.workspace-pane-availability-list__preview',

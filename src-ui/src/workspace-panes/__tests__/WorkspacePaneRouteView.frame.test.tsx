@@ -202,8 +202,6 @@ vi.mock('../../contexts/ConfigContext', () => ({
 }));
 
 vi.mock('../builtinWorkspacePaneRegistry', () => ({
-  builtinWorkspacePaneRendererPresence: () => 'present',
-  isCanonicalBuiltinCodingOccurrence: () => false,
   getBuiltinWorkspacePaneRenderer: () =>
     harness.builtinRendererPresent
       ? () => <div data-testid="mounted-pane">Pane content</div>
@@ -536,5 +534,14 @@ describe.skipIf(!chromiumAvailable)(
       expect(root.backgroundColor).not.toBe('transparent');
       expect(root.overflowY).toBe('auto');
     });
+  },
+);
+
+test.skipIf(chromiumAvailable)(
+  'a workspace pane route keeps its page frame on every route that mounts it (#1636) — Chromium not installed',
+  () => {
+    throw new Error(
+      'Playwright Chromium is not installed in this worktree, so the pane route frame geometry cannot be verified. Run npm run install:playwright and retry.',
+    );
   },
 );

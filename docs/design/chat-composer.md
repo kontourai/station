@@ -1,5 +1,14 @@
 # Design: Chat composer & the agent-navigability principle
 
+> **Reading status: interaction policy with dated design evidence.** Section 2
+> records the 2026-07-26 audit; the sequencing and shipped-status statements
+> belong to their recorded work. Section 4 below describes the current public
+> HTTP entry points. Current control rendering and sending are owned by
+> [ChatDockBody](../../src-ui/src/components/chat-dock/ChatDockBody.tsx) and
+> [foreground dispatch](../../src-ui/src/lib/foregroundMessageDispatch.ts).
+> The mobile product decisions remain binding; this document is not a fresh
+> browser, accessibility, or native-device test result.
+
 > Status: **composer hierarchy, the provider/model picker, prerequisite
 > guidance, shortcuts, and final Settings polish shipped through #1354.**
 > This is the contract for the chat composer/dock and for the principle it
@@ -118,19 +127,24 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 ## 4. API parity contract
 
-For every composer action there is a documented programmatic equivalent, same code path:
+Composer sends use the canonical foreground execution surface. The internal
+orchestration command union is broader than the public `/commands` schema:
+`startSession` and `sendTurn` are not accepted public HTTP commands.
 
 | Composer action | Programmatic surface |
 | --- | --- |
-| Start chat with any agent (incl. ACP) | `POST /api/orchestration/commands` `{type:'startSession'}` |
-| Send a message | `{type:'sendTurn'}` |
-| Select model / session config | session config option command (same dispatch) |
-| Respond to permission request | `{type:'respondToRequest'}` |
+| Start/send through an authored Agent, including an external-engine binding | `POST /api/orchestration/chat` with `target` and `message` |
+| Continue an existing conversation | `POST /api/orchestration/chat/:conversationId/continue` with `message`; the persisted binding owns execution identity |
+| Request model/options for a turn | `target.model.override` / `target.model.options` on `/chat`, or a `model` object on `/continue`; support is engine-specific |
+| Respond to permission request | `POST /api/orchestration/commands` with `type:'respondToRequest'`, `threadId`, `requestId`, and `decision` |
 
-The session API documents this surface and the `/api/agents/:id/chat` convenience
-route accepts any persisted Agent ID, routing external-engine Agents through the same
-orchestration seam. Proof standard for the slice: a scripted
-nonce-grade round-trip against a live instance using only documented endpoints.
+The [Session API](../reference/session-api.md) owns request details and refusal
+behavior. `POST /api/agents/:id/chat` is the Station-engine route; an
+external-engine binding receives HTTP 409 with orchestration guidance, not a
+forwarded request. The [public schemas](../../src-server/routes/orchestration/orchestration.ts)
+and [per-Agent route](../../src-server/routes/chat/chat.ts) enforce this distinction.
+The original slice's proof standard—a scripted nonce round-trip using only
+documented endpoints—is retained as an acceptance criterion, not a new live result.
 
 ## 5. Sequencing
 

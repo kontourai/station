@@ -2209,6 +2209,15 @@
   color: var(--text-secondary);
 }
 
+/* #2880: the decision-delivery note can carry two sentences (a refused reply
+   and an unacknowledged one); they stack as lines, not side-by-side columns. */
+.chat-stream-status[data-chat-decision-delivery] {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: var(--k-space-1);
+}
+
 .source-quote-selection {
   position: fixed;
   z-index: var(--layer-surface-popover);

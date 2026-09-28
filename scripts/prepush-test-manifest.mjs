@@ -78,7 +78,9 @@ export const PREPUSH_TEST_GROUPS = Object.freeze({
     'src-ui/src/__tests__/connectionInventory.test.ts',
     'src-ui/src/__tests__/resolve-home-surface.test.ts',
     'src-ui/src/__tests__/app-routing.test.ts',
-    'src-ui/src/__tests__/websocket-secret-inventory.test.ts',
+    // Browser WebSocket credentials stay out of URLs and subprotocols.
+    'src-ui/src/__tests__/NovaVoiceSessionAdapter.test.ts',
+    'src-ui/src/components/coding-layout/__tests__/TerminalPanel.test.tsx',
   ]),
 });
 

@@ -1,17 +1,9 @@
 /**
- * Who may watch or drive a device (#1970, D5 as amended by D12).
- *
- * D12: devices are host-global and belong to the Station OPERATOR. The
- * operator shares specific devices (by UDID/serial) with specific Projects;
- * only admins/owners of those Projects may view or drive THOSE devices.
- * Contributors and viewers get nothing. Host-level operations — booting and
- * powering off a device — are the operator's alone.
- *
- * The share store and the admission helper live in `device-shares.ts`;
- * `deviceAccessFromShares` adapts them to the predicate below, which is all
- * the device session and live-surface code asks.
- *
- * Every check runs per request, and any error is a refusal.
+ * Devices belong to the operator (#1970 D12). Active Project admins/owners can
+ * view or drive only devices shared with their Project on the named host;
+ * Android shares use AVD identity, not a reusable emulator serial.
+ * Boot uses drive admission; power-off remains operator-only at the route.
+ * device-shares.ts owns admission. Busy-host errors remain distinct from denial.
  */
 import type { LiveSurfaceAction } from '@kontourai/station-contracts/live-surface';
 import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-device';

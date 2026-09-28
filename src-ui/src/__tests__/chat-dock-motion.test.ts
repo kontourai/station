@@ -106,7 +106,7 @@ describe('station#3309 chat dock motion', () => {
     }
   });
 
-  test('the visibility chevrons turn while region extent uses a distinct icon', () => {
+  test('the visibility chevrons turn with a token-timed transform transition', () => {
     for (const selector of [
       '.chat-dock__chevron-svg',
       '.chat-dock__mobile-dock-toggle-glyph',
@@ -124,7 +124,5 @@ describe('station#3309 chat dock motion', () => {
         `expected a token-timed transform transition on "${selector}"`,
       ).toBe(true);
     }
-    expect(indexCss).toContain('.chat-dock__extent-svg');
-    expect(indexCss).not.toContain('.chat-dock__maximize-glyph');
   });
 });

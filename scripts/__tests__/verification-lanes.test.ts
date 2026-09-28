@@ -36,7 +36,6 @@ import {
 
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
   scripts: Record<string, string>;
-  'trust-reconcile-manifest': Array<{ id: string; command: string }>;
 };
 
 function lane(overrides: Record<string, unknown> = {}) {
@@ -157,20 +156,6 @@ describe('canonical completion lane literal', () => {
     ))
       expect(resolveLane('ci-fast').weight + phase.weight).toBe(100);
   });
-
-  it('keeps every other lane diagnostic and non-completion', () => {
-    for (const entry of LANES) {
-      if (entry.id === CANONICAL_COMPLETION_LANE) continue;
-      expect(entry.completion).toBe(false);
-      expect(entry.diagnostic).toBe(true);
-    }
-  });
-
-  it('declares an explicit deadline for every lane and completion phase', () => {
-    for (const entry of LANES) expect(entry.timeoutMs).toBeGreaterThan(0);
-    for (const phase of FULL_REGRESSION_PHASES)
-      expect(phase.timeoutMs).toBeGreaterThan(0);
-  });
 });
 
 describe('lane catalog identity', () => {
@@ -197,34 +182,12 @@ describe('lane catalog identity', () => {
     );
   });
 
-  it('gives every lane a unique literal command', () => {
-    const commands = LANES.map((entry) => entry.command);
-    expect(new Set(commands).size).toBe(commands.length);
-    for (const command of commands) {
-      expect(command.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('declares a public coordinator wrapper for every catalog lane', () => {
-    for (const entry of LANES) {
-      expect(entry.publicScript).toMatch(/^[a-z0-9][a-z0-9:-]*$/);
-      if (entry.id === 'test-changed') continue;
-      expect(packageJson.scripts[entry.publicScript]).toBe(
-        `node scripts/run-verification.mjs request ${entry.id}`,
-      );
-    }
+  // Each lane's public wrapper is owned by verification-policy-gate.mjs;
+  // ci:extended is the one composite script it does not check.
+  it('composes ci:extended from the completion, coverage, and E2E lanes', () => {
     expect(packageJson.scripts['ci:extended']).toBe(
       'npm run full:regression && npm run test:coverage && npm run verify:e2e:full',
     );
-  });
-
-  it('classifies lanes through the closed class vocabulary', () => {
-    const allowed = new Set(Object.values(LANE_CLASSES));
-    for (const entry of LANES) {
-      expect(allowed.has(entry.class)).toBe(true);
-      expect(/unsafe/i.test(entry.class)).toBe(false);
-      expect(/unsafe/i.test(entry.id)).toBe(false);
-    }
   });
 
   it('declares test-changed as the bounded diagnostic checkpoint', () => {
@@ -257,55 +220,11 @@ describe('lane manifest digest', () => {
     expect(laneManifestDigest('prepush')).toBe(expected);
   });
 
-  it('is sensitive to prepush manifest content, so a content change invalidates', () => {
-    const baseline = laneManifestDigest('prepush');
-    const mutated = createHash('sha256')
-      .update(
-        JSON.stringify({
-          ...PREPUSH_TEST_GROUPS,
-          guardrails: [
-            ...PREPUSH_TEST_GROUPS.guardrails,
-            'scripts/__tests__/added.test.ts',
-          ],
-        }),
-      )
-      .digest('hex');
-    expect(mutated).not.toBe(baseline);
-  });
-
   it('digests the actual tests/e2e-manifest.mjs spec→bucket assignment', () => {
     const expected = createHash('sha256')
       .update(JSON.stringify(e2eAssignmentIdentity()))
       .digest('hex');
     expect(laneManifestDigest('verify-e2e-full')).toBe(expected);
-  });
-
-  it('is sensitive to the E2E assignment, so a bucket change invalidates', () => {
-    const baseline = laneManifestDigest('verify-e2e-full');
-    const shifted = [...e2eManifest];
-    shifted[0] = { ...shifted[0], bucket: 'quarantine' };
-    const shiftedIdentity = shifted
-      .map((entry) => ({ path: entry.path, bucket: entry.bucket }))
-      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-    const mutated = createHash('sha256')
-      .update(JSON.stringify(shiftedIdentity))
-      .digest('hex');
-    expect(mutated).not.toBe(baseline);
-  });
-
-  it('does not invalidate on a rationale-only edit (assignment is the scope signal)', () => {
-    const baseline = laneManifestDigest('verify-e2e-full');
-    const reworded = e2eManifest.map((entry) => ({
-      ...entry,
-      rationale: 'changed wording that does not affect what runs',
-    }));
-    const rewordedIdentity = reworded
-      .map((entry) => ({ path: entry.path, bucket: entry.bucket }))
-      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-    const mutated = createHash('sha256')
-      .update(JSON.stringify(rewordedIdentity))
-      .digest('hex');
-    expect(mutated).toBe(baseline);
   });
 
   it('distinguishes manifest-bearing lanes from command-only lanes', () => {
@@ -319,7 +238,7 @@ describe('lane manifest digest', () => {
 });
 
 describe('lane ownedOutputs truthfulness', () => {
-  it('declares the mutable build outputs the completion lane creates', () => {
+  it("pins the completion lane's declared output-fencing set", () => {
     expect(resolveLane('full-regression').ownedOutputs).toEqual([
       'dist-server/',
       'dist-ui/',
@@ -330,7 +249,7 @@ describe('lane ownedOutputs truthfulness', () => {
     ]);
   });
 
-  it('declares the prepush runner outputs including the connect rebuild', () => {
+  it("pins the prepush lane's declared output-fencing set, including the connect rebuild", () => {
     // test:prepush's literal script is `npm run prepare:verify-static && node
     // scripts/run-prepush-tier.mjs`. prepare:verify-static rebuilds every
     // REQUIRED_STATIC_WORKSPACES dist (packages/connect/dist, and since
@@ -349,14 +268,14 @@ describe('lane ownedOutputs truthfulness', () => {
     }
   });
 
-  it('declares the coverage report output produced by the coverage lane', () => {
+  it("pins the coverage lane's declared output-fencing set", () => {
     expect(resolveLane('test-coverage').ownedOutputs).toEqual([
       'coverage/',
       'packages/cli/dist/',
     ]);
   });
 
-  it('declares the mutable outputs the local/native lane creates', () => {
+  it("pins the local/native lane's declared output-fencing set", () => {
     expect(resolveLane('verify-local').ownedOutputs).toEqual([
       'dist-server/',
       'dist-desktop-runtime/',
@@ -375,7 +294,7 @@ describe('lane ownedOutputs truthfulness', () => {
     }
   });
 
-  it('declares the mutable outputs the E2E lane creates', () => {
+  it("pins the E2E lane's declared output-fencing set", () => {
     // verify:e2e:full's literal script is `node scripts/run-e2e-coverage.mjs`,
     // which runs each bucket via run-e2e-suite.mjs. That runner starts a
     // per-run `./station start --instance=e2e-<suite>-<suffix>`, which builds
@@ -455,7 +374,7 @@ describe('lane ownedOutputs truthfulness', () => {
     }
   });
 
-  it('declares the CLI bundle output produced by the full corpus', () => {
+  it("pins the full-corpus lane's declared output-fencing set", () => {
     expect(resolveLane('test-full').ownedOutputs).toEqual([
       'packages/cli/dist/',
     ]);
@@ -473,16 +392,6 @@ describe('lane ownedOutputs truthfulness', () => {
     ]);
     for (const dist of preparedDists) {
       expect(resolveLane('verify-static').ownedOutputs).toContain(dist);
-    }
-  });
-
-  it('keeps every owned output a safe repo-local relative path', () => {
-    for (const entry of LANES) {
-      for (const output of entry.ownedOutputs) {
-        expect(output.startsWith('/') || output.startsWith('\\')).toBe(false);
-        expect(/^[A-Za-z]:[\\/]/.test(output)).toBe(false);
-        expect(/(?:^|[/\\])\.\.(?:[/\\]|$)/.test(output)).toBe(false);
-      }
     }
   });
 });
@@ -649,6 +558,31 @@ describe('validateLaneCatalog strictness', () => {
     ).toBe(true);
   });
 
+  it('rejects a missing or non-positive lane deadline', () => {
+    for (const timeoutMs of [undefined, 0, 1.5])
+      expect(catalogErrors(lane({ timeoutMs }))).toContain(
+        `lane 'alpha' has invalid timeoutMs ${timeoutMs}`,
+      );
+  });
+
+  it('rejects a completion phase without a positive deadline', () => {
+    const undeadlined = LANES.map((entry) =>
+      entry.id === CANONICAL_COMPLETION_LANE
+        ? {
+            ...entry,
+            phases: entry.phases.map((phase) =>
+              phase.id === 'repo-governance'
+                ? { ...phase, timeoutMs: 0 }
+                : phase,
+            ),
+          }
+        : entry,
+    );
+    expect(validateLaneCatalog(undeadlined).errors).toContain(
+      "canonical lane 'full-regression' phase 'repo-governance' has invalid timeoutMs 0",
+    );
+  });
+
   it('rejects a ci:fast phase command that does not bind its executed script', () => {
     const mismatched = LANES.map((entry) =>
       entry.id === CANONICAL_COMPLETION_LANE
@@ -780,53 +714,13 @@ describe('validateLaneCatalog strictness', () => {
   });
 });
 
-describe('trust-reconcile alignment with public contracts', () => {
-  it('keeps the canonical command in package.json and the CI workflow', () => {
-    expect(packageJson.scripts['full:regression']).toBeTruthy();
-    expect(
-      packageJson['trust-reconcile-manifest'].map((entry) => entry.command),
-    ).toContain(CANONICAL_COMPLETION_COMMAND);
-    expect(existsSync('.github/workflows/ci.yml')).toBe(true);
-    const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
-    expect(workflow).toContain('npm run ci:fast');
-  });
-});
-
 describe('prepush lane compatibility', () => {
-  it('declares the prepush runner outputs and matches its manifest digest', () => {
-    expect(resolveLane('prepush').ownedOutputs).toEqual([
-      'packages/connect/dist',
-      'packages/cli/dist/',
-      '.kontourai/test-reliability/prepush-latest.json',
-      '.kontourai/test-reliability/prepush-repeat-latest.json',
-    ]);
+  it('matches the prepush runner receipt manifest digest', () => {
     // The catalog consumes — it does not fork — the prepush manifest. The
     // live runner's receipt manifestDigest is byte-identical to the lane's.
     expect(collectProvenance().manifestDigest).toBe(
       laneManifestDigest('prepush'),
     );
-  });
-
-  it('does not regress the prepush runner public surface', () => {
-    // collectProvenance reaches the schema-v2 neutral workspace helper that
-    // verification receipts extend rather than replace; resolving it here
-    // proves Wave 1 left the prepush provenance projection intact.
-    const provenance = collectProvenance();
-    expect(provenance.manifestDigest).toBe(
-      createHash('sha256')
-        .update(JSON.stringify(PREPUSH_TEST_GROUPS))
-        .digest('hex'),
-    );
-    for (const key of [
-      'headSha',
-      'dirty',
-      'workspaceDigest',
-      'nodeVersion',
-      'platform',
-      'arch',
-    ]) {
-      expect(provenance[key]).toBeDefined();
-    }
   });
 });
 

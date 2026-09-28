@@ -1,8 +1,11 @@
 /** @vitest-environment jsdom */
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { lazy } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SharedAnswerBoundary } from '../views/share/SharedAnswerBoundary';
+import { reloadSharePage } from '../views/share/share-token';
+
+vi.mock('../views/share/share-token', () => ({ reloadSharePage: vi.fn() }));
 
 /**
  * archive#1423 — the share page sits above the app shell,
@@ -12,6 +15,7 @@ import { SharedAnswerBoundary } from '../views/share/SharedAnswerBoundary';
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.mocked(reloadSharePage).mockClear();
 });
 
 function Boom(): never {
@@ -43,16 +47,10 @@ describe('SharedAnswerBoundary', () => {
     // anything must not imply anything about the answer.
     expect(screen.getByText(/nothing was successfully read/)).toBeTruthy();
     expect(container.textContent).not.toBe('');
-  });
-
-  it('offers a reload rather than leaving the recipient stuck', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    render(
-      <SharedAnswerBoundary>
-        <Boom />
-      </SharedAnswerBoundary>,
-    );
-    expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy();
+    // A reload rather than leaving the recipient stuck, through the path that
+    // restores the share token rather than a bare location.reload.
+    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+    expect(reloadSharePage).toHaveBeenCalledOnce();
   });
 
   it('shows a non-blank fallback while the page chunk is still loading', () => {

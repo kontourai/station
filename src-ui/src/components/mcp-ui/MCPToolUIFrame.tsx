@@ -62,8 +62,6 @@ import { ConfirmModal } from '../modals/ConfirmModal';
 import './MCPToolUIFrame.css';
 import { isDistinctFrameOrigin } from './frameOrigin';
 
-export { isDistinctFrameOrigin } from './frameOrigin';
-
 interface MCPToolUIResourceContent {
   uri: string;
   mimeType?: string;
@@ -561,7 +559,7 @@ export function mcpUiHostAppearance(
  *   `inherit` will defer to the agent's autoApprove policy once an agent
  *   context is wired — until then the local confirm is the safe default).
  */
-export function mcpUiToolCallDecision(
+function mcpUiToolCallDecision(
   approvalPolicy?: 'inherit' | 'require' | 'read-only',
 ): 'deny' | 'server-gate' | 'prompt' {
   if (approvalPolicy === 'read-only') return 'deny';

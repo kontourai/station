@@ -467,3 +467,76 @@ describe('resolveSelfUpdateEligibility (#1624)', () => {
     if (!result.eligible) expect(result.reason).toContain('macOS');
   });
 });
+
+describe('resolveInstallProvenance on a prebuilt archive (#2675 D3)', () => {
+  function archiveVersion(
+    installRoot: string,
+    { git = false }: { git?: boolean } = {},
+  ): string {
+    const versionRoot = join(installRoot, 'versions', '0.8.0-preview.1');
+    mkdirSync(join(versionRoot, 'dist-server'), { recursive: true });
+    if (git) mkdirSync(join(versionRoot, '.git'));
+    writeFileSync(
+      join(versionRoot, '.station-prebuilt-archive'),
+      'station-prebuilt-archive-v1\n',
+    );
+    writeFileSync(
+      join(versionRoot, '.station-release.json'),
+      JSON.stringify({
+        schemaVersion: 2,
+        sha: SHA,
+        ref: 'v0.8.0-preview.1',
+        createdAt: '2026-09-20T00:00:00.000Z',
+        channel: 'beta',
+        releaseChannel: 'preview',
+        prerelease: true,
+      }),
+    );
+    return versionRoot;
+  }
+
+  test('names the archive, its release and the install.sh install it is a version of', () => {
+    const installRoot = tempRoot();
+    writeFileSync(
+      join(installRoot, '.station-portable-install-root'),
+      'station-portable-install-root-v1\n',
+    );
+    const versionRoot = archiveVersion(installRoot);
+    expect(
+      resolveInstallProvenance(join(versionRoot, 'dist-server'), {
+        resolveGit: notACheckout,
+      }),
+    ).toMatchObject({
+      installKind: 'archive',
+      archiveRoot: versionRoot,
+      version: '0.8.0-preview.1',
+      release: { releaseChannel: 'preview', channel: 'beta' },
+      installRoot,
+    });
+  });
+
+  test('an archive copy outside an install.sh install has no install root', () => {
+    const versionRoot = archiveVersion(tempRoot());
+    expect(
+      resolveInstallProvenance(join(versionRoot, 'dist-server'), {
+        resolveGit: notACheckout,
+      }),
+    ).toMatchObject({ installKind: 'archive', installRoot: null });
+  });
+
+  test('only the archive’s own dist-server, and never a checkout, is an archive', () => {
+    const versionRoot = archiveVersion(tempRoot());
+    mkdirSync(join(versionRoot, 'lib'));
+    expect(
+      resolveInstallProvenance(join(versionRoot, 'lib'), {
+        resolveGit: notACheckout,
+      }).installKind,
+    ).toBe('unknown');
+    const checkout = archiveVersion(tempRoot(), { git: true });
+    expect(
+      resolveInstallProvenance(join(checkout, 'dist-server'), {
+        resolveGit: notACheckout,
+      }).installKind,
+    ).toBe('unknown');
+  });
+});

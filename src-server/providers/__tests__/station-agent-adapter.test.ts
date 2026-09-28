@@ -1864,6 +1864,8 @@ describe('StationAgentAdapter', () => {
         method: 'request.resolved',
         requestId: 'approval-1',
         status: 'approved',
+        // #2880: Station's own engine consumed the decision in-process.
+        acknowledgement: 'in-process',
       },
     ]);
 

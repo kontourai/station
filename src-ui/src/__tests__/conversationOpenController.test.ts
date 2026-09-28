@@ -242,6 +242,9 @@ test('restored Codex state adopts the current Claude child without carrying mode
     queuedMessages: ['Queued follow-up'],
     sessionAutoApprove: ['shell'],
     pendingApprovals: [],
+    unacknowledgedDecisions: [
+      { requestId: 'old-request', reason: 'no-acknowledgement' as const },
+    ],
   };
   const resolution: ConversationOpenResolution = {
     ...resolved(),
@@ -267,6 +270,7 @@ test('restored Codex state adopts the current Claude child without carrying mode
     requestedProviderOptions: {},
     providerOptions: {},
     sessionAutoApprove: [],
+    unacknowledgedDecisions: [],
     input: 'Keep this unsent follow-up',
     queuedMessages: ['Queued follow-up'],
   });

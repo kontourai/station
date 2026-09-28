@@ -1,5 +1,17 @@
 # The Seam Map — `OrchestrationService`
 
+> **Reading status: historical decomposition evidence and recommendations.**
+> Both parts are anchored to their named August revisions. Counts, line numbers,
+> callers, test gaps, and proposed cuts must be re-derived before a new refactor.
+> The current [OrchestrationService](../../src-server/services/orchestration/orchestration-service.ts)
+> composes the extracted owners, including
+> [TurnProvenanceSidecar](../../src-server/services/orchestration/turn-provenance-sidecar.ts),
+> [FlowPolicySidecar](../../src-server/services/orchestration/flow-policy-sidecar.ts),
+> and [CooperativeStop](../../src-server/services/orchestration/cooperative-stop.ts).
+> Read the [module map](../architecture/module-map.md) for the learning route;
+> this record preserves the reasoning and defects that shaped extraction, not a
+> fresh certification of every current event ordering or ownership boundary.
+
 **Status:** accepted direction — the working document for epic #4024; slices
 cite and update this map instead of re-deriving it.
 **Subject:** `src-server/services/orchestration/orchestration-service.ts`

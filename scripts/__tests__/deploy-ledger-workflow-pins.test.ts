@@ -18,9 +18,10 @@ import { GENERATED_LEDGER_SUBJECT } from '../normalize-deploy-ledger-head.mjs';
  *   array) is parsed by the unit-tested parse script, never text-split;
  * - a ledger failure fails the job (no continue-on-error on the recorder),
  *   while the belt-and-braces artifact upload may fail as infrastructure;
- * - the commit-back (retry, ancestry guard, ephemeral auth, --no-verify)
- *   lives in scripts/lib/deploy-ledger-commit.mjs — checked-in text, pinned
- *   here below — because shell in YAML cannot be unit-tested.
+ * - the commit-back lives in scripts/lib/deploy-ledger-commit.mjs, whose
+ *   retry and ancestry behaviour deploy-ledger-commit.test.ts runs against
+ *   real git; only its ephemeral-auth shape and the retain-step name it
+ *   reports are pinned here.
  */
 
 const root = resolve(import.meta.dirname, '../..');
@@ -43,10 +44,6 @@ const publishPackages = readFileSync(
 );
 const commitScript = readFileSync(
   resolve(root, 'scripts/lib/deploy-ledger-commit.mjs'),
-  'utf8',
-);
-const parseScript = readFileSync(
-  resolve(root, 'scripts/lib/parse-published-packages.mjs'),
   'utf8',
 );
 
@@ -461,8 +458,6 @@ describe('the npm stable ledger record', () => {
     expect(step).not.toContain('$' + '{spec%@*}');
     expect(step).not.toContain('$' + '{spec##*@}');
     expect(step).not.toMatch(/read -r spec/);
-    // The parse script itself documents and enforces the JSON contract.
-    expect(parseScript).toContain('published-packages');
     expect(step).toContain(COMMIT_SCRIPT);
     expect(step).toContain(LEDGER_SCRIPT);
     expect(step).toContain('--channel stable-npm');
@@ -517,25 +512,11 @@ describe('the shared commit-back script (MED-2)', () => {
     expect(commitScript).not.toMatch(/\bset\s+-x\b/);
   });
 
-  it('implements bounded re-derive-and-retry with a stated safety basis', () => {
-    expect(commitScript).toContain('LEDGER_COMMIT_MAX_ATTEMPTS = 3');
-    // Every attempt re-derives from freshly fetched main, and the ledger
-    // commit is created ON origin/main (checkout --detach) so there is no
-    // rebase to conflict — a race can only reject the push, which the
-    // bounded retry then handles.
-    expect(commitScript).toMatch(/'checkout', '--detach'/);
-    expect(commitScript).toMatch(/'fetch', REMOTE, BRANCH/);
-    expect(commitScript).not.toMatch(/'rebase'/);
-    expect(commitScript).toMatch(/refuses a true duplicate/);
-    // Retry exhaustion fails loud and names the artifact fallback.
-    expect(commitScript).toMatch(/could not commit the deploy ledger back/);
-    expect(commitScript).toMatch(/Retain this run's deploy ledger files/);
-  });
-
-  it('guards required-ancestor before any commit or push', () => {
-    expect(commitScript).toMatch(/'merge-base', '--is-ancestor'/);
-    expect(commitScript).toMatch(/not an ancestor/);
-    expect(commitScript).toMatch(/off.main|off-main/);
+  // The retry, ancestry, and duplicate behaviour is proven against real git in
+  // deploy-ledger-commit.test.ts. What only this file can see is that the
+  // exhaustion message names a retain step the workflows actually have.
+  it('points retry exhaustion at the retain step the workflows define', () => {
+    expect(commitScript).toContain(`"${LEDGER_RETAIN_STEP}"`);
   });
 
   it('has replaced the per-workflow inline commit shells entirely', () => {

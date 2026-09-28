@@ -2,7 +2,7 @@
 
 > **Historical snapshot:** The versions and GitHub Actions state below were
 > captured in July 2026 and are not current dependency status. Use
-> `package-lock.json`, `src-desktop/Cargo.lock`, the live package registries,
+> `pnpm-lock.yaml`, `src-desktop/Cargo.lock`, the live package registries,
 > Dependabot, and current Actions runs for present state. The table is retained
 > only for its migration rationale and revisit triggers; never copy its version
 > numbers or operational status into a current claim without re-verifying them.

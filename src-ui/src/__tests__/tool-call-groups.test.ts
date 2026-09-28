@@ -2,12 +2,11 @@ import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtim
 import { describe, expect, test } from 'vitest';
 import {
   classifyToolCallRun,
-  classifyToolName,
-  isToolCallPart,
   type ToolCallGroup,
   type ToolCallLike,
 } from '../components/chat/tool-call-groups';
 import {
+  classifyToolName,
   isToolCallAwaitingApproval,
   toolCallPhase,
 } from '../components/chat/tool-call-labels';
@@ -73,24 +72,6 @@ describe('isToolCallAwaitingApproval', () => {
         cancelled: true,
       }),
     ).toBe(false);
-  });
-});
-
-describe('isToolCallPart', () => {
-  test('matches the flat tool-invocation type', () => {
-    expect(isToolCallPart({ type: 'tool-invocation' })).toBe(true);
-  });
-
-  test('matches persisted tool-<name> variants', () => {
-    expect(isToolCallPart({ type: 'tool-shell_exec' })).toBe(true);
-  });
-
-  test('rejects non-tool parts and empty input', () => {
-    expect(isToolCallPart({ type: 'text' })).toBe(false);
-    expect(isToolCallPart({ type: 'reasoning' })).toBe(false);
-    expect(isToolCallPart(undefined)).toBe(false);
-    expect(isToolCallPart(null)).toBe(false);
-    expect(isToolCallPart({} as any)).toBe(false);
   });
 });
 

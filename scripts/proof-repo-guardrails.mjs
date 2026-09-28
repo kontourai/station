@@ -2018,8 +2018,6 @@ const runtimeStartup = readRequiredSource(
 );
 for (const requiredHelper of [
   'export function getActiveRuntimeProjectSlug',
-  'export function shouldRegisterRuntimeDefaultSkillRegistry',
-  'export function initializeRuntimeUsageAggregator',
   'export async function seedRuntimeDefaultProviderConnection',
   'export async function prepareRuntimeStartup',
   "pluginOverrides['aws-internal']?.settings?.disableDefaultSkillRegistries",

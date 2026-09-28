@@ -411,9 +411,7 @@ describe('#2316 inline approval card', () => {
         await screen.findByRole('button', { name: 'Allow Once' }),
       );
 
-      const status = await screen.findByText(
-        'This request was already answered.',
-      );
+      const status = await screen.findByText('This request is no longer open.');
       expect(status.getAttribute('role')).toBe('status');
       expect(screen.queryByText(/Your decision was not delivered/)).toBeNull();
       // Settledness is read from the exact request, not guessed from the
@@ -449,9 +447,7 @@ describe('#2316 inline approval card', () => {
 
       const alert = await screen.findByText(/Your decision was not delivered/);
       expect(alert.getAttribute('role')).toBe('alert');
-      expect(
-        screen.queryByText('This request was already answered.'),
-      ).toBeNull();
+      expect(screen.queryByText('This request is no longer open.')).toBeNull();
     });
 
     test('stays a loud failure when the request cannot be verified', async () => {
@@ -479,9 +475,7 @@ describe('#2316 inline approval card', () => {
 
       const alert = await screen.findByText(/Your decision was not delivered/);
       expect(alert.getAttribute('role')).toBe('alert');
-      expect(
-        screen.queryByText('This request was already answered.'),
-      ).toBeNull();
+      expect(screen.queryByText('This request is no longer open.')).toBeNull();
     });
 
     test('a refused session grant on an already-answered request grants nothing locally', async () => {
@@ -515,7 +509,7 @@ describe('#2316 inline approval card', () => {
           }),
         );
 
-        await screen.findByText('This request was already answered.');
+        await screen.findByText('This request is no longer open.');
         // Which decision settled it is not ours to claim: no local grant.
         expect(
           activeChatsStore.getSnapshot()['chat-tab']?.sessionAutoApprove ?? [],

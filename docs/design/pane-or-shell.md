@@ -1,5 +1,14 @@
 # Pane or shell: the criterion
 
+> **Reading status: adopted composition and trust policy.** The surface table
+> records the migration targets of the 2026-08-25 decision; its “today” notes
+> are not a current route inventory. Current placements and URL retirement
+> belong to the [destination registry](../../src-ui/src/app-shell/destination-registry.ts)
+> and [router](../../src-ui/src/app-shell/routing.ts). Runtime-tier discussion
+> records policy and follow-ups; use the [plugin guide](../guides/plugins.md)
+> for current installation and grant boundaries. No complete iframe-security
+> or cross-runtime compatibility audit is implied here.
+
 Status: adopted with epic station#4142 (owner direction, 2026-08-25). This is
 step 5 of that epic, written early so surfaces stop being argued one at a time.
 
@@ -55,6 +64,10 @@ pane.
   exported predicate, consumed; never reimplemented.)
 
 ## Classification of today's surfaces
+
+This is the recorded migration inventory for the decision above. The notes
+about standalone routes, extraction candidates, and future placement describe
+that stage; consult the current registry and router before changing a live URL.
 
 Pane (work surface — target state; most are routes today and stay routable):
 

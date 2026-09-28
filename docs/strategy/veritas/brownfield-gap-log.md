@@ -1,5 +1,12 @@
 # Veritas Brownfield Gap Log
 
+> Dated observations and decisions are retained as history. They do not state
+> current package behavior or authorize a local dependency override. Use the
+> [current integration guide](../kontour-integration-surface.md) and
+> [Veritas configuration guide](../../../.veritas/README.md) before acting on a
+> recorded workaround.
+
+
 This log tracks what work-agent reveals about introducing Veritas into an existing application with custom verification, complex CI, existing instruction files, and adjacent "guidance" terminology.
 
 ## Findings

@@ -9,18 +9,10 @@
  * `activate()` grant itself Home with no user involved. This store lives
  * under the Station home where plugin page code cannot reach it.
  *
- * NO PRODUCTION WRITER EXISTS on this build — that is deliberate, and load-
- * bearing. Independent re-review showed a same-origin consent page cannot
- * bind an approval to itself (same-origin code can rewrite the page, or
- * POST inside a click's user activation without the page being seen), so
- * the consent decision must be served from a DISTINCT origin — real
- * infrastructure being scoped separately. Until it lands,
- * {@link writeWorkspaceHomeRoleGrant}'s only callers are tests: the grant
- * file can exist only if placed by hand or by that future channel. The
- * mechanism below — derivation, lapse checks, digest, revocation — is
- * complete and proven; granting awaits the distinct-origin consent
- * surface. Do NOT add a convenience CLI/debug writer to fill the gap: any
- * ordinary reachable writer is a new unguarded grant channel.
+ * plugin-home-role-routes.ts writes grants after distinct-origin consent and
+ * a fresh install/fingerprint check. Keep that approval boundary: same-origin
+ * plugin code could rewrite an in-app consent page or submit during another
+ * click. A convenience CLI/debug writer would create an unguarded grant path.
  *
  * The stored record is a claim; standing is DERIVED on every read against
  * the live installation ({@link deriveWorkspaceHomeRoleStatus}): uninstall,

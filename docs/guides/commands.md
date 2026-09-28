@@ -1,32 +1,46 @@
 # Custom Slash Commands
 
-Station supports custom slash commands per agent, allowing you to define reusable prompts with parameters.
+A slash command can run a Station UI action, expand a reusable prompt, or pass
+text to the selected engine. Its behavior depends on the command source and
+engine connection. The command catalog shows the source and, where available,
+why a command is unavailable.
 
 ## Overview
 
-Custom commands are defined in an agent's `agent.json` file under the `commands` field. Each command can have:
-- A name (used as `/commandname`)
-- A description (shown in autocomplete)
-- A prompt template with `{{parameter}}` placeholders
-- Parameter definitions with types, defaults, and descriptions
+| Source | Where it comes from | What handles it |
+| --- | --- | --- |
+| Built-in | Station's command registry, such as `/help`, `/stats`, and `/model` | A UI handler; some actions require a capability supported by the current engine |
+| Authored Agent command | The Agent specification's `commands` field | Positional prompt expansion in the chat client |
+| Command skill | An enabled skill command, offered globally or attached through the Agent's `skills` list | Skill body lookup, variable validation, then prompt expansion |
+| Engine command | Commands advertised by an engine connected through ACP | Raw command text sent to that engine |
+
+For an ACP connection, the catalog and handler use the engine's commands;
+Station does not first expand authored commands or command skills. Other
+connections check authored commands, then offered command skills, then built-in
+handlers. Unrecognized commands pass through for Claude and Codex chat
+providers; other providers get an unknown-command notice. A command appearing
+in a catalog is not proof that a remote engine will accept it.
+
+This guide describes Station's chat-client path. Sending a slash-prefixed
+string directly through the Session API does not invoke these UI handlers.
+See [the ACP guide](acp.md) for engine discovery and its autocomplete limits.
 
 ## Example Agent Configuration
 
+The `commands` field belongs to the [Agent specification](agents.md).
+It is persisted with the Agent under `<STATION_HOME>/agents/<id>/agent.json`
+and returned in the enriched Agent projection. Add the following field to an
+existing valid specification; this is not a complete Agent file:
+
 ```json
 {
-  "name": "Example Agent",
-  "prompt": "You are a helpful assistant.",
   "commands": {
     "summarize": {
       "name": "summarize",
       "description": "Summarize text or a topic",
-      "prompt": "Please provide a concise summary of: {{text}}",
+      "prompt": "Summarize: {{text}}",
       "params": [
-        {
-          "name": "text",
-          "description": "The text or topic to summarize",
-          "required": true
-        }
+        { "name": "text", "description": "Text or topic", "required": true }
       ]
     },
     "explain": {
@@ -34,55 +48,109 @@ Custom commands are defined in an agent's `agent.json` file under the `commands`
       "description": "Explain a concept",
       "prompt": "Explain {{concept}} in {{style}} terms",
       "params": [
-        {
-          "name": "concept",
-          "required": true
-        },
-        {
-          "name": "style",
-          "required": false,
-          "default": "simple"
-        }
+        { "name": "concept", "description": "Concept to explain", "required": true },
+        { "name": "style", "description": "Explanation style", "default": "simple" }
       ]
     }
   }
 }
 ```
 
+Keep the map key and `name` identical and lowercase. The catalog displays
+`name`; dispatch looks up the lowercase typed word in the map. Parameters have
+names, descriptions, an optional `required` declaration, and string defaults;
+they do not have a typed-value conversion system. The Agent editor currently
+displays authored commands and links to the catalog; it is not a parameter
+editor.
+
 ## Usage
 
-In the chat interface, type `/` to see available commands including custom ones:
+Type `/` in the chat composer to inspect available commands. Quote text that
+must be one argument:
 
-```
-/summarize This is a long piece of text that needs summarizing
-/explain quantum computing technical
+```text
+/summarize "This is a long piece of text"
+/explain "quantum computing" technical
 /explain blockchain
 ```
 
+The non-ACP client parser groups single- or double-quoted words. A backslash
+escapes the next character outside single quotes. An unterminated quote shows
+an error without dispatching. ACP passthrough occurs before that local refusal,
+so the selected engine interprets its own command text.
+
 ## Parameter Expansion
 
-Parameters are matched positionally:
-- `/command arg1 arg2` → first param gets `arg1`, second gets `arg2`
-- Missing optional parameters use their default value
-- Template placeholders `{{paramName}}` are replaced with values
+For an **authored Agent command**, arguments fill parameters positionally.
+Each declared `{{name}}` is replaced using that argument, its default, or an
+empty string. An empty argument also falls through to the default. Extra words
+are ignored; they are not joined into the last parameter. The current handler
+does not enforce `required`, so a missing required argument can produce an
+incomplete prompt. Named `key=value` assignment is not supported on this path.
+[#2764](https://github.com/kontourai/station/issues/2764) tracks validation of
+missing required and surplus arguments.
+
+For a **command skill**, a word such as `style=technical` assigns a declared
+variable by name. Remaining words fill unassigned variables in declaration
+order. Extra positional words are rejected. Empty/whitespace values fall back
+to a usable default; a variable with neither a value nor a usable default
+produces an error and nothing is sent. The handler reads the body on demand;
+a body-read failure also stops dispatch. The skill Test surface uses the same
+substitution helper.
+
+These are separate implementations. Do not infer the skill's validation
+behavior from the Agent command's `required` field, or vice versa. A recorded
+skill run is attempted after expansion; it does not prove the engine completed
+the resulting prompt.
+
+Both substitution paths currently use JavaScript replacement-string semantics:
+for example, `$&` inserts the matched placeholder and `$$` becomes one dollar
+sign. Values containing those patterns are not preserved literally. This is a
+substitution limitation, not shell interpretation.
+[#2763](https://github.com/kontourai/station/issues/2763) tracks literal-value
+preservation in both paths.
 
 ## Command Composition
 
-Commands can reference other commands in their prompts:
+Expansion produces message text, not another pass through the command router.
+For example, this prompt does not automatically execute two commands:
 
-```json
-{
-  "review-and-summarize": {
-    "name": "review-and-summarize",
-    "prompt": "/review {{content}}\n\nThen /summarize the key findings",
-    "params": [{"name": "content", "required": true}]
-  }
-}
+```text
+/review {{content}}
+Then /summarize the key findings
 ```
+
+An engine can interpret the resulting text according to its own behavior;
+Station's client does not provide recursive command execution or a workflow
+transaction here.
 
 ## Notes
 
-- **Hot-reload**: Agent and command changes are detected automatically via file watcher — no server restart needed
-- **Autocomplete**: Custom commands appear in the `/` autocomplete menu
-- **Scoped to agent**: Each agent has its own set of custom commands
-- **No nesting yet**: Commands are expanded once (no recursive expansion)
+- The catalog can retain disabled skill declarations with a diagnostic. The
+  server resolves skill-command collisions; attaching a losing skill does not
+  change which skill owns the command word.
+- Capability-gated built-ins remain visible in the full catalog with a reason;
+  autocomplete filters to commands marked available.
+- Configuration watching can refresh Agent definitions. It is not a guarantee
+  that a running engine reloads every setting or that a file edit is immediately
+  visible in every client. Follow the [Agent lifecycle](agents.md).
+- Prompt substitution is not shell execution. Tools the engine later chooses
+  still follow their own authority and approval rules.
+
+## Implementation and evidence
+
+The [catalog](../../src-ui/src/hooks/useSlashCommands.ts) composes sources and
+availability; the [handler](../../src-ui/src/hooks/useSlashCommandHandler.ts)
+owns dispatch order and authored expansion. The
+[skill helpers](../../src-ui/src/utils/skill-commands.ts) own parsing, offered
+skills, and skill variable assignment. The
+[chat sender](../../src-ui/src/hooks/useActiveChatSessionMessaging.ts) consumes
+expanded text or a handled result before its normal turn submission. The
+[Agent projection](../../src-server/routes/agents/enriched-agents.ts) exposes
+persisted commands; [ConfigLoader](../../src-server/domain/config-loader.ts)
+owns file loading/watching.
+
+Existing [catalog tests](../../src-ui/src/__tests__/useSlashCommands.test.ts) and
+[skill-handler tests](../../src-ui/src/__tests__/useSlashCommandHandler.skills.test.tsx)
+exercise synthetic chat state and bodies. They do not establish that a live
+engine supports a particular slash command.

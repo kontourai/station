@@ -50,7 +50,7 @@ test.describe('Survey Review Workbench plugin', () => {
 
   test.beforeAll(async () => {
     // Build the plugin bundle (installs plugin-local deps, incl.
-    // @kontourai/survey) the same way plugin-system.spec.ts builds demo-layout.
+    // @kontourai/survey) through the shared example-plugin build.
     buildExamplePlugin(PLUGIN_DIR, 120_000);
 
     await deletePlugin();

@@ -1,15 +1,15 @@
 # @kontourai/station-cli
 
-Station is Kontour's local-first agent workspace: you direct agent work, and
-the gate verdicts, evidence, and trust state stay in the same context as the
-work. A Station is the process that holds all of that — on your laptop, a home
-server, or another machine on your tailnet.
+Station is Kontour's local-first agent workspace. It keeps execution history
+and configured workflow evidence beside the work, on your laptop, a home
+server, or another machine you connect to. A completed run is not a passed gate.
 
 This package is the **client** CLI for those Stations. It is a terminal front end
 for Stations that are already running: chat with agents, read and interrupt
-sessions, drive projects, tasks, skills, and every other Station
-surface, over HTTP. It does not run a Station itself — see
-[What this CLI does not do](#what-this-cli-does-not-do).
+sessions, and manage projects, tasks, and skills over HTTP. It also supports
+selected host-local operations against an
+existing installation. Building and installing a backend remain checkout
+operations; see [What this CLI does not do](#what-this-cli-does-not-do).
 
 ## Availability
 
@@ -31,7 +31,10 @@ latency-sensitive or scripted use, an explicit global install pins one version
 instead: `npm install -g @kontourai/station-cli@<version-or-published-tag>`.
 Use a channel tag only after `npm view` reports it.
 
-**Inside a Station checkout**, `./station` runs that tree's own build directly
+The examples below use `station` for a globally installed command. With `npx`,
+keep the `npx @kontourai/station-cli@latest` prefix on subsequent commands too.
+
+**Inside a Station checkout**, `./station` runs that tree's TypeScript sources
 — this is the local-invocation path when the registry isn't the point (working
 on the CLI itself, or a channel tag you don't want to depend on):
 
@@ -39,28 +42,33 @@ on the CLI itself, or a channel tag you don't want to depend on):
 ./station <command> [args]
 ```
 
-It refuses to run against a stale build rather than silently executing old
-code — see [the CLI reference](https://github.com/kontourai/station/blob/main/docs/reference/cli.md#invocation)
-for the freshness gate and the three-tier invocation story (`npx` / `./station`
-/ the `station-dev` global dev shim).
+The separate `station-dev` shim runs the checkout's built CLI bundle and
+checks its source timestamps for obvious staleness. That check is approximate;
+`./station` does not use it. See [the CLI reference](https://github.com/kontourai/station/blob/main/docs/reference/cli.md#invocation)
+for the entry-point and build boundaries.
 
-Every invocation reports where it came from: `station --version` prints the
-CLI version, its build channel, and the source revision the artifact was built
-from, so a wrong-binary mistake is visible instead of guessed at.
+`station --version` reports the CLI version. Bundles also report their stamped
+build channel and source revision; the source launcher reports
+`development source checkout` without a revision.
 
-## Sixty seconds to a working setup
+## Connect to a Station
 
 Choose a Station you can reach. Setup saves it on this device, performs pairing
 when needed, and deliberately selects the default Station.
 
 ```bash
 npx @kontourai/station-cli@latest setup existing box-b https://box-b.tailnet.ts.net --pair
-# or use Kontour's hosted Station
+# or select the configured hosted endpoint
 npx @kontourai/station-cli@latest setup hosted
 ```
 
+`setup hosted` pairs with the fixed endpoint `https://station.kontourai.io`.
+That command's existence does not establish service availability or your access
+to it. Use `setup existing` for an endpoint you choose.
+
 The CLI registers a device request and waits. An operator approves it **on the
-host** (`station environment access approve <request-id>` there). When they do,
+host** (`station environment access approve <request-id>` there, with the
+existing Station home selected). When they do,
 the CLI stores the issued bearer credential in the operating-system keyring and
 saves only its reference with the Station entry. That Station becomes the
 default only after pairing succeeds.
@@ -108,7 +116,7 @@ $ station stations list
 * = default Station.
 ```
 
-Every command that talks to a Station resolves its target in this order:
+Commands using the shared target resolver select a Station in this order:
 
 | | Source | Example |
 |---|---|---|
@@ -138,12 +146,17 @@ sandbox, an ephemeral session, and user config ignored, or Claude in safe plan
 mode with only Read/Glob/Grep tools, using argv arrays and a run-local prompt
 file. With both available,
 select one explicitly. No available agent still
-leaves portable artifacts successfully. The bundled CLI does not inspect the
-local host filesystem or run the source-only doctor report.
-Problem text stays local unless `--search-issues` (or the equivalent TTY
-confirmation) explicitly authorizes a fixed, read-only Station issue search.
-Successful agent output is bounded and re-redacted into local `diagnosis.md`
-and `issue-draft.md`; triage has no GitHub write or repair operation.
+leaves portable artifacts successfully. The bundled triage command does not
+collect local host filesystem diagnostics or run the source-only doctor report.
+`--search-issues` (or the equivalent TTY confirmation) authorizes a fixed,
+read-only Station issue search. Launching an agent separately makes the run files
+available to that agent and its configured model service; use `--context-only`
+to collect without launching one. The first 64 KiB of agent stdout is re-redacted
+into local `diagnosis.md` and `issue-draft.md`, including after an unsuccessful
+exit. Live stdout is forwarded before redaction and stderr is inherited directly.
+Stored-artifact redaction does not protect terminal output. Triage has no GitHub
+write or repair operation; its mode flags are requests to the installed agent,
+not independent proof of that agent's enforcement.
 
 The versioned store lives at `$STATION_ROOT/config/profiles.json` (default
 `~/.station/config/profiles.json`) and is shared with native Desktop. It
@@ -164,57 +177,58 @@ records the canonical invoked directory and selected Station in the
 owner-controlled shared store; repository files cannot redirect the target.
 The selection names a saved Station and never embeds an endpoint or credential.
 
-Requests give up after 30 seconds. Override with
+SDK-backed requests give up after 30 seconds. Override with
 `STATION_REQUEST_TIMEOUT_MS=<ms>`, or `0` to disable the deadline. Streams —
-chat and session turns, orchestration and approval event streams, live
-monitoring, knowledge reindexing — are deliberately exempt, because they are
-open-ended by design.
+orchestration and approval events and live monitoring — have no overall
+deadline. Chat sends a bounded JSON acceptance request, then observes the turn
+on a separate event stream. Knowledge reindexing and migration also opt out of
+the request deadline. The current checkpoint-restore and Operate event-stream
+paths bypass the shared credential client and cannot authenticate to a protected
+Station; see the reference.
 
 ## What this CLI does not do
 
-**It does not run a Station.** These verbs act on a Station *repository
-checkout* — building the app, starting or upgrading it, installing OS
-services, putting the launcher on PATH:
-
-`build` · `doctor` · `fresh` · `link` · `service` · `shortcut` · `start` ·
-`upgrade`
-
-They are not part of the published CLI. Run them from the root of a Station
-checkout with its own launcher, which is where they have always lived:
+**It does not build or install a backend.** Source-oriented commands such as
+`build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, and
+`upgrade`, plus `setup local` and service installation, require a Station
+repository checkout, not this published CLI. (A prebuilt server archive that
+`install.sh` installed carries its own lifecycle CLI, which can also install a
+service and run `upgrade`; see the reference.) Use the checkout's launcher:
 
 ```console
 $ station start
 Error: `station start` runs against a Station repository checkout, so it is not part of the published CLI.
 Run it from the root of a Station checkout with the bundled launcher:
     ./station start
-The published CLI drives Stations that are already running — see `station stations`, `station setup hosted`, and `--api-base`.
+The published CLI drives Stations that are already running — see `station stations` and `--api-base`.
 ```
 
-**Some `environment` verbs are host-local.** Identity, credential, and
-device-approval commands read secrets that only exist on the machine running
-the Station, so they answer from the host's own `./station` and nowhere else:
-`environment show`, `environment credential`, `environment reset`, and
-`environment offer`, and `environment access list|approve|deny`.
+**Selected local operations are available in the published CLI.** `open`,
+`doctor`, `environment show`, `environment credential show`, `environment offer`,
+`environment access list|approve|deny|devices|scope`, and `service status|start|stop` support
+an existing local installation. Local authorization validates the selected
+owner-only home and the loopback listener; it does not create a missing home.
+Service start/stop controls an existing OS service rather than building or
+installing a backend. See the [availability table](../../docs/reference/cli.md)
+for the full boundary and prerequisites.
 
-```console
-$ station environment show
-Error: Environment security commands require the Station repository launcher (./station).
-```
+`environment peers`, `environment credential rotate`, and `environment reset`
+remain checkout-only. `station environment access request` is the requester
+side of pairing and works as a remote client operation.
 
-`station environment access request` is the exception, and the one you want
-here: it is the *requester* side of pairing, and it is a pure client.
-
-The packaged CLI never starts, stops, builds, installs, or otherwise manages a
-Station backend implicitly. A bare invocation (including `--inline`,
+The packaged CLI never creates or starts a backend implicitly. A bare invocation (including `--inline`,
 `--service`, and `--temp-home`) explains how to pair with an existing host or
-how to use `./station` from a checkout. Host-side pairing offers and approvals
-remain in that host's UI/checkout; the packaged client only requests access.
+how to use `./station` from a checkout. The command admission authority is
+[distribution.ts](src/distribution.ts); command behavior is composed in
+[cli.ts](src/cli.ts). This distribution distinction also appears in the
+[architecture reading path](../../docs/architecture.md#reading-path).
 
 `station --version` reports immutable bundle metadata: the CLI version, its
 build channel, and the source revision stamped when that artifact was built.
-It does not inspect a nearby checkout or a backend build manifest. Local source
-builds report the `development` channel (and a dirty revision when applicable),
-independent of `STATION_CHANNEL`.
+It does not inspect a nearby checkout or a backend build manifest. Invoking
+`./station --version` reports `development source checkout`, independent of
+`STATION_CHANNEL`; it does not print a source SHA. A locally built bundle has
+its own build-time provenance, including a dirty revision when applicable.
 
 The package test packs one exact tarball, records its SHA-256, then installs
 that same tarball into an isolated consumer with `npm install --ignore-scripts`.
@@ -222,17 +236,19 @@ This proves dependency resolution without claiming publication or
 native-keyring behavior. Windows and physical native-keyring verification are
 **NOT_VERIFIED** until exercised on those platforms.
 
-`station --help` prints the same boundary in its closing note, so the printed
-command list never claims a verb this CLI cannot run.
+`station --help` includes a checkout-command note. That note currently lists
+`service` as a whole; the supported packaged exceptions are
+`service status|start|stop`, as described above.
 
 ## Requirements
 
 - **Node 24** (`engines: 24.x`). The CLI is a bundle, not a binary; it needs a
   host Node.
-- **A reachable Station.** Everything this CLI does, apart from managing
-  its own saved Stations and config, is an HTTP call to a Station server. With no
-  Station saved, commands use a running local desktop Station when available,
-then fall back to the selected channel's runtime-resolver loopback origin.
+- **A reachable Station for API commands.** With no Station saved, API commands
+  use a running local desktop Station when available, then fall back to the
+  selected channel's runtime-resolver loopback origin. Saved-Station management,
+  local diagnostics, and existing-service control also use host-local storage
+  or operating-system services; they are not all HTTP calls.
 
 Transport failures name the Station that was targeted *and where that address
 came from*, so a wrong-target mistake never looks like a broken Station:
@@ -251,11 +267,13 @@ station --version
 ```
 
 `--help` is recognised at any depth, and per-command help carries the flag
-detail. Unknown input is always a failure, never a help request: the CLI exits
-non-zero and names the nearest real command or action.
+detail. Unknown commands and actions fail with a diagnostic. Flag validation
+belongs to each command; use the documented spelling, including
+`--model-option=key=value` rather than a space-separated value.
 
-The full prose reference — every verb, every flag, and the complete tier
-table — ships with the Station repository as `docs/reference/cli.md`.
+The prose reference and availability table ship with the Station repository as
+`docs/reference/cli.md`. Its implementation links and stated limits distinguish
+current behavior from commands that need further qualification.
 
 ## Related packages
 
