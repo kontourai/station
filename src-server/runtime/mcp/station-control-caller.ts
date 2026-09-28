@@ -8,9 +8,11 @@
  *    callbacks a resolver bound to their session's token;
  *  - Station's REST side ({@link resolveStationControlCallerForRequest})
  *    re-verifies the token a tool forwards in
- *    `STATION_CONTROL_CALLER_TOKEN_HEADER`;
- *  - a stdio child asks the REST projection
- *    (`station-control-caller-route.ts`), which is the REST side again.
+ *    `STATION_CONTROL_CALLER_TOKEN_HEADER` (also served as a projection by
+ *    `station-control-caller-route.ts`).
+ *
+ * A stdio station-control child carries no per-session credential, so it
+ * never has a caller.
  *
  * Identity comes only from the server-minted per-session token
  * (`station-control-mcp-token.ts`); `assurance` comes from the channel that
@@ -177,7 +179,7 @@ export interface VerifiedStationControlCaller {
  * The caller a live token names, or `null` for a missing, unknown, revoked
  * or expired token. A record lookup that throws also yields `null`: a caller
  * with its project silently missing would read as "no project" to a tool
- * that scopes by project.
+ * that scopes by project. So does a token whose channel has no assurance.
  */
 function resolveVerifiedStationControlCaller(
   token: string | undefined | null,
@@ -186,14 +188,16 @@ function resolveVerifiedStationControlCaller(
   const verified = verifyStationControlMcpTokenEntry(token);
   if (!verified) return null;
   let record: StationControlCallerRecord | undefined;
+  let assurance: StationControlCaller['assurance'];
   try {
+    assurance = stationControlTokenAssurance(verified.channel);
     record = resolveRecord?.(verified.sessionId);
   } catch {
     return null;
   }
   const caller: StationControlCaller = Object.freeze({
     sessionId: verified.sessionId,
-    assurance: stationControlTokenAssurance(verified.channel),
+    assurance,
     ...(record?.principal
       ? {
           principal: stationControlCallerPrincipal(

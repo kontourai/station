@@ -73,36 +73,32 @@ describe('withStationControlRuntimeEnv', () => {
     ).not.toHaveProperty('STATION_INTERNAL_TENANT');
   });
 
-  test('Station #90 lane D: attaches a per-session caller credential to the built-in child only, and never inherits one from the parent env', () => {
-    const inherited = { [STATION_CONTROL_CALLER_TOKEN_ENV]: 'parent-leak' };
+  test('never passes an inherited stdio caller credential to any child: stdio children are caller-less', () => {
+    const inherited = {
+      SAFE: 'value',
+      [STATION_CONTROL_CALLER_TOKEN_ENV]: 'parent-leak',
+    };
 
-    // Supplied by the server for this session: attached to the built-in.
-    expect(
-      withStationControlRuntimeEnv(
-        'station-control',
-        builtinDefinition,
-        inherited,
-        undefined,
-        'session-token',
-      ),
-    ).toMatchObject({ [STATION_CONTROL_CALLER_TOKEN_ENV]: 'session-token' });
-    // Not supplied (a pooled child): the parent's value is stripped.
-    expect(
-      withStationControlRuntimeEnv(
-        'station-control',
-        builtinDefinition,
-        inherited,
-      ),
-    ).not.toHaveProperty(STATION_CONTROL_CALLER_TOKEN_ENV);
-    // A third-party server never receives one, supplied or inherited.
+    const builtin = withStationControlRuntimeEnv(
+      'station-control',
+      builtinDefinition,
+      inherited,
+    );
+    // Control: the built-in still received its env and the internal token,
+    // so the strip is not a side effect of dropping the whole env.
+    expect(builtin).toMatchObject({
+      SAFE: 'value',
+      [INTERNAL_API_TOKEN_ENV]: expect.any(String),
+    });
+    expect(builtin).not.toHaveProperty(STATION_CONTROL_CALLER_TOKEN_ENV);
     expect(
       withStationControlRuntimeEnv(
         'third-party',
         { ...builtinDefinition, id: 'third-party' },
         inherited,
-        undefined,
-        'session-token',
       ),
-    ).not.toHaveProperty(STATION_CONTROL_CALLER_TOKEN_ENV);
+    ).toEqual({ SAFE: 'value' });
+    // The caller's own env object is never mutated.
+    expect(inherited[STATION_CONTROL_CALLER_TOKEN_ENV]).toBe('parent-leak');
   });
 });
