@@ -136,11 +136,26 @@ describe('a worker started under a merge-queue environment', () => {
     );
     const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
     expect(result.error, output).toBeUndefined();
-    expect(result.status, output).toBe(0);
-    // Both probe cases ran and passed: a probe that was filtered out or
-    // skipped would also exit 0.
     const parsed = JSON.parse(readFileSync(report, 'utf8'));
+    const failures = parsed.testResults.flatMap(
+      (suite: {
+        assertionResults: {
+          status: string;
+          title: string;
+          failureMessages: string[];
+        }[];
+      }) =>
+        suite.assertionResults
+          .filter((assertion) => assertion.status !== 'passed')
+          .map((assertion) => ({
+            title: assertion.title,
+            message: assertion.failureMessages.join('\n').split('\n')[0],
+          })),
+    );
+    expect(failures).toEqual([]);
+    expect(result.status, output).toBe(0);
+    // Both probe cases ran: a probe that was filtered out or skipped would
+    // also exit 0.
     expect(parsed.numPassedTests).toBe(2);
-    expect(parsed.numFailedTests).toBe(0);
   });
 });
