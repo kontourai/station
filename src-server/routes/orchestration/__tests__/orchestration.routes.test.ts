@@ -6098,10 +6098,11 @@ describe('Orchestration Routes', () => {
       persistEvent('evt-1', 'thread-1', 1);
       const eventBus = new EventBus();
       const service = makeResumeTestService(eventStore);
+      const info = vi.fn();
       const app = createOrchestrationRoutes(service as any, {
         getUserId: () => ROUTE_TEST_USER_ID,
         eventBus,
-        logger: { debug: vi.fn() },
+        logger: { debug: vi.fn(), info },
       });
 
       const res = await app.request('/events', {
@@ -6115,6 +6116,17 @@ describe('Orchestration Routes', () => {
         text.includes('event: orchestration:caughtUp'),
       );
       expect(payload).toContain('event: orchestration:snapshot');
+      // The reason, not just the decision: operators tell a stale, foreign,
+      // or post-wipe cursor apart from no cursor by this field.
+      expect(info).toHaveBeenCalledWith(
+        'Orchestration event stream opened',
+        expect.objectContaining({
+          lastEventId: 999999,
+          head: 1,
+          resumeDecision: 'snapshot',
+          resumeReason: 'invalid_cursor',
+        }),
+      );
     });
 
     // archive#1092: `Last-Event-ID` accepts only a plain non-negative integer.
