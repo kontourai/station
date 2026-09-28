@@ -119,7 +119,9 @@ as `acknowledgement`:
   engine's decision vocabulary and never sent it). A late `acknowledged`
   supersedes an earlier `unacknowledged`. "Acknowledged" never means the
   engine applied the decision as given; Muse's `engineStatus` carries the
-  engine's own outcome.
+  engine's own outcome. A request Codex closes itself before Station
+  answers resolves `cancelled` with `response.reason: 'closed-by-engine'`
+  and no `acknowledgement`; a later decision on it is refused.
 - `in-process` (Station's own engine): consumed in-process; no delivery
   event follows.
 - `none` (Claude Code, ACP): the protocol has no acknowledgement, so

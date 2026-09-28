@@ -1011,6 +1011,11 @@ engine reports afterwards is shown separately as `lastDecision` on
 | `in-process` | Station's own engine consumed the decision. |
 | `not-reported` | The engine's protocol reports no delivery (Claude Code, ACP connections), or the decision predates delivery reporting. This is a capability, not a warning. |
 
+A request Codex closes on its own before Station answers (for example when
+a turn is interrupted) is recorded as `cancelled` with delivery
+`not-reported`: Station made no decision, and a decision sent afterwards is
+refused, since Codex would never read it.
+
 The default output prints it as one line, for example
 `Decision on req-1: approved (recorded), acknowledged by the engine after 42 ms`.
 An earlier decision on the same task that is still `unacknowledged` is listed

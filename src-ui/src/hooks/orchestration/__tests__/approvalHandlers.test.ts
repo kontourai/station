@@ -482,6 +482,17 @@ describe('handleRequestDeliveryEvent — recorded vs acknowledged (#2880)', () =
     });
   });
 
+  test('an unacknowledged report after the session exited does not bring the note back', () => {
+    getChatForExecutionSession.mockReturnValue({
+      orchestrationStatus: 'exited',
+      unacknowledgedDecisions: [],
+    });
+    handleRequestDeliveryEvent(
+      delivery('unacknowledged', 'req-1', 'no-acknowledgement'),
+    );
+    expect(updateChat).not.toHaveBeenCalled();
+  });
+
   test('a late acknowledgement takes only that decision off the list', () => {
     getChatForExecutionSession.mockReturnValue({
       unacknowledgedDecisions: [

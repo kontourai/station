@@ -107,15 +107,11 @@ export interface CodexSessionRecord {
    */
   awaitingAcknowledgements?: Map<string, AwaitingApprovalAcknowledgement>;
   /**
-   * #2880: `jsonRpcIdKey`s of still-pending approvals Codex closed itself
-   * (`serverRequest/resolved`) before Station wrote its reply — on a turn
-   * interrupt, Codex can close the request ahead of Station's #2316 cancel
-   * reply. The reply that follows settles as acknowledged at once instead of
-   * waiting out the window. Only ids in `pendingApprovals` are recorded and
-   * each is consumed by that approval's reply, so it never outgrows
-   * `pendingApprovals`; cleared at every session-end door.
+   * #2880: set at every session-end door once waiting replies are settled.
+   * A reply written after that (a #2316 cancel run by a turn/interrupt the
+   * teardown rejected) settles `unacknowledged` at once, with no window.
    */
-  closedBeforeReply?: Set<string>;
+  acknowledgementsClosed?: boolean;
   /**
    * #2559: the sandbox the thread runs in, from `thread/start`,
    * `thread/resume` or `thread/fork`'s own report, updated whenever a turn

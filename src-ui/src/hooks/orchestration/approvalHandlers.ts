@@ -179,6 +179,14 @@ export function handleRequestDeliveryEvent(
 ) {
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
+  // The note speaks for a live engine; a report settled after the session
+  // ended (a cancel written during teardown) must not re-add what
+  // `session.exited` cleared.
+  if (
+    event.outcome === 'unacknowledged' &&
+    chat.orchestrationStatus === 'exited'
+  )
+    return;
   const others = (chat.unacknowledgedDecisions || []).filter(
     (decision) => decision.requestId !== event.requestId,
   );

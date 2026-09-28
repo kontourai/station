@@ -3688,6 +3688,34 @@ describe('observeDelegatedTask reports the last decision apart from its delivery
     ]);
   });
 
+  test('an earlier request is judged on its latest request.resolved', async () => {
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    installTaskFetch([
+      // req-1 was reported unacknowledged, then resolved again: the
+      // re-resolution has no report yet, so it is awaiting, not unacknowledged.
+      recorded('engine'),
+      delivery({ outcome: 'unacknowledged', reason: 'no-acknowledgement' }),
+      { ...recorded('engine'), status: 'denied' },
+      {
+        method: 'request.resolved',
+        requestId: 'req-3',
+        status: 'approved',
+        acknowledgement: 'engine',
+      },
+      {
+        method: 'request.delivery',
+        requestId: 'req-3',
+        outcome: 'acknowledged',
+        waitedMs: 9,
+      },
+    ]);
+    const snapshot = await observeDelegatedTask({ taskId: 'task-1' });
+    expect(snapshot.lastDecision?.requestId).toBe('req-3');
+    expect(snapshot).not.toHaveProperty('earlierUnacknowledgedDecisions');
+  });
+
   test('no earlier list when the only unacknowledged decision is the latest', async () => {
     const { observeDelegatedTask } = await import(
       '../station-control-delegation.js'

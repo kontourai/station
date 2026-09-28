@@ -268,6 +268,45 @@ describe('#2880: Codex decision delivery', () => {
     await adapter.stopAll();
   });
 
+  test('a stdin write failure (EPIPE) settles a waiting reply before session.exited', async () => {
+    const { adapter, process, events, requestId } = await answered(0);
+    process.stdin.emit('error', new Error('write EPIPE'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(deliveryBeforeExit(events, requestId)).toEqual([
+      'unacknowledged:no-acknowledgement',
+      'session.exited',
+    ]);
+    await vi.advanceTimersByTimeAsync(CODEX_APPROVAL_ACK_WINDOW_MS * 2);
+    expect(of(events, 'request.delivery')).toHaveLength(1);
+    await adapter.stopAll();
+  });
+
+  test('exceeding the stdout ingress limit settles a waiting reply at once', async () => {
+    const { adapter, process, events, requestId } = await answered(0);
+    // The adoption/recovery bound, armed as `startSession` arms it.
+    const transport = (adapter as any).transport;
+    transport.setStdoutIngressLimit(transport.getSession(THREAD), 8);
+    process.stdout.write(`${'x'.repeat(64)}\n`);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(of(events, 'request.delivery')).toEqual([
+      expect.objectContaining({
+        requestId,
+        outcome: 'unacknowledged',
+        reason: 'no-acknowledgement',
+      }),
+    ]);
+    await vi.advanceTimersByTimeAsync(CODEX_APPROVAL_ACK_WINDOW_MS * 2);
+    expect(of(events, 'request.delivery')).toHaveLength(1);
+    expect(
+      of(events, 'runtime.warning').filter(
+        (event) => event.code === CODEX_DECISION_UNACKNOWLEDGED_CODE,
+      ),
+    ).toEqual([]);
+    await adapter.stopAll();
+  });
+
   test('a reply outside the vocabulary is refused, never written, and never reads as delivered', async () => {
     const harness = await startedAdapter();
     // Codex asks for a permission grant whose `permissions` is not an object;
@@ -318,47 +357,125 @@ describe('#2880: Codex decision delivery', () => {
     await harness.adapter.stopAll();
   });
 
-  test('Codex closing a request before the #2316 cancel reply settles that reply acknowledged at once', async () => {
+  /** Approval `wireId` open, fake timers on, then Codex closes it itself. */
+  async function closedByCodex(wireId: number) {
     const harness = await startedAdapter();
-    await emit(harness.process, commandApproval(9));
+    await emit(harness.process, commandApproval(wireId));
     const requestId = await openedRequestId(harness.events);
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
-    const interrupt = harness.adapter.interruptTurn(THREAD, 'turn-1');
+    await send(harness.process, acknowledgement(wireId));
+    return { ...harness, requestId };
+  }
+
+  test('a request Codex closes before any reply settles as closed by the engine, not as a decision', async () => {
+    const { adapter, events, requestId } = await closedByCodex(9);
+    expect(of(events, 'request.resolved')).toEqual([
+      expect.objectContaining({
+        requestId,
+        status: 'cancelled',
+        response: { reason: 'closed-by-engine' },
+      }),
+    ]);
+    expect(of(events, 'request.resolved')[0]).not.toHaveProperty(
+      'acknowledgement',
+    );
+    expect(of(events, 'request.delivery')).toEqual([]);
+    expect(delegatedLastDecision(events)).toEqual({
+      requestId,
+      status: 'cancelled',
+      delivery: 'not-reported',
+    });
+    await adapter.stopAll();
+  });
+
+  test('a user decision after Codex closed the request is refused and never reads acknowledged', async () => {
+    const { adapter, process, events, requestId } = await closedByCodex(9);
+    await expect(
+      adapter.respondToRequest(THREAD, requestId, 'accept'),
+    ).rejects.toThrow(/Unknown Codex approval request/);
+    await vi.advanceTimersByTimeAsync(CODEX_APPROVAL_ACK_WINDOW_MS * 2);
+    expect(repliesTo(process, 9)).toEqual([]);
+    expect(of(events, 'request.delivery')).toEqual([]);
+    expect(delegatedLastDecision(events)?.delivery).not.toBe('acknowledged');
+    expect(of(events, 'request.resolved').map((event) => event.status)).toEqual(
+      ['cancelled'],
+    );
+    await adapter.stopAll();
+  });
+
+  test('Codex closing a request before the #2316 cancel reply: no reply, no delivery, no warning', async () => {
+    const { adapter, process, events, requestId } = await closedByCodex(9);
+    const interrupt = adapter.interruptTurn(THREAD, 'turn-1');
     await vi.advanceTimersByTimeAsync(0);
-    const interruptRpc = harness.process.stdin.lines
+    const interruptRpc = process.stdin.lines
       .map((line) => JSON.parse(line))
       .find((line) => line.method === 'turn/interrupt');
     expect(interruptRpc).toBeDefined();
-
-    // Codex closes the pending approval itself, BEFORE Station's reply.
-    await send(harness.process, acknowledgement(9));
-    // Remembering it changes nothing about the approval yet.
-    expect(of(harness.events, 'request.resolved')).toEqual([]);
-    expect(of(harness.events, 'request.delivery')).toEqual([]);
-
-    await send(harness.process, { id: interruptRpc.id, result: {} });
+    await send(process, { id: interruptRpc.id, result: {} });
     await interrupt;
-    expect(repliesTo(harness.process, 9)).toEqual([
-      expect.objectContaining({ result: { decision: 'cancel' } }),
-    ]);
-    expect(of(harness.events, 'request.delivery')).toEqual([
-      expect.objectContaining({
-        requestId,
-        outcome: 'acknowledged',
-        waitedMs: 0,
-      }),
+
+    expect(repliesTo(process, 9)).toEqual([]);
+    expect(of(events, 'request.resolved')).toEqual([
+      expect.objectContaining({ requestId, status: 'cancelled' }),
     ]);
     await vi.advanceTimersByTimeAsync(CODEX_APPROVAL_ACK_WINDOW_MS * 2);
+    expect(of(events, 'request.delivery')).toEqual([]);
     expect(
-      of(harness.events, 'request.delivery').map((event) => event.outcome),
-    ).toEqual(['acknowledged']);
-    expect(
-      of(harness.events, 'runtime.warning').filter(
+      of(events, 'runtime.warning').filter(
         (event) => event.code === CODEX_DECISION_UNACKNOWLEDGED_CODE,
       ),
     ).toEqual([]);
-    await harness.adapter.stopAll();
+    await adapter.stopAll();
   });
+
+  /**
+   * M1: the interrupt is in flight when the process dies; the teardown
+   * rejects it, and its #2316 cancel reply is written AFTER the door
+   * settled the watches. It settles at once, with no window and no warning.
+   */
+  test.each([
+    ['exit', (process: FakeCodexProcess) => process.emit('exit', 1)],
+    [
+      'process error',
+      (process: FakeCodexProcess) =>
+        process.emit('error', new Error('spawn gone')),
+    ],
+  ])(
+    'a cancel reply written after the %s door settles unacknowledged at once',
+    async (_door, die) => {
+      const harness = await startedAdapter();
+      await emit(harness.process, commandApproval(9));
+      const requestId = await openedRequestId(harness.events);
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      const interrupt = harness.adapter
+        .interruptTurn(THREAD, 'turn-1')
+        .catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(0);
+      die(harness.process);
+      await interrupt;
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(repliesTo(harness.process, 9)).toEqual([
+        expect.objectContaining({ result: { decision: 'cancel' } }),
+      ]);
+      expect(of(harness.events, 'request.delivery')).toEqual([
+        expect.objectContaining({
+          requestId,
+          outcome: 'unacknowledged',
+          reason: 'no-acknowledgement',
+          waitedMs: 0,
+        }),
+      ]);
+      await vi.advanceTimersByTimeAsync(CODEX_APPROVAL_ACK_WINDOW_MS * 2);
+      expect(of(harness.events, 'request.delivery')).toHaveLength(1);
+      expect(
+        of(harness.events, 'runtime.warning').filter(
+          (event) => event.code === CODEX_DECISION_UNACKNOWLEDGED_CODE,
+        ),
+      ).toEqual([]);
+      await harness.adapter.stopAll();
+    },
+  );
 
   test('an interrupt-cancelled approval (#2316) is watched like any other reply', async () => {
     const harness = await startedAdapter();

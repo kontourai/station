@@ -694,7 +694,8 @@ export interface RequestResolvedEvent extends CanonicalRuntimeEventBase {
    * #2880: the publishing adapter's acknowledgement capability for this
    * decision. Absent on events that predate the field and on settlements
    * Station makes without replying to the engine (a session stopped
-   * mid-approval); both read as "delivery not reported".
+   * mid-approval, or a request the engine closed on its own before Station
+   * answered); both read as "delivery not reported".
    */
   acknowledgement?: ApprovalAcknowledgement;
 }
