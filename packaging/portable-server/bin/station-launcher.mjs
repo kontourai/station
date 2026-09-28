@@ -886,8 +886,10 @@ class Launcher {
         : null,
     );
     if (update?.status === 'needs-operator') {
-      // Each start is one more try, the operator's way to retry once the
-      // cause is fixed: no restore runs on its own after the last attempt.
+      // Each start is one more try: the operator's way to retry once the
+      // cause is fixed, and also any restart the operator did not ask for (a
+      // reboot, a service manager restart). Within one launcher run no
+      // restore is retried after the last attempt.
       this.ownStop(update.fromVersion);
       this.ownStop(update.targetVersion);
       const { finishedAt: _finishedAt, ...unfinished } = update;
