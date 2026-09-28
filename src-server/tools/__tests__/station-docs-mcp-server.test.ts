@@ -435,10 +435,6 @@ describe('station-docs plugin-authoring topic', () => {
         'Provider resolution and Registry installed-state consume only valid scan entries, while `GET /api/plugins` projects both valid and rejected entries.',
       ],
       [
-        'architecture-pluginforegroundruns',
-        "Run identity includes installation, account, and optional machine scope before applying the plugin's idempotency key.",
-      ],
-      [
         'architecture-plugingrantreconciliation',
         '**Intent and Interface.** `PluginGrantReconciliationService.reconcile({ pluginName, permissions })` converges the runtime generation for one installed plugin after its durable grant state changes.',
       ],

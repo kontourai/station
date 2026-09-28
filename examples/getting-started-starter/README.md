@@ -24,7 +24,10 @@ Review the requested permissions and any separate trusted grants. Add its layout
 to the intended Project after installation is ready. The plugin is intentionally
 static. Replace the copy and panels first, then add providers when the layout
 needs persistent data. The [local registry](../registry/README.md) is another
-discovery path; `registry install` has no per-call `--manifest` option.
+discovery path; `registry install` has no per-call `--manifest` option. After
+`./station registry ./examples/registry/manifest.json` selects that catalog,
+`station registry install getting-started-starter` installs this static
+starter.
 
 ## Workspace host action migration
 

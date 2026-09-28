@@ -1466,6 +1466,7 @@ describe('typecheck:scripts refuses a scripts/ tree it does not fully account fo
         'docs:public:contract-examples',
         'docs:foundations:test',
         'docs:links:check',
+        'docs:metrics:check',
         'docs:truth:biome',
       ].sort(),
     );

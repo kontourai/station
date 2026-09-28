@@ -23,6 +23,10 @@ npm run dependencies:ci
 ./station plugin install ./examples/knowledge-docs-starter
 ```
 
+After the build, `./station registry ./examples/registry/manifest.json` selects
+the local catalog, and `station registry install knowledge-docs-starter`
+installs the same static starter from it.
+
 The [Library component](src/index.tsx) ships three static document rows. Their
 `indexed` labels and chunk counts are sample values, not ingestion evidence.
 The **Ask with selected sources** button only opens the chat Dock and calls

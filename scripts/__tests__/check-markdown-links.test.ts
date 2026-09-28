@@ -74,7 +74,7 @@ describe('Markdown relative-link gate', () => {
     ]);
   });
 
-  it('checks parsed reference links and ignores code and image literals', async () => {
+  it('checks parsed reference links and image targets but ignores code literals', async () => {
     const root = await fixtureRoot();
     await writeFile(
       path.join(root, 'README.md'),
@@ -99,6 +99,11 @@ describe('Markdown relative-link gate', () => {
         target: '#absent',
         reason: 'missing anchor #absent',
         line: 2,
+      }),
+      expect.objectContaining({
+        target: 'missing.png',
+        reason: 'missing target',
+        line: 10,
       }),
     ]);
   });
