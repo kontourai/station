@@ -96,18 +96,6 @@ describe('ChatDock activity region', () => {
   });
 });
 
-describe('ChatDock and Inbox inventory scope (#1053)', () => {
-  test('does not turn the route-selected Agent into a hidden dock filter', () => {
-    expect(source).toContain('useDerivedSessions(apiBase, null)');
-    expect(source).not.toContain('useDerivedSessions(apiBase, selectedAgent)');
-    // Project scope is an explicit dock presentation filter and remains
-    // applied after the global session inventory is derived.
-    expect(source).toMatch(
-      /scopedProjectSlug\s*\?\s*allSessions\.filter\([\s\S]*?session\.projectSlug === scopedProjectSlug/,
-    );
-  });
-});
-
 /**
  * Extracts the brace-balanced body of the FIRST `{` found at or after
  * `anchor` in `source` — tolerant of exact indentation/formatting (a biome
@@ -140,136 +128,13 @@ function extractBalancedBody(source: string, anchor: string): string {
 }
 
 /**
- * archive#4525/archive#4524: `DockShellProjectBinding.test.tsx`
- * proves the fix's foundation (DockShell-owned chrome state survives the
- * real remount mechanics) through the REAL shell, and
- * `chat-dock-utils.test.ts` table-tests every piece of the actual
- * project-binding LOGIC as pure functions
- * (`resolveDockBadgeProjectName`/`resolveSessionProjectMismatchLabel`/
- * `resolveDirectNewChatProjectSlug`/`resolveNewChatModalDefaultProjectSlug`)
- * no test in this repo mounts the full, ~2700-line `ChatWorkspacePane`
- * (see `DockShellControlParity.test.tsx`'s doc comment on why), so those
- * pure functions are what carries the behavioral correctness instead.
- *
- * What remains unverified by either of those is only WIRING — does
- * `ChatWorkspacePane`'s JSX actually pass a pure function's result to the
- * right prop, and does the one property no pure function can carry
- * (archive#4525: a fork confirmation must never sync the
- * binding) hold. These are the minimal call-site pins for exactly that —
- * single-line, formatting-insensitive regexes on a function-call/property
- * NAME (a real rename or a swap to a literal reds these; a biome reformat
- * does not), plus the one brace-balanced body extraction above for the
- * property that genuinely has no pure-function home.
+ * archive#4525: the one project-binding property still pinned in source. The
+ * rest of the binding wiring (badge, mobile header, session facts, switcher,
+ * New Chat defaults) is mounted in `ChatWorkspacePaneComposerDraft.test.tsx`;
+ * the fork path is not, because a fork starts from a transcript action that
+ * harness stands in for.
  */
-describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site pins)', () => {
-  test('the badge project name is wired from resolveDockBadgeProjectName, not a literal or the raw session', () => {
-    expect(source).toMatch(
-      /projectName=\{\s*importedSessionId[\s\S]*?:\s*dockBadgeProjectName\s*\}/,
-    );
-    expect(source).toMatch(
-      /const dockBadgeProjectName = resolveDockBadgeProjectName\(/,
-    );
-    // The slug prop carries the switcher's aria-current "Current" marker and
-    // the directory→coding-layout link guard — nulling it breaks both while
-    // every rendered-name assertion stays green.
-    expect(source).toMatch(
-      /projectSlug=\{\s*importedSessionId\s*\?\s*\(importedSession\?\.projectSlug\s*\?\?\s*null\)\s*:\s*dockProjectSlug\s*\}/,
-    );
-  });
-
-  test('the mobile header project name is wired from the SAME dockBadgeProjectName the desktop badge uses', () => {
-    expect(source).toMatch(
-      /projectName:\s*importedSessionId[\s\S]*?:\s*\(dockBadgeProjectName\s*\?\?\s*'No project'\)/,
-    );
-  });
-
-  test('session facts (directory/git/coding-layout) are never gated on the badge (station#4525 review HIGH-2)', () => {
-    // Positive pin, not just a negative one: asserts the EXACT unconditional
-    // shape (gated only on the pre-existing scopedProjectSlug chat-scope
-    // filter, exactly as pre-archive#4525) rather than merely excluding one
-    // named variable. A negative-only check ("does not mention
-    // dockProjectMatchesActiveSession") would miss the SAME suppression
-    // reintroduced via an inline comparison instead of that name — this
-    // does not, because any extra gating changes the matched text.
-    // #1536 G6 moved the DIRECTORY's shape out of the JSX and into
-    // `resolveDockProjectContextDirectory`, so the inline ternary this pin used
-    // to match no longer exists at the call site. The property it protected is
-    // unchanged and is pinned in two halves: the prop is the derivation and
-    // nothing else, and the derivation is fed `scopedProjectSlug` /
-    // `sessionDisplayCwd` under those names — so any re-gating either appears
-    // here (the prop stops being a bare identifier) or inside the derivation,
-    // which `chat-dock-utils.test.ts` covers behaviourally, including the
-    // discriminating case: a session that belongs to a DIFFERENT project than
-    // the badge still reports its own directory.
-    expect(source).toMatch(
-      /workingDirectory=\{\s*importedSessionId\s*\?\s*\(importedSession\?\.cwd\s*\?\?\s*null\)\s*:\s*dockProjectContextDirectory\s*\}/,
-    );
-    expect(source).toMatch(
-      /resolveDockProjectContextDirectory\(\{\s*scopedProjectSlug,\s*sessionDisplayCwd,/,
-    );
-    // #1536 F: the coding layout is no longer a prop of the project-context
-    // row (its start-truncated path segment, which carried the link, left the
-    // conversation title about one character). It is an "Open code layout" row
-    // of the dock header's More menu, and BOTH halves of the retired link's gate
-    // move with it — they are different things and the row is wrong without
-    // either. The project is the SESSION's own, never the badge's (this
-    // ruling); `scopedProjectSlug` suppresses the row, exactly as it suppressed
-    // the prop, because a project chat-scope filter has never shown
-    // session-specific facts.
-    expect(source).toMatch(
-      /!scopedProjectSlug && sessionCodingLayout && activeSession\?\.projectSlug/,
-    );
-    expect(source).toMatch(/label: 'Open code layout'/);
-    // And it navigates with the SESSION's slug, not the badge's bound project —
-    // the exact substitution station#4525 review HIGH-2 caught once already.
-    expect(source).toMatch(
-      /handleOpenLayout\(\s*activeSession\.projectSlug as string,\s*sessionCodingLayout\.slug,/,
-    );
-    expect(source).not.toMatch(/handleOpenLayout\(\s*dockProjectSlug[\s,)]/);
-    expect(source).toMatch(
-      /gitStatus=\{\s*importedSessionId\s*\|\|\s*scopedProjectSlug\s*\?\s*undefined\s*:\s*gitStatus\s*\}/,
-    );
-    // The pre-fix-reintroduction shape review actually caught, kept
-    // as a named-regression tripwire too.
-    expect(source).not.toContain('dockProjectMatchesActiveSession');
-  });
-
-  test('a session/badge mismatch is surfaced via sessionProjectMismatchLabel, not silently dropped (station#4525 review MED-1)', () => {
-    expect(source).toMatch(
-      /const sessionProjectMismatchLabel = resolveSessionProjectMismatchLabel\(/,
-    );
-    expect(source).toMatch(
-      /sessionProjectMismatchLabel=\{\s*importedSessionId\s*\?\s*undefined\s*:\s*sessionProjectMismatchLabel\s*\}/,
-    );
-  });
-
-  test('the direct new-chat path resolves its target project through resolveDirectNewChatProjectSlug (station#4525 review HIGH-3)', () => {
-    expect(source).toMatch(
-      /const targetProjectSlug = resolveDirectNewChatProjectSlug\(/,
-    );
-    expect(source).toMatch(
-      /openChatForAgentInScopedPane\(\s*direct,\s*targetProjectSlug/,
-    );
-  });
-
-  test('the New Chat modal default resolves through resolveNewChatModalDefaultProjectSlug (station#4525 review MED-3)', () => {
-    expect(source).toMatch(
-      /activeProjectSlug:\s*resolveNewChatModalDefaultProjectSlug\(/,
-    );
-  });
-
-  test('handleSwitchProject rebinds the shell and never opens the New Chat modal (station#4524)', () => {
-    const body = extractBalancedBody(
-      source,
-      'const handleSwitchProject = useCallback(',
-    );
-    expect(body).toContain('setActiveProjectSlug(projectSlug)');
-    // The pre-fix behavior (archive#4524's reported bug): the row action opened
-    // the New Chat modal on its own.
-    expect(body).not.toMatch(/setShowNewChatModal/);
-    expect(body).not.toMatch(/setNewChatProjectOverride/);
-  });
-
+describe('ChatDock project-binding wiring (archive#4525)', () => {
   // archive#4525: a fork is none of the three things the
   // DeviceSettings docblock names as legitimate binding-change triggers
   // (an explicit picker pick, an explicit new-chat project choice, or
@@ -295,22 +160,5 @@ describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site
       scopedOpenBody,
       'the shared non-fork opener must still sync an explicit project choice',
     ).toMatch(/setActiveProjectSlug/);
-  });
-});
-
-// Epic #2323 S2 review M2: a composer-draft request is claimed by exactly
-// one pane, and a pane bound to another Project never takes it. The
-// decision is `claimComposerDraftRequest` (behavior-tested with real event
-// listeners in `composerDraftRequest.test.ts`); this pins that the dock's
-// listener consults it, with its own scope, before opening its picker.
-describe('ChatDock composer-draft claim wiring (#2323 S2)', () => {
-  test('the draft branch claims the request with this pane scope before opening the picker', () => {
-    const branch = extractBalancedBody(source, 'if (detail.composerDraft)');
-    expect(branch).toMatch(
-      /const claimed = claimComposerDraftRequest\(event, \{\s*hasImmutableProjectScope,\s*projectSlug,\s*\}\);\s*if \(!claimed\) return;/,
-    );
-    expect(branch.indexOf('claimComposerDraftRequest')).toBeLessThan(
-      branch.indexOf('setShowNewChatModal(true)'),
-    );
   });
 });

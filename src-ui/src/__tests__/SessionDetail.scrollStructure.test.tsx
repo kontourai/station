@@ -331,19 +331,73 @@ describe('session detail scroll structure (station#3305)', () => {
     ).toEqual([]);
   });
 
+  // jsdom does no layout, but it does resolve the cascade (specificity
+  // included) for a stylesheet in the document. Without `flex-shrink: 0` a
+  // scroll child that scrolls on either axis (`__context`, the transcript)
+  // has an automatic minimum size of 0 and squashes toward nothing while the
+  // region never scrolls — the same "details don't show" outcome the grid
+  // template produced. jsdom ignores width media queries, so a narrow-viewport
+  // override is out of this test's reach.
   test('the scroll region does not let its children compress instead of scrolling', () => {
-    // jsdom does no layout, so this is the stylesheet assertion: every child
-    // of the scroll region keeps its content height. Without it a child that
-    // scrolls on either axis (`__context` at mobile widths, the transcript)
-    // has an automatic minimum size of 0 and squashes toward nothing while
-    // the region never scrolls — the same "details don't show" outcome the
-    // grid template produced.
-    const css = readFileSync(
+    const sheet = document.createElement('style');
+    sheet.textContent = readFileSync(
       join(__dirname, '..', 'views', 'SessionsView.css'),
       'utf8',
     );
-    const rule = /\.sessions-detail__scroll\s*>\s*\*\s*\{([^}]*)\}/.exec(css);
-    expect(rule, '.sessions-detail__scroll > * rule not found').not.toBeNull();
-    expect(rule![1]).toMatch(/flex-shrink:\s*0/);
+    document.head.append(sheet);
+    try {
+      const shrinkingChildren = () => {
+        const scroll = screen
+          .getByTestId('session-detail')
+          .querySelector('.sessions-detail__scroll');
+        const children = [...(scroll?.children ?? [])];
+        expect(children.length).toBeGreaterThan(0);
+        return {
+          classes: children.map((child) => child.className),
+          shrinking: children
+            .filter((child) => getComputedStyle(child).flexShrink !== '0')
+            .map((child) => child.className),
+        };
+      };
+
+      const mutable = withClient(
+        <MutableSessionDetail
+          apiBase="http://station.test"
+          session={session}
+          onTaskChanged={vi.fn()}
+          events={[]}
+          connected
+          visualViewport={{ style: {} } as any}
+        />,
+      );
+      const mutableChildren = shrinkingChildren();
+      expect(mutableChildren.classes).toContain('sessions-detail__context');
+      expect(mutableChildren.shrinking).toEqual([]);
+      mutable.unmount();
+
+      withClient(
+        <AttachedSessionDetail
+          apiBase="http://station.test"
+          session={session}
+          onAdopted={vi.fn()}
+          getSelectionIntent={() => 0}
+          events={[
+            ev({ method: 'turn.started', turnId: 'r2', prompt: 'hi' }),
+            ev({
+              method: 'turn.completed',
+              turnId: 'r2',
+              finishReason: 'stop',
+            }),
+          ]}
+          connected
+          visualViewport={{ style: {} } as any}
+        />,
+      );
+      const attached = screen.getByTestId('attached-session-transcript');
+      expect(attached.parentElement?.className).toBe('sessions-detail__scroll');
+      expect(shrinkingChildren().shrinking).toEqual([]);
+    } finally {
+      sheet.remove();
+    }
   });
 });

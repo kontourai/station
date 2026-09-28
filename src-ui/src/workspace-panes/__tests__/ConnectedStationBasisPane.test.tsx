@@ -20,9 +20,7 @@ const hooks = vi.hoisted(() => {
     keptError: null as unknown,
     refetchKept: vi.fn(),
     session: vi.fn(),
-    nativeBinding: null as { bindingId: string; exactOrigin: string } | null,
-    nativeShell: false,
-    evidenceAvailable: true,
+    authorityCaptured: true,
     taskChoices: vi.fn(),
     tasks: [
       {
@@ -34,40 +32,6 @@ const hooks = vi.hoisted(() => {
     focusRestore: undefined as 'inspect' | 'keep' | undefined,
   };
 });
-
-vi.mock('@kontourai/station-connect', () => ({
-  requestAuthorityScopeFromCredentialEvidence: (
-    evidence: {
-      connectionId: string;
-      activationEpoch: string;
-      authorityGeneration: number;
-      credentialState: string;
-      origin: string;
-    },
-    options?: { authorityQualifier?: string },
-  ) => ({
-    apiBase: evidence.origin,
-    authorityKey: JSON.stringify([
-      evidence.connectionId,
-      evidence.activationEpoch,
-      evidence.authorityGeneration,
-      evidence.credentialState,
-      ...(options?.authorityQualifier ? [options.authorityQualifier] : []),
-    ]),
-  }),
-  useConnections: () => ({
-    captureCredentialEvidence: () =>
-      hooks.evidenceAvailable
-        ? {
-            connectionId: 'connection',
-            activationEpoch: 'runtime:1',
-            authorityGeneration: 4,
-            credentialState: 'available',
-            origin: 'http://station.test',
-          }
-        : null,
-  }),
-}));
 
 vi.mock('@kontourai/station-sdk', () => ({
   useTasksQuery: (...args: unknown[]) => {
@@ -98,16 +62,9 @@ vi.mock('@kontourai/station-sdk/task-tool-results', () => ({
   }),
 }));
 
-vi.mock('../../platform/PlatformProfileContext', () => ({
-  usePlatformProfile: () => ({ isTauri: hooks.nativeShell }),
-  nativeProfileRepository: () => ({
-    captureNativeRequestBinding: () => hooks.nativeBinding,
-  }),
-}));
-
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () =>
-    hooks.evidenceAvailable && (!hooks.nativeShell || hooks.nativeBinding)
+    hooks.authorityCaptured
       ? {
           apiBase: 'http://station.test',
           authorityKey: JSON.stringify([
@@ -115,9 +72,6 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
             'runtime:1',
             4,
             'available',
-            ...(hooks.nativeShell && hooks.nativeBinding
-              ? [hooks.nativeBinding.bindingId]
-              : []),
           ]),
         }
       : undefined,
@@ -163,54 +117,18 @@ function direct(sessionId = 'source-session') {
 }
 
 describe('ConnectedStationBasisPane', () => {
-  test('withholds browser Basis without a captured authority instead of falling back to ambient reads', () => {
-    hooks.nativeShell = false;
-    hooks.evidenceAvailable = false;
+  // Browser-without-evidence and unbound-native both reach the pane as an
+  // undefined request scope; ApiBaseContext's own suites own that derivation.
+  test('withholds Basis without a captured request authority instead of falling back to ambient reads', () => {
+    hooks.authorityCaptured = false;
     hooks.session.mockClear();
     try {
       render(direct());
       expect(screen.getByRole('alert').textContent).toContain('authorized');
       expect(hooks.session).not.toHaveBeenCalled();
     } finally {
-      hooks.evidenceAvailable = true;
+      hooks.authorityCaptured = true;
     }
-  });
-  test('fails closed before an unbound native Basis query can use an ambient connection', () => {
-    hooks.nativeShell = true;
-    hooks.nativeBinding = null;
-    hooks.session.mockClear();
-    render(direct());
-    expect(screen.getByRole('alert').textContent).toContain('authorized');
-    expect(hooks.session).not.toHaveBeenCalled();
-    hooks.nativeShell = false;
-  });
-
-  test('adds the captured native receipt to the same opaque scope key', () => {
-    hooks.nativeShell = true;
-    hooks.nativeBinding = {
-      bindingId: '11111111-1111-4111-8111-111111111111',
-      exactOrigin: 'http://station.test',
-    };
-    hooks.session.mockClear();
-    render(direct());
-    expect(hooks.session).toHaveBeenLastCalledWith(
-      '',
-      '',
-      expect.objectContaining({
-        requestScope: {
-          apiBase: 'http://station.test',
-          authorityKey: JSON.stringify([
-            'connection',
-            'runtime:1',
-            4,
-            'available',
-            '11111111-1111-4111-8111-111111111111',
-          ]),
-        },
-      }),
-    );
-    hooks.nativeBinding = null;
-    hooks.nativeShell = false;
   });
 
   test('inspects a result lazily without writing', async () => {

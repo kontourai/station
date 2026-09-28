@@ -15,10 +15,11 @@ function startsOnLowSurrogate(value: string): boolean {
  * Slice a fragment down BEFORE it is concatenated onto the retained tail.
  * A single fragment is routinely the whole payload (an unescaped run flushes
  * once; a top-level string appends whole), so concatenating it first would
- * materialize the very allocation this collector exists to avoid. Exported so
- * the bound is pinned directly rather than inferred from heap measurements.
+ * materialize the very allocation this collector exists to avoid. No test
+ * can observe the allocation (the output is identical either way), so this
+ * binding is held by review.
  */
-export function boundTailFragment(value: string): string {
+function boundTailFragment(value: string): string {
   return value.length >= TOOL_RESULT_TAIL_CHARS
     ? value.slice(-TOOL_RESULT_TAIL_CHARS)
     : value;

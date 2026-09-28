@@ -92,6 +92,85 @@ export type UpdateProvenanceIssue = 'missing' | 'invalid-stamp';
  */
 export type SelfUpdateUnavailableCode = 'service-managed' | 'supervised';
 
+/** Where a launcher-run update transaction is while it is unfinished. */
+export type ServiceUpdatePhase =
+  | 'stopping'
+  | 'backing-up'
+  | 'trial'
+  | 'restoring';
+
+/**
+ * The service launcher's update progress for a prebuilt-archive install
+ * (#2675 slice D), as `GET /api/system/core-update/service-update` reads it
+ * from the install's runtime files. Each state names what a file says, never
+ * a guess:
+ * - `idle`: no request queued and no update ever recorded.
+ * - `queued`: the server wrote the request; the service has not claimed it.
+ * - `staging`: the running version claimed it and is downloading and
+ *   verifying the release (its install.sh, stage-only).
+ * - `updating`: the launcher accepted a version and is in `phase`.
+ * - `committed`: the launcher now runs `targetVersion`.
+ * - `rolled-back` / `failed`: the launcher kept (or returned to)
+ *   `fromVersion`; `reason` is the launcher's code (e.g. `prepared-timeout`,
+ *   `candidate-exited:1`, `backup-failed`).
+ * - `needs-operator`: the launcher could not restore the home to roll the
+ *   update back, `restoreAttempts` times; it keeps the backup, runs no
+ *   version, and retries once each time the service is stopped and started.
+ * - `up-to-date`: staging found nothing newer than `version`.
+ * - `staging-failed` / `rejected`: the request ended before any trial;
+ *   `reason` is the staging failure or the launcher's refusal.
+ * - `unavailable`: a runtime file exists but cannot be read.
+ * `requestId` correlates the outcome with the request an apply (or `station
+ * upgrade`) wrote; null when the launcher's record carries none.
+ */
+export type ServiceUpdateProgress =
+  | { state: 'idle' | 'unavailable' }
+  | { state: 'queued' | 'staging'; requestId: string }
+  | {
+      state: 'updating';
+      requestId: string | null;
+      phase: ServiceUpdatePhase;
+      fromVersion: string;
+      targetVersion: string;
+      attempts: number;
+    }
+  | {
+      state: 'committed';
+      requestId: string | null;
+      fromVersion: string;
+      targetVersion: string;
+      finishedAt: string;
+    }
+  | {
+      state: 'rolled-back' | 'failed';
+      requestId: string | null;
+      fromVersion: string;
+      targetVersion: string;
+      reason: string;
+      finishedAt: string;
+    }
+  | {
+      state: 'needs-operator';
+      requestId: string | null;
+      fromVersion: string;
+      targetVersion: string;
+      reason: string;
+      restoreAttempts: number;
+      finishedAt: string;
+    }
+  | {
+      state: 'up-to-date';
+      requestId: string;
+      version: string;
+      finishedAt: string;
+    }
+  | {
+      state: 'staging-failed' | 'rejected';
+      requestId: string;
+      reason: string;
+      finishedAt: string;
+    };
+
 /** Disclosure from this home, not a certificate of transferred execution authority. */
 export type HomeRecoveryDisclosure =
   | { kind: 'not-restored' | 'unavailable' }

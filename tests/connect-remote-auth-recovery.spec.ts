@@ -34,8 +34,7 @@ async function openConnectionActionsMenu(scope: Locator, name: string) {
   return scope.getByRole('menu', { name: `Actions for ${name}` });
 }
 
-async function openConnections(page: Page, phone: boolean) {
-  void phone;
+async function openConnections(page: Page) {
   const dialog = page.getByRole('dialog');
   const accessRequired = page.getByRole('region', {
     name: 'Station access required',
@@ -502,10 +501,7 @@ for (const fixture of [
     await page.goto('/');
     await expect(page.locator('body')).toBeVisible();
     await dismissSetupLauncher(page);
-    const connectionsCard = await openConnections(
-      page,
-      fixture.name === 'phone',
-    );
+    const connectionsCard = await openConnections(page);
     await openAddStationAddress(connectionsCard);
     // Scoped to the dialog, the way the sibling test above already does it.
     // "Add Station" is the MODAL's own `<h2>` title
@@ -698,7 +694,7 @@ for (const fixture of [
     });
     expect(activeAfterReload.activeName).toBe('Phone Station');
     await dismissSetupLauncher(page);
-    await openConnections(page, fixture.name === 'phone');
+    await openConnections(page);
     await expect(
       connectionsCard.getByText('Phone Station', { exact: true }),
     ).toBeVisible();

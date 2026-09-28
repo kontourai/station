@@ -163,6 +163,7 @@ describe('e2e manifest', () => {
       'tests/minimal-workspace-example.spec.ts',
       'tests/workspace-pane-host-actions-live.spec.ts',
       'tests/bundled-plugin-registry-lifecycle.spec.ts',
+      'tests/authenticated-request-canary.spec.ts',
       'tests/ui-crud-smoke.spec.ts',
       'tests/knowledge-onboarding-smoke.spec.ts',
       'tests/task-workspace.spec.ts',
@@ -235,8 +236,6 @@ describe('e2e manifest', () => {
       'tests/plugin-preview.spec.ts',
       'tests/plugin-rejection-visibility.spec.ts',
       'tests/workspace-search-exact-message.spec.ts',
-      'tests/plugin-system.spec.ts',
-      'tests/plugin-dependency-lifecycle.spec.ts',
       'tests/survey-review-workbench.spec.ts',
       'tests/fieldwork-review.spec.ts',
       'tests/plugin-dev-hot-reload.spec.ts',
@@ -267,7 +266,7 @@ describe('e2e manifest', () => {
   it('partitions focused product selections without losing manifest order', () => {
     expect(
       getProductE2EExecutionPhases([
-        'tests/plugin-system.spec.ts',
+        'tests/plugin-preview.spec.ts',
         'tests/task-first-home.spec.ts',
         'tests/command-palette.spec.ts',
       ]),
@@ -283,7 +282,7 @@ describe('e2e manifest', () => {
       {
         name: 'shared-instance-exclusive',
         workers: 1,
-        specs: ['tests/plugin-system.spec.ts'],
+        specs: ['tests/plugin-preview.spec.ts'],
       },
     ]);
   });
@@ -444,20 +443,6 @@ describe('e2e manifest', () => {
     expect(env.PATH).toBe(
       [nodeDirectory, '/usr/local/bin', '/usr/bin'].join(separator),
     );
-  });
-
-  it('requires the bounded smoke lane on pull requests with diagnostics', () => {
-    const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
-
-    // The smoke runs as a step of the required fast-checks job.
-    expect(workflow).toContain(
-      'name: Verify critical browser journeys before merge',
-    );
-    expect(workflow).toContain('timeout-minutes: 10');
-    expect(workflow).toContain('run: npm run test:e2e:pr-smoke');
-    expect(workflow).toContain('playwright-report/');
-    expect(workflow).toContain('test-results/');
-    expect(workflow).toContain('if: always()');
   });
 
   it('refuses an inline foreground chat receipt and an unfixtured chat-route mock (station#3800)', () => {

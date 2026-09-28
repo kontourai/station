@@ -28,10 +28,7 @@ vi.mock('../contexts/AgentsContext', () => ({
 import { isTurnInFlight } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { conversationsStore } from '../contexts/ConversationsContext';
-import {
-  dedupeOptimisticMessages,
-  useDerivedSessions,
-} from '../hooks/useDerivedSessions';
+import { useDerivedSessions } from '../hooks/useDerivedSessions';
 import { isTurnStreamLive } from '../utils/execution';
 
 const SESSION_A = 'session-a';
@@ -533,84 +530,6 @@ describe('useDerivedSessions — ChatDock identity stability (station#726)', () 
   });
 });
 
-describe('dedupeOptimisticMessages (station#1293 — identity-based reconciliation, not count-based slicing)', () => {
-  test('drops nothing when there is no backend transcript yet (first optimistic send)', () => {
-    const local = [{ role: 'user', content: 'hello' }];
-    expect(dedupeOptimisticMessages(local, [])).toEqual(local);
-  });
-
-  test('drops every local message once the backend has caught up (ordinary reconcile)', () => {
-    const local = [
-      { role: 'user', content: 'hello' },
-      { role: 'assistant', content: 'hi there' },
-    ];
-    const backend = [
-      { role: 'user', content: 'hello' },
-      { role: 'assistant', content: 'hi there' },
-    ];
-    expect(dedupeOptimisticMessages(local, backend)).toEqual([]);
-  });
-
-  // The exact archive#1293 bug: a client-only row with no backend counterpart (an
-  // error bubble finalizeAssistantTurn appended, a queue-drain optimistic
-  // append, …) shifts every subsequent index by one under the old
-  // `slice(backendMessages.length)` — the real user message right after it
-  // then re-renders even though the backend already has it.
-  test('does not duplicate a real user message that lands right after a client-only row with no backend counterpart', () => {
-    const local = [
-      { role: 'user', content: 'first turn' },
-      { role: 'assistant', content: 'a reply' },
-      // Client-only: never reached the backend (e.g. a committed streaming
-      // error, or a slash-command echo).
-      { role: 'assistant', content: 'a client-only aside' },
-      { role: 'user', content: 'second turn' },
-    ];
-    const backend = [
-      { role: 'user', content: 'first turn' },
-      { role: 'assistant', content: 'a reply' },
-      { role: 'user', content: 'second turn' },
-    ];
-
-    const optimisticOnly = dedupeOptimisticMessages(local, backend);
-
-    // Only the genuinely client-only row survives as "still optimistic" —
-    // "second turn" is NOT re-appended since the backend already has it.
-    expect(optimisticOnly).toEqual([
-      { role: 'assistant', content: 'a client-only aside' },
-    ]);
-  });
-
-  test('never collapses two genuinely repeated turns into one (multiset, not a boolean seen-set)', () => {
-    const local = [
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', content: 'hello!' },
-      { role: 'user', content: 'hi' },
-    ];
-    const backend = [
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', content: 'hello!' },
-    ];
-
-    // Only ONE "hi" is already on the backend — the second, distinct send of
-    // the same text is still genuinely optimistic and must survive.
-    expect(dedupeOptimisticMessages(local, backend)).toEqual([
-      { role: 'user', content: 'hi' },
-    ]);
-  });
-
-  test('a genuinely new optimistic message not yet on the backend is kept', () => {
-    const local = [
-      { role: 'user', content: 'first turn' },
-      { role: 'user', content: 'not yet sent' },
-    ];
-    const backend = [{ role: 'user', content: 'first turn' }];
-
-    expect(dedupeOptimisticMessages(local, backend)).toEqual([
-      { role: 'user', content: 'not yet sent' },
-    ]);
-  });
-});
-
 describe('useDerivedSessions — end to end: no duplicate user bubble across a backend reconcile (station#1293)', () => {
   const SESSION_ID = 'session-dedupe-e2e';
   const AGENT_SLUG = 'agent-one';
@@ -639,6 +558,73 @@ describe('useDerivedSessions — end to end: no duplicate user bubble across a b
     delete (
       conversationsStore as unknown as { messages: Record<string, unknown> }
     ).messages[MESSAGES_KEY];
+  });
+
+  function landOnBackend(rows: { role: string; content: string }[]) {
+    act(() => {
+      (
+        conversationsStore as unknown as {
+          messages: Record<string, unknown[]>;
+          notify: () => void;
+        }
+      ).messages[MESSAGES_KEY] = rows;
+      (conversationsStore as unknown as { notify: () => void }).notify();
+    });
+  }
+
+  function renderedContents(
+    localMessages: { role: string; content: string }[],
+    backend: { role: string; content: string }[],
+  ) {
+    activeChatsStore.updateChat(SESSION_ID, {
+      status: 'idle',
+      messages: localMessages.map((message, index) => ({
+        ...message,
+        role: message.role as 'user' | 'assistant',
+        timestamp: index + 1,
+      })),
+    });
+    const { result, rerender } = renderHook(() =>
+      useDerivedSessions('', null, null),
+    );
+    landOnBackend(backend);
+    rerender();
+    // Which rows survive reconciliation is the contract here; the display
+    // order comes from timestamps, so compare as a sorted multiset.
+    return result.current
+      .find((s) => s.id === SESSION_ID)!
+      .messages.map((m) => m.content)
+      .sort();
+  }
+
+  // Reconciliation is a multiset, not a boolean seen-set: only ONE "hi" is on
+  // the backend, so the second, distinct send of the same text stays.
+  test('never collapses two genuinely repeated turns into one', () => {
+    expect(
+      renderedContents(
+        [
+          { role: 'user', content: 'hi' },
+          { role: 'assistant', content: 'hello!' },
+          { role: 'user', content: 'hi' },
+        ],
+        [
+          { role: 'user', content: 'hi' },
+          { role: 'assistant', content: 'hello!' },
+        ],
+      ),
+    ).toEqual(['hello!', 'hi', 'hi']);
+  });
+
+  test('keeps an optimistic message the backend does not have yet', () => {
+    expect(
+      renderedContents(
+        [
+          { role: 'user', content: 'first turn' },
+          { role: 'user', content: 'not yet sent' },
+        ],
+        [{ role: 'user', content: 'first turn' }],
+      ),
+    ).toEqual(['first turn', 'not yet sent']);
   });
 
   test('a locally-appended user message is not re-rendered once the same content lands on the backend', () => {

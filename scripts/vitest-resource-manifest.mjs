@@ -574,6 +574,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // refusal path exits non-zero and names the remedy.
   'scripts/__tests__/backlog-priority-policy.test.ts',
   'scripts/__tests__/install-script.test.ts',
+  // #2675 D: runs the real fixed service launcher as a process, with real
+  // versioned child processes, against throwaway install roots and homes.
+  'scripts/__tests__/service-launcher.test.ts',
+  // #2675 D: installs two fixture archives with the real install.sh and runs
+  // the real launcher, whose child stages with install.sh again.
+  'scripts/__tests__/service-launcher-e2e.test.ts',
   'scripts/__tests__/installer-tool-output-parsing.test.ts',
   'scripts/__tests__/local-verification.test.ts',
   'scripts/__tests__/native-release-config.test.ts',
@@ -636,6 +642,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Executes the release compensation shell transaction in isolated fixture
   // directories to verify its real exit codes and rollback behavior.
   'scripts/__tests__/publish-mobile-feed-transaction.test.ts',
+  // Runs the Tauri context CLI's --help path as a child process to prove it
+  // prints only usage and exits 0, with no host report.
+  'scripts/__tests__/tauri-context.test.ts',
+  // Runs short-lived bash fixtures through the owned-process fixture runner
+  // to prove its launch, truncation, deadline and descendant-reaping refusals.
+  'scripts/__tests__/bounded-fixture-process.test.ts',
   // station#2299: runs the repo-guardrail proof itself as a real child
   // process against a mutated copy, because the defect was that the proof
   // died before producing any verdict — only a real exit status can prove it
@@ -984,6 +996,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Chromium via `@playwright/test` to measure real cascade-resolved
   // layout (collapsed-card control geometry and hit-testing).
   'src-ui/src/components/notifications/__tests__/BannerHost.collapsed-controls.test.tsx',
+  // Same shape again: launches a real Chromium to measure the content inset
+  // the published banner height produces, and the collapse tween the
+  // reduced-motion primitive refuses, under the real cascade.
+  'src-ui/src/components/notifications/__tests__/BannerHost.reserve-cascade.test.tsx',
   // station#4475 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to hit-test connections-flow controls
   // with and without an active banner.
@@ -1017,6 +1033,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // cascade-resolved row heights (the loading skeleton row vs. the real item
   // row it stands in for).
   'src-ui/src/__tests__/SplitPaneLayout.skeleton-geometry.test.tsx',
+  // Same shape again: launches a real Chromium to prove a long Dialog body
+  // scrolls and keeps the footer's commit action on screen and hittable.
+  'src-ui/src/__tests__/Dialog.chrome.geometry.test.tsx',
   // Exercises the release-cohort CLI through real Node subprocesses so its
   // externally persisted receipt boundary is observable end-to-end.
   'scripts/__tests__/release-cohort.test.ts',

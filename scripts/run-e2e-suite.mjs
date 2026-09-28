@@ -141,6 +141,37 @@ export function retainE2EBucketFailureEvidence({
   return true;
 }
 
+/**
+ * Settle a run whose Playwright phases started. A failed run retains its bucket
+ * evidence before cleanup can reclaim the instance directory; a failed cleanup
+ * retains it again, because the lease and outputs stay behind. Retention is
+ * best-effort and never masks the failure it documents. Returns the cleanup
+ * failure, or null when cleanup settled.
+ */
+export async function settleStartedE2ERun({
+  runFailure,
+  suite,
+  retainEvidence,
+  cleanUp,
+}) {
+  const retain = (label) => {
+    try {
+      retainEvidence();
+    } catch (error) {
+      console.error(
+        `[e2e] could not retain ${suite} ${label} evidence: ${error.message}`,
+      );
+    }
+  };
+  if (runFailure) retain('failure');
+  const errors = await cleanUp();
+  if (errors.length === 0) return null;
+  retain('cleanup-failure');
+  return new Error(
+    `E2E cleanup failed; retained lease and outputs: ${errors.join('; ')}`,
+  );
+}
+
 const MAX_RETAINED_E2E_RESULT_ROOTS = 12;
 
 function validE2EInstance(instance) {
@@ -2389,66 +2420,50 @@ async function main() {
     }
     runFailure = error;
   } finally {
-    if (runFailure && process.env.STATION_E2E_EVIDENCE_ROOT)
-      try {
+    cleanupFailure = await settleStartedE2ERun({
+      runFailure,
+      suite,
+      retainEvidence: () =>
         retainE2EBucketFailureEvidence({
           testResultsRoot,
           evidenceRoot: process.env.STATION_E2E_EVIDENCE_ROOT,
           suite,
+        }),
+      cleanUp: async () => {
+        const cleanup = await cleanupE2ERun({
+          root: process.cwd(),
+          leasePath: runLease,
+          lease,
+          stopInstance: () => stopE2EInstance(instance),
         });
-      } catch (error) {
-        console.error(
-          `[e2e] could not retain ${suite} failure evidence: ${error.message}`,
-        );
-      }
-    const cleanup = await cleanupE2ERun({
-      root: process.cwd(),
-      leasePath: runLease,
-      lease,
-      stopInstance: () => stopE2EInstance(instance),
-    });
-    if (runFailure) {
-      if (existsSync(serverLog))
-        console.error(`[e2e] retained Station server log: ${serverLog}`);
-    } else {
-      rmSync(serverLog, { force: true });
-    }
-    rmSync(claudeConfigDir, { recursive: true, force: true });
-    rmSync(codexConfigDir, { recursive: true, force: true });
-    if (!runFailure && cleanup.errors.length === 0) {
-      try {
-        removeE2ETestResults(process.cwd(), instance);
-      } catch (error) {
-        cleanup.errors.push(
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-    }
-    if (cleanup.errors.length === 0) {
-      const pruned = sweepRetainedE2ETestResults(process.cwd());
-      if (pruned > 0) {
-        console.log(
-          `[e2e] pruned ${pruned} retained Playwright result root(s) after settlement`,
-        );
-      }
-    }
-    if (cleanup.errors.length > 0) {
-      if (process.env.STATION_E2E_EVIDENCE_ROOT)
-        try {
-          retainE2EBucketFailureEvidence({
-            testResultsRoot,
-            evidenceRoot: process.env.STATION_E2E_EVIDENCE_ROOT,
-            suite,
-          });
-        } catch (error) {
-          console.error(
-            `[e2e] could not retain ${suite} cleanup-failure evidence: ${error.message}`,
-          );
+        if (runFailure) {
+          if (existsSync(serverLog))
+            console.error(`[e2e] retained Station server log: ${serverLog}`);
+        } else {
+          rmSync(serverLog, { force: true });
         }
-      cleanupFailure = new Error(
-        `E2E cleanup failed; retained lease and outputs: ${cleanup.errors.join('; ')}`,
-      );
-    }
+        rmSync(claudeConfigDir, { recursive: true, force: true });
+        rmSync(codexConfigDir, { recursive: true, force: true });
+        if (!runFailure && cleanup.errors.length === 0) {
+          try {
+            removeE2ETestResults(process.cwd(), instance);
+          } catch (error) {
+            cleanup.errors.push(
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+        }
+        if (cleanup.errors.length === 0) {
+          const pruned = sweepRetainedE2ETestResults(process.cwd());
+          if (pruned > 0) {
+            console.log(
+              `[e2e] pruned ${pruned} retained Playwright result root(s) after settlement`,
+            );
+          }
+        }
+        return cleanup.errors;
+      },
+    });
   }
   if (cleanupFailure) throw cleanupFailure;
   if (runFailure) throw runFailure;

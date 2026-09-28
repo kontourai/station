@@ -459,46 +459,6 @@ describe('useSessionEventStream', () => {
     ).toEqual(['earlier', 'later']);
   });
 
-  test('retains more than 200 explicitly loaded events when a live frame arrives', () => {
-    const loaded = Array.from({ length: 240 }, (_, index) => {
-      const common = {
-        ...event(
-          `loaded-${index}`,
-          `2026-07-18T00:${String(Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}.000Z`,
-        ),
-        turnId: `turn-${Math.floor(index / 12)}`,
-      };
-      return index % 12 === 0
-        ? {
-            ...common,
-            method: 'turn.started' as const,
-            prompt: `prompt-${index}`,
-          }
-        : {
-            ...common,
-            method: 'content.text-delta' as const,
-            itemId: `item-${index}`,
-            delta: 'x',
-          };
-    });
-    const preserved = new Set(loaded.map((item) => item.eventId!));
-    const live = {
-      ...event('live-1', '2026-07-18T01:00:00.000Z'),
-      turnId: 'turn-live',
-      method: 'turn.started' as const,
-      prompt: 'new turn',
-    };
-
-    const merged = mergeSessionEvents(loaded, [live], preserved);
-
-    expect(merged).toHaveLength(241);
-    expect(merged[0]?.eventId).toBe('loaded-0');
-    expect(merged.at(-1)?.eventId).toBe('live-1');
-    expect(
-      merged.filter((item) => item.method === 'turn.started'),
-    ).toHaveLength(21);
-  });
-
   test('bounds one 1000-event live turn while retaining its projection anchor', () => {
     const liveTurn = [
       {

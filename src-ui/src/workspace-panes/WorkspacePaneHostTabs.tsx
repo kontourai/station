@@ -22,9 +22,6 @@ import {
 } from './workspacePaneHostIdentity';
 import type { WorkspacePaneHostRuntime } from './workspacePaneHostRuntime';
 
-/** @deprecated import `nextTabIndex` from `../utils/tab-navigation` instead. Kept so this file's existing test import keeps working unchanged. */
-export const workspacePaneHostTabNextIndex = nextTabIndex;
-
 interface WorkspacePaneHostTabsProps {
   group: WorkspacePaneHostTabGroup;
   paneById: ReadonlyMap<WorkspacePaneInstanceId, WorkspacePaneInstance>;
@@ -121,7 +118,7 @@ export function WorkspacePaneHostTabs({
                 tabIndex={isSelected ? 0 : -1}
                 onClick={() => controller.select(instanceId)}
                 onKeyDown={(event) => {
-                  const nextIndex = workspacePaneHostTabNextIndex(
+                  const nextIndex = nextTabIndex(
                     index,
                     group.instanceIds.length,
                     event.key,

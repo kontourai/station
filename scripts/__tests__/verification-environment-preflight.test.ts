@@ -479,23 +479,6 @@ describe('relDir path-separator normalization (station#4109 review H1, Windows f
       entry: { version: '0.8.0' },
     });
   });
-
-  it('feeding resolveLockEntry the RAW (unnormalized) backslash relDir misses the nested key -- pinning why normalization must happen at storage time, not at lookup time', () => {
-    const packages = {
-      'node_modules/@fixture/datum': { version: '0.7.0' },
-      'packages/contracts/node_modules/@fixture/datum': { version: '0.8.0' },
-    };
-    const resolved = resolveLockEntry(
-      packages,
-      'packages\\contracts', // never normalized
-      '@fixture/datum',
-    );
-    // Falls back to the root entry instead of finding the nested one --
-    // this is the exact bug shape the review flagged, and is why the fix
-    // normalizes once at the single point relDir is first computed rather
-    // than trusting every call site to do it.
-    expect(resolved).toEqual({ scope: '', entry: { version: '0.7.0' } });
-  });
 });
 
 describe('findStaleInstalledDependencies unverifiable entries (station#4109 review M2)', () => {

@@ -161,12 +161,6 @@ test.describe('Connection Manager Modal', () => {
     await dismissSetupLauncher(page);
   });
 
-  test('connection chip is visible in the header', async ({ page }) => {
-    await expect(
-      page.getByRole('button', { name: /^Manage Stations/ }),
-    ).toBeVisible();
-  });
-
   test('clicking the chip opens the connection modal', async ({ page }) => {
     await page.getByRole('button', { name: /^Manage Stations/ }).click();
     await expect(page.getByRole('heading', { name: 'Stations' })).toBeVisible();
@@ -411,6 +405,34 @@ test.describe('Connection Manager Modal', () => {
           body: JSON.stringify({ error: 'fixture route not found' }),
         }),
     );
+    // The suite's handshake mock answers every host as Dev Server's own
+    // environment, which would make Remote the same Station at a second
+    // address and fold Dev Server into it. A real second Station has its own
+    // identity.
+    await page.route(
+      'http://203.0.113.5:3141/.well-known/station/v1',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            schemaVersion: 1,
+            environmentId: 'env-connect-modal-remote',
+            authentication: { scheme: 'bearer', protocolVersion: 1 },
+            transports: { http: 1, sse: 1, websocket: 1 },
+            compatibility: {
+              serverVersion: '0.0.0-test',
+              protocolVersion: 1,
+              minClientProtocol: 1,
+              capabilities: {
+                remoteAuth: 1,
+                devicePairing: 1,
+                environmentProof: 1,
+              },
+            },
+          }),
+        }),
+    );
     // Add a second connection via the UI
     await page.getByRole('button', { name: /^Manage Stations/ }).click();
     await page
@@ -437,6 +459,21 @@ test.describe('Connection Manager Modal', () => {
       .click();
 
     // Modal is still open on the list panel — click the Dev Server row to switch back
+    // Make Remote the active Station first, so switching back is observable:
+    // a chip that already named Dev Server would satisfy the final assertion
+    // without any switch happening.
+    await page
+      .getByRole('button', { name: 'Select Remote', exact: true })
+      .click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Close Station manager' })
+      .click();
+    await expect(
+      page.getByRole('button', { name: /^Manage Stations.*Remote/ }),
+    ).toBeVisible();
+
+    await page.getByRole('button', { name: /^Manage Stations/ }).click();
     await page
       .getByRole('button', { name: 'Select Dev Server', exact: true })
       .click();
@@ -445,9 +482,9 @@ test.describe('Connection Manager Modal', () => {
       .getByRole('button', { name: 'Close Station manager' })
       .click();
 
-    // Chip should update back to Dev Server
+    // The chip names Dev Server again.
     await expect(
-      page.getByRole('button', { name: /^Manage Stations/ }),
+      page.getByRole('button', { name: /^Manage Stations.*Dev Server/ }),
     ).toBeVisible();
   });
 
@@ -670,19 +707,23 @@ test.describe('Connection Manager Modal', () => {
     await expect(revoke).toBeVisible();
   });
 
-  test('status dot shows correct colors', async ({ page }) => {
+  test('checking a reachable Station turns its row dot green and connected', async ({
+    page,
+  }) => {
     await page.getByRole('button', { name: /^Manage Stations/ }).click();
+    // The row reports the manager's own check, not the header's, so run it.
+    await (
+      await openConnectionActionsMenu(page.getByRole('dialog'), 'Dev Server')
+    )
+      .getByRole('menuitem', { name: 'Check reachability', exact: true })
+      .click();
 
-    // The status dot should be visible in the modal (connecting state since health check won't resolve)
-    const _dot = page.locator('[aria-label]').filter({ hasText: /^$/ }).first();
-    // At minimum, verify a dot with aria-label exists in the connection row
-    await expect(
-      page
-        .locator(
-          '[aria-label="connecting"], [aria-label="connected"], [aria-label="error"]',
-        )
-        .first(),
-    ).toBeVisible();
+    const dot = page
+      .locator('.station-connect-row')
+      .filter({ hasText: 'Dev Server' })
+      .getByRole('img', { name: 'connected', exact: true });
+    await expect(dot).toBeVisible();
+    await expect(dot).toHaveCSS('background-color', 'rgb(34, 197, 94)');
   });
 
   test('cleared connection storage falls back to the current app connection', async ({

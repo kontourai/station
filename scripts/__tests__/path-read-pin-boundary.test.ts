@@ -815,26 +815,23 @@ describe('derived pin edges only add to selection', () => {
   });
 
   it('selects the pinning test and this gate for a pinned path', () => {
-    // Touching the hook #1785 moved the call into must schedule the pin that
-    // reads it (#1808 repointed that pin), and must not have done so before.
-    const hook =
-      'src-ui/src/components/chat-dock/useConversationBoundaryDialogs.ts';
-    const after = selectedTests([hook], built);
-    expect(after).toContain(
-      'src-ui/src/__tests__/useOutboundQueueSnapshot.test.tsx',
-    );
+    // Touching a file a test reads only as text must schedule the pin that
+    // reads it, and must not have done so before. (The #1785 pin this gate
+    // was built for is now a mounted-hook test with a real import edge.)
+    const pinned = 'src-ui/src/components/chat/OutboundQueuedMessages.tsx';
+    const pinning = 'src-ui/src/__tests__/outbound-queue-css-boundary.test.ts';
+    const after = selectedTests([pinned], built);
+    expect(after).toContain(pinning);
     expect(after).toContain(PATH_READ_PIN_BOUNDARY_TEST);
-    expect(selectedTests([hook])).not.toContain(
-      'src-ui/src/__tests__/useOutboundQueueSnapshot.test.tsx',
-    );
+    expect(selectedTests([pinned])).not.toContain(pinning);
   });
 
   it('keeps a supplemental edge from cancelling an escalation', () => {
-    // `vitest.global-setup.ts` escalates (it matches `isEscalationPath` and
+    // `.githooks/commit-msg` escalates (it matches `isEscalationPath` and
     // no committed edge names it) and a test also pins it. Without the
     // supplemental exclusion its pin edge would set `hasExplicitBoundary` and
     // trade `ci-fast` for one focused test.
-    const path = 'vitest.global-setup.ts';
+    const path = '.githooks/commit-msg';
     expect(pins.map(({ pin }) => pin)).toContain(path);
     expect(selectChangedVerification([path]).escalated).toBe(true);
     const selection = selectChangedVerification([path], built as never);
@@ -845,7 +842,7 @@ describe('derived pin edges only add to selection', () => {
     // ...and the pin is still named, on top of the escalation.
     expect(
       selection.tests.map(({ path: test }: { path: string }) => test),
-    ).toContain('scripts/__tests__/vitest-teardown-race.test.ts');
+    ).toContain('scripts/__tests__/commit-message-gate.test.ts');
   });
 });
 

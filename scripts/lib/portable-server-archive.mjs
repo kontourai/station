@@ -261,6 +261,12 @@ function stageLaunchers(projectRoot, stageRoot) {
   cpSync(join(source, 'station'), join(bin, 'station'));
   chmodSync(join(bin, 'station'), 0o755);
   cpSync(join(source, 'station.mjs'), join(bin, 'station.mjs'));
+  // The fixed service launcher (#2675 D): `station service install` copies it
+  // out of the version into <install root>/runtime/.
+  cpSync(
+    join(source, 'station-launcher.mjs'),
+    join(bin, 'station-launcher.mjs'),
+  );
   // cmd.exe mis-parses blocks in LF-only batch files, and the repository
   // checks every text file out as LF (.gitattributes), so write CRLF here.
   const cmd = readFileSync(join(source, 'station.cmd'), 'utf8');
@@ -391,6 +397,8 @@ function treeFootprint(root) {
  *   .station-release.json   provenance (the installer's schemaVersion 2 shape)
  *   bin/station[.cmd]       launcher that runs runtime/, never a host Node
  *   bin/station.mjs         entry: release identity for --version, else the CLI
+ *   bin/station-launcher.mjs  the fixed service launcher `service install`
+ *                           copies to <install root>/runtime/
  *   install.sh              the installer that installed this version, which
  *                           `station upgrade` and the documented uninstall
  *                           (`<install root>/current/install.sh uninstall`) run

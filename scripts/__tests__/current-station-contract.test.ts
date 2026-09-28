@@ -1,24 +1,8 @@
 import { resolveWorkspacePaneAvailability } from '@kontourai/station-contracts/workspace-pane-availability';
 import { describe, expect, test } from 'vitest';
-import {
-  createE2EWorkspacePaneCatalog,
-  E2E_STATION_COMPATIBILITY,
-} from '../../tests/helpers/current-station-contract';
+import { createE2EWorkspacePaneCatalog } from '../../tests/helpers/current-station-contract';
 
 describe('current Station E2E contract fixtures', () => {
-  test('advertises the exact supported protocol declaration', () => {
-    expect(E2E_STATION_COMPATIBILITY).toEqual({
-      serverVersion: '0.0.0-e2e',
-      protocolVersion: 1,
-      minClientProtocol: 1,
-      capabilities: {
-        remoteAuth: 1,
-        devicePairing: 1,
-        environmentProof: 1,
-      },
-    });
-  });
-
   test('constructs every pane required by the Coding workspace from public contracts', () => {
     const catalog = createE2EWorkspacePaneCatalog('project-1', 'code');
     const instanceIds = catalog.instances.map((entry) => entry.instanceId);

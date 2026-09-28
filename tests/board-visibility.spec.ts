@@ -42,7 +42,12 @@ const WITH_RUN_SLUG = 'd8-board-with-run';
 const WITH_RUN_NAME = 'D8 Board With Run';
 const TASK_SLUG = 'd8-demo-task';
 
-/** The one sentence D8 specifies for the redirect. */
+/**
+ * The one sentence D8 specifies for the redirect. Nothing clears the boot
+ * chrome around it first: the banner store lifts a `userInitiated` notice
+ * above passive chrome (archive#3823, owned by `banner-store.test.ts`), so it
+ * must be readable exactly as a real reader meets it.
+ */
 const REDIRECT_NOTICE =
   'This project has no Builder runs yet; the Board appears when one starts';
 
@@ -129,34 +134,6 @@ async function readAvailability(
 }
 
 /**
- * archive#3823. Chrome banners the app's own sources present on boot — a
- * capability failure, a plugin-registry gate, a resource-posture warning —
- * occupy the banner host's bounded visible stack, and every one of them
- * presents ABOVE the `info` band the route guard's redirect notice uses. Two
- * independent things keep this spec's assertion about the notice it causes:
- *
- * 1. The sort order lifts a `userInitiated` notice to the top of the
- *    non-connection bands (`banner-store.ts`), which is the product fix and
- *    the reason the notice is readable for a real user, not just in a test.
- * 2. This hook, which clears the PASSIVE banners of the current document. It
- *    can only run after a navigation — the bundle re-executes on every real
- *    page load, and the hook does not exist on `about:blank` — so it is
- *    deliberately scoped to passive banners: called at any moment, before or
- *    after the guard has presented, it can never remove the notice under
- *    test.
- */
-async function gotoAndClearPassiveChrome(page: Page, path: string) {
-  await page.goto(path);
-  await page.evaluate(() =>
-    (
-      window as unknown as {
-        __stationClearPassiveChromeBannersForTestsOnly?: () => void;
-      }
-    ).__stationClearPassiveChromeBannersForTestsOnly?.(),
-  );
-}
-
-/**
  * Return one project row's layout chip row. #2063 replaced the nested tree and
  * its expand chevron with chips that belong to the SELECTED project, so being
  * on the project's own route is what puts them on screen; a row that is not
@@ -217,10 +194,7 @@ test.describe("Board visibility follows the server's Builder-run predicate", () 
   test("with no Builder run the route redirects with D8's notice and the nav offers no Board", async ({
     page,
   }) => {
-    await gotoAndClearPassiveChrome(
-      page,
-      `/projects/${NO_RUN_SLUG}/session-board`,
-    );
+    await page.goto(`/projects/${NO_RUN_SLUG}/session-board`);
 
     // The route guard sends the reader to the project page …
     await expect(page).toHaveURL(new RegExp(`/projects/${NO_RUN_SLUG}$`), {
@@ -241,10 +215,7 @@ test.describe("Board visibility follows the server's Builder-run predicate", () 
   test('with a Builder run the frame names the project and states the receipt once', async ({
     page,
   }) => {
-    await gotoAndClearPassiveChrome(
-      page,
-      `/projects/${WITH_RUN_SLUG}/session-board`,
-    );
+    await page.goto(`/projects/${WITH_RUN_SLUG}/session-board`);
 
     // No redirect: the route stays where the reader asked to be.
     await expect(page).toHaveURL(
@@ -298,7 +269,7 @@ test.describe("Board visibility follows the server's Builder-run predicate", () 
   test('a Layout chip opens into the Right region, and the reload keeps it', async ({
     page,
   }) => {
-    await gotoAndClearPassiveChrome(page, `/projects/${WITH_RUN_SLUG}`);
+    await page.goto(`/projects/${WITH_RUN_SLUG}`);
     const { strip } = await projectLayoutChips(page, WITH_RUN_NAME);
     const notes = strip.getByRole('button', { name: 'Notes', exact: true });
     await expect(notes).toBeVisible({ timeout: 20_000 });
@@ -384,10 +355,7 @@ test.describe('Board visibility at 390x844', () => {
   test('the redirect notice and the board frame both survive the phone', async ({
     page,
   }) => {
-    await gotoAndClearPassiveChrome(
-      page,
-      `/projects/${NO_RUN_SLUG}/session-board`,
-    );
+    await page.goto(`/projects/${NO_RUN_SLUG}/session-board`);
     await expect(page).toHaveURL(new RegExp(`/projects/${NO_RUN_SLUG}$`), {
       timeout: 20_000,
     });

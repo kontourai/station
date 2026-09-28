@@ -15,6 +15,7 @@ import {
   fetchMonitoringMetrics,
   fetchServerCapabilities,
   requestCoreUpdateStatus,
+  requestServiceUpdateProgress,
   requestSystemIdentity,
   requestSystemStatus,
   verifyManagedRuntimeConnection,
@@ -351,6 +352,171 @@ describe('systemRuntimeRequests', () => {
     expect(new Headers(init.headers).get('Content-Type')).toBe(
       'application/json',
     );
+  });
+
+  describe('release-archive update (#2675 D3)', () => {
+    const REQUEST_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+    const respond = (body: unknown, ok = true, status = 200) =>
+      vi.mocked(fetch).mockResolvedValue({
+        ok,
+        status,
+        json: async () => body,
+      } as Response);
+
+    it('carries an archive-service status with its versions, check and progress', async () => {
+      respond({
+        installKind: 'archive-service',
+        applyMethod: 'service-update',
+        channel: 'preview',
+        currentVersion: '0.8.0-preview.1',
+        latestVersion: '0.8.0-preview.2',
+        releaseCheck: 'verified',
+        updateAvailable: true,
+        selfUpdateUnavailableReason: null,
+        serviceUpdate: {
+          state: 'updating',
+          requestId: REQUEST_ID,
+          phase: 'trial',
+          fromVersion: '0.8.0-preview.1',
+          targetVersion: '0.8.0-preview.2',
+          attempts: 1,
+        },
+      });
+      expect(await requestCoreUpdateStatus('http://custom.test')).toMatchObject(
+        {
+          installKind: 'archive-service',
+          applyMethod: 'service-update',
+          currentVersion: '0.8.0-preview.1',
+          latestVersion: '0.8.0-preview.2',
+          releaseCheck: 'verified',
+          serviceUpdate: { state: 'updating', phase: 'trial', attempts: 1 },
+        },
+      );
+    });
+
+    it('drops an install kind or release check it does not know instead of passing it on', async () => {
+      respond({
+        installKind: 'container-image',
+        releaseCheck: 'maybe',
+        updateAvailable: false,
+      });
+      const status = await requestCoreUpdateStatus('http://custom.test');
+      expect(status.installKind).toBeUndefined();
+      expect(status.releaseCheck).toBeUndefined();
+    });
+
+    it.each([
+      [
+        { state: 'queued', requestId: REQUEST_ID },
+        { state: 'queued', requestId: REQUEST_ID },
+      ],
+      [
+        {
+          state: 'rolled-back',
+          requestId: null,
+          fromVersion: '1.0.0',
+          targetVersion: '1.1.0',
+          reason: 'prepared-timeout',
+          finishedAt: '2026-09-27T12:00:00.000Z',
+        },
+        {
+          state: 'rolled-back',
+          requestId: null,
+          fromVersion: '1.0.0',
+          targetVersion: '1.1.0',
+          reason: 'prepared-timeout',
+          finishedAt: '2026-09-27T12:00:00.000Z',
+        },
+      ],
+      // A rollback that lost its reason is not a rollback anybody reported.
+      [
+        {
+          state: 'rolled-back',
+          requestId: null,
+          fromVersion: '1.0.0',
+          targetVersion: '1.1.0',
+          finishedAt: '2026-09-27T12:00:00.000Z',
+        },
+        { state: 'unavailable' },
+      ],
+      [
+        {
+          state: 'needs-operator',
+          requestId: REQUEST_ID,
+          fromVersion: '1.0.0',
+          targetVersion: '1.1.0',
+          reason: 'prepared-timeout',
+          restoreAttempts: 3,
+          finishedAt: '2026-09-27T12:00:00.000Z',
+        },
+        {
+          state: 'needs-operator',
+          requestId: REQUEST_ID,
+          fromVersion: '1.0.0',
+          targetVersion: '1.1.0',
+          reason: 'prepared-timeout',
+          restoreAttempts: 3,
+          finishedAt: '2026-09-27T12:00:00.000Z',
+        },
+      ],
+      [
+        {
+          state: 'needs-operator',
+          requestId: REQUEST_ID,
+          fromVersion: '1.0.0',
+          targetVersion: '1.1.0',
+          reason: 'prepared-timeout',
+          finishedAt: '2026-09-27T12:00:00.000Z',
+        },
+        { state: 'unavailable' },
+      ],
+      [{ state: 'queued' }, { state: 'unavailable' }],
+      [
+        {
+          state: 'updating',
+          requestId: REQUEST_ID,
+          phase: 'dancing',
+          fromVersion: '1',
+          targetVersion: '2',
+          attempts: 1,
+        },
+        { state: 'unavailable' },
+      ],
+      [{ state: 'someday' }, { state: 'unavailable' }],
+      ['nope', { state: 'unavailable' }],
+    ])('reads progress %j as %j', async (body, expected) => {
+      respond(body);
+      expect(await requestServiceUpdateProgress('http://custom.test')).toEqual(
+        expected,
+      );
+      expect(String(vi.mocked(fetch).mock.calls[0]?.[0])).toBe(
+        'http://custom.test/api/system/core-update/service-update',
+      );
+    });
+
+    it('a failed progress read throws with its status, for the poll to keep its last state', async () => {
+      respond({}, false, 502);
+      await expect(
+        requestServiceUpdateProgress('http://custom.test'),
+      ).rejects.toMatchObject({ status: 502 });
+    });
+
+    it('an accepted service update returns its request id, and a malformed one is refused', async () => {
+      respond({
+        success: true,
+        serviceUpdate: { requestId: REQUEST_ID },
+        message: 'm',
+      });
+      expect(await applyCoreUpdate('http://custom.test')).toEqual({
+        success: true,
+        serviceUpdate: { requestId: REQUEST_ID },
+        message: 'm',
+      });
+      respond({ success: true, serviceUpdate: {} });
+      await expect(applyCoreUpdate('http://custom.test')).rejects.toThrow(
+        'Service update request could not be followed',
+      );
+    });
   });
 
   describe('core-update status diagnostics (update-ux PR2)', () => {
