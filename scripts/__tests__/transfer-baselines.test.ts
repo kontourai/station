@@ -610,6 +610,58 @@ describe.skipIf(!posix)('pre-push baseline discovery (#2925)', () => {
     expect(verified).toEqual([]);
   });
 
+  test('requires the full SHA, not an abbreviation the name and HEAD share', () => {
+    // Two commits sharing a seven-character prefix cannot be made on demand,
+    // so the worktree list is supplied: a real directory whose HEAD agrees
+    // with its name and with the base's first seven characters only.
+    const f = fixture();
+    const near = `${f.old2.slice(0, 7)}${f.old2.slice(7).replace(/./g, (c) => (c === '0' ? '1' : '0'))}`;
+    const path = join(
+      f.lanes,
+      `${TRANSFER_BASELINE_PREFIX}${near.slice(0, 7)}`,
+    );
+    mkdirSync(path);
+    const verified: string[] = [];
+    expect(
+      discoverTransferBaseline({
+        candidateRoot: f.primary,
+        baseSha: f.old2,
+        worktrees: [
+          {
+            path,
+            head: near,
+            branch: null,
+            detached: true,
+            locked: false,
+            prunable: false,
+            isPrimary: false,
+          },
+        ],
+        verify: (candidate: string) => {
+          verified.push(candidate);
+          return true;
+        },
+        log: silent,
+      }),
+    ).toBeNull();
+    expect(verified).toEqual([]);
+  });
+
+  test('prunes a stale gate baseline with a nine-character name', () => {
+    const f = fixture();
+    const nine = f.addDetached(
+      join(f.lanes, `${TRANSFER_BASELINE_PREFIX}${f.old1.slice(0, 9)}`),
+      f.old1,
+    );
+    const outcome = pruneStaleTransferBaselines({
+      repoRoot: f.primary,
+      keepShas: [f.tip],
+      env: {},
+      log: silent,
+    });
+    expect(outcome.pruned).toEqual([nine]);
+  });
+
   test('skips a baseline at the exact SHA whose verification fails', () => {
     const f = fixture();
     const broken = f.addDetached(f.baselinePath(f.old2), f.old2);
