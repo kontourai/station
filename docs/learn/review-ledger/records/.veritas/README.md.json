@@ -12,7 +12,7 @@
   "document": {"digest":"f7ccb945343f28964f21df514e0005e861b1bdd122e7808cbe06277818a2180c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
   "sources": [
-    {"path":".agents/skills/documentation-audit/SKILL.md","digest":"53363ee46d5bf890d5db3a35d666ab1add2408189429adf706c979c25e949984","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":".codex/hooks.json","digest":"0b4b8164d668905f799f658696343d1b34bf7570a81a336165eab50770443bb8","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -36,15 +36,15 @@
 
     {"path":".veritas/repo-standards/default.repo-standards.json","digest":"739aaf6a2569ae5a389ed61660a19b5cde3ebd78c4566a69b7bb04ff9f1ace46","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"docs/guides/documentation.md","digest":"7327620f8699ed9e680682d66b7f5f336aa58d01305b38a541aa757c52c31d7c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"docs/guides/documentation.md","digest":"64cf356730ba368242e47509fa200c493e057bbee62e5fa01c93e7f658666eef","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"docs/plans/documentation-code-audit.md","digest":"f4791f8fdcabb11311f6c6063fdc35b1a992d7ce0bd07fdbb095afb9f9eec549","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"docs/plans/documentation-code-audit.md","digest":"6fa130fb00cc3544f3d80499c120ebf50b3700beb3186e71f9da2b470653a6b8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":"package.json","digest":"129c5da55502156a2516fd597b417e364b54b2ef84bda54e39bda40d303cc332","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
     {"path":"scripts/__tests__/ci-fast-checks-job-graph.test.ts","digest":"6dd1caae1b87f19ed95a7275cd4b175c1f717e8c12e366c491dceeefea078750","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"60acf60d8f89b2112fa938c3ddeaedecdc60ddee959c73ba0c2eb65362bfb1bd","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/__tests__/docs-index-reachability.test.ts","digest":"6cb7bc6da9989659b0332ff0da2815b3ecc2afd34403a894704d6434270cdbf5","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":"scripts/__tests__/run-ci-fast.test.ts","digest":"2f28943e864a5eea369b11fba6e2cd5741bd7cc8979a3f20034679e0421b339d","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -60,7 +60,7 @@
 
     {"path":"scripts/lib/dependency-lifecycle-policy.mjs","digest":"3221df34cc1ffaa99b9dedfcff8e2b1dce41baa44170464d2b8d3e88cd2894f4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/documentation-review.mjs","digest":"1148b6eac4e446bcbbf4db474a7aeaacc4f95341e7a374abef6e23351e083b60","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/lib/documentation-review.mjs","digest":"643d1a3b0b0d3b86b6fb81313474abf047835dbe9ef6210de10143f6ddcbe3f2","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":"scripts/lib/fast-checks-shards.mjs","digest":"bf2ae7c3888d17e789aeb7a5f3acda22b53540fa85ce98b5fe517ea5ede6c590","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -92,7 +92,7 @@
 
     {"path":"scripts/__tests__/prepush-typecheck.test.ts","digest":"c0744d3ac567cc2dd3daaf6536c76661653716650ff1875caa4b6e9150039650","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/documentation-freshness.mjs","digest":"b4fb7f73cf1556833f499f1d56ac16c16a9fd5b3f17ddff4eb3a6987b99a4541","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/lib/documentation-freshness.mjs","digest":"8f2dbfdc57633e8df8a5e120c0b5191bc3c1c575295df94efe6fa926b3e3e750","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":"scripts/run-repo-scan-suites.mjs","digest":"06c1be69f439b1676b78bfe673c310f5abaf3c4a29ddfd25160ae5a36f684584","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"}
   ],

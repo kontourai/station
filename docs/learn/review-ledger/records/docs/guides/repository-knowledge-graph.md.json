@@ -16,7 +16,7 @@
 
     {"path":"examples/repository-knowledge-graph/README.md","digest":"803feff52df735990c76c1c4904bd37da46d379f7e8083e6e361220fb957ecec","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 
-    {"path":"examples/repository-knowledge-graph/graph.mjs","digest":"bb9444880f7ba2791513a74be488246ab8ab426fd4cf05efc2a6ebb45156f2da","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    {"path":"examples/repository-knowledge-graph/graph.mjs","digest":"076d489b9f01f4cdfa10abf675d1a0fdeff9e3ca78dd0db5bc9ed7b4eb5d2a29","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":"examples/repository-knowledge-graph/ingest.mjs","digest":"ecc5cf0ae31dc269b62525c2e6a99bbc996c1329c634ec77c94ca1823a2966a9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
 

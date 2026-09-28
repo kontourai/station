@@ -9,24 +9,24 @@
 
   "limits": "Local contributor reader. No public Pages deployment, remote physical device, or semantic certification follows from a structural check. Media playback has a separate browser check.",
 
-  "document": {"digest":"6957212df287b51011420a3f6f46a696a701c5e48fd92e277f82800ff6cc21ac","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+  "document": {"digest":"0ac8f8ac857022280619dd19947686c17b2bda0f1d6a954b1591b0c65fe81404","revision":"e6db304484770666a5dad430b4beae94cdefe69a"},
 
   "sources": [
-    {"path":"docs/learn/atlas.js","digest":"318e167fcc85a847a2dad8b892b994a3ae0eb53c31dd9ee5976a1016939f72a4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"docs/learn/atlas.js","digest":"a050cf7067ab97095128c2942733fa875009047a4c58932faa8517686a5d75e4","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":"docs/learn/atlas.json","digest":"ed4395353d103a11f3de0d430e28fb4ab8c1447626284d3fb1633023ea86b966","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/__tests__/learning-atlas.browser.test.ts","digest":"fc5fde7dcd68bccfa3cff2069f2efca59acfa73040214ec7a22d78188cdbff5b","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/__tests__/learning-atlas.browser.test.ts","digest":"a66a69ef5f1f7db3856983105ba94ab0eda9d6f7c50c073915c64a2fc1678bcf","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"scripts/build-learning-guide.mjs","digest":"5da4931fce067b604b21105bea23b1fc42bedcaeffe2882b7cd47957f8cbf41a","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/build-learning-guide.mjs","digest":"2d366cd9819a3be6b2ddb606082b8a16e2cf98fbd79ab9b2ce50781c65a764d3","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"scripts/documentation-impact.mjs","digest":"7e4cf6479f976a259d7668505bc01e2ab71a70ee63bbd811be08f98b3212d0cd","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/documentation-impact.mjs","digest":"f8218bca453de33a09854f6770cb2f5387d8d50f4e5a826afee8533138a79be1","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":"scripts/lib/documentation-model.mjs","digest":"cbfd7235be50696a0289524232c6d2b1de5de03bff71f8e6edef38f6adcaf6b4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/learning-markdown.mjs","digest":"54596876f64af86ad16700e40353725dad5f2f9461b064765278ac65862e87ba","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/lib/learning-markdown.mjs","digest":"fbc83e6e0c25264ba1c6f0ea557144ff805e381ded7b7b4663ebc4fa9ebf5b5e","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"scripts/lib/learning-media.mjs","digest":"23eb70fa68fcc2c5c1d28410c640392c03b29f8ef1ebaf71c0bc579ca1aa1a27","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/lib/learning-media.mjs","digest":"7aebedbd360cb82a7fce491c206a833dc4c9217a7de63aa709a595b61dc76dc6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":"src-server/tools/station-docs-server.ts","digest":"c76912b19734775f650634f5b97639c60168fe9995b61f927c0e35a62b3fb1ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
@@ -36,9 +36,11 @@
 
     {"path":"docs/learn/diagrams.js","digest":"dd72f02140d05078f0423312e01ea8fd8bd8d1b66c125f94d275f3f323642c24","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/documentation-freshness.mjs","digest":"b4fb7f73cf1556833f499f1d56ac16c16a9fd5b3f17ddff4eb3a6987b99a4541","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/lib/documentation-freshness.mjs","digest":"8f2dbfdc57633e8df8a5e120c0b5191bc3c1c575295df94efe6fa926b3e3e750","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"scripts/record-documentation-review.mjs","digest":"0d23eedab64fe0d697d30be4a20613ac905ddefdbb518867ba1fcfb59bf22ead","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"}
+    {"path":"scripts/record-documentation-review.mjs","digest":"9f7a17cf6706ad85f6bda94208cc025f50f99ac80c4098cab1dbb0f7eda9dbe4","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+
+    {"path":"scripts/lib/review-ledger-store.mjs","digest":"48ae1c386adcb95950a21527f16c057bcbf5d4e7d9d4d4e9e75500f9118fa6bb","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"}
   ],
 
   "checks": [

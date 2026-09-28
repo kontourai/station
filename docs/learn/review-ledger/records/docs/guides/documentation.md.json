@@ -9,7 +9,7 @@
 
   "limits": "Normative contributor guidance; this classification does not establish that every document or future feature has followed it.",
 
-  "document": {"digest":"7327620f8699ed9e680682d66b7f5f336aa58d01305b38a541aa757c52c31d7c","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+  "document": {"digest":"64cf356730ba368242e47509fa200c493e057bbee62e5fa01c93e7f658666eef","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
   "sources": [
     {"path":".veritas/repo-map.json","digest":"fcabfcd9d0ad7a59d2ef216c943591575656f039e1d9df2d05565b96347ebca4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
@@ -18,17 +18,19 @@
 
     {"path":".veritas/attestations/HEAD","digest":"509a9ed1d454af138d096f874c8fe21ce9e76cb34982654b06a62778d622bb41","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/documentation-freshness.mjs","digest":"b4fb7f73cf1556833f499f1d56ac16c16a9fd5b3f17ddff4eb3a6987b99a4541","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/lib/documentation-freshness.mjs","digest":"8f2dbfdc57633e8df8a5e120c0b5191bc3c1c575295df94efe6fa926b3e3e750","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":"scripts/check-documentation-freshness.mjs","digest":"3643bd457887af2c59144082a9561d69ce782f354d00f3603b9ead2669a6ae90","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/record-documentation-review.mjs","digest":"0d23eedab64fe0d697d30be4a20613ac905ddefdbb518867ba1fcfb59bf22ead","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/record-documentation-review.mjs","digest":"9f7a17cf6706ad85f6bda94208cc025f50f99ac80c4098cab1dbb0f7eda9dbe4","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
-    {"path":"scripts/docs-freshness-sweep.mjs","digest":"d5f3ea0ca672310726bf691fef4906976aa5ad1b1fb8fb2c45e21a6c3f93c5a3","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    {"path":"scripts/docs-freshness-sweep.mjs","digest":"b081d84f26484adc6afe330b37976a38e6ed9312c2ed5c394e701a212934c8e8","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":".github/workflows/docs-freshness-sweep.yml","digest":"fbcd659bb24451546b1f61500f3b0b0f26b497216e99f98244b1750a6d769ec4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/run-repo-scan-suites.mjs","digest":"06c1be69f439b1676b78bfe673c310f5abaf3c4a29ddfd25160ae5a36f684584","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"}
+    {"path":"scripts/run-repo-scan-suites.mjs","digest":"06c1be69f439b1676b78bfe673c310f5abaf3c4a29ddfd25160ae5a36f684584","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+
+    {"path":"scripts/lib/review-ledger-store.mjs","digest":"48ae1c386adcb95950a21527f16c057bcbf5d4e7d9d4d4e9e75500f9118fa6bb","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"}
   ],
 
   "checks": [

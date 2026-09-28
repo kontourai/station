@@ -22,7 +22,7 @@
 
     {"path":"docs/guides/deployment.md","digest":"1edc373a6f45ca03a1f4e989e59cabe26d36afe4b5b06ccf9717f8b715bf99f2","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"docs/guides/documentation.md","digest":"7327620f8699ed9e680682d66b7f5f336aa58d01305b38a541aa757c52c31d7c","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"docs/guides/documentation.md","digest":"64cf356730ba368242e47509fa200c493e057bbee62e5fa01c93e7f658666eef","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":"docs/guides/keyboard-shortcuts.md","digest":"ea0091f679507ccc61de0724d1fa57af4ca2eea954ee7502d5f1033b64d3f131","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
@@ -30,9 +30,9 @@
 
     {"path":"docs/guides/web-push-notifications.md","digest":"1ad4a7e9ded295937ec60443cc7a3ced1414bd92fcb17aab3aa382fdfd53e5a0","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 
-    {"path":"docs/learn/README.md","digest":"6957212df287b51011420a3f6f46a696a701c5e48fd92e277f82800ff6cc21ac","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"docs/learn/README.md","digest":"0ac8f8ac857022280619dd19947686c17b2bda0f1d6a954b1591b0c65fe81404","revision":"e6db304484770666a5dad430b4beae94cdefe69a"},
 
-    {"path":"docs/learn/walkthroughs.md","digest":"e29a1f97f614569997563aa36f83ad25a2b29d5addc009b80132cee73ea8a933","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
+    {"path":"docs/learn/walkthroughs.md","digest":"94daff3015921df5abceff554d015a2565ec5aa57c178ac5e4178d34539ad310","revision":"e6db304484770666a5dad430b4beae94cdefe69a"},
 
     {"path":"docs/reference/cli.md","digest":"1139fa545efe248e8f202436aed935a30763cfcc0c866cf0471aa66416224eca","revision":"892e14891bb23e9aeeee3af94ca3f4784da31536"},
 

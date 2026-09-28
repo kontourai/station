@@ -16,7 +16,7 @@
 
     {"path":"scripts/generate-metric-reference.mjs","digest":"75fb40e614bee3d8f64de9bcdb1ee3dee333f2aca482cfcdd243c657bdb0aff4","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
 
-    {"path":"scripts/lib/learning-markdown.mjs","digest":"54596876f64af86ad16700e40353725dad5f2f9461b064765278ac65862e87ba","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+    {"path":"scripts/lib/learning-markdown.mjs","digest":"fbc83e6e0c25264ba1c6f0ea557144ff805e381ded7b7b4663ebc4fa9ebf5b5e","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
 
     {"path":"scripts/lib/learning-source-reader.mjs","digest":"3ed56b00565eb004ecd245ec7b21a3e7969378278332c05b6c9960106a6a036a","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
 

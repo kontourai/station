@@ -9,14 +9,14 @@
 
   "limits": "Machine validation establishes entry shape and exact projection, not publication outcomes, complete release history, current artifact availability or platform behavior. Prior review hashes remain historical when generated data changes.",
 
-  "document": {"digest":"03d269422876c81717e4e4d616506ffffbac0c99426a5b260692fce34ff20472","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+  "document": {"digest":"c8521379c6b73457d99c426a8aaf158b564070fde2bd7243322845da8d69915f","revision":"062fad816dcc1c2097eeea94216aba5783ab5e14"},
 
   "sources": [
-    {"path":"docs/reference/deploy-ledger.json","digest":"f6e7e6f4b6d7f3d7b41f93d2a5e843358ddf691e3659a88e9a3447983e75d027","revision":"18002c0871ea8538605e922464aab5356c77593c"},
+    {"path":"docs/reference/deploy-ledger.json","digest":"2a4d94b117a6a8a2dd0a5b18f8b645f1c8ad6393a2f9b91bdcddb7e404d24bb4","revision":"062fad816dcc1c2097eeea94216aba5783ab5e14"},
 
     {"path":"scripts/deploy-ledger.mjs","digest":"20a24b252e2de00f69435afffb7af55f74e8fe3b8b31e91c5a0ef8cc7cfd6522","revision":"18002c0871ea8538605e922464aab5356c77593c"},
 
-    {"path":"scripts/lib/documentation-review.mjs","digest":"1148b6eac4e446bcbbf4db474a7aeaacc4f95341e7a374abef6e23351e083b60","revision":"18002c0871ea8538605e922464aab5356c77593c"}
+    {"path":"scripts/lib/documentation-review.mjs","digest":"643d1a3b0b0d3b86b6fb81313474abf047835dbe9ef6210de10143f6ddcbe3f2","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"}
   ],
 
   "checks": [
