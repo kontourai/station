@@ -12,13 +12,15 @@ export function captureInputs(capture) {
  * @param {any} manifest
  * @param {Set<string>} tracked
  * @param {(path: string) => Promise<Buffer | Uint8Array | string> | Buffer | Uint8Array | string} read
- * @param {{ requireFresh?: boolean | ((entry: { path: string, inputs: string[] }) => boolean) }} [options]
+ * @param {{ requireFresh?: boolean | ((entry: { path: string, inputs: string[] }) => boolean), reportMissing?: boolean }} [options]
+ * `reportMissing` reports an untracked recorded source as changed instead of
+ * refusing the manifest, so the freshness policy decides it.
  */
 export async function compileLearningMedia(
   manifest,
   tracked,
   read,
-  { requireFresh = false } = {},
+  { requireFresh = false, reportMissing = false } = {},
 ) {
   if (manifest?.version !== 1 || !Array.isArray(manifest.captures))
     throw new Error('Learning media requires version 1 captures.');
@@ -63,13 +65,14 @@ export async function compileLearningMedia(
     for (const source of capture.sources) {
       if (
         !isLearningSourcePath(source.path) ||
-        !tracked.has(source.path) ||
+        (!reportMissing && !tracked.has(source.path)) ||
         seen.has(source.path) ||
         !/^[a-f0-9]{64}$/.test(source.digest)
       )
         throw new Error(`Invalid capture source: ${path}`);
       seen.add(source.path);
-      if (
+      if (!tracked.has(source.path)) changed.push(source.path);
+      else if (
         createHash('sha256')
           .update(await read(source.path))
           .digest('hex') !== source.digest

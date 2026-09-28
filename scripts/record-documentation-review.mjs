@@ -63,7 +63,9 @@ export function parseRecordArguments(argv) {
     const arg = argv[index];
     const value = () => {
       const next = argv[++index];
-      if (next === undefined) throw new Error(`${arg} requires a value`);
+      // An option-shaped value is a forgotten argument, not a note or path.
+      if (next === undefined || next.startsWith('--'))
+        throw new Error(`${arg} requires a value`);
       return next;
     };
     if (arg === '--batch') batch = value();
@@ -224,15 +226,17 @@ async function assertRecordedFresh(recorded, media, snapshot) {
 
 /**
  * Records that remain stale on inputs this batch touched, such as a page that
- * cites a document whose bytes this review accepted.
+ * cites a document whose bytes this review accepted, or a page that cites a
+ * manifest this command just rewrote (docs/learn/media.json).
  */
-async function staleDependents(recorded, ledger, snapshot) {
-  const touched = new Set(
-    recorded.flatMap(({ entry }) => [
+async function staleDependents(recorded, ledger, snapshot, written) {
+  const touched = new Set([
+    ...written,
+    ...recorded.flatMap(({ entry }) => [
       entry.path,
       ...entry.sources.map((source) => source.path),
     ]),
-  );
+  ]);
   const documents = new Map();
   for (const record of ledger.records)
     if (snapshot.tracked.has(record.path))
@@ -273,8 +277,21 @@ export async function recordDocumentationReviews({
     : undefined;
   const media = mediaText ? JSON.parse(mediaText) : undefined;
 
+  // Captures first: a review may cite media.json, so its digest must be taken
+  // over the manifest bytes this command is about to write.
+  const isCapture = (entry) =>
+    Boolean(media?.captures?.some((item) => item.path === entry.path));
   const recorded = [];
-  for (const entry of entries)
+  for (const entry of entries.filter(isCapture))
+    recorded.push(
+      await refreshEntry(entry, { ledger, media, snapshot, revision }),
+    );
+  if (media && recorded.length)
+    snapshot.replace(
+      LEARNING_MEDIA_MANIFEST,
+      Buffer.from(serializeLearningMedia(media)),
+    );
+  for (const entry of entries.filter((entry) => !isCapture(entry)))
     recorded.push(
       await refreshEntry(entry, { ledger, media, snapshot, revision }),
     );
@@ -286,12 +303,16 @@ export async function recordDocumentationReviews({
       ? [[LEARNING_MEDIA_MANIFEST, mediaText, serializeLearningMedia(media)]]
       : []),
   ];
+  const written = [];
   for (const [file, before, after] of writes)
-    if (before !== after) writeFileSync(path.join(root, file), after);
+    if (before !== after) {
+      writeFileSync(path.join(root, file), after);
+      written.push(file);
+    }
   return {
     revision,
     recorded: recorded.map(({ kind, entry }) => ({ kind, path: entry.path })),
-    dependents: await staleDependents(recorded, ledger, snapshot),
+    dependents: await staleDependents(recorded, ledger, snapshot, written),
   };
 }
 

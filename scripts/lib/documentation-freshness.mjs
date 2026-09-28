@@ -195,7 +195,9 @@ export function createRepositorySnapshot(root) {
     if (!captured.has(file)) captured.set(file, reader.read(file));
     return captured.get(file);
   };
-  return { tracked, read };
+  /** Replace a path's bytes after the caller rewrote it (the record command). */
+  const replace = (file, bytes) => captured.set(file, bytes);
+  return { tracked, read, replace };
 }
 
 /**
@@ -225,14 +227,18 @@ export async function checkDocumentationFreshness({
           .update(await read(file))
           .digest('hex'),
       );
+  // A document or source that is no longer tracked is a stale input, not a
+  // malformed ledger: the policy decides, so the queue never fails on a file
+  // another PR removed, while a PR's own deletion is in its scope.
   const reviews = await compileDocumentationReviews(
     ledger,
     documents,
     tracked,
     read,
+    { reportMissing: true },
   );
   const captures = media
-    ? await compileLearningMedia(media, tracked, read)
+    ? await compileLearningMedia(media, tracked, read, { reportMissing: true })
     : new Map();
   const stale = [
     ...[...reviews.values()]

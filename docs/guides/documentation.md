@@ -103,21 +103,26 @@ Staleness is caught once, in the pull request that caused it. One decision in
 [`documentation-freshness.mjs`](../../scripts/lib/documentation-freshness.mjs)
 serves every consumer: the ledger test in `docs:truth:gate` (and so Veritas
 readiness, pre-push and `ci:fast`), `docs:learn:check`, the capture check and
-`npm run docs:freshness:check`. It has three modes:
+`npm run docs:freshness:check`. The mode follows where the check runs, not
+which command runs it: `ci:fast` is scoped on a pull request and advisory in
+the merge queue.
 
-- **Scoped** (local runs, pre-push, `ci:fast` and pull request checks): a stale
-  review or capture blocks when this change's own diff against its merge base
-  with `origin/main` touches its document, capture or a recorded source, or
-  edits its ledger or `media.json` entry. Other stale entries are printed as
-  advisory. The base is `STATION_DOCS_FRESHNESS_BASE`, then
-  `STATION_CI_FAST_BASE` (the PR check sets it to the pull request base), then
-  `origin/main`. If the scope cannot be computed, every stale entry blocks.
-- **Advisory** (merge queue, pushes to `main`, Nightly and other non-PR
-  workflow events): stale entries are reported and never fail. A queue
-  candidate contains other pull requests' changes, and each pull request already
-  passed the scoped check on its own head, so another PR's change cannot dequeue
-  yours. The repository-scan job also reports rather than judges: its one-commit
-  checkout cannot compute a pull request's scope.
+- **Scoped** (outside GitHub Actions, such as local runs and pre-push, and in
+  `pull_request` or `pull_request_target` workflows): a stale review or capture
+  blocks when this change's own diff against its merge base touches its
+  document, capture or a recorded source, including deleting it, or edits its
+  ledger or `media.json` entry. Other stale entries are printed as advisory.
+  The base is `STATION_DOCS_FRESHNESS_BASE`, then `STATION_CI_FAST_BASE` (the
+  PR check sets it to the pull request base), then `origin/main`. If the scope
+  cannot be computed, every stale entry blocks. The non-required fork-smoke job
+  can hit that fallback when its checkout lacks the upstream base commit.
+- **Advisory** (every other GitHub Actions event: the merge queue, pushes to
+  `main`, Nightly and manual runs): stale entries, including records whose
+  document or source another change removed, are reported and never fail. A
+  queue candidate contains other pull requests' changes, and each pull request
+  already passed the scoped check on its own head, so another PR's change
+  cannot dequeue yours. The repository-scan job also reports rather than
+  judges: its one-commit checkout cannot compute a pull request's scope.
 - **Strict**: every stale entry blocks. Set `STATION_DOCS_FRESHNESS=strict` to
   audit the whole ledger locally.
 

@@ -99,16 +99,16 @@ export function upsertFreshnessIssue({ repo, reportPath, gh = runGh }) {
     'api',
     '--method',
     'GET',
-    '--paginate',
-    `repos/${repo}/issues`,
+    // Found by its stable title, not a label, so relabelling the issue
+    // cannot make the next sweep open a duplicate. Search matches words;
+    // the exact title is checked in the filter.
+    'search/issues',
     '-f',
-    'state=all',
-    '-f',
-    `labels=${SWEEP_ISSUE_LABELS[0]}`,
+    `q=repo:${repo} is:issue in:title "${SWEEP_ISSUE_TITLE}"`,
     '-f',
     'per_page=100',
     '--jq',
-    `.[] | select(.pull_request == null and .title == ${JSON.stringify(SWEEP_ISSUE_TITLE)}) | .number`,
+    `.items[] | select(.pull_request == null and .title == ${JSON.stringify(SWEEP_ISSUE_TITLE)}) | .number`,
   ])
     .split('\n')
     .filter(Boolean)

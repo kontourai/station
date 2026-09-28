@@ -116,7 +116,10 @@ export async function buildLearningGuide({
         ),
         sourceFiles,
         captureSource,
-        { requireFresh: policy && freshnessRequirement(policy, 'capture') },
+        {
+          requireFresh: policy && freshnessRequirement(policy, 'capture'),
+          reportMissing: Boolean(policy),
+        },
       )
     : new Map();
   const catalog = JSON.parse(
@@ -186,7 +189,10 @@ export async function buildLearningGuide({
     new Map(documents.map((doc) => [doc.path, doc.digest])),
     sourceFiles,
     captureSource,
-    { requireFresh: policy && freshnessRequirement(policy, 'review') },
+    {
+      requireFresh: policy && freshnessRequirement(policy, 'review'),
+      reportMissing: Boolean(policy),
+    },
   );
   if (policy) {
     const advisory = formatFreshnessAdvisory(
@@ -226,11 +232,17 @@ export async function buildLearningGuide({
       ...(sourceFiles.has(LEARNING_MEDIA_MANIFEST)
         ? [LEARNING_MEDIA_MANIFEST]
         : []),
+      // A check reports untracked recorded sources as stale; they have no
+      // bytes to snapshot.
       ...[...media.values()].flatMap((capture) =>
-        capture.sources.map((source) => source.path),
+        capture.sources
+          .map((source) => source.path)
+          .filter((file) => sourceFiles.has(file)),
       ),
       ...[...reviews.values()].flatMap((review) =>
-        review.sources.map((source) => source.path),
+        review.sources
+          .map((source) => source.path)
+          .filter((file) => sourceFiles.has(file)),
       ),
       ...[...documents, ...renderedModules].flatMap((doc) =>
         [...doc.html.matchAll(/href="sources\/([^"#]+)\.txt"/g)].map((match) =>

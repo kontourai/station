@@ -91,12 +91,39 @@ function fixture({ commitIt = true } = {}) {
     'docs/a.md': '# A\n',
     'docs/b.md': '# B\n',
     'docs/c.md': '# C cites A\n',
+    'docs/d.md': '# D cites the capture manifest\n',
     'src/a.ts': 'export const a = 1;\n',
     'src/b.ts': 'export const b = 1;\n',
     'src/ui.ts': 'export const ui = 1;\n',
   };
   for (const [path, text] of Object.entries(files)) write(path, text);
   write('docs/learn/media/task.png', image);
+  const mediaText = `${JSON.stringify(
+    {
+      version: 1,
+      captures: [
+        {
+          path: 'docs/learn/media/task.png',
+          kind: 'image',
+          digest: hash(image),
+          alt: 'A task',
+          caption: 'A task.',
+          scenario: 'Task → detail',
+          evidence: 'Fixture capture.',
+          capturedRevision: 'a'.repeat(40),
+          reviewedRevision: 'a'.repeat(40),
+          documents: ['docs/a.md'],
+          sources: [{ path: 'src/ui.ts', digest: hash(files['src/ui.ts']) }],
+        },
+      ],
+    },
+    null,
+    2,
+  ).replace(
+    /[\u007f-\uffff]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  )}\n`;
+  write(MEDIA, mediaText);
   write(
     LEDGER,
     `${JSON.stringify(
@@ -118,38 +145,12 @@ function fixture({ commitIt = true } = {}) {
             [['docs/a.md', files['docs/a.md']]],
             files['docs/c.md'],
           ),
+          // A page that cites the capture manifest itself.
+          record('docs/d.md', [[MEDIA, mediaText]], files['docs/d.md']),
         ],
       },
       null,
       2,
-    )}\n`,
-  );
-  write(
-    MEDIA,
-    `${JSON.stringify(
-      {
-        version: 1,
-        captures: [
-          {
-            path: 'docs/learn/media/task.png',
-            kind: 'image',
-            digest: hash(image),
-            alt: 'A task',
-            caption: 'A task.',
-            scenario: 'Task → detail',
-            evidence: 'Fixture capture.',
-            capturedRevision: 'a'.repeat(40),
-            reviewedRevision: 'a'.repeat(40),
-            documents: ['docs/a.md'],
-            sources: [{ path: 'src/ui.ts', digest: hash(files['src/ui.ts']) }],
-          },
-        ],
-      },
-      null,
-      2,
-    ).replace(
-      /[\u007f-\uffff]/g,
-      (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
     )}\n`,
   );
   git(root, ['init', '-q', '-b', 'main']);
@@ -267,6 +268,66 @@ describe('scoped documentation freshness (#2923)', () => {
     }
   });
 
+  it('never fails the queue when one PR removes a source another PR starts citing', () => {
+    const f = fixture();
+    const main = git(f.root, ['rev-parse', 'HEAD']);
+    // PR G deletes src/a.ts and drops it from A's review.
+    git(f.root, ['switch', '-qc', 'g']);
+    f.write('src/g.ts', 'export const g = 1;\n');
+    git(f.root, ['rm', '-q', 'src/a.ts']);
+    commit(f.root, 'g replaces src/a.ts');
+    expect(
+      record_(f.root, [
+        'docs/a.md',
+        '--note',
+        'A now reads src/g.ts.',
+        '--drop-source',
+        'src/a.ts',
+        '--add-source',
+        'src/g.ts',
+      ]).status,
+    ).toBe(0);
+    commit(f.root, 'g records A');
+    expect(check(f.root, scoped).status).toBe(0);
+    // PR H makes B cite src/a.ts, which still exists on its base.
+    git(f.root, ['switch', '-qc', 'h', main]);
+    expect(
+      record_(f.root, [
+        'docs/b.md',
+        '--note',
+        'B also reads src/a.ts.',
+        '--add-source',
+        'src/a.ts',
+      ]).status,
+    ).toBe(0);
+    commit(f.root, 'h records B');
+    expect(check(f.root, scoped).status).toBe(0);
+    // The queue candidate combines both: B cites a file that no longer exists.
+    git(f.root, ['switch', '-qc', 'candidate', 'g']);
+    git(f.root, [
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'merge',
+      '-q',
+      '--no-edit',
+      'h',
+    ]);
+    const queued = check(f.root, queue);
+    expect(queued.stderr).toContain('review docs/b.md; changed: src/a.ts');
+    expect(queued.stderr).not.toContain('Invalid review source');
+    expect(queued.status).toBe(0);
+    // Strict still refuses it, and so does a PR whose own diff causes it.
+    expect(check(f.root, { STATION_DOCS_FRESHNESS: 'strict' }).status).toBe(1);
+    git(f.root, ['switch', '-qc', 'own-delete', 'h']);
+    git(f.root, ['rm', '-q', 'src/a.ts']);
+    commit(f.root, 'delete a cited source without re-review');
+    const own = check(f.root, { STATION_DOCS_FRESHNESS_BASE: 'h' });
+    expect(own.status).toBe(1);
+    expect(own.stderr).toContain('review docs/b.md; changed: src/a.ts');
+  });
+
   it('treats a hand-edited record as in scope even when its bytes are untouched', () => {
     const f = fixture();
     git(f.root, ['switch', '-qc', 'edit-record']);
@@ -309,6 +370,19 @@ describe('scoped documentation freshness (#2923)', () => {
       'The change does not alter the captured pixels.',
     ]);
     expect(recorded.status).toBe(0);
+    // The command rewrote media.json, so the page citing it is a dependent.
+    expect(recorded.stdout).toContain(
+      'docs/d.md; changed: docs/learn/media.json',
+    );
+    const dependent = check(f.root, scoped);
+    expect(dependent.status).toBe(1);
+    expect(dependent.stderr).toContain(
+      'review docs/d.md; changed: docs/learn/media.json',
+    );
+    expect(
+      record_(f.root, ['docs/d.md', '--note', 'Manifest delta reviewed.'])
+        .status,
+    ).toBe(0);
     expect(check(f.root, scoped).status).toBe(0);
     const capture = JSON.parse(f.read(MEDIA)).captures[0];
     expect(capture.reviewedRevision).toBe(git(f.root, ['rev-parse', 'HEAD']));
@@ -319,6 +393,25 @@ describe('scoped documentation freshness (#2923)', () => {
     // Only the refreshed lines change; the escaped arrow stays escaped.
     expect(f.read(MEDIA)).toContain('Task \\u2192 detail');
     expect(before).toContain('Task \\u2192 detail');
+  });
+
+  it('digests a review citing media.json over the manifest bytes the same batch writes', () => {
+    const f = fixture();
+    git(f.root, ['switch', '-qc', 'ui']);
+    f.write('src/ui.ts', 'export const ui = 2;\n');
+    commit(f.root, 'change captured UI');
+    const batch = join(f.root, 'batch.json');
+    writeFileSync(
+      batch,
+      JSON.stringify([
+        { path: 'docs/d.md', note: 'Manifest delta reviewed.' },
+        { path: 'docs/learn/media/task.png', note: 'Pixels unchanged.' },
+      ]),
+    );
+    const result = record_(f.root, ['--batch', batch]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain('Still stale');
+    expect(check(f.root, { STATION_DOCS_FRESHNESS: 'strict' }).status).toBe(0);
   });
 
   it('decides blocking from one function for every mode', () => {
@@ -429,6 +522,11 @@ describe('docs:review:record (#2924)', () => {
         ],
         'Recorded source is not tracked: docs/a.md -> src/untracked.ts',
       ],
+      [['docs/a.md', '--note', '--drop-source'], '--note requires a value'],
+      [
+        ['docs/a.md', '--note', 'Reviewed.', '--drop-source', '--note'],
+        '--drop-source requires a value',
+      ],
     ] as const) {
       const refused = record_(f.root, [...args]);
       expect(refused.status, args.join(' ')).toBe(1);
@@ -533,6 +631,16 @@ describe('Nightly freshness sweep (#2923)', () => {
     expect(
       upsertFreshnessIssue({ repo: 'owner/repo', reportPath, gh: gh('') }),
     ).toEqual({ action: 'created', number: 7 });
+    // Looked up by its stable title, so a removed label cannot fork it.
+    const lookup = calls[0];
+    expect(lookup).toContain('search/issues');
+    expect(lookup).toContain(
+      `q=repo:owner/repo is:issue in:title "${SWEEP_ISSUE_TITLE}"`,
+    );
+    expect(lookup.join(' ')).not.toContain('labels=');
+    expect(lookup.join(' ')).toContain(
+      `.title == ${JSON.stringify(SWEEP_ISSUE_TITLE)}`,
+    );
     expect(calls.at(-1)).toEqual(
       expect.arrayContaining([
         'POST',
@@ -575,6 +683,7 @@ describe('Nightly freshness sweep (#2923)', () => {
     expect(Object.keys(workflow.on)).toEqual(['schedule', 'workflow_dispatch']);
     expect(workflow.permissions).toEqual({ contents: 'read' });
     expect(Object.keys(workflow.jobs)).toEqual(['sweep']);
+    expect(workflow.jobs.sweep.if).toBeUndefined();
     expect(workflow.jobs.sweep.permissions).toEqual({
       contents: 'read',
       issues: 'write',
