@@ -8,6 +8,7 @@ import {
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
+import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import type { DeploymentAuthenticationService } from '../services/identity/deployment-authentication-service.js';
 
 export type RuntimePeerClass = 'loopback' | 'remote' | 'absent';
@@ -101,9 +102,8 @@ export function setRuntimeAuthenticatedRequestPrincipal(
   request: Request,
   principal: RuntimeAuthenticatedRequestPrincipal,
 ): void {
-  // Mutual exclusion on one Request: binding a credential principal
-  // withdraws any native-device-proof principal (see #2893 seam).
-  nativeDeviceProofPrincipals.delete(request);
+  if (nativeDeviceProofPrincipals.has(request))
+    throw new Error('runtime_request_authority_conflict');
   authenticatedRequestPrincipals.set(request, Object.freeze({ ...principal }));
 }
 export function getRuntimeAuthenticatedRequestPrincipal(
@@ -128,7 +128,7 @@ export interface RuntimeNativeDeviceProofPrincipal {
   /** Server-resolved exact native binding identity. */
   readonly bindingId: string;
   /** The exact approved native surface this proof authorizes. */
-  readonly approvedSurface: string;
+  readonly approvedSurface: SelfHostedBrokerNativeClientSurfaceV2;
   /**
    * Server-owned current-authority recheck. Callers must treat any `false`
    * (or a throw) as stale and fail closed; the binding is re-proved at the
@@ -146,10 +146,56 @@ export function setRuntimeNativeDeviceProofPrincipal(
   request: Request,
   principal: RuntimeNativeDeviceProofPrincipal,
 ): void {
-  // Mutual exclusion on one Request: binding a native proof withdraws any
-  // credential principal and vice versa — a request never carries both.
-  authenticatedRequestPrincipals.delete(request);
-  nativeDeviceProofPrincipals.set(request, Object.freeze({ ...principal }));
+  if (
+    authenticatedRequestPrincipals.has(request) ||
+    nativeDeviceProofPrincipals.has(request)
+  )
+    throw new Error('runtime_request_authority_conflict');
+  if (
+    !principal ||
+    typeof principal !== 'object' ||
+    Object.keys(principal).sort().join(',') !==
+      'approvedSurface,bindingId,deviceId,isCurrent,kind' ||
+    principal.kind !== 'native-device-proof' ||
+    typeof principal.deviceId !== 'string' ||
+    !principal.deviceId ||
+    typeof principal.bindingId !== 'string' ||
+    !principal.bindingId ||
+    typeof principal.isCurrent !== 'function' ||
+    !validNativePrincipalSurface(principal.approvedSurface)
+  )
+    throw new Error('runtime_native_device_principal_invalid');
+  nativeDeviceProofPrincipals.set(
+    request,
+    Object.freeze({
+      ...principal,
+      approvedSurface: Object.freeze({ ...principal.approvedSurface }),
+    }),
+  );
+}
+
+function validNativePrincipalSurface(
+  value: unknown,
+): value is SelfHostedBrokerNativeClientSurfaceV2 {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const surface = value as Record<string, unknown>;
+  return (
+    Object.keys(surface).sort().join(',') ===
+      'appIdentifier,channel,clientInstanceId,keyThumbprint,kind' &&
+    surface.kind === 'station-native' &&
+    typeof surface.appIdentifier === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/.test(surface.appIdentifier) &&
+    (surface.channel === 'dev' ||
+      surface.channel === 'stable' ||
+      surface.channel === 'beta' ||
+      surface.channel === 'nightly') &&
+    typeof surface.clientInstanceId === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+      surface.clientInstanceId,
+    ) &&
+    typeof surface.keyThumbprint === 'string' &&
+    /^[A-Za-z0-9_-]{43}$/.test(surface.keyThumbprint)
+  );
 }
 
 export function getRuntimeNativeDeviceProofPrincipal(
@@ -173,8 +219,15 @@ export function transferRuntimeNativeDeviceProofPrincipal(
 ): boolean {
   const principal = nativeDeviceProofPrincipals.get(from);
   if (!principal) return false;
+  if (
+    authenticatedRequestPrincipals.has(to) ||
+    nativeDeviceProofPrincipals.has(to) ||
+    from.url !== to.url ||
+    from.method !== to.method ||
+    !isRuntimeNativeDeviceProofCurrent(from)
+  )
+    return false;
   nativeDeviceProofPrincipals.delete(from);
-  authenticatedRequestPrincipals.delete(to);
   nativeDeviceProofPrincipals.set(to, principal);
   return true;
 }

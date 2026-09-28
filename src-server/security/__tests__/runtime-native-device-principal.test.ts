@@ -18,6 +18,14 @@ import {
   transferRuntimeNativeDeviceProofPrincipal,
 } from '../runtime-request-security.js';
 
+const approvedSurface = () => ({
+  kind: 'station-native' as const,
+  appIdentifier: 'io.kontourai.station',
+  channel: 'stable' as const,
+  clientInstanceId: '33333333-3333-4333-8333-333333333333',
+  keyThumbprint: 'a'.repeat(43),
+});
+
 function nativePrincipal(
   overrides: Partial<
     Parameters<typeof setRuntimeNativeDeviceProofPrincipal>[1]
@@ -27,7 +35,7 @@ function nativePrincipal(
     kind: 'native-device-proof',
     deviceId: 'dev-native-1',
     bindingId: 'binding-1',
-    approvedSurface: 'macos-shell',
+    approvedSurface: approvedSurface(),
     isCurrent: () => true,
     ...overrides,
   };
@@ -42,7 +50,7 @@ describe('RuntimeNativeDeviceProofPrincipal', () => {
       kind: 'native-device-proof',
       deviceId: 'dev-native-1',
       bindingId: 'binding-1',
-      approvedSurface: 'macos-shell',
+      approvedSurface: approvedSurface(),
       isCurrent: expect.any(Function),
     });
     expect(Object.isFrozen(principal)).toBe(true);
@@ -52,32 +60,60 @@ describe('RuntimeNativeDeviceProofPrincipal', () => {
     expect('source' in (principal ?? {})).toBe(false);
   });
 
-  it('is mutually exclusive with the credential principal (native first)', () => {
+  it('refuses to replace a native principal with credential authority', () => {
     const request = new Request('http://station.test/api/x');
     setRuntimeNativeDeviceProofPrincipal(request, nativePrincipal());
-    setRuntimeAuthenticatedRequestPrincipal(request, {
-      credential: 'cred-1',
-      authority: 'device-credential',
-      source: 'bearer',
-    });
-    expect(getRuntimeNativeDeviceProofPrincipal(request)).toBeUndefined();
-    expect(getRuntimeAuthenticatedRequestPrincipal(request)?.credential).toBe(
-      'cred-1',
-    );
-  });
-
-  it('is mutually exclusive with the credential principal (credential first)', () => {
-    const request = new Request('http://station.test/api/x');
-    setRuntimeAuthenticatedRequestPrincipal(request, {
-      credential: 'cred-1',
-      authority: 'device-credential',
-      source: 'bearer',
-    });
-    setRuntimeNativeDeviceProofPrincipal(request, nativePrincipal());
-    expect(getRuntimeAuthenticatedRequestPrincipal(request)).toBeUndefined();
+    expect(() =>
+      setRuntimeAuthenticatedRequestPrincipal(request, {
+        credential: 'cred-1',
+        authority: 'device-credential',
+        source: 'bearer',
+      }),
+    ).toThrow();
     expect(getRuntimeNativeDeviceProofPrincipal(request)?.deviceId).toBe(
       'dev-native-1',
     );
+    expect(getRuntimeAuthenticatedRequestPrincipal(request)).toBeUndefined();
+  });
+
+  it('refuses to replace a credential principal with native authority', () => {
+    const request = new Request('http://station.test/api/x');
+    setRuntimeAuthenticatedRequestPrincipal(request, {
+      credential: 'cred-1',
+      authority: 'device-credential',
+      source: 'bearer',
+    });
+    expect(() =>
+      setRuntimeNativeDeviceProofPrincipal(request, nativePrincipal()),
+    ).toThrow();
+    expect(getRuntimeAuthenticatedRequestPrincipal(request)?.credential).toBe(
+      'cred-1',
+    );
+    expect(getRuntimeNativeDeviceProofPrincipal(request)).toBeUndefined();
+  });
+
+  it('copies and freezes the approved surface instead of retaining a mutable caller object', () => {
+    const request = new Request('http://station.test/api/x');
+    const mutable = approvedSurface();
+    setRuntimeNativeDeviceProofPrincipal(
+      request,
+      nativePrincipal({ approvedSurface: mutable }),
+    );
+    (mutable as { keyThumbprint: string }).keyThumbprint = 'b'.repeat(43);
+    const bound = getRuntimeNativeDeviceProofPrincipal(request);
+    expect(bound?.approvedSurface.keyThumbprint).toBe('a'.repeat(43));
+    expect(Object.isFrozen(bound?.approvedSurface)).toBe(true);
+  });
+
+  it('rejects a native principal that smuggles a credential field', () => {
+    const request = new Request('http://station.test/api/x');
+    expect(() =>
+      setRuntimeNativeDeviceProofPrincipal(request, {
+        ...nativePrincipal(),
+        credential: 'forged',
+      } as never),
+    ).toThrow();
+    expect(getRuntimeNativeDeviceProofPrincipal(request)).toBeUndefined();
   });
 
   it('does not let a cloned Request inherit the native principal', () => {
@@ -109,6 +145,50 @@ describe('RuntimeNativeDeviceProofPrincipal', () => {
     const b = new Request('http://station.test/api/x');
     expect(transferRuntimeNativeDeviceProofPrincipal(a, b)).toBe(false);
     expect(getRuntimeNativeDeviceProofPrincipal(b)).toBeUndefined();
+  });
+
+  it('refuses transfer onto a Request already owned by another authority', () => {
+    const from = new Request('http://station.test/api/x');
+    const to = new Request('http://station.test/api/x');
+    setRuntimeNativeDeviceProofPrincipal(from, nativePrincipal());
+    setRuntimeAuthenticatedRequestPrincipal(to, {
+      credential: 'existing',
+      authority: 'device-credential',
+      source: 'bearer',
+    });
+    expect(transferRuntimeNativeDeviceProofPrincipal(from, to)).toBe(false);
+    expect(getRuntimeNativeDeviceProofPrincipal(from)?.bindingId).toBe(
+      'binding-1',
+    );
+    expect(getRuntimeAuthenticatedRequestPrincipal(to)?.credential).toBe(
+      'existing',
+    );
+  });
+
+  it('refuses a cross-route or stale native-principal transfer without consuming the source', () => {
+    const from = new Request('http://station.test/api/project/a');
+    setRuntimeNativeDeviceProofPrincipal(from, nativePrincipal());
+    const wrongRoute = new Request('http://station.test/api/project/b');
+    expect(transferRuntimeNativeDeviceProofPrincipal(from, wrongRoute)).toBe(
+      false,
+    );
+    expect(getRuntimeNativeDeviceProofPrincipal(from)?.bindingId).toBe(
+      'binding-1',
+    );
+    expect(getRuntimeNativeDeviceProofPrincipal(wrongRoute)).toBeUndefined();
+
+    const stale = new Request('http://station.test/api/project/a');
+    setRuntimeNativeDeviceProofPrincipal(
+      stale,
+      nativePrincipal({ isCurrent: () => false }),
+    );
+    const replacement = new Request(stale.url);
+    expect(transferRuntimeNativeDeviceProofPrincipal(stale, replacement)).toBe(
+      false,
+    );
+    expect(getRuntimeNativeDeviceProofPrincipal(stale)?.bindingId).toBe(
+      'binding-1',
+    );
   });
 
   it('fails closed when the isCurrent recheck reports stale', () => {
