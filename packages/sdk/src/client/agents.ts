@@ -5,7 +5,7 @@
  * `station-control-agent-tools.ts`.
  */
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
-import { apiErrorMessage } from './api-error-message';
+import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 
 export interface AgentEnvelope<T> {
@@ -23,16 +23,31 @@ export interface AgentEnvelope<T> {
   catalogAsOf?: string;
 }
 
-/** An Agent route refusal whose stable code is safe for callers to branch on. */
+/**
+ * An Agent route refusal whose stable code is safe for callers to branch on.
+ * Since #2708 it is the envelope helper's `StationHttpError`: the observed
+ * status, `code`, `details` and `Retry-After` survive too.
+ */
 export type AgentResponseError = Error & { readonly code?: string };
 
-function agentResponseError(
-  result: AgentEnvelope<unknown>,
-  fallback: string,
-): AgentResponseError {
-  return Object.assign(new Error(apiErrorMessage(result, fallback)), {
-    code: result.code,
-  });
+/**
+ * The parsed body. A failure whose body is not JSON (a proxy's HTML 502)
+ * keeps its status (#2708); an unreadable 2xx is a protocol failure and
+ * rethrows the parse error.
+ */
+async function readAgentBody(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch (error) {
+    if (!response.ok) {
+      throw envelopeError(
+        response,
+        undefined,
+        `Request failed with HTTP ${response.status}`,
+      );
+    }
+    throw error;
+  }
 }
 
 /**
@@ -74,11 +89,15 @@ export async function fetchAgentCatalog(
   opts?: ClientRequestOptions,
 ): Promise<AgentCatalogProjection> {
   const response = await getJson(`${apiBase}/api/agents`, opts);
-  const result = (await response.json()) as AgentEnvelope<
+  const result = (await readAgentBody(response)) as AgentEnvelope<
     EnrichedAgentProjection[]
   >;
   if (!result.success) {
-    throw new Error(result.error);
+    throw envelopeError(
+      response,
+      result,
+      `Request failed with HTTP ${response.status}`,
+    );
   }
   return toAgentCatalogProjection(result);
 }
@@ -158,19 +177,16 @@ export async function getAgent(
     `${apiBase}/api/agents/${encodeURIComponent(slug)}`,
     opts,
   );
+  const failed = `Request failed with HTTP ${response.status}`;
   let payload: AgentEnvelope<unknown> | null = null;
   try {
     payload = (await response.json()) as AgentEnvelope<unknown>;
   } catch {
-    if (!response.ok) {
-      throw new Error(`Request failed with HTTP ${response.status}`);
-    }
+    if (!response.ok) throw envelopeError(response, undefined, failed);
     throw new Error('Expected JSON response');
   }
   if (!response.ok || !payload.success) {
-    throw new Error(
-      apiErrorMessage(payload, `Request failed with HTTP ${response.status}`),
-    );
+    throw envelopeError(response, payload, failed);
   }
   return payload.data;
 }
@@ -203,11 +219,11 @@ export async function createAgentDetailed(
   opts?: ClientRequestOptions,
 ): Promise<AgentCreateResult> {
   const response = await mutateJson(`${apiBase}/agents`, 'POST', opts, body);
-  const result = (await response.json()) as AgentEnvelope<unknown> & {
+  const result = (await readAgentBody(response)) as AgentEnvelope<unknown> & {
     warnings?: string[];
   };
   if (!result.success) {
-    throw agentResponseError(result, 'Failed to create agent');
+    throw envelopeError(response, result, 'Failed to create agent');
   }
   return {
     data: result.data,
@@ -232,12 +248,12 @@ export async function materializeEngineAgent(
     opts,
     { engineId },
   );
-  const result = (await response.json()) as AgentEnvelope<unknown> & {
+  const result = (await readAgentBody(response)) as AgentEnvelope<unknown> & {
     created?: boolean;
     warnings?: string[];
   };
   if (!result.success) {
-    throw agentResponseError(result, 'Failed to set up engine agent');
+    throw envelopeError(response, result, 'Failed to set up engine agent');
   }
   return {
     data: result.data,
@@ -268,9 +284,9 @@ export async function updateAgentRaw(
     opts,
     body,
   );
-  const result = (await response.json()) as AgentEnvelope<unknown>;
+  const result = (await readAgentBody(response)) as AgentEnvelope<unknown>;
   if (!result.success) {
-    throw agentResponseError(result, 'Failed to update agent');
+    throw envelopeError(response, result, 'Failed to update agent');
   }
   return result.data;
 }
@@ -286,9 +302,9 @@ export async function deleteAgentRaw(
     'DELETE',
     opts,
   );
-  const result = (await response.json()) as AgentEnvelope<unknown>;
+  const result = (await readAgentBody(response)) as AgentEnvelope<unknown>;
   if (!result.success) {
-    throw agentResponseError(result, 'Failed to delete agent');
+    throw envelopeError(response, result, 'Failed to delete agent');
   }
   return result.data;
 }

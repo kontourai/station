@@ -87,6 +87,32 @@ account/Device enrollment. See the [broker lifecycle contract](../guides/self-ho
 The static `native-platform:ratchet` blocks `@tauri-apps/api` imports and
 `__TAURI__`/`__SHARE_TEXT__` globals outside the platform adapter.
 
+### Desktop application signaling commands
+
+The Desktop command table registers three main-window-only signaling commands
+in [the native relay owner](../../src-desktop/src/native_relay_redemption.rs):
+
+| Command | Caller input beyond the saved profile name and exact revision | Result |
+| --- | --- | --- |
+| `station_native_relay_application_binding` | None | Host-derived public profile, scope, native surface and approved Station trust metadata |
+| `station_native_relay_application_open` | Nonce and bounded offer SDP | Offer expiry |
+| `station_native_relay_application_read` | Existing offer nonce | Optional answer SDP and opaque Station proof, plus expiry |
+
+These are application-named entry points to the same service used by the
+diagnostic commands. The host resolves the saved profile, approved Station key
+and an existing keyring-held routing grant; it rechecks custody after broker
+I/O. Input envelopes reject caller-supplied bearer, private key, broker URL or
+Project authority. Requests use fixed broker paths. An uncertain `open` may
+already have created an offer: retain its nonce and read that offer within its
+window rather than blindly opening it again.
+
+No renderer adapter or ordinary native application caller currently invokes
+these names. They do not open a DataChannel, verify the returned Station proof,
+carry application requests, select a route, sign in or enroll a Device. The
+account proof-key vault below remains separate and unwired. Command registration
+and source tests are not an executed Tauri IPC, packaged-platform or physical
+device receipt; no such execution is claimed by this review.
+
 ### Desktop account proof-key foundation
 
 The [account proof-key vault](../../src-desktop/src/native_account_proof_key.rs)

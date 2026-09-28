@@ -67,6 +67,10 @@ wired into the ordinary client, these records remain unconnected and cannot be
 selected as direct Station connections or CLI defaults. The CLI also refuses
 `--station` and `STATION_TARGET` when they name one of these inert routes.
 
+Desktop now registers [host signaling commands](../design/native-capabilities.md#desktop-application-signaling-commands)
+for an existing routing grant, but the ordinary native client does not call
+them yet. They add no Connect or account-sign-in action to these saved routes.
+
 Already redeemed native routing grants have a separate Desktop maintenance
 path. While the Desktop renderer is visible, it observes every saved broker
 route and renews an existing unambiguous grant when at most 12 hours remain.

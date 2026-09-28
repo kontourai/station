@@ -685,6 +685,11 @@ protected application channel. It proves neither account/Device/Project
 onboarding nor native application-route selection. Running it is separate from
 the browser account/UI profiles above; this documentation review did not run it.
 
+The separately registered [Desktop application signaling commands](../design/native-capabilities.md#desktop-application-signaling-commands)
+reuse the host's diagnostic signaling service. This Node/Chromium lab does not
+invoke those Tauri commands or establish a native application consumer, account
+sign-in, or protected DataChannel journey.
+
 ### Source owners
 
 - [Local lab command](../../scripts/local-collaboration-lab.ts) owns stage

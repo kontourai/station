@@ -125,11 +125,19 @@ re-issuance.
 Rust has private-key signing and fixed-path HTTP helpers for these request
 proofs, including retained cleanup and renewal state. The desktop Tauri command
 table now wires native grant redemption, status, renewal, revocation, pending-cleanup
-read/retry, and diagnostic signaling binding/open/read. Those main-window
+read/retry, and both diagnostic and application-named signaling binding/open/read.
+Those main-window
 commands reload the saved profile and approved Station trust in the host;
 the renderer does not supply trusted keyring identity. Profile removal and
 startup also have pending-cleanup hooks. These capabilities still do not select
 a native application route or carry protected application traffic.
+
+The [application signaling commands](../design/native-capabilities.md#desktop-application-signaling-commands)
+share the diagnostic host service: they admit an existing routing grant and
+return public binding metadata or bounded SDP/proof responses. The application
+names have no renderer caller yet, and returning an opaque Station proof does
+not verify it or open an application DataChannel. Broker signaling remains
+separate from Device/account authorization and application transport.
 
 The separate [desktop account proof-key foundation](../design/native-capabilities.md#desktop-account-proof-key-foundation)
 uses its own keyring namespace, additionally bound to a Station and approved

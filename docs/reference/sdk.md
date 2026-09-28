@@ -2803,11 +2803,11 @@ class StationHttpError extends Error {
 
 The integration, review and workspace pane host-action catalog/preparation
 fetchers (built on `readEnvelopeOrThrow`), plus the scheduler, skills, knowledge,
-secret-binding, conversation, orchestration and plugin fetchers preserve supplied
-refusal fields. Project fetchers use `unwrapProjectResponse` for the same fields. The
-conversation, orchestration and Project fetchers used to throw a plain `Error`
-for a `200` carrying `{ success: false }`; that is now a `StationHttpError`
-with status `200` too. `respondToRequest`'s error still carries the failure
+secret-binding, conversation, orchestration, plugin, Agent, execution and Task
+output fetchers preserve supplied refusal fields. Project fetchers use
+`unwrapProjectResponse` for the same fields. The conversation, orchestration,
+Project and Agent fetchers can report a `StationHttpError` with status `200`
+when the body carries `{ success: false }`. `respondToRequest`'s error still carries the failure
 `receipt`. `readEnvelopeOrThrow(response)`
 throws this error for a non-2xx response or a missing/false `success` value.
 It checks truthiness, not a literal-boolean schema, and does not validate the
@@ -2818,7 +2818,7 @@ throw their own errors — some a `StationHttpError` without `details`, some a
 plain `Error` or a family-specific subclass — and move onto the same fields
 in later releases, keeping their subclasses (#2708).
 
-Family subclasses are `StationHttpError`s too. The scheduler's
+Some family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerResponseError` and its run errors (`SchedulerRunIndeterminateError`,
 `SchedulerRunFailedError`, `SchedulerRunRefusedError`) are built from the
 error the envelope helper made of the response, so they keep its status,
@@ -2830,6 +2830,32 @@ Its constructor accepts `(failure: StationHttpError, options?: { grantsUnavailab
 the earlier `(status, envelope, options)` constructor is no longer supported.
 Host-action execution deliberately returns `indeterminate` after any failed or
 unreadable response; it does not expose the helper's exception to the caller.
+
+`ChatHttpError`, thrown by execution fetchers, now extends `StationHttpError`;
+`serverMessage` retains the helper's message. Execution fetchers derive
+`stationEnvelope` from a boolean `success` field or an object `error` with a
+string `code`. An HTML proxy response keeps its HTTP status but sets this flag
+to `false`, so status alone must not be treated as a definitive Station
+refusal. This shape check is not independent proof of the responder's identity.
+`ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
+Both classes retain their positional constructors.
+
+`ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
+HTTP/envelope failure form carries `status`, `code`, `details` and
+`retryAfterMs`; its payload-validation form carries only the protocol message.
+
+Some fetchers deliberately withhold the route's words and details.
+On a non-2xx response, `getInputReplyContext` throws a `StationHttpError`
+with a fixed generic message. The Task and Session reference reads use
+`TaskToolResultRequestError`, `TaskUserInputReferenceRequestError`,
+`TaskBasisRequestError`, `SessionOutputsRequestError` and
+`SessionInventoryRequestError`, which remain plain `Error` subclasses.
+These opaque errors retain the observed `status`, supplied `code` and
+`retryAfterMs`, without `details`. A status of `0` is a local failure marker,
+not an HTTP response status; callers must not interpret it as a server refusal.
+Passing an abort signal still controls the shared transport, but these
+reference fetchers can normalize a transport rejection into their generic
+status-0 error rather than preserve an `AbortError`.
 
 - `status` is the status the response actually carried. A route that answers
   `200` with `{ success: false }` produces a `StationHttpError` whose status
