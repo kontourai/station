@@ -177,10 +177,29 @@ describe('Feedback Routes', () => {
     expect(body.data.totalRatings).toBe(0);
   });
 
-  test('POST /clear-analysis resets analysis', async () => {
+  test('POST /clear-analysis clears the saved analysis', async () => {
+    svc.rateMessage({
+      agentSlug: 'a',
+      conversationId: 'saved',
+      messageIndex: 0,
+      messagePreview: 'real feedback',
+      rating: 'thumbs_up',
+    });
+    svc.setAnalyzeCallback(async (prompt) =>
+      prompt.includes('JSON array')
+        ? '[{"index":1,"analysis":"real analysis"}]'
+        : '{"reinforce":["saved preference"],"avoid":[]}',
+    );
+    await svc.runAnalysisPipeline();
+    // Reset semantics belong to feedback-service.test.ts; this proves the
+    // route reaches them, so the seeded analysis must be present first.
+    expect(svc.getSummary()).not.toBeNull();
+
     const body = await json(
       await app.request('/clear-analysis', { method: 'POST' }),
     );
     expect(body.success).toBe(true);
+    expect(svc.getSummary()).toBeNull();
+    expect(svc.getRatings()[0]?.analysis).toBeUndefined();
   });
 });

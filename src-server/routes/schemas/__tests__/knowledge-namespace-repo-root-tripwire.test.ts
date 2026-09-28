@@ -35,12 +35,6 @@ describe('knowledge namespace schemas do not (yet) accept a repo anchor', () => 
     ['create', knowledgeNamespaceCreateSchema],
     ['update', knowledgeNamespaceUpdateSchema],
   ])('the %s schema strips `repoRoot`', (_label, schema) => {
-    const parsed = schema.parse(namespace);
-
-    expect('repoRoot' in parsed).toBe(false);
-  });
-
-  it('DOCUMENTS what must change when that stops being true', () => {
     // If this assertion is what failed, you are adding `repoRoot` to the
     // knowledge-namespace routes. Before you do:
     //
@@ -55,9 +49,7 @@ describe('knowledge namespace schemas do not (yet) accept a repo anchor', () => 
     //   3. Refuse BEFORE `saveProject`, not after.
     //
     // Then delete this test.
-    const parsed = knowledgeNamespaceCreateSchema.parse(namespace);
-
-    expect(parsed).toEqual({
+    expect(schema.parse(namespace)).toEqual({
       id: 'api-docs',
       label: 'API docs',
       behavior: 'rag',
