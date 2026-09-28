@@ -86,17 +86,10 @@ function open(
   const directory = mkdtempSync(join(tmpdir(), 'station-work-item-store-'));
   directories.push(directory);
   const path = join(directory, 'orchestration.sqlite');
-  const store = new EventStore(
-    path,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    input.admissionFault,
-    input.savepointOpenFault,
-  );
+  const store = new EventStore(path, undefined, undefined, {
+    sessionWorkItemAdmission: input.admissionFault,
+    sessionWorkItemSavepointOpen: input.savepointOpenFault,
+  });
   store.upsertSession({
     provider: 'claude',
     threadId: 'session-a',

@@ -431,11 +431,13 @@ describe('RecoveryLedger', () => {
     const { databasePath, eventStore, intent } = fixture();
     eventStore.close();
     let faulted = false;
-    const faulting = new EventStore(databasePath, undefined, undefined, () => {
-      if (!faulted) {
-        faulted = true;
-        throw new Error('injected after UPDATE');
-      }
+    const faulting = new EventStore(databasePath, undefined, undefined, {
+      recoveryTransition: () => {
+        if (!faulted) {
+          faulted = true;
+          throw new Error('injected after UPDATE');
+        }
+      },
     });
     const ledger = faulting.createRecoveryLedger();
     const claim = ledger.claim({
@@ -458,6 +460,8 @@ describe('RecoveryLedger', () => {
         '2026-08-13T00:00:02.000Z',
       ),
     ).toEqual({ kind: 'applied' });
+    // The terminal answered through its readback: the fault did fire.
+    expect(faulted).toBe(true);
     expect(ledger.find(intent.fingerprint)).toMatchObject({
       outcome: 'succeeded',
     });

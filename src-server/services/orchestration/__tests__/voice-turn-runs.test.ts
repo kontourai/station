@@ -258,17 +258,13 @@ describe('VoiceTurnRuns', () => {
     const directory = mkdtempSync(join(tmpdir(), 'voice-turn-postwrite-'));
     directories.push(directory);
     const path = join(directory, 'events.sqlite');
-    const store = new EventStore(
-      path,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      () => {
+    let faults = 0;
+    const store = new EventStore(path, undefined, undefined, {
+      voiceTurnTransition: () => {
+        faults += 1;
         throw new Error('post-write boundary unavailable');
       },
-    );
+    });
     stores.push(store);
     const started = store.voiceTurnRunAuthority().observeStart({
       voiceSessionId: 'voice-postwrite',
@@ -285,6 +281,8 @@ describe('VoiceTurnRuns', () => {
         stopReason: 'END_TURN',
       }),
     ).toEqual({ kind: 'applied' });
+    // The completion answered through its readback: the fault did fire.
+    expect(faults).toBeGreaterThan(0);
     expect(store.voiceTurnRunReader().read(started.handle.runId)).toMatchObject(
       {
         kind: 'available',

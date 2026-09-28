@@ -1,8 +1,13 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { OrchestrationCommandReceipt } from '@kontourai/station-contracts/orchestration';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  createGateTestRegistry,
+  GateTestAdapter,
+} from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import type {
   AdoptionLedger,
   AdoptionReservation,
@@ -11,7 +16,9 @@ import {
   AttachedSessionAdoption,
   type AttachedSessionAdoptionDeps,
 } from '../attached-session-adoption.js';
-import type { EventStore } from '../event-store.js';
+import { EventBus } from '../event-bus.js';
+import { EventStore } from '../event-store.js';
+import { OrchestrationService } from '../orchestration-service.js';
 
 /**
  * Unit pins for the C14 extraction (epic archive#4024, archive#4143). Three
@@ -215,45 +222,100 @@ describe('AttachedSessionAdoption', () => {
   });
 });
 
-describe('service wiring source invariants (plan condition 3)', () => {
+describe('service owner wiring (plan condition 3)', () => {
   /**
-   * `registerOwner()` must be wired from `initialize()` and
-   * `unregisterOwner()` from `shutdown()` — NEVER the service constructor.
-   * The suite cannot observe this behaviorally (a constructed-but-never-
-   * initialized service cannot own a reservation, so no runtime probe can
-   * distinguish the two wirings), and the fault injection that moved
-   * registration into the constructor ran 355/355 green — this source
-   * invariant is the guard, same technique as slice 2's teardown-site
-   * invariant.
+   * The service vouches for its reservations from `initialize()` (which
+   * every dispatch runs first) until `shutdown()`. While it runs, another
+   * instance's boot reconciliation must leave its reservation alone; once it
+   * has shut down, the reservation is dead and the next boot reclaims it.
+   * Observed through real services sharing one ledger.
    */
-  it('registers the adoption owner from initialize(), never the constructor', () => {
-    const source = readFileSync(
-      join(__dirname, '..', 'orchestration-service.ts'),
-      'utf8',
+  it("a running service's reservation survives another boot, and is reclaimed once it shuts down", async () => {
+    const directory = realpathSync(
+      mkdtempSync(join(tmpdir(), 'station-adoption-owner-')),
     );
-    const register = 'this.adoption.registerOwner();';
-    const unregister = 'this.adoption.unregisterOwner();';
-    expect(source.split(register).length - 1).toBe(1);
-    expect(source.split(unregister).length - 1).toBe(1);
+    const cwd = join(directory, 'project');
+    mkdirSync(cwd);
+    const store = new EventStore(join(directory, 'events.sqlite'));
+    const ledger = store.createAdoptionLedger();
+    const now = '2026-09-06T00:00:00.000Z';
+    const source: ProviderSession = {
+      provider: 'claude',
+      threadId: 'external:claude:fixture',
+      cwd,
+      status: 'ready',
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: 'native-source',
+        affinity: { kind: 'fixture-home', ref: 'admitted-source' },
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+    store.upsertSession(source);
+    let releaseAdoption: (error: Error) => void = () => {};
+    let adoptionStarted: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      adoptionStarted = resolve;
+    });
+    let providerAdoptions = 0;
+    class AdoptingAdapter extends GateTestAdapter {
+      readonly adoptionLifecycle = 'reported' as const;
+      adoptSession(): Promise<ProviderSession> {
+        providerAdoptions += 1;
+        if (providerAdoptions > 1)
+          return Promise.reject(
+            new Error('a second adoption reached the provider'),
+          );
+        adoptionStarted();
+        return new Promise((_resolve, reject) => {
+          releaseAdoption = reject;
+        });
+      }
+      async discardSession(): Promise<void> {}
+    }
+    const services: OrchestrationService[] = [];
+    const service = () => {
+      const created = new OrchestrationService({
+        adapterRegistry: createGateTestRegistry(new AdoptingAdapter()),
+        eventBus: new EventBus(),
+        eventStore: store,
+        adoptionLedger: ledger,
+        listProjects: () => [{ slug: 'project', workingDirectory: cwd }],
+        logger: { debug: () => {}, warn: () => {} },
+      });
+      services.push(created);
+      return created;
+    };
+    const adopt = (owner: OrchestrationService) =>
+      owner.dispatch({ type: 'adoptSession', sourceThreadId: source.threadId });
+    try {
+      const running = service();
+      const adoption = adopt(running).catch(() => undefined);
+      await started;
+      const [held] = ledger.reservations();
+      expect(held).toMatchObject({ status: 'pending', ownerPid: process.pid });
 
-    const initializeAt = source.indexOf('\n  initialize(): void {');
-    const shutdownAt = source.indexOf('\n  async shutdown(): Promise<void> {');
-    expect(initializeAt).toBeGreaterThan(0);
-    expect(shutdownAt).toBeGreaterThan(0);
-    // Containment in the METHOD BODY, not merely "after the declaration"
-    // (review round 1: an after-the-marker index check stays green if the
-    // call migrates into any later method). A method body ends at the first
-    // method-level close (`\n  }`) after its declaration — inside a body
-    // every close is indented deeper, so this is exact for this file.
-    const initializeBody = source.slice(
-      initializeAt,
-      source.indexOf('\n  }', initializeAt),
-    );
-    const shutdownBody = source.slice(
-      shutdownAt,
-      source.indexOf('\n  }', shutdownAt),
-    );
-    expect(initializeBody).toContain(register);
-    expect(shutdownBody).toContain(unregister);
+      // A peer boot while the owner runs: its adopt awaits its own boot
+      // reconciliation first, then meets the still-held reservation.
+      await expect(adopt(service())).rejects.toThrow(
+        'This attached session is already being continued.',
+      );
+      expect(ledger.reservations()).toEqual([held]);
+
+      await running.shutdown();
+      service().initialize();
+      await vi.waitFor(() => expect(ledger.reservations()).toEqual([]), {
+        timeout: 2_000,
+      });
+
+      releaseAdoption(new Error('released after the probe'));
+      await adoption;
+    } finally {
+      for (const created of services.reverse()) await created.shutdown();
+      store.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
