@@ -1356,7 +1356,7 @@
     },
     {
       "path": "AGENTS.md",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "sourceRevision": "21b628e6ec05579c789715dd6c0aa71ac03dbc6c",
       "kind": "policy",
       "state": "classified",
       "summary": "Worktree isolation, managed dependencies, bounded gates, merge-queue procedure, evidence discipline, archival issue interpretation, scope routes, and protected Veritas block. All named npm scripts and local routes resolve. Live main rules match the six named required checks, non-strict updates, ALLGREEN 3/3 SQUASH queue, and unattributed-change approval rule.",
@@ -1393,7 +1393,7 @@
         },
         {
           "path": "scripts/orchestration-transfer-gate.mjs",
-          "digest": "874f362e2469dd56d5cad04b5fe2019ccec21e8058fb176e43e58cbf6809cf5d"
+          "digest": "717c7650d88da22c743c77f16735428aebc6a2521c6d0a0c1547f6a02fadeb9a"
         },
         {
           "path": "scripts/run-focused-tests.mjs",
@@ -1409,7 +1409,8 @@
         "Reviewed the real pre-push Git-environment failure and shared-helper repair before root discovery. A disposable linked-worktree push failed before repair (20 passed, two failed), then passed both exact-ref publication and gate-refusal controls (22 passed; 3.17s total). Expensive gates are fixture shims; actual Git/root/subdirectory/foreign-repository reads execute. Global configuration is retained; repository-local routing/config is cleared. This local fixture does not prove Windows hook execution.",
         "Integration source review through e0314c727: package.json only removed the @kontourai/bearing and @kontourai/forage dependencies. Every npm script and route AGENTS.md names is unchanged. GitHub rules were not re-observed. Source review is separate from executed test evidence.",
         "Reviewed deltas: the audit skill gained freshness and slice guidance and package.json gained documentation scripts; the routing table and landing rules here are unchanged.",
-        "Added the app-token/REST bullet under Landing a pull request (#2926); STATION_TRANSFER_BASELINE_ROOT is still read, now as an override of merge-base discovery (#2925); gate:for routing claims unchanged."
+        "Added the app-token/REST bullet under Landing a pull request (#2926); STATION_TRANSFER_BASELINE_ROOT is still read, now as an override of merge-base discovery (#2925); gate:for routing claims unchanged.",
+        "Re-read after JSDoc-only types were added to scripts/orchestration-transfer-gate.mjs; no behavior or claim changed."
       ]
     },
     {
@@ -29975,7 +29976,7 @@
     },
     {
       "path": "scripts/fixtures/orchestration-transfer/README.md",
-      "sourceRevision": "921f68d87969239f3213bff288d70559442ce108",
+      "sourceRevision": "21b628e6ec05579c789715dd6c0aa71ac03dbc6c",
       "kind": "historical",
       "state": "classified",
       "summary": "Retains the original traffic measurements and envelope rationale. The active budget still sets 64000-byte window/snapshot ceilings; the gate consumes budget.json and requires attribution for changed policy.",
@@ -29992,13 +29993,14 @@
         },
         {
           "path": "scripts/orchestration-transfer-gate.mjs",
-          "digest": "874f362e2469dd56d5cad04b5fe2019ccec21e8058fb176e43e58cbf6809cf5d"
+          "digest": "717c7650d88da22c743c77f16735428aebc6a2521c6d0a0c1547f6a02fadeb9a"
         }
       ],
       "checks": [
         "Complete narrow-scope read; local routes, imports and named npm commands checked.",
         "Instruction/fixture selection: 201 tests across 4 files passed; individual fixture/provenance evidence limits retained.",
-        "Budget and attribution content unchanged; the gate change is baseline discovery and merge-base selection (#2925)."
+        "Budget and attribution content unchanged; the gate change is baseline discovery and merge-base selection (#2925).",
+        "Re-read after JSDoc-only types were added to the transfer gate; budget content unchanged."
       ]
     },
     {
