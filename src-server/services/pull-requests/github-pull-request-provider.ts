@@ -210,7 +210,7 @@ export function normalizeGitHubPullRequest(
   };
 }
 
-export function normalizeGitHubBranchMergeability(
+function normalizeGitHubBranchMergeability(
   value: any,
 ): PullRequestBranchMergeability {
   if (!Number.isInteger(value?.number) || typeof value.headRefName !== 'string')
