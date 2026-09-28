@@ -32,7 +32,14 @@ function treeHasher() {
 function* treeEntries(
   dir: string,
   parent = '',
-): Generator<{ kind: 'D' | 'F' | 'L'; path: string; bytes: Buffer }> {
+  mark?: (name: string) => boolean,
+  marked = false,
+): Generator<{
+  kind: 'D' | 'F' | 'L';
+  path: string;
+  bytes: Buffer;
+  marked: boolean;
+}> {
   const entries = readdirSync(dir, {
     withFileTypes: true,
     encoding: 'buffer',
@@ -44,17 +51,24 @@ function* treeEntries(
     if (parent === '' && name === '.git') continue;
     const absolute = join(dir, name);
     const path = parent === '' ? name : `${parent}/${name}`;
+    const isMarked = marked || mark?.(name) === true;
     if (entry.isSymbolicLink()) {
       yield {
         kind: 'L',
         path,
         bytes: readlinkSync(absolute, { encoding: 'buffer' }),
+        marked: isMarked,
       };
     } else if (entry.isDirectory()) {
-      yield { kind: 'D', path, bytes: Buffer.alloc(0) };
-      yield* treeEntries(absolute, path);
+      yield { kind: 'D', path, bytes: Buffer.alloc(0), marked: isMarked };
+      yield* treeEntries(absolute, path, mark, isMarked);
     } else if (entry.isFile()) {
-      yield { kind: 'F', path, bytes: readFileSync(absolute) };
+      yield {
+        kind: 'F',
+        path,
+        bytes: readFileSync(absolute),
+        marked: isMarked,
+      };
     } else {
       throw new Error('Unsupported entry in plugin tree');
     }
@@ -75,6 +89,16 @@ export function computePluginTreeDigest(root: string): string | null {
 export interface PluginTreeObservation {
   readonly digest: string;
   readonly manifestText?: string;
+  /**
+   * With `alsoWithout`: the digest of the same walk as if every entry that
+   * predicate names, with everything under it, were absent. A caller that
+   * stages a tree without some entries (git metadata) compares with this.
+   */
+  readonly digestWithout?: string;
+}
+
+export interface PluginTreeObservationOptions {
+  readonly alsoWithout?: (name: string) => boolean;
 }
 
 /** Same full-byte observation, yielding between batches so HTTP work can progress. */
@@ -87,13 +111,17 @@ export async function computePluginTreeDigestAsync(
 /** Captures the declaration from the same bytes that contribute to the digest. */
 export async function observePluginTreeAsync(
   root: string,
+  options: PluginTreeObservationOptions = {},
 ): Promise<PluginTreeObservation | null> {
   try {
     const hash = treeHasher();
+    const without = options.alsoWithout ? treeHasher() : undefined;
     let entries = 0;
     let manifestText: string | undefined;
-    for (const entry of treeEntries(root)) {
+    for (const entry of treeEntries(root, '', options.alsoWithout)) {
       hash.entryFrame(entry.kind, entry.path, entry.bytes);
+      if (without && !entry.marked)
+        without.entryFrame(entry.kind, entry.path, entry.bytes);
       if (entry.path === 'plugin.json' && entry.kind === 'F')
         manifestText = entry.bytes.toString('utf8');
       if (++entries % 64 === 0) await setImmediate();
@@ -101,6 +129,7 @@ export async function observePluginTreeAsync(
     return {
       digest: hash.finish(),
       ...(manifestText === undefined ? {} : { manifestText }),
+      ...(without ? { digestWithout: without.finish() } : {}),
     };
   } catch {
     return null;
