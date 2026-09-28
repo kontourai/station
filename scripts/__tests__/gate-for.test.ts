@@ -136,6 +136,28 @@ describe('gate-for report', () => {
     }
   });
 
+  it('reports exactly the commands the pre-push hook runs', () => {
+    // Derived from the hook itself: every executed `npm run` or
+    // `node scripts/...` line is either an every-push check or a scoped
+    // gate. A check dropped from the report, or a hook step the report
+    // never mentions, fails here.
+    const hookCommands = PRE_PUSH.split('\n')
+      .filter((line) => !/^\s*(?:#|echo\b)/.test(line))
+      .flatMap((line) => {
+        const match =
+          /(npm run --silent \S+|node scripts\/\S+\.mjs(?: --\S+)*)/.exec(line);
+        return match ? [match[1].replace('npm run --silent ', 'npm run ')] : [];
+      });
+    const plan = gatePlan({ changedPaths: [], baseSha });
+    expect(hookCommands.length).toBeGreaterThan(0);
+    expect(new Set(hookCommands)).toEqual(
+      new Set([
+        ...plan.everyPush.map((check) => check.command),
+        ...plan.scoped.map((scope) => scope.command),
+      ]),
+    );
+  });
+
   it('with no base sha, every decider fails open to running by its own rule', () => {
     const scopes = gateScopes({
       changedPaths: ['docs/guides/testing.md'],
