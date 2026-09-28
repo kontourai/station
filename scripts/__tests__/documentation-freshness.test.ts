@@ -1,6 +1,12 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
@@ -1216,7 +1222,8 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
     const folded = run(f.root, 'migrate-review-ledger.mjs', ['--base', base]);
     expect(folded.status, folded.stderr).toBe(0);
     commit(f.root, 'merge theirs');
-    expect(git(f.root, ['ls-files', LEGACY_REVIEW_LEDGER])).toBe('');
+    expect(existsSync(join(f.root, LEGACY_REVIEW_LEDGER))).toBe(false);
+    expect(git(f.root, ['status', '--porcelain'])).toBe('');
     const result = check(f.root, strict);
     expect(result.blocking).toEqual([]);
     expect(result.status).toBe(0);
