@@ -585,13 +585,9 @@ describe('client/knowledge', () => {
   );
 
   it('falls back to the status when a failure body is not JSON', async () => {
-    vi.mocked(fetch).mockResolvedValue({
-      ok: false,
-      status: 502,
-      json: async () => {
-        throw new SyntaxError('Unexpected token <');
-      },
-    } as unknown as Response);
+    vi.mocked(fetch).mockResolvedValue(
+      new Response('<html>bad gateway</html>', { status: 502 }),
+    );
 
     await expect(listKnowledgeRoots(BASE)).rejects.toMatchObject({
       status: 502,
