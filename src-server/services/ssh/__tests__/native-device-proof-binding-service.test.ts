@@ -17,6 +17,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import { DevicePairingService } from '../device-pairing-service.js';
 import {
+  type NativeDeviceClientSurface,
   NativeDeviceProofBindingError,
   NativeDeviceProofBindingService,
   NativeDeviceProofOperatorAuthority,
@@ -29,6 +30,8 @@ const CLIENT_INSTANCE_ID = randomUUID();
 const OPERATOR_APPROVAL = { kind: 'presented-credential' } as const;
 const makeTempDir = trackTempDirs();
 const BINDINGS_FILE = 'native-device-proof-bindings.json';
+const APP_IDENTIFIER = 'station.desktop';
+const CHANNEL = 'dev' as const;
 
 function harness(environmentId = ENVIRONMENT_ID) {
   const homeDir = makeTempDir('station-proof-binding-');
@@ -99,21 +102,37 @@ function thumbprintOf(jwk: { crv: string; kty: string; x: string; y: string }) {
     .digest('base64url');
 }
 
+const DEFAULT_ROUTE_THUMBPRINT = thumbprintOf(p256PublicJwk());
+
+function surface(
+  overrides: Partial<NativeDeviceClientSurface> = {},
+): NativeDeviceClientSurface {
+  return {
+    kind: 'station-native',
+    appIdentifier: APP_IDENTIFIER,
+    channel: CHANNEL,
+    clientInstanceId: CLIENT_INSTANCE_ID,
+    keyThumbprint: DEFAULT_ROUTE_THUMBPRINT,
+    ...overrides,
+  };
+}
+
 describe('native device proof binding service (station#2893)', () => {
-  test('create persists a binding tied to the approved device, station, and client', () => {
+  test('create persists a full-surface binding tied to the approved device, station, and surface', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const jwk = p256PublicJwk();
+    const approved = surface({ keyThumbprint: thumbprintOf(p256PublicJwk()) });
     const binding = bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: approved,
       jwk,
       approval: mintApproval(),
     });
     expect(binding.state).toBe('active');
     expect(binding.deviceId).toBe(deviceId);
     expect(binding.stationId).toBe(ENVIRONMENT_ID);
-    expect(binding.clientInstanceId).toBe(CLIENT_INSTANCE_ID);
+    expect(binding.surface).toEqual(approved);
     expect(binding.deviceProof.jwk).not.toHaveProperty('d');
     expect(binding.deviceProof.thumbprint).toBe(thumbprintOf(jwk));
     expect(binding.deviceScopeAtApproval).toBe(DEFAULT_GRANT_PAIRING_SCOPE);
@@ -122,23 +141,27 @@ describe('native device proof binding service (station#2893)', () => {
     );
     expect(stored.schemaVersion).toBe(1);
     expect(stored.bindings).toHaveLength(1);
+    expect(stored.bindings[0].surface).toEqual(approved);
+    expect(JSON.stringify(stored)).not.toContain('peerNonce');
   });
 
-  test('reopen loads the same binding; verifier reads the exact current binding and device scope', () => {
+  test('reopen loads the same full-surface binding and answers exact requireCurrentBinding', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
+    const approved = surface();
     const created = bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: approved,
       jwk: p256PublicJwk(),
       approval: mintApproval(),
     });
     const reopened = new NativeDeviceProofBindingService({ homeDir, pairing });
     const current = reopened.requireCurrentBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: approved,
     });
     expect(current.binding.bindingId).toBe(created.bindingId);
+    expect(current.binding.surface).toEqual(approved);
     expect(current.binding.deviceProof.thumbprint).toBe(
       created.deviceProof.thumbprint,
     );
@@ -146,12 +169,125 @@ describe('native device proof binding service (station#2893)', () => {
     expect(current.device.scope).toBe(DEFAULT_GRANT_PAIRING_SCOPE);
   });
 
+  test('any full-surface mismatch fails closed: wrong route-key thumbprint, appIdentifier, channel, client instance', () => {
+    const { pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const approved = surface();
+    bindingService.createBinding({
+      deviceId,
+      surface: approved,
+      jwk: p256PublicJwk(),
+      approval: mintApproval(),
+    });
+    const mismatches: NativeDeviceClientSurface[] = [
+      surface({ keyThumbprint: thumbprintOf(p256PublicJwk()) }),
+      surface({ appIdentifier: 'other.app' }),
+      surface({ channel: 'stable' }),
+      surface({ clientInstanceId: randomUUID() }),
+    ];
+    for (const mismatch of mismatches) {
+      expect(
+        bindingService.currentBinding({ deviceId, surface: mismatch }),
+      ).toBeNull();
+      expect(() =>
+        bindingService.requireCurrentBinding({
+          deviceId,
+          surface: mismatch,
+        }),
+      ).toThrow('binding_unavailable');
+    }
+  });
+
+  test('wrong device proof key never matches the binding; surface alone is not a proof', () => {
+    const { pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const approved = surface();
+    bindingService.createBinding({
+      deviceId,
+      surface: approved,
+      jwk: p256PublicJwk(),
+      approval: mintApproval(),
+    });
+    const current = bindingService.requireCurrentBinding({
+      deviceId,
+      surface: approved,
+    });
+    expect(bindingService.thumbprintMatches(current, p256PublicJwk())).toBe(
+      false,
+    );
+  });
+
+  test('route-key possession is not Device approval: the route key never satisfies the device-key check', () => {
+    const { pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const routeKeyJwk = p256PublicJwk();
+    const approved = surface({ keyThumbprint: thumbprintOf(routeKeyJwk) });
+    bindingService.createBinding({
+      deviceId,
+      surface: approved,
+      jwk: p256PublicJwk(),
+      approval: mintApproval(),
+    });
+    const current = bindingService.requireCurrentBinding({
+      deviceId,
+      surface: approved,
+    });
+    expect(bindingService.thumbprintMatches(current, routeKeyJwk)).toBe(false);
+    expect(current.binding.deviceProof.thumbprint).not.toBe(
+      current.binding.surface.keyThumbprint,
+    );
+  });
+
+  test('a device proof key equal to the route key is refused', () => {
+    const { pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const routeKeyJwk = p256PublicJwk();
+    expect(() =>
+      bindingService.createBinding({
+        deviceId,
+        surface: surface({ keyThumbprint: thumbprintOf(routeKeyJwk) }),
+        jwk: routeKeyJwk,
+        approval: mintApproval(),
+      }),
+    ).toThrow('device_key_matches_route_key');
+    expect(
+      bindingService.currentBinding({ deviceId, surface: surface() }),
+    ).toBeNull();
+  });
+
+  test('noncanonical or extra-field surfaces are refused at the service seam', () => {
+    const { pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    const badSurfaces: unknown[] = [
+      surface({ kind: 'browser-extension' as never }),
+      surface({ channel: 'canary' as never }),
+      surface({ appIdentifier: '-leading-dot' }),
+      surface({ appIdentifier: 'a b' }),
+      surface({ keyThumbprint: 'short' }),
+      surface({ clientInstanceId: 'not-a-uuid' }),
+      { ...surface(), extra: 'field' },
+    ];
+    for (const bad of badSurfaces) {
+      expect(() =>
+        bindingService.createBinding({
+          deviceId,
+          surface: bad as NativeDeviceClientSurface,
+          jwk: p256PublicJwk(),
+          approval: mintApproval(),
+        }),
+      ).toThrow('invalid_native_surface');
+    }
+    expect(
+      bindingService.currentBinding({ deviceId, surface: surface() }),
+    ).toBeNull();
+  });
+
   test('a failed replacement write leaves the last committed binding current', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
     const first = bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
       jwk: p256PublicJwk(),
       approval: mintApproval(),
     });
@@ -163,7 +299,7 @@ describe('native device proof binding service (station#2893)', () => {
       expect(() =>
         bindingService.createBinding({
           deviceId,
-          clientInstanceId: CLIENT_INSTANCE_ID,
+          surface: surface(),
           jwk: p256PublicJwk(),
           approval: mintApproval(),
         }),
@@ -173,10 +309,8 @@ describe('native device proof binding service (station#2893)', () => {
       renameSync(backup, path);
     }
     expect(
-      bindingService.requireCurrentBinding({
-        deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
-      }).binding.bindingId,
+      bindingService.requireCurrentBinding({ deviceId, surface: surface() })
+        .binding.bindingId,
     ).toBe(first.bindingId);
   });
 
@@ -185,7 +319,7 @@ describe('native device proof binding service (station#2893)', () => {
     const { deviceId } = pairForBindings(pairing);
     bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
       jwk: p256PublicJwk(),
       approval: mintApproval(),
     });
@@ -199,7 +333,7 @@ describe('native device proof binding service (station#2893)', () => {
         pairing,
       }).requireCurrentBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
       }),
     ).toThrow('store_unavailable');
   });
@@ -209,7 +343,7 @@ describe('native device proof binding service (station#2893)', () => {
     const { deviceId } = pairForBindings(pairing);
     bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
       jwk: p256PublicJwk(),
       approval: mintApproval(),
     });
@@ -224,7 +358,7 @@ describe('native device proof binding service (station#2893)', () => {
         pairing,
       }).requireCurrentBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
       }),
     ).toThrow('store_unavailable');
     const duplicated = structuredClone(original);
@@ -239,7 +373,33 @@ describe('native device proof binding service (station#2893)', () => {
         pairing,
       }).requireCurrentBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
+      }),
+    ).toThrow('store_unavailable');
+  });
+
+  test('an old client-only sidecar without the approved surface fails closed on reload', () => {
+    const { homeDir, pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    bindingService.createBinding({
+      deviceId,
+      surface: surface(),
+      jwk: p256PublicJwk(),
+      approval: mintApproval(),
+    });
+    const path = join(homeDir, 'security', BINDINGS_FILE);
+    const legacy = JSON.parse(readFileSync(path, 'utf8'));
+    const stored = legacy.bindings[0];
+    delete stored.surface;
+    stored.clientInstanceId = CLIENT_INSTANCE_ID;
+    writeFileSync(path, JSON.stringify(legacy));
+    expect(() =>
+      new NativeDeviceProofBindingService({
+        homeDir,
+        pairing,
+      }).requireCurrentBinding({
+        deviceId,
+        surface: surface(),
       }),
     ).toThrow('store_unavailable');
   });
@@ -249,33 +409,30 @@ describe('native device proof binding service (station#2893)', () => {
     const { deviceId } = pairForBindings(pairing);
     bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
       jwk: p256PublicJwk(),
       approval: mintApproval(),
     });
     const [revoked] = bindingService.revokeBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
       approval: mintApproval(),
     });
     expect(revoked.state).toBe('revoked');
     expect(revoked.revocationReason).toBe('operator-revoked');
     expect(
-      bindingService.currentBinding({
-        deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
-      }),
+      bindingService.currentBinding({ deviceId, surface: surface() }),
     ).toBeNull();
     expect(() =>
       bindingService.requireCurrentBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
       }),
     ).toThrow('binding_unavailable');
     expect(() =>
       bindingService.revokeBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
         approval: mintApproval(),
       }),
     ).toThrow('binding_not_found');
@@ -286,14 +443,14 @@ describe('native device proof binding service (station#2893)', () => {
     const { deviceId } = pairForBindings(pairing);
     const first = bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
       jwk: p256PublicJwk(),
       approval: mintApproval(),
     });
     const secondJwk = p256PublicJwk();
     const second = bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
       jwk: secondJwk,
       approval: mintApproval(),
     });
@@ -303,7 +460,7 @@ describe('native device proof binding service (station#2893)', () => {
     );
     const current = bindingService.requireCurrentBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
     });
     expect(current.binding.bindingId).toBe(second.bindingId);
     expect(current.binding.deviceProof.thumbprint).toBe(
@@ -315,7 +472,7 @@ describe('native device proof binding service (station#2893)', () => {
     });
     const reloaded = reopened.requireCurrentBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
     });
     expect(reloaded.binding.bindingId).toBe(second.bindingId);
   });
@@ -325,21 +482,18 @@ describe('native device proof binding service (station#2893)', () => {
     const { deviceId } = pairForBindings(pairing);
     bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
       jwk: p256PublicJwk(),
       approval: mintApproval(),
     });
     pairing.revokeDevice(deviceId, 'operator-credential');
     expect(
-      bindingService.currentBinding({
-        deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
-      }),
+      bindingService.currentBinding({ deviceId, surface: surface() }),
     ).toBeNull();
     expect(() =>
       bindingService.createBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
         jwk: p256PublicJwk(),
         approval: mintApproval(),
       }),
@@ -347,7 +501,7 @@ describe('native device proof binding service (station#2893)', () => {
     expect(() =>
       bindingService.createBinding({
         deviceId: randomUUID(),
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
         jwk: p256PublicJwk(),
         approval: mintApproval(),
       }),
@@ -359,7 +513,7 @@ describe('native device proof binding service (station#2893)', () => {
     const { deviceId } = pairForBindings(pairing);
     bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
       jwk: p256PublicJwk(),
       approval: mintApproval(),
     });
@@ -373,40 +527,15 @@ describe('native device proof binding service (station#2893)', () => {
     expect(
       otherStationBindings.currentBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
       }),
     ).toBeNull();
     expect(() =>
       otherStationBindings.requireCurrentBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
       }),
     ).toThrow('binding_unavailable');
-  });
-
-  test('wrong client instance id never matches the binding', () => {
-    const { pairing, bindingService } = harness();
-    const { deviceId } = pairForBindings(pairing);
-    bindingService.createBinding({
-      deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
-      jwk: p256PublicJwk(),
-      approval: mintApproval(),
-    });
-    expect(
-      bindingService.currentBinding({
-        deviceId,
-        clientInstanceId: randomUUID(),
-      }),
-    ).toBeNull();
-    expect(() =>
-      bindingService.createBinding({
-        deviceId,
-        clientInstanceId: 'not-a-uuid',
-        jwk: p256PublicJwk(),
-        approval: mintApproval(),
-      }),
-    ).toThrow('invalid_client_instance_id');
   });
 
   test('changed device scope fails closed until the binding is re-approved', () => {
@@ -414,7 +543,7 @@ describe('native device proof binding service (station#2893)', () => {
     const { deviceId } = pairForBindings(pairing);
     bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
       jwk: p256PublicJwk(),
       approval: mintApproval(),
     });
@@ -424,10 +553,7 @@ describe('native device proof binding service (station#2893)', () => {
       OPERATOR_APPROVAL,
     );
     expect(
-      bindingService.currentBinding({
-        deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
-      }),
+      bindingService.currentBinding({ deviceId, surface: surface() }),
     ).toBeNull();
   });
 
@@ -437,7 +563,7 @@ describe('native device proof binding service (station#2893)', () => {
     expect(() =>
       bindingService.createBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
         jwk: p256PrivateJwk(),
         approval: mintApproval(),
       }),
@@ -450,7 +576,7 @@ describe('native device proof binding service (station#2893)', () => {
     expect(() =>
       bindingService.createBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
         jwk: bad,
         approval: mintApproval(),
       }),
@@ -462,7 +588,7 @@ describe('native device proof binding service (station#2893)', () => {
     const { deviceId } = pairForBindings(pairing);
     bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
       jwk: p256PublicJwk(),
       approval: mintApproval(),
     });
@@ -474,7 +600,7 @@ describe('native device proof binding service (station#2893)', () => {
         pairing,
       }).requireCurrentBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
       }),
     ).toThrow('store_unavailable');
     writeFileSync(path, JSON.stringify({ schemaVersion: 99, bindings: [] }));
@@ -484,7 +610,45 @@ describe('native device proof binding service (station#2893)', () => {
         pairing,
       }).requireCurrentBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
+      }),
+    ).toThrow('store_unavailable');
+  });
+
+  test('a tampered stored surface fails closed on reload', () => {
+    const { homeDir, pairing, bindingService } = harness();
+    const { deviceId } = pairForBindings(pairing);
+    bindingService.createBinding({
+      deviceId,
+      surface: surface(),
+      jwk: p256PublicJwk(),
+      approval: mintApproval(),
+    });
+    const path = join(homeDir, 'security', BINDINGS_FILE);
+    const tampered = JSON.parse(readFileSync(path, 'utf8'));
+    tampered.bindings[0].surface.channel = 'nightly';
+    writeFileSync(path, JSON.stringify(tampered));
+    // A canonical-but-different stored surface simply answers nothing.
+    expect(() =>
+      new NativeDeviceProofBindingService({
+        homeDir,
+        pairing,
+      }).requireCurrentBinding({
+        deviceId,
+        surface: surface(),
+      }),
+    ).toThrow('binding_unavailable');
+    // A noncanonical stored surface poisons the whole store.
+    const poisoned = JSON.parse(readFileSync(path, 'utf8'));
+    poisoned.bindings[0].surface.channel = 'canary';
+    writeFileSync(path, JSON.stringify(poisoned));
+    expect(() =>
+      new NativeDeviceProofBindingService({
+        homeDir,
+        pairing,
+      }).requireCurrentBinding({
+        deviceId,
+        surface: surface(),
       }),
     ).toThrow('store_unavailable');
   });
@@ -495,14 +659,11 @@ describe('native device proof binding service (station#2893)', () => {
     expect(() =>
       bindingService.requireCurrentBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
       }),
     ).toThrow('binding_unavailable');
     expect(
-      bindingService.currentBinding({
-        deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
-      }),
+      bindingService.currentBinding({ deviceId, surface: surface() }),
     ).toBeNull();
   });
 
@@ -517,7 +678,7 @@ describe('native device proof binding service (station#2893)', () => {
     expect(() =>
       bindingService.createBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
         jwk: p256PublicJwk(),
         approval: forged as never,
       }),
@@ -525,7 +686,7 @@ describe('native device proof binding service (station#2893)', () => {
     expect(() =>
       bindingService.revokeBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
         approval: forged as never,
       }),
     ).toThrow(NativeDeviceProofBindingError);
@@ -538,7 +699,7 @@ describe('native device proof binding service (station#2893)', () => {
     expect(() =>
       bindingService.createBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
         jwk: p256PublicJwk(),
         approval: foreignAuthority.approve({
           operatorPrincipalId: 'human:attacker:x',
@@ -546,10 +707,7 @@ describe('native device proof binding service (station#2893)', () => {
       }),
     ).toThrow('operator_unauthorized');
     expect(
-      bindingService.currentBinding({
-        deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
-      }),
+      bindingService.currentBinding({ deviceId, surface: surface() }),
     ).toBeNull();
   });
 
@@ -559,14 +717,14 @@ describe('native device proof binding service (station#2893)', () => {
     const approval = mintApproval();
     bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: surface(),
       jwk: p256PublicJwk(),
       approval,
     });
     expect(() =>
       bindingService.revokeBinding({
         deviceId,
-        clientInstanceId: CLIENT_INSTANCE_ID,
+        surface: surface(),
         approval,
       }),
     ).toThrow('operator_approval_reused');
@@ -575,9 +733,10 @@ describe('native device proof binding service (station#2893)', () => {
   test('public projections omit key material and scope internals', () => {
     const { pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);
+    const approved = surface();
     const created = bindingService.createBinding({
       deviceId,
-      clientInstanceId: CLIENT_INSTANCE_ID,
+      surface: approved,
       jwk: p256PublicJwk(),
       approval: mintApproval(),
     });
@@ -593,5 +752,8 @@ describe('native device proof binding service (station#2893)', () => {
     });
     expect(JSON.stringify(projection)).not.toContain('"x"');
     expect(JSON.stringify(projection)).not.toContain('orchestration');
+    expect(JSON.stringify(projection)).not.toContain(
+      approved.keyThumbprint.slice(0, 8),
+    );
   });
 });

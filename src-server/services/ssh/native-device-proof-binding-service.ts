@@ -22,6 +22,7 @@ import {
   type PairedDevice,
   parsePairingScope,
 } from '@kontourai/station-contracts/environment-security';
+import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 
@@ -35,6 +36,50 @@ const CLIENT_INSTANCE_ID_PATTERN =
 const BASE64URL_32_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const BINDING_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const APP_IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/;
+const NATIVE_CHANNELS = ['dev', 'stable', 'beta', 'nightly'] as const;
+const SURFACE_KEY_SET =
+  'appIdentifier,channel,clientInstanceId,keyThumbprint,kind';
+
+/**
+ * Canonical full native installation surface. Every field is validated for
+ * exact membership and canonical form; unknown fields and noncanonical
+ * values are refused so a stored binding never interprets ambiguous input.
+ */
+export type NativeDeviceClientSurface = SelfHostedBrokerNativeClientSurfaceV2;
+
+export function isValidNativeClientSurface(
+  value: unknown,
+): value is NativeDeviceClientSurface {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return false;
+  const surface = value as Record<string, unknown>;
+  return (
+    Object.keys(surface).sort().join(',') === SURFACE_KEY_SET &&
+    surface.kind === 'station-native' &&
+    NATIVE_CHANNELS.includes(surface.channel as never) &&
+    typeof surface.appIdentifier === 'string' &&
+    APP_IDENTIFIER_PATTERN.test(surface.appIdentifier) &&
+    typeof surface.clientInstanceId === 'string' &&
+    CLIENT_INSTANCE_ID_PATTERN.test(surface.clientInstanceId) &&
+    typeof surface.keyThumbprint === 'string' &&
+    BASE64URL_32_PATTERN.test(surface.keyThumbprint)
+  );
+}
+
+/** Exact field-wise equality; a binding answers only its full approved surface. */
+function surfacesMatch(
+  stored: NativeDeviceClientSurface,
+  presented: NativeDeviceClientSurface,
+): boolean {
+  return (
+    stored.kind === presented.kind &&
+    stored.appIdentifier === presented.appIdentifier &&
+    stored.channel === presented.channel &&
+    stored.clientInstanceId === presented.clientInstanceId &&
+    stored.keyThumbprint === presented.keyThumbprint
+  );
+}
 
 /**
  * Canonical P-256 Elliptic-Curve public JWK. The private scalar (`d`) is
@@ -61,7 +106,7 @@ interface StoredBinding {
   };
   readonly deviceId: string;
   readonly stationId: string;
-  readonly clientInstanceId: string;
+  readonly surface: NativeDeviceClientSurface;
   readonly createdAt: number;
   readonly approvedAt: number;
   readonly approvedBy: string;
@@ -80,7 +125,8 @@ export interface NativeDeviceProofBinding {
   };
   readonly deviceId: string;
   readonly stationId: string;
-  readonly clientInstanceId: string;
+  /** Full separately approved native surface this binding is bound to. */
+  readonly surface: NativeDeviceClientSurface;
   readonly createdAt: number;
   readonly approvedAt: number;
   readonly approvedBy: string;
@@ -247,6 +293,7 @@ function cloneBinding(stored: StoredBinding): NativeDeviceProofBinding {
   return structuredClone({
     ...stored,
     deviceProof: { ...stored.deviceProof, jwk: { ...stored.deviceProof.jwk } },
+    surface: { ...stored.surface },
   });
 }
 
@@ -305,7 +352,10 @@ class NativeDeviceProofBindingStore {
         throw new NativeDeviceProofBindingError('store_unavailable');
       bindingIds.add(raw.bindingId);
       if (raw.state === 'active') {
-        const pair = JSON.stringify([raw.deviceId, raw.clientInstanceId]);
+        const pair = JSON.stringify([
+          raw.deviceId,
+          raw.surface.clientInstanceId,
+        ]);
         if (activePairs.has(pair))
           throw new NativeDeviceProofBindingError('store_unavailable');
         activePairs.add(pair);
@@ -365,8 +415,8 @@ class NativeDeviceProofBindingStore {
     return (
       Object.keys(b).sort().join(',') ===
         (b.state === 'active'
-          ? 'approvedAt,approvedBy,bindingId,clientInstanceId,createdAt,deviceId,deviceProof,deviceScopeAtApproval,state,stationId'
-          : 'approvedAt,approvedBy,bindingId,clientInstanceId,createdAt,deviceId,deviceProof,deviceScopeAtApproval,revocationReason,revokedAt,state,stationId') &&
+          ? 'approvedAt,approvedBy,bindingId,createdAt,deviceId,deviceProof,deviceScopeAtApproval,state,stationId,surface'
+          : 'approvedAt,approvedBy,bindingId,createdAt,deviceId,deviceProof,deviceScopeAtApproval,revocationReason,revokedAt,state,stationId,surface') &&
       typeof b.bindingId === 'string' &&
       BINDING_ID_PATTERN.test(b.bindingId) &&
       typeof b.deviceProof === 'object' &&
@@ -382,8 +432,7 @@ class NativeDeviceProofBindingStore {
         ) &&
       typeof b.deviceId === 'string' &&
       typeof b.stationId === 'string' &&
-      typeof b.clientInstanceId === 'string' &&
-      CLIENT_INSTANCE_ID_PATTERN.test(b.clientInstanceId) &&
+      isValidNativeClientSurface(b.surface) &&
       Number.isSafeInteger(b.createdAt) &&
       Number.isSafeInteger(b.approvedAt) &&
       b.approvedBy === LOCAL_OPERATOR_PRINCIPAL_ID &&
@@ -414,15 +463,18 @@ export class NativeDeviceProofBindingService {
   }
 
   /**
-   * Create (or replace) the native Device proof binding for one client
-   * instance on an already-approved Device grant. Requires an explicit
-   * operator approval context minted by {@link NativeDeviceProofOperatorAuthority}.
+   * Create (or replace) the native Device proof binding for one approved
+   * native installation surface on an already-approved Device grant. The
+   * full surface (kind, appIdentifier, channel, clientInstanceId, route-key
+   * thumbprint) is the approved identity; the Device proof key must be
+   * distinct from that surface's route key. Requires an explicit operator
+   * approval context minted by {@link NativeDeviceProofOperatorAuthority}.
    * The future route must establish that authority independently of a saved
    * profile, broker route grant, account session, or legacy Device bearer.
    */
   createBinding(input: {
     deviceId: string;
-    clientInstanceId: string;
+    surface: NativeDeviceClientSurface;
     jwk: NativeDeviceProofPublicJwk;
     approval: NativeDeviceProofOperatorApprovalContext;
   }): NativeDeviceProofBinding {
@@ -430,10 +482,16 @@ export class NativeDeviceProofBindingService {
       throw new NativeDeviceProofBindingError('invalid_operator_approval');
     }
     input.approval.consume();
-    if (!CLIENT_INSTANCE_ID_PATTERN.test(input.clientInstanceId)) {
-      throw new NativeDeviceProofBindingError('invalid_client_instance_id');
-    }
+    const surface = this.#validatedSurface(input.surface);
     const jwk = this.#validatedPublicJwk(input.jwk);
+    if (
+      timingSafeEqual(
+        Buffer.from(p256Thumbprint(jwk)),
+        Buffer.from(surface.keyThumbprint),
+      )
+    ) {
+      throw new NativeDeviceProofBindingError('device_key_matches_route_key');
+    }
     const device = this.#activeDevice(input.deviceId);
     const stationId = this.#pairing.environmentId();
     if (typeof stationId !== 'string' || stationId.length === 0) {
@@ -445,7 +503,7 @@ export class NativeDeviceProofBindingService {
       if (
         existing.state === 'active' &&
         existing.deviceId === input.deviceId &&
-        existing.clientInstanceId === input.clientInstanceId
+        existing.surface.clientInstanceId === surface.clientInstanceId
       ) {
         existing.state = 'revoked';
         existing.revokedAt = now;
@@ -457,7 +515,7 @@ export class NativeDeviceProofBindingService {
       deviceProof: { jwk, thumbprint: p256Thumbprint(jwk) },
       deviceId: input.deviceId,
       stationId,
-      clientInstanceId: input.clientInstanceId,
+      surface,
       createdAt: now,
       approvedAt: input.approval.approvedAt,
       approvedBy: input.approval.operatorPrincipalId,
@@ -471,7 +529,7 @@ export class NativeDeviceProofBindingService {
 
   revokeBinding(input: {
     deviceId: string;
-    clientInstanceId: string;
+    surface: NativeDeviceClientSurface;
     approval: NativeDeviceProofOperatorApprovalContext;
     reason?: NativeDeviceProofBindingRevocationReason;
   }): NativeDeviceProofBinding[] {
@@ -479,6 +537,7 @@ export class NativeDeviceProofBindingService {
       throw new NativeDeviceProofBindingError('invalid_operator_approval');
     }
     input.approval.consume();
+    const surface = this.#validatedSurface(input.surface);
     const bindings = structuredClone(this.#store.load());
     const now = this.#now();
     const revoked: NativeDeviceProofBinding[] = [];
@@ -486,7 +545,7 @@ export class NativeDeviceProofBindingService {
       if (
         existing.state === 'active' &&
         existing.deviceId === input.deviceId &&
-        existing.clientInstanceId === input.clientInstanceId
+        existing.surface.clientInstanceId === surface.clientInstanceId
       ) {
         existing.state = 'revoked';
         existing.revokedAt = now;
@@ -502,16 +561,19 @@ export class NativeDeviceProofBindingService {
   }
 
   /**
-   * Exact current binding for a device/client pair, re-derived from Station
-   * state. Returns null — never a stale or reconstructed answer — when the
-   * binding is absent, revoked, on a revoked or missing Device, paired
-   * against a different Station, or the Device's scope no longer covers the
-   * scope the binding was approved under.
+   * Exact current binding for a Device plus its full approved native surface,
+   * re-derived from Station state. The presented surface must match the
+   * approved surface exactly — every field, including the route-key
+   * thumbprint. Returns null — never a stale or reconstructed answer — when
+   * the binding is absent, revoked, on a revoked or missing Device, paired
+   * against a different Station, on any surface mismatch, or the Device's
+   * scope no longer covers the scope the binding was approved under.
    */
   currentBinding(input: {
     deviceId: string;
-    clientInstanceId: string;
+    surface: NativeDeviceClientSurface;
   }): NativeDeviceProofBindingCurrent | null {
+    if (!isValidNativeClientSurface(input.surface)) return null;
     const stationId = this.#pairing.environmentId();
     const binding = this.#store
       .load()
@@ -519,7 +581,7 @@ export class NativeDeviceProofBindingService {
         (candidate) =>
           candidate.state === 'active' &&
           candidate.deviceId === input.deviceId &&
-          candidate.clientInstanceId === input.clientInstanceId,
+          surfacesMatch(candidate.surface, input.surface),
       );
     if (!binding) return null;
     if (binding.stationId !== stationId) return null;
@@ -537,7 +599,7 @@ export class NativeDeviceProofBindingService {
   /** Verifier-side lookup that refuses to proceed without a current binding. */
   requireCurrentBinding(input: {
     deviceId: string;
-    clientInstanceId: string;
+    surface: NativeDeviceClientSurface;
   }): NativeDeviceProofBindingCurrent {
     const current = this.currentBinding(input);
     if (!current)
@@ -565,12 +627,21 @@ export class NativeDeviceProofBindingService {
     return {
       bindingId: binding.bindingId,
       deviceId: binding.deviceId,
-      clientInstanceId: binding.clientInstanceId,
+      clientInstanceId: binding.surface.clientInstanceId,
       thumbprint: binding.deviceProof.thumbprint,
       createdAt: binding.createdAt,
       approvedAt: binding.approvedAt,
       state: binding.state,
     };
+  }
+
+  #validatedSurface(
+    surface: NativeDeviceClientSurface,
+  ): NativeDeviceClientSurface {
+    if (!isValidNativeClientSurface(surface)) {
+      throw new NativeDeviceProofBindingError('invalid_native_surface');
+    }
+    return { ...surface };
   }
 
   #activeDevice(deviceId: string): PairedDevice {
