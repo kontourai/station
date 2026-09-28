@@ -1,11 +1,9 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { BuiltinScheduler } from '../builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../monitor-task-supervisor.js';
@@ -13,6 +11,8 @@ import { createSchedulerLedger } from '../scheduler-ledger.js';
 
 const sessions = new Map<string, CanonicalRuntimeEvent[]>();
 const cleanups: Array<() => void> = [];
+// Created before the afterEach below so its removal runs after those cleanups.
+const makeTempDir = trackTempDirs();
 
 afterEach(() => {
   sessions.clear();
@@ -372,10 +372,9 @@ describe('MonitorTaskTurnSupervisor', () => {
   });
 
   test('explicit monitor resolution releases the matching observer', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-monitor-resolve-'));
-    const ledger = createSchedulerLedger({ directory: root });
+    const root = makeTempDir('station-monitor-resolve-');
     // The scheduler's stop() below closes the ledger.
-    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    const ledger = createSchedulerLedger({ directory: root });
     expect(
       ledger.create({
         name: 'watch',
