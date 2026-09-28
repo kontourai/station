@@ -1,7 +1,17 @@
 import type { webcrypto as nodeWebcrypto } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import {
   NATIVE_DEVICE_PROOF_LIFETIME_SECONDS,
   type NativeDeviceBindingSnapshot,
@@ -193,6 +203,99 @@ describe('NativeDeviceProofReplayStoreSqlite.consume', () => {
       reopened.close();
     }
   });
+
+  test('refuses a preexisting replay table with missing or partial Station metadata', () => {
+    const dbPath = tempDbPath();
+    const db = new DatabaseSync(dbPath);
+    db.exec(
+      'CREATE TABLE native_device_proof_replay (jti TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)',
+    );
+    db.prepare('INSERT INTO native_device_proof_replay VALUES (?,?)').run(
+      opaque('prior'),
+      1300,
+    );
+    db.close();
+    expect(
+      () =>
+        new NativeDeviceProofReplayStoreSqlite(dbPath, STATION_ID, {
+          nowSeconds: () => 1000,
+        }),
+    ).toThrow(NativeDeviceProofReplayStoreUnavailableError);
+
+    const partial = new DatabaseSync(dbPath);
+    partial.exec(
+      'CREATE TABLE native_device_proof_replay_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+    );
+    partial
+      .prepare('INSERT INTO native_device_proof_replay_meta VALUES (?,?)')
+      .run('schema_version', '1');
+    partial.close();
+    expect(
+      () =>
+        new NativeDeviceProofReplayStoreSqlite(dbPath, STATION_ID, {
+          nowSeconds: () => 1000,
+        }),
+    ).toThrow(NativeDeviceProofReplayStoreUnavailableError);
+  });
+
+  test('refuses an invalid verification clock before consuming a JTI', async () => {
+    let now = Number.NaN;
+    const store = new NativeDeviceProofReplayStoreSqlite(
+      tempDbPath(),
+      STATION_ID,
+      {
+        nowSeconds: () => now,
+      },
+    );
+    try {
+      await expect(
+        store.consume(opaque('invalidclock'), 1300),
+      ).rejects.toBeInstanceOf(NativeDeviceProofReplayStoreUnavailableError);
+      expect(store.size()).toBe(0);
+      now = -1;
+      await expect(
+        store.consume(opaque('negativeclock'), 1300),
+      ).rejects.toBeInstanceOf(NativeDeviceProofReplayStoreUnavailableError);
+      expect(store.size()).toBe(0);
+    } finally {
+      store.close();
+    }
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'keeps the database private and refuses public or symlinked custody',
+    async () => {
+      const dbPath = tempDbPath();
+      const store = new NativeDeviceProofReplayStoreSqlite(dbPath, STATION_ID, {
+        nowSeconds: () => 1000,
+      });
+      await store.consume(opaque('custody'), 1300);
+      store.close();
+      expect(lstatSync(dbPath).mode & 0o777).toBe(0o600);
+      chmodSync(dbPath, 0o644);
+      expect(
+        () => new NativeDeviceProofReplayStoreSqlite(dbPath, STATION_ID),
+      ).toThrow(NativeDeviceProofReplayStoreUnavailableError);
+      chmodSync(dbPath, 0o600);
+      const target = `${dbPath}.target`;
+      renameSync(dbPath, target);
+      symlinkSync(target, dbPath);
+      expect(
+        () => new NativeDeviceProofReplayStoreSqlite(dbPath, STATION_ID),
+      ).toThrow(NativeDeviceProofReplayStoreUnavailableError);
+    },
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'refuses a database under a nonprivate parent',
+    () => {
+      const dbPath = tempDbPath();
+      chmodSync(dirname(dbPath), 0o755);
+      expect(
+        () => new NativeDeviceProofReplayStoreSqlite(dbPath, STATION_ID),
+      ).toThrow(NativeDeviceProofReplayStoreUnavailableError);
+    },
+  );
 
   test('fails closed on malformed JTI, malformed expiry, and expired proofs without consuming', async () => {
     const store = new NativeDeviceProofReplayStoreSqlite(

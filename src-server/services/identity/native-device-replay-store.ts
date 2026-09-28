@@ -1,11 +1,63 @@
+import { closeSync, constants, lstatSync, openSync } from 'node:fs';
+import { dirname, isAbsolute } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { NativeDeviceProofReplayedError } from './native-device-proof-verifier.js';
 
 const JTI_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
 const SCHEMA_VERSION = 1;
 const DEFAULT_MAX_ENTRIES = 4096;
+const META_DDL =
+  'CREATE TABLE native_device_proof_replay_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT';
+const REPLAY_DDL =
+  'CREATE TABLE native_device_proof_replay (jti TEXT PRIMARY KEY, expires_at INTEGER NOT NULL) STRICT';
+const MAX_DATABASE_BYTES = 128 * 1024 * 1024;
 
-const BASE64URL_JTI = JTI_PATTERN;
+function assertPrivateReplayPath(dbPath: string): void {
+  if (!isAbsolute(dbPath))
+    throw new Error('Native Device replay database path must be absolute.');
+  const parent = lstatSync(dirname(dbPath));
+  if (
+    !parent.isDirectory() ||
+    parent.isSymbolicLink() ||
+    (process.platform !== 'win32' &&
+      ((parent.mode & 0o777) !== 0o700 || parent.uid !== process.getuid?.()))
+  )
+    throw new Error('Native Device replay database parent is not private.');
+  let databaseExists = true;
+  try {
+    lstatSync(dbPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    databaseExists = false;
+  }
+  if (!databaseExists) {
+    const descriptor = openSync(
+      dbPath,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
+      0o600,
+    );
+    closeSync(descriptor);
+  }
+  for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+    let status: ReturnType<typeof lstatSync>;
+    try {
+      status = lstatSync(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT' && path !== dbPath)
+        continue;
+      throw error;
+    }
+    if (
+      !status.isFile() ||
+      status.isSymbolicLink() ||
+      status.nlink !== 1 ||
+      status.size > MAX_DATABASE_BYTES ||
+      (process.platform !== 'win32' &&
+        ((status.mode & 0o777) !== 0o600 || status.uid !== process.getuid?.()))
+    )
+      throw new Error('Native Device replay database file is not private.');
+  }
+}
 
 export class NativeDeviceProofReplayStoreUnavailableError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -16,10 +68,6 @@ export class NativeDeviceProofReplayStoreUnavailableError extends Error {
 
 interface ReplayRow {
   jti: string;
-}
-
-interface MetaRow {
-  value: string;
 }
 
 export interface NativeDeviceReplayStoreOptions {
@@ -57,6 +105,7 @@ export class NativeDeviceProofReplayStoreSqlite {
       options.nowSeconds ?? (() => Math.floor(Date.now() / 1000));
     let db: DatabaseSync | undefined;
     try {
+      assertPrivateReplayPath(dbPath);
       db = new DatabaseSync(dbPath);
       db.exec('PRAGMA busy_timeout = 5000');
       db.exec('PRAGMA journal_mode = WAL');
@@ -83,52 +132,51 @@ export class NativeDeviceProofReplayStoreSqlite {
       throw new Error(
         `sqlite quick_check reported: ${quickCheck?.quick_check ?? 'no row'}`,
       );
-    db.exec(
-      'CREATE TABLE IF NOT EXISTS native_device_proof_replay_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
-    );
-    db.exec(
-      'CREATE TABLE IF NOT EXISTS native_device_proof_replay (jti TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)',
-    );
-    const versionRow = db
+    const tables = db
       .prepare(
-        "SELECT value FROM native_device_proof_replay_meta WHERE key = 'schema_version'",
+        "SELECT name, sql FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
       )
-      .get() as MetaRow | undefined;
-    if (versionRow === undefined) {
-      db.prepare(
-        "INSERT INTO native_device_proof_replay_meta (key, value) VALUES ('schema_version', ?)",
-      ).run(String(SCHEMA_VERSION));
-    } else if (versionRow.value !== String(SCHEMA_VERSION)) {
-      throw new Error(
-        `native_device_proof_replay schema version ${versionRow.value} is not ${SCHEMA_VERSION}`,
-      );
+      .all() as Array<{ name: string; sql: string }>;
+    if (tables.length === 0) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.exec(META_DDL);
+        db.exec(REPLAY_DDL);
+        db.prepare(
+          'INSERT INTO native_device_proof_replay_meta (key, value) VALUES (?, ?)',
+        ).run('schema_version', String(SCHEMA_VERSION));
+        db.prepare(
+          'INSERT INTO native_device_proof_replay_meta (key, value) VALUES (?, ?)',
+        ).run('station_id', this.stationId);
+        db.exec('COMMIT');
+      } catch (error) {
+        db.exec('ROLLBACK');
+        throw error;
+      }
+      return;
     }
-    const stationRow = db
+    if (
+      tables.length !== 2 ||
+      tables[0]?.name !== 'native_device_proof_replay' ||
+      tables[0].sql !== REPLAY_DDL ||
+      tables[1]?.name !== 'native_device_proof_replay_meta' ||
+      tables[1].sql !== META_DDL
+    )
+      throw new Error('Native Device replay database schema is unavailable.');
+    const meta = db
       .prepare(
-        "SELECT value FROM native_device_proof_replay_meta WHERE key = 'station_id'",
+        'SELECT key, value FROM native_device_proof_replay_meta ORDER BY key',
       )
-      .get() as MetaRow | undefined;
-    if (stationRow === undefined) {
-      db.prepare(
-        "INSERT INTO native_device_proof_replay_meta (key, value) VALUES ('station_id', ?)",
-      ).run(this.stationId);
-    } else if (stationRow.value !== this.stationId) {
+      .all() as Array<{ key: string; value: string }>;
+    if (
+      meta.length !== 2 ||
+      meta[0]?.key !== 'schema_version' ||
+      meta[0].value !== String(SCHEMA_VERSION) ||
+      meta[1]?.key !== 'station_id' ||
+      meta[1].value !== this.stationId
+    )
       throw new Error(
-        'native_device_proof_replay database belongs to a different Station ID',
-      );
-    }
-    const replayColumns = db
-      .prepare('PRAGMA table_info(native_device_proof_replay)')
-      .all() as {
-      name: string;
-    }[];
-    const columnNames = replayColumns
-      .map((column) => column.name)
-      .sort()
-      .join(',');
-    if (columnNames !== 'expires_at,jti')
-      throw new Error(
-        `native_device_proof_replay has unexpected columns: ${columnNames}`,
+        'Native Device replay database authority is unavailable.',
       );
   }
 
@@ -137,7 +185,7 @@ export class NativeDeviceProofReplayStoreSqlite {
       throw new NativeDeviceProofReplayStoreUnavailableError(
         'Native Device replay store is closed.',
       );
-    if (typeof jti !== 'string' || !BASE64URL_JTI.test(jti))
+    if (typeof jti !== 'string' || !JTI_PATTERN.test(jti))
       throw new NativeDeviceProofReplayStoreUnavailableError(
         'Native Device replay store received a malformed JTI.',
       );
@@ -150,6 +198,10 @@ export class NativeDeviceProofReplayStoreSqlite {
         'Native Device replay store received a malformed expiry.',
       );
     const now = this.nowSeconds();
+    if (!Number.isSafeInteger(now) || now < 0)
+      throw new NativeDeviceProofReplayStoreUnavailableError(
+        'Native Device replay store verification clock is invalid.',
+      );
     if (expiresAt <= now)
       throw new NativeDeviceProofReplayStoreUnavailableError(
         'Native Device proof is already expired; nothing is consumed.',
