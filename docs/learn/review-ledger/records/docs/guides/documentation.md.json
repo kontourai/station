@@ -30,7 +30,7 @@
 
     {"path":"scripts/run-repo-scan-suites.mjs","digest":"06c1be69f439b1676b78bfe673c310f5abaf3c4a29ddfd25160ae5a36f684584","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
 
-    {"path":"scripts/lib/review-ledger-store.mjs","digest":"48ae1c386adcb95950a21527f16c057bcbf5d4e7d9d4d4e9e75500f9118fa6bb","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"}
+    {"path":"scripts/lib/review-ledger-store.mjs","digest":"e78277c290b3665557cbfc895fa7da56886e7c589923141ad21e4fd5d37c3465","revision":"66ae5ea6b03d3b796ebd4185e2031ce16ee0a597"}
   ],
 
   "checks": [
