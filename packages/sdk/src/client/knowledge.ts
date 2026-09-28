@@ -12,7 +12,12 @@
  */
 
 import { envelopeError } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  rethrowDeadline,
+} from './http';
 
 interface KnowledgeEnvelope<T> {
   success: boolean;
@@ -33,7 +38,8 @@ async function unwrapKnowledgeResponse<T>(response: Response): Promise<T> {
   let result: KnowledgeEnvelope<T> | null = null;
   try {
     result = (await response.json()) as KnowledgeEnvelope<T>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     // Unreadable, but answered: the status still says what happened (#2708).
     throw envelopeError(response, undefined, fallback);
   }

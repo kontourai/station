@@ -16,7 +16,7 @@ import type {
   StartTaskStarterLaunchResult,
 } from '@kontourai/station-contracts/starter-work';
 import { apiErrorMessage } from './client/api-error-message';
-import { authenticatedFetch } from './client/http';
+import { authenticatedFetch, rethrowDeadline } from './client/http';
 import {
   type QueryConfig,
   resolveApiBase,
@@ -160,6 +160,7 @@ export async function launchContinueSessionStarter(
   try {
     parsed = (await response.json()) as typeof parsed;
   } catch (error) {
+    rethrowDeadline(error);
     if (response.ok)
       throw new AdoptSessionError({
         failureClass: 'uncertain-no-response',
@@ -218,6 +219,7 @@ export async function launchScheduledCheckStarter(
   try {
     parsed = (await response.json()) as typeof parsed;
   } catch (error) {
+    rethrowDeadline(error);
     if (response.ok)
       throw new ScheduledCheckStarterResponseError(input.operationId, error);
     throw error;

@@ -4,7 +4,7 @@ import type {
 } from '@kontourai/station-contracts/plugin-visibility';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
-import { authenticatedFetch } from '../client/http';
+import { authenticatedFetch, rethrowDeadline } from '../client/http';
 import type { QueryConfig } from '../query-core';
 
 /**
@@ -48,7 +48,8 @@ async function unwrap<T>(response: Response, defaultError: string): Promise<T> {
   let result: ApiEnvelope<T>;
   try {
     result = (await response.json()) as ApiEnvelope<T>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     throw new Error(defaultError);
   }
   if (!response.ok || !result.success || result.data === undefined) {

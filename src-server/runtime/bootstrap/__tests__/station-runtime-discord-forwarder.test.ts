@@ -1,6 +1,7 @@
 /**
- * #2377 C2b review: the Discord continue path gets its remote forwarder once,
- * at composition, as the routes do, not once per message, so an invalid
+ * #2377 C2b review: the Discord continue path gets its remote forwarder at
+ * composition, as the routes do, rather than inside the per-message
+ * callback, so an invalid
  * `STATION_REMOTE_REQUEST_TIMEOUT_MS` fails construction with its own
  * message instead of surfacing on the first bound conversation.
  *
@@ -77,7 +78,11 @@ function home(): string {
 }
 
 describe('StationRuntime builds the Discord forwarder at composition', () => {
-  it('once, before any message, and never again per message', {
+  // The pin is the construction-time count. The Discord continue callback
+  // cannot be driven from here: the stopped runtime has no orchestration
+  // service, so the callback refuses before any forwarder code, which made
+  // a "call it twice" check vacuous (#2377 C2b round-4 review).
+  it('builds the forwarder at construction, before any message', {
     timeout: 120_000,
   }, async () => {
     const { StationRuntime } = await import('../station-runtime.js');
@@ -86,14 +91,6 @@ describe('StationRuntime builds the Discord forwarder at composition', () => {
     );
     expect(hoisted.built).toBe(1);
     expect(hoisted.gatewayOptions).toBeDefined();
-    for (let turn = 0; turn < 2; turn += 1) {
-      try {
-        await hoisted.gatewayOptions!.executeForegroundMessage({});
-      } catch {
-        // The stopped runtime has no orchestration; only the count matters.
-      }
-    }
-    expect(hoisted.built).toBe(1);
   });
 
   it('an invalid bound fails construction with the variable’s own message', {

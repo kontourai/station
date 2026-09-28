@@ -24,6 +24,7 @@ import {
   type ClientRequestOptions,
   getJson,
   mutateJson,
+  rethrowDeadline,
   StationHttpError,
 } from './http';
 
@@ -213,7 +214,8 @@ async function unwrapSchedulerResponse<T>(response: Response): Promise<T> {
   let result: SchedulerEnvelope<T> | null = null;
   try {
     result = (await response.json()) as SchedulerEnvelope<T>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     // The body was unreadable, but a response still arrived: keep the status
     // so callers can tell this apart from never having reached the server.
     throw new SchedulerResponseError(

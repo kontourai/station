@@ -314,3 +314,30 @@ describe('a command that timed out after it was sent (#2377 C2b review, F6)', ()
     );
   });
 });
+
+describe("the server's own bounded fetch keeps the write fact (#2377 C2b round 4)", () => {
+  test('a POST to a peer that stalls its body may still have been applied; a GET may not', async () => {
+    mode = 'stall-body';
+    const endpoint = {
+      kind: 'peer' as const,
+      requestOptions: { timeoutMs: BOUND_MS },
+    };
+    const post = (await stationFetch(
+      endpoint,
+      `${peerBase}/api/orchestration/delegations`,
+      {
+        method: 'POST',
+        body: '{}',
+      },
+    ).catch((caught: unknown) => caught)) as Error;
+    expect(post.message).toBe(
+      'The selected Station did not answer within 1 second; the change may still have been applied',
+    );
+    const get = (await stationFetch(endpoint, `${peerBase}/api/agents`).catch(
+      (caught: unknown) => caught,
+    )) as Error;
+    expect(get.message).toBe(
+      'The selected Station did not answer within 1 second',
+    );
+  });
+});

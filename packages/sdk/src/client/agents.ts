@@ -6,7 +6,12 @@
  */
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import { envelopeError } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  rethrowDeadline,
+} from './http';
 
 export interface AgentEnvelope<T> {
   success: boolean;
@@ -39,6 +44,7 @@ async function readAgentBody(response: Response): Promise<unknown> {
   try {
     return await response.json();
   } catch (error) {
+    rethrowDeadline(error);
     if (!response.ok) {
       throw envelopeError(
         response,
@@ -181,7 +187,8 @@ export async function getAgent(
   let payload: AgentEnvelope<unknown> | null = null;
   try {
     payload = (await response.json()) as AgentEnvelope<unknown>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     if (!response.ok) throw envelopeError(response, undefined, failed);
     throw new Error('Expected JSON response');
   }

@@ -32,7 +32,8 @@ async function buildChatHttpError(response: Response): Promise<ChatHttpError> {
       code,
       isStationEnvelope(body),
     );
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     // Body isn't JSON (or is empty) — fall back to a generic status message
     // rather than failing to construct an error at all. Not Station's answer.
     return new ChatHttpError(response.status, undefined, undefined, false);
@@ -449,4 +450,4 @@ export async function streamConversationTurn(input: {
   return { conversationId, finishReason };
 }
 
-import { authenticatedFetch } from '../client/http';
+import { authenticatedFetch, rethrowDeadline } from '../client/http';

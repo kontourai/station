@@ -4,7 +4,12 @@ import type {
   TaskUserInputReferenceProjection,
 } from '@kontourai/station-contracts';
 import { envelopeError, type StationHttpError } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  rethrowDeadline,
+} from './http';
 
 type Envelope<T> = { success: boolean; data?: T };
 
@@ -53,7 +58,8 @@ async function unwrap<T>(response: Response): Promise<T> {
   let body: Envelope<T> | undefined;
   try {
     body = (await response.json()) as Envelope<T>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     throw new TaskUserInputReferenceRequestError(answered(response));
   }
   if (!response.ok || !body.success || body.data === undefined)

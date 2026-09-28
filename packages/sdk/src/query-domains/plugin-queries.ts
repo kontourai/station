@@ -211,7 +211,7 @@ export function useRegistryPluginsQuery(config?: QueryConfig<any>) {
   );
 }
 
-import { authenticatedFetch } from '../client/http';
+import { authenticatedFetch, unlessDeadline } from '../client/http';
 
 // ── Workspace Home role (station#3122 stage 3) ─────────
 // The grant record is server-side; this build ships the read and revoke
@@ -375,7 +375,9 @@ export async function revokeWorkspaceHomeRoleGrant(): Promise<void> {
     { method: 'DELETE' },
   );
   if (!response.ok) {
-    const result = (await response.json().catch(() => null)) as {
+    const result = (await response
+      .json()
+      .catch(unlessDeadline(() => null))) as {
       error?: string;
     } | null;
     throw new Error(

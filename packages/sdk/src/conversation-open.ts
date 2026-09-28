@@ -4,7 +4,7 @@ import {
   agentId as validateAgentId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
-import { authenticatedFetch } from './client/http';
+import { authenticatedFetch, rethrowDeadline } from './client/http';
 import { resolveApiBase } from './query-core';
 
 /**
@@ -29,6 +29,7 @@ export async function resolveConversationOpen(
   try {
     result = (await response.json()) as typeof result;
   } catch (cause) {
+    rethrowDeadline(cause);
     throw conversationOpenResolutionError('invalid-response', cause);
   }
   if (!response.ok || result.success !== true) {

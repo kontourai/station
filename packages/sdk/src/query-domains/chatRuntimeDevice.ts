@@ -48,7 +48,7 @@ export class DevicePairingRequiredError extends Error {
 
 async function throwIfDevicePairingRequired(response: Response): Promise<void> {
   if (response.status !== 403 && response.status !== 401) return;
-  const body = (await response.json().catch(() => undefined)) as
+  const body = (await response.json().catch(unlessDeadline(() => undefined))) as
     | { error?: string | { code?: string } }
     | undefined;
   // Match on the error shape rather than the bare status so an unrelated 401
@@ -196,4 +196,4 @@ export async function createVoiceSession(apiBase?: string): Promise<{
   return (await response.json()) as { sessionId?: string };
 }
 
-import { authenticatedFetch } from '../client/http';
+import { authenticatedFetch, unlessDeadline } from '../client/http';

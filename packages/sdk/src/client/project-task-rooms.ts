@@ -20,6 +20,7 @@ import {
   type ClientRequestOptions,
   type FetchSseConnection,
   fetchSSE,
+  rethrowDeadline,
 } from './http';
 
 export class ProjectTaskRoomProtocolError extends Error {
@@ -88,7 +89,8 @@ async function envelope(response: Response): Promise<unknown> {
   let body: unknown;
   try {
     body = await response.json();
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     // A refusal that is not JSON still carries the status Station answered.
     if (!response.ok)
       throw new ProjectTaskRoomProtocolError(refusal(response, undefined));

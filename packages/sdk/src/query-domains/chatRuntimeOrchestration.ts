@@ -36,6 +36,7 @@ import {
   authenticatedFetch,
   type ClientRequestOptions,
   isApiRequestScope,
+  rethrowDeadline,
 } from '../client/http';
 import {
   getOrchestrationConversationEventWindow,
@@ -568,6 +569,7 @@ export async function adoptOrchestrationSession(input: {
   try {
     result = (await response.json()) as typeof result;
   } catch (error) {
+    rethrowDeadline(error);
     if (response.ok) {
       // A 2xx whose body cannot be read may have CREATED the continuation
       // (the native relay resolves on headers; the stream can reset while

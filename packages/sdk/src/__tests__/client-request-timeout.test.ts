@@ -324,3 +324,33 @@ describe('a deadline that fires while the body is read (#2377 C2b review)', () =
     expect((error as Error).message).toBe('Orchestration API error: 200');
   });
 });
+
+describe('the deadline-bound response keeps its own shape (#2377 C2b round 4)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('is still a Response by its constructor', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{}')),
+    );
+    const response = await getJson(URL_UNDER_TEST, { timeoutMs: 1_000 });
+    expect(response.constructor).toBe(Response);
+    expect(response).toBeInstanceOf(Response);
+  });
+
+  it('reports a body reader the runtime lacks as absent, not as a function', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        const response = new Response('{}');
+        Object.defineProperty(response, 'bytes', { value: undefined });
+        return response;
+      }),
+    );
+    const response = await getJson(URL_UNDER_TEST, { timeoutMs: 1_000 });
+    expect(typeof response.bytes).toBe('undefined');
+    expect(await response.json()).toEqual({});
+  });
+});

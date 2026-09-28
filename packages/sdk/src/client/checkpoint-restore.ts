@@ -1,5 +1,10 @@
 import { apiErrorMessage } from './api-error-message';
-import { type ApiRequestScope, mutateJson, StationHttpError } from './http';
+import {
+  type ApiRequestScope,
+  mutateJson,
+  rethrowDeadline,
+  StationHttpError,
+} from './http';
 
 export type CheckpointRestoreRefusalReason =
   | 'workspace_changed'
@@ -41,7 +46,8 @@ async function unwrap<T>(response: Response): Promise<T> {
   };
   try {
     body = await response.json();
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     throw new StationHttpError(
       response.status,
       `Checkpoint restore failed: ${response.status}`,

@@ -194,7 +194,9 @@ export async function fetchFleetRoutingReceiptsForStation(
   // away the one sentence that told the reader what actually happened.
   // `.catch` covers a body that fails to parse at all (or is genuinely
   // empty), which is the only case a synthesized fallback is honest.
-  const result = (await response.json().catch(() => undefined)) as
+  const result = (await response
+    .json()
+    .catch(unlessDeadline(() => undefined))) as
     | { success: boolean; data?: FleetRoutingReceiptPage; error?: string }
     | undefined;
   if (!response.ok) {
@@ -245,7 +247,9 @@ export async function fetchFleetServeReceiptsForStation(
   // before branching on status so a route-authored error sentence — e.g.
   // `monitoring.ts`'s 503 "This Station cannot locate its receipt log, so
   // what it has served is unknown rather than empty." — survives.
-  const result = (await response.json().catch(() => undefined)) as
+  const result = (await response
+    .json()
+    .catch(unlessDeadline(() => undefined))) as
     | { success: boolean; data?: FleetServeReceiptPage; error?: string }
     | undefined;
   if (!response.ok) {
@@ -347,6 +351,7 @@ export async function fetchMonitoringEventWindow(
       error?: string;
     };
   } catch (error) {
+    rethrowDeadline(error);
     parseFailure = error;
   }
   // station#3658: a read that did not SUCCEED is not an empty one. Every
@@ -532,4 +537,9 @@ export async function fetchServerCapabilities(
 }
 
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch, StationHttpError } from '../client/http';
+import {
+  authenticatedFetch,
+  rethrowDeadline,
+  StationHttpError,
+  unlessDeadline,
+} from '../client/http';

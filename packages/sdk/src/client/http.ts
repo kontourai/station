@@ -314,12 +314,20 @@ const BODY_READERS = new Set<PropertyKey>([
 ]);
 
 /**
- * The deadline also governs the body: `fetch`'s signal aborts a body read
- * still in progress when it fires. A body reader that fails that way raises
- * the same `StationRequestTimeoutError` (with the same `mutation` fact) as a
- * deadline missed before the headers, so a caller can tell "the server
- * answered 200 and then stalled" (a write may have been applied) from a
- * malformed body. Any other body failure is rethrown unchanged.
+ * The deadline also governs the body readers (`json`, `text`, `arrayBuffer`,
+ * `blob`, `formData`, `bytes`; not `response.body` streams, which a caller
+ * reads itself): `fetch`'s signal aborts a body read still in progress when
+ * it fires. A body reader that fails that way raises the same
+ * `StationRequestTimeoutError` (with the same `mutation` fact) as a deadline
+ * missed before the headers, so a caller can tell "the server answered 200
+ * and then stalled" (a write may have been applied) from a malformed body.
+ * Any other body failure is rethrown unchanged.
+ *
+ * Only readers the runtime's `Response` actually has are wrapped (a runtime
+ * without `bytes` still reports it absent), and non-reader members are
+ * passed through as they are: methods are bound to the real response so its
+ * internal slots resolve, but `constructor` is not, so
+ * `response.constructor === Response` still holds.
  */
 function deadlineBoundBody(
   response: Response,
@@ -328,13 +336,10 @@ function deadlineBoundBody(
 ): Response {
   return new Proxy(response, {
     get(target, property) {
-      if (BODY_READERS.has(property)) {
+      const value = Reflect.get(target, property, target);
+      if (BODY_READERS.has(property) && typeof value === 'function') {
+        const read = value as () => Promise<unknown>;
         return async () => {
-          const read = Reflect.get(
-            target,
-            property,
-            target,
-          ) as () => Promise<unknown>;
           try {
             return await read.call(target);
           } catch (error) {
@@ -343,9 +348,9 @@ function deadlineBoundBody(
           }
         };
       }
-      if (property === 'clone')
+      if (property === 'clone' && typeof value === 'function')
         return () => deadlineBoundBody(target.clone(), deadline, timedOut);
-      const value = Reflect.get(target, property, target);
+      if (property === 'constructor') return value;
       return typeof value === 'function' ? value.bind(target) : value;
     },
   }) as Response;
@@ -497,13 +502,38 @@ export function envelopeErrorCode(body: unknown): string | undefined {
  * an empty 204) turn into a parse exception that hides the status the caller
  * needs to branch on.
  */
+/**
+ * The first statement of every SDK catch around a response-body read
+ * (`response.json()` and the other body readers) that does not also cover the
+ * request itself. A request deadline that fires while the body is read raises
+ * `StationRequestTimeoutError` (`fetchWithDeadline`); this passes it on
+ * unchanged, with its `mutation` fact, instead of letting the catch report it
+ * as an unreadable or non-JSON body. Anything else is left to the catch.
+ * `src/__tests__/body-read-deadline-coverage.test.ts` holds every such catch
+ * to it.
+ */
+export function rethrowDeadline(error: unknown): void {
+  if (error instanceof StationRequestTimeoutError) throw error;
+}
+
+/**
+ * The promise form of `rethrowDeadline`, for a body reader chained with
+ * `.catch`: `.catch(unlessDeadline(() => fallback))`
+ * answers the fallback for an unreadable body but passes a request deadline
+ * that fired mid-body on as the `StationRequestTimeoutError` it is.
+ */
+export function unlessDeadline<T>(fallback: () => T): (error: unknown) => T {
+  return (error) => {
+    rethrowDeadline(error);
+    return fallback();
+  };
+}
+
 export async function readJsonBody(response: Response): Promise<unknown> {
   try {
     return await response.json();
   } catch (error) {
-    // A deadline missed while reading the body is a timeout, not a body that
-    // is not JSON (`fetchWithDeadline`).
-    if (error instanceof StationRequestTimeoutError) throw error;
+    rethrowDeadline(error);
     return undefined;
   }
 }
@@ -1902,7 +1932,8 @@ export async function readEnvelopeOrThrow<T>(
   let payload: unknown;
   try {
     payload = await response.json();
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     if (!response.ok) throw envelopeError(response, undefined, fallback);
     throw new Error('Expected JSON response');
   }

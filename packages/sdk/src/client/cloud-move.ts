@@ -1,5 +1,5 @@
 import type { CloudMoveTargetObservation } from '@kontourai/station-contracts/cloud-move';
-import { type ClientRequestOptions, getJson } from './http';
+import { type ClientRequestOptions, getJson, rethrowDeadline } from './http';
 
 export type { CloudMoveTargetObservation } from '@kontourai/station-contracts/cloud-move';
 
@@ -66,7 +66,8 @@ export async function verifyCloudMoveTarget(
       throw new Error('Target identity verification failed');
     try {
       return (await response.json()) as unknown;
-    } catch {
+    } catch (error) {
+      rethrowDeadline(error);
       throw new Error('Target returned an invalid Station identity');
     }
   };

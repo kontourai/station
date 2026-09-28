@@ -13,7 +13,12 @@ import {
   SafeToolResultProjection,
 } from '@kontourai/thread';
 import { envelopeError, type StationHttpError } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  rethrowDeadline,
+} from './http';
 
 export class TaskToolResultRequestError extends Error {
   readonly status: number;
@@ -111,7 +116,8 @@ async function unwrap<T>(
   let body: Envelope | undefined;
   try {
     body = (await response.json()) as Envelope;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     throw new TaskToolResultRequestError(answered(response));
   }
   const data =

@@ -1,5 +1,5 @@
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
-import { authenticatedFetch } from '../client/http';
+import { authenticatedFetch, rethrowDeadline } from '../client/http';
 import {
   type QueryConfig,
   resolveApiBase,
@@ -83,7 +83,8 @@ async function pairingActionError(
   try {
     const body = (await response.json()) as { error?: unknown };
     if (typeof body.error === 'string') code = body.error;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     // Non-JSON failure body; the status alone is the signal.
   }
   return new DevicePairingRequestActionError(response.status, code);

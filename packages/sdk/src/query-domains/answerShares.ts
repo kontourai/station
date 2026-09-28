@@ -4,7 +4,7 @@ import type {
 } from '@kontourai/station-contracts/answer-share';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
-import { authenticatedFetch } from '../client/http';
+import { authenticatedFetch, rethrowDeadline } from '../client/http';
 import type { QueryConfig } from '../query-core';
 
 /**
@@ -83,7 +83,8 @@ async function boundaryCode(response: Response): Promise<string | undefined> {
     const body = (await response.json()) as { error?: { code?: unknown } };
     const code = body?.error?.code;
     return typeof code === 'string' ? code : undefined;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     return undefined;
   }
 }
@@ -96,7 +97,8 @@ async function unwrap<T>(response: Response, defaultError: string): Promise<T> {
   let result: ApiEnvelope<T>;
   try {
     result = (await response.json()) as ApiEnvelope<T>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     // A non-JSON body (a proxy error page, a truncated response) must not
     // surface as a parse exception with no bearing on what happened.
     throw new Error(defaultError);

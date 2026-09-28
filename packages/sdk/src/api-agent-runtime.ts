@@ -1,4 +1,5 @@
 import { _getApiBase, _resolveAgent, getPluginHeaders } from './api-core';
+import { rethrowDeadline } from './client/http';
 import { telemetry } from './telemetry';
 
 function isJsonRecord(value: unknown): value is Record<string, unknown> {
@@ -119,7 +120,8 @@ async function requireInvokeResponse(
     let value: unknown;
     try {
       value = await response.json();
-    } catch {
+    } catch (error) {
+      rethrowDeadline(error);
       if (response.status === 409) {
         throw new NativeInvocationIndeterminateError(
           'The provider invocation may have started. Do not retry automatically.',

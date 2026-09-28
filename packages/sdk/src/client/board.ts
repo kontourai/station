@@ -14,6 +14,7 @@ import {
   type ClientRequestOptions,
   getJson,
   mutateJson,
+  rethrowDeadline,
   StationHttpError,
 } from './http';
 
@@ -57,7 +58,8 @@ async function unwrapBoardResponse<T>(response: Response): Promise<T> {
   let result: BoardEnvelope<T> | null = null;
   try {
     result = (await response.json()) as BoardEnvelope<T>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     throw new BoardResponseError(
       response.status,
       `Board API error: ${response.status}`,

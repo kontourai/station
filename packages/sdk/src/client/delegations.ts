@@ -48,7 +48,12 @@ import type {
   ExecutionTarget,
 } from '@kontourai/station-contracts/execution-target';
 import { apiErrorMessage } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  rethrowDeadline,
+} from './http';
 import type { ApprovalDecision } from './orchestration';
 
 interface DelegationEnvelope<T> {
@@ -75,7 +80,8 @@ async function unwrapDelegationResponse<T>(response: Response): Promise<T> {
   let result: DelegationEnvelope<T> | null = null;
   try {
     result = (await response.json()) as DelegationEnvelope<T>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     throw new Error(`Delegation API error: ${response.status}`);
   }
   if (!response.ok || !result.success) {

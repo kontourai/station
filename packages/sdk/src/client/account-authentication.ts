@@ -19,6 +19,7 @@ import {
   getJson,
   mutateJson,
   StationHttpError,
+  unlessDeadline,
 } from './http';
 
 const path = z
@@ -36,7 +37,9 @@ const login = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('redirect'), startPath: path }).strict(),
 ]);
 async function read(response: Response): Promise<unknown> {
-  const value = (await response.json().catch(() => undefined)) as
+  const value = (await response
+    .json()
+    .catch(unlessDeadline(() => undefined))) as
     | { data?: unknown; error?: unknown }
     | undefined;
   if (!response.ok)

@@ -6,7 +6,7 @@ import {
   type StationTaskBasisCollection,
 } from '@kontourai/station-contracts/task-basis';
 import { envelopeError, type StationHttpError } from './api-error-message';
-import { type ClientRequestOptions, getJson } from './http';
+import { type ClientRequestOptions, getJson, rethrowDeadline } from './http';
 
 export type { StationTaskBasisCollection };
 export { STATION_TASK_BASIS_COLLECTION_VERSION };
@@ -96,7 +96,8 @@ export async function getTaskBasis(
     let body: { success?: boolean; data?: unknown };
     try {
       body = (await response.json()) as typeof body;
-    } catch {
+    } catch (error) {
+      rethrowDeadline(error);
       // Station answered, just not in JSON: keep the status it answered with.
       throw new TaskBasisRequestError(answered(response));
     }

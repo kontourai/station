@@ -17,7 +17,12 @@ import type {
   SkillVariable,
 } from '@kontourai/station-contracts/catalog';
 import { envelopeError } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  rethrowDeadline,
+} from './http';
 export interface SkillsEnvelope<T> {
   success: boolean;
   data?: T;
@@ -37,6 +42,7 @@ async function readSkillsEnvelope<T>(
   try {
     return (await response.json()) as SkillsEnvelope<T>;
   } catch (error) {
+    rethrowDeadline(error);
     if (!response.ok) {
       throw envelopeError(
         response,

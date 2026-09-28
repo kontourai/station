@@ -5,7 +5,12 @@ import type {
 } from '@kontourai/station-contracts/session-outputs';
 import { SESSION_OUTPUTS_V1 } from '@kontourai/station-contracts/session-outputs';
 import { envelopeError, type StationHttpError } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  rethrowDeadline,
+} from './http';
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const encoder = new TextEncoder();
@@ -267,7 +272,8 @@ async function unwrap<T>(
     body = record(await response.json());
     const parsed = body?.success === true ? parse(body.data) : undefined;
     if (response.ok && parsed) return parsed;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     /* normalized below */
   }
   throw new SessionOutputsRequestError(answered(response, body));

@@ -5,7 +5,7 @@ import {
   type ActionOperationWatchSnapshot,
   parseActionOperation,
 } from '@kontourai/station-contracts/action-operation';
-import { authenticatedFetch } from './http';
+import { authenticatedFetch, rethrowDeadline } from './http';
 
 export class ActionOperationProtocolError extends Error {
   constructor(message: string) {
@@ -61,7 +61,8 @@ export async function fetchActionOperations(
   let body: unknown;
   try {
     body = await response.json();
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     throw new ActionOperationProtocolError(
       'Action operation response is not JSON',
     );
@@ -86,7 +87,8 @@ export async function watchActionOperations(
   let body: unknown;
   try {
     body = await response.json();
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     throw new ActionOperationProtocolError(
       'Action operation watch response is not JSON',
     );
@@ -125,7 +127,8 @@ export async function cancelActionOperation(
   let body: unknown;
   try {
     body = await response.json();
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     throw new ActionOperationProtocolError(
       'Action operation cancellation response is not JSON',
     );

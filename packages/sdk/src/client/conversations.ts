@@ -13,7 +13,12 @@
  */
 
 import { envelopeError } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  rethrowDeadline,
+} from './http';
 
 interface ConversationEnvelope<T> {
   success: boolean;
@@ -44,6 +49,7 @@ async function readConversationEnvelope<T>(
   try {
     return (await response.json()) as ConversationEnvelope<T>;
   } catch (error) {
+    rethrowDeadline(error);
     if (!response.ok) {
       throw envelopeError(
         response,
@@ -76,7 +82,8 @@ export async function searchConversationMessages(
     result = (await response.json()) as ConversationEnvelope<
       ConversationMessageSearchResult[]
     >;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     // A non-2xx keeps its status; an unreadable 2xx is a protocol failure
     // with no failure status to carry (#2708, as `readEnvelopeOrThrow`).
     if (!response.ok) throw envelopeError(response, undefined, unreadable);
