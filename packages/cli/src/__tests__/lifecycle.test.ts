@@ -41,6 +41,7 @@ import {
 import { buildSync } from 'esbuild';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../../src-server/runtime/bootstrap/runtime-http.js';
 import type { EventBus } from '../../../../src-server/services/orchestration/event-bus.js';
 import {
@@ -6782,11 +6783,13 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
     }
   }, 15_000);
 
+  const makeUiDir = trackTempDirs();
+
   it('serves the nonce-bound __API_BASE__ bootstrap from the spawned script when an override is configured', async () => {
     const { spawn } = await import('node:child_process');
     const lifecycle = await import('../commands/lifecycle.js');
 
-    const uiDir = mkdtempSync(join(tmpdir(), 'station-ui-override-'));
+    const uiDir = makeUiDir('station-ui-override-');
     writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
     const uiPort = 41499 + (process.pid % 300);
     const child = spawn(
@@ -6830,7 +6833,6 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
       );
     } finally {
       child.kill('SIGKILL');
-      rmSync(uiDir, { recursive: true, force: true });
     }
   }, 15_000);
 });
