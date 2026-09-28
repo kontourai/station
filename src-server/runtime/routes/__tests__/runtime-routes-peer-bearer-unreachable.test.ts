@@ -13,12 +13,12 @@
  * It also records which of those requests reached the store's raw read, so
  * the probe is shown to touch the read surface rather than pass vacuously.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { PeerCredentialStore } from '../../../services/peers/peer-credential-store.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
 import {
@@ -88,16 +88,13 @@ async function bodyWithin(response: Response): Promise<string> {
 }
 
 describe('no HTTP route returns an outbound peer bearer (#2377 C2b)', () => {
-  const directories: string[] = [];
+  const makeTempDir = trackTempDirs();
   afterEach(() => {
     vi.restoreAllMocks();
-    for (const directory of directories.splice(0))
-      rmSync(directory, { recursive: true, force: true });
   });
 
   test('every GET route, as operator, internal caller and paired device, answers without the secret', async () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'station-peer-bearer-'));
-    directories.push(homeDir);
+    const homeDir = makeTempDir('station-peer-bearer-');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
     await new PeerCredentialStore(homeDir).upsert({
       environmentId: PEER_ENV,

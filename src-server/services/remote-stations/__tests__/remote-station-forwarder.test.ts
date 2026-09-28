@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { PeerCredentialStore } from '../../peers/peer-credential-store.js';
 import {
   createRemoteStationForwarder,
@@ -41,15 +41,10 @@ function sshView(
   } as never;
 }
 
-const directories: string[] = [];
-afterEach(() => {
-  for (const directory of directories.splice(0))
-    rmSync(directory, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 async function realPeerStore(withPeer: boolean) {
-  const home = mkdtempSync(join(tmpdir(), 'station-forwarder-'));
-  directories.push(home);
+  const home = makeTempDir('station-forwarder-');
   mkdirSync(join(home, 'security'), { mode: 0o700 });
   const store = new PeerCredentialStore(home);
   if (withPeer) {
