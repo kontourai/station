@@ -25101,7 +25101,7 @@
     {
       "path": "docs/reference/station-docs.md",
       "documentDigest": "52d3c088aed1ecaa9eaf65a68eaeedee361d9390ffcd8cf6d5cbcedd846c20a0",
-      "sourceRevision": "2ef40ae831ba0991b2ac0877af2f9ab94ba6ed74",
+      "sourceRevision": "e464b70652dade22324fda9d6111f49082e80df3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "All 16 manual topics and metadata reviewed at their explanatory scope. Corrected optional Flow, engine delivery and authority, Agent/Task ownership, schedule forms, Fleet evidence and plugin/SDK contracts. Bounded MCP policy delta: reviewed secure-scheme filtering versus complete CSP source-expression validation and effective browser containment; routes to the current host design without upgrading ordinary tool availability to rendering qualification.",
@@ -25281,7 +25281,7 @@
         },
         {
           "path": "src-server/tools/__tests__/station-docs-mcp-server.test.ts",
-          "digest": "1a5081cee2b982d5b106f19407afded894670518a48b1199b4a9204e27c72283"
+          "digest": "5191f8493c39b336abdb999ebbf4c96ab11a1fd9266a7d155af4c9b956b53a6f"
         },
         {
           "path": "src-server/tools/station-browser-mcp-server.ts",
@@ -25344,7 +25344,8 @@
         "Integration source review through d72f79b08: #2904 carries refusal `details` in dispatchOrchestrationCommand errors and records clientOrigin on task-dispatched starts in task-graph-service. It adds the confinement grantor, the grantor-current check and the device full-access revocation reset in orchestration-service. The manual topics make only explanatory claims. Among them: delivering a tool server grants no full access or operator authority; control calls stay subject to approval policy; Session, Task and dispatch are described at a general level. These remain consistent, and #2904 further restricts full access. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 84d56b9a8: e1af43c2c adds approvalAcknowledgement 'none' metadata to acp-adapter.ts. The document's statements about ACP as an external-engine protocol and about approval policy boundaries are unaffected. Prose accurate. Source review is separate from executed test evidence.",
         "Integration source review through 5731eba07: a290454b4 (#2919) made mcpUiToolCallDecision private and removed the isDistinctFrameOrigin re-export from MCPToolUIFrame.tsx without changing behavior. The sandboxed-frame and mcp-tool-ui renderer claims still hold. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through 2ef40ae83: the regenerated MCP content changes only the StationHomeArchive and verification-coordinator module topics, carrying reviewed module-map corrections. The manual's catalog and credential-free claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
+        "Integration source review through 2ef40ae83: the regenerated MCP content changes only the StationHomeArchive and verification-coordinator module topics, carrying reviewed module-map corrections. The manual's catalog and credential-free claims are unchanged, so the prose is accurate. Source review is separate from executed test evidence.",
+        "Integration source review through e464b7065: station-docs-mcp-server.test.ts drops the PERMITTED installation statement for the deleted PluginForegroundRuns topic (#2900); the remaining permission and architecture statements are unchanged, so the prose is accurate. Source review is separate from executed test evidence."
       ]
     },
     {
@@ -27376,8 +27377,8 @@
     },
     {
       "path": "examples/getting-started-starter/README.md",
-      "documentDigest": "ad3a3341594e0466e3ccdedcea4bf558d2f9d0bc3ffc775b04e9f518bc16a364",
-      "sourceRevision": "ed05e6f6c98c5b2bb994a88ff8fa8e1421639269",
+      "documentDigest": "e32230f6b56183e0e3ff58e33eb00aa370397d5a51631274ac0917fad36e49d9",
+      "sourceRevision": "e464b70652dade22324fda9d6111f49082e80df3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Full guide and components read; corrected nonexistent per-call manifest flag and installation bypass; inspected host action identity and explicit dock-only UI.",
@@ -27408,13 +27409,14 @@
         "Example/documentation, snippets, voice smoke refusal, sessions renderer, Fieldwork, Survey and branding selection: 76 tests across seven files passed. These are bounded fixture checks, not every example or a live provider.",
         "Reviewed source changes: Stop now forwards the resolved home into lifecycle state lookup. Reviewed source-checkout and prebuilt-archive distinctions; the current CLI reference already describes home-derived archive records.",
         "Integration source review through d72f79b08: in cli.ts, #2904 only adds the full-access refusal rendering to describeCliError. The Starter guide's commands, manifest handling, host action identity and dock-only UI claims are unaffected. Prose accurate. Source review is separate from executed test evidence.",
-        "Integration source review through abfc7a889: #2864 makes the CLI installer echo the preview's gitMetadata. The README's preview-then-install flow for the starter directory is unchanged, and it makes no claim about git metadata. Prose accurate. Source review is separate from executed test evidence."
+        "Integration source review through abfc7a889: #2864 makes the CLI installer echo the preview's gitMetadata. The README's preview-then-install flow for the starter directory is unchanged, and it makes no claim about git metadata. Prose accurate. Source review is separate from executed test evidence.",
+        "Integration source review through e464b7065: added that `station registry install getting-started-starter` installs this static starter once `./station registry ./examples/registry/manifest.json` selects the local catalog. The plugin declares no executable or lifecycle contribution (the refusal case #2809 records), and the CLI's default catalog is the GitHub registry, hence the selection step. Source review is separate from executed test evidence."
       ]
     },
     {
       "path": "examples/knowledge-docs-starter/README.md",
-      "documentDigest": "0c55a5b63d493ceb1b07e7cb124afabd30b7217a97c9af1d0a6bf7baf685615a",
-      "sourceRevision": "7eb2a21b0400fc44b24c93e6ee46471f98117319",
+      "documentDigest": "51c92abbcd0e29c891baa06fadfd6065602d0431fc8084195dba510bd6a3c4bb",
+      "sourceRevision": "e464b70652dade22324fda9d6111f49082e80df3",
       "kind": "current",
       "state": "source-reviewed",
       "summary": "Reviewed complete README: three static rows, no source-selection payload or intake/index/search, chat Dock callback, fixed host prompt, declared namespace versus Kit roots, contributed Agent and permission/model prerequisites. Existing prose remains accurate.",
@@ -27457,7 +27459,8 @@
         "Source/caller review of the documented claims, including failure and recovery limits; 2026-09-27.",
         "EXECUTED: 101 tests across 15 example/SDK/pane/host-action files and 72 Knowledge route/index tests passed; 2 live Neo4j tests skipped. Execution baseline 04029cf6153871d33be0e29675169971d3c3a6b0; later Obsidian physical-identity delta through 9d6ae66f1 source-reviewed without upgrading that older test receipt.",
         "EXECUTED: workspace-pane:conformance passed; six comment edits emit byte-identical JavaScript to their baseline; lint:check passed with inherited warnings.",
-        "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d."
+        "Reviewed integration deltas: packages/shared/src/build.ts: Reviewed comment-only correction; emitted JavaScript is byte-identical to frozen integration6fa523e4d.",
+        "Integration source review through e464b7065: added the same qualified `station registry install knowledge-docs-starter` path after the build and local catalog selection. The manifest declares no executable or lifecycle contribution. Source review is separate from executed test evidence."
       ]
     },
     {
