@@ -1321,6 +1321,71 @@ describe('merge-queue-friendly review ledger layout (#2936)', () => {
   });
 });
 
+describe('the real-ledger checks keep the job event through the scrub (#2922)', () => {
+  const PROBE = 'scripts/__tests__/docs-freshness-job-env.probe.test.ts';
+  const ROOT = resolve(scripts, '..');
+  it.each([
+    [
+      'pull_request_target',
+      {
+        GITHUB_ACTIONS: 'true',
+        GITHUB_EVENT_NAME: 'pull_request_target',
+        STATION_CI_FAST_BASE: 'b'.repeat(40),
+      },
+      'blocks',
+    ],
+    [
+      'pull_request',
+      { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'pull_request' },
+      'blocks',
+    ],
+    [
+      'merge_group',
+      { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'merge_group' },
+      'advisory',
+    ],
+    ['a plain local run', {}, 'blocks'],
+  ] as const)('%s', { timeout: 150_000 }, (_event, pins, expected) => {
+    const report = join(makeTempDir('station-freshness-probe-'), 'report.json');
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(ROOT, 'node_modules/vitest/vitest.mjs'),
+        'run',
+        PROBE,
+        '--reporter=json',
+        `--outputFile=${report}`,
+      ],
+      {
+        cwd: ROOT,
+        encoding: 'utf8',
+        env: pinnedFreshnessEnv({
+          ...pins,
+          STATION_FRESHNESS_PROBE_EXPECT: expected,
+        }),
+        timeout: 140_000,
+        windowsHide: true,
+      },
+    );
+    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+    const parsed = JSON.parse(readFileSync(report, 'utf8'));
+    const failures = parsed.testResults.flatMap(
+      (suite: {
+        assertionResults: { status: string; failureMessages: string[] }[];
+      }) =>
+        suite.assertionResults
+          .filter((assertion) => assertion.status !== 'passed')
+          .map((assertion) =>
+            assertion.failureMessages.join('\n').slice(0, 400),
+          ),
+    );
+    expect(failures).toEqual([]);
+    expect(result.status, output.slice(-2000)).toBe(0);
+    // The probe ran: a filtered or skipped probe also exits 0.
+    expect(parsed.numPassedTests).toBe(1);
+  });
+});
+
 describe('Nightly freshness sweep (#2923)', () => {
   const stale = (count: number) =>
     Array.from({ length: count }, (_, index) => ({

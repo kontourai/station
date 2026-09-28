@@ -59,3 +59,31 @@ export function scrubEventScopedEnvironment(env = process.env) {
   for (const name of removed) delete env[name];
   return removed;
 }
+
+const JOB_EVENT_ENVIRONMENT = Symbol.for('station.ci.jobEventEnvironment');
+
+/**
+ * Keep the job's event-scoped variables, frozen, before the scrub removes
+ * them, for the few tests that deliberately check the real repository in the
+ * job's own mode: the real-ledger documentation freshness checks are the only
+ * CI enforcement of freshness, so they must see `pull_request_target` as a
+ * pull request, not as an unknown Actions event (advisory). Held on the
+ * process object, not in the environment, so no child process inherits it,
+ * and captured once, because a pooled worker reruns the setup file for every
+ * test file after the first scrub.
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export function preserveJobEventEnvironment(env = process.env) {
+  if (process[JOB_EVENT_ENVIRONMENT]) return process[JOB_EVENT_ENVIRONMENT];
+  process[JOB_EVENT_ENVIRONMENT] = Object.freeze(
+    Object.fromEntries(
+      Object.entries(env).filter(([name]) => isEventScopedVariable(name)),
+    ),
+  );
+  return process[JOB_EVENT_ENVIRONMENT];
+}
+
+/** The variables `preserveJobEventEnvironment` kept, or none. */
+export function jobEventEnvironment() {
+  return process[JOB_EVENT_ENVIRONMENT] ?? Object.freeze({});
+}
