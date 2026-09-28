@@ -33,6 +33,28 @@ const DOCS_FRESHNESS_BASE_ENV = 'STATION_DOCS_FRESHNESS_BASE';
 const CI_FAST_BASE_ENV = 'STATION_CI_FAST_BASE';
 export const REVIEW_LEDGER = 'docs/learn/review-ledger.json';
 const MODES = new Set(['scoped', 'advisory', 'strict']);
+/** Every environment variable the mode and scope are derived from. */
+export const DOCS_FRESHNESS_ENV_KEYS = Object.freeze([
+  DOCS_FRESHNESS_MODE_ENV,
+  DOCS_FRESHNESS_BASE_ENV,
+  CI_FAST_BASE_ENV,
+  'GITHUB_ACTIONS',
+  'GITHUB_EVENT_NAME',
+]);
+
+/**
+ * A copy of `env` without the variables that choose a freshness mode, so a
+ * caller (a test fixture, a spawned check) states its mode explicitly instead
+ * of inheriting the job's.
+ * @param {NodeJS.ProcessEnv} env
+ */
+export function withoutFreshnessEnv(env) {
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      ([key]) => !DOCS_FRESHNESS_ENV_KEYS.includes(key),
+    ),
+  );
+}
 const PR_EVENTS = new Set(['pull_request', 'pull_request_target']);
 
 function git(root, args) {

@@ -15,6 +15,10 @@ import {
   documentationFreshnessMode,
   freshnessBlocks,
 } from '../lib/documentation-freshness.mjs';
+import {
+  forbidAmbientFreshnessMode,
+  pinnedFreshnessEnv,
+} from './helpers/freshness-env.js';
 
 const makeTempDir = trackTempDirs();
 const scripts = resolve(import.meta.dirname, '..');
@@ -27,17 +31,12 @@ const image = Buffer.from(
 const LEDGER = 'docs/learn/review-ledger.json';
 const MEDIA = 'docs/learn/media.json';
 
-// Child processes inherit neither this checkout's Git location nor the host
-// CI event, so each case states its own mode.
+// Fixture Git commands must not inherit this checkout's Git location.
 const baseEnv = Object.fromEntries(
-  Object.entries(process.env).filter(
-    ([key]) =>
-      !key.startsWith('GIT_') &&
-      !key.startsWith('GITHUB_') &&
-      !key.startsWith('STATION_DOCS_') &&
-      key !== 'STATION_CI_FAST_BASE',
-  ),
+  Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
 );
+// Every check below pins its mode; an unpinned read throws (#2934).
+forbidAmbientFreshnessMode();
 
 function git(root: string, args: string[]) {
   return execFileSync('git', args, {
@@ -170,7 +169,7 @@ function run(
 ) {
   return spawnSync(process.execPath, [join(scripts, script), ...args], {
     cwd: root,
-    env: { ...baseEnv, ...env },
+    env: pinnedFreshnessEnv(env),
     encoding: 'utf8',
     windowsHide: true,
   });

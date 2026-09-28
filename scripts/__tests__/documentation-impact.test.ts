@@ -12,8 +12,11 @@ import {
   formatDocumentationImpact,
   readDocumentationImpact,
 } from '../documentation-impact.mjs';
+import { forbidAmbientFreshnessMode } from './helpers/freshness-env.js';
 
 const makeTempDir = trackTempDirs();
+// Impact and catch-up must not depend on the freshness mode (#2934).
+forbidAmbientFreshnessMode();
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 const ledger = (records: unknown[]) => ({ version: 1, records });
 const record = (path: string, sources: string[]) => ({

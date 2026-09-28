@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { buildLearningGuide } from '../build-learning-guide.mjs';
 import {
@@ -13,6 +13,12 @@ import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 import { renderLearningDocument } from '../lib/learning-markdown.mjs';
 import { compileLearningMedia } from '../lib/learning-media.mjs';
 import { createLearningSourceReader } from '../lib/learning-source-reader.mjs';
+import {
+  forbidAmbientFreshnessMode,
+  JOB_ENV,
+} from './helpers/freshness-env.js';
+
+forbidAmbientFreshnessMode();
 
 const image = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF9sAAAAASUVORK5CYII=',
@@ -251,45 +257,39 @@ it('the real builder publishes immutable media bytes and its strict entry detect
   ).toContain(url);
   git(['branch', 'fixture-base']);
   write('code.ts', 'changed UI');
+  // #2923: docs:learn:check follows the shared freshness policy. Each check
+  // pins its environment; the ambient mode is forbidden in this file (#2934).
+  const check = (env: NodeJS.ProcessEnv) =>
+    buildLearningGuide({
+      root,
+      check: true,
+      freshness: resolveDocumentationFreshness({ root, env }),
+    });
+  const pr = { STATION_DOCS_FRESHNESS_BASE: 'fixture-base' };
+  const queue = { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'merge_group' };
   // No base resolves in this repository, so the scope is unknown: strict.
-  await expect(buildLearningGuide({ root, check: true })).rejects.toThrow(
-    'Learning capture needs review',
+  await expect(check({})).rejects.toThrow('Learning capture needs review');
+  // The change owns its stale capture; the merge queue only reports it.
+  await expect(check(pr)).rejects.toThrow('Learning capture needs review');
+  const queued = await check(queue);
+  expect(queued.captures[0].changed).toEqual(['code.ts']);
+  // The same decision governs review records in the builder.
+  write('code.ts', source);
+  write('owner.ts', 'export const owner = 2;\n');
+  const reviewed = await check(queue);
+  expect(
+    reviewed.documents.find((doc) => doc.path === 'guide.md')?.reviewRecord,
+  ).toMatchObject({ state: 'needs-review', changed: ['owner.ts'] });
+  // A source removed by another change is a stale input in the queue,
+  // not a malformed ledger.
+  git(['rm', '-qf', 'owner.ts']);
+  const removed = await check(queue);
+  expect(
+    removed.documents.find((doc) => doc.path === 'guide.md')?.reviewRecord,
+  ).toMatchObject({ state: 'needs-review', changed: ['owner.ts'] });
+  await expect(check(pr)).rejects.toThrow(
+    'Documentation review needs refresh: guide.md; changed: owner.ts',
   );
-  // #2923: docs:learn:check follows the shared freshness policy. The change
-  // owns its stale capture; the merge queue only reports it.
-  vi.stubEnv('STATION_CI_FAST_BASE', '');
-  vi.stubEnv('STATION_DOCS_FRESHNESS', '');
-  try {
-    vi.stubEnv('GITHUB_ACTIONS', '');
-    vi.stubEnv('STATION_DOCS_FRESHNESS_BASE', 'fixture-base');
-    await expect(buildLearningGuide({ root, check: true })).rejects.toThrow(
-      'Learning capture needs review',
-    );
-    vi.stubEnv('GITHUB_ACTIONS', 'true');
-    vi.stubEnv('GITHUB_EVENT_NAME', 'merge_group');
-    const queued = await buildLearningGuide({ root, check: true });
-    expect(queued.captures[0].changed).toEqual(['code.ts']);
-    // The same decision governs review records in the builder.
-    write('code.ts', source);
-    write('owner.ts', 'export const owner = 2;\n');
-    const reviewed = await buildLearningGuide({ root, check: true });
-    expect(
-      reviewed.documents.find((doc) => doc.path === 'guide.md')?.reviewRecord,
-    ).toMatchObject({ state: 'needs-review', changed: ['owner.ts'] });
-    // A source removed by another change is a stale input in the queue,
-    // not a malformed ledger.
-    git(['rm', '-qf', 'owner.ts']);
-    const removed = await buildLearningGuide({ root, check: true });
-    expect(
-      removed.documents.find((doc) => doc.path === 'guide.md')?.reviewRecord,
-    ).toMatchObject({ state: 'needs-review', changed: ['owner.ts'] });
-    vi.stubEnv('GITHUB_ACTIONS', '');
-    await expect(buildLearningGuide({ root, check: true })).rejects.toThrow(
-      'Documentation review needs refresh: guide.md; changed: owner.ts',
-    );
-  } finally {
-    vi.unstubAllEnvs();
-  }
   expect(
     readFileSync(
       join(root, '.kontourai/docs-learning', decodeURIComponent(url)),
@@ -317,10 +317,13 @@ it('checks the actual capture manifest and recorded source bytes in the required
     files,
     async (path: string) => reader.read(path),
     {
+      // The real manifest runs in the job's own mode: scoped on a pull
+      // request, advisory in the merge queue and repo-scans job.
       requireFresh: freshnessRequirement(
-        resolveDocumentationFreshness({ root: process.cwd() }),
+        resolveDocumentationFreshness({ root: process.cwd(), env: JOB_ENV }),
         'capture',
       ),
+      reportMissing: true,
     },
   );
   expect(captures.size).toBeGreaterThan(0);
